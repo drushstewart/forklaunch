@@ -1,4 +1,9 @@
-use std::{collections::{HashMap, HashSet}, fs, io::Write, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    io::Write,
+    path::Path,
+};
 
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
@@ -20,16 +25,17 @@ use crate::{
         command::command,
         docker::{DockerCompose, sync_docker_compose_env_vars},
         env_template::{generate_env_templates, sync_env_local_files},
-        manifest::{
-            ProjectType, application::ApplicationManifestData,
-        },
+        manifest::{ProjectType, application::ApplicationManifestData},
+        openapi_export,
         rendered_template::{RenderedTemplate, RenderedTemplatesCache, write_rendered_templates},
         sync::{
             artifacts::{ArtifactType, remove_project_from_artifacts},
             detection::detect_project_type,
         },
     },
+    init::rust_project,
     prompt::{ArrayCompleter, prompt_for_confirmation, prompt_with_validation_with_answers},
+    sdk::generate::generate_or_check_sdk_outputs,
 };
 
 /// Performs a full sync of all projects in the modules directory with the manifest.
@@ -53,15 +59,29 @@ pub fn sync_all_projects(
     prompts_map: &HashMap<String, HashMap<String, String>>,
     stdout: &mut StandardStream,
 ) -> Result<bool> {
+    if manifest_data.runtime == "tokio" {
+        rust_project::sync_all_rust_projects(app_root_path, stdout)?;
+        regenerate_rust_typescript_sdk_after_sync(app_root_path, stdout)?;
+        return Ok(false);
+    }
+
     let modules_path = app_root_path.join(&manifest_data.modules_path);
     let mut changes_made = false;
 
     if !modules_path.exists() {
-        log_warn!(stdout, "Modules path does not exist: {}", modules_path.display());
+        log_warn!(
+            stdout,
+            "Modules path does not exist: {}",
+            modules_path.display()
+        );
         return Ok(false);
     }
 
-    log_info!(stdout, "Scanning modules directory: {}", modules_path.display());
+    log_info!(
+        stdout,
+        "Scanning modules directory: {}",
+        modules_path.display()
+    );
 
     let existing_folders: HashSet<String> = fs::read_dir(&modules_path)?
         .filter_map(|entry| {
@@ -85,7 +105,11 @@ pub fn sync_all_projects(
 
     if !orphaned_projects.is_empty() {
         writeln!(stdout)?;
-        log_warn!(stdout, "Found {} orphaned project(s) in manifest:", orphaned_projects.len());
+        log_warn!(
+            stdout,
+            "Found {} orphaned project(s) in manifest:",
+            orphaned_projects.len()
+        );
         for project_name in &orphaned_projects {
             writeln!(stdout, "  - {}", project_name)?;
         }
@@ -130,7 +154,11 @@ pub fn sync_all_projects(
                 changes_made = true;
             }
 
-            log_ok!(stdout, "Cleaned up {} orphaned project(s)", orphaned_projects.len());
+            log_ok!(
+                stdout,
+                "Cleaned up {} orphaned project(s)",
+                orphaned_projects.len()
+            );
             writeln!(stdout)?;
         } else {
             log_warn!(stdout, "Skipping cleanup of orphaned projects");
@@ -183,7 +211,11 @@ pub fn sync_all_projects(
                 log_warn!(stdout, "Could not auto-detect project type");
 
                 if confirm_all {
-                    log_warn!(stdout, "Skipping '{}' (cannot auto-detect and no interaction allowed)", project_name);
+                    log_warn!(
+                        stdout,
+                        "Skipping '{}' (cannot auto-detect and no interaction allowed)",
+                        project_name
+                    );
                     continue;
                 }
 
@@ -197,10 +229,7 @@ pub fn sync_all_projects(
                     stdout,
                     "category",
                     &ArgMatches::default(),
-                    &format!(
-                        "Project type for '{}' (or 'skip' to ignore)",
-                        project_name
-                    ),
+                    &format!("Project type for '{}' (or 'skip' to ignore)", project_name),
                     Some(SYNC_TYPE_OPTIONS),
                     |input| SYNC_TYPE_OPTIONS.contains(&input),
                     |_| "Invalid option. Please try again.".to_string(),
@@ -209,7 +238,11 @@ pub fn sync_all_projects(
                 )?;
 
                 if type_str == "skip" {
-                    log_info!(stdout, "Skipping '{}' (not a forklaunch project)", project_name);
+                    log_info!(
+                        stdout,
+                        "Skipping '{}' (not a forklaunch project)",
+                        project_name
+                    );
                     continue;
                 }
 
@@ -346,6 +379,34 @@ pub fn sync_all_projects(
     Ok(changes_made)
 }
 
+fn regenerate_rust_typescript_sdk_after_sync(
+    app_root_path: &Path,
+    stdout: &mut StandardStream,
+) -> Result<()> {
+    let output_dir = app_root_path.join(".forklaunch").join("openapi");
+    let exported_services = openapi_export::export_all_rust_services(app_root_path, &output_dir)
+        .with_context(
+            || "Rust sync completed, but contract/OpenAPI export failed before SDK regeneration",
+        )?;
+
+    if exported_services.is_empty() {
+        log_info!(
+            stdout,
+            "No Rust services or workers found for TypeScript SDK regeneration"
+        );
+        return Ok(());
+    }
+
+    log_info!(
+        stdout,
+        "Regenerating TypeScript SDK from Rust contracts for {} project(s)",
+        exported_services.len()
+    );
+    generate_or_check_sdk_outputs(app_root_path, "typescript", "contract", None, false, stdout)
+        .with_context(|| "Failed to regenerate TypeScript SDK from Rust contract artifacts")?;
+    Ok(())
+}
+
 #[derive(Debug)]
 pub(crate) struct SyncAllCommand;
 
@@ -394,6 +455,14 @@ impl CliCommand for SyncAllCommand {
             };
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
+        if rust_project::is_rust_app_root(&app_root_path)? {
+            rust_project::sync_all_rust_projects(&app_root_path, &mut stdout)?;
+            regenerate_rust_typescript_sdk_after_sync(&app_root_path, &mut stdout)?;
+            writeln!(stdout)?;
+            log_header!(stdout, Color::Green, "Sync all completed");
+            return Ok(());
+        }
+
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
 
         let mut rendered_templates_cache = RenderedTemplatesCache::new();

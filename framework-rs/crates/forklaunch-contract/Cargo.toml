@@ -1,0 +1,13 @@
+[package]
+name = "forklaunch-contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+forklaunch-common = { path = "../forklaunch-common" }
+
+[lints]
+workspace = true

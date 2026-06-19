@@ -72,6 +72,7 @@ use crate::{
         tsconfig::update_tsconfig_test_framework_types,
         watermark::apply_watermark,
     },
+    init::rust_project,
     prompt::{ArrayCompleter, prompt_field_from_selections_with_validation},
 };
 
@@ -388,9 +389,7 @@ fn update_config_files(
                         path: base_path.join(project).join(file),
                     });
                 }
-                removal_templates.push(RemovalTemplate {
-                    path: file_path,
-                });
+                removal_templates.push(RemovalTemplate { path: file_path });
             } else {
                 preserved_files.push(file_path.to_string_lossy().to_string());
             }
@@ -1204,7 +1203,11 @@ fn change_runtime(
     })?;
 
     if existing_dockerfile_contents.trim() != watermarked_dockerfile_contents.trim() {
-        log_warn!(stdout, "Warning: Dockerfile is generating from template, you may need to manually migrate changes from Dockerfile.{}", runtime.to_string());
+        log_warn!(
+            stdout,
+            "Warning: Dockerfile is generating from template, you may need to manually migrate changes from Dockerfile.{}",
+            runtime.to_string()
+        );
         rendered_templates_cache.insert(
             base_path
                 .join(format!("Dockerfile.{}", runtime.to_string()))
@@ -1480,11 +1483,8 @@ fn change_test_framework(
         .iter()
         .map(|p| p.name.as_str())
         .collect();
-    let tsconfig_templates = update_tsconfig_test_framework_types(
-        base_path,
-        Some(test_framework),
-        &project_names,
-    )?;
+    let tsconfig_templates =
+        update_tsconfig_test_framework_types(base_path, Some(test_framework), &project_names)?;
     for template in tsconfig_templates {
         let key = template.path.to_string_lossy().to_string();
         rendered_templates_cache.insert(key, template);
@@ -1627,6 +1627,41 @@ impl CliCommand for ApplicationCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+
+        if rust_project::is_rust_app_root(&app_root_path)? {
+            if matches.get_one::<String>("formatter").is_some()
+                || matches.get_one::<String>("linter").is_some()
+                || matches.get_one::<String>("validator").is_some()
+                || matches.get_one::<String>("runtime").is_some()
+                || matches.get_one::<String>("http-framework").is_some()
+                || matches.get_one::<String>("test-framework").is_some()
+            {
+                anyhow::bail!(
+                    "Rust application changes currently support name, description, author, and license"
+                );
+            }
+
+            if let Some(name) = matches.get_one::<String>("name")
+                && !validate_name(name)
+            {
+                anyhow::bail!(
+                    "Application name cannot be empty or include numbers or spaces. Please try again"
+                );
+            }
+
+            let changed_name = rust_project::change_rust_application(
+                &app_root_path,
+                matches.get_one::<String>("name").map(String::as_str),
+                matches.get_one::<String>("description").map(String::as_str),
+                matches.get_one::<String>("author").map(String::as_str),
+                matches.get_one::<String>("license").map(String::as_str),
+                matches.get_flag("dryrun"),
+            )?;
+            if !matches.get_flag("dryrun") {
+                log_ok!(stdout, "{} changed successfully!", changed_name);
+            }
+            return Ok(());
+        }
 
         let existing_manifest_data = toml::from_str::<ApplicationManifestData>(
             &read_to_string(&manifest_path).with_context(|| ERROR_FAILED_TO_READ_MANIFEST)?,

@@ -143,7 +143,9 @@ use crate::{
             env::find_all_env_vars,
             integrations::find_all_integrations,
             runtime_deps::{find_all_runtime_deps, get_unique_resource_types},
-            service_dependencies::find_all_service_dependencies,
+            service_dependencies::{
+                find_all_rust_service_dependencies, find_all_service_dependencies,
+            },
             worker_config::find_all_worker_configs,
         },
         command::command,
@@ -171,6 +173,11 @@ struct CreateReleaseRequest {
     manifest: ReleaseManifest,
     #[serde(rename = "releasedBy", skip_serializing_if = "Option::is_none")]
     released_by: Option<String>,
+    /// Pin the autodeploy fan-out to a specific environment. Honored by
+    /// `FORKLAUNCH_TARGET_ENVIRONMENT` env var (set by the worker when the
+    /// webhook already matched the push to an env via the branch matrix).
+    #[serde(rename = "targetEnvironment", skip_serializing_if = "Option::is_none")]
+    target_environment: Option<String>,
 }
 
 #[derive(Debug)]
@@ -382,16 +389,31 @@ impl CliCommand for CreateCommand {
         if local_mode {
             log_info!(stdout, "Using local mode - packaging code directly");
         } else if is_git_repo() {
-            // Warn user and checkout main branch with latest changes
-            log_warn!(
+            // Git mode releases whatever commit is checked out, but the working
+            // tree must be clean — uncommitted changes would not be reproducible
+            // from the released commit alone.
+            let status_output = ProcessCommand::new("git")
+                .args(&["status", "--porcelain"])
+                .output()
+                .with_context(|| "Failed to check git status")?;
+            if !status_output.status.success() {
+                bail!("Failed to check git status");
+            }
+            let dirty = !status_output.stdout.is_empty();
+            if dirty {
+                let dirty_text = String::from_utf8_lossy(&status_output.stdout);
+                bail!(
+                    "Working tree has uncommitted changes; commit, stash, or discard them before releasing from git:\n{}",
+                    dirty_text.trim_end()
+                );
+            }
+
+            let current_branch = get_git_branch().unwrap_or_else(|_| "HEAD".to_string());
+            log_info!(
                 stdout,
-                "Releasing from git will checkout the main branch and pull latest changes."
+                "Releasing from current branch '{}' (no checkout, no pull)",
+                current_branch
             );
-            log_warn!(
-                stdout,
-                "Please save any uncommitted work before proceeding."
-            );
-            writeln!(stdout)?;
 
             if !auto_yes {
                 let confirmed = Confirm::with_theme(&ColorfulTheme::default())
@@ -403,35 +425,6 @@ impl CliCommand for CreateCommand {
                     bail!("Release cancelled by user");
                 }
             }
-
-            log_header!(stdout, Color::Cyan, "Checking out main branch...");
-            writeln!(stdout)?;
-
-            let checkout_status = ProcessCommand::new("git")
-                .args(&["checkout", "main"])
-                .status()
-                .with_context(|| "Failed to checkout main branch")?;
-
-            if !checkout_status.success() {
-                bail!("Failed to checkout main branch");
-            }
-
-            log_ok!(stdout, "Checked out main branch");
-
-            log_header!(stdout, Color::Cyan, "Pulling latest changes...");
-            writeln!(stdout)?;
-
-            let pull_status = ProcessCommand::new("git")
-                .args(&["pull"])
-                .status()
-                .with_context(|| "Failed to pull latest changes")?;
-
-            if !pull_status.success() {
-                bail!("Failed to pull latest changes");
-            }
-
-            log_ok!(stdout, "Pulled latest changes");
-            writeln!(stdout)?;
         }
 
         log_header!(stdout, Color::Cyan, "Creating release {}...", version);
@@ -440,66 +433,8 @@ impl CliCommand for CreateCommand {
         let workspace_root = find_workspace_root(&app_root)?;
         let modules_path = get_modules_path(&workspace_root)?;
 
-        // Step 0.5: Install dependencies and build in modules path
-        {
-            let runtime_cmd = if manifest.runtime == "bun" {
-                "bun"
-            } else {
-                "pnpm"
-            };
-            let resolved = resolve_command(runtime_cmd);
-
-            log_header!(
-                stdout,
-                Color::Cyan,
-                "Installing dependencies ({})...",
-                runtime_cmd
-            );
-            writeln!(stdout)?;
-
-            let has_lockfile = if manifest.runtime == "bun" {
-                modules_path.join("bun.lock").exists() || modules_path.join("bun.lockb").exists()
-            } else {
-                modules_path.join("pnpm-lock.yaml").exists()
-            };
-
-            let install_args: Vec<&str> = if has_lockfile {
-                vec!["install", "--frozen-lockfile"]
-            } else {
-                vec!["install"]
-            };
-
-            let install_status = ProcessCommand::new(&resolved)
-                .args(&install_args)
-                .current_dir(&modules_path)
-                .status()
-                .with_context(|| format!("Failed to run {} install", runtime_cmd))?;
-
-            if !install_status.success() {
-                bail!("{} install failed", runtime_cmd);
-            }
-            log_ok!(stdout, "Dependencies installed");
-
-            log_header!(stdout, Color::Cyan, "Building project ({})...", runtime_cmd);
-            writeln!(stdout)?;
-
-            let build_args = if manifest.runtime == "bun" {
-                vec!["run", "build"]
-            } else {
-                vec!["build"]
-            };
-            let build_status = ProcessCommand::new(&resolved)
-                .args(&build_args)
-                .current_dir(&modules_path)
-                .status()
-                .with_context(|| format!("Failed to run {} build", runtime_cmd))?;
-
-            if !build_status.success() {
-                bail!("{} build failed", runtime_cmd);
-            }
-            log_ok!(stdout, "Build completed");
-            writeln!(stdout)?;
-        }
+        // Step 0.5: Install dependencies and build in modules path/app root
+        install_and_build_for_release(&app_root, &modules_path, &manifest, &mut stdout)?;
 
         // Step 1: Detect git metadata
         let (git_commit, git_branch) = if is_git_repo() {
@@ -953,8 +888,19 @@ impl CliCommand for CreateCommand {
             total_worker_configs
         );
 
-        let all_service_deps =
+        let mut all_service_deps =
             find_all_service_dependencies(&modules_path, &rendered_templates_cache)?;
+        let rust_service_deps = find_all_rust_service_dependencies(&app_root)?;
+        for (project_name, dependencies) in rust_service_deps {
+            all_service_deps
+                .entry(project_name)
+                .or_insert_with(Vec::new)
+                .extend(dependencies);
+        }
+        for dependencies in all_service_deps.values_mut() {
+            dependencies.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+            dependencies.dedup();
+        }
 
         let total_service_deps: usize = all_service_deps.values().map(|v| v.len()).sum();
         log_ok!(
@@ -1037,7 +983,8 @@ impl CliCommand for CreateCommand {
             log_info!(stdout, "Packaging local code...");
 
             let tarball_path = app_root.join(".forklaunch").join("release-code.tar.gz");
-            super::s3_upload::create_app_tarball(&app_root, &modules_path, &tarball_path)?;
+            let release_source_path = release_code_source_path(&app_root, &modules_path, &manifest);
+            super::s3_upload::create_app_tarball(&app_root, &release_source_path, &tarball_path)?;
 
             log_ok!(stdout, "Tarball created");
 
@@ -1177,6 +1124,111 @@ impl CliCommand for CreateCommand {
     }
 }
 
+fn release_uses_rust_build(manifest: &ApplicationManifestData) -> bool {
+    manifest.runtime == "tokio"
+        || manifest.language.as_deref() == Some("rust")
+        || manifest.language.as_deref() == Some("mixed")
+        || manifest.application_language.as_deref() == Some("rust")
+        || manifest.application_language.as_deref() == Some("mixed")
+        || manifest.cargo_workspace.is_some()
+}
+
+fn release_code_source_path(
+    app_root: &Path,
+    modules_path: &Path,
+    manifest: &ApplicationManifestData,
+) -> PathBuf {
+    if release_uses_rust_build(manifest) {
+        app_root.to_path_buf()
+    } else {
+        modules_path.to_path_buf()
+    }
+}
+
+fn install_and_build_for_release(
+    app_root: &Path,
+    modules_path: &Path,
+    manifest: &ApplicationManifestData,
+    stdout: &mut StandardStream,
+) -> Result<()> {
+    if release_uses_rust_build(manifest) {
+        log_header!(stdout, Color::Cyan, "Building Rust workspace (cargo)...");
+        writeln!(stdout)?;
+
+        let build_status = ProcessCommand::new("cargo")
+            .args(["build", "--workspace", "--release"])
+            .current_dir(app_root)
+            .status()
+            .with_context(|| "Failed to run cargo build --workspace --release")?;
+
+        if !build_status.success() {
+            bail!("cargo build --workspace --release failed");
+        }
+        log_ok!(stdout, "Rust build completed");
+        writeln!(stdout)?;
+        return Ok(());
+    }
+
+    let runtime_cmd = if manifest.runtime == "bun" {
+        "bun"
+    } else {
+        "pnpm"
+    };
+    let resolved = resolve_command(runtime_cmd);
+
+    log_header!(
+        stdout,
+        Color::Cyan,
+        "Installing dependencies ({})...",
+        runtime_cmd
+    );
+    writeln!(stdout)?;
+
+    let has_lockfile = if manifest.runtime == "bun" {
+        modules_path.join("bun.lock").exists() || modules_path.join("bun.lockb").exists()
+    } else {
+        modules_path.join("pnpm-lock.yaml").exists()
+    };
+
+    let install_args: Vec<&str> = if has_lockfile {
+        vec!["install", "--frozen-lockfile"]
+    } else {
+        vec!["install"]
+    };
+
+    let install_status = ProcessCommand::new(&resolved)
+        .args(&install_args)
+        .current_dir(modules_path)
+        .status()
+        .with_context(|| format!("Failed to run {} install", runtime_cmd))?;
+
+    if !install_status.success() {
+        bail!("{} install failed", runtime_cmd);
+    }
+    log_ok!(stdout, "Dependencies installed");
+
+    log_header!(stdout, Color::Cyan, "Building project ({})...", runtime_cmd);
+    writeln!(stdout)?;
+
+    let build_args = if manifest.runtime == "bun" {
+        vec!["run", "build"]
+    } else {
+        vec!["build"]
+    };
+    let build_status = ProcessCommand::new(&resolved)
+        .args(&build_args)
+        .current_dir(modules_path)
+        .status()
+        .with_context(|| format!("Failed to run {} build", runtime_cmd))?;
+
+    if !build_status.success() {
+        bail!("{} build failed", runtime_cmd);
+    }
+    log_ok!(stdout, "Build completed");
+    writeln!(stdout)?;
+    Ok(())
+}
+
 fn upload_release(
     application_id: &str,
     manifest: ReleaseManifest,
@@ -1186,17 +1238,31 @@ fn upload_release(
         application_id: application_id.to_string(),
         manifest,
         released_by: None, // TODO: Get from token
+        target_environment: std::env::var("FORKLAUNCH_TARGET_ENVIRONMENT")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
     };
 
-    let url = if auth_mode.is_hmac() {
-        format!("{}/releases/internal", get_platform_management_api_url())
+    let (url, sign_path) = if auth_mode.is_hmac() {
+        (
+            format!("{}/releases/internal", get_platform_management_api_url()),
+            "/internal",
+        )
     } else {
-        format!("{}/releases", get_platform_management_api_url())
+        (
+            format!("{}/releases", get_platform_management_api_url()),
+            "/",
+        )
     };
 
-    let response =
-        http_client::post_with_auth(auth_mode, &url, serde_json::to_value(&request_body)?)
-            .with_context(|| "Failed to create release")?;
+    let response = http_client::post_with_auth_and_sign_path(
+        auth_mode,
+        &url,
+        sign_path,
+        serde_json::to_value(&request_body)?,
+    )
+    .with_context(|| "Failed to create release")?;
 
     let status = response.status();
     let response_body = response.text().unwrap_or_else(|_| "{}".to_string());
@@ -2322,6 +2388,12 @@ fn is_platform_managed_var(var_name: &str) -> bool {
         // Pulumi-generated: derived from other vars at deploy time
         "JWKS_PUBLIC_KEY_URL",
         "BETTER_AUTH_BASE_URL",
+        // Pulumi-generated: derived from the iam service URL (auth.ts wires
+        // BETTER_AUTH_URL = the deployed iam FQDN).
+        "BETTER_AUTH_URL",
+        // Pulumi-generated: derived from the application's public client URL
+        // (CORS_ORIGINS = the deployed frontend origin(s)).
+        "CORS_ORIGINS",
         // Pulumi-generated: IAM-specific database
         "IAM_DB_NAME",
         // Pulumi-generated: database
@@ -2398,6 +2470,13 @@ mod tests {
             app_description: "Test application".to_string(),
             author: "Test Author".to_string(),
             license: "MIT".to_string(),
+            language: None,
+            application_language: None,
+            sdk_targets: Vec::new(),
+            cargo_workspace: None,
+            contract_artifact_path: None,
+            openapi_path: None,
+            asyncapi_path: None,
             projects: projects
                 .into_iter()
                 .map(|(name, r#type)| ProjectEntry {
@@ -2458,6 +2537,36 @@ mod tests {
             }
         }
         yaml
+    }
+
+    #[test]
+    fn test_release_build_detection_keeps_typescript_on_package_manager() {
+        let manifest = create_test_manifest(vec![("my-service", ProjectType::Service)]);
+        let temp_dir = TempDir::new().unwrap();
+        let modules_path = temp_dir.path().join("src/modules");
+
+        assert!(!release_uses_rust_build(&manifest));
+        assert_eq!(
+            release_code_source_path(temp_dir.path(), &modules_path, &manifest),
+            modules_path
+        );
+    }
+
+    #[test]
+    fn test_release_build_detection_uses_cargo_for_rust() {
+        let mut manifest = create_test_manifest(vec![("my-service", ProjectType::Service)]);
+        manifest.runtime = "tokio".to_string();
+        manifest.language = Some("rust".to_string());
+        manifest.application_language = Some("rust".to_string());
+        manifest.cargo_workspace = Some("Cargo.toml".to_string());
+        let temp_dir = TempDir::new().unwrap();
+        let modules_path = temp_dir.path().join("crates");
+
+        assert!(release_uses_rust_build(&manifest));
+        assert_eq!(
+            release_code_source_path(temp_dir.path(), &modules_path, &manifest),
+            temp_dir.path()
+        );
     }
 
     #[test]

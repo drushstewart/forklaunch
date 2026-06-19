@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/forklaunch-common",
+    "crates/forklaunch-contract",
+    "crates/forklaunch-contract-macros",
+    "crates/forklaunch-core",
+    "crates/forklaunch-http",
+    "crates/forklaunch-validation",
+    "crates/forklaunch-auth",
+    "crates/forklaunch-axum",
+    "crates/forklaunch-openapi",
+    "crates/forklaunch-asyncapi",
+    "crates/forklaunch-mcp",
+    "crates/forklaunch-sdk-codegen",
+    "crates/forklaunch-sdk-rust",
+    "crates/forklaunch-sdk-typescript",
+    "crates/forklaunch-ws",
+    "crates/forklaunch-infrastructure-redis",
+    "crates/forklaunch-infrastructure-s3",
+    "crates/forklaunch-testing",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Forklift Technologies, Inc. <engineering@forklaunch.com>"]
+repository = "https://github.com/forklaunch/forklaunch-js"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"

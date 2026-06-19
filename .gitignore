@@ -11,4 +11,10 @@ lib
 *lib
 target
 
+# Rust/CLI build + test scratch artifacts
+output
+.docker-target
+.docker-cargo
+Cargo.lock.bak
+
 agentic-capital

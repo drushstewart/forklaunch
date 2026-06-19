@@ -1,0 +1,19 @@
+[package]
+name = "forklaunch-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# Reserved for the `rmcp`-backed server runtime (not yet implemented).
+rmcp-server = []
+
+[dependencies]
+forklaunch-common = { path = "../forklaunch-common" }
+forklaunch-contract = { path = "../forklaunch-contract" }
+
+[lints]
+workspace = true

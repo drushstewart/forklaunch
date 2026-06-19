@@ -32,7 +32,9 @@ use crate::{
         rendered_template::{RenderedTemplate, RenderedTemplatesCache, write_rendered_templates},
         tsconfig::remove_project_from_modules_tsconfig,
     },
+    init::rust_project::{self, RustProjectKind},
     prompt::{ArrayCompleter, prompt_for_confirmation, prompt_with_validation},
+    sdk::generate::regenerate_typescript_sdk_if_present,
 };
 
 #[derive(Debug)]
@@ -71,6 +73,39 @@ impl CliCommand for WorkerCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+
+        if rust_project::is_rust_app_root(&app_root_path)? {
+            let worker_name = prompt_with_validation(
+                &mut line_editor,
+                &mut stdout,
+                "name",
+                matches,
+                "worker name",
+                None,
+                |input: &str| rust_project::is_rust_project(&app_root_path, input).unwrap_or(false),
+                |_| "Worker not found".to_string(),
+            )?;
+
+            if !matches.get_flag("continue") {
+                let continue_delete = prompt_for_confirmation(
+                    &mut line_editor,
+                    "This operation is irreversible. Do you want to continue? (y/N) ",
+                )?;
+                if !continue_delete {
+                    log_error!(stdout, "Deletion cancelled");
+                    return Ok(());
+                }
+            }
+
+            rust_project::delete_rust_project(
+                &app_root_path,
+                RustProjectKind::Worker,
+                &worker_name,
+            )?;
+            regenerate_typescript_sdk_if_present(&app_root_path, &mut stdout)?;
+            log_ok!(stdout, "{} deleted successfully!", worker_name);
+            return Ok(());
+        }
 
         let existing_manifest_data = toml::from_str::<ApplicationManifestData>(
             &read_to_string(&manifest_path).with_context(|| ERROR_FAILED_TO_READ_MANIFEST)?,

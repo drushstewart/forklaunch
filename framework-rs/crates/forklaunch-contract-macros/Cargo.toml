@@ -1,0 +1,19 @@
+[package]
+name = "forklaunch-contract-macros"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+forklaunch-common = { path = "../forklaunch-common" }
+
+[dev-dependencies]
+forklaunch-contract = { path = "../forklaunch-contract" }
+
+[lints]
+workspace = true

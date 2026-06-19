@@ -59,6 +59,12 @@ This directory contains internal planning documents, implementation specs, and t
 
 ## Contents
 
+### Rust Framework & Blueprint Planning
+- **[RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md](RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md)** - Implementation checklist for `framework-rs` and `blueprint-rs`
+  - Rust framework workspace with contract registry, Axum adapter, OpenAPI/AsyncAPI/MCP generation, TypeScript and Rust SDK generation
+  - Rust blueprint workspace mirroring TypeScript blueprint style with core, interface, and implementation crates
+  - Cross-language conformance plan for TypeScript and Rust services/SDKs
+
 ### Release & Deploy Implementation
 - **[release-deploy-implementation.md](release-deploy-implementation.md)** - Implementation plan for release and deploy CLI commands
   - 4 new CLI commands: `integrate`, `openapi export`, `release create`, `deploy create`
@@ -133,4 +139,3 @@ When adding new planning documents:
 2. Include dates or versions in the filename if time-sensitive
 3. Update this README with a link and description
 4. Keep plans actionable and implementation-focused
-

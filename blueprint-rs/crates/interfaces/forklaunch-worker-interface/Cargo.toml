@@ -1,0 +1,15 @@
+[package]
+name = "forklaunch-worker-interface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+forklaunch-blueprint-core = { path = "../../forklaunch-blueprint-core" }
+forklaunch-ws = { path = "../../../../framework-rs/crates/forklaunch-ws" }
+forklaunch-asyncapi = { path = "../../../../framework-rs/crates/forklaunch-asyncapi" }
+
+[lints]
+workspace = true

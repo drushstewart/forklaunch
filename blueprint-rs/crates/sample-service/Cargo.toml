@@ -1,0 +1,22 @@
+[package]
+name = "forklaunch-blueprint-sample-service"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+forklaunch-blueprint-core = { path = "../forklaunch-blueprint-core" }
+forklaunch-iam-interface = { path = "../interfaces/forklaunch-iam-interface" }
+forklaunch-iam-base = { path = "../implementations/iam/forklaunch-iam-base" }
+forklaunch-axum = { path = "../../../framework-rs/crates/forklaunch-axum" }
+forklaunch-core = { path = "../../../framework-rs/crates/forklaunch-core" }
+axum = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

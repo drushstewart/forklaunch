@@ -93,6 +93,13 @@ pub(crate) enum ProjectType {
 
 impl Content for ProjectType {}
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ProjectLanguage {
+    TypeScript,
+    Rust,
+}
+
 #[derive(Debug, Serialize, Deserialize, Content, Clone)]
 pub(crate) struct ResourceInventory {
     pub(crate) database: Option<String>,
@@ -115,12 +122,68 @@ pub(crate) fn next_available_redis_partition(projects: &[ProjectEntry]) -> u32 {
     partition
 }
 
-#[derive(Debug, Serialize, Deserialize, Content, Clone)]
+#[derive(Debug, Serialize, Deserialize, Content, Clone, Default)]
 pub(crate) struct ProjectMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) language: Option<String>,
     pub(crate) r#type: Option<String>,
+    #[serde(
+        rename = "crateName",
+        alias = "crate_name",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) crate_name: Option<String>,
+    #[serde(
+        rename = "cratePath",
+        alias = "crate_path",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) crate_path: Option<String>,
+    #[serde(
+        rename = "contractArtifactPath",
+        alias = "contract_artifact_path",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) contract_artifact_path: Option<String>,
+    #[serde(
+        rename = "openapiPath",
+        alias = "openapi_path",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) openapi_path: Option<String>,
+    #[serde(
+        rename = "asyncapiPath",
+        alias = "asyncapi_path",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) asyncapi_path: Option<String>,
+    #[serde(
+        rename = "sdkTargets",
+        alias = "sdk_targets",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub(crate) sdk_targets: Vec<String>,
+    #[serde(
+        rename = "workerType",
+        alias = "worker_type",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) worker_type: Option<String>,
     /// Backend hosting type. Optional — defaults to "ecs-fargate" on the platform
     /// when absent. Allowed: "ecs-fargate" | "ecs-ec2".
-    #[serde(rename = "hostingType", alias = "hosting_type", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "hostingType",
+        alias = "hosting_type",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub(crate) hosting_type: Option<String>,
 }
 

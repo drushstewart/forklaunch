@@ -1,0 +1,14 @@
+[package]
+name = "forklaunch-blueprint-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+forklaunch-contract = { path = "../../../framework-rs/crates/forklaunch-contract" }
+forklaunch-http = { path = "../../../framework-rs/crates/forklaunch-http" }
+
+[lints]
+workspace = true

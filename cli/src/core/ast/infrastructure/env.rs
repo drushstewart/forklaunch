@@ -34,9 +34,7 @@ impl<'a> Visit<'a> for EnvVarVisitor {
                     if let Some(Expression::StringLiteral(str_lit)) = arg.as_expression() {
                         let var_name = str_lit.value.to_string();
 
-                        self.env_vars.push(EnvVarUsage {
-                            var_name,
-                        });
+                        self.env_vars.push(EnvVarUsage { var_name });
                     }
                 }
             }
@@ -146,9 +144,7 @@ fn walk_source_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) -> Result<
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            if file_name.ends_with(".ts")
-                && !file_name.ends_with(".d.ts")
-            {
+            if file_name.ends_with(".ts") && !file_name.ends_with(".d.ts") {
                 files.push(path);
             }
         }

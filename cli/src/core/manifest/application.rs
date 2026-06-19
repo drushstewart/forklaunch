@@ -28,6 +28,44 @@ config_struct!(
         pub(crate) is_mongo: bool,
         #[serde(skip_serializing, skip_deserializing)]
         pub(crate) is_in_memory_database: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub(crate) language: Option<String>,
+        #[serde(
+            rename = "applicationLanguage",
+            alias = "application_language",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub(crate) application_language: Option<String>,
+        #[serde(
+            rename = "sdkTargets",
+            alias = "sdk_targets",
+            skip_serializing_if = "Vec::is_empty"
+        )]
+        pub(crate) sdk_targets: Vec<String>,
+        #[serde(
+            rename = "cargoWorkspace",
+            alias = "cargo_workspace",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub(crate) cargo_workspace: Option<String>,
+        #[serde(
+            rename = "contractArtifactPath",
+            alias = "contract_artifact_path",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub(crate) contract_artifact_path: Option<String>,
+        #[serde(
+            rename = "openapiPath",
+            alias = "openapi_path",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub(crate) openapi_path: Option<String>,
+        #[serde(
+            rename = "asyncapiPath",
+            alias = "asyncapi_path",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub(crate) asyncapi_path: Option<String>,
     }
 );
 

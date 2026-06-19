@@ -1,0 +1,22 @@
+[package]
+name = "forklaunch-billing-stripe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+stripe-client = []
+
+[dependencies]
+forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
+forklaunch-billing-interface = { path = "../../../interfaces/forklaunch-billing-interface" }
+
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
+
+[lints]
+workspace = true

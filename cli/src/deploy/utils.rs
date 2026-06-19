@@ -94,7 +94,11 @@ pub(crate) fn stream_deployment_status(
                 bail!("Operation failed");
             }
             "cancelled" => {
-                log_header!(stdout, Color::Yellow, "\n[CANCELLED] Deployment was cancelled");
+                log_header!(
+                    stdout,
+                    Color::Yellow,
+                    "\n[CANCELLED] Deployment was cancelled"
+                );
                 if let Some(error) = status.error {
                     log_info!(stdout, "{}", error);
                 }

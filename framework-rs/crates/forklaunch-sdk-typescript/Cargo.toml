@@ -1,0 +1,16 @@
+[package]
+name = "forklaunch-sdk-typescript"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+forklaunch-sdk-codegen = { path = "../forklaunch-sdk-codegen" }
+
+[dev-dependencies]
+forklaunch-contract = { path = "../forklaunch-contract" }
+
+[lints]
+workspace = true

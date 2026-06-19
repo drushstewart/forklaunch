@@ -8,8 +8,9 @@ use crate::{
     CliCommand,
     core::{
         command::command,
-        openapi_export::export_all_services,
+        openapi_export::{export_all_rust_services, export_all_services},
     },
+    init::rust_project,
 };
 
 #[derive(Debug)]
@@ -53,13 +54,22 @@ impl CliCommand for ExportCommand {
         log_info!(stdout, "Exporting OpenAPI specifications...");
         writeln!(stdout)?;
 
-        let result = export_all_services(&app_root, &manifest, &output_path);
+        let result = if rust_project::is_rust_app_root(&app_root)? {
+            export_all_rust_services(&app_root, &output_path)
+        } else {
+            export_all_services(&app_root, &manifest, &output_path)
+        };
 
         writeln!(stdout)?;
 
         match result {
             Ok(exported_services) => {
-                log_header!(stdout, Color::Green, "Successfully exported {} OpenAPI specification(s)", exported_services.len());
+                log_header!(
+                    stdout,
+                    Color::Green,
+                    "Successfully exported {} OpenAPI specification(s)",
+                    exported_services.len()
+                );
                 writeln!(stdout, "  Output: {}", output_path.display())?;
 
                 for service_name in &exported_services {

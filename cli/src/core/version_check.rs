@@ -168,7 +168,12 @@ pub(crate) fn precheck_version(
     }
 
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
-    log_warn!(stdout, "This project requires forklaunch CLI v{}, but you are running v{}.", required_version, current);
+    log_warn!(
+        stdout,
+        "This project requires forklaunch CLI v{}, but you are running v{}.",
+        required_version,
+        current
+    );
 
     let mut line_editor =
         rustyline::Editor::<ArrayCompleter, rustyline::history::DefaultHistory>::new()?;
@@ -181,13 +186,27 @@ pub(crate) fn precheck_version(
     }
 
     let platform = platform_triple()?;
-    log_info!(stdout, "Installing forklaunch CLI v{} for {}...", required_version, platform);
+    log_info!(
+        stdout,
+        "Installing forklaunch CLI v{} for {}...",
+        required_version,
+        platform
+    );
 
     let binary_path = download_binary(&required_version)?;
 
-    log_ok!(stdout, "Installed forklaunch CLI v{} at {}", required_version, binary_path.display());
+    log_ok!(
+        stdout,
+        "Installed forklaunch CLI v{} at {}",
+        required_version,
+        binary_path.display()
+    );
 
-    log_info!(stdout, "Re-executing your command with forklaunch v{}...", required_version);
+    log_info!(
+        stdout,
+        "Re-executing your command with forklaunch v{}...",
+        required_version
+    );
 
     let mut child = OsCommand::new(&binary_path)
         .args(args().skip(1))
@@ -204,7 +223,12 @@ pub(crate) fn precheck_version(
             exit(code);
         }
         None => {
-            log_warn!(stdout, "Installed forklaunch v{} at {}. Please re-run your command.", required_version, binary_path.display());
+            log_warn!(
+                stdout,
+                "Installed forklaunch v{} at {}. Please re-run your command.",
+                required_version,
+                binary_path.display()
+            );
             Ok(VersionCheckOutcome::ReexecNotSupported)
         }
     }

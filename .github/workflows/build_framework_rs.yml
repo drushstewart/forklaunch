@@ -1,0 +1,39 @@
+name: Build Framework RS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'framework-rs/**'
+  pull_request:
+    paths:
+      - 'framework-rs/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - name: Check formatting
+        working-directory: ./framework-rs
+        run: cargo fmt --all --check
+
+      - name: Run clippy
+        working-directory: ./framework-rs
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run tests
+        working-directory: ./framework-rs
+        run: cargo test --workspace
+
+      - name: Build docs
+        working-directory: ./framework-rs
+        run: cargo doc --workspace --no-deps

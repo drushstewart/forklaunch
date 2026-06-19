@@ -84,7 +84,8 @@ pub(crate) fn s3_object_store_runtime_dependency<'a>(
     otel_token: &str,
 ) -> Result<()> {
     let s3_registration_text: &'static str = Box::leak(
-        format!("const configInjector = createConfigInjector(SchemaValidator(), {{
+        format!(
+            "const configInjector = createConfigInjector(SchemaValidator(), {{
         ObjectStore: {{
             lifetime: Lifetime.Singleton,
             type: S3ObjectStore,
@@ -119,7 +120,8 @@ pub(crate) fn s3_object_store_runtime_dependency<'a>(
                     encryptor: new FieldEncryptor(ENCRYPTION_KEY)
                 }})
         }}
-    }});")
+    }});"
+        )
         .into_boxed_str(),
     );
 

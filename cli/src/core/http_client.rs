@@ -1,15 +1,17 @@
+use std::io::Write;
+
 use anyhow::Result;
 use reqwest::{
     Method,
     blocking::{Client, Response},
 };
 use serde_json::Value;
-use std::io::Write;
-
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 
-use super::hmac::{AuthMode, generate_hmac_auth_header};
-use super::token::{get_token, get_token_path};
+use super::{
+    hmac::{AuthMode, generate_hmac_auth_header},
+    token::{get_token, get_token_path},
+};
 
 /// Makes an authenticated HTTP request with automatic token refresh and retry logic
 ///
@@ -82,9 +84,7 @@ fn handle_auth_failure_and_retry(
     }
 
     match get_token() {
-        Ok(_) => {
-            try_authenticated_request(method, url, body, false)
-        }
+        Ok(_) => try_authenticated_request(method, url, body, false),
         Err(_) => {
             log_warn!(stdout, "\nAuthentication expired. Please log in again.");
 
@@ -134,12 +134,22 @@ fn make_hmac_request(
     body: Option<Value>,
 ) -> Result<Response> {
     let path = extract_url_path(url)?;
-    let auth_header = generate_hmac_auth_header(
-        secret_key,
-        method.as_str(),
-        &path,
-        body.as_ref(),
-    )?;
+    make_hmac_request_with_sign_path(secret_key, method, url, &path, body)
+}
+
+/// Same as `make_hmac_request` but lets the caller specify the path that gets
+/// signed. Use when the backend's HMAC verifier uses a router-relative path
+/// that differs from the full URL path (e.g. forklaunch's `@forklaunch/core`
+/// uses `req.path`, which strips the router base mount).
+fn make_hmac_request_with_sign_path(
+    secret_key: &str,
+    method: Method,
+    url: &str,
+    sign_path: &str,
+    body: Option<Value>,
+) -> Result<Response> {
+    let auth_header =
+        generate_hmac_auth_header(secret_key, method.as_str(), sign_path, body.as_ref())?;
 
     let client = Client::new();
     let mut request = client
@@ -160,6 +170,22 @@ pub fn post_with_auth(auth_mode: &AuthMode, url: &str, body: Value) -> Result<Re
         AuthMode::Jwt => post(url, body),
         AuthMode::Hmac { secret_key } => {
             make_hmac_request(secret_key, Method::POST, url, Some(body))
+        }
+    }
+}
+
+/// POST with auth mode dispatch, where the HMAC sign path is supplied by the
+/// caller (use when the backend's `req.path` differs from the URL path).
+pub fn post_with_auth_and_sign_path(
+    auth_mode: &AuthMode,
+    url: &str,
+    sign_path: &str,
+    body: Value,
+) -> Result<Response> {
+    match auth_mode {
+        AuthMode::Jwt => post(url, body),
+        AuthMode::Hmac { secret_key } => {
+            make_hmac_request_with_sign_path(secret_key, Method::POST, url, sign_path, Some(body))
         }
     }
 }
@@ -212,17 +238,11 @@ mod tests {
 
     #[test]
     fn test_extract_url_path_no_path() {
-        assert_eq!(
-            extract_url_path("https://api.example.com").unwrap(),
-            "/"
-        );
+        assert_eq!(extract_url_path("https://api.example.com").unwrap(), "/");
     }
 
     #[test]
     fn test_extract_url_path_root() {
-        assert_eq!(
-            extract_url_path("https://api.example.com/").unwrap(),
-            "/"
-        );
+        assert_eq!(extract_url_path("https://api.example.com/").unwrap(), "/");
     }
 }

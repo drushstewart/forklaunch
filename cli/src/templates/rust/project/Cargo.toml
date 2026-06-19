@@ -1,0 +1,23 @@
+[package]
+name = "{{{name}}}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "{{{description}}}"
+
+[dependencies]
+{{#uses_framework}}
+forklaunch-axum = { path = "{{{framework_rs_path}}}/crates/forklaunch-axum" }
+forklaunch-common = { path = "{{{framework_rs_path}}}/crates/forklaunch-common" }
+forklaunch-contract = { path = "{{{framework_rs_path}}}/crates/forklaunch-contract" }
+forklaunch-core = { path = "{{{framework_rs_path}}}/crates/forklaunch-core" }
+forklaunch-http = { path = "{{{framework_rs_path}}}/crates/forklaunch-http" }
+forklaunch-openapi = { path = "{{{framework_rs_path}}}/crates/forklaunch-openapi" }
+{{/uses_framework}}
+{{#has_binary}}
+
+[[bin]]
+name = "{{{name}}}"
+path = "src/main.rs"
+{{/has_binary}}

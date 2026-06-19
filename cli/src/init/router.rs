@@ -8,6 +8,7 @@ use termcolor::{ColorChoice, StandardStream, WriteColor};
 use toml::from_str;
 
 use self::database::get_db_driver;
+use super::rust_project;
 use crate::{
     CliCommand,
     constants::{
@@ -258,6 +259,13 @@ impl CliCommand for RouterCommand {
                 "The service path to initialize the router. This path must be a service directory",
             ))
             .arg(
+                Arg::new("language")
+                    .long("language")
+                    .help("Project language to generate")
+                    .value_parser(rust_project::PROJECT_LANGUAGE_VARIANTS)
+                    .default_value("typescript"),
+            )
+            .arg(
                 Arg::new("infrastructure")
                     .short('i')
                     .long("infrastructure")
@@ -276,6 +284,10 @@ impl CliCommand for RouterCommand {
     }
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
+        if rust_project::uses_rust_generation(matches) {
+            return rust_project::generate_rust_router(matches);
+        }
+
         let mut line_editor = Editor::<ArrayCompleter, DefaultHistory>::new()?;
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
 

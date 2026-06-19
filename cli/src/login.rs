@@ -1,15 +1,8 @@
-use std::{
-    fs::OpenOptions,
-    io::Write,
-    thread::sleep,
-    time::Duration,
-};
-
-#[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
-
 #[cfg(not(unix))]
 use std::fs::create_dir_all;
+#[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::{fs::OpenOptions, io::Write, thread::sleep, time::Duration};
 
 use anyhow::{Result, bail};
 use clap::{Arg, ArgMatches, Command};
@@ -70,7 +63,7 @@ pub fn login_with_token(api_token: &str) -> Result<()> {
     let token_storage = TokenData {
         access_token: api_token.to_string(),
         refresh_token: String::new(), // API tokens don't have refresh tokens
-        expires_at: i64::MAX, // API tokens are long-lived
+        expires_at: i64::MAX,         // API tokens are long-lived
     };
 
     let token_path = get_token_path()?;
@@ -116,7 +109,11 @@ pub fn login_with_token(api_token: &str) -> Result<()> {
     }
 
     writeln!(stdout)?;
-    log_header!(stdout, Color::Green, "Successfully logged in with API token!");
+    log_header!(
+        stdout,
+        Color::Green,
+        "Successfully logged in with API token!"
+    );
     writeln!(
         stdout,
         "Note: API tokens are long-lived. Revoke them from the platform UI if compromised."
@@ -154,8 +151,18 @@ pub fn login() -> Result<()> {
 
     // Step 2: Display user code and open browser
     writeln!(stdout)?;
-    log_header!(stdout, Color::Yellow, "Please visit: {}", device_data.verification_uri);
-    log_header!(stdout, Color::Yellow, "Enter code: {}", device_data.user_code);
+    log_header!(
+        stdout,
+        Color::Yellow,
+        "Please visit: {}",
+        device_data.verification_uri
+    );
+    log_header!(
+        stdout,
+        Color::Yellow,
+        "Enter code: {}",
+        device_data.user_code
+    );
     writeln!(stdout)?;
 
     // Try to open browser
@@ -281,27 +288,29 @@ pub fn login() -> Result<()> {
             let error_data: Result<TokenErrorResponse, _> = token_response.json();
 
             match error_data {
-                Ok(error) => {
-                    match error.error.as_str() {
-                        "authorization_pending" => {
-                            continue;
-                        }
-                        "slow_down" => {
-                            polling_interval += Duration::from_secs(5);
-                            log_warn!(stdout, "Slowing down polling to {}s", polling_interval.as_secs());
-                            continue;
-                        }
-                        "access_denied" => {
-                            bail!("Access was denied by the user");
-                        }
-                        "expired_token" => {
-                            bail!("The device code has expired. Please try again.");
-                        }
-                        _ => {
-                            bail!("Error: {}", error.error_description.unwrap_or(error.error));
-                        }
+                Ok(error) => match error.error.as_str() {
+                    "authorization_pending" => {
+                        continue;
                     }
-                }
+                    "slow_down" => {
+                        polling_interval += Duration::from_secs(5);
+                        log_warn!(
+                            stdout,
+                            "Slowing down polling to {}s",
+                            polling_interval.as_secs()
+                        );
+                        continue;
+                    }
+                    "access_denied" => {
+                        bail!("Access was denied by the user");
+                    }
+                    "expired_token" => {
+                        bail!("The device code has expired. Please try again.");
+                    }
+                    _ => {
+                        bail!("Error: {}", error.error_description.unwrap_or(error.error));
+                    }
+                },
                 Err(_) => {
                     bail!("Failed to authenticate: unexpected response");
                 }

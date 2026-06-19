@@ -1,6 +1,6 @@
 use std::{fs::read_to_string, io::Write, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde_json::{from_str as json_from_str, to_string_pretty};
 use termcolor::{ColorChoice, StandardStream, WriteColor};
@@ -8,8 +8,7 @@ use termcolor::{ColorChoice, StandardStream, WriteColor};
 use crate::{
     CliCommand,
     constants::{
-        ERROR_FAILED_TO_PARSE_PACKAGE_JSON,
-        ERROR_FAILED_TO_READ_PACKAGE_JSON, SdkModeType,
+        ERROR_FAILED_TO_PARSE_PACKAGE_JSON, ERROR_FAILED_TO_READ_PACKAGE_JSON, SdkModeType,
     },
     core::{
         command::command,
@@ -102,6 +101,8 @@ fn use_live_sdk_mode(
     manifest_data: &ApplicationManifestData,
     rendered_templates_cache: &mut RenderedTemplatesCache,
 ) -> Result<Vec<RemovalTemplate>> {
+    ensure_live_sdk_mode_supported(manifest_data)?;
+
     let mut removal_templates = vec![];
 
     removal_templates.push(RemovalTemplate {
@@ -141,6 +142,31 @@ fn use_live_sdk_mode(
     Ok(removal_templates)
 }
 
+fn ensure_live_sdk_mode_supported(manifest_data: &ApplicationManifestData) -> Result<()> {
+    let app_language = manifest_data
+        .language
+        .as_deref()
+        .or(manifest_data.application_language.as_deref());
+    let app_uses_rust = matches!(app_language, Some("rust" | "mixed"))
+        || manifest_data.runtime == "tokio"
+        || manifest_data.cargo_workspace.is_some();
+    let has_rust_project = manifest_data.projects.iter().any(|project| {
+        project
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.language.as_deref())
+            == Some("rust")
+    });
+
+    if app_uses_rust || has_rust_project {
+        bail!(
+            "Live SDK mode is only supported for TypeScript projects. Rust services require generated SDK mode from contract artifacts."
+        );
+    }
+
+    Ok(())
+}
+
 impl CliCommand for ModeCommand {
     fn command(&self) -> Command {
         command("mode", "Manage SDK modes")
@@ -163,7 +189,8 @@ impl CliCommand for ModeCommand {
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
 
-        let (app_root_path, existing_manifest_data) = crate::core::validate::require_manifest(matches)?;
+        let (app_root_path, existing_manifest_data) =
+            crate::core::validate::require_manifest(matches)?;
 
         let mode_type = matches.get_one::<String>("type");
         let dryrun = matches.get_flag("dryrun");

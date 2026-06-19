@@ -13,6 +13,7 @@ pub(crate) mod application;
 pub(crate) mod library;
 pub(crate) mod module;
 pub(crate) mod router;
+pub(crate) mod rust_project;
 pub(crate) mod service;
 pub(crate) mod worker;
 

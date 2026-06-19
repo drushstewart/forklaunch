@@ -1,4 +1,11 @@
-use std::{env, fs, io::Read as _, path::Path, process::{Command as ProcessCommand, Stdio}, thread, time::{Duration, Instant}};
+use std::{
+    env, fs,
+    io::Read as _,
+    path::Path,
+    process::{Command as ProcessCommand, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context, Result, bail};
 
@@ -28,7 +35,8 @@ pub(crate) fn resolve_command(name: &str) -> String {
     ];
 
     // Check nvm directories for node/npm/npx
-    if let Ok(nvm_dir) = env::var("NVM_DIR").or_else(|_| Ok::<String, ()>(format!("{}/.nvm", home))) {
+    if let Ok(nvm_dir) = env::var("NVM_DIR").or_else(|_| Ok::<String, ()>(format!("{}/.nvm", home)))
+    {
         let nvm_versions = Path::new(&nvm_dir).join("versions").join("node");
         if nvm_versions.is_dir() {
             // Find the latest installed node version
@@ -39,9 +47,7 @@ pub(crate) fn resolve_command(name: &str) -> String {
                     .collect();
                 versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
                 for version_entry in versions {
-                    fallback_paths.push(
-                        format!("{}/bin/{}", version_entry.path().display(), name)
-                    );
+                    fallback_paths.push(format!("{}/bin/{}", version_entry.path().display(), name));
                 }
             }
         }
@@ -104,7 +110,11 @@ fn generate_dummy_value(var_name: &str, var_type: &str, iam_port: Option<u16>) -
                 }
             } else if var_name.contains("URL") {
                 "http://localhost:3000".to_string()
-            } else if var_name.contains("_SECRET") || var_name.contains("_KEY") || var_name.starts_with("SECRET") || var_name.starts_with("KEY") {
+            } else if var_name.contains("_SECRET")
+                || var_name.contains("_KEY")
+                || var_name.starts_with("SECRET")
+                || var_name.starts_with("KEY")
+            {
                 if var_name == "HMAC_SECRET_KEY" {
                     format!("{:x}", {
                         use std::{
@@ -206,11 +216,15 @@ pub(crate) fn export_service_openapi(
         match child.try_wait() {
             Ok(Some(status)) => {
                 if !status.success() {
-                    let stderr = child.stderr.take().map(|mut s| {
-                        let mut buf = String::new();
-                        s.read_to_string(&mut buf).ok();
-                        buf
-                    }).unwrap_or_default();
+                    let stderr = child
+                        .stderr
+                        .take()
+                        .map(|mut s| {
+                            let mut buf = String::new();
+                            s.read_to_string(&mut buf).ok();
+                            buf
+                        })
+                        .unwrap_or_default();
                     bail!("Service {} failed to export: {}", service_name, stderr);
                 }
                 break;
@@ -223,7 +237,8 @@ pub(crate) fn export_service_openapi(
                         This usually means server.ts has top-level await calls (e.g. universalSdk, DB connections) \
                         that block before the FORKLAUNCH_MODE check in listen(). \
                         Wrap them in a guard: if (process.env.FORKLAUNCH_MODE !== 'openapi') {{ ... }}",
-                        service_name, timeout.as_secs()
+                        service_name,
+                        timeout.as_secs()
                     );
                 }
                 thread::sleep(Duration::from_millis(100));
@@ -337,4 +352,172 @@ pub(crate) fn export_all_services(
     }
 
     Ok(exported_services)
+}
+
+pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Result<Vec<String>> {
+    let manifest_path = app_root.join(".forklaunch").join("manifest.toml");
+    let manifest_content = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+    let manifest = toml::from_str::<toml::Value>(&manifest_content)
+        .with_context(|| format!("Failed to parse {}", manifest_path.display()))?;
+    let projects = manifest
+        .get("projects")
+        .and_then(toml::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut exported_services = Vec::new();
+    for project in projects {
+        let project_type = project.get("type").and_then(toml::Value::as_str);
+        if !matches!(project_type, Some("Service") | Some("Worker")) {
+            continue;
+        }
+
+        let Some(service_name) = project.get("name").and_then(toml::Value::as_str) else {
+            continue;
+        };
+
+        let metadata = project.get("metadata").and_then(toml::Value::as_table);
+        if metadata
+            .and_then(|metadata| metadata.get("language"))
+            .and_then(toml::Value::as_str)
+            != Some("rust")
+        {
+            continue;
+        }
+
+        let service_output_dir = output_dir.join(service_name);
+        fs::create_dir_all(&service_output_dir)
+            .with_context(|| format!("Failed to create directory: {:?}", service_output_dir))?;
+        let output_file = service_output_dir.join("openapi.json");
+        let contract_path = metadata
+            .and_then(|metadata| metadata.get("contractArtifactPath"))
+            .and_then(toml::Value::as_str)
+            .map_or_else(
+                || {
+                    app_root
+                        .join(".forklaunch")
+                        .join("contracts")
+                        .join(service_name)
+                        .join("contract.json")
+                },
+                |path| app_root.join(path),
+            );
+        if let Some(contract_dir) = contract_path.parent() {
+            fs::create_dir_all(contract_dir)
+                .with_context(|| format!("Failed to create {}", contract_dir.display()))?;
+        }
+        let crate_path = metadata
+            .and_then(|metadata| metadata.get("cratePath"))
+            .and_then(toml::Value::as_str)
+            .map(|path| app_root.join(path))
+            .unwrap_or_else(|| app_root.join("crates").join(service_name));
+
+        export_rust_service_artifacts(
+            app_root,
+            service_name,
+            &crate_path,
+            &output_file,
+            &contract_path,
+        )?;
+
+        exported_services.push(service_name.to_string());
+    }
+
+    Ok(exported_services)
+}
+
+fn export_rust_service_artifacts(
+    app_root: &Path,
+    service_name: &str,
+    crate_path: &Path,
+    openapi_output: &Path,
+    contract_output: &Path,
+) -> Result<()> {
+    if !crate_path.join("Cargo.toml").exists() {
+        bail!(
+            "Rust project {} does not have a Cargo.toml at {}",
+            service_name,
+            crate_path.display()
+        );
+    }
+
+    let cargo = resolve_command("cargo");
+    let mut child = ProcessCommand::new(&cargo)
+        .args(["run", "-p", service_name, "--quiet"])
+        .current_dir(app_root)
+        .env("FORKLAUNCH_MODE", "contract")
+        .env("FORKLAUNCH_OPENAPI_OUTPUT", openapi_output)
+        .env("FORKLAUNCH_CONTRACT_OUTPUT", contract_output)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("Failed to spawn cargo for Rust service {service_name}"))?;
+
+    let timeout = Duration::from_secs(60);
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stderr = read_child_pipe(child.stderr.take());
+                if !status.success() {
+                    bail!(
+                        "Rust service {} failed to export framework contract artifacts: {}",
+                        service_name,
+                        stderr
+                    );
+                }
+                break;
+            }
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    bail!(
+                        "Rust service {} timed out after {}s during framework contract export",
+                        service_name,
+                        timeout.as_secs()
+                    );
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+            Err(error) => bail!("Error waiting for Rust service {}: {}", service_name, error),
+        }
+    }
+
+    if !openapi_output.exists() {
+        bail!(
+            "Rust OpenAPI file was not created at {} for service {}",
+            openapi_output.display(),
+            service_name
+        );
+    }
+    if !contract_output.exists() {
+        bail!(
+            "Rust contract artifact was not created at {} for service {}",
+            contract_output.display(),
+            service_name
+        );
+    }
+
+    let contract = fs::read_to_string(contract_output)
+        .with_context(|| format!("Failed to read {}", contract_output.display()))?;
+    if !contract.contains("\"generator\":\"framework-rs\"")
+        && !contract.contains("\"generator\": \"framework-rs\"")
+    {
+        bail!(
+            "Rust contract artifact for {} was not generated by framework-rs",
+            service_name
+        );
+    }
+
+    Ok(())
+}
+
+fn read_child_pipe(pipe: Option<impl std::io::Read>) -> String {
+    pipe.map(|mut output| {
+        let mut buffer = String::new();
+        let _ = output.read_to_string(&mut buffer);
+        buffer
+    })
+    .unwrap_or_default()
 }

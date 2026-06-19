@@ -13,6 +13,7 @@ use serde_json::to_string_pretty;
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 use toml::from_str;
 
+use super::rust_project;
 use crate::{
     CliCommand,
     constants::{
@@ -39,8 +40,9 @@ use crate::{
         manifest::{
             ApplicationInitializationMetadata, InitializableManifestConfig,
             InitializableManifestConfigMetadata, ManifestData, ProjectMetadata, ProjectType,
-            ResourceInventory, add_project_definition_to_manifest, next_available_redis_partition,
-            application::ApplicationManifestData, worker::WorkerManifestData,
+            ResourceInventory, add_project_definition_to_manifest,
+            application::ApplicationManifestData, next_available_redis_partition,
+            worker::WorkerManifestData,
         },
         name::validate_name,
         package_json::{
@@ -51,15 +53,15 @@ use crate::{
                 COMMON_VERSION, CORE_VERSION, DOTENV_VERSION, ESLINT_VERSION, EXPRESS_VERSION,
                 HYPER_EXPRESS_VERSION, INFRASTRUCTURE_REDIS_VERSION, INTERNAL_VERSION,
                 IOREDIS_VERSION, MIKRO_ORM_CLI_VERSION, MIKRO_ORM_CORE_VERSION,
-                MIKRO_ORM_DATABASE_VERSION, MIKRO_ORM_MIGRATIONS_VERSION,
-                MIKRO_ORM_SEEDER_VERSION, OXLINT_VERSION,
-                PINO_VERSION, PRETTIER_VERSION, PROJECT_BUILD_SCRIPT, PROJECT_DOCS_SCRIPT,
-                PROJECT_SEED_SCRIPT, SQLITE3_VERSION, TESTING_VERSION, TSX_VERSION,
-                TYPEBOX_VERSION, TYPEDOC_VERSION, TYPES_EXPRESS_SERVE_STATIC_CORE_VERSION,
-                TYPES_EXPRESS_VERSION, TYPES_JEST_VERSION, TYPES_QS_VERSION, TYPES_UUID_VERSION,
-                TYPESCRIPT_ESLINT_VERSION, UNIVERSAL_SDK_VERSION, UUID_VERSION, VALIDATOR_VERSION,
-                WORKER_BULLMQ_VERSION, WORKER_DATABASE_VERSION, WORKER_INTERFACES_VERSION,
-                WORKER_KAFKA_VERSION, WORKER_REDIS_VERSION, ZOD_VERSION, project_clean_script,
+                MIKRO_ORM_DATABASE_VERSION, MIKRO_ORM_MIGRATIONS_VERSION, MIKRO_ORM_SEEDER_VERSION,
+                OXLINT_VERSION, PINO_VERSION, PRETTIER_VERSION, PROJECT_BUILD_SCRIPT,
+                PROJECT_DOCS_SCRIPT, PROJECT_SEED_SCRIPT, SQLITE3_VERSION, TESTING_VERSION,
+                TSX_VERSION, TYPEBOX_VERSION, TYPEDOC_VERSION,
+                TYPES_EXPRESS_SERVE_STATIC_CORE_VERSION, TYPES_EXPRESS_VERSION, TYPES_JEST_VERSION,
+                TYPES_QS_VERSION, TYPES_UUID_VERSION, TYPESCRIPT_ESLINT_VERSION,
+                UNIVERSAL_SDK_VERSION, UUID_VERSION, VALIDATOR_VERSION, WORKER_BULLMQ_VERSION,
+                WORKER_DATABASE_VERSION, WORKER_INTERFACES_VERSION, WORKER_KAFKA_VERSION,
+                WORKER_REDIS_VERSION, ZOD_VERSION, project_clean_script,
                 project_dev_local_worker_script, project_dev_server_script,
                 project_dev_worker_client_script, project_format_script, project_lint_fix_script,
                 project_lint_script, project_migrate_script, project_start_server_script,
@@ -155,7 +157,8 @@ fn generate_basic_worker(
         None,
     )?);
     rendered_templates.extend(
-        generate_project_tsconfig(&output_path, Some(&["express", "qs"])).with_context(|| ERROR_FAILED_TO_CREATE_TSCONFIG)?,
+        generate_project_tsconfig(&output_path, Some(&["express", "qs"]))
+            .with_context(|| ERROR_FAILED_TO_CREATE_TSCONFIG)?,
     );
     rendered_templates.extend(
         generate_gitignore(&output_path).with_context(|| ERROR_FAILED_TO_CREATE_GITIGNORE)?,
@@ -257,6 +260,7 @@ fn add_worker_to_artifacts(
         Some(ProjectMetadata {
             r#type: Some(manifest_data.worker_type_lowercase.clone()),
             hosting_type: None,
+            ..ProjectMetadata::default()
         }),
     )
     .with_context(|| ERROR_FAILED_TO_ADD_PROJECT_METADATA_TO_MANIFEST)?;
@@ -660,6 +664,13 @@ impl CliCommand for WorkerCommand {
                     .help("The application path to initialize the worker in"),
             )
             .arg(
+                Arg::new("language")
+                    .long("language")
+                    .help("Project language to generate")
+                    .value_parser(rust_project::PROJECT_LANGUAGE_VARIANTS)
+                    .default_value("typescript"),
+            )
+            .arg(
                 Arg::new("type")
                     .short('t')
                     .long("type")
@@ -695,6 +706,10 @@ impl CliCommand for WorkerCommand {
     }
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
+        if rust_project::uses_rust_generation(matches) {
+            return rust_project::generate_rust_worker(matches);
+        }
+
         let mut line_editor = Editor::<ArrayCompleter, DefaultHistory>::new()?;
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
 
@@ -921,7 +936,9 @@ impl CliCommand for WorkerCommand {
             is_type_needed: true,
             with_mappers: matches.get_flag("mappers"),
 
-            redis_partition: if r#type == WorkerType::BullMQCache || r#type == WorkerType::RedisCache {
+            redis_partition: if r#type == WorkerType::BullMQCache
+                || r#type == WorkerType::RedisCache
+            {
                 next_available_redis_partition(&manifest_data.projects)
             } else {
                 0

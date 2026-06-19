@@ -8,6 +8,7 @@ use serde_json::to_string_pretty;
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 use toml::from_str;
 
+use super::rust_project;
 use crate::{
     CliCommand,
     constants::{
@@ -82,7 +83,8 @@ fn generate_basic_library(
     )?;
     rendered_templates.push(generate_library_package_json(manifest_data, &output_path)?);
     rendered_templates.extend(
-        generate_project_tsconfig(&output_path, None).with_context(|| ERROR_FAILED_TO_CREATE_TSCONFIG)?,
+        generate_project_tsconfig(&output_path, None)
+            .with_context(|| ERROR_FAILED_TO_CREATE_TSCONFIG)?,
     );
     rendered_templates.extend(
         generate_gitignore(&output_path).with_context(|| ERROR_FAILED_TO_CREATE_GITIGNORE)?,
@@ -236,6 +238,13 @@ impl CliCommand for LibraryCommand {
                     .help("The application path to initialize the library in"),
             )
             .arg(
+                Arg::new("language")
+                    .long("language")
+                    .help("Project language to generate")
+                    .value_parser(rust_project::PROJECT_LANGUAGE_VARIANTS)
+                    .default_value("typescript"),
+            )
+            .arg(
                 Arg::new("description")
                     .short('D')
                     .long("description")
@@ -252,6 +261,10 @@ impl CliCommand for LibraryCommand {
 
     // pass token in from parent and perform get token above?
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
+        if rust_project::uses_rust_generation(matches) {
+            return rust_project::generate_rust_library(matches);
+        }
+
         let mut line_editor = Editor::<ArrayCompleter, DefaultHistory>::new()?;
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
 

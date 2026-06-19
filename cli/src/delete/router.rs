@@ -42,7 +42,9 @@ use crate::{
         },
         rendered_template::{RenderedTemplate, RenderedTemplatesCache, write_rendered_templates},
     },
+    init::rust_project,
     prompt::{ArrayCompleter, prompt_for_confirmation, prompt_with_validation},
+    sdk::generate::regenerate_typescript_sdk_if_present,
 };
 
 #[derive(Debug)]
@@ -82,6 +84,37 @@ impl CliCommand for RouterCommand {
 
         let (app_root_path, project_name) = find_app_root_path(matches, RequiredLocation::Project)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+
+        if rust_project::is_rust_app_root(&app_root_path)? {
+            let project_name =
+                project_name.context("Project path is required for Rust router deletion")?;
+            let router_name = prompt_with_validation(
+                &mut line_editor,
+                &mut stdout,
+                "name",
+                matches,
+                "router name",
+                None,
+                |input: &str| !input.trim().is_empty(),
+                |_| "Router name cannot be empty".to_string(),
+            )?;
+
+            if !matches.get_flag("continue") {
+                let continue_delete = prompt_for_confirmation(
+                    &mut line_editor,
+                    "This operation is irreversible. Do you want to continue? (y/N) ",
+                )?;
+                if !continue_delete {
+                    log_error!(stdout, "Deletion cancelled");
+                    return Ok(());
+                }
+            }
+
+            rust_project::delete_rust_router(&app_root_path, &project_name, &router_name)?;
+            regenerate_typescript_sdk_if_present(&app_root_path, &mut stdout)?;
+            log_ok!(stdout, "{} deleted successfully!", router_name);
+            return Ok(());
+        }
 
         let existing_manifest_data: RouterManifestData = toml::from_str(
             &read_to_string(&manifest_path).with_context(|| ERROR_FAILED_TO_READ_MANIFEST)?,

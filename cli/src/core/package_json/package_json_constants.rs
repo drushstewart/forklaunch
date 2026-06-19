@@ -182,9 +182,9 @@ pub(crate) fn application_seed_script<'a>(
 
 pub(crate) fn application_setup_script(runtime: &Runtime) -> String {
     match runtime {
-        Runtime::Bun => {
-            String::from("bun run build && bun run migrate:init && bun run migrate:up && bun run seed")
-        }
+        Runtime::Bun => String::from(
+            "bun run build && bun run migrate:init && bun run migrate:up && bun run seed",
+        ),
         Runtime::Node => {
             String::from("pnpm build && pnpm migrate:init && pnpm migrate:up && pnpm seed")
         }

@@ -1,0 +1,23 @@
+[package]
+name = "forklaunch-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+forklaunch-common = { path = "../forklaunch-common" }
+forklaunch-contract = { path = "../forklaunch-contract" }
+forklaunch-http = { path = "../forklaunch-http" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jsonwebtoken = "9"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
+base64 = "0.22"
+
+[lints]
+workspace = true

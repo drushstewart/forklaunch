@@ -13,6 +13,7 @@ use serde_json::to_string_pretty;
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 use toml::from_str;
 
+use super::rust_project;
 use crate::{
     CliCommand,
     constants::{
@@ -55,16 +56,16 @@ use crate::{
                 IAM_BASE_VERSION, IAM_INTERFACES_VERSION, INFRASTRUCTURE_REDIS_VERSION,
                 INFRASTRUCTURE_S3_VERSION, INTERNAL_VERSION, IOREDIS_VERSION, JOSE_VERSION,
                 MIKRO_ORM_CLI_VERSION, MIKRO_ORM_CORE_VERSION, MIKRO_ORM_DATABASE_VERSION,
-                MIKRO_ORM_MIGRATIONS_VERSION,
-                MIKRO_ORM_SEEDER_VERSION, OPENTELEMETRY_API_VERSION, OXLINT_VERSION, PINO_VERSION,
-                PRETTIER_VERSION, PROJECT_BUILD_SCRIPT, PROJECT_DOCS_SCRIPT, PROJECT_SEED_SCRIPT,
-                SQLITE3_VERSION, STRIPE_VERSION, TESTING_VERSION, TSX_VERSION, TYPEBOX_VERSION,
-                TYPEDOC_VERSION, TYPES_EXPRESS_SERVE_STATIC_CORE_VERSION, TYPES_EXPRESS_VERSION,
-                TYPES_JEST_VERSION, TYPES_QS_VERSION, TYPES_UUID_VERSION,
-                TYPESCRIPT_ESLINT_VERSION, UNIVERSAL_SDK_VERSION, UUID_VERSION, VALIDATOR_VERSION,
-                ZOD_VERSION, project_clean_script, project_dev_local_script,
-                project_dev_server_script, project_format_script, project_lint_fix_script,
-                project_lint_script, project_migrate_script, project_retention_enforce_script,
+                MIKRO_ORM_MIGRATIONS_VERSION, MIKRO_ORM_SEEDER_VERSION, OPENTELEMETRY_API_VERSION,
+                OXLINT_VERSION, PINO_VERSION, PRETTIER_VERSION, PROJECT_BUILD_SCRIPT,
+                PROJECT_DOCS_SCRIPT, PROJECT_SEED_SCRIPT, SQLITE3_VERSION, STRIPE_VERSION,
+                TESTING_VERSION, TSX_VERSION, TYPEBOX_VERSION, TYPEDOC_VERSION,
+                TYPES_EXPRESS_SERVE_STATIC_CORE_VERSION, TYPES_EXPRESS_VERSION, TYPES_JEST_VERSION,
+                TYPES_QS_VERSION, TYPES_UUID_VERSION, TYPESCRIPT_ESLINT_VERSION,
+                UNIVERSAL_SDK_VERSION, UUID_VERSION, VALIDATOR_VERSION, ZOD_VERSION,
+                project_clean_script, project_dev_local_script, project_dev_server_script,
+                project_format_script, project_lint_fix_script, project_lint_script,
+                project_migrate_script, project_retention_enforce_script,
                 project_start_server_script, project_test_script, project_up_latest_script,
             },
             project_package_json::{
@@ -139,7 +140,8 @@ fn generate_basic_service(
     )?);
 
     rendered_templates.extend(
-        generate_project_tsconfig(&output_path, Some(&["express", "qs"])).with_context(|| ERROR_FAILED_TO_CREATE_TSCONFIG)?,
+        generate_project_tsconfig(&output_path, Some(&["express", "qs"]))
+            .with_context(|| ERROR_FAILED_TO_CREATE_TSCONFIG)?,
     );
 
     rendered_templates.extend(
@@ -325,10 +327,12 @@ pub(crate) fn generate_service_package_json(
         keywords: Some(vec![]),
         license: Some(manifest_data.license.to_string()),
         author: Some(manifest_data.author.to_string()),
-        main: main_override.or_else(|| if manifest_data.is_iam || manifest_data.is_billing {
-            Some("./dist/index.js".to_string())
-        } else {
-            None
+        main: main_override.or_else(|| {
+            if manifest_data.is_iam || manifest_data.is_billing {
+                Some("./dist/index.js".to_string())
+            } else {
+                None
+            }
         }),
         types: types_override.unwrap_or(if manifest_data.is_iam || manifest_data.is_billing {
             Some("./dist/index.d.ts".to_string())
@@ -375,7 +379,9 @@ pub(crate) fn generate_service_package_json(
                 )),
                 up_latest: project_up_latest_script(&manifest_data.runtime.parse()?),
                 retention_enforce: if manifest_data.is_database_enabled {
-                    Some(project_retention_enforce_script(&manifest_data.runtime.parse()?))
+                    Some(project_retention_enforce_script(
+                        &manifest_data.runtime.parse()?,
+                    ))
                 } else {
                     None
                 },
@@ -613,6 +619,13 @@ impl CliCommand for ServiceCommand {
                     .help("The path to initialize the service in"),
             )
             .arg(
+                Arg::new("language")
+                    .long("language")
+                    .help("Project language to generate")
+                    .value_parser(rust_project::PROJECT_LANGUAGE_VARIANTS)
+                    .default_value("typescript"),
+            )
+            .arg(
                 Arg::new("database")
                     .short('d')
                     .long("database")
@@ -650,6 +663,10 @@ impl CliCommand for ServiceCommand {
     }
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
+        if rust_project::uses_rust_generation(matches) {
+            return rust_project::generate_rust_service(matches);
+        }
+
         let mut line_editor = Editor::<ArrayCompleter, DefaultHistory>::new()?;
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
 

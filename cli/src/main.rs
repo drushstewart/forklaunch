@@ -1,3 +1,4 @@
+use analyze::AnalyzeCommand;
 use anyhow::Result;
 use change::ChangeCommand;
 use clap::{ArgMatches, Command, command};
@@ -14,12 +15,13 @@ use login::LoginCommand;
 use logout::LogoutCommand;
 use openapi::OpenApiCommand;
 use release::ReleaseCommand;
+use sync::SyncCommand;
 use version::VersionCommand;
 use whoami::WhoAmICommand;
-use sync::SyncCommand;
 
 use crate::sdk::SdkCommand;
 
+mod analyze;
 mod constants;
 #[macro_use]
 mod core;
@@ -39,9 +41,9 @@ mod openapi;
 mod prompt;
 mod release;
 mod sdk;
+mod sync;
 mod version;
 mod whoami;
-mod sync;
 
 pub(crate) trait CliCommand {
     fn command(&self) -> Command;
@@ -51,6 +53,7 @@ pub(crate) trait CliCommand {
 fn main() -> Result<()> {
     // inject token into init, config
     let init = InitCommand::new();
+    let analyze = AnalyzeCommand::new();
     let change = ChangeCommand::new();
     let compliance = ComplianceCommand::new();
     let config = ConfigCommand::new();
@@ -74,6 +77,7 @@ fn main() -> Result<()> {
         .arg_required_else_help(true)
         .subcommand_required(true)
         .subcommand(init.command())
+        .subcommand(analyze.command())
         .subcommand(delete.command())
         .subcommand(change.command())
         .subcommand(compliance.command())
@@ -99,6 +103,7 @@ fn main() -> Result<()> {
 
     let result = match matches.subcommand() {
         Some(("init", sub_matches)) => init.handler(sub_matches),
+        Some(("analyze", sub_matches)) => analyze.handler(sub_matches),
         Some(("change", sub_matches)) => change.handler(sub_matches),
         Some(("compliance", sub_matches)) => compliance.handler(sub_matches),
         Some(("config", sub_matches)) => config.handler(sub_matches),

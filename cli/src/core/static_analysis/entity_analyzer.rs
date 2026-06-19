@@ -88,11 +88,14 @@ impl EntityAnalyzer {
         Ok(entities)
     }
 
-    /// Check if an expression is a defineEntity() call
+    /// Check if an expression is a defineEntity() / defineComplianceEntity() call.
+    /// Both shapes accept the same { name, properties } config object, so downstream
+    /// extraction is identical.
     fn is_define_entity_call(expr: &Expression) -> bool {
         if let Expression::CallExpression(call) = expr {
             if let Expression::Identifier(id) = &call.callee {
-                return id.name.as_str() == "defineEntity";
+                let name = id.name.as_str();
+                return name == "defineEntity" || name == "defineComplianceEntity";
             }
         }
         false
@@ -241,9 +244,18 @@ impl EntityAnalyzer {
         }
     }
 
-    /// Check if an expression is the `p` identifier (the property builder namespace)
+    /// Check if an expression is the property-builder namespace identifier.
+    /// Accepts both `p` (the v7 namespace) and `fp` (the ForkLaunch compliance namespace).
+    /// Both export the same builder surface (string(), integer(), datetime(), manyToOne(),
+    /// etc.), so the downstream resolution is identical.
     fn is_p_identifier(expr: &Expression) -> bool {
-        matches!(expr, Expression::Identifier(id) if id.name.as_str() == "p")
+        matches!(
+            expr,
+            Expression::Identifier(id) if {
+                let n = id.name.as_str();
+                n == "p" || n == "fp"
+            }
+        )
     }
 
     /// Resolve the base type from a p.xxx() call
@@ -278,8 +290,7 @@ impl EntityAnalyzer {
             }
             "manyToMany" => {
                 result.relation_type = Some(RelationType::ManyToMany);
-                result.type_name =
-                    format!("Collection<{}>", Self::extract_relation_target(call));
+                result.type_name = format!("Collection<{}>", Self::extract_relation_target(call));
                 result.is_collection = true;
             }
             "oneToOne" => {
