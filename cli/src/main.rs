@@ -6,6 +6,7 @@ use compliance::ComplianceCommand;
 use config::ConfigCommand;
 use delete::DeleteCommand;
 use depcheck::DepcheckCommand;
+use score::ScoreCommand;
 use deploy::DeployCommand;
 use eject::EjectCommand;
 use environment::EnvironmentCommand;
@@ -30,6 +31,7 @@ mod compliance;
 mod config;
 mod delete;
 mod depcheck;
+mod score;
 mod deploy;
 mod eject;
 mod environment;
@@ -59,6 +61,7 @@ fn main() -> Result<()> {
     let config = ConfigCommand::new();
     let delete = DeleteCommand::new();
     let depcheck = DepcheckCommand::new();
+    let score = ScoreCommand::new();
     let deploy = DeployCommand::new();
     let eject = EjectCommand::new();
     let environment = EnvironmentCommand::new();
@@ -83,6 +86,7 @@ fn main() -> Result<()> {
         .subcommand(compliance.command())
         .subcommand(eject.command())
         .subcommand(depcheck.command())
+        .subcommand(score.command())
         .subcommand(config.command())
         .subcommand(deploy.command())
         .subcommand(environment.command())
@@ -109,6 +113,7 @@ fn main() -> Result<()> {
         Some(("config", sub_matches)) => config.handler(sub_matches),
         Some(("delete", sub_matches)) => delete.handler(sub_matches),
         Some(("depcheck", sub_matches)) => depcheck.handler(sub_matches),
+        Some(("score", sub_matches)) => score.handler(sub_matches),
         Some(("deploy", sub_matches)) => deploy.handler(sub_matches),
         Some(("eject", sub_matches)) => eject.handler(sub_matches),
         Some(("environment", sub_matches)) => environment.handler(sub_matches),
