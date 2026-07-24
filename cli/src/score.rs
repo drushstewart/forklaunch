@@ -27,14 +27,12 @@ impl ScoreCommand {
 }
 
 /// Canonical pillar order + display labels (mirrors REPORT_CARD_RAILS in the platform).
-const RAILS: [(&str, &str); 7] = [
+const RAILS: [(&str, &str); 5] = [
     ("compliance", "Compliance"),
     ("security", "Security"),
     ("governance", "Governance"),
     ("scalability", "Scalability"),
     ("observability", "Observability"),
-    ("manageable", "Manageability"),
-    ("performant", "Performance"),
 ];
 
 fn score_color(score: f64) -> Color {
@@ -58,7 +56,7 @@ impl CliCommand for ScoreCommand {
     fn command(&self) -> Command {
         command(
             "score",
-            "Score the app across the seven readiness pillars (ForkLaunch Score)",
+            "Score the app across the five readiness pillars (ForkLaunch Score)",
         )
         .arg(
             Arg::new("base_path")
@@ -101,7 +99,7 @@ impl CliCommand for ScoreCommand {
         );
         writeln!(
             stdout,
-            "Scoring {} across the seven readiness pillars (~1-2 min)...",
+            "Scoring {} across the five readiness pillars (~1-2 min)...",
             workspace_root.display()
         )?;
 
