@@ -48,7 +48,7 @@ The generated Dockerfile builds workspace binaries, and Compose selects the serv
 
 ## Current boundaries
 
-Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. Generated workers execute one demonstration batch. Billing, provider integrations, and acknowledged worker queues remain unfinished. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
+Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. Generated workers execute one demonstration batch. Billing, provider integrations, and generated durable worker loops remain unfinished. A PostgreSQL queue adapter is available below. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
 
 ## Validate the port
 
@@ -126,3 +126,21 @@ Enable `forklaunch-core`'s `encryption` feature for `persistence::encryption::Fi
 The existing v4 format contains clear, unauthenticated anonymous metadata. Treat it as display metadata and never as an authorization claim. Deterministic encryption and blind indexes reveal equality within their key/tenant scope.
 
 `cli/tests/rust_field_encryption_parity.mjs` runs the actual TypeScript implementation alongside a Rust harness, testing both directions with empty, Unicode, binary-containing, current-key, previous-key, and legacy values. It needs a TypeScript compiler that exposes the compiler API; CI uses TypeScript 5.9.3 via `TSC_BIN`.
+
+## PostgreSQL worker queue
+
+Enable `forklaunch-worker-database`'s `postgres` feature and import `PostgresWorkerQueue` from its `postgres` module. It implements `forklaunch_worker_interface::AsyncWorkerQueue`; the synchronous `DatabaseWorkerQueue` remains an in-memory reference implementation.
+
+Apply `PostgresWorkerQueue::migrate(&owner_pool)` before starting consumers. Worker tables and the checksummed migration ledger live in the `fl_worker` schema, independently of IAM migrations. Concurrent migration runners serialize through a transaction-scoped advisory lock, and migration transactions restore the connection's search path.
+
+Runtime roles need `USAGE` on `fl_worker`, `SELECT, INSERT, UPDATE, DELETE` on `fl_worker.jobs`, and `USAGE` on its sequences. The constructor rejects SUPERUSER and BYPASSRLS roles. Construct the queue with a validated, trusted `TenantContext` and a `RetryPolicy`; every operation includes its tenant and runs with transaction-local RLS context.
+
+`enqueue_batch` is atomic and preserves insertion order. IDs are unique within a tenant and queue; duplicates return an error. Enqueued jobs must start with zero attempts and valid JSON payloads of at most 1 MiB. Batches and peek limits are bounded at 1,000 jobs.
+
+`claim` uses `FOR UPDATE SKIP LOCKED` and returns a `JobLease` with a fresh opaque token. Claims increment attempts. `ack`, `fail`, and `renew` check the token and the database deadline; an expired or replaced consumer cannot change the delivery. Leases range from 1 millisecond to 24 hours. Renewal never shortens the current deadline; inspect the job to read an updated deadline.
+
+Call `ack` only after successful processing. On failure, `fail` schedules the configured fixed backoff or retains an exhausted job with `JobStatus::Failed` and its failure reason. Retry policy is stored when enqueuing, so another consumer cannot change an existing job's budget. Expired leases become eligible for redelivery; a claim also moves expired final attempts to failed state. `inspect` reads completed and failed jobs without exposing the lease token. Failure reasons are persisted; use application-safe text.
+
+Delivery is at least once. Make handlers idempotent because a consumer can crash after performing a side effect and before acknowledging it. Renew leases during long-running handlers. Queued statistics include delayed retries; processing statistics include expired leases until the next claim recovers or fails them. `peek` returns currently eligible jobs without claiming them.
+
+The adapter is available to application code; generated worker binaries still run their demonstration batch. Generator wiring, polling/drain lifecycle, dead-letter administration and retention, Redis/Kafka durable adapters, and distributed control signals remain tracked separately. CI runs `postgres_worker_leases_retries_isolation_and_concurrency` against PostgreSQL, covering concurrent consumers, tenant RLS, retries, crash recovery, stale tokens, batch rollback, and compatibility with IAM migrations.

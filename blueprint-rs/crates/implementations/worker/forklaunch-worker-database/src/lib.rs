@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
 use std::{collections::VecDeque, sync::Mutex};
 
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};

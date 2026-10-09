@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod async_queue;
+pub use async_queue::{AsyncWorkerQueue, FailureDisposition, JobLease, JobSnapshot};
+
 use forklaunch_blueprint_core::BlueprintResult;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
