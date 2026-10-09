@@ -9,7 +9,7 @@ use super::{
     manifest::ManifestData,
     rendered_template::{RenderedTemplate, TEMPLATES_DIR},
 };
-use crate::constants::{Module, error_failed_to_create_dir};
+use crate::constants::{error_failed_to_create_dir, Module};
 
 #[derive(Debug, Clone)]
 pub(crate) struct PathIO {
@@ -203,5 +203,122 @@ pub(crate) fn get_routers_from_standard_package(package: Module) -> Option<Vec<S
             String::from("role"),
             String::from("user"),
         ]),
+        Module::BaseMessaging => Some(vec![String::from("sms")]),
+        Module::TwilioMessaging => Some(vec![String::from("sms"), String::from("webhook")]),
+        Module::StripeEcommerce => Some(vec![
+            String::from("product"),
+            String::from("variant"),
+            String::from("inventory"),
+            String::from("cart"),
+            String::from("checkout"),
+            String::from("order"),
+            String::from("payment"),
+            String::from("webhook"),
+            String::from("catalogImport"),
+        ]),
+        // Skeleton only so far — patient/encounter/claim/eligibility/remittance/
+        // codeSet routers land in later phases (see plan/cac/), not this PR.
+        Module::BaseCac => None,
+        // Relay injects its router directly into an existing iam service
+        // (init/relay.rs); it never goes through the standard-package manifest
+        // path, so it declares no routers here.
+        Module::Relay => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::rendered_template::TEMPLATES_DIR;
+
+    /// The routers a module declares land in the scaffolded app's
+    /// manifest.toml, and sync, analyze, delete and the release manifest all
+    /// read that list. Nothing else compares it against the templates, so a
+    /// router added to a blueprint without a matching entry here silently
+    /// produces a manifest naming routes the app does not serve, and omitting
+    /// ones it does. That is how "subscription" survived here with no
+    /// subscription route, while checkout shipped undeclared.
+    ///
+    /// Only ecommerce is asserted. billing-stripe and iam-base drift the same
+    /// way today on main — billing omits compliance, iam omits compliance and
+    /// discovery — and correcting those belongs with those modules, not here.
+    fn routers_in_template(project: &str) -> Vec<String> {
+        let dir = TEMPLATES_DIR
+            .get_dir(format!("project/{project}/api/routes"))
+            .unwrap_or_else(|| panic!("no routes dir for {project}"));
+        let mut found: Vec<String> = dir
+            .files()
+            .filter_map(|f| f.path().file_name()?.to_str())
+            .filter_map(|n| n.strip_suffix(".routes.ts"))
+            .map(str::to_string)
+            .collect();
+        found.sort();
+        found
+    }
+
+    #[test]
+    fn ecommerce_declares_exactly_the_routers_it_ships() {
+        let mut declared =
+            get_routers_from_standard_package(Module::StripeEcommerce).unwrap_or_default();
+        declared.sort();
+        assert_eq!(declared, routers_in_template("ecommerce-stripe"));
+    }
+    #[test]
+    fn emitted_service_and_worker_templates_keep_only_used_dependencies() {
+        #[derive(ramhorns::Content)]
+        struct Flags {
+            is_worker: bool,
+            is_database_enabled: bool,
+            is_iam_configured: bool,
+        }
+        for worker in [false, true] {
+            for database in [false, true] {
+                let flags = Flags {
+                    is_worker: worker,
+                    is_database_enabled: database,
+                    is_iam_configured: true,
+                };
+                let render = |path: &str| {
+                    ramhorns::Template::new(
+                        TEMPLATES_DIR
+                            .get_file(path)
+                            .unwrap()
+                            .contents_utf8()
+                            .unwrap(),
+                    )
+                    .unwrap()
+                    .render(&flags)
+                };
+                let registration = render("project/service/registrations.ts");
+                for name in [
+                    "ComplianceDataService",
+                    "RetentionService",
+                    "wrapEmWithTenantContext",
+                ] {
+                    assert_eq!(
+                        registration.contains(name),
+                        database,
+                        "{name}: worker={worker}, database={database}"
+                    );
+                }
+                let server = render("project/service/server.ts");
+                assert!(!server.contains("PERMISSIONS, ROLES"));
+                let controller = render("router/api/controllers/{{camel_case_name}}.controller.ts");
+                assert!(!controller.contains("const openTelemetryCollector"));
+                assert!(controller.contains("allowedRoles: new Set([ROLES.ADMIN])"));
+                for kind in ["service", "worker"] {
+                    let utils = render(&format!("project/{kind}/__test__/test-utils.ts"));
+                    assert_eq!(utils.contains("import { getEnvVar }"), database);
+                }
+                let event = render("router/domain/types/{{camel_case_name}}EventRecord.types.ts");
+                assert_eq!(event.contains("export {};"), !worker);
+                if worker {
+                    assert!(
+                        render("router/domain/services/{{camel_case_name}}.service.ts")
+                            .contains("id: _id, createdAt: _createdAt, updatedAt: _updatedAt")
+                    );
+                }
+            }
+        }
     }
 }

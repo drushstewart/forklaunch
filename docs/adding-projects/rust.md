@@ -65,7 +65,7 @@ cd ../cli
 cargo test
 cargo build --release
 cd tests
-export FORKLAUNCH_TEST_CLI="$(cd ../target/release && pwd)/forklaunch"
+export FORKLAUNCH_CLI="$(cd ../target/release && pwd)/forklaunch"
 bash init_rust_projects.sh
 for script in rust*.sh; do bash "$script"; done
 ```

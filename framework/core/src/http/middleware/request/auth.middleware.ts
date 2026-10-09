@@ -14,6 +14,7 @@ import { hasScopeChecks } from '../../guards/hasScopeChecks';
 import { hasSubscriptionChecks } from '../../guards/hasSubscriptionChecks';
 import { isHmacMethod } from '../../guards/isHmacMethod';
 import { meta } from '../../telemetry/pinoLogger';
+import { authLogContext, jwtFailureReason } from './authLogContext';
 import {
   ForklaunchNextFunction,
   ForklaunchRequest,
@@ -268,13 +269,14 @@ async function checkAuthorizationToken<
             Extract<keyof VersionedReqs, string>,
             SessionSchema
           >
-        )?.openTelemetryCollector?.error(
+        )?.openTelemetryCollector?.warn(
           'JWT Verification Failed',
           meta({
-            error,
+            reason: jwtFailureReason(error),
+            error: error instanceof Error ? error.message : String(error),
             method: req.method,
             path: req.path,
-            token
+            ...authLogContext(token)
           })
         );
         return invalidAuthorizationToken;
@@ -360,10 +362,10 @@ async function checkAuthorizationToken<
         if (collapsedAuthorizationMethod.requiredScope) {
           if (
             !resourceScopes.has(collapsedAuthorizationMethod.requiredScope) ||
-            Array.from(resourceScopes).every(
+            !Array.from(resourceScopes).every(
               (scope) =>
-                collapsedAuthorizationMethod.scopeHeirarchy?.indexOf(scope) ??
-                -1 > -1
+                (collapsedAuthorizationMethod.scopeHeirarchy?.indexOf(scope) ??
+                  -1) > -1
             )
           ) {
             return invalidScope;
@@ -568,11 +570,7 @@ export async function parseRequestAuth<
   next?: ForklaunchNextFunction
 ) {
   const access = req.contractDetails.access as
-    | 'public'
-    | 'authenticated'
-    | 'protected'
-    | 'internal'
-    | undefined;
+    'public' | 'authenticated' | 'protected' | 'internal' | undefined;
 
   // Public routes skip auth entirely
   if (access === 'public') {
@@ -608,13 +606,15 @@ export async function parseRequestAuth<
       unknown
     >(req, auth, token, req._globalOptions?.()?.auth, access)) ?? [];
   if (error != null) {
-    req.openTelemetryCollector?.error(
+    // Warn, not error: an expired or missing token is normal traffic. The
+    // credential itself is never logged; see authLogContext.
+    req.openTelemetryCollector?.warn(
       message || 'Authorization Failed',
       meta({
         statusCode: error,
         method: req.method,
         path: req.path,
-        token
+        ...authLogContext(token)
       })
     );
     res.type('text/plain');

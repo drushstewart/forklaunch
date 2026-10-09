@@ -6,7 +6,11 @@ import {
   string
 } from '@forklaunch/blueprint-core';
 import { Metrics, metrics } from '@forklaunch/blueprint-monitoring';
-import { OpenTelemetryCollector } from '@forklaunch/core/http';
+import {
+  createStripeClient,
+  isManagedInstance,
+  OpenTelemetryCollector
+} from '@forklaunch/core/http';
 import {
   FieldEncryptor,
   wrapEmWithTenantContext
@@ -70,6 +74,8 @@ import {
   SubscriptionMapperTypes
 } from './domain/types/billingMappers.types';
 import mikroOrmOptionsConfig from './mikro-orm.config';
+import { InferEntity } from '@mikro-orm/core';
+import { StripeWebhookEvent } from './persistence/entities';
 
 //! defines the configuration schema for the application
 const configInjector = createConfigInjector(schemaValidator, {
@@ -128,9 +134,11 @@ const environmentConfig = configInjector.chain({
     type: string,
     value: getEnvVar('OTEL_EXPORTER_OTLP_ENDPOINT')
   },
+  // Optional: a managed instance reaches Stripe through the platform's
+  // Stripe Connect gateway and holds no Stripe key or webhook secret.
   STRIPE_API_KEY: {
     lifetime: Lifetime.Singleton,
-    type: string,
+    type: optional(string),
     value: getEnvVar('STRIPE_API_KEY')
   },
   HMAC_SECRET_KEY: {
@@ -143,9 +151,11 @@ const environmentConfig = configInjector.chain({
     type: string,
     value: getEnvVar('JWKS_PUBLIC_KEY_URL')
   },
+  // Optional: a managed instance reaches Stripe through the platform's
+  // Stripe Connect gateway and holds no Stripe key or webhook secret.
   STRIPE_WEBHOOK_SECRET: {
     lifetime: Lifetime.Singleton,
-    type: string,
+    type: optional(string),
     value: getEnvVar('STRIPE_WEBHOOK_SECRET')
   },
   IAM_URL: {
@@ -165,7 +175,18 @@ const runtimeDependencies = environmentConfig.chain({
   StripeClient: {
     lifetime: Lifetime.Singleton,
     type: Stripe,
-    factory: ({ STRIPE_API_KEY }) => new Stripe(STRIPE_API_KEY)
+    // Managed instances: the real Stripe SDK pointed at the platform's
+    // gateway (their own connected account, no key here). Anywhere else: the
+    // service's own key.
+    factory: ({ STRIPE_API_KEY }) => {
+      if (isManagedInstance()) return createStripeClient({ Stripe });
+      if (!STRIPE_API_KEY) {
+        throw new Error(
+          'STRIPE_API_KEY is required unless the service runs as a managed instance'
+        );
+      }
+      return new Stripe(STRIPE_API_KEY);
+    }
   },
   Orm: {
     lifetime: Lifetime.Singleton,
@@ -359,7 +380,8 @@ const serviceDependencies = runtimeDependencies.chain({
       CheckoutSessionMapperTypes,
       PaymentLinkMapperTypes,
       PlanMapperTypes,
-      SubscriptionMapperTypes
+      SubscriptionMapperTypes,
+      InferEntity<typeof StripeWebhookEvent>
     >,
     factory: (
       {
@@ -387,7 +409,10 @@ const serviceDependencies = runtimeDependencies.chain({
         PaymentLinkService,
         PlanService,
         SubscriptionService,
-        PartyEnum
+        PartyEnum,
+        // entity-first: inject this app's discovered webhook event entity
+        // (mapper-style) rather than relying on name resolution
+        StripeWebhookEvent
       )
   },
   ComplianceDataService: {

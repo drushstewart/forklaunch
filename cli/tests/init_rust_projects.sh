@@ -6,8 +6,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}"
 
 run_cli() {
-    if [ -n "${FORKLAUNCH_TEST_CLI:-}" ]; then
-        "$FORKLAUNCH_TEST_CLI" "$@"
+    if [ -n "${FORKLAUNCH_CLI:-}" ]; then
+        "$FORKLAUNCH_CLI" "$@"
     else
         RUST_BACKTRACE=1 cargo run --manifest-path "$REPO_ROOT/cli/Cargo.toml" --release -- "$@"
     fi

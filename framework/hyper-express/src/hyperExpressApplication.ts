@@ -70,14 +70,11 @@ export class Application<
 > {
   private docsConfiguration: DocsConfiguration | undefined;
   private mcpConfiguration:
-    | ExpressApplicationOptions<SV, SessionSchema>['mcp']
-    | undefined;
+    ExpressApplicationOptions<SV, SessionSchema>['mcp'] | undefined;
   private openapiConfiguration:
-    | ExpressApplicationOptions<SV, SessionSchema>['openapi']
-    | undefined;
+    ExpressApplicationOptions<SV, SessionSchema>['openapi'] | undefined;
   private hostingConfiguration:
-    | ExpressApplicationOptions<SV, SessionSchema>['hosting']
-    | undefined;
+    ExpressApplicationOptions<SV, SessionSchema>['hosting'] | undefined;
   /**
    * Creates an instance of the Application class.
    *
@@ -108,7 +105,7 @@ export class Application<
       }),
       [
         contentParse<SV>(configurationOptions),
-        enrichResponseTransmission as unknown as MiddlewareHandler
+        enrichResponseTransmission as MiddlewareHandler
       ],
       openTelemetryCollector,
       configurationOptions
@@ -251,7 +248,7 @@ export class Application<
           host,
           port,
           version ?? '1.0.0',
-          this as unknown as ForklaunchRouter<ZodSchemaValidator>,
+          this as ForklaunchRouter<ZodSchemaValidator>,
           this.mcpConfiguration,
           options,
           contentTypeMapping
@@ -334,6 +331,8 @@ export class Application<
                 })),
                 ...(this.docsConfiguration?.sources ?? [])
               ]
+              // Scalar's `apiReference` returns an Express-typed handler; hyper-express
+              // expects its own `MiddlewareHandler`. Same function, disjoint signatures.
             }) as unknown as MiddlewareHandler
           );
         } else if (this.docsConfiguration?.type === 'swagger') {

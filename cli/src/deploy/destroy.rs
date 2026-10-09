@@ -142,7 +142,13 @@ impl CliCommand for DestroyCommand {
 
             if wait {
                 writeln!(stdout)?;
-                stream_deployment_status(&auth_mode, &deployment.id, &mut stdout)?;
+                stream_deployment_status(
+                    &auth_mode,
+                    &deployment.id,
+                    None,
+                    None,
+                    &mut stdout,
+                )?;
                 writeln!(stdout)?;
                 log_info!(stdout, "Dashboard: {}", dashboard_url);
             } else {

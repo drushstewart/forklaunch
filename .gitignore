@@ -18,3 +18,5 @@ output
 Cargo.lock.bak
 
 agentic-capital
+
+.gstack

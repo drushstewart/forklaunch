@@ -128,7 +128,7 @@ use termcolor::{Color, ColorChoice, StandardStream, WriteColor};
 use toml::to_string_pretty;
 
 use super::{
-    git::{get_git_branch, get_git_commit, is_git_repo},
+    git::{get_git_branch, get_git_commit, get_git_remote_url, is_git_repo},
     manifest_generator::{
         EnvironmentVariableComponent, EnvironmentVariableComponentProperty,
         EnvironmentVariableComponentType, EnvironmentVariableRequirement, EnvironmentVariableScope,
@@ -165,6 +165,18 @@ use crate::{
     },
     sync::all::sync_all_projects,
 };
+
+/// Shape of `GET /releases?applicationId=` — `{ releases: [...] }`.
+#[derive(Debug, Deserialize)]
+struct ExistingReleaseList {
+    #[serde(default)]
+    releases: Vec<ExistingRelease>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExistingRelease {
+    version: String,
+}
 
 #[derive(Debug, Serialize)]
 struct CreateReleaseRequest {
@@ -239,6 +251,20 @@ impl CliCommand for CreateCommand {
                     .help("Skip automatic sync of projects with manifest before creating release"),
             )
             .arg(
+                Arg::new("prebuilt-openapi")
+                    .long("prebuilt-openapi")
+                    .requires_all(["local", "skip-sync", "dry-run", "yes", "application-id"])
+                    .conflicts_with("git")
+                    .help("Read previously built API specifications; do not install, build, sync, or execute application code"),
+            )
+            .arg(
+                Arg::new("application-id")
+                    .long("application-id")
+                    .requires("prebuilt-openapi")
+                    .value_parser(clap::value_parser!(uuid::Uuid))
+                    .help("Verify the target application with the signed-in account before preparing its release"),
+            )
+            .arg(
                 Arg::new("yes")
                     .long("yes")
                     .short('y')
@@ -253,7 +279,25 @@ impl CliCommand for CreateCommand {
         let auth_mode = resolve_auth()?;
         require_active_account(&auth_mode)?;
         let (app_root, manifest) = require_manifest(matches)?;
-        let application_id = require_integration(&manifest)?;
+        let application_id = if let Some(id) = matches.get_one::<uuid::Uuid>("application-id") {
+            let token = crate::core::validate::require_auth()?;
+            let id = id.to_string();
+            if manifest
+                .platform_application_id
+                .as_ref()
+                .is_some_and(|saved| saved != &id)
+            {
+                bail!("The selected application differs from the integrated application");
+            }
+            super::prebuilt::verify_application(&id, &token)?;
+            id
+        } else {
+            require_integration(&manifest)?
+        };
+        let prebuilt = matches.get_one::<String>("prebuilt-openapi");
+        if prebuilt.is_some() {
+            super::prebuilt::validate_paths(&app_root, &manifest)?;
+        }
 
         let version = matches
             .get_one::<String>("release_version")
@@ -271,28 +315,29 @@ impl CliCommand for CreateCommand {
 
         // Early version conflict check (skip for dry runs)
         if !dry_run {
-            let check_url = if auth_mode.is_hmac() {
-                format!(
-                    "{}/releases/internal/{}/{}",
+            // `/releases/{app}/{version}` was never a route — the platform mounts
+            // `/releases/:id` and `/releases?applicationId=`. The 404 landed in the
+            // `is_success()` check below, so this guard silently never fired and a
+            // duplicate version was only caught by the create itself, several
+            // minutes of syncing and uploading later. There is no internal list
+            // route, so under HMAC the create remains the only check.
+            if !auth_mode.is_hmac() {
+                let check_url = format!(
+                    "{}/releases?applicationId={}",
                     get_platform_management_api_url(),
-                    application_id,
-                    version
-                )
-            } else {
-                format!(
-                    "{}/releases/{}/{}",
-                    get_platform_management_api_url(),
-                    application_id,
-                    version
-                )
-            };
-
-            if let Ok(response) = http_client::get_with_auth(&auth_mode, &check_url) {
-                if response.status().is_success() {
-                    bail!(
-                        "Release version '{}' already exists. Bump the version in your manifest and try again.",
-                        version
-                    );
+                    urlencoding::encode(&application_id)
+                );
+                if let Ok(response) = http_client::get_with_auth(&auth_mode, &check_url) {
+                    if response.status().is_success() {
+                        if let Ok(list) = response.json::<ExistingReleaseList>() {
+                            if list.releases.iter().any(|r| r.version == *version) {
+                                bail!(
+                                    "Release version '{}' already exists. Bump the version in your manifest and try again.",
+                                    version
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -433,8 +478,9 @@ impl CliCommand for CreateCommand {
         let workspace_root = find_workspace_root(&app_root)?;
         let modules_path = get_modules_path(&workspace_root)?;
 
-        // Step 0.5: Install dependencies and build in modules path/app root
-        install_and_build_for_release(&app_root, &modules_path, &manifest, &mut stdout)?;
+        if prebuilt.is_none() {
+            install_and_build_for_release(&app_root, &modules_path, &manifest, &mut stdout)?;
+        }
 
         // Step 1: Detect git metadata
         let (git_commit, git_branch) = if is_git_repo() {
@@ -472,12 +518,53 @@ impl CliCommand for CreateCommand {
             git_branch.as_deref().unwrap_or("unknown")
         );
 
-        // Step 2: Export OpenAPI specs
-        let openapi_path = app_root.join(".forklaunch").join("openapi");
-        create_dir_all(&openapi_path).with_context(|| "Failed to create openapi directory")?;
-        let _openapi_guard = RemoveDirGuard::new(openapi_path.clone());
+        // A git-mode release from inside a checkout must also say WHICH repo the
+        // commit lives in, or the deploy has nothing to clone. Record the origin
+        // remote of the checkout in the manifest; a manifest that already names
+        // a different repository is kept but flagged.
+        if !local_mode && is_git_repo() {
+            match (get_git_remote_url(), manifest.git_repository.as_deref()) {
+                (Some(remote), Some(existing)) if existing.trim_end_matches('/') != remote => {
+                    log_warn!(
+                        stdout,
+                        "manifest.toml names git_repository {} but this checkout's origin is {}; the release will be built from {}",
+                        existing,
+                        remote,
+                        existing
+                    );
+                }
+                (Some(_), Some(_)) => {}
+                (Some(remote), None) => {
+                    manifest.git_repository = Some(remote.clone());
+                    let manifest_str = to_string_pretty(&manifest)
+                        .with_context(|| "Failed to serialize manifest")?;
+                    fs::write(&manifest_path, manifest_str)
+                        .with_context(|| "Failed to write manifest")?;
+                    log_ok!(stdout, "Git repository recorded from origin: {}", remote);
+                }
+                (None, Some(_)) => {}
+                (None, None) => {
+                    log_warn!(
+                        stdout,
+                        "No 'origin' remote found; the deploy will use the repository connected to this application on the platform"
+                    );
+                }
+            }
+        }
 
-        let exported_services = export_all_services(&app_root, &manifest, &openapi_path)?;
+        // Step 2: Export OpenAPI specs
+        let openapi_path = if let Some(path) = prebuilt {
+            super::prebuilt::spec_directory(&app_root, path)?
+        } else {
+            app_root.join(".forklaunch").join("openapi")
+        };
+        create_dir_all(&openapi_path).with_context(|| "Failed to create openapi directory")?;
+        let _openapi_guard = prebuilt.is_none().then(|| RemoveDirGuard::new(openapi_path.clone()));
+        let exported_services = if prebuilt.is_some() {
+            super::prebuilt::validate_specs(&openapi_path, &manifest)?
+        } else {
+            export_all_services(&app_root, &manifest, &openapi_path)?
+        };
 
         log_ok!(
             stdout,
@@ -538,12 +625,13 @@ impl CliCommand for CreateCommand {
 
             for var_name in &never_app_vars {
                 for (project_name, env_vars) in &project_env_vars {
-                    let in_source = env_vars.iter().any(|v| v.var_name == *var_name);
+                    // Sightings are already folded to one entry per name.
+                    let source_usage = env_vars.iter().find(|v| v.var_name == *var_name);
                     let in_env_local = env_local_vars
                         .get(project_name)
                         .is_some_and(|vars| vars.contains(var_name));
 
-                    if !in_source && !in_env_local {
+                    if source_usage.is_none() && !in_env_local {
                         continue;
                     }
 
@@ -569,6 +657,9 @@ impl CliCommand for CreateCommand {
                         scope_id,
                         used_by: vec![project_name.clone()],
                         value: None,
+                        // Present only when the code scan saw it; a variable
+                        // known solely from .env.local has no declared type.
+                        optional: source_usage.and_then(|v| v.optional),
                     });
                 }
             }
@@ -638,6 +729,8 @@ impl CliCommand for CreateCommand {
                     scope_id: None,
                     used_by: vec!["platform".to_string()],
                     value: Some(default_value.to_string()),
+                    // A platform default is not a code declaration.
+                    optional: None,
                 });
                 existing_vars.insert(app_key);
             }
@@ -733,6 +826,8 @@ impl CliCommand for CreateCommand {
                             scope_id: None,
                             used_by: vec![service_name.clone()],
                             value: Some(effective_value.clone()),
+                            // Read out of docker-compose, not declared in code.
+                            optional: None,
                         });
                         existing_vars.insert(app_key);
                     }
@@ -752,6 +847,7 @@ impl CliCommand for CreateCommand {
                                 scope_id: scope_id.clone(),
                                 used_by: vec![service_name.clone()],
                                 value: Some(effective_value.clone()),
+                                optional: None,
                             });
                             existing_vars.insert(comp_key);
                         }
@@ -770,6 +866,7 @@ impl CliCommand for CreateCommand {
                     scope_id: scope_id.clone(),
                     used_by: vec![service_name.clone()],
                     value: Some(effective_value.clone()),
+                    optional: None,
                 });
 
                 existing_vars.insert((key, scope_id.clone()));
@@ -922,6 +1019,13 @@ impl CliCommand for CreateCommand {
                     EnvScope::Worker => EnvironmentVariableScope::Worker,
                 },
                 scope_id: v.scope_id.clone(),
+                optional: v.optional,
+                used_by: {
+                    let mut used_by = v.used_by.clone();
+                    used_by.sort();
+                    used_by.dedup();
+                    used_by
+                },
                 component: env_var_components.get(&v.name).map(
                     |(component_type, property, target, path, passthrough)| {
                         EnvironmentVariableComponent {
@@ -2287,6 +2391,9 @@ fn deduplicate_cross_scope(scoped_env_vars: &mut Vec<ScopedEnvVar>) {
                         scope_id: None,
                         used_by: scoped_env_vars[first_idx].used_by.clone(),
                         value: Some("".to_string()),
+                        // Promotion re-scopes an existing variable, so its
+                        // declared optionality travels with it.
+                        optional: scoped_env_vars[first_idx].optional,
                     };
                     scoped_env_vars.push(app_entry);
 
@@ -2426,6 +2533,8 @@ fn is_platform_managed_var(var_name: &str) -> bool {
         "OTEL_METRICS_EXPORTER",
         "OTEL_LOGS_EXPORTER",
         "OTEL_LEVEL",
+        "MIMIR_URL",
+        // Retained for back-compat with projects scaffolded pre-Mimir.
         "PROMETHEUS_URL",
         "LOKI_URL",
         "TEMPO_URL",
@@ -2490,9 +2599,11 @@ mod tests {
                         queue: None,
                         object_store: None,
                         redis_partition: None,
+                        capabilities: None,
                     }),
                     routers: None,
                     metadata: None,
+                    serves: None,
                 })
                 .collect(),
             project_peer_topology: HashMap::new(),
@@ -2720,6 +2831,7 @@ mod tests {
                     scope_id: scope_id.clone(),
                     used_by: vec![service_name.clone()],
                     value: None,
+                    optional: None,
                 });
 
                 existing_vars.insert((key, scope_id.clone()));
@@ -2772,6 +2884,7 @@ mod tests {
             scope_id: Some("my-service".to_string()),
             used_by: vec!["my-service".to_string()],
             value: None,
+            optional: None,
         }];
 
         let mut existing_vars: HashSet<(String, Option<String>)> = scoped_env_vars
@@ -2804,6 +2917,7 @@ mod tests {
                     scope_id: scope_id.clone(),
                     used_by: vec![service_name.clone()],
                     value: None,
+                    optional: None,
                 });
 
                 existing_vars.insert((key, scope_id.clone()));
@@ -2828,6 +2942,7 @@ mod tests {
                 scope_id: Some("billing".to_string()),
                 used_by: vec!["billing".to_string()],
                 value: Some("my-bucket".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "S3_BUCKET".to_string(),
@@ -2835,6 +2950,7 @@ mod tests {
                 scope_id: Some("platform-management".to_string()),
                 used_by: vec!["platform-management".to_string()],
                 value: Some("my-bucket".to_string()),
+                optional: None,
             },
         ];
 
@@ -2863,6 +2979,7 @@ mod tests {
                 scope_id: Some("billing".to_string()),
                 used_by: vec!["billing".to_string()],
                 value: Some("billing_db".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "DB_NAME".to_string(),
@@ -2870,6 +2987,7 @@ mod tests {
                 scope_id: Some("iam".to_string()),
                 used_by: vec!["iam".to_string()],
                 value: Some("iam_db".to_string()),
+                optional: None,
             },
         ];
 
@@ -2895,6 +3013,7 @@ mod tests {
                 scope_id: None,
                 used_by: vec![],
                 value: None,
+                optional: None,
             },
             ScopedEnvVar {
                 name: "REDIS_URL".to_string(),
@@ -2902,6 +3021,7 @@ mod tests {
                 scope_id: Some("billing".to_string()),
                 used_by: vec!["billing".to_string()],
                 value: Some("redis://localhost:6379".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "REDIS_URL".to_string(),
@@ -2909,6 +3029,7 @@ mod tests {
                 scope_id: Some("iam".to_string()),
                 used_by: vec!["iam".to_string()],
                 value: Some("redis://localhost:6379".to_string()),
+                optional: None,
             },
         ];
 
@@ -2937,6 +3058,7 @@ mod tests {
                 scope_id: Some("billing".to_string()),
                 used_by: vec!["billing".to_string()],
                 value: Some("us-east-1".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "S3_REGION".to_string(),
@@ -2944,6 +3066,7 @@ mod tests {
                 scope_id: Some("iam".to_string()),
                 used_by: vec!["iam".to_string()],
                 value: Some("us-east-1".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "S3_REGION".to_string(),
@@ -2951,6 +3074,7 @@ mod tests {
                 scope_id: Some("special".to_string()),
                 used_by: vec!["special".to_string()],
                 value: Some("eu-west-1".to_string()),
+                optional: None,
             },
         ];
 
@@ -2983,6 +3107,7 @@ mod tests {
             scope_id: Some("billing".to_string()),
             used_by: vec!["billing".to_string()],
             value: Some("some-value".to_string()),
+            optional: None,
         }];
 
         deduplicate_cross_scope(&mut vars);
@@ -3002,6 +3127,7 @@ mod tests {
                 scope_id: Some("billing".to_string()),
                 used_by: vec!["billing".to_string()],
                 value: Some("".to_string()), // blank in docker-compose
+                optional: None,
             },
             ScopedEnvVar {
                 name: "API_KEY".to_string(),
@@ -3009,6 +3135,7 @@ mod tests {
                 scope_id: Some("iam".to_string()),
                 used_by: vec!["iam".to_string()],
                 value: Some("abc123".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "API_KEY".to_string(),
@@ -3016,6 +3143,7 @@ mod tests {
                 scope_id: Some("platform-management".to_string()),
                 used_by: vec!["platform-management".to_string()],
                 value: Some("abc123".to_string()),
+                optional: None,
             },
         ];
 
@@ -3043,6 +3171,7 @@ mod tests {
                 scope_id: Some("svc-a".to_string()),
                 used_by: vec!["svc-a".to_string()],
                 value: Some("".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "SETTING".to_string(),
@@ -3050,6 +3179,7 @@ mod tests {
                 scope_id: Some("svc-b".to_string()),
                 used_by: vec!["svc-b".to_string()],
                 value: Some("abx".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "SETTING".to_string(),
@@ -3057,6 +3187,7 @@ mod tests {
                 scope_id: Some("svc-c".to_string()),
                 used_by: vec!["svc-c".to_string()],
                 value: Some("abx".to_string()),
+                optional: None,
             },
             ScopedEnvVar {
                 name: "SETTING".to_string(),
@@ -3064,6 +3195,7 @@ mod tests {
                 scope_id: Some("svc-d".to_string()),
                 used_by: vec!["svc-d".to_string()],
                 value: Some("abc".to_string()),
+                optional: None,
             },
         ];
 

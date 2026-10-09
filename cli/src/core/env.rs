@@ -9,6 +9,8 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::core::rendered_template::RenderedTemplatesCache;
+
 #[derive(Debug, Serialize)]
 pub(crate) struct Env {
     #[serde(rename = "DB_NAME", skip_serializing_if = "Option::is_none")]
@@ -74,6 +76,12 @@ pub(crate) struct Env {
     pub(crate) cors_origins: Option<String>,
     #[serde(rename = "STRIPE_API_KEY", skip_serializing_if = "Option::is_none")]
     pub(crate) stripe_api_key: Option<String>,
+    #[serde(rename = "TWILIO_ACCOUNT_SID", skip_serializing_if = "Option::is_none")]
+    pub(crate) twilio_account_sid: Option<String>,
+    #[serde(rename = "TWILIO_AUTH_TOKEN", skip_serializing_if = "Option::is_none")]
+    pub(crate) twilio_auth_token: Option<String>,
+    #[serde(rename = "TWILIO_FROM_NUMBER", skip_serializing_if = "Option::is_none")]
+    pub(crate) twilio_from_number: Option<String>,
     #[serde(rename = "HMAC_SECRET_KEY", skip_serializing_if = "Option::is_none")]
     pub(crate) hmac_secret_key: Option<String>,
     #[serde(
@@ -159,6 +167,9 @@ impl<'de> Deserialize<'de> for Env {
                     better_auth_base_path: None,
                     cors_origins: None,
                     stripe_api_key: None,
+                    twilio_account_sid: None,
+                    twilio_auth_token: None,
+                    twilio_from_number: None,
                     hmac_secret_key: None,
                     jwks_public_key_url: None,
                     additional_env_vars: HashMap::new(),
@@ -206,6 +217,27 @@ impl<'de> Deserialize<'de> for Env {
 
         deserializer.deserialize_map(EnvVisitor)
     }
+}
+
+/// Reads a project's `.env.local` out of the rendered templates cache,
+/// treating an absent file as an empty environment rather than an error.
+///
+/// `*.env.local` is gitignored in generated applications, so a fresh
+/// checkout legitimately has none. Unwrapping the `Option` here made every
+/// `forklaunch change` subcommand abort with an opaque
+/// `called Option::unwrap() on a None value` panic. The callers all insert
+/// the result back into the cache, so the file is created on the way out.
+pub(crate) fn read_env_local_or_default(
+    rendered_templates_cache: &RenderedTemplatesCache,
+    env_local_path: &Path,
+) -> Result<Env> {
+    let content = rendered_templates_cache
+        .get(env_local_path)?
+        .map(|template| template.content)
+        .unwrap_or_default();
+
+    serde_envfile::from_str::<Env>(&content)
+        .with_context(|| format!("Failed to parse {}", env_local_path.display()))
 }
 
 #[derive(Debug, Clone)]
@@ -302,6 +334,12 @@ pub(crate) fn parse_env_file_items(path: &Path) -> Result<Vec<EnvFileItem>> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read env file: {}", path.display()))?;
 
+    Ok(parse_env_items_from_str(&content))
+}
+
+/// String-based variant of `parse_env_file_items` for content fetched over
+/// the wire (e.g. `config set` pulling the current scope before merging).
+pub(crate) fn parse_env_items_from_str(content: &str) -> Vec<EnvFileItem> {
     let lines: Vec<&str> = content.lines().collect();
     let mut items: Vec<EnvFileItem> = Vec::new();
     let mut i = 0;
@@ -332,7 +370,7 @@ pub(crate) fn parse_env_file_items(path: &Path) -> Result<Vec<EnvFileItem>> {
         i += 1;
     }
 
-    Ok(items)
+    items
 }
 
 pub(crate) fn load_env_file(path: &Path) -> Result<HashMap<String, String>> {
@@ -598,6 +636,56 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    // `*.env.local` is gitignored in generated applications, so a fresh
+    // checkout has none. Every `forklaunch change` subcommand used to unwrap
+    // the missing file and panic; a missing file must read as an empty Env.
+    #[test]
+    fn test_read_env_local_or_default_missing_file_is_empty_not_a_panic() {
+        let temp_dir = TempDir::new().unwrap();
+        let env_local_path = temp_dir.path().join(".env.local");
+        let cache = RenderedTemplatesCache::new();
+
+        let env = read_env_local_or_default(&cache, &env_local_path).unwrap();
+
+        assert!(env.queue_name.is_none());
+        assert!(env.db_name.is_none());
+        assert!(env.additional_env_vars.is_empty());
+        // Round-trips to an empty file that the caller can then populate.
+        assert_eq!(serde_envfile::to_string(&env).unwrap(), "");
+    }
+
+    #[test]
+    fn test_read_env_local_or_default_reads_existing_file_and_keeps_unknown_vars() {
+        let temp_dir = TempDir::new().unwrap();
+        let env_local_path = temp_dir.path().join(".env.local");
+        fs::write(
+            &env_local_path,
+            "DB_NAME=app-dev\nAPP_BASE_DOMAIN=example.test\n",
+        )
+        .unwrap();
+        let cache = RenderedTemplatesCache::new();
+
+        let env = read_env_local_or_default(&cache, &env_local_path).unwrap();
+
+        // NOTE: serde_envfile lower-cases keys on read and upper-cases them on
+        // write, so nothing lands in the named fields and everything round
+        // trips through `additional_env_vars`. That is pre-existing behaviour;
+        // what matters here is that an existing file is read and every
+        // variable in it survives the round trip.
+        assert_eq!(
+            env.additional_env_vars.get("db_name"),
+            Some(&"app-dev".to_string())
+        );
+        assert_eq!(
+            env.additional_env_vars.get("app_base_domain"),
+            Some(&"example.test".to_string())
+        );
+
+        let round_tripped = serde_envfile::to_string(&env).unwrap();
+        assert!(round_tripped.contains("DB_NAME"));
+        assert!(round_tripped.contains("APP_BASE_DOMAIN"));
+    }
 
     #[test]
     fn test_load_env_file() {

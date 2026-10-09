@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+FORKLAUNCH_CLI="${FORKLAUNCH_CLI:-${FORKLAUNCH_TEST_CLI:-}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}"
 run_cli() {
-    if [ -n "${FORKLAUNCH_TEST_CLI:-}" ]; then
-        "$FORKLAUNCH_TEST_CLI" "$@"
+    if [ -n "${FORKLAUNCH_CLI:-}" ]; then
+        "$FORKLAUNCH_CLI" "$@"
     else
         cargo run --manifest-path "$REPO_ROOT/cli/Cargo.toml" --release -- "$@"
     fi

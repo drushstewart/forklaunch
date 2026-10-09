@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import type {
+  Server,
   AddressInfo,
+  SetKeepAliveOptions,
   Socket,
   SocketConnectOpts,
   SocketReadyState
@@ -175,6 +177,12 @@ export class BunSocketShim extends Duplex implements Socket {
   }
 
   destroyed: boolean = this._destroyed;
+  /**
+   * `net.Socket.server` (@types/node 26.6): the server that accepted the
+   * socket. Bun hands this shim raw connections with no `net.Server`, which
+   * is the documented value for sockets not accepted by a server.
+   */
+  readonly server: Server | null = null;
 
   destroy(error?: Error): this {
     if (this._destroyed) return this;
@@ -321,7 +329,23 @@ export class BunSocketShim extends Duplex implements Socket {
     return this;
   }
 
-  setKeepAlive(enable: boolean = false, initialDelay: number = 0): this {
+  // @types/node 26.4 added a `setKeepAlive(options: SetKeepAliveOptions)`
+  // overload alongside the positional form, so the shim has to satisfy both or
+  // it stops being assignable to Socket — which also cascades into `connect`
+  // returning something that no longer structurally matches.
+  setKeepAlive(options: SetKeepAliveOptions): this;
+  setKeepAlive(
+    enable?: boolean,
+    initialDelay?: number,
+    interval?: number,
+    count?: number
+  ): this;
+  setKeepAlive(
+    _enableOrOptions?: boolean | SetKeepAliveOptions,
+    _initialDelay?: number,
+    _interval?: number,
+    _count?: number
+  ): this {
     return this;
   }
 

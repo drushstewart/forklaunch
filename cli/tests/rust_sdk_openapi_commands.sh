@@ -25,8 +25,8 @@ compile_typescript_sdk() {
 }
 
 run_cli() {
-    if [ -n "${FORKLAUNCH_TEST_CLI:-}" ]; then
-        "$FORKLAUNCH_TEST_CLI" "$@"
+    if [ -n "${FORKLAUNCH_CLI:-}" ]; then
+        "$FORKLAUNCH_CLI" "$@"
         return
     fi
     RUST_BACKTRACE=1 cargo run --manifest-path "$CLI_MANIFEST" --release -- "$@"

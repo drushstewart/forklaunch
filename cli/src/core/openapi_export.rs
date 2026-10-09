@@ -210,7 +210,7 @@ pub(crate) fn export_service_openapi(
         .spawn()
         .with_context(|| format!("Failed to spawn {} command", resolved_bin))?;
 
-    let timeout = Duration::from_secs(30);
+    let timeout = Duration::from_secs(60);
     let start = Instant::now();
     loop {
         match child.try_wait() {
@@ -263,7 +263,7 @@ pub(crate) fn export_all_services(
     manifest: &ApplicationManifestData,
     output_dir: &Path,
 ) -> Result<Vec<String>> {
-    let mut exported_services = Vec::new();
+    let mut exported_services = export_all_rust_services(app_root, output_dir)?;
 
     let runtime = manifest.runtime.as_str();
     let modules_path = app_root.join(&manifest.modules_path);
@@ -274,12 +274,15 @@ pub(crate) fn export_all_services(
     // Include both services and workers (workers have a server component)
     // Exclude observability services as they are not user application components
     const OBSERVABILITY_SERVICES: &[&str] = &[
-        "prometheus",
+        "mimir",
         "loki",
         "tempo",
         "grafana",
         "otel",
         "otel-collector",
+        "memcached",
+        "minio",
+        "minio-init",
     ];
 
     let services: Vec<_> = manifest
@@ -288,6 +291,7 @@ pub(crate) fn export_all_services(
         .filter(|p| {
             (p.r#type == ProjectType::Service || p.r#type == ProjectType::Worker)
                 && !OBSERVABILITY_SERVICES.contains(&p.name.as_str())
+                && p.metadata.as_ref().and_then(|m| m.language.as_deref()) != Some("rust")
         })
         .collect();
 

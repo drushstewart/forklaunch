@@ -9,6 +9,20 @@ Build a Rust-native ForkLaunch stack with two new workspaces:
 
 The Rust stack should interoperate with the TypeScript stack through shared contract artifacts. A Rust service should be able to generate TypeScript SDKs for frontend consumers and Rust SDKs for service-to-service consumers.
 
+## Active Task Queue (2026-10-09)
+
+- [x] Merge `origin/main` (`fae3d3e06`) into `rohin/rust-framework` and resolve CLI API/manifest conflicts; combined CLI compiles.
+- [x] Replace generated services' TCP stub with Axum and graceful shutdown.
+- [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
+- [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
+- [ ] Revalidate the combined CLI, framework, and blueprint workspaces after the merge.
+- [ ] Pass all Rust init/change/sync/delete/OpenAPI/SDK E2E scripts and the relocated-service HTTP/TypeScript SDK check.
+- [ ] Validate Rust and mixed-language release export after unifying language dispatch; preserve prebuilt-release isolation from `main`.
+- [ ] Verify a generated application container build and runtime; validate ECS defaults separately.
+- [ ] Close remaining mixed-app orchestration, AsyncAPI export, crate publication, and conformance tasks in phases 13–15.
+
+Production storage, auth/provider, and queue implementations remain explicit tasks in phase 12; passing generation checks does not complete those integrations.
+
 ## Backend Generation Completion Gate
 
 Generation is tracked separately from production framework and blueprint parity below.

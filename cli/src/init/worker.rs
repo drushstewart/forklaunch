@@ -51,7 +51,7 @@ use crate::{
                 AJV_VERSION, APP_BILLING_VERSION, APP_CORE_VERSION, APP_IAM_VERSION,
                 APP_MONITORING_VERSION, BETTER_SQLITE3_VERSION, BIOME_VERSION, BULLMQ_VERSION,
                 COMMON_VERSION, CORE_VERSION, DOTENV_VERSION, ESLINT_VERSION, EXPRESS_VERSION,
-                HYPER_EXPRESS_VERSION, INFRASTRUCTURE_REDIS_VERSION, INTERNAL_VERSION,
+                HYPER_EXPRESS_VERSION, UWEBSOCKETS_VERSION, INFRASTRUCTURE_REDIS_VERSION, INTERNAL_VERSION,
                 IOREDIS_VERSION, MIKRO_ORM_CLI_VERSION, MIKRO_ORM_CORE_VERSION,
                 MIKRO_ORM_DATABASE_VERSION, MIKRO_ORM_MIGRATIONS_VERSION, MIKRO_ORM_SEEDER_VERSION,
                 OXLINT_VERSION, PINO_VERSION, PRETTIER_VERSION, PROJECT_BUILD_SCRIPT,
@@ -113,7 +113,7 @@ fn generate_basic_worker(
         module_id: None,
     };
 
-    let ignore_files = if !manifest_data.is_database_enabled {
+    let mut ignore_files = if !manifest_data.is_database_enabled {
         vec![
             "mikro-orm.config.ts".to_string(),
             "seeder.ts".to_string(),
@@ -124,6 +124,15 @@ fn generate_basic_worker(
     } else {
         vec!["consts.ts".to_string()]
     };
+    // compliance endpoints authenticate via IAM-issued JWTs
+    // (JWKS_PUBLIC_KEY_URL is only registered when IAM is configured)
+    if !manifest_data.is_iam_configured {
+        for file in ["compliance.controller.ts", "compliance.routes.ts"] {
+            if !ignore_files.iter().any(|f| f == file) {
+                ignore_files.push(file.to_string());
+            }
+        }
+    }
     let mut ignore_dirs = if !manifest_data.is_database_enabled {
         let mut dirs = vec!["seeder".to_string(), "seed.data.ts".to_string()];
         if !manifest_data.with_mappers {
@@ -255,6 +264,7 @@ fn add_worker_to_artifacts(
             } else {
                 None
             },
+            capabilities: None,
         }),
         Some(vec![manifest_data.worker_name.clone()]),
         Some(ProjectMetadata {
@@ -463,11 +473,25 @@ pub(crate) fn generate_worker_package_json(
                 } else {
                     None
                 },
+                uwebsockets_js: if manifest_data.is_hyper_express {
+                    Some(UWEBSOCKETS_VERSION.to_string())
+                } else {
+                    None
+                },
                 forklaunch_implementation_billing_base: None,
                 forklaunch_implementation_billing_stripe: None,
                 forklaunch_interfaces_billing: None,
+                forklaunch_implementation_ecommerce_base: None,
+                forklaunch_implementation_ecommerce_stripe: None,
+                forklaunch_implementation_ecommerce_paypal: None,
+                forklaunch_interfaces_ecommerce: None,
                 forklaunch_implementation_iam_base: None,
                 forklaunch_interfaces_iam: None,
+                forklaunch_implementation_messaging_base: None,
+                forklaunch_implementation_messaging_twilio: None,
+                forklaunch_interfaces_messaging: None,
+                forklaunch_implementation_cac_base: None,
+                forklaunch_interfaces_cac: None,
                 forklaunch_implementation_worker_bullmq: if manifest_data
                     .worker_type_lowercase
                     .parse::<WorkerType>()?
@@ -830,6 +854,7 @@ impl CliCommand for WorkerCommand {
             // Worker-specific fields
             worker_name: worker_name.clone(),
             camel_case_name: worker_name.to_case(Case::Camel),
+            snake_case_name: worker_name.to_case(Case::Snake),
             pascal_case_name: worker_name.to_case(Case::Pascal),
             kebab_case_name: worker_name.to_case(Case::Kebab),
             title_case_name: worker_name.to_case(Case::Title),
@@ -947,7 +972,11 @@ impl CliCommand for WorkerCommand {
             // These will be properly generated when initialized
             generated_better_auth_secret: String::new(),
             generated_hmac_secret: String::new(),
-            generated_encryption_key: String::new(),
+            // Reuse the app's field-encryption key (services and workers share
+            // encrypted cache records); mint one only for key-less apps.
+            generated_encryption_key:
+                crate::core::env_defaults::find_existing_encryption_key(&base_path)
+                    .unwrap_or_else(|| crate::core::manifest::service::generate_random_secret(32)),
             otel_token: "OtelCollector".to_string(),
         };
 

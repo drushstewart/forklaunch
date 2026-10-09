@@ -191,6 +191,8 @@ pub(crate) fn get_client_sdk_additional_deps(
     app_name: &String,
     is_billing_enabled: bool,
     is_iam_enabled: bool,
+    is_messaging_enabled: bool,
+    is_cac_enabled: bool,
 ) -> HashMap<String, String> {
     let mut additional_deps = HashMap::new();
 
@@ -199,6 +201,12 @@ pub(crate) fn get_client_sdk_additional_deps(
     }
     if is_iam_enabled {
         additional_deps.insert(format!("@{app_name}/iam"), "workspace:*".to_string());
+    }
+    if is_messaging_enabled {
+        additional_deps.insert(format!("@{app_name}/messaging"), "workspace:*".to_string());
+    }
+    if is_cac_enabled {
+        additional_deps.insert(format!("@{app_name}/cac"), "workspace:*".to_string());
     }
     additional_deps
 }
