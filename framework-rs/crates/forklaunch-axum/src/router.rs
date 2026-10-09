@@ -1,7 +1,7 @@
 //! Real `axum`-backed router (`ForkLaunchRouter`).
 //!
 //! Wraps [`axum::Router`] while keeping a [`ContractRegistry`] in sync so that
-//! contract-driven request validation, OpenAPI generation, and documentation
+//! contract-driven request validation, `OpenAPI` generation, and documentation
 //! endpoints all flow from the same source of truth as the rest of the
 //! framework. Enabled by the default `adapter` feature.
 
@@ -29,7 +29,7 @@ use forklaunch_contract::{ContractRegistry, HttpMethod, RouteContract, Validatio
 use forklaunch_core::ServiceInfo;
 use forklaunch_http::{
     Body as FrameworkBody, ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse,
-    RequestContext, match_path, validate_framework_request, validation_error_response,
+    LocalRouter, RequestContext, match_path, validate_framework_request, validation_error_response,
 };
 use forklaunch_openapi::{OpenApiOptions, OpenApiServer, generate_openapi_json_with_options};
 use tower_http::{
@@ -45,9 +45,9 @@ pub const DEFAULT_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 /// Configuration for cross-cutting router behavior (docs, limits, CORS).
 #[derive(Clone)]
 pub struct RouterConfig {
-    /// Whether the generated OpenAPI document is served.
+    /// Whether the generated `OpenAPI` document is served.
     pub openapi_enabled: bool,
-    /// Path the OpenAPI JSON document is served from.
+    /// Path the `OpenAPI` JSON document is served from.
     pub openapi_path: String,
     /// Whether the Scalar documentation UI is served.
     pub docs_enabled: bool,
@@ -61,9 +61,9 @@ pub struct RouterConfig {
     pub swagger_path: String,
     /// Maximum accepted request body size in bytes.
     pub body_limit: usize,
-    /// Optional OpenAPI `info.description`.
+    /// Optional `OpenAPI` `info.description`.
     pub description: Option<String>,
-    /// OpenAPI servers advertised in the generated document.
+    /// `OpenAPI` servers advertised in the generated document.
     pub servers: Vec<OpenApiServer>,
     /// CORS policy; defaults to a permissive policy when unset.
     pub cors: Option<CorsLayer>,
@@ -140,6 +140,51 @@ impl ForkLaunchRouter {
         }
     }
 
+    /// Serves synchronous framework handlers through Axum's HTTP transport.
+    /// Contract registration, validation, docs, and wire handling share one registry.
+    #[must_use]
+    pub fn from_local_router(
+        service: ServiceInfo,
+        contracts: impl IntoIterator<Item = RouteContract>,
+        handlers: LocalRouter,
+    ) -> Self {
+        let handlers = Arc::new(handlers);
+        let mut router = Self::new(service);
+        for contract in contracts {
+            let handlers = Arc::clone(&handlers);
+            let handler_contract = contract.clone();
+            let handler = move |request: Request| {
+                let handlers = Arc::clone(&handlers);
+                let contract = handler_contract.clone();
+                async move {
+                    let (parts, body) = request.into_parts();
+                    let Ok(bytes) = to_bytes(body, usize::MAX).await else {
+                        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+                    };
+                    let request = build_framework_request(&contract, &parts, &bytes);
+                    match handlers.execute(request) {
+                        Ok(response) => framework_response_to_axum(response),
+                        Err(error) => framework_response_to_axum(
+                            ErrorResponse::new(ErrorKind::Internal, error.to_string())
+                                .to_response(),
+                        ),
+                    }
+                }
+            };
+            router = match contract.method {
+                HttpMethod::Get => router.get(contract, handler),
+                HttpMethod::Post => router.post(contract, handler),
+                HttpMethod::Put => router.put(contract, handler),
+                HttpMethod::Patch => router.patch(contract, handler),
+                HttpMethod::Delete => router.delete(contract, handler),
+                HttpMethod::Head => router.head(contract, handler),
+                HttpMethod::Options => router.options(contract, handler),
+                HttpMethod::Trace => router.trace(contract, handler),
+            };
+        }
+        router
+    }
+
     /// Creates a router without any associated service metadata.
     #[must_use]
     pub fn anonymous() -> Self {
@@ -165,14 +210,14 @@ impl ForkLaunchRouter {
         self
     }
 
-    /// Adds an OpenAPI server entry advertised in the generated document.
+    /// Adds an `OpenAPI` server entry advertised in the generated document.
     #[must_use]
     pub fn with_server(mut self, server: OpenApiServer) -> Self {
         self.config.servers.push(server);
         self
     }
 
-    /// Sets the OpenAPI `info.description`.
+    /// Sets the `OpenAPI` `info.description`.
     #[must_use]
     pub fn with_description(mut self, description: impl Into<String>) -> Self {
         self.config.description = Some(description.into());
@@ -221,7 +266,6 @@ impl ForkLaunchRouter {
     }
 
     /// Builds the final [`axum::Router`] with validation, docs, and middleware.
-    #[must_use]
     pub fn into_router(self) -> Router {
         let Self {
             registry,
@@ -353,14 +397,10 @@ async fn validate_contract(
     }
 
     let (parts, body) = request.into_parts();
-    let bytes = match to_bytes(body, state.body_limit).await {
-        Ok(bytes) => bytes,
-        Err(_) => {
-            return framework_response_to_axum(
-                ErrorResponse::new(ErrorKind::Validation, "request body exceeds limit")
-                    .to_response(),
-            );
-        }
+    let Ok(bytes) = to_bytes(body, state.body_limit).await else {
+        return framework_response_to_axum(
+            ErrorResponse::new(ErrorKind::Validation, "request body exceeds limit").to_response(),
+        );
     };
 
     let framework_request = build_framework_request(&contract, &parts, &bytes);
@@ -371,7 +411,9 @@ async fn validate_contract(
     }
 
     let correlation_id = framework_request.context.correlation_id.clone();
-    let response = next.run(Request::from_parts(parts, AxumBody::from(bytes))).await;
+    let response = next
+        .run(Request::from_parts(parts, AxumBody::from(bytes)))
+        .await;
     validate_response_status(&contract, response, &correlation_id)
 }
 
@@ -444,13 +486,8 @@ fn build_framework_request(
 }
 
 fn parse_query(query: &str) -> Vec<(String, String)> {
-    query
-        .split('&')
-        .filter(|pair| !pair.is_empty())
-        .map(|pair| match pair.split_once('=') {
-            Some((key, value)) => (key.to_owned(), value.to_owned()),
-            None => (pair.to_owned(), String::new()),
-        })
+    form_urlencoded::parse(query.as_bytes())
+        .into_owned()
         .collect()
 }
 
@@ -521,6 +558,46 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+
+    #[tokio::test]
+    async fn local_handlers_preserve_wire_input_and_binary_output() {
+        let contract = RouteContract::post("Echo", "Echo input", "/echo/:id")
+            .with_param(FieldContract::required("id", "String"))
+            .with_query(FieldContract::required("label", "String"))
+            .with_response(201, None);
+        let mut handlers = LocalRouter::new();
+        handlers.register(contract.clone(), |request: FrameworkRequest| {
+            assert_eq!(request.params.get("id").unwrap(), "42");
+            assert_eq!(request.query.get("label").unwrap(), "hello world&more");
+            assert_eq!(request.headers.get("x-custom").unwrap(), "yes");
+            assert_eq!(request.context.correlation_id, "test-correlation");
+            assert_eq!(request.body, FrameworkBody::Binary(vec![0, 255, 1]));
+            Ok(FrameworkResponse::new(201).with_body(FrameworkBody::Binary(vec![255, 0, 128])))
+        });
+        let app = ForkLaunchRouter::from_local_router(
+            ServiceInfo::new("echo", "0.1.0"),
+            [contract],
+            handlers,
+        )
+        .into_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/echo/42?label=hello+world%26more")
+                    .header("x-custom", "yes")
+                    .header("x-correlation-id", "test-correlation")
+                    .body(AxumBody::from(vec![0, 255, 1]))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(
+            to_bytes(response.into_body(), 100).await.unwrap().as_ref(),
+            &[255, 0, 128]
+        );
+    }
 
     fn ok_handler() -> impl Handler<((),), ()> {
         || async { "ok" }

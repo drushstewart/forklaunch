@@ -171,10 +171,17 @@ impl CliCommand for ModeCommand {
     fn command(&self) -> Command {
         command("mode", "Manage SDK modes")
             .arg(
+                Arg::new("base_path")
+                    .short('p')
+                    .long("path")
+                    .help("The application path"),
+            )
+            .arg(
                 Arg::new("type")
                     .short('t')
                     .long("type")
                     .value_parser(SdkModeType::VARIANTS)
+                    .required(true)
                     .help("The type of the mode"),
             )
             .arg(

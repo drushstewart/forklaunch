@@ -168,7 +168,7 @@ pub fn invalid_credentials() -> BlueprintError {
     BlueprintError::new("iam_invalid_credentials", "invalid credentials")
 }
 
-/// IAM HTTP route contracts, the source of truth for OpenAPI and SDK generation.
+/// IAM HTTP route contracts, the source of truth for `OpenAPI` and SDK generation.
 pub mod contracts {
     use forklaunch_blueprint_core::contract::{
         AccessLevel, AuthConfig, BodyContract, ContractRegistry, FieldContract, JwtAuthConfig,
@@ -181,10 +181,14 @@ pub mod contracts {
         let mut registry = ContractRegistry::for_service(ServiceContract::new("iam", "0.1.0"));
 
         registry.register(
-            RouteContract::post("Authenticate", "Exchange credentials for a session", "/auth/login")
-                .with_request_body(BodyContract::json("Credentials"))
-                .with_response(200, Some(BodyContract::json("Session")))
-                .with_response(401, None),
+            RouteContract::post(
+                "Authenticate",
+                "Exchange credentials for a session",
+                "/auth/login",
+            )
+            .with_request_body(BodyContract::json("Credentials"))
+            .with_response(200, Some(BodyContract::json("Session")))
+            .with_response(401, None),
         );
 
         registry.register(

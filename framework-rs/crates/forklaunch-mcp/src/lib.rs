@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Model Context Protocol (MCP) tool generation from ForkLaunch contracts.
+//! Model Context Protocol (MCP) tool generation from `ForkLaunch` contracts.
 //!
 //! Eligible HTTP routes (those with `options.mcp == true`) are projected into
 //! MCP tool descriptors whose JSON-Schema `inputSchema`/`outputSchema` are
@@ -96,7 +96,10 @@ fn input_schema(route: &RouteContract) -> String {
     let mut required = Vec::new();
 
     if !route.request.params.is_empty() {
-        properties.push(JsonField::new("params", fields_schema(&route.request.params)));
+        properties.push(JsonField::new(
+            "params",
+            fields_schema(&route.request.params),
+        ));
         // path params are always required
         required.push(json_string("params"));
     }
@@ -236,7 +239,9 @@ impl McpToolRegistry {
 
 #[cfg(test)]
 mod tests {
-    use forklaunch_contract::{BodyContract, FieldContract, HttpMethod, RouteContract, RouteOptions};
+    use forklaunch_contract::{
+        BodyContract, FieldContract, HttpMethod, RouteContract, RouteOptions,
+    };
 
     use super::*;
 
@@ -257,7 +262,11 @@ mod tests {
         // input schema describes the required path param
         assert!(tools[0].input_schema_json.contains("\"params\""));
         assert!(tools[0].input_schema_json.contains("\"id\""));
-        assert!(tools[0].input_schema_json.contains("\"required\":[\"params\"]"));
+        assert!(
+            tools[0]
+                .input_schema_json
+                .contains("\"required\":[\"params\"]")
+        );
         // output schema derived from the 200 response body
         assert!(
             tools[0]
@@ -271,12 +280,11 @@ mod tests {
     fn respects_per_route_opt_out() {
         let mut registry = ContractRegistry::new();
         registry.register(
-            RouteContract::new("Hidden", "Hidden route", HttpMethod::Get, "/internal").with_options(
-                RouteOptions {
+            RouteContract::new("Hidden", "Hidden route", HttpMethod::Get, "/internal")
+                .with_options(RouteOptions {
                     mcp: false,
                     ..RouteOptions::default()
-                },
-            ),
+                }),
         );
         registry.register(RouteContract::new(
             "Visible",

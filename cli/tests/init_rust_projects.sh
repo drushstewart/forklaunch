@@ -3,7 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TSC_BIN="$REPO_ROOT/framework/node_modules/.bin/tsc"
+TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}"
+
+run_cli() {
+    if [ -n "${FORKLAUNCH_TEST_CLI:-}" ]; then
+        "$FORKLAUNCH_TEST_CLI" "$@"
+    else
+        RUST_BACKTRACE=1 cargo run --manifest-path "$REPO_ROOT/cli/Cargo.toml" --release -- "$@"
+    fi
+}
 
 compile_typescript_sdk() {
     local sdk_entry="$1"
@@ -44,13 +52,15 @@ fi
 mkdir -p output/init-rust-projects
 cd output/init-rust-projects
 
-RUST_BACKTRACE=1 cargo run --release init application rustproject \
+run_cli init application rustproject \
     --path ./rustproject \
     --language rust \
     -D "Rust app" \
     -A "ForkLaunch" \
     -L MIT
 
+test -f rustproject/.forklaunch/framework-rs/Cargo.toml
+test -f rustproject/.forklaunch/framework-rs/crates/forklaunch-axum/src/router.rs
 test -f rustproject/Cargo.toml
 test -f rustproject/Dockerfile
 test -f rustproject/docker-compose.yaml
@@ -72,31 +82,31 @@ grep -q 'rust:build' rustproject/package.json
 grep -q 'rust:test' rustproject/package.json
 grep -q 'rustproject-network' rustproject/docker-compose.yaml
 
-RUST_BACKTRACE=1 cargo run --release init service accounts \
+run_cli init service accounts \
     --path ./rustproject \
     --language rust \
     -d postgresql \
     -D "Accounts service"
 
-RUST_BACKTRACE=1 cargo run --release init service notifications \
+run_cli init service notifications \
     --path ./rustproject \
     --language rust \
     -d postgresql \
     -D "Notifications service"
 
-RUST_BACKTRACE=1 cargo run --release init worker email-worker \
+run_cli init worker email-worker \
     --path ./rustproject \
     --language rust \
     -t database \
     -d postgresql \
     -D "Email worker"
 
-RUST_BACKTRACE=1 cargo run --release init library shared-kernel \
+run_cli init library shared-kernel \
     --path ./rustproject \
     --language rust \
     -D "Shared kernel"
 
-RUST_BACKTRACE=1 cargo run --release init router users \
+run_cli init router users \
     --path ./rustproject/crates/accounts \
     --language rust
 
@@ -127,6 +137,8 @@ grep -q 'shared-kernel' rustproject/crates/notifications/Cargo.toml
 grep -q '../shared-kernel' rustproject/crates/notifications/Cargo.toml
 grep -q 'shared-kernel' rustproject/crates/email-worker/Cargo.toml
 grep -q '../shared-kernel' rustproject/crates/email-worker/Cargo.toml
+! grep -q "$REPO_ROOT" rustproject/crates/accounts/Cargo.toml
+grep -q '../../.forklaunch/framework-rs' rustproject/crates/accounts/Cargo.toml
 grep -q 'crateName = "accounts"' rustproject/.forklaunch/manifest.toml
 grep -q 'cratePath = "crates/accounts"' rustproject/.forklaunch/manifest.toml
 grep -q 'users' rustproject/.forklaunch/manifest.toml
@@ -136,13 +148,13 @@ grep -q 'users' rustproject/.forklaunch/manifest.toml
     cargo test --workspace
 )
 
-RUST_BACKTRACE=1 cargo run --release change service \
+run_cli change service \
     --path ./rustproject/crates/accounts \
     -D "Accounts service v2" \
     -d sqlite \
     --confirm
 
-RUST_BACKTRACE=1 cargo run --release change service \
+run_cli change service \
     --path ./rustproject/crates/notifications \
     --to worker \
     -t redis \
@@ -153,26 +165,26 @@ grep -q 'name = "notifications"' rustproject/.forklaunch/manifest.toml
 grep -q 'type = "Worker"' rustproject/.forklaunch/manifest.toml
 grep -q 'workerType = "redis"' rustproject/.forklaunch/manifest.toml
 
-RUST_BACKTRACE=1 cargo run --release change worker \
+run_cli change worker \
     --path ./rustproject/crates/notifications \
     --to service \
     --confirm
 
 test -f rustproject/crates/notifications/src/routes/mod.rs
 
-RUST_BACKTRACE=1 cargo run --release change worker \
+run_cli change worker \
     --path ./rustproject/crates/email-worker \
     -D "Email worker v2" \
     -t redis \
     --confirm
 
-RUST_BACKTRACE=1 cargo run --release change router \
+run_cli change router \
     --path ./rustproject/crates/accounts \
     -e users \
     -N customers \
     --confirm
 
-RUST_BACKTRACE=1 cargo run --release change library \
+run_cli change library \
     --path ./rustproject/crates/shared-kernel \
     -N common-kernel \
     -D "Common kernel" \
@@ -199,18 +211,18 @@ grep -q '../common-kernel' rustproject/crates/accounts/Cargo.toml
 grep -q 'common-kernel' rustproject/crates/email-worker/Cargo.toml
 grep -q '../common-kernel' rustproject/crates/email-worker/Cargo.toml
 
-RUST_BACKTRACE=1 cargo run --release sync service accounts --path ./rustproject
-RUST_BACKTRACE=1 cargo run --release sync service notifications --path ./rustproject
-RUST_BACKTRACE=1 cargo run --release sync library common-kernel --path ./rustproject
-RUST_BACKTRACE=1 cargo run --release sync worker email-worker --path ./rustproject
-RUST_BACKTRACE=1 cargo run --release sync all --path ./rustproject --confirm
+run_cli sync service accounts --path ./rustproject
+run_cli sync service notifications --path ./rustproject
+run_cli sync library common-kernel --path ./rustproject
+run_cli sync worker email-worker --path ./rustproject
+run_cli sync all --path ./rustproject --confirm
 
 (
     cd rustproject
     cargo test --workspace
 )
 
-RUST_BACKTRACE=1 cargo run --release openapi export --path ./rustproject
+run_cli openapi export --path ./rustproject
 
 test -f rustproject/.forklaunch/openapi/accounts/openapi.json
 test -f rustproject/.forklaunch/contracts/accounts/contract.json
@@ -220,7 +232,7 @@ grep -q '"formatVersion"[[:space:]]*:[[:space:]]*"forklaunch.contract.v1"' rustp
 grep -q '"generator"[[:space:]]*:[[:space:]]*"framework-rs"' rustproject/.forklaunch/contracts/accounts/contract.json
 grep -q 'List Customers' rustproject/.forklaunch/contracts/accounts/contract.json
 
-RUST_BACKTRACE=1 cargo run --release sdk generate --path ./rustproject --target all
+run_cli sdk generate --path ./rustproject --target all
 
 test -f rustproject/sdks/typescript/src/index.ts
 test -f rustproject/sdks/rust/accounts-sdk/src/lib.rs
@@ -234,14 +246,14 @@ grep -q 'customers_list_request' rustproject/sdks/rust/accounts-sdk/src/lib.rs
 grep -q '"sdks/rust/accounts-sdk"' rustproject/Cargo.toml
 compile_typescript_sdk rustproject/sdks/typescript/src/index.ts
 
-RUST_BACKTRACE=1 cargo run --release sdk generate --path ./rustproject --target typescript --service accounts
+run_cli sdk generate --path ./rustproject --target typescript --service accounts
 grep -q 'accountsService' rustproject/sdks/typescript/src/index.ts
 grep -q 'customers:' rustproject/sdks/typescript/src/index.ts
 grep -q 'list: (input: AccountsCustomersListRequest' rustproject/sdks/typescript/src/index.ts
 ! grep -q 'emailWorkerService' rustproject/sdks/typescript/src/index.ts
 compile_typescript_sdk rustproject/sdks/typescript/src/index.ts
 
-RUST_BACKTRACE=1 cargo run --release sdk generate --path ./rustproject --target rust --service email-worker
+run_cli sdk generate --path ./rustproject --target rust --service email-worker
 test -f rustproject/sdks/rust/email-worker-sdk/src/lib.rs
 grep -q 'EmailWorkerClient' rustproject/sdks/rust/email-worker-sdk/src/lib.rs
 grep -q '"sdks/rust/email-worker-sdk"' rustproject/Cargo.toml
@@ -251,20 +263,20 @@ grep -q '"sdks/rust/email-worker-sdk"' rustproject/Cargo.toml
     cargo test --workspace
 )
 
-RUST_BACKTRACE=1 cargo run --release delete router customers \
+run_cli delete router customers \
     --path ./rustproject/crates/accounts \
     --continue
 ! grep -q 'AccountsCustomersListRequest' rustproject/sdks/typescript/src/index.ts
 
-RUST_BACKTRACE=1 cargo run --release delete worker email-worker \
+run_cli delete worker email-worker \
     --path ./rustproject \
     --continue
 
-RUST_BACKTRACE=1 cargo run --release delete service notifications \
+run_cli delete service notifications \
     --path ./rustproject \
     --continue
 
-RUST_BACKTRACE=1 cargo run --release delete library common-kernel \
+run_cli delete library common-kernel \
     --path ./rustproject \
     --continue
 
@@ -298,7 +310,7 @@ test ! -d rustproject/crates/common-kernel
     cargo test --workspace
 )
 
-RUST_BACKTRACE=1 cargo run --release delete service accounts \
+run_cli delete service accounts \
     --path ./rustproject \
     --continue
 
@@ -320,7 +332,7 @@ else
     grep -q 'members = \[' rustproject/Cargo.toml
 fi
 
-RUST_BACKTRACE=1 cargo run --release init application mixedproject \
+run_cli init application mixedproject \
     --path ./mixedproject \
     --language mixed \
     -D "Mixed app" \
@@ -333,7 +345,7 @@ test -f mixedproject/pnpm-workspace.yaml
 test -f mixedproject/sdks/typescript/src/index.ts
 grep -q 'language = "mixed"' mixedproject/.forklaunch/manifest.toml
 
-RUST_BACKTRACE=1 cargo run --release init application dryrunrust \
+run_cli init application dryrunrust \
     --path ./dryrunrust \
     --language rust \
     --dryrun \

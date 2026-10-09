@@ -911,8 +911,7 @@ mod tests {
         assert_eq!(internal.message, "internal server error");
         assert_eq!(internal.correlation_id.as_deref(), Some("corr-7"));
 
-        let validation =
-            ErrorResponse::new(ErrorKind::Validation, "name is required").redacted();
+        let validation = ErrorResponse::new(ErrorKind::Validation, "name is required").redacted();
         assert_eq!(validation.message, "name is required");
     }
 }

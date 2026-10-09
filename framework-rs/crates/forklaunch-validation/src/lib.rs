@@ -2,7 +2,7 @@
 
 //! Validation and schema integration for the Rust framework.
 //!
-//! Combines the three standard building blocks ForkLaunch relies on:
+//! Combines the three standard building blocks `ForkLaunch` relies on:
 //!
 //! - [`serde::de::DeserializeOwned`] for parsing wire input into Rust types,
 //! - [`garde::Validate`] for runtime validation,
@@ -15,7 +15,7 @@
 //! ## Coercion policy (where Rust is intentionally stricter than TypeScript)
 //!
 //! Path and query parameters arrive as strings and may be coerced via the
-//! [`coerce`] helpers. ForkLaunch deliberately does **not** copy some of the
+//! [`coerce`] helpers. `ForkLaunch` deliberately does **not** copy some of the
 //! looser TypeScript coercions:
 //!
 //! - Booleans accept only `true`/`false`/`1`/`0` — not `yes`/`on`/`""`.
@@ -27,7 +27,7 @@ use forklaunch_http::{ContractValidationError, ContractValidationLocation};
 use schemars::JsonSchema;
 use serde::{Serialize, de::DeserializeOwned};
 
-/// A type usable as a ForkLaunch request/response schema.
+/// A type usable as a `ForkLaunch` request/response schema.
 ///
 /// Blanket-implemented for every type that is deserializable, serializable,
 /// JSON-schema-describable, and validatable with a default (`()`) context.
@@ -279,14 +279,18 @@ mod tests {
         let errors = parse_and_validate::<CreateUser>(br#"{"name":"","age":200}"#)
             .expect_err("invalid body should fail");
         assert_eq!(errors.len(), 2);
-        assert!(errors.iter().any(|error| error
-            .field
-            .as_deref()
-            .is_some_and(|field| field.contains("name"))));
-        assert!(errors.iter().any(|error| error
-            .field
-            .as_deref()
-            .is_some_and(|field| field.contains("age"))));
+        assert!(errors.iter().any(|error| {
+            error
+                .field
+                .as_deref()
+                .is_some_and(|field| field.contains("name"))
+        }));
+        assert!(errors.iter().any(|error| {
+            error
+                .field
+                .as_deref()
+                .is_some_and(|field| field.contains("age"))
+        }));
     }
 
     #[test]

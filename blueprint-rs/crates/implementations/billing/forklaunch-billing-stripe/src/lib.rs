@@ -102,6 +102,10 @@ pub mod webhook {
     type HmacSha256 = Hmac<Sha256>;
 
     /// Computes the hex-encoded Stripe signature for a timestamped payload.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the HMAC implementation rejects the key; SHA-256 accepts any key size.
     #[must_use]
     pub fn sign(secret: &[u8], timestamp: &str, payload: &str) -> String {
         let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC accepts any key size");
@@ -165,7 +169,11 @@ mod tests {
         // wrong secret fails
         assert!(!webhook::verify(b"whsec_other", payload, &header));
         // missing timestamp fails
-        assert!(!webhook::verify(secret, payload, &format!("v1={signature}")));
+        assert!(!webhook::verify(
+            secret,
+            payload,
+            &format!("v1={signature}")
+        ));
     }
 
     #[test]

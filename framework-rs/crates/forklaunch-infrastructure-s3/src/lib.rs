@@ -227,13 +227,9 @@ pub fn download_chunks<S: ObjectStore>(
     chunk_size: usize,
 ) -> FrameworkResult<Option<Vec<Vec<u8>>>> {
     let chunk_size = chunk_size.max(1);
-    Ok(store.get(key)?.map(|object| {
-        object
-            .body
-            .chunks(chunk_size)
-            .map(<[u8]>::to_vec)
-            .collect()
-    }))
+    Ok(store
+        .get(key)?
+        .map(|object| object.body.chunks(chunk_size).map(<[u8]>::to_vec).collect()))
 }
 
 /// A compliance hook applied to object bodies before storage and after reads.
@@ -415,7 +411,7 @@ mod tests {
             .with_content_type("application/json")
             .with_tag("service", "accounts");
         store
-            .put("accounts/users.json", br#"[]"#.to_vec(), metadata)
+            .put("accounts/users.json", br"[]".to_vec(), metadata)
             .expect("put should succeed");
 
         let listed = store.list("accounts/").expect("list should succeed");
@@ -426,7 +422,7 @@ mod tests {
                 .expect("get should succeed")
                 .as_ref()
                 .map(|object| object.body.as_slice()),
-            Some(br#"[]"#.as_slice())
+            Some(br"[]".as_slice())
         );
         assert!(
             store
@@ -455,7 +451,10 @@ mod tests {
         let read = store
             .get_batch(&["a.txt".to_owned(), "missing".to_owned()])
             .expect("batch get should succeed");
-        assert_eq!(read[0].as_ref().map(|object| object.body.as_slice()), Some(b"a".as_slice()));
+        assert_eq!(
+            read[0].as_ref().map(|object| object.body.as_slice()),
+            Some(b"a".as_slice())
+        );
         assert!(read[1].is_none());
 
         let deleted = store
@@ -486,14 +485,23 @@ mod tests {
         let mut store = store();
         let codec = XorObjectCodec::new(b"object-key".to_vec()).expect("codec key should be valid");
 
-        put_encrypted(&mut store, &codec, "secret.bin", b"top secret", ObjectMetadata::new())
-            .expect("encrypted put should succeed");
+        put_encrypted(
+            &mut store,
+            &codec,
+            "secret.bin",
+            b"top secret",
+            ObjectMetadata::new(),
+        )
+        .expect("encrypted put should succeed");
 
-        let stored = store.get("secret.bin").expect("read should succeed").unwrap();
+        let stored = store
+            .get("secret.bin")
+            .expect("read should succeed")
+            .unwrap();
         assert_ne!(stored.body, b"top secret".to_vec());
 
-        let recovered = get_decrypted(&store, &codec, "secret.bin")
-            .expect("decrypted read should succeed");
+        let recovered =
+            get_decrypted(&store, &codec, "secret.bin").expect("decrypted read should succeed");
         assert_eq!(recovered, Some(b"top secret".to_vec()));
     }
 }

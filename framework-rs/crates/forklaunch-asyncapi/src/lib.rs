@@ -195,7 +195,7 @@ fn json_string(input: &str) -> String {
     format!("\"{}\"", input.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Generates a spec-compliant AsyncAPI 3.0 document from a WebSocket contract.
+/// Generates a spec-compliant `AsyncAPI` 3.0 document from a WebSocket contract.
 ///
 /// Each contract maps to a single channel whose events become channel messages;
 /// every event becomes an operation whose `action` reflects its direction
@@ -254,18 +254,20 @@ pub fn generate_asyncapi_json(info: &AsyncApiInfo, contract: &WebSocketContract)
     let mut schema_names = BTreeSet::<String>::new();
     for event in &contract.events {
         schema_names.insert(event.schema_name.clone());
-        messages.entry(event.schema_name.clone()).or_insert_with(|| {
-            json_object([
-                JsonField::new("name", json_string(&event.schema_name)),
-                JsonField::new(
-                    "payload",
-                    json_object([JsonField::new(
-                        "$ref",
-                        json_string(&format!("#/components/schemas/{}", event.schema_name)),
-                    )]),
-                ),
-            ])
-        });
+        messages
+            .entry(event.schema_name.clone())
+            .or_insert_with(|| {
+                json_object([
+                    JsonField::new("name", json_string(&event.schema_name)),
+                    JsonField::new(
+                        "payload",
+                        json_object([JsonField::new(
+                            "$ref",
+                            json_string(&format!("#/components/schemas/{}", event.schema_name)),
+                        )]),
+                    ),
+                ])
+            });
     }
 
     let components = json_object([
@@ -280,7 +282,10 @@ pub fn generate_asyncapi_json(info: &AsyncApiInfo, contract: &WebSocketContract)
         JsonField::new(
             "schemas",
             json_object(schema_names.into_iter().map(|name| {
-                JsonField::new(name, json_object([JsonField::new("type", json_string("object"))]))
+                JsonField::new(
+                    name,
+                    json_object([JsonField::new("type", json_string("object"))]),
+                )
             })),
         ),
     ]);
@@ -349,8 +354,7 @@ mod tests {
                 "UserUpdatedEvent",
             ));
 
-        let document =
-            generate_asyncapi_json(&AsyncApiInfo::new("Realtime", "1.0.0"), &contract);
+        let document = generate_asyncapi_json(&AsyncApiInfo::new("Realtime", "1.0.0"), &contract);
 
         assert!(document.contains("\"asyncapi\":\"3.0.0\""));
         // client-to-server event is received by the server

@@ -38,12 +38,12 @@ fn iam_contract(operation_name: &str) -> RouteContract {
 /// Builds an IAM HTTP router backed by the given in-memory service.
 ///
 /// Routes are registered from the blueprint's published contracts, so request
-/// validation and the generated OpenAPI document stay in lockstep with the
+/// validation and the generated `OpenAPI` document stay in lockstep with the
 /// service definition.
 #[must_use]
-pub fn iam_router(service: Arc<InMemoryIamService>) -> ForkLaunchRouter {
-    let get_user_service = Arc::clone(&service);
-    let list_users_service = Arc::clone(&service);
+pub fn iam_router(service: &Arc<InMemoryIamService>) -> ForkLaunchRouter {
+    let get_user_service = Arc::clone(service);
+    let list_users_service = Arc::clone(service);
 
     ForkLaunchRouter::new(ServiceInfo::new("iam", "0.1.0"))
         .get(iam_contract("getUser"), move |Path(id): Path<String>| {
@@ -90,7 +90,7 @@ mod tests {
 
     #[tokio::test]
     async fn iam_router_serves_a_user_over_http() {
-        let app = iam_router(service()).into_router();
+        let app = iam_router(&service()).into_router();
 
         let response = app
             .oneshot(
@@ -111,7 +111,7 @@ mod tests {
 
     #[tokio::test]
     async fn iam_router_returns_404_for_unknown_user() {
-        let app = iam_router(service()).into_router();
+        let app = iam_router(&service()).into_router();
 
         let response = app
             .oneshot(
@@ -128,7 +128,7 @@ mod tests {
 
     #[tokio::test]
     async fn iam_router_lists_users_and_serves_openapi() {
-        let app = iam_router(service()).into_router();
+        let app = iam_router(&service()).into_router();
 
         let listed = app
             .clone()

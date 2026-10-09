@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_MANIFEST="$(cd "$SCRIPT_DIR/.." && pwd)/Cargo.toml"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TSC_BIN="$REPO_ROOT/framework/node_modules/.bin/tsc"
+TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}"
 
 compile_typescript_sdk() {
     local sdk_entry="$1"
@@ -25,6 +25,10 @@ compile_typescript_sdk() {
 }
 
 run_cli() {
+    if [ -n "${FORKLAUNCH_TEST_CLI:-}" ]; then
+        "$FORKLAUNCH_TEST_CLI" "$@"
+        return
+    fi
     RUST_BACKTRACE=1 cargo run --manifest-path "$CLI_MANIFEST" --release -- "$@"
 }
 

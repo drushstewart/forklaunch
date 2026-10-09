@@ -9,6 +9,17 @@ Build a Rust-native ForkLaunch stack with two new workspaces:
 
 The Rust stack should interoperate with the TypeScript stack through shared contract artifacts. A Rust service should be able to generate TypeScript SDKs for frontend consumers and Rust SDKs for service-to-service consumers.
 
+## Backend Generation Completion Gate
+
+Generation is tracked separately from production framework and blueprint parity below.
+
+- [x] Bundle framework source with generated applications and use relative Cargo dependencies.
+- [x] Serve generated service handlers over Axum with body limits, request IDs, CORS, and documentation UI.
+- [x] Shut down generated HTTP services gracefully on Ctrl-C and SIGTERM.
+- [x] Exercise init, change, sync, delete, contract/OpenAPI export, and TypeScript/Rust SDK generation in a dedicated CI matrix group.
+- [x] Add a relocated-app HTTP test calling the generated Rust service through its generated TypeScript SDK.
+- [x] Document usage and distinguish generated examples from production storage and queue integrations.
+
 ## Core Principles
 
 - Contracts are the source of truth.
@@ -642,7 +653,7 @@ Current CLI structure to build on:
 - [x] Build the same canonical contract fixture service in Rust. (`forklaunch-blueprint-sample-service::iam_router` — runnable, contract-driven, serves OpenAPI)
 - [ ] Snapshot OpenAPI outputs and compare normalized output.
 - [ ] Snapshot AsyncAPI outputs and compare normalized output.
-- [ ] Run generated TypeScript SDK against the Rust service.
+- [ ] Run generated TypeScript SDK against the Rust service. (`cli/tests/rust_http_runtime.sh` added; validation pending)
 - [ ] Run generated Rust SDK against the TypeScript service.
 - [x] Add CLI tests that generate Rust TypeScript/Rust SDKs and typecheck the generated TypeScript SDK entrypoint.
 - [x] Add CLI tests that assert generated Rust and TypeScript SDK model shapes come from Rust contract schemas.

@@ -99,3 +99,25 @@ fn generated_service_uses_configured_openapi_servers() {
     assert!(body.contains("\"url\":\"https://staging.example.com\""));
     assert!(body.contains("\"description\":\"Staging\""));
 }
+
+#[tokio::test]
+async fn generated_service_serves_http_health_docs_and_errors() {
+    use axum::{body::{Body as AxumBody, to_bytes}, http::Request};
+    use tower::ServiceExt;
+    let state = build_state(ServiceConfig::default()).expect("state should build");
+    let app = {{crate_module}}::router(state).into_router();
+    for (path, status, content_type) in [
+        ("/health", 200, "application/json"),
+        ("/openapi.json", 200, "application/json"),
+        ("/docs", 200, "text/html"),
+        ("/missing", 404, ""),
+    ] {
+        let response = app.clone().oneshot(Request::builder()
+            .uri(path).body(AxumBody::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status().as_u16(), status, "{path}");
+        if !content_type.is_empty() {
+            assert!(response.headers()["content-type"].to_str().unwrap().starts_with(content_type));
+            assert!(!to_bytes(response.into_body(), 1024 * 1024).await.unwrap().is_empty());
+        }
+    }
+}

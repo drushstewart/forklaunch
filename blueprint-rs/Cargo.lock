@@ -161,6 +161,7 @@ dependencies = [
  "forklaunch-core",
  "forklaunch-http",
  "forklaunch-openapi",
+ "form_urlencoded",
  "tokio",
  "tower",
  "tower-http",

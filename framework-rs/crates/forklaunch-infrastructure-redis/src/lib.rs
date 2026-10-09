@@ -498,8 +498,8 @@ mod tests {
         assert_ne!(stored, b"plaintext".to_vec());
 
         // decoding recovers the plaintext
-        let recovered = get_decrypted(&mut cache, &codec, "token:1")
-            .expect("decrypted read should succeed");
+        let recovered =
+            get_decrypted(&mut cache, &codec, "token:1").expect("decrypted read should succeed");
         assert_eq!(recovered, Some(b"plaintext".to_vec()));
     }
 }

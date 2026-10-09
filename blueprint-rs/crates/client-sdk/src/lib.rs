@@ -87,7 +87,10 @@ pub mod generate {
     /// Generates the IAM TypeScript SDK from the IAM contracts.
     #[must_use]
     pub fn iam_typescript_sdk() -> String {
-        typescript_sdk(&forklaunch_iam_interface::contracts::registry(), "IamClient")
+        typescript_sdk(
+            &forklaunch_iam_interface::contracts::registry(),
+            "IamClient",
+        )
     }
 
     /// Generates the IAM Rust SDK from the IAM contracts.
@@ -173,7 +176,10 @@ mod tests {
     #[test]
     fn sdk_generation_is_deterministic() {
         // identical contracts must produce byte-identical SDKs for reviewable diffs
-        assert_eq!(generate::iam_typescript_sdk(), generate::iam_typescript_sdk());
+        assert_eq!(
+            generate::iam_typescript_sdk(),
+            generate::iam_typescript_sdk()
+        );
         assert_eq!(generate::iam_rust_sdk(), generate::iam_rust_sdk());
     }
 }

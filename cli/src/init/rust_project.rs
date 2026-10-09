@@ -9,6 +9,7 @@ use anyhow::{Context, Result, bail};
 use clap::ArgMatches;
 use convert_case::{Case, Casing};
 use indexmap::IndexMap;
+use include_dir::{Dir, include_dir};
 use ramhorns::{Content, Template};
 use serde_json::{Value as JsonValue, json};
 use serde_yml::{from_str as yaml_from_str, to_string as yaml_to_string};
@@ -24,6 +25,10 @@ use crate::core::{
     name::validate_name,
     rendered_template::{RenderedTemplate, TEMPLATES_DIR, write_rendered_templates},
 };
+
+// Embed source only, so released CLIs generate portable apps without a repository checkout.
+static FRAMEWORK_CRATES: Dir = include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/framework/crates");
+const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.toml");
 
 pub(crate) const PROJECT_LANGUAGE_VARIANTS: [&str; 3] = ["typescript", "rust", "mixed"];
 pub(crate) const SDK_TARGET_VARIANTS: [&str; 4] = ["typescript", "ts", "rust", "all"];
@@ -219,6 +224,7 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
 
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     write_rust_rendered_templates(&templates, dryrun, &mut stdout)?;
+    ensure_embedded_framework(&root_path, dryrun)?;
     if !dryrun {
         create_dir_all(root_path.join("crates"))
             .with_context(|| format!("Failed to create {}", root_path.join("crates").display()))?;
@@ -789,6 +795,7 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     let crate_path = Path::new("crates").join(&name);
     let crate_dir = app_root.join(&crate_path);
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
+    ensure_embedded_framework(&app_root, dryrun)?;
     let templates = rust_crate_templates(&crate_dir, &name, &description, kind);
 
     write_rust_rendered_templates(&templates, dryrun, &mut stdout)?;
@@ -967,12 +974,34 @@ fn rust_crate_template_data(name: &str, description: &str, has_binary: bool) -> 
 }
 
 fn framework_rs_path() -> String {
-    let cli_manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let framework_path = cli_manifest_dir
-        .parent()
-        .map(|repo_root| repo_root.join("framework-rs"))
-        .unwrap_or_else(|| PathBuf::from("../framework-rs"));
-    escape_toml_string(&framework_path.to_string_lossy())
+    "../../.forklaunch/framework-rs".to_string()
+}
+
+fn ensure_embedded_framework(app_root: &Path, dryrun: bool) -> Result<()> {
+    if dryrun {
+        return Ok(());
+    }
+    let root = app_root.join(".forklaunch/framework-rs");
+    create_dir_all(&root)?;
+    let cargo = root.join("Cargo.toml");
+    if !cargo.exists() {
+        write(cargo, FRAMEWORK_CARGO)?;
+    }
+    write_embedded_sources(&FRAMEWORK_CRATES, &root.join("crates"))
+}
+
+fn write_embedded_sources(dir: &Dir<'_>, root: &Path) -> Result<()> {
+    for file in dir.files() {
+        let path = root.join(file.path());
+        if !path.exists() {
+            create_dir_all(path.parent().context("embedded source has no parent")?)?;
+            write(&path, file.contents())?;
+        }
+    }
+    for child in dir.dirs() {
+        write_embedded_sources(child, root)?;
+    }
+    Ok(())
 }
 
 fn service_lib_rs(name: &str) -> String {
@@ -1145,7 +1174,7 @@ fn required_name(matches: &ArgMatches, label: &str) -> Result<String> {
 }
 
 fn option(matches: &ArgMatches, id: &str) -> Option<String> {
-    matches.get_one::<String>(id).cloned()
+    matches.try_get_one::<String>(id).ok().flatten().cloned()
 }
 
 fn render_rust_template<T: Content>(template_path: &str, data: &T) -> String {

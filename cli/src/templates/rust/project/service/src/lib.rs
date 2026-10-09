@@ -104,6 +104,21 @@ pub fn local_router(state: AppState) -> LocalRouter {
     router
 }
 
+/// Builds the network router from the same handlers and contracts used by local calls.
+#[must_use]
+pub fn router(state: AppState) -> forklaunch_axum::ForkLaunchRouter {
+    let config = state.config().clone();
+    let servers = openapi_options(&contract_registry(), &config).servers;
+    forklaunch_axum::ForkLaunchRouter::from_local_router(
+        service_info(), routes::contracts(), local_router(state),
+    )
+    .with_config(forklaunch_axum::RouterConfig {
+        docs_path: config.docs_path,
+        servers,
+        ..forklaunch_axum::RouterConfig::default()
+    })
+}
+
 #[must_use]
 pub fn openapi_json() -> String {
     openapi_json_with_config(&ServiceConfig::from_env())

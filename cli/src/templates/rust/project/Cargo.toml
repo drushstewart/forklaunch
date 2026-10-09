@@ -8,6 +8,8 @@ description = "{{{description}}}"
 
 [dependencies]
 {{#uses_framework}}
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 forklaunch-axum = { path = "{{{framework_rs_path}}}/crates/forklaunch-axum" }
 forklaunch-common = { path = "{{{framework_rs_path}}}/crates/forklaunch-common" }
 forklaunch-contract = { path = "{{{framework_rs_path}}}/crates/forklaunch-contract" }
@@ -16,6 +18,9 @@ forklaunch-http = { path = "{{{framework_rs_path}}}/crates/forklaunch-http" }
 forklaunch-openapi = { path = "{{{framework_rs_path}}}/crates/forklaunch-openapi" }
 {{/uses_framework}}
 {{#has_binary}}
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 
 [[bin]]
 name = "{{{name}}}"

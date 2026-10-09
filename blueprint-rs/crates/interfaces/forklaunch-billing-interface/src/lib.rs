@@ -215,7 +215,7 @@ pub trait BillingService {
     }
 }
 
-/// Billing HTTP route contracts, the source of truth for OpenAPI and SDK generation.
+/// Billing HTTP route contracts, the source of truth for `OpenAPI` and SDK generation.
 pub mod contracts {
     use forklaunch_blueprint_core::contract::{
         AccessLevel, AuthConfig, BodyContract, ContractRegistry, FieldContract, JwtAuthConfig,

@@ -2,7 +2,7 @@
 
 Rust blueprint crates for ForkLaunch.
 
-This workspace mirrors the TypeScript `blueprint` style with shared core primitives, interface crates, and implementation crates. The crates are currently scaffolded without external dependencies so the workspace can compile while the Rust framework contract layer is filled in.
+This workspace mirrors the TypeScript `blueprint` style with shared core primitives, contract and interface crates, SDK generation, and in-memory implementations for IAM, billing, and workers. The sample service runs through the framework Axum adapter. Production persistence, provider clients, and queue integrations remain tracked in [the implementation plan](../plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md).
 
 ## Commands
 

@@ -9,7 +9,7 @@ pub enum MessageDirection {
     ServerToClient,
 }
 
-/// The kinds of frames exchanged over a ForkLaunch WebSocket channel.
+/// The kinds of frames exchanged over a `ForkLaunch` WebSocket channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WsMessageKind {
     /// An application message sent by the client.
@@ -121,7 +121,7 @@ impl WebSocketContract {
     #[must_use]
     pub fn new(path: impl Into<String>) -> Self {
         Self {
-            path: normalize_ws_path(path.into()),
+            path: normalize_ws_path(&path.into()),
             events: Vec::new(),
             error_schema: None,
             close_schema: None,
@@ -275,7 +275,7 @@ impl WebSocketEnvelope {
     }
 }
 
-fn normalize_ws_path(path: String) -> String {
+fn normalize_ws_path(path: &str) -> String {
     let trimmed = path.trim();
     if trimmed.starts_with('/') {
         trimmed.trim_end_matches('/').to_owned()
@@ -352,8 +352,8 @@ mod tests {
 
     #[test]
     fn envelope_round_trips_through_json() {
-        let envelope = WebSocketEnvelope::new("user.updated", r#"{"id":"42"}"#)
-            .with_correlation_id("corr-1");
+        let envelope =
+            WebSocketEnvelope::new("user.updated", r#"{"id":"42"}"#).with_correlation_id("corr-1");
         let encoded = envelope.to_json();
         assert_eq!(
             encoded,

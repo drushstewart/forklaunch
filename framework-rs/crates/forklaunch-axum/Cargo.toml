@@ -8,7 +8,7 @@ repository.workspace = true
 
 [features]
 default = ["adapter"]
-adapter = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes"]
+adapter = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes", "dep:form_urlencoded"]
 
 [dependencies]
 forklaunch-common = { path = "../forklaunch-common" }
@@ -21,6 +21,7 @@ axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"], optional = true }
 tower = { version = "0.5", features = ["util"], optional = true }
 tower-http = { version = "0.6", features = ["cors", "limit", "trace", "request-id", "util"], optional = true }
+form_urlencoded = { version = "1", optional = true }
 bytes = { version = "1", optional = true }
 
 [dev-dependencies]

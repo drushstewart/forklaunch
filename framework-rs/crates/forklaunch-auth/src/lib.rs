@@ -2,7 +2,7 @@
 
 //! Authentication and authorization primitives for the Rust framework.
 //!
-//! Covers the credential mechanisms ForkLaunch services rely on — HMAC, JWT
+//! Covers the credential mechanisms `ForkLaunch` services rely on — HMAC, JWT
 //! (HS256 signature key), and Basic — together with the RBAC model
 //! (roles, permissions, scopes with hierarchy, feature entitlements, and
 //! subscription gating). All failures surface as [`AuthError`], which converts
@@ -151,16 +151,15 @@ pub fn parse_basic(header: &str) -> Option<(String, String)> {
 /// expired, or signed with a different key.
 pub fn verify_jwt_hs256(token: &str, signature_key: &[u8]) -> Result<Principal, AuthError> {
     let validation = Validation::new(Algorithm::HS256);
-    decode::<JwtClaims>(
-        token,
-        &DecodingKey::from_secret(signature_key),
-        &validation,
-    )
-    .map(|data| Principal::from_claims(data.claims))
-    .map_err(|_| AuthError::InvalidCredentials)
+    decode::<JwtClaims>(token, &DecodingKey::from_secret(signature_key), &validation)
+        .map(|data| Principal::from_claims(data.claims))
+        .map_err(|_| AuthError::InvalidCredentials)
 }
 
 /// Computes the base64-encoded HMAC-SHA256 signature for `payload`.
+/// # Panics
+///
+/// Panics if the HMAC implementation rejects the key; SHA-256 accepts any key size.
 #[must_use]
 pub fn hmac_sign(secret: &[u8], payload: &[u8]) -> String {
     let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC accepts keys of any size");
@@ -169,6 +168,9 @@ pub fn hmac_sign(secret: &[u8], payload: &[u8]) -> String {
 }
 
 /// Verifies a base64-encoded HMAC-SHA256 signature in constant time.
+/// # Panics
+///
+/// Panics if the HMAC implementation rejects the key; SHA-256 accepts any key size.
 #[must_use]
 pub fn hmac_verify(secret: &[u8], payload: &[u8], signature: &str) -> bool {
     let Ok(provided) = STANDARD.decode(signature) else {

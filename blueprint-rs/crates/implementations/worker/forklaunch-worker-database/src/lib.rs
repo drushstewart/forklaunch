@@ -180,7 +180,10 @@ mod tests {
             .expect("broadcast should succeed");
 
         let signals = bus.drain().expect("drain should succeed");
-        assert_eq!(signals, vec![DistributedSignal::Pause, DistributedSignal::Drain]);
+        assert_eq!(
+            signals,
+            vec![DistributedSignal::Pause, DistributedSignal::Drain]
+        );
         // draining is idempotent — pending signals are consumed
         assert!(bus.drain().expect("drain should succeed").is_empty());
     }

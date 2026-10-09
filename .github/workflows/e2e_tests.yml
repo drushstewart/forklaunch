@@ -7,9 +7,13 @@ on:
       - main
     paths:
       - "cli/**"
+      - "framework-rs/**"
+      - "blueprint-rs/**"
   pull_request:
     paths:
       - "cli/**"
+      - "framework-rs/**"
+      - "blueprint-rs/**"
 
 jobs:
   test:
@@ -17,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5, 6]
+        group: [1, 2, 3, 4, 5, 6, 7]
         include:
           - group: 1
             name: "Init Tests (heavy modules)"
@@ -36,7 +40,10 @@ jobs:
             pattern: "delete*.sh"
           - group: 6
             name: "Other Tests"
-            pattern: "!(init*|sync*|change*|delete*).sh"
+            pattern: "!(init*|sync*|change*|delete*|rust*).sh"
+          - group: 7
+            name: "Rust Backend Generation"
+            pattern: "@(init_rust_projects|rust*).sh"
 
     name: ${{ matrix.name }}
 
@@ -56,6 +63,10 @@ jobs:
         uses: pnpm/action-setup@v2
         with:
           version: 10
+
+      - name: Install TypeScript compiler for SDK checks
+        if: matrix.group == 7
+        run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -83,6 +94,9 @@ jobs:
 
       - name: Run ${{ matrix.name }}
         working-directory: ./cli/tests
+        env:
+          FORKLAUNCH_TEST_CLI: ${{ github.workspace }}/cli/target/release/forklaunch
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
         run: |
           set -e
           shopt -s extglob nullglob

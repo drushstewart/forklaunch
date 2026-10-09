@@ -157,7 +157,7 @@ pub trait SignalBus {
     fn drain(&self) -> BlueprintResult<Vec<DistributedSignal>>;
 }
 
-/// Worker event contracts used to emit AsyncAPI documents for job channels.
+/// Worker event contracts used to emit `AsyncAPI` documents for job channels.
 pub mod events {
     use forklaunch_asyncapi::{AsyncApiInfo, generate_asyncapi_json};
     use forklaunch_ws::{EventContract, MessageDirection, WebSocketContract};
@@ -184,7 +184,7 @@ pub mod events {
             .with_error_schema("WorkerError")
     }
 
-    /// Generates the AsyncAPI 3.0 document for the worker job channel.
+    /// Generates the `AsyncAPI` 3.0 document for the worker job channel.
     #[must_use]
     pub fn asyncapi_json() -> String {
         generate_asyncapi_json(&AsyncApiInfo::new("worker", "0.1.0"), &channel())
