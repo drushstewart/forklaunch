@@ -15,6 +15,9 @@ forklaunch-core = { path = "../../../framework-rs/crates/forklaunch-core" }
 axum = "0.8"
 
 [dev-dependencies]
+forklaunch-auth = { path = "../../../framework-rs/crates/forklaunch-auth" }
+serde_json = "1"
+jsonwebtoken = "9"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tower = { version = "0.5", features = ["util"] }
 

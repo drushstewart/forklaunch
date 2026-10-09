@@ -15,18 +15,36 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: 921 CLI, 76 framework, and 36 blueprint tests pass; both Rust workspace Clippy checks pass.
+- [x] Revalidate the combined workspaces: CLI baseline 921 tests; latest all-feature framework 90 and blueprint 40 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [ ] Validate Rust-only release export through the shared exporter, including contracts and OpenAPI artifacts.
 - [ ] Validate mixed TypeScript/Rust release export and preserve prebuilt-release isolation from `main`.
 - [ ] Complete generated-container build and HTTP/shutdown smoke checks after Docker disk capacity is available. Local build failed with `No space left on device`; builder/runtime now both use Debian bookworm.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.
-- [x] Verify the CLI Cargo package file list includes all 41 embedded Rust source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 47 embedded framework source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
-- [ ] Validate crate publication and installation from published CLI sources (phases 13–15).
+- [ ] Validate crate publication and installation from published CLI sources (phases 13–15). Embedded framework packaging is checked; Rust blueprint directory symlinks still contain nested manifests excluded by Cargo packaging and need the same source-mirror treatment before blueprint generation is wired.
 
-Production storage, auth/provider, and queue implementations remain explicit tasks in phase 12; passing generation checks does not complete those integrations.
+Generated storage wiring, auth/provider lifecycle, billing, and acknowledged queue implementations remain explicit tasks in phase 12; passing generation checks does not complete those integrations.
+
+## Full TypeScript Parity Scope
+
+The requested target is full runtime, infrastructure, blueprint, CLI, SDK, release, and deployment parity. Generation checks alone are insufficient. Every remaining phase below stays in scope; a check is complete only when behavior is implemented and validated.
+
+Current implementation work:
+
+- [x] Enforce route authentication and RBAC in Axum, including implicit HEAD and routes with schema validation disabled; expose verified typed sessions and local-handler claims.
+- [x] Implement direct JWK and cached remote JWKS verification with explicit algorithm/claim policy, rotation, response bounds, expiry, and concurrent-fetch tests.
+- [x] Implement Redis-backed TTL records, binary batches, literal prefix scanning, and FIFO operations; validate against an isolated Redis container.
+- [x] Add an OpenTelemetry collector and HTTP instruments/spans with SDK export assertions, correlation, and cancellation handling.
+- [x] Add framework/blueprint CI covering all features, real Redis/PostgreSQL integration, and TypeScript encryption interoperability.
+- [x] Add PostgreSQL IAM CRUD, role/permission resolution, persistent sessions, salted Argon2id credentials, and tenant RLS.
+- [x] Port field encryption with byte-compatible deterministic envelopes/blind indexes and bidirectional legacy/rotation checks against the TypeScript implementation.
+- [ ] Add generated OTLP provider/exporter bootstrap and complete streaming-body telemetry.
+- [ ] Finish production persistence and encryption, IAM/provider/session lifecycle, billing/Stripe, and acknowledged database/Redis/Kafka workers (phases 9 and 12).
+- [ ] Finish streaming/multipart/WebSocket runtime and SDK behavior, mixed-app orchestration, AsyncAPI export, and cross-language conformance (phases 3–8 and 13–14).
+- [ ] Finish container/ECS, published-source installation, documentation, benchmarks, and release validation (phase 15).
 
 ## Backend Generation Completion Gate
 
@@ -135,7 +153,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 ### Recommendation
 
 - [ ] Implement `forklaunch-iam-base` as ForkLaunch-owned auth domain logic.
-- [ ] Use `argon2` and `password-hash` for password hashing.
+- [x] Use `argon2` and `password-hash` for salted Argon2id password hashing; reject malformed hashes and disabled users.
 - [ ] Use `tower-sessions` for server-side sessions when cookie/session auth is enabled.
 - [ ] Use `openidconnect` and `oauth2` for OAuth/OIDC provider integrations.
 - [ ] Use `jsonwebtoken` for JWT validation/issuance where JWTs are enough.
@@ -360,32 +378,32 @@ Requirements:
 ### Auth
 
 - [x] Implement JWT signature key validation. (`forklaunch-auth::verify_jwt_hs256`)
-- [ ] Implement direct JWK validation.
-- [ ] Implement JWKS URL fetching and caching.
+- [x] Implement direct JWK validation. (`jwt::verify_jwk`, algorithm/key-usage/claim policy tests)
+- [x] Implement JWKS URL fetching and caching. (`remote-jwks` feature; rotation, expiry, bounds, and concurrent fetch tests)
 - [x] Implement Basic auth callback. (`forklaunch-auth::parse_basic` + app-provided verifier)
 - [x] Implement HMAC auth and HMAC header generation. (`forklaunch-auth::hmac_sign`/`hmac_verify`)
 - [x] Implement constant-time signature comparison. (`subtle::ConstantTimeEq`)
 - [x] Implement session enrichment equivalent to `decodeResource`. (`Principal::from_claims`)
 - [x] Implement roles, permissions, scopes, scope hierarchy, feature checks, and subscription checks. (`forklaunch-auth::authorize`)
-- [ ] Add typed session extraction for handlers.
+- [x] Add typed session extraction for handlers. (`Session<T>`, Axum extensions, local-handler verified claims)
 
 ### Errors
 
 - [x] Implement standard errors: validation, unauthorized, forbidden, not found, rate limited, internal. (`forklaunch-http::ErrorKind`)
 - [x] Include correlation IDs in safe error responses.
 - [x] Hide internal error details by default. (`ErrorResponse::redacted`)
-- [ ] Add structured internal error logging.
+- [x] Add structured internal error logging; redact internal handler/status errors from HTTP responses.
 - [x] Add tests for error response parity.
 
 ### Telemetry
 
-- [ ] Implement `OpenTelemetryCollector` equivalent around `tracing` and OpenTelemetry.
-- [ ] Support trace, debug, info, warn, error, fatal logging methods.
-- [ ] Support counters, gauges, histograms, and up-down counters.
-- [ ] Add automatic HTTP request spans.
-- [ ] Add request/response metrics.
-- [ ] Add auth failure telemetry.
-- [ ] Add error correlation telemetry.
+- [x] Implement `OpenTelemetryCollector` around `tracing` and OpenTelemetry. (application-owned providers; generated OTLP bootstrap remains separate)
+- [x] Support trace, debug, info, warn, error, fatal logging methods.
+- [x] Support counters, gauges, histograms, and up-down counters.
+- [x] Add automatic HTTP request spans. (SDK export assertions and parent-context tests)
+- [x] Add request/response metrics. (header latency/count/status/active/known response size; streaming lifetime remains separate)
+- [x] Add auth failure telemetry.
+- [x] Add error correlation telemetry. (correlation in spans/logs, excluded from metric dimensions)
 
 ## Phase 8 - WebSockets And AsyncAPI
 
@@ -413,13 +431,13 @@ Requirements:
 ### Redis Cache
 
 - [x] Define `TtlCache` trait.
-- [ ] Implement Redis-backed TTL records. (in-memory reference impl done; `redis-client` feature wiring pending)
+- [x] Implement Redis-backed TTL records. (`redis-client` adapter; binary/expiry/batch/prefix/FIFO integration checks)
 - [x] Implement batch put/read/delete/peek.
 - [x] Implement list keys by prefix.
 - [x] Implement queue enqueue/dequeue/peek operations. (`InMemoryRedisQueue`)
 - [x] Implement batch queue operations.
 - [x] Add compliance-aware encryption/decryption hooks. (`CacheCodec` + `put_encrypted`/`get_decrypted`)
-- [ ] Add Redis testcontainer tests.
+- [x] Add Redis container integration tests. (isolated local container and Redis service in CI)
 
 ### S3 Object Store
 
@@ -433,10 +451,10 @@ Requirements:
 
 ### Persistence
 
-- [ ] Define persistence extension points for `sqlx`.
-- [ ] Implement field encryption helpers.
-- [ ] Implement tenant context helpers.
-- [ ] Implement RLS setup helpers for Postgres.
+- [x] Define persistence extension points for `sqlx`. (optional PostgreSQL feature; tenant-bound transactions)
+- [x] Implement field encryption helpers. (TypeScript-compatible v1–v4 envelopes, tenant derivation, key rotation, blind indexes; actual TypeScript interoperability tests)
+- [x] Implement tenant context helpers. (validated identity and transaction-local database context)
+- [x] Implement RLS setup helpers for Postgres. (safe DDL identifiers, FORCE RLS, read/write policies)
 - [ ] Implement retention policy enforcement hooks.
 - [ ] Add compliance metadata derives where appropriate.
 
@@ -499,12 +517,14 @@ Requirements:
 ### IAM Base
 
 - [x] Implement initial in-memory IAM service for interface and SDK smoke tests.
-- [ ] Implement base IAM service with `sqlx`.
-- [ ] Implement user and organization CRUD.
+- [x] Implement base IAM service with `sqlx`. (optional asynchronous `PostgresIamService`)
+- [x] Implement user and organization CRUD. (tenant-bound PostgreSQL storage and keyset pagination)
 - [x] Implement role and permission resolution. (`roles_for_user` + `permissions_for_user`)
-- [ ] Implement JWT/session issuance hooks.
-- [ ] Implement tenant-aware queries.
-- [ ] Add migrations and testcontainers tests.
+- [x] Implement persistent opaque session issuance, hashed token storage, expiry, revocation, password-change invalidation, and disabled-user checks.
+- [ ] Implement JWT issuance, cookie/CSRF lifecycle, and OAuth/OIDC provider flows.
+- [ ] Expose an async IAM interface and wire PostgreSQL IAM into generated services; the synchronous reference trait remains in-memory.
+- [x] Implement tenant-aware queries. (explicit predicates plus transaction-local RLS)
+- [x] Add embedded migrations and isolated PostgreSQL container tests with a non-superuser role, including pooled-connection context cleanup.
 
 ### Billing Base
 

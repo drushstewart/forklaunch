@@ -1,0 +1,81 @@
+name: Rust Framework Parity
+
+on:
+  pull_request:
+    paths:
+      - 'framework-rs/**'
+      - 'blueprint-rs/**'
+      - 'framework/core/src/persistence/fieldEncryptor.ts'
+      - 'cli/tests/rust_field_encryption_parity.mjs'
+      - '.github/workflows/rust_parity.yml'
+  push:
+    branches: [main, rohin/rust-framework]
+    paths:
+      - 'framework-rs/**'
+      - 'blueprint-rs/**'
+      - 'framework/core/src/persistence/fieldEncryptor.ts'
+      - 'cli/tests/rust_field_encryption_parity.mjs'
+      - '.github/workflows/rust_parity.yml'
+
+jobs:
+  framework:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework-rs
+      - run: cargo fmt --manifest-path framework-rs/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path framework-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --manifest-path framework-rs/Cargo.toml --workspace --all-features
+      - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-redis --all-features redis_backend -- --ignored
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
+      - run: node cli/tests/rust_field_encryption_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+
+  blueprint:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: parity-test-only
+          POSTGRES_DB: parity
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d parity"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      FORKLAUNCH_TEST_POSTGRES_URL: postgres://postgres:parity-test-only@127.0.0.1:5432/parity
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: blueprint-rs
+      - run: cargo fmt --manifest-path blueprint-rs/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_backend -- --ignored

@@ -71,3 +71,43 @@ for script in rust*.sh; do bash "$script"; done
 ```
 
 The Rust E2E job runs generation and lifecycle scripts, checks generated TypeScript SDKs, and calls a relocated Rust service through its generated TypeScript SDK. SDK checks require TypeScript (`TSC_BIN` can point to an installed compiler); the live HTTP check also requires Node.js with built-in `fetch`.
+
+## Authentication and verified sessions
+
+Axum enforces route `auth`, RBAC, and non-public access requirements before running handlers. A protected route without a configured verifier returns 401. Disabling request schema validation does not disable authentication; implicit HEAD requests use their GET route's policy.
+
+Configure `RouterConfig::with_authenticator` with an async credential verifier. It receives the framework request and the route contract, including the declared auth method and custom header settings. Return `AuthenticatedSession` only after verification; Axum then evaluates the route's roles, permissions, scope hierarchy, features, and subscription requirements. Native handlers can extract `Session<MyClaims>`; local framework handlers receive verified claims in `request.session`.
+
+`forklaunch-auth::jwt::verify_jwk` and `verify_jwks` accept typed claims and an explicit `jsonwebtoken::Validation` policy. Set the allowed algorithms, issuer, and audience in that policy. The optional `remote-jwks` feature adds `RemoteJwks`, with one cache per configured endpoint, bounded response sizes/timeouts, Cache-Control and Age handling, refresh deduplication, and a refresh cooldown for unknown key IDs. Remote verification rejects symmetric algorithms and never follows token-provided key URLs. Share one verifier across requests rather than constructing a cache for each request.
+
+Basic login and HMAC verification remain application-configured callbacks. `parse_basic`, `hmac_verify`, and JWT verification helpers provide credential primitives; timestamp/nonce replay policy, session persistence, and provider integrations require application configuration and remain separate parity tasks.
+
+## Telemetry
+
+`forklaunch_core::telemetry::OpenTelemetryCollector` records counters, gauges, histograms, and up/down counters, and exposes its meter for observable instruments. It supplies structured trace/debug/info/warn/error/fatal logging through `tracing`.
+
+Inject a collector through `RouterConfig.telemetry` to use application-owned OpenTelemetry providers. `with_meter` and `with_tracer` accept configured SDK instruments without replacing process-global providers. Configure exporters, a tracing subscriber, and a text-map propagator at application startup. With no configured providers, OpenTelemetry uses its standard no-op implementation.
+
+HTTP middleware emits server spans, request counts/duration, active requests, response sizes when Content-Length is known, auth failures, and error counts. Metric dimensions use matched route templates instead of user identifiers. Correlation IDs are attached to spans/logs rather than metric dimensions. Active requests and spans close when futures are cancelled. HTTP duration currently measures time to response headers; full streaming-body lifetime metrics and generated OTLP exporter bootstrap remain follow-up work.
+
+## Redis adapter
+
+Enable the `redis-client` feature of `forklaunch-infrastructure-redis` to use `client::RedisTtlCache` and `client::RedisQueue`. The cache uses Redis expiration, binary-safe reads/writes, atomic batch writes, and SCAN-based literal prefix listing. The queue uses atomic Redis list operations and preserves FIFO order across clients. Connections have bounded connect/read/write timeouts and support TLS URLs.
+
+These adapters implement synchronous operations; call them from a blocking executor in async services. The basic FIFO queue removes items on dequeue. It does not provide worker leases, acknowledgment, retry scheduling, or dead-letter handling; those belong to the production worker implementation still tracked in the parity plan.
+
+## PostgreSQL IAM
+
+Enable the `postgres` feature on `forklaunch-iam-base` to use `postgres::PostgresIamService`. Apply `PostgresIamService::migrate(&owner_pool)` with a schema-owner connection, then create the service with an application pool and a validated `forklaunch_core::persistence::TenantContext`. Runtime connections must use a role without SUPERUSER or BYPASSRLS. Bind the tenant from verified application context.
+
+The asynchronous service persists users, organizations, roles, and sessions. Passwords use salted Argon2id; hashing runs on blocking tasks. Session tokens are random and stored as SHA-256 digests, expire after one hour, and are checked against current user status. Password changes revoke existing sessions atomically. Every query includes its tenant and uses transaction-local context; migrations enable and force row-level security for reads and writes. The container test exercises a restricted role and connection-pool reuse.
+
+This adapter exposes async methods separately from the synchronous in-memory IAM interface. Generated services still use their example repository. Generator wiring, cookie/CSRF sessions, email/reset/verification flows, and OAuth/OIDC providers remain pending.
+
+## Field encryption compatibility
+
+Enable `forklaunch-core`'s `encryption` feature for `persistence::encryption::FieldEncryptor`. It supports the TypeScript field encryptor's tenant-derived HKDF keys, v1–v4 envelopes, previous-key rings, rotation, and blind indexes. Deterministic v2/v3 ciphertext and blind indexes match TypeScript byte for byte. Sealed v4 values use random nonces. Use a high-entropy master key and preserve previous keys while rotating stored data.
+
+The existing v4 format contains clear, unauthenticated anonymous metadata. Treat it as display metadata and never as an authorization claim. Deterministic encryption and blind indexes reveal equality within their key/tenant scope.
+
+`cli/tests/rust_field_encryption_parity.mjs` runs the actual TypeScript implementation alongside a Rust harness, testing both directions with empty, Unicode, binary-containing, current-key, previous-key, and legacy values. It needs a TypeScript compiler that exposes the compiler API; CI uses TypeScript 5.9.3 via `TSC_BIN`.

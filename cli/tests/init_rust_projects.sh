@@ -33,7 +33,7 @@ compile_typescript_sdk() {
 
 echo "Processing Rust project generation..."
 
-test -f "$REPO_ROOT/cli/src/templates/rust/application/Cargo.toml"
+test -f "$REPO_ROOT/cli/src/templates/rust/application/Cargo.toml.template"
 test -f "$REPO_ROOT/cli/src/templates/rust/application/Dockerfile"
 test -f "$REPO_ROOT/cli/src/templates/rust/project/service/src/lib.rs"
 test -f "$REPO_ROOT/cli/src/templates/rust/project/worker/src/lib.rs"

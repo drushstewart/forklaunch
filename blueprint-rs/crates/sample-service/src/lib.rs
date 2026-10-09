@@ -39,7 +39,8 @@ fn iam_contract(operation_name: &str) -> RouteContract {
 ///
 /// Routes are registered from the blueprint's published contracts, so request
 /// validation and the generated `OpenAPI` document stay in lockstep with the
-/// service definition.
+/// service definition. Protected routes require an application-configured
+/// `RouterConfig::with_authenticator`; the default router rejects them.
 #[must_use]
 pub fn iam_router(service: &Arc<InMemoryIamService>) -> ForkLaunchRouter {
     let get_user_service = Arc::clone(service);
@@ -83,6 +84,49 @@ mod tests {
         ]))
     }
 
+    fn authenticated_app() -> axum::Router {
+        let config =
+            forklaunch_axum::RouterConfig::default().with_authenticator(|request, _| async move {
+                use forklaunch_auth::{AuthError, parse_bearer, verify_jwt_hs256};
+                let token = request
+                    .headers
+                    .get("authorization")
+                    .and_then(|header| parse_bearer(header))
+                    .ok_or(AuthError::MissingCredentials)?;
+                let principal = verify_jwt_hs256(token, b"test-only-signing-key")?;
+                Ok(forklaunch_axum::session::AuthenticatedSession::new(
+                    principal,
+                    serde_json::json!({"sub":"tester"}),
+                ))
+            });
+        iam_router(&service()).with_config(config).into_router()
+    }
+
+    fn authorization() -> String {
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &serde_json::json!({"sub":"tester", "exp":4_102_444_800_u64}),
+            &jsonwebtoken::EncodingKey::from_secret(b"test-only-signing-key"),
+        )
+        .unwrap();
+        format!("Bearer {token}")
+    }
+
+    #[tokio::test]
+    async fn iam_router_requires_authentication_by_default() {
+        let response = iam_router(&service())
+            .into_router()
+            .oneshot(
+                Request::builder()
+                    .uri("/users")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
     #[test]
     fn sample_service_describes_module() {
         assert_eq!(module().name, "sample-service");
@@ -90,12 +134,13 @@ mod tests {
 
     #[tokio::test]
     async fn iam_router_serves_a_user_over_http() {
-        let app = iam_router(&service()).into_router();
+        let app = authenticated_app();
 
         let response = app
             .oneshot(
                 Request::builder()
                     .uri("/users/user_1")
+                    .header("authorization", authorization())
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -111,12 +156,13 @@ mod tests {
 
     #[tokio::test]
     async fn iam_router_returns_404_for_unknown_user() {
-        let app = iam_router(&service()).into_router();
+        let app = authenticated_app();
 
         let response = app
             .oneshot(
                 Request::builder()
                     .uri("/users/nope")
+                    .header("authorization", authorization())
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -128,13 +174,14 @@ mod tests {
 
     #[tokio::test]
     async fn iam_router_lists_users_and_serves_openapi() {
-        let app = iam_router(&service()).into_router();
+        let app = authenticated_app();
 
         let listed = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/users")
+                    .header("authorization", authorization())
                     .body(Body::empty())
                     .unwrap(),
             )

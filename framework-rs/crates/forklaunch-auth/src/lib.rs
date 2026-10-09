@@ -17,10 +17,12 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
+pub mod jwt;
+
 type HmacSha256 = Hmac<Sha256>;
 
 /// An authenticated caller, enriched from a verified credential.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Principal {
     /// Subject identifier (e.g. user or service id).
     pub subject: String,
@@ -46,7 +48,9 @@ impl Principal {
         }
     }
 
-    fn from_claims(claims: JwtClaims) -> Self {
+    /// Enriches an authenticated principal from verified claims.
+    #[must_use]
+    pub fn from_claims(claims: JwtClaims) -> Self {
         Self {
             subject: claims.sub,
             roles: claims.roles,
@@ -150,6 +154,7 @@ pub fn parse_basic(header: &str) -> Option<(String, String)> {
 /// Returns [`AuthError::InvalidCredentials`] when the token is malformed,
 /// expired, or signed with a different key.
 pub fn verify_jwt_hs256(token: &str, signature_key: &[u8]) -> Result<Principal, AuthError> {
+    jwt::check_header_policy(token)?;
     let validation = Validation::new(Algorithm::HS256);
     decode::<JwtClaims>(token, &DecodingKey::from_secret(signature_key), &validation)
         .map(|data| Principal::from_claims(data.claims))

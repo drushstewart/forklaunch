@@ -15,6 +15,11 @@ forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-contract = { path = "../forklaunch-contract" }
 forklaunch-core = { path = "../forklaunch-core" }
 forklaunch-http = { path = "../forklaunch-http" }
+forklaunch-auth = { path = "../forklaunch-auth" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+opentelemetry = "0.31"
 forklaunch-openapi = { path = "../forklaunch-openapi" }
 
 axum = { version = "0.8", optional = true }
@@ -25,6 +30,7 @@ form_urlencoded = { version = "1", optional = true }
 bytes = { version = "1", optional = true }
 
 [dev-dependencies]
+opentelemetry_sdk = { version = "0.31", features = ["testing"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
 tower = { version = "0.5", features = ["util"] }
 

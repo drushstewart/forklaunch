@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+pub mod persistence;
+pub mod telemetry;
+
 pub use forklaunch_common as common;
 pub use forklaunch_contract as contract;
 

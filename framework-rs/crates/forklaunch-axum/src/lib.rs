@@ -2,6 +2,8 @@
 
 #[cfg(feature = "adapter")]
 pub mod router;
+#[cfg(feature = "adapter")]
+pub mod session;
 
 #[cfg(feature = "adapter")]
 pub use router::{DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter, RouterConfig};

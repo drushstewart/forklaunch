@@ -14,6 +14,7 @@ use std::{
     },
 };
 
+use crate::session::{AuthenticatedSession, Authenticator};
 use axum::{
     Router,
     body::{Body as AxumBody, to_bytes},
@@ -24,14 +25,18 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::MethodRouter,
 };
+use forklaunch_auth::{AuthError, authorize};
 use forklaunch_common::{join_base_path, sanitize_path_slashes};
-use forklaunch_contract::{ContractRegistry, HttpMethod, RouteContract, ValidationMode};
-use forklaunch_core::ServiceInfo;
+use forklaunch_contract::{
+    AccessLevel, ContractRegistry, HttpMethod, RouteContract, ValidationMode,
+};
+use forklaunch_core::{ServiceInfo, telemetry::OpenTelemetryCollector};
 use forklaunch_http::{
     Body as FrameworkBody, ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse,
     LocalRouter, RequestContext, match_path, validate_framework_request, validation_error_response,
 };
 use forklaunch_openapi::{OpenApiOptions, OpenApiServer, generate_openapi_json_with_options};
+use opentelemetry::trace::FutureExt;
 use tower_http::{
     cors::CorsLayer,
     limit::RequestBodyLimitLayer,
@@ -67,6 +72,10 @@ pub struct RouterConfig {
     pub servers: Vec<OpenApiServer>,
     /// CORS policy; defaults to a permissive policy when unset.
     pub cors: Option<CorsLayer>,
+    /// Credential verifier for routes requiring authentication. Missing verifiers fail closed.
+    pub authenticator: Option<Authenticator>,
+    /// Inject a configured collector to export HTTP traces and metrics.
+    pub telemetry: Option<OpenTelemetryCollector>,
 }
 
 impl Default for RouterConfig {
@@ -83,11 +92,28 @@ impl Default for RouterConfig {
             description: None,
             servers: Vec::new(),
             cors: None,
+            authenticator: None,
+            telemetry: None,
         }
     }
 }
 
 impl RouterConfig {
+    /// Configures credential verification and optional session enrichment.
+    /// The verifier receives the raw request and declared contract, including auth
+    /// method/header settings. It must verify credentials before returning a session.
+    #[must_use]
+    pub fn with_authenticator<F, Fut>(mut self, verifier: F) -> Self
+    where
+        F: Fn(FrameworkRequest, RouteContract) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<AuthenticatedSession, AuthError>> + Send + 'static,
+    {
+        self.authenticator = Some(Arc::new(move |request, contract| {
+            Box::pin(verifier(request, contract))
+        }));
+        self
+    }
+
     fn openapi_options(&self, registry: &ContractRegistry) -> OpenApiOptions {
         let mut options = OpenApiOptions::from_registry(registry);
         if let Some(description) = &self.description {
@@ -164,10 +190,13 @@ impl ForkLaunchRouter {
                     let request = build_framework_request(&contract, &parts, &bytes);
                     match handlers.execute(request) {
                         Ok(response) => framework_response_to_axum(response),
-                        Err(error) => framework_response_to_axum(
-                            ErrorResponse::new(ErrorKind::Internal, error.to_string())
-                                .to_response(),
-                        ),
+                        Err(error) => {
+                            tracing::error!(error = %error, "local request handler failed");
+                            framework_response_to_axum(
+                                ErrorResponse::new(ErrorKind::Internal, "internal server error")
+                                    .to_response(),
+                            )
+                        }
                     }
                 }
             };
@@ -295,12 +324,22 @@ impl ForkLaunchRouter {
             }
         }
 
-        let state = Arc::new(ValidationState::from_registry(&registry, config.body_limit));
+        let telemetry = config
+            .telemetry
+            .clone()
+            .unwrap_or_else(|| OpenTelemetryCollector::new("forklaunch-http"));
+        let state = Arc::new(ValidationState::from_registry(
+            &registry,
+            config.body_limit,
+            config.authenticator,
+            telemetry.clone(),
+        ));
         router = router.layer(middleware::from_fn_with_state(state, validate_contract));
 
         let cors = config.cors.unwrap_or_else(CorsLayer::permissive);
         router
             .layer(RequestBodyLimitLayer::new(config.body_limit))
+            .layer(middleware::from_fn_with_state(telemetry, observe_request))
             .layer(PropagateRequestIdLayer::x_request_id())
             .layer(SetRequestIdLayer::x_request_id(
                 CounterMakeRequestId::default(),
@@ -355,17 +394,71 @@ fn docs_handler(html: String) -> MethodRouter {
 struct ValidationState {
     routes: HashMap<String, RouteContract>,
     body_limit: usize,
+    authenticator: Option<Authenticator>,
+    telemetry: OpenTelemetryCollector,
 }
 
 impl ValidationState {
-    fn from_registry(registry: &ContractRegistry, body_limit: usize) -> Self {
+    fn from_registry(
+        registry: &ContractRegistry,
+        body_limit: usize,
+        authenticator: Option<Authenticator>,
+        telemetry: OpenTelemetryCollector,
+    ) -> Self {
         let routes = registry
             .routes()
             .iter()
             .map(|route| (route_key(route.method, &route.openapi_path), route.clone()))
             .collect();
-        Self { routes, body_limit }
+        Self {
+            routes,
+            body_limit,
+            authenticator,
+            telemetry,
+        }
     }
+}
+
+struct HeaderExtractor<'a>(&'a axum::http::HeaderMap);
+impl opentelemetry::propagation::Extractor for HeaderExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(axum::http::HeaderName::as_str).collect()
+    }
+}
+
+async fn observe_request(
+    State(collector): State<OpenTelemetryCollector>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let route = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map_or("unmatched", MatchedPath::as_str);
+    let method = method_to_contract(request.method()).map_or("OTHER", HttpMethod::as_str);
+    let correlation_id = request
+        .headers()
+        .get("x-correlation-id")
+        .or_else(|| request.headers().get("x-request-id"))
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_owned();
+    let parent = opentelemetry::global::get_text_map_propagator(|propagator| {
+        propagator.extract(&HeaderExtractor(request.headers()))
+    });
+    let measurement = collector.start_request_with_context(method, route, &parent);
+    let context = measurement.context();
+    let response = next.run(request).with_context(context).await;
+    let size = response
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse().ok());
+    measurement.finish(response.status().as_u16(), size, &correlation_id);
+    response
 }
 
 fn route_key(method: HttpMethod, path: &str) -> String {
@@ -388,15 +481,18 @@ async fn validate_contract(
         return next.run(request).await;
     };
 
-    let Some(contract) = state.routes.get(&route_key(method, &matched)).cloned() else {
+    // Axum automatically serves HEAD with GET handlers; apply the GET contract
+    // unless an explicit HEAD contract was registered, including its auth policy.
+    let contract = state.routes.get(&route_key(method, &matched)).or_else(|| {
+        (method == HttpMethod::Head)
+            .then(|| state.routes.get(&route_key(HttpMethod::Get, &matched)))
+            .flatten()
+    });
+    let Some(contract) = contract.cloned() else {
         return next.run(request).await;
     };
 
-    if contract.options.request_validation != ValidationMode::Error {
-        return next.run(request).await;
-    }
-
-    let (parts, body) = request.into_parts();
+    let (mut parts, body) = request.into_parts();
     let Ok(bytes) = to_bytes(body, state.body_limit).await else {
         return framework_response_to_axum(
             ErrorResponse::new(ErrorKind::Validation, "request body exceeds limit").to_response(),
@@ -404,7 +500,44 @@ async fn validate_contract(
     };
 
     let framework_request = build_framework_request(&contract, &parts, &bytes);
-    let errors = validate_framework_request(&contract, &framework_request);
+    let requires_auth = contract.auth.is_some()
+        || contract.rbac.is_some()
+        || contract.access != AccessLevel::Public;
+    if requires_auth {
+        let authenticated = match &state.authenticator {
+            Some(verifier) => verifier(framework_request.clone(), contract.clone()).await,
+            None => Err(AuthError::MissingCredentials),
+        };
+        let result = authenticated.and_then(|session| {
+            if let Some(rbac) = &contract.rbac {
+                authorize(&session.principal, rbac)?;
+            }
+            Ok(session)
+        });
+        match result {
+            Ok(session) => {
+                parts.extensions.insert(session);
+            }
+            Err(error) => {
+                state.telemetry.auth_failure(
+                    &contract.operation_name,
+                    &framework_request.context.correlation_id,
+                );
+                tracing::warn!(operation = %contract.operation_name, correlation_id = %framework_request.context.correlation_id, "request authentication or authorization failed");
+                return framework_response_to_axum(
+                    error
+                        .to_error_response()
+                        .with_correlation_id(framework_request.context.correlation_id)
+                        .to_response(),
+                );
+            }
+        }
+    }
+    let errors = if contract.options.request_validation == ValidationMode::Error {
+        validate_framework_request(&contract, &framework_request)
+    } else {
+        Vec::new()
+    };
     if !errors.is_empty() {
         let correlation_id = framework_request.context.correlation_id.clone();
         return framework_response_to_axum(validation_error_response(&errors, &correlation_id));
@@ -438,13 +571,11 @@ fn validate_response_status(
         return response;
     }
 
+    tracing::error!(status, operation = %contract.operation_name, correlation_id, "handler returned undocumented status");
     framework_response_to_axum(
-        ErrorResponse::new(
-            ErrorKind::Internal,
-            format!("handler returned undocumented status {status}"),
-        )
-        .with_correlation_id(correlation_id.to_owned())
-        .to_response(),
+        ErrorResponse::new(ErrorKind::Internal, "internal server error")
+            .with_correlation_id(correlation_id.to_owned())
+            .to_response(),
     )
 }
 
@@ -457,6 +588,7 @@ fn build_framework_request(
     let correlation_id = parts
         .headers
         .get("x-correlation-id")
+        .or_else(|| parts.headers.get("x-request-id"))
         .and_then(|value| value.to_str().ok())
         .unwrap_or("forklaunch-request")
         .to_owned();
@@ -482,6 +614,10 @@ fn build_framework_request(
         };
     }
 
+    request.session = parts
+        .extensions
+        .get::<AuthenticatedSession>()
+        .map(|session| session.claims.clone());
     request
 }
 
@@ -741,7 +877,8 @@ mod tests {
             .await
             .unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body.contains("undocumented status 418"));
+        assert!(body.contains("internal server error"));
+        assert!(!body.contains("418"));
     }
 
     #[tokio::test]

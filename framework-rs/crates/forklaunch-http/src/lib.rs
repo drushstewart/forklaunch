@@ -97,6 +97,8 @@ pub struct FrameworkRequest {
     pub query: Query,
     pub headers: Headers,
     pub body: Body,
+    /// Verified session claims populated by authentication middleware.
+    pub session: Option<serde_json::Value>,
 }
 
 impl FrameworkRequest {
@@ -110,6 +112,7 @@ impl FrameworkRequest {
             query: Query::new(),
             headers: Headers::new(),
             body: Body::Empty,
+            session: None,
         }
     }
 

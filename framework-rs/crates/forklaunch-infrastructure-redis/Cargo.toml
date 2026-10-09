@@ -8,10 +8,12 @@ repository.workspace = true
 
 [features]
 default = []
-redis-client = []
+redis-client = ["dep:redis"]
 
 [dependencies]
 forklaunch-core = { path = "../forklaunch-core" }
+
+redis = { version = "0.32", default-features = false, features = ["tls-rustls", "tls-rustls-webpki-roots"], optional = true }
 
 [lints]
 workspace = true

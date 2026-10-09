@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "redis-client")]
+pub mod client;
+
 use std::{
     collections::{BTreeMap, VecDeque},
     time::{Duration, Instant},
