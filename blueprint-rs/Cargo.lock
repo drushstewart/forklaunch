@@ -370,6 +370,7 @@ dependencies = [
  "forklaunch-http",
  "forklaunch-openapi",
  "form_urlencoded",
+ "http-body",
  "opentelemetry",
  "serde",
  "serde_json",

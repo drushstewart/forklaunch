@@ -228,7 +228,29 @@ impl RequestMeasurement {
         self.context.clone()
     }
 
-    pub fn finish(mut self, status: u16, response_bytes: Option<u64>, correlation_id: &str) {
+    pub fn finish(self, status: u16, response_bytes: Option<u64>, correlation_id: &str) {
+        self.complete(status, response_bytes, correlation_id, None);
+    }
+
+    /// Records a failed response stream while preserving the already-sent HTTP status.
+    /// Use a bounded, non-sensitive error category, never raw backend error details.
+    pub fn finish_failed(
+        self,
+        status: u16,
+        response_bytes: Option<u64>,
+        correlation_id: &str,
+        category: &'static str,
+    ) {
+        self.complete(status, response_bytes, correlation_id, Some(category));
+    }
+
+    fn complete(
+        mut self,
+        status: u16,
+        response_bytes: Option<u64>,
+        correlation_id: &str,
+        failure: Option<&'static str>,
+    ) {
         self.attributes.push(KeyValue::new(
             "http.response.status_code",
             i64::from(status),
@@ -241,7 +263,9 @@ impl RequestMeasurement {
             "forklaunch.correlation_id",
             correlation_id.to_owned(),
         ));
-        if status >= 500 {
+        if let Some(category) = failure {
+            self.context.span().set_status(Status::error(category));
+        } else if status >= 500 {
             self.context
                 .span()
                 .set_status(Status::error("server error"));
@@ -251,7 +275,7 @@ impl RequestMeasurement {
         self.collector
             .duration
             .record(self.started.elapsed().as_secs_f64(), &self.attributes);
-        if status >= 400 {
+        if status >= 400 || failure.is_some() {
             self.collector.errors.add(1, &self.attributes);
             self.collector
                 .debug("request returned an error response", correlation_id);

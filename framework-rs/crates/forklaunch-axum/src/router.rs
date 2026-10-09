@@ -451,14 +451,9 @@ async fn observe_request(
     });
     let measurement = collector.start_request_with_context(method, route, &parent);
     let context = measurement.context();
+    let head = request.method() == Method::HEAD;
     let response = next.run(request).with_context(context).await;
-    let size = response
-        .headers()
-        .get(header::CONTENT_LENGTH)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse().ok());
-    measurement.finish(response.status().as_u16(), size, &correlation_id);
-    response
+    crate::body_telemetry::observe_response(response, measurement, correlation_id, head)
 }
 
 fn route_key(method: HttpMethod, path: &str) -> String {

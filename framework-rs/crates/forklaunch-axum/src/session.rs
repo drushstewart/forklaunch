@@ -289,6 +289,9 @@ mod telemetry_tests {
                 .await
                 .unwrap();
             assert_eq!(response.status().as_u16(), status);
+            axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
         }
         meters.force_flush().unwrap();
         traces.force_flush().unwrap();

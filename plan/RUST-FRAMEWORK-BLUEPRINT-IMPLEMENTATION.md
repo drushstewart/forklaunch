@@ -15,13 +15,13 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: CLI baseline 921 tests; latest all-feature framework 90 and blueprint 40 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: CLI baseline 921 tests; latest all-feature framework 91 and blueprint 40 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [ ] Validate Rust-only release export through the shared exporter, including contracts and OpenAPI artifacts.
 - [ ] Validate mixed TypeScript/Rust release export and preserve prebuilt-release isolation from `main`.
-- [ ] Complete generated-container build and HTTP/shutdown smoke checks after Docker disk capacity is available. Local build failed with `No space left on device`; builder/runtime now both use Debian bookworm.
+- [ ] Complete generated-container build and HTTP/shutdown smoke checks after Docker disk capacity is available. Local build failed with `No space left on device`; the 2026-10-09 retry reached Rust release compilation but Docker's 122 GiB filesystem remains full and was stopped without pruning shared data. Builder/runtime both use Debian bookworm. `rust_container_runtime.sh` now checks relocated builds, health/OpenAPI, and SIGTERM shutdown in CI.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.
-- [x] Verify the CLI Cargo package file list includes all 47 embedded framework source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 48 embedded framework source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [ ] Validate crate publication and installation from published CLI sources (phases 13–15). Embedded framework packaging is checked; Rust blueprint directory symlinks still contain nested manifests excluded by Cargo packaging and need the same source-mirror treatment before blueprint generation is wired.
@@ -41,7 +41,8 @@ Current implementation work:
 - [x] Add framework/blueprint CI covering all features, real Redis/PostgreSQL integration, and TypeScript encryption interoperability.
 - [x] Add PostgreSQL IAM CRUD, role/permission resolution, persistent sessions, salted Argon2id credentials, and tenant RLS.
 - [x] Port field encryption with byte-compatible deterministic envelopes/blind indexes and bidirectional legacy/rotation checks against the TypeScript implementation.
-- [ ] Add generated OTLP provider/exporter bootstrap and complete streaming-body telemetry.
+- [x] Complete streaming-body telemetry with measured frame bytes, producer context propagation, normal completion, body errors, cancellation, HEAD handling, and balanced active-request counts.
+- [ ] Add generated OTLP provider/exporter bootstrap.
 - [ ] Finish production persistence and encryption, IAM/provider/session lifecycle, billing/Stripe, and acknowledged database/Redis/Kafka workers (phases 9 and 12).
 - [ ] Finish streaming/multipart/WebSocket runtime and SDK behavior, mixed-app orchestration, AsyncAPI export, and cross-language conformance (phases 3–8 and 13–14).
 - [ ] Finish container/ECS, published-source installation, documentation, benchmarks, and release validation (phase 15).
@@ -401,7 +402,7 @@ Requirements:
 - [x] Support trace, debug, info, warn, error, fatal logging methods.
 - [x] Support counters, gauges, histograms, and up-down counters.
 - [x] Add automatic HTTP request spans. (SDK export assertions and parent-context tests)
-- [x] Add request/response metrics. (header latency/count/status/active/known response size; streaming lifetime remains separate)
+- [x] Add request/response metrics. (full response lifetime/count/status/active/measured body bytes, including streaming failures and cancellation)
 - [x] Add auth failure telemetry.
 - [x] Add error correlation telemetry. (correlation in spans/logs, excluded from metric dimensions)
 

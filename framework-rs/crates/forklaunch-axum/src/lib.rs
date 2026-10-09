@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "adapter")]
+mod body_telemetry;
+#[cfg(feature = "adapter")]
 pub mod router;
 #[cfg(feature = "adapter")]
 pub mod session;
