@@ -11,16 +11,20 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 
 ## Active Task Queue (2026-10-09)
 
-- [x] Merge `origin/main` (`fae3d3e06`) into `rohin/rust-framework` and resolve CLI API/manifest conflicts; combined CLI compiles.
+- [x] Merge `origin/main` (`fae3d3e06`) into `rohin/rust-framework` and resolve CLI API/manifest conflicts; combined CLI compiles. Fetched and rechecked on 2026-10-09: no newer `main` commits remain to merge.
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
 - [x] Revalidate the combined workspaces: 921 CLI, 76 framework, and 36 blueprint tests pass; both Rust workspace Clippy checks pass.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
-- [ ] Validate Rust and mixed-language release export after unifying language dispatch; preserve prebuilt-release isolation from `main`.
-- [ ] Verify a generated application container build and runtime; validate ECS defaults separately. Local image build is blocked by Docker disk exhaustion (`No space left on device`); builder/runtime now both use Debian bookworm.
+- [ ] Validate Rust-only release export through the shared exporter, including contracts and OpenAPI artifacts.
+- [ ] Validate mixed TypeScript/Rust release export and preserve prebuilt-release isolation from `main`.
+- [ ] Complete generated-container build and HTTP/shutdown smoke checks after Docker disk capacity is available. Local build failed with `No space left on device`; builder/runtime now both use Debian bookworm.
+- [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.
 - [x] Verify the CLI Cargo package file list includes all 41 embedded Rust source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
-- [ ] Close remaining mixed-app orchestration, AsyncAPI export, crate publication, and conformance tasks in phases 13–15.
+- [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
+- [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
+- [ ] Validate crate publication and installation from published CLI sources (phases 13–15).
 
 Production storage, auth/provider, and queue implementations remain explicit tasks in phase 12; passing generation checks does not complete those integrations.
 
