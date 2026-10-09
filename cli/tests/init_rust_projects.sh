@@ -62,6 +62,7 @@ run_cli init application rustproject \
 test -f rustproject/.forklaunch/framework-rs/Cargo.toml
 test -f rustproject/.forklaunch/framework-rs/crates/forklaunch-axum/src/router.rs
 test -f rustproject/Cargo.toml
+test -f rustproject/.dockerignore
 test -f rustproject/Dockerfile
 test -f rustproject/docker-compose.yaml
 test -f rustproject/package.json

@@ -716,7 +716,9 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
         "tempo".to_string(),
         DockerService {
             image: Some("grafana/tempo:3.0.0".to_string()),
-            command: Some(Command::Simple("-target=all -config.file=/etc/tempo.yaml".to_string())),
+            command: Some(Command::Simple(
+                "-target=all -config.file=/etc/tempo.yaml".to_string(),
+            )),
             // Host port 4317 is deliberately not published: the OTel collector
             // is the only front door for OTLP and reaches Tempo over the
             // compose network.
@@ -759,7 +761,9 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
         "loki".to_string(),
         DockerService {
             image: Some("grafana/loki:3.7.7".to_string()),
-            command: Some(Command::Simple("-config.file=/etc/loki/local-config.yaml".to_string())),
+            command: Some(Command::Simple(
+                "-config.file=/etc/loki/local-config.yaml".to_string(),
+            )),
             ports: Some(vec!["3100:3100".to_string()]),
             volumes: Some(vec![
                 format!(
@@ -2647,8 +2651,10 @@ pub(crate) fn sync_docker_compose_env_vars(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::Runtime;
-    use crate::core::manifest::{ProjectEntry, ProjectType, application::ApplicationManifestData};
+    use crate::{
+        constants::Runtime,
+        core::manifest::{ProjectEntry, ProjectType, application::ApplicationManifestData},
+    };
 
     #[test]
     fn test_add_iam_environment_variables_skips_gracefully_when_iam_project_has_no_variant() {
@@ -2739,6 +2745,13 @@ mod tests {
             platform_application_id: None,
             platform_organization_id: None,
             compliance: None,
+            language: None,
+            application_language: None,
+            sdk_targets: Vec::new(),
+            cargo_workspace: None,
+            contract_artifact_path: None,
+            openapi_path: None,
+            asyncapi_path: None,
         }
     }
 

@@ -8,8 +8,8 @@ use std::{
 use anyhow::{Context, Result, bail};
 use clap::ArgMatches;
 use convert_case::{Case, Casing};
-use indexmap::IndexMap;
 use include_dir::{Dir, include_dir};
+use indexmap::IndexMap;
 use ramhorns::{Content, Template};
 use serde_json::{Value as JsonValue, json};
 use serde_yml::{from_str as yaml_from_str, to_string as yaml_to_string};
@@ -27,8 +27,9 @@ use crate::core::{
 };
 
 // Embed source only, so released CLIs generate portable apps without a repository checkout.
-static FRAMEWORK_CRATES: Dir = include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/framework/crates");
-const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.toml");
+static FRAMEWORK_CRATES: Dir =
+    include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/framework/crates");
+const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.toml.template");
 
 pub(crate) const PROJECT_LANGUAGE_VARIANTS: [&str; 3] = ["typescript", "rust", "mixed"];
 pub(crate) const SDK_TARGET_VARIANTS: [&str; 4] = ["typescript", "ts", "rust", "all"];
@@ -90,9 +91,7 @@ fn sdk_targets_from_manifest(manifest: &Value) -> Vec<String> {
     manifest
         .get("sdkTargets")
         .and_then(Value::as_array)
-        .map(|targets| {
-            normalize_sdk_targets(targets.iter().filter_map(Value::as_str))
-        })
+        .map(|targets| normalize_sdk_targets(targets.iter().filter_map(Value::as_str)))
         .unwrap_or_else(default_sdk_targets)
 }
 
@@ -160,6 +159,11 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
                     description: description.clone(),
                 },
             ),
+            context: None,
+        },
+        RenderedTemplate {
+            path: root_path.join(".dockerignore"),
+            content: render_static_rust_template("rust/application/dockerignore"),
             context: None,
         },
         RenderedTemplate {
@@ -269,7 +273,12 @@ pub(crate) fn generate_rust_router(matches: &ArgMatches) -> Result<()> {
     let route_file = routes_dir.join(format!("{router_module}.rs"));
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
 
-    write_text_file_preserving_existing(&route_file, &router_rs(&router_name), dryrun, &mut stdout)?;
+    write_text_file_preserving_existing(
+        &route_file,
+        &router_rs(&router_name),
+        dryrun,
+        &mut stdout,
+    )?;
 
     rewrite_routes_mod(&routes_dir, dryrun, &mut stdout)?;
     add_router_to_manifest(&app_root, &service_name, &router_name, dryrun)?;
@@ -992,7 +1001,15 @@ fn ensure_embedded_framework(app_root: &Path, dryrun: bool) -> Result<()> {
 
 fn write_embedded_sources(dir: &Dir<'_>, root: &Path) -> Result<()> {
     for file in dir.files() {
-        let path = root.join(file.path());
+        // Cargo excludes directories containing Cargo.toml from published CLI sources.
+        // Restore manifest names when writing the embedded framework.
+        let mut path = root.join(file.path());
+        if path
+            .file_name()
+            .is_some_and(|name| name == "Cargo.toml.template")
+        {
+            path.set_file_name("Cargo.toml");
+        }
         if !path.exists() {
             create_dir_all(path.parent().context("embedded source has no parent")?)?;
             write(&path, file.contents())?;
@@ -1202,7 +1219,7 @@ fn root_cargo_toml(license: &str, author: &str) -> String {
         format!("[\"{}\"]", escape_toml_string(author))
     };
     render_rust_template(
-        "rust/application/Cargo.toml",
+        "rust/application/Cargo.toml.template",
         &RustRootCargoTemplate {
             license: escape_toml_string(license),
             authors,
@@ -1212,7 +1229,7 @@ fn root_cargo_toml(license: &str, author: &str) -> String {
 
 fn project_cargo_toml(name: &str, description: &str, has_binary: bool) -> String {
     render_rust_template(
-        "rust/project/Cargo.toml",
+        "rust/project/Cargo.toml.template",
         &rust_crate_template_data(name, description, has_binary),
     )
 }

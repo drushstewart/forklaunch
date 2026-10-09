@@ -453,17 +453,20 @@ fn export_rust_service_artifacts(
         .env("FORKLAUNCH_MODE", "contract")
         .env("FORKLAUNCH_OPENAPI_OUTPUT", openapi_output)
         .env("FORKLAUNCH_CONTRACT_OUTPUT", contract_output)
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .with_context(|| format!("Failed to spawn cargo for Rust service {service_name}"))?;
 
-    let timeout = Duration::from_secs(60);
+    let stderr = child.stderr.take();
+    let stderr_reader = thread::spawn(move || read_child_pipe(stderr));
+    // A first contract export may compile the generated service and its dependencies.
+    let timeout = Duration::from_secs(300);
     let start = Instant::now();
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                let stderr = read_child_pipe(child.stderr.take());
+                let stderr = stderr_reader.join().unwrap_or_default();
                 if !status.success() {
                     bail!(
                         "Rust service {} failed to export framework contract artifacts: {}",
@@ -476,6 +479,7 @@ fn export_rust_service_artifacts(
             Ok(None) => {
                 if start.elapsed() > timeout {
                     let _ = child.kill();
+                    let _ = child.wait();
                     bail!(
                         "Rust service {} timed out after {}s during framework contract export",
                         service_name,

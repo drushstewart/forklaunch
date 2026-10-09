@@ -15,10 +15,11 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [ ] Revalidate the combined CLI, framework, and blueprint workspaces after the merge.
-- [ ] Pass all Rust init/change/sync/delete/OpenAPI/SDK E2E scripts and the relocated-service HTTP/TypeScript SDK check.
+- [x] Revalidate the combined workspaces: 921 CLI, 76 framework, and 36 blueprint tests pass; both Rust workspace Clippy checks pass.
+- [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [ ] Validate Rust and mixed-language release export after unifying language dispatch; preserve prebuilt-release isolation from `main`.
-- [ ] Verify a generated application container build and runtime; validate ECS defaults separately.
+- [ ] Verify a generated application container build and runtime; validate ECS defaults separately. Local image build is blocked by Docker disk exhaustion (`No space left on device`); builder/runtime now both use Debian bookworm.
+- [x] Verify the CLI Cargo package file list includes all 41 embedded Rust source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Close remaining mixed-app orchestration, AsyncAPI export, crate publication, and conformance tasks in phases 13–15.
 
 Production storage, auth/provider, and queue implementations remain explicit tasks in phase 12; passing generation checks does not complete those integrations.
@@ -667,7 +668,7 @@ Current CLI structure to build on:
 - [x] Build the same canonical contract fixture service in Rust. (`forklaunch-blueprint-sample-service::iam_router` — runnable, contract-driven, serves OpenAPI)
 - [ ] Snapshot OpenAPI outputs and compare normalized output.
 - [ ] Snapshot AsyncAPI outputs and compare normalized output.
-- [ ] Run generated TypeScript SDK against the Rust service. (`cli/tests/rust_http_runtime.sh` added; validation pending)
+- [x] Run generated TypeScript SDK against the Rust service. (`cli/tests/rust_http_runtime.sh`; relocated app, live HTTP, graceful shutdown verified)
 - [ ] Run generated Rust SDK against the TypeScript service.
 - [x] Add CLI tests that generate Rust TypeScript/Rust SDKs and typecheck the generated TypeScript SDK entrypoint.
 - [x] Add CLI tests that assert generated Rust and TypeScript SDK model shapes come from Rust contract schemas.

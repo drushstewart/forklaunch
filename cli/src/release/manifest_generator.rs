@@ -461,7 +461,12 @@ fn project_relative_path(manifest: &ApplicationManifestData, project: &ProjectEn
             .metadata
             .as_ref()
             .and_then(|metadata| metadata.crate_path.clone())
-            .unwrap_or_else(|| Path::new("crates").join(&project.name).to_string_lossy().into())
+            .unwrap_or_else(|| {
+                Path::new("crates")
+                    .join(&project.name)
+                    .to_string_lossy()
+                    .into()
+            })
     } else {
         Path::new(&manifest.modules_path)
             .join(&project.name)
@@ -502,7 +507,12 @@ fn project_worker_type(project: &ProjectEntry) -> String {
     project
         .metadata
         .as_ref()
-        .and_then(|metadata| metadata.worker_type.clone().or_else(|| metadata.r#type.clone()))
+        .and_then(|metadata| {
+            metadata
+                .worker_type
+                .clone()
+                .or_else(|| metadata.r#type.clone())
+        })
         .unwrap_or_else(|| "bullmq".to_string())
 }
 
@@ -1163,9 +1173,10 @@ fn add_non_db_resources(
 mod tests {
     use std::collections::{HashMap, HashSet};
 
+    use tempfile::TempDir;
+
     use super::*;
     use crate::core::manifest::{ProjectMetadata, ResourceInventory};
-    use tempfile::TempDir;
 
     fn rust_release_test_manifest() -> ApplicationManifestData {
         ApplicationManifestData {
@@ -1202,21 +1213,21 @@ mod tests {
                     name: "accounts".to_string(),
                     description: "Accounts service".to_string(),
                     variant: None,
+                    serves: None,
                     resources: Some(ResourceInventory {
                         database: Some("postgresql".to_string()),
                         cache: None,
                         queue: None,
                         object_store: None,
                         redis_partition: None,
+                        capabilities: None,
                     }),
                     routers: Some(vec!["users".to_string()]),
                     metadata: Some(ProjectMetadata {
                         language: Some("rust".to_string()),
                         crate_name: Some("accounts".to_string()),
                         crate_path: Some("crates/accounts".to_string()),
-                        openapi_path: Some(
-                            ".forklaunch/openapi/accounts/openapi.json".to_string(),
-                        ),
+                        openapi_path: Some(".forklaunch/openapi/accounts/openapi.json".to_string()),
                         ..ProjectMetadata::default()
                     }),
                 },
@@ -1225,12 +1236,14 @@ mod tests {
                     name: "email-worker".to_string(),
                     description: "Email worker".to_string(),
                     variant: None,
+                    serves: None,
                     resources: Some(ResourceInventory {
                         database: Some("postgresql".to_string()),
                         cache: None,
                         queue: None,
                         object_store: None,
                         redis_partition: None,
+                        capabilities: None,
                     }),
                     routers: None,
                     metadata: Some(ProjectMetadata {
@@ -1741,8 +1754,7 @@ health_path = "/health"
         let rewritten = toml::to_string(&project).unwrap();
         assert!(rewritten.contains("port_env = \"WS_PORT\""), "{rewritten}");
         let bare: crate::core::manifest::ProjectEntry =
-            toml::from_str("type = \"Service\"\nname = \"iam\"\ndescription = \"\"\n")
-                .unwrap();
+            toml::from_str("type = \"Service\"\nname = \"iam\"\ndescription = \"\"\n").unwrap();
         assert!(serving_ports(&bare).is_none());
         assert!(!toml::to_string(&bare).unwrap().contains("serves"));
     }
