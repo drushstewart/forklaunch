@@ -31,6 +31,9 @@ static FRAMEWORK_CRATES: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/framework/crates");
 const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.toml.template");
 
+mod iam;
+pub(crate) use iam::generate_rust_iam_module;
+
 pub(crate) const PROJECT_LANGUAGE_VARIANTS: [&str; 3] = ["typescript", "rust", "mixed"];
 pub(crate) const SDK_TARGET_VARIANTS: [&str; 4] = ["typescript", "ts", "rust", "all"];
 
@@ -109,6 +112,23 @@ fn has_typescript_sdk_target(sdk_targets: &[String]) -> bool {
 
 pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
     let name = required_name(matches, "application")?;
+    let modules: Vec<_> = matches
+        .try_get_many::<String>("modules")
+        .ok()
+        .flatten()
+        .into_iter()
+        .flatten()
+        .collect();
+    if modules.iter().any(|module| module.as_str() != "iam-base") {
+        bail!(
+            "Rust application module generation currently supports only iam-base; add other modules after their Rust adapters are implemented"
+        );
+    }
+    if !modules.is_empty()
+        && option(matches, "database").is_some_and(|database| database != "postgresql")
+    {
+        bail!("Rust IAM requires PostgreSQL");
+    }
     let language = selected_language(matches).to_string();
     let dryrun = matches.get_flag("dryrun");
     let root_path = matches
@@ -232,6 +252,9 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
     if !dryrun {
         create_dir_all(root_path.join("crates"))
             .with_context(|| format!("Failed to create {}", root_path.join("crates").display()))?;
+    }
+    if !modules.is_empty() {
+        iam::generate_iam_at(&root_path, "iam", matches, dryrun)?;
     }
     log_ok!(
         stdout,
@@ -430,11 +453,19 @@ pub(crate) fn sync_rust_project(app_root: &Path, kind: RustProjectKind, name: &s
     add_cargo_member(app_root, &crate_path.to_string_lossy(), false)?;
     let description = cargo_description(&crate_dir.join("Cargo.toml"))?
         .unwrap_or_else(|| format!("Generated {name} {}", kind.label()));
-    match kind {
-        RustProjectKind::Service => ensure_service_shape(&crate_dir, name)?,
-        RustProjectKind::Worker => ensure_worker_shape(&crate_dir, name)?,
-        RustProjectKind::Library => ensure_library_shape(&crate_dir, name)?,
+    if iam::is_iam_module(app_root, name)? {
+        iam::ensure_iam_compose(app_root, name, false)?;
+        return ensure_rust_package_scripts(app_root, kind, name, false);
     }
+    let templates = rust_crate_templates(&crate_dir, name, &description, kind)
+        .into_iter()
+        .filter(|template| !template.path.exists())
+        .collect::<Vec<_>>();
+    write_rust_rendered_templates(
+        &templates,
+        false,
+        &mut StandardStream::stdout(ColorChoice::Always),
+    )?;
     add_project_to_manifest(
         app_root,
         kind,
@@ -573,6 +604,13 @@ pub(crate) fn change_rust_project(
         .and_then(kind_from_manifest_type)
         .unwrap_or(RustProjectKind::Library);
     let target_kind = to_kind.unwrap_or(current_kind);
+    let persistent_iam = iam::is_iam_module(app_root, current_name)?;
+    if persistent_iam
+        && (!matches!(target_kind, RustProjectKind::Service)
+            || database.is_some_and(|database| database != "postgresql"))
+    {
+        bail!("Persistent Rust IAM must remain a PostgreSQL service");
+    }
 
     if dryrun {
         return Ok(target_name.to_string());
@@ -649,6 +687,17 @@ pub(crate) fn change_rust_project(
     write_manifest_value(&manifest_path, &manifest)?;
 
     let crate_dir = app_root.join(&target_crate_path);
+    if persistent_iam {
+        if current_name != target_name {
+            iam::rename_iam_sources(app_root, current_name, target_name)?;
+        }
+        ensure_rust_package_scripts(app_root, target_kind, target_name, false)?;
+        iam::ensure_iam_compose(app_root, target_name, false)?;
+        if current_name != target_name {
+            remove_rust_package_scripts(app_root, current_name)?;
+        }
+        return Ok(target_name.to_owned());
+    }
     match target_kind {
         RustProjectKind::Service => ensure_service_shape(&crate_dir, target_name)?,
         RustProjectKind::Worker => ensure_worker_shape(&crate_dir, target_name)?,
@@ -1347,10 +1396,10 @@ fn ensure_rust_docker_compose_project(
     } else {
         None
     };
-    compose.services.insert(
-        name.to_string(),
-        rust_docker_service(&app_name, name, kind, port),
-    );
+    compose
+        .services
+        .entry(name.to_string())
+        .or_insert_with(|| rust_docker_service(&app_name, name, kind, port));
 
     write(&compose_path, yaml_to_string(&compose)?)
         .with_context(|| format!("Failed to update {}", compose_path.display()))
@@ -1583,35 +1632,26 @@ fn find_manifest_root(start: &Path) -> Result<PathBuf> {
     }
 }
 
+fn edit_cargo_members(root: &Path, update: impl FnOnce(&mut toml_edit::Array)) -> Result<()> {
+    let path = root.join("Cargo.toml");
+    let mut cargo: toml_edit::DocumentMut = read_to_string(&path)?.parse()?;
+    let members = cargo["workspace"]["members"]
+        .as_array_mut()
+        .context("Expected workspace.members array")?;
+    update(members);
+    write(path, cargo.to_string())?;
+    Ok(())
+}
+
 fn add_cargo_member(app_root: &Path, member: &str, dryrun: bool) -> Result<()> {
     if dryrun {
         return Ok(());
     }
-
-    let cargo_path = app_root.join("Cargo.toml");
-    let mut contents = read_to_string(&cargo_path)
-        .with_context(|| format!("Failed to read {}", cargo_path.display()))?;
-    let member_line = format!("    \"{member}\",");
-    if contents
-        .lines()
-        .any(|line| line.trim() == member_line.trim())
-    {
-        return Ok(());
-    }
-
-    let members_start = contents
-        .find("members = [")
-        .context("Root Cargo.toml is missing workspace members")?;
-    let after_start = members_start + "members = [".len();
-    let relative_end = contents[after_start..]
-        .find(']')
-        .context("Root Cargo.toml workspace members are not closed")?;
-    let insert_at = after_start + relative_end;
-    contents.insert_str(insert_at, &format!("\n{member_line}\n"));
-    write(&cargo_path, contents)
-        .with_context(|| format!("Failed to update {}", cargo_path.display()))?;
-
-    Ok(())
+    edit_cargo_members(app_root, |members| {
+        if !members.iter().any(|value| value.as_str() == Some(member)) {
+            members.push(member);
+        }
+    })
 }
 
 fn add_project_to_manifest(
@@ -2145,40 +2185,28 @@ fn cargo_description(cargo_path: &Path) -> Result<Option<String>> {
 }
 
 fn remove_cargo_member(app_root: &Path, member: &str) -> Result<()> {
-    let cargo_path = app_root.join("Cargo.toml");
-    if !cargo_path.exists() {
+    if !app_root.join("Cargo.toml").exists() {
         return Ok(());
     }
-    let contents = read_to_string(&cargo_path)
-        .with_context(|| format!("Failed to read {}", cargo_path.display()))?;
-    let member_quoted = format!("\"{member}\"");
-    let updated = contents
-        .lines()
-        .filter(|line| {
-            let trimmed = line.trim().trim_end_matches(',');
-            trimmed != member_quoted
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n";
-    write(&cargo_path, updated)
-        .with_context(|| format!("Failed to update {}", cargo_path.display()))
+    edit_cargo_members(app_root, |members| {
+        members.retain(|value| value.as_str() != Some(member))
+    })
 }
 
 fn replace_cargo_member(app_root: &Path, current_member: &str, target_member: &str) -> Result<()> {
-    if current_member == target_member {
-        return add_cargo_member(app_root, target_member, false);
-    }
-    let cargo_path = app_root.join("Cargo.toml");
-    let contents = read_to_string(&cargo_path)
-        .with_context(|| format!("Failed to read {}", cargo_path.display()))?;
-    let updated = contents.replace(
-        &format!("\"{current_member}\""),
-        &format!("\"{target_member}\""),
-    );
-    write(&cargo_path, updated)
-        .with_context(|| format!("Failed to update {}", cargo_path.display()))?;
-    add_cargo_member(app_root, target_member, false)
+    edit_cargo_members(app_root, |members| {
+        for index in 0..members.len() {
+            if members.get(index).and_then(toml_edit::Value::as_str) == Some(current_member) {
+                members.replace(index, target_member);
+            }
+        }
+        if !members
+            .iter()
+            .any(|value| value.as_str() == Some(target_member))
+        {
+            members.push(target_member);
+        }
+    })
 }
 
 fn update_package_name(cargo_path: &Path, name: &str) -> Result<()> {
@@ -2511,7 +2539,8 @@ fn is_user_editable_rust_file(path: &Path) -> bool {
     };
 
     match section {
-        "domain" | "persistence" | "error" | "jobs" | "models" | "service" => true,
+        "lib.rs" | "main.rs" | "config" | "domain" | "persistence" | "error" | "jobs"
+        | "models" | "service" => true,
         "routes" => true,
         _ => false,
     }
@@ -2563,4 +2592,31 @@ fn escape_toml_string(value: &str) -> String {
 
 fn escape_rust_string(value: &str) -> String {
     escape_toml_string(value)
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+
+    #[test]
+    fn cargo_members_support_compact_arrays_and_preserve_unrelated_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("Cargo.toml");
+        write(&path, "# user comment\n[workspace]\nmembers = [\"crates/a\"]\n[workspace.metadata]\nexample = \"crates/a\"\n").unwrap();
+        add_cargo_member(root.path(), "crates/a", false).unwrap();
+        add_cargo_member(root.path(), "crates/b", false).unwrap();
+        replace_cargo_member(root.path(), "crates/a", "crates/c").unwrap();
+        remove_cargo_member(root.path(), "crates/b").unwrap();
+        let source = read_to_string(path).unwrap();
+        let cargo: Value = toml::from_str(&source).unwrap();
+        assert_eq!(
+            cargo["workspace"]["members"].as_array().unwrap(),
+            &[Value::String("crates/c".to_owned())]
+        );
+        assert_eq!(
+            cargo["workspace"]["metadata"]["example"].as_str(),
+            Some("crates/a")
+        );
+        assert!(source.contains("# user comment"));
+    }
 }

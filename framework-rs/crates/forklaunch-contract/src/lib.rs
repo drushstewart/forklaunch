@@ -413,12 +413,19 @@ impl HmacAuth {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthConfig {
+    /// Application-verified opaque bearer token, such as a persistent IAM session.
+    Bearer,
     Jwt(JwtAuth),
     Basic(BasicAuth),
     Hmac(HmacAuth),
 }
 
 impl AuthConfig {
+    #[must_use]
+    pub const fn bearer() -> Self {
+        Self::Bearer
+    }
+
     #[must_use]
     pub fn jwt(jwt: JwtAuthConfig) -> Self {
         Self::Jwt(JwtAuth::new(jwt))
@@ -437,6 +444,7 @@ impl AuthConfig {
     #[must_use]
     pub fn to_json(&self) -> String {
         match self {
+            Self::Bearer => "{\"method\":\"bearer\"}".to_owned(),
             Self::Jwt(jwt) => jwt.to_json(),
             Self::Basic(_) => BasicAuth::to_json(),
             Self::Hmac(hmac) => hmac.to_json(),

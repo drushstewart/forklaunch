@@ -15,18 +15,18 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 921 tests pass; latest all-feature framework 91 and blueprint 40 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 922 tests pass; latest all-feature framework 91 and blueprint 40 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [ ] Validate Rust-only release export through the shared exporter, including contracts and OpenAPI artifacts.
 - [ ] Validate mixed TypeScript/Rust release export and preserve prebuilt-release isolation from `main`.
 - [ ] Complete generated-container build and HTTP/shutdown smoke checks after Docker disk capacity is available. Local build failed with `No space left on device`; the 2026-10-09 retry reached Rust release compilation but Docker's 122 GiB filesystem remains full and was stopped without pruning shared data. Builder/runtime both use Debian bookworm. `rust_container_runtime.sh` now checks relocated builds, health/OpenAPI, and SIGTERM shutdown in CI.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.
-- [x] Verify the CLI Cargo package file list includes all 48 embedded framework source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 92 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
-- [ ] Validate crate publication and installation from published CLI sources (phases 13–15). Embedded framework packaging is checked; Rust blueprint directory symlinks still contain nested manifests excluded by Cargo packaging and need the same source-mirror treatment before blueprint generation is wired.
+- [ ] Validate crate publication and installation from published CLI sources (phases 13–15). Embedded framework and blueprint source mirrors are checked; published-source installation remains unverified.
 
-Generated storage wiring, auth/provider lifecycle, billing, and acknowledged queue implementations remain explicit tasks in phase 12; passing generation checks does not complete those integrations.
+PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle, billing, and acknowledged queue implementations remain explicit tasks in phase 12.
 
 ## Full TypeScript Parity Scope
 
@@ -42,6 +42,7 @@ Current implementation work:
 - [x] Add PostgreSQL IAM CRUD, role/permission resolution, persistent sessions, salted Argon2id credentials, and tenant RLS.
 - [x] Port field encryption with byte-compatible deterministic envelopes/blind indexes and bidirectional legacy/rotation checks against the TypeScript implementation.
 - [x] Complete streaming-body telemetry with measured frame bytes, producer context propagation, normal completion, body errors, cancellation, HEAD handling, and balanced active-request counts.
+- [x] Generate portable PostgreSQL IAM modules with explicit migrations, safe runtime-role checks, typed schemas, and async opaque bearer authentication.
 - [ ] Add generated OTLP provider/exporter bootstrap.
 - [ ] Finish production persistence and encryption, IAM/provider/session lifecycle, billing/Stripe, and acknowledged database/Redis/Kafka workers (phases 9 and 12).
 - [ ] Finish streaming/multipart/WebSocket runtime and SDK behavior, mixed-app orchestration, AsyncAPI export, and cross-language conformance (phases 3–8 and 13–14).
@@ -523,7 +524,9 @@ Requirements:
 - [x] Implement role and permission resolution. (`roles_for_user` + `permissions_for_user`)
 - [x] Implement persistent opaque session issuance, hashed token storage, expiry, revocation, password-change invalidation, and disabled-user checks.
 - [ ] Implement JWT issuance, cookie/CSRF lifecycle, and OAuth/OIDC provider flows.
-- [ ] Expose an async IAM interface and wire PostgreSQL IAM into generated services; the synchronous reference trait remains in-memory.
+- [x] Expose async IAM read/session/repository traits and a reusable Axum adapter; wire PostgreSQL IAM into `init module --language rust -m iam-base` and application `--modules iam-base`.
+- [x] Validate generated IAM through its typed TypeScript SDK: restricted runtime role, tenant isolation, restart persistence, logout revocation, graceful shutdown, source preservation, rename, and delete.
+- [ ] Update generated SDK artifacts and crate names when a Rust service is renamed (including IAM).
 - [x] Implement tenant-aware queries. (explicit predicates plus transaction-local RLS)
 - [x] Add embedded migrations and isolated PostgreSQL container tests with a non-superuser role, including pooled-connection context cleanup.
 

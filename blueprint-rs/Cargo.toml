@@ -7,6 +7,7 @@ members = [
     "crates/interfaces/forklaunch-worker-interface",
     "crates/interfaces/forklaunch-monitoring-interface",
     "crates/implementations/iam/forklaunch-iam-base",
+    "crates/implementations/iam/forklaunch-iam-axum",
     "crates/implementations/billing/forklaunch-billing-base",
     "crates/implementations/billing/forklaunch-billing-stripe",
     "crates/implementations/worker/forklaunch-worker-database",

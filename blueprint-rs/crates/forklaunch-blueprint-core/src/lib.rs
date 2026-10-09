@@ -137,7 +137,9 @@ impl BlueprintModule {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Page<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<String>,
@@ -164,7 +166,9 @@ impl<T> Page<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct PageRequest {
     pub limit: usize,
     pub cursor: Option<String>,

@@ -79,3 +79,4 @@ jobs:
       - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_backend -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-blueprint-sample-service --all-features postgres_iam_http -- --ignored

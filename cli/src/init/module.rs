@@ -6,7 +6,7 @@ use convert_case::{Case, Casing};
 use rustyline::{Editor, history::DefaultHistory};
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 
-use super::service::generate_service_package_json;
+use super::{rust_project, service::generate_service_package_json, storefront::StorefrontCommand};
 use crate::{
     CliCommand,
     constants::{
@@ -41,8 +41,6 @@ use crate::{
     prompt::{ArrayCompleter, prompt_with_validation},
 };
 
-use super::storefront::StorefrontCommand;
-
 #[derive(Debug)]
 pub(super) struct ModuleCommand {
     storefront: StorefrontCommand,
@@ -62,6 +60,13 @@ impl CliCommand for ModuleCommand {
             .alias("mod")
             .subcommand(self.storefront.command())
             .arg(Arg::new("name").help("The name of the module"))
+            .arg(
+                Arg::new("language")
+                    .long("language")
+                    .help("Project language to generate")
+                    .value_parser(rust_project::PROJECT_LANGUAGE_VARIANTS)
+                    .default_value("typescript"),
+            )
             .arg(
                 Arg::new("base_path")
                     .short('p')
@@ -99,6 +104,9 @@ impl CliCommand for ModuleCommand {
         // kind. Leaf behaviour (`init module -m …`) is unchanged.
         if let Some(("storefront", sub_matches)) = matches.subcommand() {
             return self.storefront.handler(sub_matches);
+        }
+        if rust_project::uses_rust_generation(matches) {
+            return rust_project::generate_rust_iam_module(matches);
         }
         let mut line_editor = Editor::<ArrayCompleter, DefaultHistory>::new()?;
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
@@ -186,9 +194,7 @@ impl CliCommand for ModuleCommand {
         // shared cache records; mint one only for key-less apps.
         let generated_encryption_key =
             crate::core::env_defaults::find_existing_encryption_key(&base_path)
-                .unwrap_or_else(|| {
-                    crate::core::manifest::service::generate_random_secret(32)
-                });
+                .unwrap_or_else(|| crate::core::manifest::service::generate_random_secret(32));
 
         let mut service_data = ServiceManifestData {
             id: manifest_data.id.clone(),

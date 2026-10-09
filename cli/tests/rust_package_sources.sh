@@ -15,14 +15,17 @@ packaged = set(Path(sys.argv[2]).read_text().splitlines())
 expected = {
     "src/templates/rust/application/Cargo.toml.template",
     "src/templates/rust/project/Cargo.toml.template",
+    "src/templates/rust/iam/Cargo.toml.template",
+    "src/templates/rust/blueprint-workspace/Cargo.toml.template",
     "src/templates/rust/framework/Cargo.toml.template",
 }
-for source in (root / "framework-rs/crates").rglob("*"):
-    if source.is_file():
-        relative = source.relative_to(root / "framework-rs")
-        if source.name == "Cargo.toml":
-            relative = relative.with_name("Cargo.toml.template")
-        expected.add(str(Path("src/templates/rust/framework") / relative))
+for workspace, namespace in [("framework-rs", "framework"), ("blueprint-rs", "blueprint-workspace")]:
+    for source in (root / workspace / "crates").rglob("*"):
+        if source.is_file():
+            relative = source.relative_to(root / workspace)
+            if source.name == "Cargo.toml":
+                relative = relative.with_name("Cargo.toml.template")
+            expected.add(str(Path("src/templates/rust") / namespace / relative))
 missing = expected - packaged
 assert not missing, f"Rust sources missing from CLI package: {sorted(missing)}"
 print(f"PASS: {len(expected)} embedded Rust source/template files included in Cargo package")

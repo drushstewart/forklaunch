@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 
+pub mod async_service;
+pub use async_service::{AsyncIamRepository, AsyncIamService, AsyncIamSessions};
+
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult, Page, PageRequest};
 
 /// An organization (tenant boundary) a user can belong to.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Organization {
     pub id: String,
     pub name: String,
@@ -22,7 +27,9 @@ impl Organization {
 }
 
 /// A named role bundling a set of permissions.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Role {
     pub name: String,
     pub permissions: Vec<Permission>,
@@ -45,14 +52,18 @@ impl Role {
 }
 
 /// An issued bearer token bound to a user.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Token {
     pub value: String,
     pub user_id: String,
     pub expires_at_unix_seconds: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct User {
     pub id: String,
     pub email: String,
@@ -86,20 +97,26 @@ impl User {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Session {
     pub id: String,
     pub user_id: String,
     pub expires_at_unix_seconds: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Credentials {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Permission {
     pub resource: String,
     pub action: String,
@@ -175,6 +192,19 @@ pub mod contracts {
         RouteContract, ServiceContract,
     };
 
+    use super::{Credentials, Organization, Permission, Session, User};
+    use forklaunch_blueprint_core::Page;
+
+    fn json_body<T: schemars::JsonSchema>(name: &str) -> BodyContract {
+        let mut body = BodyContract::json(name);
+        let mut settings = schemars::r#gen::SchemaSettings::draft07();
+        settings.inline_subschemas = true;
+        let schema = settings.into_generator().into_root_schema_for::<T>();
+        body.schema.json_schema =
+            Some(serde_json::to_string(&schema).expect("JSON Schema serializes"));
+        body
+    }
+
     /// Builds the IAM service contract registry.
     #[must_use]
     pub fn registry() -> ContractRegistry {
@@ -186,8 +216,8 @@ pub mod contracts {
                 "Exchange credentials for a session",
                 "/auth/login",
             )
-            .with_request_body(BodyContract::json("Credentials"))
-            .with_response(200, Some(BodyContract::json("Session")))
+            .with_request_body(json_body::<Credentials>("Credentials"))
+            .with_response(200, Some(json_body::<Session>("Session")))
             .with_response(401, None),
         );
 
@@ -196,7 +226,7 @@ pub mod contracts {
                 .with_access(AccessLevel::Protected)
                 .with_auth(AuthConfig::jwt(JwtAuthConfig::SignatureKey))
                 .with_param(FieldContract::required("id", "String"))
-                .with_response(200, Some(BodyContract::json("User")))
+                .with_response(200, Some(json_body::<User>("User")))
                 .with_response(404, None),
         );
 
@@ -206,7 +236,7 @@ pub mod contracts {
                 .with_auth(AuthConfig::jwt(JwtAuthConfig::SignatureKey))
                 .with_query(FieldContract::optional("limit", "Integer"))
                 .with_query(FieldContract::optional("cursor", "String"))
-                .with_response(200, Some(BodyContract::json("UserPage"))),
+                .with_response(200, Some(json_body::<Page<User>>("UserPage"))),
         );
 
         registry.register(
@@ -218,17 +248,49 @@ pub mod contracts {
             .with_access(AccessLevel::Protected)
             .with_auth(AuthConfig::jwt(JwtAuthConfig::SignatureKey))
             .with_param(FieldContract::required("id", "String"))
-            .with_response(200, Some(BodyContract::json("PermissionList"))),
+            .with_response(200, Some(json_body::<Vec<Permission>>("PermissionList"))),
         );
 
         registry.register(
             RouteContract::get("List Organizations", "List organizations", "/organizations")
+                .with_query(FieldContract::optional("limit", "Integer"))
+                .with_query(FieldContract::optional("cursor", "String"))
                 .with_access(AccessLevel::Protected)
                 .with_auth(AuthConfig::jwt(JwtAuthConfig::SignatureKey))
-                .with_response(200, Some(BodyContract::json("OrganizationPage"))),
+                .with_response(
+                    200,
+                    Some(json_body::<Page<Organization>>("OrganizationPage")),
+                ),
         );
 
         registry
+    }
+
+    /// IAM routes backed by persistent opaque sessions, including logout.
+    #[must_use]
+    pub fn session_registry() -> ContractRegistry {
+        let mut sessions = ContractRegistry::for_service(ServiceContract::new("iam", "0.1.0"));
+        for mut route in registry().routes().iter().cloned() {
+            if route.auth.is_some() {
+                route.auth = Some(AuthConfig::bearer());
+                route = route.with_response(401, None);
+            }
+            route = route.with_response(400, None).with_response(500, None);
+            sessions.register(route);
+        }
+        sessions.register(
+            RouteContract::get("Get Health", "IAM liveness", "/health")
+                .with_response(200, Some(BodyContract::json("HealthResponse"))),
+        );
+        sessions.register(
+            RouteContract::post("Logout", "Revoke the current session", "/auth/logout")
+                .with_access(AccessLevel::Authenticated)
+                .with_auth(AuthConfig::bearer())
+                .with_response(204, None)
+                .with_response(401, None)
+                .with_response(500, None),
+        );
+        sessions
     }
 }
 

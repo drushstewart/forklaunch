@@ -1,0 +1,18 @@
+[package]
+name = "{{{name}}}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "{{{description}}}"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
+forklaunch-core = { path = "../../.forklaunch/framework-rs/crates/forklaunch-core", features = ["postgres"] }
+forklaunch-contract = { path = "../../.forklaunch/framework-rs/crates/forklaunch-contract" }
+forklaunch-openapi = { path = "../../.forklaunch/framework-rs/crates/forklaunch-openapi" }
+forklaunch-iam-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/forklaunch-iam-interface" }
+forklaunch-iam-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-base", features = ["postgres"] }
+forklaunch-iam-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-axum" }

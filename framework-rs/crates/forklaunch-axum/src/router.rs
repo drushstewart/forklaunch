@@ -636,7 +636,9 @@ fn method_to_contract(method: &Method) -> Option<HttpMethod> {
     }
 }
 
-fn framework_response_to_axum(response: FrameworkResponse) -> Response {
+/// Converts a framework response, preserving its status, body, and headers.
+#[must_use]
+pub fn framework_response_to_axum(response: FrameworkResponse) -> Response {
     let status =
         StatusCode::from_u16(response.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let body = match response.body {

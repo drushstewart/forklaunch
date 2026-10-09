@@ -3,6 +3,8 @@
 //! Run migrations with a schema-owner connection. Runtime connections must use a
 //! role without SUPERUSER/BYPASSRLS privileges. Bind a store to the authenticated
 //! tenant for each request. `Argon2` work runs outside the async executor.
+mod async_service;
+
 use super::credentials::{hash_password, verify_password};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult, Page, PageRequest};
 use forklaunch_core::persistence::{TenantContext, begin_tenant_transaction};
@@ -47,8 +49,21 @@ impl PostgresIamService {
     /// users still incur password verification work.
     ///
     /// # Errors
-    /// Returns an error if password hashing or its blocking task fails.
+    /// Returns an error for SUPERUSER/BYPASSRLS connections, database failures,
+    /// or password hashing failures.
     pub async fn new(pool: PgPool, tenant: TenantContext) -> BlueprintResult<Self> {
+        let bypass: (bool,) = sqlx::query_as(
+            "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user",
+        )
+        .fetch_one(&pool)
+        .await
+        .map_err(storage_error)?;
+        if bypass.0 {
+            return Err(BlueprintError::new(
+                "iam_unsafe_database_role",
+                "IAM runtime requires a role without SUPERUSER or BYPASSRLS",
+            ));
+        }
         let dummy_hash =
             tokio::task::spawn_blocking(|| hash_password(&uuid::Uuid::new_v4().to_string()))
                 .await

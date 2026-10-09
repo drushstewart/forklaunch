@@ -78,6 +78,7 @@ grep -q 'name = "products"' rust-sync/.forklaunch/manifest.toml
 
 cp -R rust-sync/crates/email-worker rust-sync/crates/video-worker
 replace_in_tree rust-sync/crates/video-worker email-worker video-worker
+replace_in_tree rust-sync/crates/video-worker email_worker video_worker
 ! grep -q 'name = "video-worker"' rust-sync/.forklaunch/manifest.toml
 
 run_cli sync worker video-worker --path rust-sync
@@ -87,6 +88,7 @@ grep -q '"crates/video-worker"' rust-sync/Cargo.toml
 
 cp -R rust-sync/crates/shared-types rust-sync/crates/common-utils
 replace_in_tree rust-sync/crates/common-utils shared-types common-utils
+replace_in_tree rust-sync/crates/common-utils shared_types common_utils
 ! grep -q 'name = "common-utils"' rust-sync/.forklaunch/manifest.toml
 
 run_cli sync library common-utils --path rust-sync

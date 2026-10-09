@@ -8,6 +8,8 @@
 //! framework's contract-validation middleware in front of handlers backed by
 //! [`InMemoryIamService`].
 
+pub use forklaunch_iam_axum as async_iam;
+
 use std::sync::Arc;
 
 use axum::{Json, extract::Path, http::StatusCode, response::IntoResponse};
@@ -61,7 +63,7 @@ pub fn iam_router(service: &Arc<InMemoryIamService>) -> ForkLaunchRouter {
             let service = Arc::clone(&list_users_service);
             async move {
                 match service.list_users(PageRequest::first_page(100)) {
-                    Ok(page) => (StatusCode::OK, Json(page.items)).into_response(),
+                    Ok(page) => (StatusCode::OK, Json(page)).into_response(),
                     Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
                 }
             }

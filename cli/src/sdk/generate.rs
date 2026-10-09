@@ -106,7 +106,10 @@ fn resolve_sdk_generate_target(matches: &ArgMatches) -> Result<String> {
     let resolved_flag_target = normalize_sdk_generate_target(flag_target)?;
     let explicit_flag_target = matches.value_source("target") == Some(ValueSource::CommandLine);
 
-    let Some(target_alias) = matches.get_one::<String>("target_alias").map(String::as_str) else {
+    let Some(target_alias) = matches
+        .get_one::<String>("target_alias")
+        .map(String::as_str)
+    else {
         return Ok(resolved_flag_target);
     };
 
@@ -774,6 +777,19 @@ fn ts_type_from_schema(schema: &JsonValue) -> String {
         return one_of
             .iter()
             .map(ts_type_from_schema)
+            .collect::<Vec<_>>()
+            .join(" | ");
+    }
+
+    if let Some(types) = schema.get("type").and_then(JsonValue::as_array) {
+        return types
+            .iter()
+            .filter_map(JsonValue::as_str)
+            .map(|kind| {
+                let mut variant = schema.clone();
+                variant["type"] = JsonValue::String(kind.to_owned());
+                ts_type_from_schema(&variant)
+            })
             .collect::<Vec<_>>()
             .join(" | ");
     }

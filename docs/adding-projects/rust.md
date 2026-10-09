@@ -48,7 +48,7 @@ The generated Dockerfile builds workspace binaries, and Compose selects the serv
 
 ## Current boundaries
 
-Generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. Generated workers execute one demonstration batch. The blueprint IAM, billing, and queue implementations also have unfinished production integrations. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
+Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. Generated workers execute one demonstration batch. Billing, provider integrations, and acknowledged worker queues remain unfinished. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
 
 ## Validate the port
 
@@ -102,7 +102,22 @@ Enable the `postgres` feature on `forklaunch-iam-base` to use `postgres::Postgre
 
 The asynchronous service persists users, organizations, roles, and sessions. Passwords use salted Argon2id; hashing runs on blocking tasks. Session tokens are random and stored as SHA-256 digests, expire after one hour, and are checked against current user status. Password changes revoke existing sessions atomically. Every query includes its tenant and uses transaction-local context; migrations enable and force row-level security for reads and writes. The container test exercises a restricted role and connection-pool reuse.
 
-This adapter exposes async methods separately from the synchronous in-memory IAM interface. Generated services still use their example repository. Generator wiring, cookie/CSRF sessions, email/reset/verification flows, and OAuth/OIDC providers remain pending.
+`AsyncIamService`, `AsyncIamSessions`, and `AsyncIamRepository` expose asynchronous operations independently of the synchronous reference interface. `forklaunch-iam-axum` serves these traits with opaque bearer authentication and typed contract schemas. Runtime construction rejects PostgreSQL SUPERUSER and BYPASSRLS roles.
+
+Generate a persistent IAM module in an existing Rust or mixed application:
+
+```sh
+forklaunch init module --language rust -m iam-base -d postgresql --path .
+# Alternatively, pass --modules iam-base when initializing a Rust application.
+DATABASE_URL=postgres://schema_owner:password@localhost/app cargo run -p iam -- --migrate
+DATABASE_URL=postgres://restricted_app:password@localhost/app TENANT_ID=acme cargo run -p iam
+```
+
+Replace the example URLs with your own credentials. Migration and runtime connections use separate database roles. Generated modules bundle blueprint source in `.forklaunch/blueprint-rs`; commit it alongside the bundled framework. Contract/OpenAPI export works without a database connection.
+
+The scaffold binds one trusted `TENANT_ID` per process. Login, logout, paginated users and organizations, and permission lookup use PostgreSQL. Provision users through the administrative repository API; the generator creates no default account. Directory endpoints require authentication; add your application's authorization policy before exposing them. Tenant selection from verified identity, cookie/CSRF sessions, email/reset/verification flows, JWT issuance, and OAuth/OIDC providers remain pending.
+
+`cli/tests/rust_iam_runtime.sh` checks a relocated generated module against PostgreSQL through its TypeScript SDK, including cross-tenant rejection, session persistence across restart, revocation, and SIGTERM shutdown. It accepts `FORKLAUNCH_TEST_POSTGRES_URL` or starts its own isolated PostgreSQL container.
 
 ## Field encryption compatibility
 

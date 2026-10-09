@@ -10,5 +10,8 @@ repository.workspace = true
 forklaunch-contract = { path = "../../../framework-rs/crates/forklaunch-contract" }
 forklaunch-http = { path = "../../../framework-rs/crates/forklaunch-http" }
 
+serde = { version = "1", features = ["derive"] }
+schemars = "0.8"
+
 [lints]
 workspace = true

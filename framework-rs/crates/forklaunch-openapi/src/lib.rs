@@ -428,7 +428,7 @@ fn default_schema_json() -> String {
 
 fn security_json(auth: &AuthConfig) -> String {
     match auth {
-        AuthConfig::Jwt(_) => {
+        AuthConfig::Jwt(_) | AuthConfig::Bearer => {
             json_array([json_object([JsonField::new("bearerAuth", json_array([]))])])
         }
         AuthConfig::Basic(_) => {
@@ -446,7 +446,7 @@ fn security_schemes_json(routes: &[&RouteContract]) -> String {
 
     for route in routes {
         match &route.auth {
-            Some(AuthConfig::Jwt(_)) => {
+            Some(AuthConfig::Jwt(_) | AuthConfig::Bearer) => {
                 schemes.insert("bearerAuth");
             }
             Some(AuthConfig::Basic(_)) => {

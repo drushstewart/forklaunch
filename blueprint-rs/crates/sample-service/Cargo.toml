@@ -6,17 +6,29 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+postgres = ["forklaunch-iam-base/postgres", "dep:sqlx", "dep:tokio"]
+
+[[example]]
+name = "postgres_iam"
+required-features = ["postgres"]
+
 [dependencies]
 forklaunch-blueprint-core = { path = "../forklaunch-blueprint-core" }
 forklaunch-iam-interface = { path = "../interfaces/forklaunch-iam-interface" }
 forklaunch-iam-base = { path = "../implementations/iam/forklaunch-iam-base" }
 forklaunch-axum = { path = "../../../framework-rs/crates/forklaunch-axum" }
 forklaunch-core = { path = "../../../framework-rs/crates/forklaunch-core" }
+forklaunch-iam-axum = { path = "../implementations/iam/forklaunch-iam-axum" }
 axum = "0.8"
 
-[dev-dependencies]
 forklaunch-auth = { path = "../../../framework-rs/crates/forklaunch-auth" }
 serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
+
+[dev-dependencies]
 jsonwebtoken = "9"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tower = { version = "0.5", features = ["util"] }
