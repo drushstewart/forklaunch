@@ -87,7 +87,21 @@ cp "$SCRIPT_DIR/rust_iam_runtime.mjs" sdk_http_test.mjs
 node sdk_http_test.mjs "$BINARY"
 # Keep the live fixture intact; validate lifecycle mutations in a separate copy.
 cp -R "$RUN_ROOT/relocated-app" "$RUN_ROOT/lifecycle-app"
+mkdir -p "$RUN_ROOT/lifecycle-app/crates/occupied"
+printf 'user-owned destination\n' > "$RUN_ROOT/lifecycle-app/crates/occupied/marker"
+if run_cli change service --path "$RUN_ROOT/lifecycle-app/crates/iam" -N occupied --confirm; then
+    echo 'FAIL rename must reject an occupied destination'; exit 1
+fi
+grep -q 'user-owned destination' "$RUN_ROOT/lifecycle-app/crates/occupied/marker"
+test -f "$RUN_ROOT/lifecycle-app/crates/iam/src/main.rs"
 run_cli change service --path "$RUN_ROOT/lifecycle-app/crates/iam" -N identity --confirm
+test ! -d "$RUN_ROOT/lifecycle-app/sdks/rust/iam-sdk"
+test ! -d "$RUN_ROOT/lifecycle-app/.forklaunch/contracts/iam"
+test -f "$RUN_ROOT/lifecycle-app/sdks/rust/identity-sdk/Cargo.toml"
+grep -q '"name": "identity"' "$RUN_ROOT/lifecycle-app/.forklaunch/contracts/identity/contract.json"
+grep -q 'identity:' "$RUN_ROOT/lifecycle-app/sdks/typescript/src/index.ts"
+! grep -q 'iam:' "$RUN_ROOT/lifecycle-app/sdks/typescript/src/index.ts"
+run_cli sdk generate --path "$RUN_ROOT/lifecycle-app" --target all --from contract --check
 cargo check --manifest-path "$RUN_ROOT/lifecycle-app/Cargo.toml" --workspace
 run_cli delete service identity --path "$RUN_ROOT/lifecycle-app" --continue
 test ! -d "$RUN_ROOT/lifecycle-app/crates/identity"

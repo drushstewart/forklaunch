@@ -612,6 +612,23 @@ pub(crate) fn change_rust_project(
         bail!("Persistent Rust IAM must remain a PostgreSQL service");
     }
 
+    if current_name != target_name {
+        if project_table(&manifest, target_name).is_some()
+            || app_root.join(&target_crate_path).exists()
+        {
+            bail!("Project destination {target_name} already exists");
+        }
+        for relative in [
+            format!(".forklaunch/contracts/{target_name}"),
+            format!(".forklaunch/openapi/{target_name}"),
+            format!(".forklaunch/asyncapi/{target_name}"),
+            format!("sdks/rust/{target_name}-sdk"),
+        ] {
+            if app_root.join(&relative).exists() {
+                bail!("Generated output destination {relative} already exists");
+            }
+        }
+    }
     if dryrun {
         return Ok(target_name.to_string());
     }
@@ -690,6 +707,7 @@ pub(crate) fn change_rust_project(
     if persistent_iam {
         if current_name != target_name {
             iam::rename_iam_sources(app_root, current_name, target_name)?;
+            rename_rust_project_outputs(app_root, current_name, target_name)?;
         }
         ensure_rust_package_scripts(app_root, target_kind, target_name, false)?;
         iam::ensure_iam_compose(app_root, target_name, false)?;
@@ -710,8 +728,66 @@ pub(crate) fn change_rust_project(
     ensure_rust_docker_compose_project(app_root, target_kind, target_name, false)?;
     ensure_rust_package_scripts(app_root, target_kind, target_name, false)?;
     ensure_rust_local_library_dependencies(app_root, false)?;
+    if current_name != target_name {
+        rename_rust_project_outputs(app_root, current_name, target_name)?;
+    }
 
     Ok(target_name.to_string())
+}
+
+// Generated artifacts retain their schemas while their service metadata and SDK
+// names follow the renamed project. Other services' artifacts are left intact.
+fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> {
+    for (kind, filename) in [
+        ("contracts", "contract.json"),
+        ("openapi", "openapi.json"),
+        ("asyncapi", "asyncapi.json"),
+    ] {
+        let source = root.join(".forklaunch").join(kind).join(old);
+        let destination = root.join(".forklaunch").join(kind).join(new);
+        if !source.exists() {
+            continue;
+        }
+        rename(&source, &destination)?;
+        let path = destination.join(filename);
+        if path.exists() {
+            let mut artifact: JsonValue = serde_json::from_str(&read_to_string(&path)?)?;
+            if let Some(name) = artifact.pointer_mut("/service/name") {
+                *name = json!(new);
+            }
+            if let Some(title) = artifact.pointer_mut("/info/title") {
+                if title.as_str() == Some(old) {
+                    *title = json!(new);
+                }
+            }
+            write(&path, serde_json::to_string_pretty(&artifact)?)?;
+        }
+    }
+    let old_member = format!("sdks/rust/{old}-sdk");
+    if root.join(&old_member).exists() {
+        remove_cargo_member(root, &old_member)?;
+        remove_path_if_exists(&root.join(&old_member))?;
+        let source = if root
+            .join(format!(".forklaunch/contracts/{new}/contract.json"))
+            .exists()
+        {
+            "contract"
+        } else {
+            "manifest"
+        };
+        crate::sdk::generate::generate_or_check_sdk_outputs(
+            root,
+            "rust",
+            source,
+            Some(new),
+            false,
+            &mut StandardStream::stdout(ColorChoice::Always),
+        )?;
+    }
+    crate::sdk::generate::regenerate_typescript_sdk_if_present(
+        root,
+        &mut StandardStream::stdout(ColorChoice::Always),
+    )
 }
 
 pub(crate) fn change_rust_application(

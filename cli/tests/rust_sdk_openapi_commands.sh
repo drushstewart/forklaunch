@@ -228,6 +228,17 @@ grep -q 'invoices_list_invoices_request' rust-contracts/sdks/rust/billing-sdk/sr
 grep -q 'pub async fn invoices_list_invoices' rust-contracts/sdks/rust/billing-sdk/src/lib.rs
 run_cli sdk generate --path rust-contracts --target rust --service billing --from contract --check
 
+run_cli change service --path rust-contracts/crates/billing -N invoicing --confirm
+test ! -d rust-contracts/sdks/rust/billing-sdk
+test ! -d rust-contracts/.forklaunch/contracts/billing
+test -f rust-contracts/sdks/rust/invoicing-sdk/src/lib.rs
+grep -q 'InvoicingClient' rust-contracts/sdks/rust/invoicing-sdk/src/lib.rs
+grep -q 'invoicingService' rust-contracts/sdks/typescript/src/index.ts
+! grep -q 'billingService' rust-contracts/sdks/typescript/src/index.ts
+run_cli sdk generate --path rust-contracts --target rust --service invoicing --from contract --check
+run_cli sdk generate --path rust-contracts --target typescript --from contract --check
+compile_typescript_sdk rust-contracts/sdks/typescript/src/index.ts
+
 (
     cd rust-contracts
     cargo test --workspace

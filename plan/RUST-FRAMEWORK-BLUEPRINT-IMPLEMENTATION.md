@@ -526,7 +526,7 @@ Requirements:
 - [ ] Implement JWT issuance, cookie/CSRF lifecycle, and OAuth/OIDC provider flows.
 - [x] Expose async IAM read/session/repository traits and a reusable Axum adapter; wire PostgreSQL IAM into `init module --language rust -m iam-base` and application `--modules iam-base`.
 - [x] Validate generated IAM through its typed TypeScript SDK: restricted runtime role, tenant isolation, restart persistence, logout revocation, graceful shutdown, source preservation, rename, and delete.
-- [ ] Update generated SDK artifacts and crate names when a Rust service is renamed (including IAM).
+- [x] Update generated SDK artifacts and crate names when a Rust service is renamed (including IAM); reject occupied project/artifact destinations before mutation.
 - [x] Implement tenant-aware queries. (explicit predicates plus transaction-local RLS)
 - [x] Add embedded migrations and isolated PostgreSQL container tests with a non-superuser role, including pooled-connection context cleanup.
 
