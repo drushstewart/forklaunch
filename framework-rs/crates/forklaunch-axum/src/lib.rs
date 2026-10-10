@@ -72,6 +72,16 @@ impl AxumApplication {
                         bytes @ Body::Binary(_) => bytes,
                     };
                 }
+                if route.request.body.as_ref().is_some_and(|body| {
+                    matches!(
+                        body.kind,
+                        forklaunch_contract::BodyKind::Text
+                            | forklaunch_contract::BodyKind::UrlEncoded
+                    )
+                }) && matches!(request.body, Body::Empty)
+                {
+                    request.body = Body::Text(String::new());
+                }
                 let validation_errors = validate_framework_request(route, &request);
                 return AxumPreparedRequest {
                     operation_name: Some(route.operation_name.clone()),
@@ -284,6 +294,36 @@ mod tests {
                 assert!(prepared.validation_errors.is_empty());
                 assert_eq!(prepared.request.body, Body::Binary(bytes));
             }
+        }
+    }
+
+    #[test]
+    fn facade_preserves_empty_declared_text_and_form_bodies() {
+        use forklaunch_contract::{BodyContract, BodyKind, SchemaRef};
+        for (kind, content_type) in [
+            (BodyKind::Text, "text/plain"),
+            (BodyKind::UrlEncoded, "application/x-www-form-urlencoded"),
+        ] {
+            let mut app = HttpApplication::new(ServiceInfo::new("empty", "1"));
+            app.register_route(
+                RouteContract::post("Upload", "Upload", "/upload").with_request_body(
+                    BodyContract {
+                        kind,
+                        schema: SchemaRef::named("Body"),
+                        content_type: Some(content_type.into()),
+                    },
+                ),
+            );
+            let adapter = AxumApplication::new(app);
+            let prepared = adapter.prepare_request(
+                AxumRequestParts::new(HttpMethod::Post, "/upload")
+                    .with_header("content-type", content_type),
+            );
+            assert!(prepared.validation_errors.is_empty());
+            assert_eq!(prepared.request.body, Body::Text(String::new()));
+            let missing_type =
+                adapter.prepare_request(AxumRequestParts::new(HttpMethod::Post, "/upload"));
+            assert!(!missing_type.validation_errors.is_empty());
         }
     }
 

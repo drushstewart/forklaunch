@@ -609,7 +609,13 @@ fn build_framework_request(
         .is_some_and(|body| matches!(body.kind, BodyKind::Binary | BodyKind::File))
     {
         request = request.with_body(FrameworkBody::Binary(bytes.to_vec()));
-    } else if !bytes.is_empty() {
+    } else if !bytes.is_empty()
+        || contract
+            .request
+            .body
+            .as_ref()
+            .is_some_and(|body| matches!(body.kind, BodyKind::Text | BodyKind::UrlEncoded))
+    {
         request = match std::str::from_utf8(bytes) {
             Ok(text) => request.with_body(FrameworkBody::Text(text.to_owned())),
             Err(_) => request.with_body(FrameworkBody::Binary(bytes.to_vec())),
@@ -791,40 +797,62 @@ mod tests {
     #[tokio::test]
     async fn declared_text_media_with_charset_passes_transport_validation() {
         use forklaunch_contract::SchemaRef;
-        let contract = RouteContract::post("Echo Text", "Echo Text", "/text")
-            .with_request_body(BodyContract {
-                kind: BodyKind::Text,
-                schema: SchemaRef::named("String"),
-                content_type: Some("text/plain; charset=utf-8".into()),
-            })
-            .with_response(200, None);
-        let mut handlers = LocalRouter::new();
-        handlers.register(contract.clone(), |request: FrameworkRequest| {
-            assert_eq!(request.body.as_text(), Some("hello 水"));
-            Ok(FrameworkResponse::new(200).with_body(request.body))
-        });
-        let app = ForkLaunchRouter::from_local_router(
-            ServiceInfo::new("echo", "1"),
-            [contract],
-            handlers,
-        )
-        .into_router();
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/text")
-                    .header("content-type", "TEXT/PLAIN; charset=UTF-8")
-                    .body(AxumBody::from("hello 水"))
-                    .unwrap(),
+        for (kind, mime) in [
+            (BodyKind::Text, "text/plain; charset=utf-8"),
+            (
+                BodyKind::UrlEncoded,
+                "application/x-www-form-urlencoded; charset=utf-8",
+            ),
+        ] {
+            let contract = RouteContract::post("Echo Text", "Echo Text", "/text")
+                .with_request_body(BodyContract {
+                    kind,
+                    schema: SchemaRef::named("String"),
+                    content_type: Some(mime.into()),
+                })
+                .with_response(200, None);
+            let mut handlers = LocalRouter::new();
+            handlers.register(contract.clone(), |request: FrameworkRequest| {
+                assert!(request.body.as_text().is_some());
+                Ok(FrameworkResponse::new(200).with_body(request.body))
+            });
+            let app = ForkLaunchRouter::from_local_router(
+                ServiceInfo::new("echo", "1"),
+                [contract],
+                handlers,
             )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            to_bytes(response.into_body(), 100).await.unwrap().as_ref(),
-            "hello 水".as_bytes()
-        );
+            .into_router();
+            for text in ["hello 水", ""] {
+                let response = app
+                    .clone()
+                    .oneshot(
+                        Request::builder()
+                            .method("POST")
+                            .uri("/text")
+                            .header("content-type", mime.to_ascii_uppercase())
+                            .body(AxumBody::from(text))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                assert_eq!(
+                    to_bytes(response.into_body(), 100).await.unwrap().as_ref(),
+                    text.as_bytes()
+                );
+            }
+            let missing_type = app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/text")
+                        .body(AxumBody::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(missing_type.status(), StatusCode::BAD_REQUEST);
+        }
     }
 
     fn ok_handler() -> impl Handler<((),), ()> {

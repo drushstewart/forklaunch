@@ -113,6 +113,10 @@ async fn verify(base: &str) {
         };
         assert_eq!(serde_json::to_value(shape).unwrap(), expected);
     }
+    let empty_text = accounts_sdk::AccountsTextUploadTextRequest { body: Some(String::new()), ..Default::default() };
+    assert!(matches!(client.text_upload_text(empty_text).await.unwrap(), accounts_sdk::AccountsTextUploadTextResponses::Status200(value) if value.is_empty()));
+    let empty_binary = accounts_sdk::AccountsBinaryUploadBinaryRequest { body: Some(Vec::new()), ..Default::default() };
+    assert!(matches!(client.binary_upload_binary(empty_binary).await.unwrap(), accounts_sdk::AccountsBinaryUploadBinaryResponses::Status200(value) if value.is_empty()));
     let text_input = accounts_sdk::AccountsTextUploadTextRequest {
         body: Some("{raw}\n🦀 & text".into()),
         ..Default::default()

@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 109 and blueprint 54 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 110 and blueprint 54 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -264,7 +264,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Implement nested routers and base paths.
 - [x] Implement typed route registration for GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, TRACE.
 - [x] Implement request validation for params, query, headers, and body.
-- [x] Preserve declared binary/file inputs as bytes even for ASCII, Unicode and zero-length sources in both Axum adapters; compare actual and declared media types consistently when charset/boundary parameters are present.
+- [x] Preserve declared binary/file inputs as bytes even for ASCII, Unicode and zero-length sources in both Axum adapters; compare actual and declared media types consistently when charset/boundary parameters are present. Empty declared text and URL-encoded inputs also retain their body kind; missing required media headers still fail.
 - [x] Implement response validation by status code.
 - [ ] Implement content-type handling for JSON, text, binary, multipart, URL-encoded, SSE. (request content-type validated; typed multipart/SSE extractors pending Phase 3)
 - [x] Implement CORS, request body limits, request IDs, and tracing layers through `tower-http`.

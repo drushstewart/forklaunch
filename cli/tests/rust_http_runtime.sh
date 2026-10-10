@@ -139,6 +139,8 @@ async function verifyStatusVariants(sdk) {
   }
   assert.deepEqual((await sdk.accounts.unionList.getUnionList()).response, [{ name: "nested" }, "two", 3]);
   assert.equal((await sdk.accounts.text.uploadText({ body: '{raw}\n🦀 & text' })).response, '{raw}\n🦀 & text');
+  assert.equal((await sdk.accounts.text.uploadText({ body: '' })).response, '');
+  assert.deepEqual(Array.from((await sdk.accounts.binary.uploadBinary({ body: new Uint8Array() })).response), []);
   const uploaded = await sdk.accounts.binary.uploadBinary({ body: new Uint8Array([99, 0, 255, 13, 10, 42, 99]).subarray(1, 6) });
   assert.deepEqual([...uploaded.response], [0, 255, 13, 10, 42]);
   assert.deepEqual((await sdk.accounts.jsonEcho.echoJson({ body: { value: [1, null, true] } })).response, { value: [1, null, true] });

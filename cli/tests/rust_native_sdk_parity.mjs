@@ -51,6 +51,8 @@ fn main() {
   for (const [method, body, expected, contentType] of [
     ['postJson', { user: '水', active: true }, Buffer.from(JSON.stringify({ user: '水', active: true })), 'application/vnd.forklaunch+json'],
     ['postText', 'hello 水', Buffer.from('hello 水'), 'text/plain; charset=utf-8'],
+    ['postText', '', Buffer.alloc(0), 'text/plain; charset=utf-8'],
+    ['postUrlencoded', new URLSearchParams(), Buffer.alloc(0), 'application/x-www-form-urlencoded'],
     ['postBinary', new Uint8Array([99, 0, 255, 1, 99]).subarray(1, 4), Buffer.from([0, 255, 1]), 'application/octet-stream'],
     ['postFile', new Blob([new Uint8Array([137, 80, 78, 71])]), Buffer.from([137, 80, 78, 71]), 'image/png'],
     ['postUrlencoded', new URLSearchParams([['key', 'a b'], ['key', 'c/d']]), Buffer.from('key=a+b&key=c%2Fd'), 'application/x-www-form-urlencoded']
