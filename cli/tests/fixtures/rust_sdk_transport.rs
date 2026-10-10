@@ -32,6 +32,7 @@ pub fn contracts() -> Vec<RouteContract> {
             kind: BodyKind::Binary, schema: SchemaRef::named("Bytes"), content_type: Some("application/octet-stream".into()),
         })),
         RouteContract::get("Get Unknown", "Unknown JSON", "/unknown").with_response(200, Some(json_body("Unknown", "{}"))),
+        RouteContract::get("Get Collision", "Wire name collisions", "/collision").with_response(200, Some(json_body("Collision", r#"{"type": "object", "required": ["fooBar", "foo_bar", "foo_bar2", "foo_bar_2", "type", "type_", "gen", "_", "quote\"\\"], "properties": {"fooBar": {"type": "object", "required": ["first"], "properties": {"first": {"type": "string"}}}, "foo_bar": {"type": "object", "required": ["second"], "properties": {"second": {"type": "integer"}}}, "foo_bar2": {"type": "object", "required": ["third"], "properties": {"third": {"type": "boolean"}}}, "foo_bar_2": {"type": "object", "required": ["fourth"], "properties": {"fourth": {"type": "string"}}}, "type": {"type": "string"}, "type_": {"type": "integer"}, "gen": {"type": "string"}, "_": {"type": "string"}, "quote\"\\": {"type": "string"}}}"#))),
         RouteContract::get("Get Empty", "Empty 200 response", "/empty").with_response(200, None),
         RouteContract::head("Head Health", "HEAD has no response body", "/health")
             .with_response(200, None),
@@ -78,6 +79,8 @@ pub fn register(router: &mut LocalRouter) {
                     )
                     .with_header("content-type", "application/problem+json"),
                 }
+            } else if path == "/collision" {
+                FrameworkResponse::json(200, r#"{"fooBar": {"first": "one"}, "foo_bar": {"second": 2}, "foo_bar2": {"third": true}, "foo_bar_2": {"fourth": "four"}, "type": "kind", "type_": 9, "gen": "future", "_": "underscore", "quote\"\\": "escaped"}"#)
             } else if path == "/text" {
                 FrameworkResponse::text(200, "Hello\nRust 🦀")
             } else if path == "/binary" {

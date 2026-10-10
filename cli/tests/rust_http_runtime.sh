@@ -118,6 +118,7 @@ async function verifyRustClient(baseUrl) {
   }
 }
 async function verifyStatusVariants(sdk) {
+  assert.deepEqual((await sdk.accounts.collision.getCollision()).response, {"fooBar": {"first": "one"}, "foo_bar": {"second": 2}, "foo_bar2": {"third": true}, "foo_bar_2": {"fourth": "four"}, "type": "kind", "type_": 9, "gen": "future", "_": "underscore", "quote\"\\": "escaped"});
   const text = await sdk.accounts.text.getText();
   assert.equal(text.response, 'Hello\nRust 🦀');
   assert.equal(text.contentType, 'text/plain');

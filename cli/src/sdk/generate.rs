@@ -1160,10 +1160,21 @@ fn rust_model_from_schema(
     schema: &JsonValue,
     models: &mut BTreeMap<String, RustModelTemplate>,
 ) -> String {
-    let model_name = rust_type_name(type_name);
-    if models.contains_key(&model_name) {
-        return model_name;
+    let base_name = rust_type_name(type_name);
+    let mut model_name = base_name.clone();
+    let mut suffix = 2;
+    while models.contains_key(&model_name) {
+        model_name = format!("{base_name}{suffix}");
+        suffix += 1;
     }
+    // Reserve the name before nested fields allocate their own models.
+    models.insert(
+        model_name.clone(),
+        RustModelTemplate {
+            name: model_name.clone(),
+            fields: vec![],
+        },
+    );
 
     let required = schema
         .get("required")
@@ -1173,17 +1184,25 @@ fn rust_model_from_schema(
         .filter_map(JsonValue::as_str)
         .collect::<BTreeSet<_>>();
     let mut fields = Vec::new();
+    let mut field_names = BTreeSet::new();
 
     if let Some(properties) = schema.get("properties").and_then(JsonValue::as_object) {
         for (name, property_schema) in properties {
-            let nested_type_name = format!("{}{}", model_name, name.to_case(Case::Pascal));
+            let base_field_name = rust_field_ident(name);
+            let mut field_name = base_field_name.clone();
+            let mut suffix = 2;
+            while !field_names.insert(field_name.clone()) {
+                field_name = format!("{}_{suffix}", base_field_name.trim_end_matches('_'));
+                suffix += 1;
+            }
+            let nested_type_name = format!("{}{}", model_name, field_name.to_case(Case::Pascal));
             let mut field_type = build_rust_type(&nested_type_name, property_schema, models);
             if !required.contains(name.as_str()) {
                 field_type = format!("Option<{field_type}>");
             }
             fields.push(RustModelFieldTemplate {
                 wire_name_literal: format!("{name:?}"),
-                field_name: rust_field_ident(name),
+                field_name,
                 field_type,
             });
         }
@@ -1200,7 +1219,11 @@ fn rust_model_from_schema(
 }
 
 fn rust_type_name(input: &str) -> String {
-    let mut name = input.to_case(Case::Pascal);
+    let mut name = input
+        .to_case(Case::Pascal)
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect::<String>();
     if name.is_empty() {
         name = "GeneratedModel".to_string();
     }
@@ -1211,8 +1234,18 @@ fn rust_type_name(input: &str) -> String {
 }
 
 fn rust_field_ident(input: &str) -> String {
-    let mut name = input.to_case(Case::Snake);
-    if name.is_empty() {
+    let mut name = input
+        .to_case(Case::Snake)
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    if name.is_empty() || name.chars().all(|ch| ch == '_') {
         name = "field".to_string();
     }
     if name.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
@@ -1227,7 +1260,23 @@ fn rust_field_ident(input: &str) -> String {
 fn is_rust_keyword(input: &str) -> bool {
     matches!(
         input,
-        "as" | "break"
+        "abstract"
+            | "become"
+            | "box"
+            | "do"
+            | "final"
+            | "gen"
+            | "macro"
+            | "override"
+            | "priv"
+            | "try"
+            | "typeof"
+            | "unsized"
+            | "virtual"
+            | "yield"
+            | "union"
+            | "as"
+            | "break"
             | "const"
             | "continue"
             | "crate"
@@ -1878,6 +1927,55 @@ mod response_media_tests {
         assert_eq!(
             build_rust_type("Unknown", &json!({}), &mut models),
             "serde_json::Value"
+        );
+    }
+}
+
+#[cfg(test)]
+mod identifier_collision_tests {
+    use super::*;
+    #[test]
+    fn fields_and_nested_models_keep_distinct_wire_values_after_normalization() {
+        let schema = json!({"type":"object","properties":{
+            "fooBar":{"type":"object","properties":{"first":{"type":"string"}}},
+            "foo_bar":{"type":"object","properties":{"second":{"type":"integer"}}},
+            "foo_bar2":{"type":"object","properties":{"third":{"type":"boolean"}}},
+            "foo_bar_2":{"type":"object","properties":{"fourth":{"type":"string"}}},
+            "type":{"type":"string"},"type_":{"type":"integer"},"gen":{"type":"string"},"_":{"type":"string"},"quote\"\\":{"type":"string"}
+        }});
+        let mut models = BTreeMap::new();
+        let root = rust_model_from_schema("Response", &schema, &mut models);
+        let fields = &models[&root].fields;
+        assert_eq!(fields.len(), 9);
+        assert_eq!(
+            fields
+                .iter()
+                .map(|f| &f.field_name)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            9
+        );
+        for field in fields {
+            assert!(
+                field
+                    .field_name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+            );
+            assert!(!is_rust_keyword(&field.field_name));
+        }
+        let nested = fields
+            .iter()
+            .filter(|field| field.field_type.contains("ResponseFoo"))
+            .collect::<Vec<_>>();
+        assert_eq!(nested.len(), 4);
+        assert_eq!(
+            nested
+                .iter()
+                .map(|f| &f.field_type)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            4
         );
     }
 }

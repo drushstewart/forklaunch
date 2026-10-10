@@ -15,6 +15,9 @@ const server = createServer((request, response) => {
       response.writeHead(status ?? (mode === 'conflict' ? 409 : 400), { 'content-type': status || mode === 'conflict' ? 'application/json' : 'application/problem+json' });
       response.end(JSON.stringify(payload ?? (mode === 'conflict' ? { errorCode: 'conflict', retryAfter: 30 } : { errorCode: 'invalid_mode', message: 'Unknown mode' })));
     }
+  } else if (url.pathname === '/collision') {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({"fooBar": {"first": "one"}, "foo_bar": {"second": 2}, "foo_bar2": {"third": true}, "foo_bar_2": {"fourth": "four"}, "type": "kind", "type_": 9, "gen": "future", "_": "underscore", "quote\"\\": "escaped"}));
   } else if (url.pathname === '/text') {
     response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
     response.end('Hello\nRust 🦀');

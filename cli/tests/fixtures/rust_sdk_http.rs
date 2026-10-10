@@ -77,6 +77,17 @@ async fn verify(base: &str) {
     assert!(
         matches!(client.unknown_get_unknown(Default::default()).await.unwrap(), accounts_sdk::AccountsUnknownGetUnknownResponses::Status200(value) if value == serde_json::json!([1,"two",{"three":true}]))
     );
+    let accounts_sdk::AccountsCollisionGetCollisionResponses::Status200(collision) = client
+        .collision_get_collision(Default::default())
+        .await
+        .unwrap()
+    else {
+        panic!("Expected collision payload")
+    };
+    assert_eq!(
+        serde_json::to_value(collision).unwrap(),
+        serde_json::json!({"fooBar": {"first": "one"}, "foo_bar": {"second": 2}, "foo_bar2": {"third": true}, "foo_bar_2": {"fourth": "four"}, "type": "kind", "type_": 9, "gen": "future", "_": "underscore", "quote\"\\": "escaped"})
+    );
     let mut deleted = accounts_sdk::AccountsUsersDeleteUserRequest::default();
     deleted.params.insert("id".into(), "welcome".into());
     assert!(matches!(
