@@ -8,7 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
-aws-sdk = ["dep:aws-sdk-s3", "dep:tokio"]
+aws-sdk = ["dep:aws-sdk-s3", "dep:tokio", "dep:base64", "dep:chrono", "dep:hmac", "dep:sha2", "dep:serde_json", "dep:url", "dep:zeroize", "dep:aws-smithy-runtime-api", "dep:aws-smithy-types", "dep:aws-runtime"]
 
 [dependencies]
 forklaunch-core = { path = "../forklaunch-core" }
@@ -16,11 +16,23 @@ forklaunch-core = { path = "../forklaunch-core" }
 aws-sdk-s3 = { version = "=1.124.0", default-features = false, features = ["rt-tokio", "rustls", "default-https-client", "behavior-version-latest"], optional = true }
 tokio = { version = "1", features = ["time"], optional = true }
 
+aws-runtime = { version = "1", optional = true }
+aws-smithy-runtime-api = { version = "1", features = ["client"], optional = true }
+aws-smithy-types = { version = "1", optional = true }
+base64 = { version = "0.22", optional = true }
+chrono = { version = "0.4", default-features = false, features = ["std"], optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
+serde_json = { version = "1", optional = true }
+url = { version = "2", optional = true }
+zeroize = { version = "1", optional = true }
+
 [dev-dependencies]
+aws-credential-types = "1"
 bytes = "1"
 http-body = "1"
 tempfile = "3"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "multipart"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "fs"] }
 
 [lints]

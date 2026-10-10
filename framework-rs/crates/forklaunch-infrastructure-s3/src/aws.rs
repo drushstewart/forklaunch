@@ -1,6 +1,9 @@
 //! Async Amazon S3 adapter using an injected official AWS SDK client.
+#[path = "aws_post.rs"]
+pub mod post;
 #[path = "aws_transfer.rs"]
 pub mod transfer;
+pub use post::{PresignUploadOptions, PresignedUpload};
 use std::{future::Future, time::Duration};
 
 use super::{AsyncObjectStore, ObjectMetadata, S3ObjectStoreConfig, StoredObject, normalize_key};
@@ -22,6 +25,7 @@ pub struct AwsS3Options {
     pub max_list_objects: usize,
     pub operation_timeout: Duration,
     pub max_download_lifetime: Duration,
+    pub max_upload_lifetime: Duration,
 }
 impl Default for AwsS3Options {
     fn default() -> Self {
@@ -32,6 +36,7 @@ impl Default for AwsS3Options {
             max_list_objects: 1000,
             operation_timeout: Duration::from_secs(30),
             max_download_lifetime: Duration::from_secs(300),
+            max_upload_lifetime: Duration::from_secs(900),
         }
     }
 }
@@ -73,6 +78,9 @@ impl AwsS3ObjectStore {
             || options.max_download_lifetime.as_secs() == 0
             || options.max_download_lifetime.subsec_nanos() != 0
             || options.max_download_lifetime > Duration::from_secs(604_800)
+            || options.max_upload_lifetime.as_secs() == 0
+            || options.max_upload_lifetime.subsec_nanos() != 0
+            || options.max_upload_lifetime > Duration::from_secs(604_800)
         {
             return Err(error(
                 "s3_config_invalid",
@@ -543,6 +551,18 @@ mod tests {
     fn aws_config_and_keys_reject_invalid_bounds_without_network_access() {
         let client = client("http://127.0.0.1:1");
         for options in [
+            AwsS3Options {
+                max_upload_lifetime: Duration::ZERO,
+                ..AwsS3Options::default()
+            },
+            AwsS3Options {
+                max_upload_lifetime: Duration::from_millis(1500),
+                ..AwsS3Options::default()
+            },
+            AwsS3Options {
+                max_upload_lifetime: Duration::from_secs(604_801),
+                ..AwsS3Options::default()
+            },
             AwsS3Options {
                 max_object_bytes: 0,
                 ..AwsS3Options::default()
