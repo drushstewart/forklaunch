@@ -53,8 +53,16 @@ impl AxumApplication {
     #[must_use]
     pub fn prepare_request(&self, parts: AxumRequestParts) -> AxumPreparedRequest {
         let mut request = parts.into_framework_request();
+        let explicit_head = request.method == HttpMethod::Head
+            && self.app.registry.routes().iter().any(|route| {
+                route.method == HttpMethod::Head && match_path(&route.path, &request.path).is_some()
+            });
         for route in self.app.registry.routes() {
-            if route.method != request.method {
+            if route.method != request.method
+                && !(request.method == HttpMethod::Head
+                    && !explicit_head
+                    && route.method == HttpMethod::Get)
+            {
                 continue;
             }
 

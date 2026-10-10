@@ -804,4 +804,4 @@ require literal Rust clones, but their public request/response behavior does.
 
 - [ ] Audit all exported HTTP methods (including WebDAV/link/unlink/subscribe variants) and generated custom-router extension behavior inside built-in Rust modules; preserve actual mounted contracts and fail explicitly for unsupported combinations.
 
-- [ ] Preserve the actual HTTP method for authentication on implicit HEAD-to-GET dispatch, while retaining explicit HEAD precedence and local-handler compatibility; include request-HMAC regression coverage.
+- [x] Preserve the actual HTTP method for authentication on implicit HEAD-to-GET dispatch, while retaining explicit HEAD precedence and local-handler compatibility; include request-HMAC regression coverage.

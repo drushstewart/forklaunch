@@ -401,8 +401,17 @@ impl LocalRouter {
     ///
     /// Returns an error when the matched local handler fails before producing a response.
     pub fn execute(&self, mut request: FrameworkRequest) -> FrameworkResult<FrameworkResponse> {
+        let explicit_head = request.method == HttpMethod::Head
+            && self.routes.iter().any(|route| {
+                route.contract.method == HttpMethod::Head
+                    && match_path(&route.contract.path, &request.path).is_some()
+            });
         for route in &self.routes {
-            if route.contract.method != request.method {
+            if route.contract.method != request.method
+                && !(request.method == HttpMethod::Head
+                    && !explicit_head
+                    && route.contract.method == HttpMethod::Get)
+            {
                 continue;
             }
 
@@ -416,10 +425,14 @@ impl LocalRouter {
                     ));
                 }
                 let correlation_id = request.context.correlation_id.clone();
-                let response = route.handler.call(request)?;
+                let head = request.method == HttpMethod::Head;
+                let mut response = route.handler.call(request)?;
                 let response_errors = validate_framework_response(&route.contract, &response);
                 if !response_errors.is_empty() {
                     return Ok(validation_error_response(&response_errors, &correlation_id));
+                }
+                if head {
+                    response.body = Body::Empty;
                 }
                 return Ok(response);
             }
@@ -964,5 +977,50 @@ mod tests {
 
         let validation = ErrorResponse::new(ErrorKind::Validation, "name is required").redacted();
         assert_eq!(validation.message, "name is required");
+    }
+}
+
+#[cfg(test)]
+mod head_dispatch_tests {
+    use super::*;
+    #[test]
+    fn local_head_retains_wire_method_and_explicit_head_takes_precedence() {
+        let mut router = LocalRouter::new();
+        router.register(
+            RouteContract::get("Read", "Read", "/read").with_response(200, None),
+            |request: FrameworkRequest| {
+                assert_eq!(
+                    request.method.as_str(),
+                    request.headers["x-expected-method"]
+                );
+                Ok(FrameworkResponse::text(200, "get body").with_header("x-selected", "get"))
+            },
+        );
+        let head = || {
+            FrameworkRequest::new(HttpMethod::Head, "/read", RequestContext::new("head-test"))
+                .with_header("x-expected-method", "HEAD")
+        };
+        let fallback = router.execute(head()).unwrap();
+        assert_eq!(fallback.status_code, 200);
+        assert_eq!(fallback.headers["x-selected"], "get");
+        assert_eq!(fallback.body, Body::Empty);
+        router.register(
+            RouteContract::head("Head", "Head", "/read").with_response(204, None),
+            |request: FrameworkRequest| {
+                assert_eq!(request.method, HttpMethod::Head);
+                Ok(FrameworkResponse::new(204).with_header("x-selected", "head"))
+            },
+        );
+        let explicit = router.execute(head()).unwrap();
+        assert_eq!(explicit.status_code, 204);
+        assert_eq!(explicit.headers["x-selected"], "head");
+        assert_eq!(explicit.body, Body::Empty);
+        let get = router
+            .execute(
+                FrameworkRequest::new(HttpMethod::Get, "/read", RequestContext::new("get-test"))
+                    .with_header("x-expected-method", "GET"),
+            )
+            .unwrap();
+        assert_eq!(get.body, Body::Text("get body".into()));
     }
 }

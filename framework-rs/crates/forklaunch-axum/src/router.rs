@@ -588,8 +588,11 @@ fn build_framework_request(
         .unwrap_or("forklaunch-request")
         .to_owned();
 
-    let mut request =
-        FrameworkRequest::new(contract.method, path, RequestContext::new(correlation_id));
+    let mut request = FrameworkRequest::new(
+        method_to_contract(&parts.method).unwrap_or(contract.method),
+        path,
+        RequestContext::new(correlation_id),
+    );
     request.params = match_path(&contract.openapi_path, path).unwrap_or_default();
 
     for (key, value) in parse_query(parts.uri.query().unwrap_or_default()) {
