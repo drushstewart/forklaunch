@@ -3,7 +3,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+{{#has_serde}}use serde::{Deserialize, Serialize};{{/has_serde}}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SdkRequest {
@@ -16,6 +16,7 @@ pub struct SdkRequest {
     pub content_type: &'static str,
 }
 
+{{#has_operations}}
 fn encode_path_segment(value: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut encoded = String::new();
@@ -43,6 +44,8 @@ fn path_with_params(path: &str, params: &BTreeMap<String, String>) -> String {
         .collect::<Vec<_>>()
         .join("/")
 }
+
+{{/has_operations}}
 
 #[derive(Debug)]
 pub enum SdkError {
@@ -133,7 +136,7 @@ pub enum {{responses_type}} {
 #[derive(Clone)]
 pub struct {{client_name}} {
     base_url: String,
-    http: reqwest::Client,
+    {{^has_operations}}_{{/has_operations}}http: reqwest::Client,
     default_headers: BTreeMap<String, String>,
     auth: Option<SdkAuth>,
     request_hook: Option<Arc<dyn Fn(&mut SdkRequest) + Send + Sync>>,
@@ -161,7 +164,7 @@ impl {{client_name}} {
     pub fn with_http_client(base_url: impl Into<String>, http: reqwest::Client) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            http,
+            {{^has_operations}}_http: {{/has_operations}}http,
             default_headers: BTreeMap::new(),
             auth: None,
             request_hook: None,

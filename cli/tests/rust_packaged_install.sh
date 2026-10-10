@@ -48,6 +48,10 @@ cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-in
 "$CLI" sdk generate --path . --target all --from contract
 "$CLI" sdk generate --path . --target all --from contract --check
 cargo check --workspace
+# Empty application contracts must also work in consumers that deny warnings.
+for sdk in postgres-jobs-sdk redis-jobs-sdk; do
+    cargo rustc -p "$sdk" --lib -- -D warnings
+done
 python3 - <<'PYTHON'
 from pathlib import Path
 import json

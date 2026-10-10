@@ -356,6 +356,8 @@ struct TypeScriptAliasTemplate {
 
 #[derive(Content)]
 struct RustSdkTemplate {
+    has_operations: bool,
+    has_serde: bool,
     client_name: String,
     models: Vec<RustModelTemplate>,
     aliases: Vec<RustTypeAliasTemplate>,
@@ -1932,6 +1934,8 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
     render_sdk_template(
         "sdk/rust/lib.rs",
         &RustSdkTemplate {
+            has_operations: !operations.is_empty(),
+            has_serde: !models.is_empty() || !operations.is_empty(),
             client_name,
             models: models.into_values().collect(),
             aliases: aliases.into_values().collect(),
@@ -2008,6 +2012,8 @@ mod wire_name_tests {
         let source = render_sdk_template(
             "sdk/rust/lib.rs",
             &RustSdkTemplate {
+                has_operations: false,
+                has_serde: !models.is_empty(),
                 client_name: "Client".into(),
                 models: models.into_values().collect(),
                 aliases: vec![],
@@ -2029,6 +2035,9 @@ mod empty_contract_tests {
         assert!(service.routers.is_empty());
         let source = rust_sdk(&service).unwrap();
         assert!(!source.contains("pub async fn"));
+        assert!(!source.contains("use serde::{"));
+        assert!(!source.contains("fn path_with_params"));
+        assert!(source.contains("_http: reqwest::Client"));
         let source = typescript_sdk(&[service]).unwrap();
         assert!(!source.contains("/health"));
     }
@@ -2447,6 +2456,8 @@ mod union_model_tests {
         let source = render_sdk_template(
             "sdk/rust/lib.rs",
             &RustSdkTemplate {
+                has_operations: false,
+                has_serde: !models.is_empty(),
                 client_name: "Client".into(),
                 models: models.into_values().collect(),
                 aliases: vec![],
