@@ -17,6 +17,7 @@ aws-sdk-s3 = { version = "=1.124.0", default-features = false, features = ["rt-t
 tokio = { version = "1", features = ["time"], optional = true }
 
 [dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util"] }
 
 [lints]

@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 94 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 95 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -466,7 +466,8 @@ Requirements:
 - [x] Implement bucket initialization.
 - [x] Add compliance-aware encryption/decryption hooks. (`ObjectCodec` + `put_encrypted`/`get_decrypted`)
 - [x] Add MinIO/S3-compatible container integration tests and run them in framework CI; test permission-denied bucket initialization and deadlines separately.
-- [ ] Add native async S3 streaming/multipart transfers and presigned upload/download behavior. Existing streaming helpers buffer data.
+- [x] Add SDK-signed S3 download links with bounded whole-second lifetimes, namespace/key fences, credential-resolution deadlines, and UTF-8 attachment filenames; verify actual download, expiration, and tampering rejection against MinIO.
+- [ ] Add native async S3 streaming/multipart transfers and presigned POST upload policies. Existing streaming helpers buffer data.
 
 ### Persistence
 

@@ -5,6 +5,7 @@ use super::{AsyncObjectStore, ObjectMetadata, S3ObjectStoreConfig, StoredObject,
 pub use aws_sdk_s3;
 use aws_sdk_s3::{
     Client,
+    presigning::PresigningConfig,
     primitives::ByteStream,
     types::{BucketLocationConstraint, CreateBucketConfiguration},
 };
@@ -18,6 +19,7 @@ pub struct AwsS3Options {
     pub max_list_bytes: usize,
     pub max_list_objects: usize,
     pub operation_timeout: Duration,
+    pub max_download_lifetime: Duration,
 }
 impl Default for AwsS3Options {
     fn default() -> Self {
@@ -27,8 +29,16 @@ impl Default for AwsS3Options {
             max_list_bytes: 64 * 1024 * 1024,
             max_list_objects: 1000,
             operation_timeout: Duration::from_secs(30),
+            max_download_lifetime: Duration::from_secs(300),
         }
     }
+}
+
+/// Optional lifetime and attachment filename for one presigned download.
+#[derive(Debug, Clone, Default)]
+pub struct PresignDownloadOptions {
+    pub expires_in: Option<Duration>,
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +68,9 @@ impl AwsS3ObjectStore {
             || options.max_list_bytes == 0
             || options.max_list_objects == 0
             || options.operation_timeout.is_zero()
+            || options.max_download_lifetime.as_secs() == 0
+            || options.max_download_lifetime.subsec_nanos() != 0
+            || options.max_download_lifetime > Duration::from_secs(604_800)
         {
             return Err(error(
                 "s3_config_invalid",
@@ -161,6 +174,55 @@ impl AwsS3ObjectStore {
                 }
                 Err(_) => Err(request_error()),
             }
+        })
+        .await
+    }
+
+    /// Signs a namespaced GET using the injected SDK credential provider. This
+    /// creates no bucket and makes no S3 object request. Credential resolution
+    /// remains subject to the operation deadline. Treat the URL as a bearer grant.
+    /// # Errors
+    /// Rejects invalid keys/filenames/lifetimes and signing or credential failures.
+    pub async fn presign_download(
+        &self,
+        key: &str,
+        options: &PresignDownloadOptions,
+    ) -> FrameworkResult<String> {
+        self.bounded(async {
+            let (_, wire) = self.wire_key(key)?;
+            let lifetime = options
+                .expires_in
+                .unwrap_or(self.options.max_download_lifetime);
+            if lifetime.as_secs() == 0
+                || lifetime.subsec_nanos() != 0
+                || lifetime > self.options.max_download_lifetime
+            {
+                return Err(error(
+                    "s3_presign_invalid",
+                    "download lifetime must be whole positive seconds within its configured cap",
+                ));
+            }
+            let mut request = self
+                .client
+                .get_object()
+                .bucket(&self.config.bucket)
+                .key(wire);
+            if let Some(filename) = options.filename.as_deref().filter(|name| !name.is_empty()) {
+                if filename.len() > 1024 {
+                    return Err(error(
+                        "s3_presign_invalid",
+                        "download filename exceeds 1024 UTF-8 bytes",
+                    ));
+                }
+                request = request.response_content_disposition(content_disposition(filename));
+            }
+            let signing = PresigningConfig::expires_in(lifetime)
+                .map_err(|_| error("s3_presign_invalid", "invalid download lifetime"))?;
+            let signed = request
+                .presigned(signing)
+                .await
+                .map_err(|_| request_error())?;
+            Ok(signed.uri().to_owned())
         })
         .await
     }
@@ -448,6 +510,23 @@ fn size_error() -> FrameworkError {
         "object exceeds configured byte bound",
     )
 }
+fn content_disposition(filename: &str) -> String {
+    let ascii = filename
+        .encode_utf16()
+        .map(|unit| {
+            if (0x20..=0x7e).contains(&unit) && ![34, 92].contains(&unit) {
+                char::from_u32(u32::from(unit)).unwrap_or('_')
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!(
+        "attachment; filename=\"{ascii}\"; filename*=UTF-8''{}",
+        encode_tag(filename)
+    )
+}
+
 fn encode_tag(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
@@ -536,6 +615,59 @@ mod tests {
             ("a/🦀".into(), "tenant/a/🦀".into())
         );
         assert_eq!(encode_tag("hello /é+"), "hello%20%2F%C3%A9%2B");
+    }
+
+    #[tokio::test]
+    async fn aws_download_lifetimes_and_filenames_are_bounded_without_storage_requests() {
+        let store = test_store(
+            client("http://127.0.0.1:1"),
+            "tenant",
+            AwsS3Options::default(),
+        );
+        for lifetime in [
+            Duration::ZERO,
+            Duration::from_secs(301),
+            Duration::from_millis(1500),
+        ] {
+            let options = PresignDownloadOptions {
+                expires_in: Some(lifetime),
+                filename: None,
+            };
+            assert_eq!(
+                store
+                    .presign_download("key", &options)
+                    .await
+                    .unwrap_err()
+                    .code(),
+                "s3_presign_invalid"
+            );
+        }
+        let options = PresignDownloadOptions {
+            filename: Some("x".repeat(1025)),
+            ..PresignDownloadOptions::default()
+        };
+        assert!(store.presign_download("key", &options).await.is_err());
+        assert!(
+            store
+                .presign_download("/", &PresignDownloadOptions::default())
+                .await
+                .is_err()
+        );
+        let url = store
+            .presign_download("a/é file", &PresignDownloadOptions::default())
+            .await
+            .unwrap();
+        let url = reqwest::Url::parse(&url).unwrap();
+        assert!(
+            url.query_pairs()
+                .any(|(key, value)| key == "X-Amz-Expires" && value == "300")
+        );
+        assert!(url.path().starts_with("/forklaunch-parity/tenant/a/"));
+        let disposition = content_disposition("report \"é\" 🦀\r\n.bin");
+        assert!(!disposition.contains(['\r', '\n']));
+        assert!(
+            disposition.contains("filename*=UTF-8''report%20%22%C3%A9%22%20%F0%9F%A6%80%0D%0A.bin")
+        );
     }
 
     #[tokio::test]
@@ -630,6 +762,7 @@ mod tests {
             .await
             .unwrap();
         assert_empty_and_codec_roundtrips(&store).await;
+        assert_presigned_downloads(&store).await;
         let metadata = ObjectMetadata::new()
             .with_content_type("application/octet-stream")
             .with_tag("service", "accounts")
@@ -757,5 +890,66 @@ mod tests {
             Some(b"plaintext".to_vec())
         );
         store.delete("encoded").await.unwrap();
+    }
+    async fn assert_presigned_downloads(store: &AwsS3ObjectStore) {
+        let key = "downloads/é space.bin";
+        let body = vec![0, 255, 13, 10, 42];
+        store
+            .put(key, body.clone(), ObjectMetadata::new())
+            .await
+            .unwrap();
+        let options = PresignDownloadOptions {
+            filename: Some("report \"é\" 🦀.bin".into()),
+            ..PresignDownloadOptions::default()
+        };
+        let url = store.presign_download(key, &options).await.unwrap();
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        let response = http
+            .get(&url)
+            .send()
+            .await
+            .unwrap_or_else(|_| panic!("presigned download transport failed"));
+        assert_eq!(response.status().as_u16(), 200);
+        assert_eq!(
+            response.headers().get("content-disposition").unwrap(),
+            content_disposition(options.filename.as_deref().unwrap()).as_str()
+        );
+        assert_eq!(response.bytes().await.unwrap().as_ref(), body);
+        let mut tampered = reqwest::Url::parse(&url).unwrap();
+        tampered.set_path("/forklaunch-parity/other-namespace/foreign");
+        assert_eq!(
+            http.get(tampered)
+                .send()
+                .await
+                .unwrap_or_else(|_| panic!("tamper transport failed"))
+                .status()
+                .as_u16(),
+            403
+        );
+        let expired = store
+            .presign_download(
+                key,
+                &PresignDownloadOptions {
+                    expires_in: Some(Duration::from_secs(1)),
+                    filename: None,
+                },
+            )
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert_eq!(
+            http.get(expired)
+                .send()
+                .await
+                .unwrap_or_else(|_| panic!("expiry transport failed"))
+                .status()
+                .as_u16(),
+            403
+        );
+        store.delete(key).await.unwrap();
     }
 }
