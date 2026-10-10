@@ -21,10 +21,19 @@ cp -R runtime-app relocated-app
 cd relocated-app
 cargo build --workspace
 run_cli openapi export --path .
-run_cli sdk generate --path . --target typescript --from contract
+run_cli sdk generate all --path . --from contract
 "$TSC_BIN" --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --outDir sdks/typescript/dist sdks/typescript/src/index.ts
+# Compile a real Rust SDK consumer in the relocated generated workspace.
+cat >> sdks/rust/accounts-sdk/Cargo.toml <<'TOML'
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+TOML
+mkdir -p sdks/rust/accounts-sdk/examples
+cp "$SCRIPT_DIR/fixtures/rust_sdk_http.rs" sdks/rust/accounts-sdk/examples/http_roundtrip.rs
+cargo build -p accounts-sdk --example http_roundtrip
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s=""; process.stdin.on("data", d => s+=d); process.stdin.on("end", () => console.log(JSON.parse(s).target_directory + "/debug/accounts"))')"
-node --input-type=module - "$BINARY" <<'JS'
+node --input-type=module - "$BINARY" "$(dirname "$BINARY")/examples/http_roundtrip" <<'JS'
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -63,10 +72,23 @@ try {
   assert.equal(largeHeader.status, 200);
   const responses = await Promise.all(Array.from({ length: 20 }, () => sdk.accounts.health.getHealth()));
   assert(responses.every(response => response.code === 200));
+  const rustClient = spawn(process.argv[3], [baseUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let clientOutput = '';
+  rustClient.stdout.on('data', chunk => clientOutput += chunk);
+  rustClient.stderr.on('data', chunk => clientOutput += chunk);
+  const deadline = setTimeout(() => rustClient.kill('SIGKILL'), 15000);
+  try {
+    const [clientCode, clientSignal] = await once(rustClient, 'exit');
+    assert.equal(clientCode, 0, `Rust SDK failed: ${clientSignal} ${clientOutput}`);
+    assert.match(clientOutput, /PASS Rust SDK live HTTP roundtrip/);
+  } finally {
+    clearTimeout(deadline);
+    if (rustClient.exitCode === null && rustClient.signalCode === null) rustClient.kill('SIGKILL');
+  }
   service.kill('SIGTERM');
   const [code, signal] = await exited;
   assert.equal(code, 0, `shutdown failed: ${signal} ${stderr}`);
-  console.log('PASS generated TypeScript SDK against relocated Rust HTTP service and graceful shutdown');
+  console.log('PASS generated TypeScript and Rust SDKs against relocated Rust HTTP service and graceful shutdown');
 } finally {
   if (service.exitCode === null && service.signalCode === null) {
     service.kill('SIGKILL');

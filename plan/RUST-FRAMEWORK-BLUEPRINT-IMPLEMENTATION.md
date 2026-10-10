@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 927 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 928 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -328,7 +328,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Generate discriminated response unions by status code.
 - [ ] Support file upload and binary download in browser contexts.
 - [ ] Add optional TanStack Query helpers as a later feature.
-- [ ] Add SDK tests against a Rust test server.
+- [x] Add TypeScript SDK tests against a relocated generated Rust HTTP server (`rust_http_runtime.sh`).
 
 ### TypeScript SDK Compatibility Contract
 
@@ -366,11 +366,12 @@ Requirements:
 - [x] Use `reqwest`, `serde`, and generated typed models.
 - [x] Generate typed async methods from operation IDs.
 - [x] Generate request builder structs for each operation.
-- [x] Generate typed response model structs from contract JSON Schema.
+- [x] Generate typed response model structs from contract JSON Schema, preserving exact JSON property names through Serde rename attributes (including camelCase, keywords, punctuation, and escaped names).
 - [x] Generate response enums by status code.
 - [x] Support auth hooks for JWT, HMAC, Basic, and custom headers.
 - [x] Support Rust-native error enums.
-- [ ] Add SDK tests against a Rust test server and a TypeScript test server.
+- [x] Run generated Rust SDKs against a relocated generated Rust HTTP server, including typed models, concurrent requests, HTTP errors, and transport failures (`rust_http_runtime.sh`).
+- [ ] Run generated Rust SDKs against a TypeScript test server.
 
 ### CLI Integration
 

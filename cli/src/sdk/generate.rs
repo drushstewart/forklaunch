@@ -290,6 +290,7 @@ struct RustModelTemplate {
 
 #[derive(Content, Debug, Clone, PartialEq, Eq)]
 struct RustModelFieldTemplate {
+    wire_name_literal: String,
     field_name: String,
     field_type: String,
 }
@@ -976,6 +977,7 @@ fn rust_model_from_schema(
                 field_type = format!("Option<{field_type}>");
             }
             fields.push(RustModelFieldTemplate {
+                wire_name_literal: format!("{name:?}"),
                 field_name: rust_field_ident(name),
                 field_type,
             });
@@ -1413,5 +1415,49 @@ mod compiler_config_tests {
         write(&path, custom).unwrap();
         generate_typescript_sdk(root.path(), &[]).unwrap();
         assert_eq!(read_to_string(path).unwrap(), custom);
+    }
+}
+
+#[cfg(test)]
+mod wire_name_tests {
+    use super::*;
+
+    #[test]
+    fn rust_models_preserve_exact_json_property_names() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "recordCount": {"type": "integer"},
+                "type": {"type": "string"},
+                "user-name": {"type": "string"},
+                "quote\"\\\n\u{0000}": {"type": "string"}
+            }
+        });
+        let mut models = BTreeMap::new();
+        rust_model_from_schema("Response", &schema, &mut models);
+        let fields = &models["Response"].fields;
+        for (wire, ident) in [
+            ("recordCount", "record_count"),
+            ("type", "type_"),
+            ("user-name", "user_name"),
+        ] {
+            let field = fields
+                .iter()
+                .find(|field| field.field_name == ident)
+                .unwrap();
+            assert_eq!(field.wire_name_literal, format!("{wire:?}"));
+        }
+        let source = render_sdk_template(
+            "sdk/rust/lib.rs",
+            &RustSdkTemplate {
+                client_name: "Client".into(),
+                models: models.into_values().collect(),
+                aliases: vec![],
+                operations: vec![],
+            },
+        )
+        .unwrap();
+        assert!(source.contains("#[serde(rename = \"recordCount\")]"));
+        assert!(source.contains(r#"#[serde(rename = "quote\"\\\n\0")]"#));
     }
 }

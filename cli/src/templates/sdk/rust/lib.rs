@@ -62,6 +62,7 @@ pub enum SdkAuth {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct {{name}} {
 {{#fields}}
+    #[serde(rename = {{{wire_name_literal}}})]
     pub {{field_name}}: {{{field_type}}},
 {{/fields}}
 }
