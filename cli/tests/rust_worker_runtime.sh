@@ -47,6 +47,15 @@ grep -q 'variant = "worker-postgres"' .forklaunch/manifest.toml
 cargo build --workspace
 run_cli openapi export --path .
 run_cli sdk generate --path . --target all --from contract
+python3 - <<'PYTHON'
+from pathlib import Path
+import json
+contract=json.loads(Path('.forklaunch/contracts/jobs/contract.json').read_text())
+spec=json.loads(Path('.forklaunch/openapi/jobs/openapi.json').read_text())
+assert contract['routes']==[], 'Worker advertised application HTTP routes'
+assert spec['paths']=={}, 'Worker advertised unimplemented HTTP endpoints'
+assert 'jobsProcess' not in Path('sdks/typescript/src/index.ts').read_text()
+PYTHON
 env DATABASE_URL="$FORKLAUNCH_TEST_POSTGRES_URL" cargo run -p jobs -- --migrate
 mkdir -p crates/jobs/examples
 cp "$SCRIPT_DIR/fixtures/rust_worker_seed.rs" crates/jobs/examples/seed.rs

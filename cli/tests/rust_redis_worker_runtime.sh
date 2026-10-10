@@ -49,6 +49,15 @@ grep -q 'WORKER_REDIS_URL' docker-compose.yaml
 cargo build --workspace
 run_cli openapi export --path .
 run_cli sdk generate --path . --target all --from contract
+python3 - <<'PYTHON'
+from pathlib import Path
+import json
+contract=json.loads(Path('.forklaunch/contracts/jobs/contract.json').read_text())
+spec=json.loads(Path('.forklaunch/openapi/jobs/openapi.json').read_text())
+assert contract['routes']==[], 'Worker advertised application HTTP routes'
+assert spec['paths']=={}, 'Worker advertised unimplemented HTTP endpoints'
+assert 'jobsProcess' not in Path('sdks/typescript/src/index.ts').read_text()
+PYTHON
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug/jobs"))')"
 node "$SCRIPT_DIR/rust_worker_runtime.mjs" "$BINARY" stub
 cp "$SCRIPT_DIR/fixtures/rust_worker_handler.rs" crates/jobs/src/handler.rs

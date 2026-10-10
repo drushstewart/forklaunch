@@ -63,7 +63,9 @@ pub(super) fn templates(
             template.content =
                 render_rust_template(&format!("rust/{}/main.rs", backend.template()), &data);
         } else if template.path == crate_dir.join("src/lib.rs") {
-            template.content.push_str("\npub mod handler;\n");
+            template.content = render_rust_template("rust/leased-worker/lib.rs", &data);
+        } else if template.path == crate_dir.join("tests/smoke.rs") {
+            template.content = render_rust_template("rust/leased-worker/smoke.rs", &data);
         } else if template.path == crate_dir.join("Cargo.toml") {
             template.content = cargo_with_backend(&template.content, backend)?;
         }
@@ -154,12 +156,14 @@ pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
         directory.join("src/main.rs"),
         render_rust_template(&format!("rust/{}/main.rs", backend.template()), &data),
     )?;
-    let library = directory.join("src/lib.rs");
-    let mut source = read_to_string(&library)?;
-    if !source.contains("pub mod handler;") {
-        source.push_str("\npub mod handler;\n");
-        write(library, source)?;
-    }
+    write(
+        directory.join("src/lib.rs"),
+        render_rust_template("rust/leased-worker/lib.rs", &data),
+    )?;
+    write(
+        directory.join("tests/smoke.rs"),
+        render_rust_template("rust/leased-worker/smoke.rs", &data),
+    )?;
     // Handler code and user documentation survive backend changes.
     for (output, template) in [
         ("src/handler.rs", "handler.rs"),

@@ -145,7 +145,7 @@ const abort = new AbortController();
 configured.accounts.users.list({ signal: abort.signal });
 configured.accounts.users.list({ credentials: 'include' });
 typedSdk.billing.invoices.list({ cache: 'no-store' });
-sdk.emailWorker.health.get({ mode: 'cors' });
+void sdk.emailWorker; // Durable workers expose no application HTTP methods.
 accountsService.users.list({ redirect: 'follow' });
 EOF
 compile_typescript_sdk rust-contracts/generated-sdk-usage.ts

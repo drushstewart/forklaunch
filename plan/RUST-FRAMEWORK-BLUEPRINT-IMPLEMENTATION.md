@@ -22,7 +22,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Validate real Cargo/PNPM mixed release builds with a generated Rust service/TypeScript SDK and a minimal tsx service export hook; reuse those artifacts with intentionally unbuildable source, preserving prebuilt isolation and bounded mixed crate paths.
 - [x] Complete relocated generated-service container build, health/OpenAPI, and SIGTERM shutdown checks. The Docker capacity blocker is resolved; `rust_container_runtime.sh` passes locally and runs in CI. Builder/runtime both use Debian bookworm.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.
-- [x] Verify the CLI Cargo package file list includes all 115 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 117 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
@@ -61,6 +61,7 @@ Generation is tracked separately from production framework and blueprint parity 
 - [x] Exercise init, change, sync, delete, contract/OpenAPI export, and TypeScript/Rust SDK generation in a dedicated CI matrix group.
 - [x] Add a relocated-app HTTP test calling the generated Rust service through its generated TypeScript SDK.
 - [x] Generate durable PostgreSQL workers and verify renewal, retries, drain, restart recovery, source preservation, backend conversion, rename, and delete against a real database.
+- [x] Export accurate durable-worker contracts without unmounted example HTTP routes or internal management endpoints; validate empty application HTTP SDKs against both generated backends.
 - [x] Document usage and distinguish generated examples from production storage and queue integrations.
 
 ## Core Principles

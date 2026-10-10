@@ -17,6 +17,8 @@ expected = {
     "src/templates/rust/application/typescript-sdk-tsconfig.json",
     "src/templates/rust/project/Cargo.toml.template",
     "src/templates/rust/iam/Cargo.toml.template",
+    "src/templates/rust/leased-worker/lib.rs",
+    "src/templates/rust/leased-worker/smoke.rs",
     "src/templates/rust/postgres-worker/main.rs",
     "src/templates/rust/postgres-worker/handler.rs",
     "src/templates/rust/postgres-worker/env.example",
