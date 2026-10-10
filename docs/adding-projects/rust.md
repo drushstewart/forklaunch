@@ -82,7 +82,9 @@ Configure `RouterConfig::with_authenticator` with an async credential verifier. 
 
 `forklaunch-auth::jwt::verify_jwk` and `verify_jwks` accept typed claims and an explicit `jsonwebtoken::Validation` policy. Set the allowed algorithms, issuer, and audience in that policy. The optional `remote-jwks` feature adds `RemoteJwks`, with one cache per configured endpoint, bounded response sizes/timeouts, Cache-Control and Age handling, refresh deduplication, and a refresh cooldown for unknown key IDs. Remote verification rejects symmetric algorithms and never follows token-provided key URLs. Share one verifier across requests rather than constructing a cache for each request.
 
-Basic login and HMAC verification remain application-configured callbacks. `parse_basic`, `hmac_verify`, and JWT verification helpers provide credential primitives; timestamp/nonce replay policy, session persistence, and provider integrations require application configuration and remain separate parity tasks.
+`forklaunch_auth::request_hmac` signs and verifies TypeScript-compatible `HMAC keyId=… ts=… nonce=… signature=…` request headers. It binds the exact method, path without query, transmitted body, normalized millisecond ISO timestamp and nonce. Serialize JSON once and sign/send the same bytes. `SignedBody` preserves the existing TypeScript distinction between absent/empty string bodies and raw buffers. `HmacAuthorization::verify_at` also bounds clock skew; atomic nonce replay claims across replicas remain application-owned. Actual TypeScript signer and header-generator fixtures cover all of these wire forms.
+
+Basic login and credential verification callbacks remain application-configured. `parse_basic`, `hmac_verify`, and JWT verification helpers provide credential primitives; provider integrations and the remaining IAM/session lifecycle are tracked separately.
 
 ## Telemetry
 

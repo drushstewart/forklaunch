@@ -11,6 +11,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_otlp_runtime.mjs'
       - 'cli/tests/rust_cac_provider_parity.mjs'
+      - 'cli/tests/rust_request_hmac_parity.mjs'
       - '.github/workflows/rust_parity.yml'
   push:
     branches: [main, rohin/rust-framework]
@@ -23,6 +24,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_otlp_runtime.mjs'
       - 'cli/tests/rust_cac_provider_parity.mjs'
+      - 'cli/tests/rust_request_hmac_parity.mjs'
       - '.github/workflows/rust_parity.yml'
 
 jobs:
@@ -78,6 +80,9 @@ jobs:
         env:
           ASYNCAPI_PARSER_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/@asyncapi/parser
       - run: node cli/tests/rust_native_sdk_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_request_hmac_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_field_encryption_parity.mjs

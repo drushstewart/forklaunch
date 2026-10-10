@@ -19,6 +19,9 @@ use subtle::ConstantTimeEq;
 
 pub mod jwt;
 
+/// TypeScript-compatible service-to-service request signatures.
+pub mod request_hmac;
+
 type HmacSha256 = Hmac<Sha256>;
 
 /// An authenticated caller, enriched from a verified credential.
