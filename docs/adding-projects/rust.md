@@ -31,7 +31,7 @@ forklaunch sdk generate --path . --target all --from contract
 forklaunch sdk generate --path . --target all --from contract --check
 ```
 
-Exports are written under `.forklaunch/contracts/<service>/contract.json` and `.forklaunch/openapi/<service>/openapi.json`. TypeScript output lives in `sdks/typescript`; Rust SDK crates live in `sdks/rust`. `--sdk-targets rust` on app initialization omits the TypeScript package scaffold. Rust services require generated SDKs; live TypeScript SDK mode is rejected.
+Exports are written under `.forklaunch/contracts/<service>/contract.json` and `.forklaunch/openapi/<service>/openapi.json`. TypeScript output lives in `sdks/typescript`; Rust SDK crates live in `sdks/rust`. New TypeScript SDKs include a strict browser-compatible `tsconfig.json`, so their `build` script and `pnpm sdk:typecheck` work directly. SDK regeneration preserves an existing compiler configuration. `--sdk-targets rust` on app initialization omits the TypeScript package scaffold. Rust services require generated SDKs; live TypeScript SDK mode is rejected.
 
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape.
 

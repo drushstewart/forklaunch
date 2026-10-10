@@ -35,6 +35,9 @@ mod iam;
 mod worker;
 pub(crate) use iam::generate_rust_iam_module;
 
+pub(crate) const TYPESCRIPT_SDK_TSCONFIG: &str =
+    include_str!("../templates/rust/application/typescript-sdk-tsconfig.json");
+
 pub(crate) const PROJECT_LANGUAGE_VARIANTS: [&str; 3] = ["typescript", "rust", "mixed"];
 pub(crate) const SDK_TARGET_VARIANTS: [&str; 4] = ["typescript", "ts", "rust", "all"];
 
@@ -1543,6 +1546,11 @@ fn mixed_typescript_sdk_templates(root_path: &Path, name: &str) -> Vec<RenderedT
                 }
             }))
             .unwrap(),
+            context: None,
+        },
+        RenderedTemplate {
+            path: root_path.join("sdks").join("typescript").join("tsconfig.json"),
+            content: TYPESCRIPT_SDK_TSCONFIG.to_owned(),
             context: None,
         },
         RenderedTemplate {

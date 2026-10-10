@@ -15,13 +15,15 @@ compile_typescript_sdk() {
         exit 1
     fi
 
-    "$TSC_BIN" \
-        --noEmit \
-        --target ES2022 \
-        --module ESNext \
-        --moduleResolution Bundler \
-        --lib ES2022,DOM \
-        "$sdk_entry"
+    case "$sdk_entry" in
+        */sdks/typescript/src/index.ts)
+            "$TSC_BIN" --project "$(dirname "$(dirname "$sdk_entry")")/tsconfig.json"
+            ;;
+        *)
+            "$TSC_BIN" --noEmit --target ES2022 --module ESNext \
+                --moduleResolution Bundler --lib ES2022,DOM "$sdk_entry"
+            ;;
+    esac
 }
 
 run_cli() {

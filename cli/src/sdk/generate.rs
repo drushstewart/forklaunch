@@ -1063,6 +1063,10 @@ fn is_rust_keyword(input: &str) -> bool {
 fn generate_typescript_sdk(app_root: &Path, services: &[SdkService]) -> Result<()> {
     let sdk_root = app_root.join("sdks").join("typescript");
     create_dir_all(sdk_root.join("src"))?;
+    let compiler_config = sdk_root.join("tsconfig.json");
+    if !compiler_config.exists() {
+        write(&compiler_config, rust_project::TYPESCRIPT_SDK_TSCONFIG)?;
+    }
     write_or_update_root_package_json(app_root)?;
     ensure_pnpm_workspace_includes_typescript_sdk(app_root)?;
     write(
@@ -1394,4 +1398,20 @@ fn render_sdk_template<T: Content>(template_path: &str, data: &T) -> Result<Stri
             .with_context(|| format!("SDK template {template_path} is not UTF-8"))?,
     )?;
     Ok(template.render(data))
+}
+
+#[cfg(test)]
+mod compiler_config_tests {
+    use super::*;
+    #[test]
+    fn sdk_generation_adds_missing_compiler_configuration_and_preserves_user_settings() {
+        let root = tempfile::tempdir().unwrap();
+        generate_typescript_sdk(root.path(), &[]).unwrap();
+        let path = root.path().join("sdks/typescript/tsconfig.json");
+        assert!(path.is_file());
+        let custom = r#"{"compilerOptions":{"strict":true,"noUncheckedIndexedAccess":true},"include":["src/**/*.ts","custom/**/*.ts"]}"#;
+        write(&path, custom).unwrap();
+        generate_typescript_sdk(root.path(), &[]).unwrap();
+        assert_eq!(read_to_string(path).unwrap(), custom);
+    }
 }
