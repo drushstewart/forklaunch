@@ -308,7 +308,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Generate TypeScript request field/body types from contract request schemas.
 - [x] Preserve status-code-specific response typing.
 - [x] Carry params, query, headers, body content type, response headers, and response bodies in `SdkGenerationPlan`.
-- [x] Support params, query, headers, and JSON body transport in deterministic TypeScript and Rust SDK generators.
+- [x] Support params, query, headers, and JSON body transport in deterministic TypeScript and Rust SDK generators. Path substitution matches whole segments and percent-encodes UTF-8/reserved bytes consistently across both SDKs; conformance fixtures cover prefix collisions, recursive-looking values, and repeated parameters.
 - [ ] Support multipart, binary, text responses, and file uploads/downloads.
 - [x] Add contract snapshot tests to ensure generated SDKs stay stable. (`client-sdk::tests::sdk_generation_is_deterministic`)
 

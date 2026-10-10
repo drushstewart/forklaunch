@@ -63,13 +63,15 @@ pub fn generate_typescript_sdk_source(
         "function pathWithParams(path: string, params?: Record<string, SdkPathValue>) {{"
     );
     let _ = writeln!(source, "  if (!params) return path;");
-    let _ = writeln!(source, "  return Object.entries(params).reduce(");
-    let _ = writeln!(
-        source,
-        "    (rendered, [key, value]) => rendered.split(`:${{key}}`).join(encodeURIComponent(String(value))).split(`{{${{key}}}}`).join(encodeURIComponent(String(value))),"
+    source.push_str(
+        r"  return path.split('/').map(segment => {
+    const name = segment.startsWith(':') ? segment.slice(1)
+      : segment.startsWith('{') && segment.endsWith('}') ? segment.slice(1, -1) : undefined;
+    return name !== undefined && Object.prototype.hasOwnProperty.call(params, name)
+      ? encodeURIComponent(String(params[name])) : segment;
+  }).join('/');
+",
     );
-    let _ = writeln!(source, "    path");
-    let _ = writeln!(source, "  );");
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
     let _ = writeln!(source, "export class {} {{", options.client_name);

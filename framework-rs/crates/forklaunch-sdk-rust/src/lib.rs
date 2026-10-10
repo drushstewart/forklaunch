@@ -48,27 +48,36 @@ pub fn generate_rust_sdk_source(plan: &SdkGenerationPlan, options: &RustSdkOptio
     let _ = writeln!(source, "    pub body_schema: Option<&'static str>,");
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
-    let _ = writeln!(
-        source,
-        "fn path_with_params(path: &str, params: &BTreeMap<String, String>) -> String {{"
+    source.push_str(
+        r#"fn encode_path_segment(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 15)]));
+        }
+    }
+    encoded
+}
+
+fn path_with_params(path: &str, params: &BTreeMap<String, String>) -> String {
+    path.split('/')
+        .map(|segment| {
+            let name = segment.strip_prefix(':').or_else(|| {
+                segment.strip_prefix('{').and_then(|name| name.strip_suffix('}'))
+            });
+            name.and_then(|name| params.get(name))
+                .map_or_else(|| segment.to_owned(), |value| encode_path_segment(value))
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+"#,
     );
-    let _ = writeln!(source, "    let mut rendered = path.to_owned();");
-    let _ = writeln!(source, "    for (key, value) in params {{");
-    let _ = writeln!(
-        source,
-        "        let openapi_key = [\"{{\", key, \"}}\"].concat();"
-    );
-    let _ = writeln!(
-        source,
-        "        rendered = rendered.replace(&format!(\":{{key}}\"), value);"
-    );
-    let _ = writeln!(
-        source,
-        "        rendered = rendered.replace(&openapi_key, value);"
-    );
-    let _ = writeln!(source, "    }}");
-    let _ = writeln!(source, "    rendered");
-    let _ = writeln!(source, "}}");
     let _ = writeln!(source);
     for operation in &plan.operations {
         write_request_struct(&mut source, operation);

@@ -70,7 +70,7 @@ bash init_rust_projects.sh
 for script in rust*.sh; do bash "$script"; done
 ```
 
-The Rust E2E job runs generation and lifecycle scripts, checks generated TypeScript SDKs, and calls a relocated Rust service through both generated TypeScript and Rust SDKs. The Rust client checks typed JSON models, concurrent requests, HTTP error responses, and transport failures. Generated Rust fields use idiomatic names with explicit Serde mappings to the original JSON property names. SDK checks require TypeScript (`TSC_BIN` can point to an installed compiler); the live HTTP check also requires Node.js with built-in `fetch`.
+The Rust E2E job runs generation and lifecycle scripts, checks generated TypeScript SDKs, and calls a relocated Rust service through both generated TypeScript and Rust SDKs. The Rust client checks typed JSON models, concurrent requests, HTTP error responses, and transport failures. Generated Rust fields use idiomatic names with explicit Serde mappings to the original JSON property names. Both SDK targets substitute whole path parameters and percent-encode their UTF-8 values, including slashes and query/fragment delimiters. SDK checks require TypeScript (`TSC_BIN` can point to an installed compiler); the live HTTP check also requires Node.js with built-in `fetch`.
 
 ## Authentication and verified sessions
 

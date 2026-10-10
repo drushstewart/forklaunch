@@ -51,11 +51,12 @@ export type {{responses_type}} = ForkLaunchErrorResponses & { {{success_status}}
 {{/operation_types}}
 function pathWithParams(path: string, params?: Record<string, ForkLaunchPathValue>) {
   if (!params) return path;
-  return Object.entries(params).reduce(
-    (rendered, [key, value]) =>
-      rendered.split(`:${key}`).join(encodeURIComponent(String(value))).split(`{${key}}`).join(encodeURIComponent(String(value))),
-    path
-  );
+  return path.split('/').map(segment => {
+    const name = segment.startsWith(':') ? segment.slice(1)
+      : segment.startsWith('{') && segment.endsWith('}') ? segment.slice(1, -1) : undefined;
+    return name !== undefined && Object.prototype.hasOwnProperty.call(params, name)
+      ? encodeURIComponent(String(params[name])) : segment;
+  }).join('/');
 }
 
 async function request<Responses extends Record<number, unknown>>(

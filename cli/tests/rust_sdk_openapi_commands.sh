@@ -119,7 +119,7 @@ grep -q 'AccountsUsersListRequest' rust-contracts/sdks/rust/accounts-sdk/src/lib
 grep -q 'AccountsUsersListResponses' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub struct AccountsUsersListResponse' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub records: Vec<AccountsUsersListResponseRecordsItem>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'let openapi_key = \["{", key, "}"\].concat();' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q "fn encode_path_segment" rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'users_list_request' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub async fn users_list' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub enum SdkAuth' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
@@ -132,6 +132,8 @@ grep -q '"sdks/rust/accounts-sdk"' rust-contracts/Cargo.toml
 grep -q '"sdks/rust/billing-sdk"' rust-contracts/Cargo.toml
 grep -q '"sdks/rust/email-worker-sdk"' rust-contracts/Cargo.toml
 compile_typescript_sdk rust-contracts/sdks/typescript/src/index.ts
+"$TSC_BIN" --project rust-contracts/sdks/typescript/tsconfig.json --noEmit false --outDir "$PWD/rust-contracts/sdks/typescript/dist"
+node "$SCRIPT_DIR/fixtures/typescript_sdk_paths.mjs" "$PWD/rust-contracts/sdks/typescript/dist/index.js"
 cat > rust-contracts/generated-sdk-usage.ts << 'EOF'
 import { accountsService, createForkLaunchSdk, sdk, type ForkLaunchGeneratedSdk } from './sdks/typescript/src/index';
 
@@ -241,6 +243,7 @@ run_cli sdk generate --path rust-contracts --target rust --service invoicing --f
 run_cli sdk generate --path rust-contracts --target typescript --from contract --check
 compile_typescript_sdk rust-contracts/sdks/typescript/src/index.ts
 
+cat "$SCRIPT_DIR/fixtures/rust_sdk_paths.rs" >> rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 (
     cd rust-contracts
     cargo test --workspace
