@@ -592,6 +592,7 @@ Requirements:
 - [ ] Implement Kafka-backed worker queue.
 - [x] Define worker signaling interfaces and an in-memory reference bus. (`SignalBus` + `InMemorySignalBus`)
 - [x] Implement namespace/tenant/queue-bound Redis Pub/Sub worker signaling with ordered bounded subscriptions, sanitized publication deadlines, independent publishers and sticky drain forwarding. Verify actual child-process delivery, isolation, overflow/malformed-message errors and owned TCP disconnect behavior in the Redis CI suite.
+- [x] Add subscriber-free administrative Redis signal publishers and `http::run_with_control` so distributed forwarding, HTTP readiness and durable consumption share one control; test paused jobs, resume completion, readiness changes and graceful drain against real Redis.
 - [ ] Wire opt-in distributed signaling into generated Redis/PostgreSQL worker commands and control endpoints; define reconnect/desired-state behavior separately from ephemeral Pub/Sub.
 - [x] Add AsyncAPI generation for worker events where applicable. (`events::asyncapi_json`)
 

@@ -148,13 +148,43 @@ where
     H: JobHandler,
     F: Future<Output = ()> + Send,
 {
+    run_with_control(
+        queue,
+        handler,
+        config,
+        policy,
+        http,
+        &WorkerControl::new(),
+        shutdown,
+    )
+    .await
+}
+
+/// Runs worker, retention, and HTTP management with a shared caller-owned control.
+/// Distributed signal forwarding can use this same control while HTTP commands
+/// retain their existing process-local behavior. Drain remains irreversible.
+/// # Errors
+/// Returns configuration, worker, retention or HTTP-server errors after shutdown.
+pub async fn run_with_control<Q, H, F>(
+    queue: &Q,
+    handler: &H,
+    config: &RunnerConfig,
+    policy: Option<&RetentionPolicy>,
+    http: Option<&HttpConfig>,
+    control: &WorkerControl,
+    shutdown: F,
+) -> BlueprintResult<RetainedRunReport>
+where
+    Q: AsyncWorkerAdmin,
+    H: JobHandler,
+    F: Future<Output = ()> + Send,
+{
     config.validate()?;
     if let Some(policy) = policy {
         policy.validate()?;
     }
-    let control = WorkerControl::new();
     let server = if let Some(http) = http {
-        let router = router(&control, http)?;
+        let router = router(control, http)?;
         let listener = tokio::net::TcpListener::bind(http.address)
             .await
             .map_err(|_| server_error())?;
@@ -185,12 +215,12 @@ where
                 handler,
                 config,
                 policy,
-                &control,
+                control,
                 std::future::pending(),
             )
             .await
         } else {
-            runner::run_controlled(queue, handler, config, &control, std::future::pending())
+            runner::run_controlled(queue, handler, config, control, std::future::pending())
                 .await
                 .map(|worker| RetainedRunReport {
                     worker,

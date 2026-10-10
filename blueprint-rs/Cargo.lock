@@ -682,6 +682,7 @@ dependencies = [
 name = "forklaunch-worker-redis"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "forklaunch-blueprint-core",
  "forklaunch-core",
  "forklaunch-worker-database",
@@ -691,6 +692,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tower",
  "uuid",
 ]
 

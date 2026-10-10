@@ -24,8 +24,10 @@ uuid = { version = "1", features = ["v4"], optional = true }
 futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }
-forklaunch-worker-database = { path = "../forklaunch-worker-database", features = ["runtime"] }
+forklaunch-worker-database = { path = "../forklaunch-worker-database", features = ["runtime", "http-control"] }
 
 [lints]
 workspace = true

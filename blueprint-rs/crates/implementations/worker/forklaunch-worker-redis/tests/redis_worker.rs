@@ -1383,3 +1383,156 @@ async fn verify_batch_runner_contract<Q: AsyncWorkerQueue>(queue: &Q) {
         assert_eq!(report.abandoned, 0);
     }
 }
+
+#[tokio::test]
+#[ignore = "requires isolated Redis and FORKLAUNCH_TEST_REDIS_URL"]
+async fn redis_worker_distributed_control_shares_http_and_runner() {
+    use forklaunch_worker_database::{
+        control::{WorkerControl, WorkerState, forward_signals},
+        http,
+    };
+    use forklaunch_worker_interface::DistributedSignal;
+    use forklaunch_worker_redis::signals::{RedisSignalBus, RedisSignalPublisher, SignalOptions};
+    use tower::ServiceExt;
+    let url = std::env::var("FORKLAUNCH_TEST_REDIS_URL").unwrap();
+    let namespace = format!("shared-control-{}", uuid::Uuid::new_v4());
+    let tenant = TenantContext::new("tenant").unwrap();
+    let queue = RedisLeasedQueue::connect(&url, &namespace, tenant.clone(), RetryPolicy::default())
+        .await
+        .unwrap();
+    queue
+        .enqueue(Job::new("controlled-job", "jobs", "{}"))
+        .await
+        .unwrap();
+    let control = WorkerControl::new();
+    assert!(control.pause());
+    let running = spawn_shared_control_runner(queue.clone(), control.clone());
+    let router = http::router(
+        &control,
+        &http::HttpConfig {
+            address: "127.0.0.1:0".parse().unwrap(),
+            control_token: None,
+        },
+    )
+    .unwrap();
+    let ready = || {
+        router.clone().oneshot(
+            axum::http::Request::builder()
+                .uri("/ready")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+    };
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(
+        queue
+            .inspect("jobs", "controlled-job")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        JobStatus::Queued
+    );
+    assert_eq!(
+        ready().await.unwrap().status(),
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
+    let mut bus =
+        RedisSignalBus::connect(&url, &namespace, &tenant, "jobs", SignalOptions::default())
+            .await
+            .unwrap();
+    let publisher =
+        RedisSignalPublisher::connect(&url, &namespace, &tenant, "jobs", &SignalOptions::default())
+            .await
+            .unwrap();
+    let owned_control = control.clone();
+    let forwarding = tokio::spawn(async move {
+        forward_signals(&mut bus, &owned_control, std::future::pending()).await
+    });
+    assert_eq!(
+        publisher
+            .broadcast(DistributedSignal::Resume)
+            .await
+            .unwrap(),
+        1
+    );
+    wait_for_controlled_completion(&queue).await;
+    assert_eq!(ready().await.unwrap().status(), axum::http::StatusCode::OK);
+    publisher.broadcast(DistributedSignal::Pause).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while control.state() != WorkerState::Paused {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        ready().await.unwrap().status(),
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
+    publisher.broadcast(DistributedSignal::Drain).await.unwrap();
+    let report = tokio::time::timeout(Duration::from_secs(3), running)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(report.worker.completed, 1);
+    forwarding.await.unwrap().unwrap();
+    assert_eq!(control.state(), WorkerState::Draining);
+    let mut connection = redis::Client::open(url)
+        .unwrap()
+        .get_multiplexed_async_connection()
+        .await
+        .unwrap();
+    clean(&mut connection, &namespace).await;
+}
+
+fn spawn_shared_control_runner(
+    queue: RedisLeasedQueue,
+    control: forklaunch_worker_database::control::WorkerControl,
+) -> tokio::task::JoinHandle<
+    BlueprintResult<forklaunch_worker_database::retention::RetainedRunReport>,
+> {
+    use forklaunch_worker_database::http;
+    struct Handler;
+    impl JobHandler for Handler {
+        async fn process(&self, _: Job) -> BlueprintResult<()> {
+            Ok(())
+        }
+    }
+    tokio::spawn(async move {
+        let config = RunnerConfig {
+            poll_interval: Duration::from_millis(10),
+            ..RunnerConfig::new("jobs")
+        };
+        http::run_with_control(
+            &queue,
+            &Handler,
+            &config,
+            None,
+            None,
+            &control,
+            std::future::pending(),
+        )
+        .await
+    })
+}
+async fn wait_for_controlled_completion(queue: &RedisLeasedQueue) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if queue
+                .inspect("jobs", "controlled-job")
+                .await
+                .unwrap()
+                .unwrap()
+                .status
+                == JobStatus::Completed
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+}

@@ -43,6 +43,34 @@ impl fmt::Debug for RedisSignalPublisher {
     }
 }
 impl RedisSignalPublisher {
+    /// Creates an administrative publisher without subscribing to its channel.
+    /// # Errors
+    /// Rejects invalid configuration and returns sanitized, bounded connection errors.
+    pub async fn connect(
+        url: &str,
+        namespace: &str,
+        tenant: &TenantContext,
+        queue: &str,
+        options: &SignalOptions,
+    ) -> BlueprintResult<Self> {
+        let channel = channel_name(namespace, tenant, queue, options)?;
+        let client = redis::Client::open(url).map_err(|_| storage_error())?;
+        let timeout = options.operation_timeout;
+        let config = ConnectionManagerConfig::new()
+            .set_connection_timeout(timeout)
+            .set_response_timeout(timeout)
+            .set_number_of_retries(2);
+        let connection =
+            tokio::time::timeout(timeout, ConnectionManager::new_with_config(client, config))
+                .await
+                .map_err(|_| storage_error())?
+                .map_err(|_| storage_error())?;
+        Ok(Self {
+            connection,
+            channel,
+            timeout,
+        })
+    }
     /// Publishes to currently connected subscribers. The count is not an ack.
     /// # Errors
     /// Returns a sanitized error when publication fails or exceeds its deadline.
@@ -352,12 +380,22 @@ mod tests {
         let mut foreign_tenant = bus(&url, &namespace, "b", "jobs", 16).await;
         let mut foreign_queue = bus(&url, &namespace, "a", "other", 16).await;
         let mut foreign_namespace = bus(&url, &format!("{namespace}-other"), "a", "jobs", 16).await;
+        let admin = RedisSignalPublisher::connect(
+            &url,
+            &namespace,
+            &TenantContext::new("a").unwrap(),
+            "jobs",
+            &SignalOptions::default(),
+        )
+        .await
+        .unwrap();
+        assert!(!format!("{admin:?}").contains("redis://"));
         for signal in [
             DistributedSignal::Pause,
             DistributedSignal::Resume,
             DistributedSignal::Drain,
         ] {
-            assert_eq!(a.broadcast(signal).await.unwrap(), 2);
+            assert_eq!(admin.broadcast(signal).await.unwrap(), 2);
             assert_eq!(
                 a.next_signal(Duration::from_secs(2)).await.unwrap(),
                 Some(signal)
@@ -401,6 +439,18 @@ mod tests {
         assert!(!control.resume());
         assert_signal_faults(&url, &namespace).await;
         assert_cross_process_signals(&url, &namespace).await;
+        drop(a);
+        drop(b);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if admin.broadcast(DistributedSignal::Pause).await.unwrap() == 0 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
     }
     struct ChildGuard(Option<std::process::Child>);
     impl Drop for ChildGuard {
