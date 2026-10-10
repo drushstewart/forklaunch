@@ -1,4 +1,5 @@
 //! Opt-in, bounded terminal retention coordinated with worker shutdown.
+use crate::control::WorkerControl;
 use crate::runner::{self, JobHandler, RunReport, RunnerConfig};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_worker_interface::{AsyncWorkerAdmin, TerminalStatus};
@@ -138,11 +139,42 @@ where
     H: JobHandler,
     F: Future<Output = ()> + Send,
 {
+    run_worker_controlled(
+        queue,
+        handler,
+        config,
+        policy,
+        &WorkerControl::new(),
+        shutdown,
+    )
+    .await
+}
+
+/// Coordinates controlled consumers and retention. Pausing leaves maintenance
+/// enabled; draining stops maintenance immediately, before handlers finish.
+/// # Errors
+/// Returns invalid configuration or worker/retention errors after handler drain.
+pub async fn run_worker_controlled<Q, H, F>(
+    queue: &Q,
+    handler: &H,
+    config: &RunnerConfig,
+    policy: &RetentionPolicy,
+    control: &WorkerControl,
+    shutdown: F,
+) -> BlueprintResult<RetainedRunReport>
+where
+    Q: AsyncWorkerAdmin,
+    H: JobHandler,
+    F: Future<Output = ()> + Send,
+{
     config.validate()?;
     policy.validate()?;
     let (stop, receiver) = watch::channel(false);
-    let worker = runner::run(queue, handler, config, stopped(receiver.clone()));
+    let worker = runner::run_controlled(queue, handler, config, control, stopped(receiver.clone()));
     let maintenance = run(queue, &config.queue, policy, stopped(receiver));
+    let shutdown = async {
+        tokio::select! { () = shutdown => {}, () = control.draining() => {} }
+    };
     tokio::pin!(worker, maintenance, shutdown);
     let mut report = RetainedRunReport::default();
     let mut first_error = None;
@@ -150,16 +182,18 @@ where
     while !worker_done || !maintenance_done {
         tokio::select! {
             biased;
-            () = &mut shutdown, if !stopping => { stopping = true; stop.send_replace(true); }
+            () = &mut shutdown, if !stopping => { stopping = true; control.drain(); stop.send_replace(true); }
             result = &mut worker, if !worker_done => {
                 worker_done = true;
                 stopping = true;
+                control.drain();
                 stop.send_replace(true);
                 match result { Ok(value) => report.worker = value, Err(error) => { if first_error.is_none() { first_error = Some(error); } } }
             }
             result = &mut maintenance, if !maintenance_done => {
                 maintenance_done = true;
                 stopping = true;
+                control.drain();
                 stop.send_replace(true);
                 match result { Ok(value) => report.retention = value, Err(error) => { if first_error.is_none() { first_error = Some(error); } } }
             }

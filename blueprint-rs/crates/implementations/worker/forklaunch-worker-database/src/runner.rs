@@ -1,4 +1,5 @@
 //! Polling and graceful drain for asynchronous, leased worker queues.
+use crate::control::{WorkerControl, WorkerState};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_worker_interface::{AsyncWorkerQueue, FailureDisposition, Job, JobLease};
 use futures_util::{StreamExt, stream::FuturesUnordered};
@@ -118,18 +119,40 @@ where
     H: JobHandler,
     F: Future<Output = ()> + Send,
 {
+    run_controlled(queue, handler, config, &WorkerControl::new(), shutdown).await
+}
+
+/// Runs with process-local pause/resume/drain control. Pause preserves active
+/// handlers and claims already submitted to storage. Drain cannot be reversed.
+/// # Errors
+/// Returns invalid configuration or queue failures/timeouts after active drain.
+pub async fn run_controlled<Q, H, F>(
+    queue: &Q,
+    handler: &H,
+    config: &RunnerConfig,
+    control: &WorkerControl,
+    shutdown: F,
+) -> BlueprintResult<RunReport>
+where
+    Q: AsyncWorkerQueue,
+    H: JobHandler,
+    F: Future<Output = ()> + Send,
+{
     config.validate()?;
     let (stop, receiver) = watch::channel(false);
     let mut consumers: FuturesUnordered<_> = (0..config.concurrency)
         .map(|_| {
             let mut receiver = receiver.clone();
-            run_single(queue, handler, config, async move {
+            run_single(queue, handler, config, control, async move {
                 if !*receiver.borrow() {
                     let _ = receiver.changed().await;
                 }
             })
         })
         .collect();
+    let shutdown = async {
+        tokio::select! { () = shutdown => {}, () = control.draining() => {} }
+    };
     tokio::pin!(shutdown);
     let mut stopping = false;
     let mut first_error = None;
@@ -139,6 +162,7 @@ where
             biased;
             () = &mut shutdown, if !stopping => {
                 stopping = true;
+                control.drain();
                 stop.send_replace(true);
             }
             result = consumers.next() => {
@@ -154,6 +178,7 @@ where
                     Err(error) => {
                         if first_error.is_none() { first_error = Some(error); }
                         stopping = true;
+                        control.drain();
                         stop.send_replace(true);
                     }
                 }
@@ -167,6 +192,7 @@ async fn run_single<Q, H, F>(
     queue: &Q,
     handler: &H,
     config: &RunnerConfig,
+    control: &WorkerControl,
     shutdown: F,
 ) -> BlueprintResult<RunReport>
 where
@@ -176,7 +202,22 @@ where
 {
     tokio::pin!(shutdown);
     let mut report = RunReport::default();
+    let mut state = control.subscribe();
     loop {
+        loop {
+            let current = *state.borrow_and_update();
+            match current {
+                WorkerState::Running => break,
+                WorkerState::Draining => return Ok(report),
+                WorkerState::Paused => {
+                    tokio::select! {
+                        biased;
+                        () = &mut shutdown => return Ok(report),
+                        result = state.changed() => { if result.is_err() { return Ok(report); } }
+                    }
+                }
+            }
+        }
         let lease = tokio::select! {
             biased;
             () = &mut shutdown => return Ok(report),
@@ -188,6 +229,7 @@ where
             tokio::select! {
                 biased;
                 () = &mut shutdown => return Ok(report),
+                _ = state.changed() => {},
                 () = tokio::time::sleep(config.poll_interval) => {},
             }
             continue;

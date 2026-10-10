@@ -343,6 +343,8 @@ async fn postgres_worker_leases_retries_isolation_and_concurrency() {
     verify_admin_contract(&admin_queue, &admin_other).await;
     #[cfg(feature = "runtime")]
     verify_retention_contract(&admin_queue, &admin_other).await;
+    #[cfg(feature = "runtime")]
+    verify_control_contract(&admin_queue).await;
     // RLS also protects direct queries without a tenant context, and pooled
     // transaction-local settings do not escape to a subsequent borrower.
     let count: (i64,) = sqlx::query_as("SELECT count(*) FROM fl_worker.jobs")
@@ -997,6 +999,115 @@ async fn verify_retention_contract<Q: AsyncWorkerAdmin>(queue: &Q, other: &Q) {
     );
     assert_eq!(
         queue.inspect(name, "queued").await.unwrap().unwrap().status,
+        JobStatus::Queued
+    );
+}
+
+#[cfg(feature = "runtime")]
+#[allow(clippy::too_many_lines)]
+async fn verify_control_contract<Q: AsyncWorkerQueue>(queue: &Q) {
+    use forklaunch_worker_database::{
+        control::{WorkerControl, WorkerState},
+        runner::{self, JobHandler, RunnerConfig},
+    };
+    struct ControlledHandler;
+    impl JobHandler for ControlledHandler {
+        async fn process(&self, _job: Job) -> forklaunch_blueprint_core::BlueprintResult<()> {
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            Ok(())
+        }
+    }
+    async fn wait<Q: AsyncWorkerQueue>(queue: &Q, id: &str, status: JobStatus) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if queue
+                    .inspect("controlled", id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .status
+                    == status
+                {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    queue
+        .enqueue_batch(vec![
+            Job::new("first", "controlled", "{}"),
+            Job::new("second", "controlled", "{}"),
+            Job::new("third", "controlled", "{}"),
+        ])
+        .await
+        .unwrap();
+    let control = WorkerControl::new();
+    assert!(control.pause());
+    let config = RunnerConfig {
+        queue: "controlled".into(),
+        concurrency: 1,
+        poll_interval: Duration::from_millis(5),
+        lease_duration: Duration::from_millis(300),
+        renew_interval: Duration::from_millis(75),
+        drain_timeout: Duration::from_secs(2),
+    };
+    let (report, ()) = tokio::join!(
+        runner::run_controlled(
+            queue,
+            &ControlledHandler,
+            &config,
+            &control,
+            std::future::pending()
+        ),
+        async {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            assert_eq!(queue.stats("controlled").await.unwrap().queued, 3);
+            assert!(control.resume());
+            wait(queue, "first", JobStatus::Processing).await;
+            assert!(control.pause());
+            tokio::time::sleep(Duration::from_millis(350)).await;
+            assert_eq!(
+                queue
+                    .inspect("controlled", "first")
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .job
+                    .attempts,
+                1
+            );
+            assert_eq!(queue.stats("controlled").await.unwrap().processing, 1);
+            wait(queue, "first", JobStatus::Completed).await;
+            assert_eq!(queue.stats("controlled").await.unwrap().queued, 2);
+            assert!(control.resume());
+            wait(queue, "second", JobStatus::Processing).await;
+            assert!(control.pause());
+            control.drain();
+            assert!(!control.resume());
+            assert!(!control.pause());
+        }
+    );
+    assert_eq!(report.unwrap().completed, 2);
+    assert_eq!(control.state(), WorkerState::Draining);
+    assert_eq!(
+        queue
+            .inspect("controlled", "second")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        JobStatus::Completed
+    );
+    assert_eq!(
+        queue
+            .inspect("controlled", "third")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
         JobStatus::Queued
     );
 }

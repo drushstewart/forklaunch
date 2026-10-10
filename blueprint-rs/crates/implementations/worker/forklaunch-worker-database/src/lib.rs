@@ -4,6 +4,9 @@
 pub mod postgres;
 
 #[cfg(feature = "runtime")]
+pub mod control;
+
+#[cfg(feature = "runtime")]
 pub mod runner;
 
 #[cfg(feature = "runtime")]
