@@ -28,3 +28,25 @@ To enable periodic retention, set `WORKER_COMPLETED_RETENTION_SECONDS` and/or `W
 Set `WORKER_HTTP_ADDR=127.0.0.1:8081` to opt into internal `GET /health` and `/ready`. Health returns process state; readiness is 200 when running and 503 while paused or draining, without probing storage. Controls are disabled unless `WORKER_CONTROL_TOKEN` contains a random secret of 32–4096 printable ASCII characters without whitespace. With `Authorization: Bearer <secret>`, POST to `/control/pause`, `/control/resume`, or `/control/drain`. Accepted commands return 202; pause/resume after drain return 409. Pause preserves active work; drain is irreversible and stops retention immediately. Health remains available during drain. HTTP is disabled by default; a token without an address fails startup. Bind this plain HTTP listener to a trusted interface and protect remote access through deployment controls or a TLS proxy. Controls affect this process only, not other replicas. Internal management endpoints are separate from application contracts and SDKs.
 
 Set `WORKER_BATCH_SIZE` to 1–1000 to claim currently eligible jobs in batches; the runner does not wait to fill them. Override `JobHandler::process_batch(Vec<Job>) -> BlueprintResult<Vec<JobFailure>>` for bulk work, returning only failed job IDs and errors. Omitted jobs are acknowledged; a whole-batch error or unknown/duplicate failure IDs fails every member. With size 1 the runner calls `process`; the default batch implementation calls it sequentially for compatibility. Each job keeps its own retry budget and lease token. All leases renew while the batch runs. Loss of any lease cancels the batch and leaves other deliveries recoverable after expiry. Handler drain timeouts cancel the full batch. Keep effects idempotent and all work inside the returned future. Batch acknowledgments are independently fenced rather than atomic across jobs.
+
+## Distributed controls
+
+Set `WORKER_SIGNAL_REDIS_URL` and `WORKER_SIGNAL_NAMESPACE` on every participating
+worker to enable Redis Pub/Sub controls. The group is scoped by signal namespace,
+trusted `TENANT_ID`, and `WORKER_QUEUE` (defaults to this worker's name). PostgreSQL
+workers may use a separate Redis deployment for controls. Without these variables,
+HTTP controls remain process-local and no signal connection is opened.
+
+Run `cargo run -- --signal pause`, `--signal resume`, or `--signal drain` with the
+same scope and signal environment. These commands do not connect to queue storage.
+When enabled, bearer-authenticated HTTP controls publish to the same group and
+apply through the ordered subscription; their JSON response reports `subscribers`. This count means Redis
+subscribers, not application acknowledgements. Health/readiness reflects local state.
+Publication failure returns HTTP 503; delivery can remain uncertain after a timeout. Drain is
+irreversible for each running process.
+
+Delivery is ephemeral: disconnected or late subscribers miss commands. Subscription
+disconnect, overflow, or malformed messages cause graceful drain and an error exit.
+There is no automatic reconnect or durable desired-state restoration: restart the
+worker explicitly; a restarted worker begins running. Use a unique namespace for
+each environment and Redis ACLs; Redis database numbers do not isolate Pub/Sub.

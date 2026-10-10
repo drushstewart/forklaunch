@@ -11,9 +11,12 @@ mkdir -p "$SCRIPT_DIR/output/rust-worker-runtime"
 RUN_ROOT="$(mktemp -d "$SCRIPT_DIR/output/rust-worker-runtime/run.XXXXXX")"
 DB_CONTAINER="forklaunch-rust-worker-test-$$"
 OWN_DATABASE=false
+OWN_SIGNAL_REDIS=false
+SIGNAL_REDIS_CONTAINER="forklaunch-rust-worker-signals-test-$$"
 ROLE_CREATED=false
 export FORKLAUNCH_TEST_ROLE="fl_worker_$(date +%s)_$$"
 cleanup() {
+    if [ "$OWN_SIGNAL_REDIS" = true ]; then docker rm -f "$SIGNAL_REDIS_CONTAINER" >/dev/null 2>&1 || true; fi
     if [ "$ROLE_CREATED" = true ]; then cargo run -p jobs --example seed -- --cleanup >/dev/null 2>&1 || true; fi
     if [ "$OWN_DATABASE" = true ]; then docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true; fi
 }
@@ -29,6 +32,16 @@ if [ -z "${FORKLAUNCH_TEST_POSTGRES_URL:-}" ]; then
     done
     export FORKLAUNCH_TEST_POSTGRES_URL="postgres://postgres:parity-test-only@$(docker port "$DB_CONTAINER" 5432/tcp)/parity"
 fi
+if [ -z "${FORKLAUNCH_TEST_REDIS_URL:-}" ]; then
+    OWN_SIGNAL_REDIS=true
+    docker run --detach --name "$SIGNAL_REDIS_CONTAINER" --publish 127.0.0.1::6379 \
+        --log-driver none redis:7-alpine redis-server --save '' --appendonly no
+    for _ in $(seq 1 60); do
+        if docker exec "$SIGNAL_REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then break; fi
+        sleep 1
+    done
+    export FORKLAUNCH_TEST_REDIS_URL="redis://$(docker port "$SIGNAL_REDIS_CONTAINER" 6379/tcp)/"
+fi
 run_cli init application worker-app --path "$RUN_ROOT/app" --language rust -D 'Worker runtime' -A ForkLaunch -L MIT
 run_cli init worker dry-worker --path "$RUN_ROOT/app" --language rust -t database -d postgresql --dryrun
 test ! -d "$RUN_ROOT/app/crates/dry-worker"
@@ -42,7 +55,7 @@ run_cli sync worker jobs --path .
 run_cli init worker jobs --path . --language rust -t database -d postgresql -D Jobs
 grep -q USER_OWNED_MARKER crates/jobs/src/handler.rs
 grep -q 'marker = "preserved"' crates/jobs/Cargo.toml
-grep -q 'http::run' crates/jobs/src/main.rs
+grep -q 'signals::run' crates/jobs/src/main.rs
 grep -q 'variant = "worker-postgres"' .forklaunch/manifest.toml
 cargo build --workspace
 run_cli openapi export --path .
@@ -69,17 +82,18 @@ cp "$SCRIPT_DIR/fixtures/rust_worker_handler.rs" crates/jobs/src/handler.rs
 printf '\npub const USER_OWNED_MARKER: &str = "preserved";\n' >> crates/jobs/src/handler.rs
 cargo build -p jobs
 node "$SCRIPT_DIR/rust_worker_runtime.mjs" "$BINARY" runtime
+node "$SCRIPT_DIR/rust_worker_signals.mjs" "$BINARY"
 cp -R "$RUN_ROOT/relocated-app" "$RUN_ROOT/lifecycle-app"
 run_cli change worker --path "$RUN_ROOT/lifecycle-app/crates/jobs" -N email-jobs --confirm
 grep -q USER_OWNED_MARKER "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/handler.rs"
-grep -q 'http::run' "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/main.rs"
+grep -q 'signals::run' "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/main.rs"
 test ! -d "$RUN_ROOT/lifecycle-app/sdks/rust/jobs-sdk"
 run_cli sdk generate --path "$RUN_ROOT/lifecycle-app" --target all --from contract --check
 run_cli change worker --path "$RUN_ROOT/lifecycle-app/crates/email-jobs" -t redis --confirm
 ! grep -q 'variant = "worker-postgres"' "$RUN_ROOT/lifecycle-app/.forklaunch/manifest.toml"
 run_cli change worker --path "$RUN_ROOT/lifecycle-app/crates/email-jobs" -t database -d postgresql --confirm
 grep -q USER_OWNED_MARKER "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/handler.rs"
-grep -q 'http::run' "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/main.rs"
+grep -q 'signals::run' "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/main.rs"
 grep -q 'marker = "preserved"' "$RUN_ROOT/lifecycle-app/crates/email-jobs/Cargo.toml"
 cargo test --manifest-path "$RUN_ROOT/lifecycle-app/Cargo.toml" --workspace
 run_cli delete worker email-jobs --path "$RUN_ROOT/lifecycle-app" --continue

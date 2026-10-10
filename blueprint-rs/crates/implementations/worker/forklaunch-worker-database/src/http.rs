@@ -1,4 +1,4 @@
-//! Optional health and bearer-authenticated process-local worker controls.
+//! Optional health and bearer-authenticated local or distributed worker controls.
 use crate::{
     control::{WorkerControl, WorkerState},
     retention::{self, RetainedRunReport, RetentionPolicy},
@@ -12,11 +12,12 @@ use axum::{
     routing::{get, post},
 };
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
-use forklaunch_worker_interface::AsyncWorkerAdmin;
+use forklaunch_worker_interface::{AsyncWorkerAdmin, DistributedSignal};
 use serde_json::{Value, json};
 use std::{
     future::{Future, IntoFuture},
     net::SocketAddr,
+    pin::Pin,
     sync::Arc,
     time::Duration,
 };
@@ -46,10 +47,17 @@ impl HttpConfig {
         Ok(())
     }
 }
+/// Publishes a scoped command. The returned subscriber count is not an acknowledgement.
+pub type SignalPublisher = Arc<
+    dyn Fn(DistributedSignal) -> Pin<Box<dyn Future<Output = BlueprintResult<usize>> + Send>>
+        + Send
+        + Sync,
+>;
 #[derive(Clone)]
 struct HttpState {
     control: WorkerControl,
     token: Option<Arc<str>>,
+    publisher: Option<SignalPublisher>,
 }
 fn snapshot(control: &WorkerControl) -> Value {
     json!({"state":match control.state() {
@@ -92,14 +100,32 @@ async fn command(
         )
             .into_response();
     }
-    let accepted = match action.as_str() {
-        "pause" => state.control.pause(),
-        "resume" => state.control.resume(),
-        "drain" => {
-            state.control.drain();
-            true
-        }
+    let signal = match action.as_str() {
+        "pause" => DistributedSignal::Pause,
+        "resume" => DistributedSignal::Resume,
+        "drain" => DistributedSignal::Drain,
         _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    if state.control.state() == WorkerState::Draining && signal != DistributedSignal::Drain {
+        return (StatusCode::CONFLICT, Json(snapshot(&state.control))).into_response();
+    }
+    if let Some(publish) = state.publisher {
+        // Apply through the ordered subscription only. Applying locally again
+        // after publication could overwrite a newer command already received.
+        return match publish(signal).await {
+            Ok(subscribers) => (
+                StatusCode::ACCEPTED,
+                Json(json!({"subscribers": subscribers})),
+            )
+                .into_response(),
+            Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        };
+    }
+    let accepted = if signal == DistributedSignal::Drain {
+        state.control.drain();
+        true
+    } else {
+        state.control.apply_signal(signal)
     };
     (
         if accepted {
@@ -116,6 +142,18 @@ async fn command(
 /// # Errors
 /// Rejects invalid control token configuration.
 pub fn router(control: &WorkerControl, config: &HttpConfig) -> BlueprintResult<Router> {
+    router_with_publisher(control, config, None)
+}
+/// Builds authenticated controls that optionally publish to a scoped worker group.
+/// Publication failures return 503. Subscription delivery can still occur after
+/// an ambiguous publication timeout. Commands apply through the subscription.
+/// # Errors
+/// Rejects invalid control token configuration.
+pub fn router_with_publisher(
+    control: &WorkerControl,
+    config: &HttpConfig,
+    publisher: Option<SignalPublisher>,
+) -> BlueprintResult<Router> {
     config.validate()?;
     Ok(Router::new()
         .route("/health", get(health))
@@ -124,6 +162,7 @@ pub fn router(control: &WorkerControl, config: &HttpConfig) -> BlueprintResult<R
         .with_state(HttpState {
             control: control.clone(),
             token: config.control_token.as_deref().map(Arc::from),
+            publisher,
         }))
 }
 fn server_error() -> BlueprintError {
@@ -179,12 +218,38 @@ where
     H: JobHandler,
     F: Future<Output = ()> + Send,
 {
+    run_with_publisher(
+        queue, handler, config, policy, http, control, None, shutdown,
+    )
+    .await
+}
+
+/// Runs with optional scoped distributed HTTP publication and a shared local control.
+/// The caller must forward incoming distributed signals to this same control.
+/// # Errors
+/// Returns configuration, worker, retention or HTTP-server errors after drain.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_with_publisher<Q, H, F>(
+    queue: &Q,
+    handler: &H,
+    config: &RunnerConfig,
+    policy: Option<&RetentionPolicy>,
+    http: Option<&HttpConfig>,
+    control: &WorkerControl,
+    publisher: Option<SignalPublisher>,
+    shutdown: F,
+) -> BlueprintResult<RetainedRunReport>
+where
+    Q: AsyncWorkerAdmin,
+    H: JobHandler,
+    F: Future<Output = ()> + Send,
+{
     config.validate()?;
     if let Some(policy) = policy {
         policy.validate()?;
     }
     let server = if let Some(http) = http {
-        let router = router(control, http)?;
+        let router = router_with_publisher(control, http, publisher)?;
         let listener = tokio::net::TcpListener::bind(http.address)
             .await
             .map_err(|_| server_error())?;
@@ -372,6 +437,80 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(control.state(), WorkerState::Running);
     }
+    #[tokio::test]
+    async fn distributed_controls_publish_only_authenticated_valid_commands() {
+        let control = WorkerControl::new();
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = received.clone();
+        let publish: SignalPublisher = Arc::new(move |signal| {
+            captured.lock().unwrap().push(signal);
+            Box::pin(async { Ok(3) })
+        });
+        let app = router_with_publisher(&control, &config(Some(TOKEN)), Some(publish)).unwrap();
+        let auth = format!("Bearer {TOKEN}");
+        assert_eq!(
+            request(&app, "POST", "/control/pause", None).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            request(&app, "POST", "/control/unknown", Some(&auth))
+                .await
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert!(received.lock().unwrap().is_empty());
+        for action in ["pause", "resume", "drain"] {
+            let response = request(&app, "POST", &format!("/control/{action}"), Some(&auth)).await;
+            assert_eq!(response.status(), StatusCode::ACCEPTED);
+            let body = to_bytes(response.into_body(), 1024).await.unwrap();
+            assert_eq!(
+                serde_json::from_slice::<Value>(&body).unwrap(),
+                json!({"subscribers":3})
+            );
+            // A publisher does not bypass ordered subscription delivery.
+            assert_eq!(control.state(), WorkerState::Running);
+        }
+        control.drain();
+        assert_eq!(
+            request(&app, "POST", "/control/resume", Some(&auth))
+                .await
+                .status(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            *received.lock().unwrap(),
+            vec![
+                DistributedSignal::Pause,
+                DistributedSignal::Resume,
+                DistributedSignal::Drain
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_publication_does_not_change_local_state_or_expose_storage_errors() {
+        let control = WorkerControl::new();
+        let publish: SignalPublisher = Arc::new(|_| {
+            Box::pin(async { Err(BlueprintError::new("storage", "sensitive storage detail")) })
+        });
+        let app = router_with_publisher(&control, &config(Some(TOKEN)), Some(publish)).unwrap();
+        let response = request(
+            &app,
+            "POST",
+            "/control/drain",
+            Some(&format!("Bearer {TOKEN}")),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(
+            to_bytes(response.into_body(), 1024)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(control.state(), WorkerState::Running);
+    }
+
     #[test]
     fn rejects_unusable_tokens_without_echoing_secrets() {
         for token in [

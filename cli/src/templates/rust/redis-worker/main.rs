@@ -1,5 +1,6 @@
+mod signals;
 use std::{env, time::Duration};
-use forklaunch_worker_database::http::{self, HttpConfig};
+use forklaunch_worker_database::http::HttpConfig;
 use forklaunch_core::persistence::TenantContext;
 use forklaunch_worker_database::runner::RunnerConfig;
 use forklaunch_worker_redis::leased::RedisLeasedQueue;
@@ -18,9 +19,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let args: Vec<_> = env::args().skip(1).collect();
     if !args.is_empty() && !(args.len() == 3 && args[0] == "--enqueue")
-        && !(args.len() == 2 && matches!(args[0].as_str(), "--inspect" | "--dead-letters" | "--retry"))
+        && !(args.len() == 2 && matches!(args[0].as_str(), "--inspect" | "--dead-letters" | "--retry" | "--signal"))
         && !(args.len() == 3 && matches!(args[0].as_str(), "--purge-completed" | "--purge-failed")) {
-        return Err("Expected no arguments, --enqueue ID JSON, --inspect ID, --dead-letters LIMIT, --retry ID, or --purge-completed/--purge-failed AGE_SECONDS LIMIT".into());
+        return Err("Expected --signal pause/resume/drain, no arguments, --enqueue ID JSON, --inspect ID, --dead-letters LIMIT, --retry ID, or --purge-completed/--purge-failed AGE_SECONDS LIMIT".into());
+    }
+    if args.first().map(String::as_str) == Some("--signal") {
+        signals::publish(&args[1]).await?;
+        return Ok(());
     }
     let url = env::var("REDIS_URL").map_err(|_| "REDIS_URL is required")?;
     let namespace = env::var("WORKER_NAMESPACE").map_err(|_| "WORKER_NAMESPACE is required")?;
@@ -61,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let retention = retention_policy()?;
         let http = http_config()?;
         println!("{} worker ready", WORKER_NAME);
-        let result = http::run(&queue, &ApplicationHandler, &config, retention.as_ref(), http.as_ref(), shutdown()).await?;
+        let result = signals::run(&queue, &ApplicationHandler, &config, retention.as_ref(), http.as_ref(), shutdown()).await?;
         if retention.is_some() {
             println!("retention stopped: completed_purged={} failed_purged={}", result.retention.completed_purged, result.retention.failed_purged);
         }

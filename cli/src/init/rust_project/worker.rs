@@ -81,6 +81,11 @@ pub(super) fn templates(
             context: None,
         });
     }
+    templates.push(RenderedTemplate {
+        path: crate_dir.join("src/signals.rs"),
+        content: render_rust_template("rust/leased-worker/signals.rs", &data),
+        context: None,
+    });
     Ok(templates
         .into_iter()
         .filter(|template| !template.path.exists())
@@ -98,6 +103,11 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
             } else {
                 vec!["http-control"]
             },
+        ),
+        (
+            "forklaunch-worker-redis",
+            "../../.forklaunch/blueprint-rs/crates/implementations/worker/forklaunch-worker-redis",
+            vec!["redis-client"],
         ),
         (
             "forklaunch-worker-interface",
@@ -118,19 +128,7 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
         cargo["dependencies"][name] = toml_edit::value(dependency);
     }
     cargo["dependencies"]["serde_json"] = toml_edit::value("1");
-    if backend == Backend::Redis {
-        let mut redis = toml_edit::InlineTable::new();
-        redis.insert(
-            "path",
-            "../../.forklaunch/blueprint-rs/crates/implementations/worker/forklaunch-worker-redis"
-                .into(),
-        );
-        redis.insert(
-            "features",
-            toml_edit::Array::from_iter(["redis-client"]).into(),
-        );
-        cargo["dependencies"]["forklaunch-worker-redis"] = toml_edit::value(redis);
-    } else {
+    if backend == Backend::Postgres {
         let mut sqlx = toml_edit::InlineTable::new();
         sqlx.insert("version", "0.8".into());
         sqlx.insert("default-features", false.into());
@@ -163,6 +161,10 @@ pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
     write(
         directory.join("tests/smoke.rs"),
         render_rust_template("rust/leased-worker/smoke.rs", &data),
+    )?;
+    write(
+        directory.join("src/signals.rs"),
+        render_rust_template("rust/leased-worker/signals.rs", &data),
     )?;
     // Handler code and user documentation survive backend changes.
     for (output, template) in [

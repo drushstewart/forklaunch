@@ -190,7 +190,7 @@ Reinitialization and sync preserve application code. Rename updates imports, art
 
 Both generated PostgreSQL and Redis workers accept `WORKER_CONCURRENCY` (1–256, default 1). Each active job has its own lease; batches renew their leases together. On shutdown every consumer stops claiming jobs and drains its active handler within `WORKER_DRAIN_MS`; work still queued remains available for the next process. A storage failure stops the other consumers and drains their active work before the runner returns the first error.
 
-For direct library use, set `RunnerConfig::concurrency`. `RunReport` combines counts from all consumers. Handlers share the same `JobHandler` instance and must support concurrent calls, keep asynchronous work inside the returned future, and make external side effects idempotent. This setting controls concurrent async handler batches; use separate processes or a blocking executor for CPU-heavy work. Batch handlers are described below. Distributed worker signals remain a separate parity task.
+For direct library use, set `RunnerConfig::concurrency`. `RunReport` combines counts from all consumers. Handlers share the same `JobHandler` instance and must support concurrent calls, keep asynchronous work inside the returned future, and make external side effects idempotent. This setting controls concurrent async handler batches; use separate processes or a blocking executor for CPU-heavy work. Batch handlers are described below. Optional distributed controls are described below.
 
 ## Dead letters and retention
 
@@ -225,7 +225,7 @@ Real backend tests check default preservation, independent completed/failed ages
 
 With the worker database crate's `runtime` feature, create a `control::WorkerControl` and pass it to `runner::run_controlled` or `retention::run_worker_controlled`. Clones share state across the process's consumers. `pause()` stops future claims while active handlers and claims already submitted to storage continue. Leases renew throughout processing. `resume()` restarts polling. `drain()` stops new claims and finishes active handlers within the configured drain timeout; it cannot be reversed. Pause/resume return false once draining starts. A new run needs a new control.
 
-Retention continues while paused and stops as soon as draining starts. Shutdown signals and storage failures also set the control to draining. These controls are local to one runner process; distributed signaling remains a separate task. Real Redis and PostgreSQL integration tests verify paused startup, active lease renewal, pause without cancellation, resume, sticky drain, and preservation of queued work.
+Retention continues while paused and stops as soon as draining starts. Shutdown signals and storage failures also set the control to draining. These control primitives are local to one runner process; generated workers can opt into distributed signaling as described below. Real Redis and PostgreSQL integration tests verify paused startup, active lease renewal, pause without cancellation, resume, sticky drain, and preservation of queued work.
 
 ## Worker HTTP health and controls
 
@@ -294,6 +294,17 @@ Both Axum adapters preserve declared binary/file request bodies as bytes, includ
 
 With the `redis-client` feature, `forklaunch_worker_redis::signals::RedisSignalBus::connect(url, namespace, &tenant, queue, options)` subscribes to a channel scoped by namespace, tenant and queue. Import `forklaunch_worker_interface::AsyncSignalBus` for `broadcast`, `next_signal(wait)` and `drain_signals`. `publisher()` returns an independent clone for control applications; its publication count measures current subscribers, not completed control changes. The default buffer holds 256 signals and connection/publication operations have a five-second deadline. Subscription overflow, malformed publications and disconnects are terminal errors; reconnect explicitly with a fresh subscription. Dropping a bus aborts its listener.
 
-`forklaunch_worker_database::control::forward_signals(&mut bus, &control, shutdown)` forwards pause/resume/drain into the same `WorkerControl` passed to `runner::run_controlled`. Drain stays irreversible, and bus errors or shutdown initiate graceful drain. This works with either durable queue backend. Generated worker binaries do not yet configure this helper automatically. Pub/Sub messages are ephemeral: late or disconnected subscribers miss signals, and Redis database numbers do not isolate channels. Use distinct environment namespaces and Redis ACLs, and define desired-state restoration in application code. See [Redis Pub/Sub delivery and scoping](https://redis.io/docs/latest/develop/pubsub/). Real Redis tests exercise a separate child process, order, scope isolation, actual socket loss and overflow, and run in the existing blueprint CI Redis suite.
+`forklaunch_worker_database::control::forward_signals(&mut bus, &control, shutdown)` forwards pause/resume/drain into the same `WorkerControl` passed to `runner::run_controlled`. Drain stays irreversible, and bus errors or shutdown initiate graceful drain. This works with either durable queue backend. Generated Redis and PostgreSQL workers configure this helper when `WORKER_SIGNAL_REDIS_URL` and `WORKER_SIGNAL_NAMESPACE` are supplied. Pub/Sub messages are ephemeral: late or disconnected subscribers miss signals, and Redis database numbers do not isolate channels. Use distinct environment namespaces and Redis ACLs, and define desired-state restoration in application code. See [Redis Pub/Sub delivery and scoping](https://redis.io/docs/latest/develop/pubsub/). Real Redis tests exercise a separate child process, order, scope isolation, actual socket loss and overflow, and run in the existing blueprint CI Redis suite.
 
 Administrative controllers can call `RedisSignalPublisher::connect(url, namespace, &tenant, queue, &options)` directly without creating a subscription. For a worker with HTTP management, pass the same `WorkerControl` to `http::run_with_control` and `control::forward_signals`. This keeps HTTP readiness, pause/resume/drain, retention and queue consumption on one state. The existing `http::run` convenience function creates its own process-local control. Real Redis integration verifies that paused jobs remain queued, a distributed resume completes the job and changes readiness, and distributed drain stops the runner.
+
+Generated workers accept `--signal pause`, `--signal resume`, and `--signal drain`
+with `WORKER_SIGNAL_REDIS_URL`, `WORKER_SIGNAL_NAMESPACE`, `TENANT_ID`, and
+`WORKER_QUEUE` (defaults to the worker name). Signal commands do not connect to queue
+storage. When enabled, authenticated HTTP controls publish to the same scoped group,
+apply through the ordered subscription, and return `{ "subscribers": N }`; this count is not an acknowledgement.
+A publication failure returns 503; delivery can remain uncertain after a timeout. Subscriptions
+fail closed: disconnect, overflow or malformed messages drain active work and exit
+with an error. There is no automatic reconnect or durable desired-state restoration.
+An explicit restart begins running and does not inherit earlier pause/drain commands.
+Without signal configuration HTTP controls retain their process-local behavior.
