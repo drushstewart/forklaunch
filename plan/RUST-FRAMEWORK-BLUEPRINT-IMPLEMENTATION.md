@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 98 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 103 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -437,7 +437,8 @@ Requirements:
 
 ### `forklaunch-asyncapi`
 
-- [x] Generate AsyncAPI 3.0 from event contracts. (`generate_asyncapi_json`)
+- [x] Generate AsyncAPI 3.0 from event contracts. General `AsyncApiDocument::to_json` now returns a checked result with a channel map, grouped messages, separate send/receive operations, actual supplied payload/header schemas, and conflict errors.
+- [x] Add checked typed WebSocket AsyncAPI generation with actual envelope discriminators, supplied schema components, declared error/close controls, local reference checks, and official AsyncAPI parser conformance in CI. Legacy `generate_asyncapi_json` retains placeholder payload schemas.
 - [x] Support channel grouping.
 - [x] Support client-to-server and server-to-client operations.
 - [x] Add snapshot tests for AsyncAPI output.

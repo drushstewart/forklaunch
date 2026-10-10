@@ -409,6 +409,7 @@ dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
  "forklaunch-ws",
+ "serde_json",
 ]
 
 [[package]]
