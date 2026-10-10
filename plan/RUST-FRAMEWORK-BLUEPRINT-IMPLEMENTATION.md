@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 929 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 935 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -310,6 +310,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Carry params, query, headers, body content type, response headers, and response bodies in `SdkGenerationPlan`.
 - [x] Support params, query, headers, and JSON body transport in deterministic TypeScript and Rust SDK generators. Path substitution matches whole segments and percent-encodes UTF-8/reserved bytes consistently across both SDKs; conformance fixtures cover prefix collisions, recursive-looking values, and repeated parameters.
 - [ ] Support multipart, binary, text responses, and file uploads/downloads.
+- [ ] Extend SDK imports and clients for empty success bodies, multiple success statuses, and recursive schema models; the current JSON importer selects the lowest explicit 2xx response and rejects unsupported media types/reference forms.
 - [x] Add contract snapshot tests to ensure generated SDKs stay stable. (`client-sdk::tests::sdk_generation_is_deterministic`)
 
 ### TypeScript SDKs For Frontend
@@ -665,7 +666,7 @@ Current CLI structure to build on:
 - [x] Add `forklaunch sdk generate --target all`.
 - [x] Add `forklaunch sdk generate --service <name>`.
 - [x] Add `forklaunch sdk generate --from contract`.
-- [x] Add `forklaunch sdk generate --from openapi`.
+- [x] Add `forklaunch sdk generate --from openapi` reading actual OpenAPI 3.0/3.1 JSON artifacts, operation IDs, parameters, JSON body models, and bounded document-local references; artifact edits invalidate check mode, and missing/unsupported artifacts fail before output writes.
 - [x] Add `forklaunch sdk watch --target typescript` for regenerating TS SDKs when Rust contract artifacts change.
 - [x] Add `forklaunch sync` integration that regenerates TypeScript SDKs after Rust route or model changes.
 - [x] Add a CI check mode that runs SDK generation and fails when generated TypeScript/Rust SDKs are stale.

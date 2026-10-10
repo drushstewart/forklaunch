@@ -103,10 +103,10 @@ grep -q 'billingService' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'emailWorkerService' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'users' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'invoices' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'AccountsUsersListRequest' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'AccountsUsersListResponses' rust-contracts/sdks/typescript/src/index.ts
+grep -q 'AccountsUsersListUsersRequest' rust-contracts/sdks/typescript/src/index.ts
+grep -q 'AccountsUsersListUsersResponses' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'records: Array<{ id: string; name: string }>' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'list: (input: AccountsUsersListRequest' rust-contracts/sdks/typescript/src/index.ts
+grep -q 'listUsers: (input: AccountsUsersListUsersRequest' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'ForkLaunchSdkResponse<Responses' rust-contracts/sdks/typescript/src/index.ts
 grep -q "contentType: Code extends keyof ForkLaunchErrorResponses ? 'text/plain' : 'application/json'" rust-contracts/sdks/typescript/src/index.ts
 grep -q 'AccountsClient' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
@@ -115,19 +115,19 @@ grep -q 'EmailWorkerClient' rust-contracts/sdks/rust/email-worker-sdk/src/lib.rs
 ! grep -q 'pub async fn' rust-contracts/sdks/rust/email-worker-sdk/src/lib.rs
 grep -q 'reqwest = { version = "0.13.2", features = \["json", "query"\] }' rust-contracts/sdks/rust/accounts-sdk/Cargo.toml
 grep -q 'serde = { version = "1.0", features = \["derive"\] }' rust-contracts/sdks/rust/accounts-sdk/Cargo.toml
-grep -q 'AccountsUsersListRequest' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'AccountsUsersListResponses' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub struct AccountsUsersListResponse' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub records: Vec<AccountsUsersListResponseRecordsItem>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'AccountsUsersListUsersRequest' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'AccountsUsersListUsersResponses' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'pub struct AccountsUsersListUsersResponse' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'pub records: Vec<AccountsUsersListUsersResponseRecordsItem>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q "fn encode_path_segment" rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'users_list_request' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub async fn users_list' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'users_list_users_request' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'pub async fn users_list_users' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub enum SdkAuth' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub fn with_jwt' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub fn with_basic_auth' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub fn with_hmac_authorization' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub fn with_auth_hook' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'response.json::<AccountsUsersListResponse>()' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'response.json::<AccountsUsersListUsersResponse>()' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q '"sdks/rust/accounts-sdk"' rust-contracts/Cargo.toml
 grep -q '"sdks/rust/billing-sdk"' rust-contracts/Cargo.toml
 grep -q '"sdks/rust/email-worker-sdk"' rust-contracts/Cargo.toml
@@ -144,18 +144,18 @@ const configured = createForkLaunchSdk({
 const typedSdk: ForkLaunchGeneratedSdk = configured;
 const abort = new AbortController();
 
-configured.accounts.users.list({ signal: abort.signal });
-configured.accounts.users.list({ credentials: 'include' });
-typedSdk.billing.invoices.list({ cache: 'no-store' });
+configured.accounts.users.listUsers({ signal: abort.signal });
+configured.accounts.users.listUsers({ credentials: 'include' });
+typedSdk.billing.invoices.listInvoices({ cache: 'no-store' });
 void sdk.emailWorker; // Durable workers expose no application HTTP methods.
-accountsService.users.list({ redirect: 'follow' });
+accountsService.users.listUsers({ redirect: 'follow' });
 EOF
 compile_typescript_sdk rust-contracts/generated-sdk-usage.ts
 cat > rust-contracts/generated-sdk-live-compat.ts << 'EOF'
 import {
     createForkLaunchSdk,
-    type AccountsUsersListRequest,
-    type AccountsUsersListResponses,
+    type AccountsUsersListUsersRequest,
+    type AccountsUsersListUsersResponses,
     type ForkLaunchErrorResponses
 } from './sdks/typescript/src/index';
 
@@ -173,7 +173,7 @@ type LiveSdkFunction<Request, Responses extends Record<number, unknown>> =
 type LiveAccountsSdkShape = {
     accounts: {
         users: {
-            list: LiveSdkFunction<AccountsUsersListRequest, AccountsUsersListResponses>;
+            listUsers: LiveSdkFunction<AccountsUsersListUsersRequest, AccountsUsersListUsersResponses>;
         };
     };
 };
@@ -181,7 +181,7 @@ type LiveAccountsSdkShape = {
 const generatedAsLiveShape: LiveAccountsSdkShape = createForkLaunchSdk();
 
 async function acceptsLiveShape(client: LiveAccountsSdkShape) {
-    const response = await client.accounts.users.list({});
+    const response = await client.accounts.users.listUsers({});
     if (response.code === 400) {
         const text: string = response.response;
         const contentType: 'text/plain' = response.contentType;
@@ -198,13 +198,41 @@ import { sdk } from './sdks/typescript/src/index';
 
 sdk.emailWorker.health.get({});
 sdk.accounts.users.missing({});
-sdk.accounts.users.list({ body: { unexpected: true } });
+sdk.accounts.users.listUsers({ body: { unexpected: true } });
 EOF
 if compile_typescript_sdk rust-contracts/generated-sdk-invalid-usage.ts; then
     echo "[ERROR] Generated TypeScript SDK should reject removed routes and invalid request bodies"
     exit 1
 fi
 run_cli sdk generate --path rust-contracts --target all --from openapi --check
+# OpenAPI generation must read the artifact, independently of the manifest and
+# framework contract. An edited operation/schema must invalidate --check.
+cp rust-contracts/.forklaunch/openapi/accounts/openapi.json rust-contracts/accounts-openapi.backup.json
+python3 - <<'PYTHON'
+from pathlib import Path
+import json
+p = Path('rust-contracts/.forklaunch/openapi/accounts/openapi.json')
+spec = json.loads(p.read_text())
+spec['paths']['/users']['get']['operationId'] = 'scanUsers'
+spec['components']['schemas']['UsersResponse']['properties']['displayName'] = {'type': 'string'}
+p.write_text(json.dumps(spec))
+PYTHON
+if run_cli sdk generate --path rust-contracts --target all --from openapi --check; then
+    echo '[ERROR] OpenAPI changes must invalidate generated SDKs' >&2
+    exit 1
+fi
+run_cli sdk generate --path rust-contracts --target all --from openapi
+grep -q 'scanUsers:' rust-contracts/sdks/typescript/src/index.ts
+grep -q 'displayName?: string' rust-contracts/sdks/typescript/src/index.ts
+grep -q 'pub display_name: Option<String>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'serde(rename = "displayName")' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+mv rust-contracts/.forklaunch/openapi/accounts/openapi.json rust-contracts/accounts-openapi.missing.json
+if run_cli sdk generate --path rust-contracts --target all --from openapi; then
+    echo '[ERROR] Missing OpenAPI must fail rather than fabricate manifest routes' >&2
+    exit 1
+fi
+mv rust-contracts/accounts-openapi.backup.json rust-contracts/.forklaunch/openapi/accounts/openapi.json
+run_cli sdk generate --path rust-contracts --target all --from openapi
 if run_cli sdk generate rust --path rust-contracts --target typescript --from openapi; then
     echo "[ERROR] SDK target shorthand should conflict with a different explicit --target"
     exit 1

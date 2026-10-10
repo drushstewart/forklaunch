@@ -33,6 +33,8 @@ forklaunch sdk generate --path . --target all --from contract --check
 
 Exports are written under `.forklaunch/contracts/<service>/contract.json` and `.forklaunch/openapi/<service>/openapi.json`. TypeScript output lives in `sdks/typescript`; Rust SDK crates live in `sdks/rust`. New TypeScript SDKs include a strict browser-compatible `tsconfig.json`, so their `build` script and `pnpm sdk:typecheck` work directly. SDK regeneration preserves an existing compiler configuration. `--sdk-targets rust` on app initialization omits the TypeScript package scaffold. Rust services require generated SDKs; live TypeScript SDK mode is rejected.
 
+`--from openapi` reads the actual OpenAPI 3.0/3.1 JSON artifact at each project's `openapiPath`; export it first. It uses operation IDs and JSON parameter/body schemas, resolving document-local references with expansion limits. Missing artifacts, recursive/external references, unsupported identifiers, and unsupported body formats fail before SDK files are written. The current importer selects the lowest explicit successful status with a JSON body; empty responses, multiple success variants, multipart, and binary transport remain parity tasks. Artifact paths must stay inside the application.
+
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape.
 
 ## Portable source and containers

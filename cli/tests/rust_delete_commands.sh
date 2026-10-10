@@ -64,6 +64,8 @@ run_cli init router internal-users \
     --path rust-delete/crates/accounts \
     --language rust
 
+run_cli openapi export --path rust-delete
+
 run_cli sdk generate \
     --path rust-delete \
     --target all

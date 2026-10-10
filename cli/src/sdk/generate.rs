@@ -143,10 +143,15 @@ pub(crate) fn generate_or_check_sdk_outputs(
     stdout: &mut StandardStream,
 ) -> Result<()> {
     let manifest = read_manifest(app_root)?;
-    let services = if source == "contract" {
-        rust_sdk_services_from_contracts(app_root, &manifest, selected_service)?
-    } else {
-        rust_sdk_services(&manifest, selected_service)
+    let services = match source {
+        "contract" => rust_sdk_services_from_contracts(app_root, &manifest, selected_service)?,
+        "openapi" => {
+            rust_sdk_services_from_artifacts(app_root, &manifest, selected_service, "openapi")?
+        }
+        // Internal lifecycle scaffolding can run before artifacts exist. This
+        // source is deliberately unavailable through the public command.
+        "manifest" => rust_sdk_services(&manifest, selected_service),
+        _ => bail!("Unsupported SDK artifact source {source}"),
     };
 
     if services.is_empty() {
@@ -407,6 +412,15 @@ fn rust_sdk_services_from_contracts(
     manifest: &Value,
     selected_service: Option<&str>,
 ) -> Result<Vec<SdkService>> {
+    rust_sdk_services_from_artifacts(app_root, manifest, selected_service, "contract")
+}
+
+fn rust_sdk_services_from_artifacts(
+    app_root: &Path,
+    manifest: &Value,
+    selected_service: Option<&str>,
+    source: &str,
+) -> Result<Vec<SdkService>> {
     let mut services = Vec::new();
     for project in manifest
         .get("projects")
@@ -433,23 +447,43 @@ fn rust_sdk_services_from_contracts(
             continue;
         }
 
-        let contract_path = metadata
-            .get("contractArtifactPath")
+        let (metadata_key, directory, filename) = if source == "openapi" {
+            ("openapiPath", "openapi", "openapi.json")
+        } else {
+            ("contractArtifactPath", "contracts", "contract.json")
+        };
+        let artifact_path = metadata
+            .get(metadata_key)
             .and_then(Value::as_str)
             .map_or_else(
                 || {
                     app_root
                         .join(".forklaunch")
-                        .join("contracts")
+                        .join(directory)
                         .join(service_name)
-                        .join("contract.json")
+                        .join(filename)
                 },
                 |path| app_root.join(path),
             );
-        let contract_content = read_to_string(&contract_path)
-            .with_context(|| format!("Failed to read {}", contract_path.display()))?;
-        let contract = serde_json::from_str::<JsonValue>(&contract_content)
-            .with_context(|| format!("Failed to parse {}", contract_path.display()))?;
+        let artifact_path = artifact_path
+            .canonicalize()
+            .with_context(|| format!("Failed to locate {}", artifact_path.display()))?;
+        if !artifact_path.starts_with(app_root.canonicalize()?) {
+            bail!("SDK artifact path must stay inside the application");
+        }
+        if std::fs::metadata(&artifact_path)?.len() > 16 * 1024 * 1024 {
+            bail!("SDK artifact exceeds 16 MiB");
+        }
+        let content = read_to_string(&artifact_path)
+            .with_context(|| format!("Failed to read {}", artifact_path.display()))?;
+        let artifact = serde_json::from_str::<JsonValue>(&content)
+            .with_context(|| format!("Failed to parse {}", artifact_path.display()))?;
+        let contract = if source == "openapi" {
+            super::openapi::contract_from_openapi(&artifact)
+                .with_context(|| format!("Failed to import {}", artifact_path.display()))?
+        } else {
+            artifact
+        };
 
         services.push(sdk_service_from_contract(service_name, &contract));
     }
