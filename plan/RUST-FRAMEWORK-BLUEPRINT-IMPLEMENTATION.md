@@ -15,14 +15,14 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 95 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 98 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
 - [x] Validate real Cargo/PNPM mixed release builds with a generated Rust service/TypeScript SDK and a minimal tsx service export hook; reuse those artifacts with intentionally unbuildable source, preserving prebuilt isolation and bounded mixed crate paths.
 - [x] Complete relocated generated-service container build, health/OpenAPI, and SIGTERM shutdown checks. The Docker capacity blocker is resolved; `rust_container_runtime.sh` passes locally and runs in CI. Builder/runtime both use Debian bookworm.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks. Read-only audit of local `forklaunch-platform` at `3fb59b3cc` found a concrete integration gap: deployment/image planning maps non-Bun runtimes (including Tokio) to PNPM, and generated ECS commands invoke JavaScript start scripts. Rust needs native binary startup and image/build support in the platform before this gate can pass; local container success does not establish ECS parity.
-- [x] Verify the CLI Cargo package file list includes all 118 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 119 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
@@ -467,7 +467,8 @@ Requirements:
 - [x] Add compliance-aware encryption/decryption hooks. (`ObjectCodec` + `put_encrypted`/`get_decrypted`)
 - [x] Add MinIO/S3-compatible container integration tests and run them in framework CI; test permission-denied bucket initialization and deadlines separately.
 - [x] Add SDK-signed S3 download links with bounded whole-second lifetimes, namespace/key fences, credential-resolution deadlines, and UTF-8 attachment filenames; verify actual download, expiration, and tampering rejection against MinIO.
-- [ ] Add native async S3 streaming/multipart transfers and presigned POST upload policies. Existing streaming helpers buffer data.
+- [x] Add native bounded S3 chunked downloads and exact-length byte-stream/file uploads without whole-object buffering; test actual file transfers, metadata, drop behavior, overflow, truncation, idle deadlines, and source errors. Legacy streaming helpers still buffer.
+- [ ] Add native S3 multipart transfers for unknown-length sources and presigned POST upload policies.
 
 ### Persistence
 

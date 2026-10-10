@@ -1,4 +1,6 @@
 //! Async Amazon S3 adapter using an injected official AWS SDK client.
+#[path = "aws_transfer.rs"]
+pub mod transfer;
 use std::{future::Future, time::Duration};
 
 use super::{AsyncObjectStore, ObjectMetadata, S3ObjectStoreConfig, StoredObject, normalize_key};
@@ -228,61 +230,17 @@ impl AwsS3ObjectStore {
     }
 
     async fn get_inner(&self, key: &str) -> FrameworkResult<Option<StoredObject>> {
-        let (key, wire) = self.wire_key(key)?;
-        let mut output = match self
-            .client
-            .get_object()
-            .bucket(&self.config.bucket)
-            .key(&wire)
-            .send()
-            .await
-        {
-            Ok(output) => output,
-            Err(failure)
-                if failure.as_service_error().is_some_and(
-                    aws_sdk_s3::operation::get_object::GetObjectError::is_no_such_key,
-                ) =>
-            {
-                return Ok(None);
-            }
-            Err(_) => return Err(request_error()),
+        let Some(mut download) = self.download_inner(key).await? else {
+            return Ok(None);
         };
-        if output.content_length().is_some_and(|length| {
-            length < 0
-                || u64::try_from(length)
-                    .is_ok_and(|length| length > self.options.max_object_bytes as u64)
-        }) {
-            return Err(size_error());
-        }
-        let content_type = output.content_type().map(str::to_owned);
         let mut body = Vec::new();
-        while let Some(chunk) = output.body.try_next().await.map_err(|_| request_error())? {
-            if chunk.len() > self.options.max_object_bytes.saturating_sub(body.len()) {
-                return Err(size_error());
-            }
+        while let Some(chunk) = download.next_chunk().await? {
             body.extend_from_slice(&chunk);
         }
-        let tags = self
-            .client
-            .get_object_tagging()
-            .bucket(&self.config.bucket)
-            .key(&wire)
-            .set_version_id(output.version_id)
-            .send()
-            .await
-            .map_err(|_| request_error())?;
-        let metadata = ObjectMetadata {
-            content_type,
-            tags: tags
-                .tag_set()
-                .iter()
-                .map(|tag| (tag.key().to_owned(), tag.value().to_owned()))
-                .collect(),
-        };
         Ok(Some(StoredObject {
-            key,
+            key: download.key,
             body,
-            metadata,
+            metadata: download.metadata,
         }))
     }
 
@@ -377,32 +335,17 @@ impl AsyncObjectStore for AwsS3ObjectStore {
     ) -> FrameworkResult<StoredObject> {
         self.bounded(async {
             let (key, wire) = self.wire_key(key)?;
-            let mut metadata = metadata;
-            metadata
-                .content_type
-                .get_or_insert_with(|| "application/octet-stream".into());
             if body.len() > self.options.max_object_bytes {
                 return Err(size_error());
             }
-            if metadata.tags.len() > 10 {
-                return Err(error(
-                    "s3_metadata_invalid",
-                    "S3 accepts at most ten object tags",
-                ));
-            }
-            let tagging = metadata
-                .tags
-                .iter()
-                .map(|(key, value)| format!("{}={}", encode_tag(key), encode_tag(value)))
-                .collect::<Vec<_>>()
-                .join("&");
+            let (metadata, tagging) = upload_metadata(metadata)?;
             self.client
                 .put_object()
                 .bucket(&self.config.bucket)
                 .key(wire)
                 .body(ByteStream::from(body.clone()))
                 .set_content_type(metadata.content_type.clone())
-                .set_tagging((!tagging.is_empty()).then_some(tagging))
+                .set_tagging(tagging)
                 .send()
                 .await
                 .map_err(|_| request_error())?;
@@ -510,6 +453,27 @@ fn size_error() -> FrameworkError {
         "object exceeds configured byte bound",
     )
 }
+fn upload_metadata(
+    mut metadata: ObjectMetadata,
+) -> FrameworkResult<(ObjectMetadata, Option<String>)> {
+    metadata
+        .content_type
+        .get_or_insert_with(|| "application/octet-stream".into());
+    if metadata.tags.len() > 10 {
+        return Err(error(
+            "s3_metadata_invalid",
+            "S3 accepts at most ten object tags",
+        ));
+    }
+    let tags = metadata
+        .tags
+        .iter()
+        .map(|(key, value)| format!("{}={}", encode_tag(key), encode_tag(value)))
+        .collect::<Vec<_>>()
+        .join("&");
+    Ok((metadata, (!tags.is_empty()).then_some(tags)))
+}
+
 fn content_disposition(filename: &str) -> String {
     let ascii = filename
         .encode_utf16()
@@ -763,6 +727,7 @@ mod tests {
             .unwrap();
         assert_empty_and_codec_roundtrips(&store).await;
         assert_presigned_downloads(&store).await;
+        assert_native_transfers(&store, client.clone(), &prefix).await;
         let metadata = ObjectMetadata::new()
             .with_content_type("application/octet-stream")
             .with_tag("service", "accounts")
@@ -951,5 +916,72 @@ mod tests {
             403
         );
         store.delete(key).await.unwrap();
+    }
+    async fn assert_native_transfers(store: &AwsS3ObjectStore, client: Client, prefix: &str) {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("upload.bin");
+        let body = (0u8..=255)
+            .cycle()
+            .take(2 * 1024 * 1024)
+            .collect::<Vec<_>>();
+        tokio::fs::write(&path, &body).await.unwrap();
+        let metadata = ObjectMetadata::new()
+            .with_content_type("application/octet-stream")
+            .with_tag("source", "file");
+        let uploaded = store
+            .put_file("native/file", &path, metadata.clone())
+            .await
+            .unwrap();
+        assert_eq!(uploaded.key, "native/file");
+        assert_eq!(uploaded.content_length, body.len() as u64);
+        assert!(uploaded.etag.is_some());
+        let mut download = store.download("native/file").await.unwrap().unwrap();
+        assert_eq!(download.metadata, metadata);
+        assert_eq!(download.content_length, Some(body.len() as u64));
+        let mut read = Vec::new();
+        while let Some(chunk) = download.next_chunk().await.unwrap() {
+            read.extend_from_slice(&chunk);
+        }
+        assert_eq!(read, body);
+        assert!(store.download("native/missing").await.unwrap().is_none());
+        let mut abandoned = store.download("native/file").await.unwrap().unwrap();
+        assert!(abandoned.next_chunk().await.unwrap().is_some());
+        drop(abandoned);
+        assert_eq!(store.get("native/file").await.unwrap().unwrap().body, body);
+        let tiny = test_store(
+            client,
+            prefix,
+            AwsS3Options {
+                max_object_bytes: 4,
+                ..AwsS3Options::default()
+            },
+        );
+        assert_eq!(
+            tiny.download("native/file").await.unwrap_err().code(),
+            "s3_object_too_large"
+        );
+        assert_eq!(
+            tiny.put_file("native/oversized", &path, ObjectMetadata::new())
+                .await
+                .unwrap_err()
+                .code(),
+            "s3_object_too_large"
+        );
+        assert!(store.get("native/oversized").await.unwrap().is_none());
+        let streamed = store
+            .put_stream(
+                "native/stream",
+                ByteStream::from(vec![0, 255]),
+                ObjectMetadata::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(streamed.content_length, 2);
+        assert_eq!(
+            store.get("native/stream").await.unwrap().unwrap().body,
+            vec![0, 255]
+        );
+        store.delete("native/file").await.unwrap();
+        store.delete("native/stream").await.unwrap();
     }
 }
