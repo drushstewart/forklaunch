@@ -215,15 +215,26 @@ fn paths_json(routes: &[&RouteContract], service_name: Option<&String>) -> Strin
     }
 
     json_object(routes_by_path.into_iter().map(|(path, routes)| {
-        JsonField::new(
-            path,
-            json_object(routes.into_iter().map(|route| {
-                JsonField::new(
+        let mut standard = Vec::new();
+        let mut extended = Vec::new();
+        for route in routes {
+            let operation = operation_json(route, service_name);
+            if route.method.is_openapi_standard() {
+                standard.push(JsonField::new(
                     route.method.as_str().to_ascii_lowercase(),
-                    operation_json(route, service_name),
-                )
-            })),
-        )
+                    operation,
+                ));
+            } else {
+                extended.push(JsonField::new(route.method.as_str(), operation));
+            }
+        }
+        if !extended.is_empty() {
+            standard.push(JsonField::new(
+                "x-forklaunch-http-methods",
+                json_object(extended),
+            ));
+        }
+        JsonField::new(path, json_object(standard))
     }))
 }
 
@@ -602,6 +613,40 @@ mod primitive_schema_tests {
             ("CustomRecord", "object"),
         ] {
             assert_eq!(document["components"]["schemas"][name]["type"], kind);
+        }
+    }
+}
+
+#[cfg(test)]
+mod extended_method_tests {
+    use super::*;
+    use forklaunch_contract::HttpMethod;
+
+    #[test]
+    fn all_methods_export_without_nonstandard_openapi_operation_keys() {
+        let mut registry = ContractRegistry::new();
+        for method in HttpMethod::ALL {
+            registry.register(
+                RouteContract::new(method.as_str(), "Probe", method, "/probe")
+                    .with_response(204, None),
+            );
+        }
+        let document: serde_json::Value =
+            serde_json::from_str(&generate_openapi_json(&registry)).unwrap();
+        let path = &document["paths"]["/probe"];
+        assert_eq!(path.as_object().unwrap().len(), 9);
+        assert_eq!(
+            path["x-forklaunch-http-methods"].as_object().unwrap().len(),
+            19
+        );
+        for method in HttpMethod::ALL {
+            let operation = if method.is_openapi_standard() {
+                &path[method.as_str().to_ascii_lowercase()]
+            } else {
+                &path["x-forklaunch-http-methods"][method.as_str()]
+            };
+            assert_eq!(operation["responses"]["204"]["description"], "Response");
+            assert!(operation["operationId"].is_string());
         }
     }
 }

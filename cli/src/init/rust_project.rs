@@ -308,13 +308,32 @@ pub(crate) fn generate_rust_router(matches: &ArgMatches) -> Result<()> {
         .and_then(|part| part.to_str())
         .context("Rust router path must point at a service crate directory")?
         .to_string();
+    if !is_rust_project(&app_root, &service_name)?
+        || detect_rust_project_kind(&app_root, &service_name)? != RustProjectKind::Service
+    {
+        bail!("Rust routers require the path of a registered Rust service crate");
+    }
+    let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
+    let registered_path = crate_path_for_project(&manifest, &service_name)
+        .context("Rust service has no registered crate path")?;
+    if app_root.join(registered_path).canonicalize()? != service_path.canonicalize()? {
+        bail!("Rust router path must match the registered service crate directory");
+    }
+    let builtin = modules::module_kind(&app_root, &service_name)?.is_some();
+    if builtin {
+        let lib = read_to_string(service_path.join("src/lib.rs"))?;
+        let main = read_to_string(service_path.join("src/main.rs"))?;
+        if !lib.contains("routes::contracts()") || !main.contains("routes::register_router(") {
+            bail!("This existing module does not expose custom router hooks. Add routes::contracts() to its registry and routes::register_router(...) around its runtime router before generating extensions");
+        }
+    }
     let routes_dir = service_path.join("src").join("routes");
     let route_file = routes_dir.join(format!("{router_module}.rs"));
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
 
     write_text_file_preserving_existing(
         &route_file,
-        &router_rs(&router_name),
+        &if builtin { native_router_rs(&router_name) } else { router_rs(&router_name) },
         dryrun,
         &mut stdout,
     )?;
@@ -957,7 +976,17 @@ pub(crate) fn change_rust_router(
         }
         write(
             routes_dir.join(format!("{new_module}.rs")),
-            router_rs(new_name),
+            if modules::module_kind(app_root, project_name)?.is_some() {
+                // Preserve user handlers when renaming a module extension.
+                let source = read_to_string(&new_file)?;
+                let old_response = format!("{}Response", existing_name.to_case(Case::Pascal));
+                let new_response = format!("{}Response", new_name.to_case(Case::Pascal));
+                regex::Regex::new(&format!(r"\b{}\b", regex::escape(&old_response)))?
+                    .replace_all(&source, new_response.as_str()).into_owned()
+                    .replace(&format!("\"{}\"", escape_rust_string(existing_name)), &format!("\"{}\"", escape_rust_string(new_name)))
+                    .replace(&format!("\"/{}\"", escape_rust_string(existing_name)), &format!("\"/{}\"", escape_rust_string(new_name)))
+                    .replace(&format!("Get {}", existing_name.to_case(Case::Title)), &format!("Get {}", new_name.to_case(Case::Title)))
+            } else { router_rs(new_name) },
         )
         .with_context(|| format!("Failed to update Rust router {new_name}"))?;
         rewrite_routes_mod(
@@ -1328,6 +1357,24 @@ fn routes_mod_rs(modules: &[String]) -> String {
                 .collect(),
         },
     )
+}
+
+fn native_routes_mod_rs(modules: &[String]) -> String {
+    let mut modules = modules.to_vec();
+    modules.sort();
+    modules.dedup();
+    render_rust_template("rust/router/native_routes_mod.rs", &RustRoutesModTemplate {
+        has_health: false,
+        modules: modules.into_iter().map(|module| RustRouteModuleTemplate { module }).collect(),
+    })
+}
+
+fn native_router_rs(router_name: &str) -> String {
+    render_rust_template("rust/router/native_router.rs", &RustRouterTemplate {
+        router_name: escape_rust_string(router_name),
+        route_title: router_name.to_case(Case::Title),
+        response_name: format!("{}Response", router_name.to_case(Case::Pascal)),
+    })
 }
 
 fn router_rs(router_name: &str) -> String {
@@ -2607,11 +2654,14 @@ fn ensure_library_shape(crate_dir: &Path, name: &str) -> Result<()> {
 }
 
 fn rewrite_routes_mod(routes_dir: &Path, dryrun: bool, stdout: &mut StandardStream) -> Result<()> {
-    let modules = rust_route_modules(routes_dir)?;
-
+    let mut modules = rust_route_modules(routes_dir)?;
+    let native = routes_dir.join("mod.rs").exists()
+        && read_to_string(routes_dir.join("mod.rs"))?.contains("pub fn register_router(");
+    if native { modules.retain(|module| routes_dir.join(format!("{module}.rs")).exists()); }
+    let content = if native { native_routes_mod_rs(&modules) } else { routes_mod_rs(&modules) };
     write_text_file(
         &routes_dir.join("mod.rs"),
-        &routes_mod_rs(&modules),
+        &content,
         dryrun,
         stdout,
     )

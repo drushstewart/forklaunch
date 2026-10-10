@@ -24,9 +24,83 @@ pub enum HttpMethod {
     Head,
     Options,
     Trace,
+    Checkout,
+    Copy,
+    Link,
+    Lock,
+    MSearch,
+    Merge,
+    MkActivity,
+    MkCol,
+    Move,
+    Notify,
+    PropFind,
+    PropPatch,
+    Purge,
+    Report,
+    Search,
+    Subscribe,
+    Unlink,
+    Unlock,
+    Unsubscribe,
 }
 
 impl HttpMethod {
+    /// All HTTP methods exported by the TypeScript router.
+    pub const ALL: [Self; 27] = [
+        Self::Get,
+        Self::Post,
+        Self::Put,
+        Self::Patch,
+        Self::Delete,
+        Self::Head,
+        Self::Options,
+        Self::Trace,
+        Self::Checkout,
+        Self::Copy,
+        Self::Link,
+        Self::Lock,
+        Self::MSearch,
+        Self::Merge,
+        Self::MkActivity,
+        Self::MkCol,
+        Self::Move,
+        Self::Notify,
+        Self::PropFind,
+        Self::PropPatch,
+        Self::Purge,
+        Self::Report,
+        Self::Search,
+        Self::Subscribe,
+        Self::Unlink,
+        Self::Unlock,
+        Self::Unsubscribe,
+    ];
+
+    /// Parses an exact, case-sensitive HTTP method token.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|method| method.as_str() == value)
+    }
+
+    /// Whether `OpenAPI` defines a standard operation key for this method.
+    #[must_use]
+    pub const fn is_openapi_standard(self) -> bool {
+        matches!(
+            self,
+            Self::Get
+                | Self::Post
+                | Self::Put
+                | Self::Patch
+                | Self::Delete
+                | Self::Head
+                | Self::Options
+                | Self::Trace
+        )
+    }
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -38,6 +112,25 @@ impl HttpMethod {
             Self::Head => "HEAD",
             Self::Options => "OPTIONS",
             Self::Trace => "TRACE",
+            Self::Checkout => "CHECKOUT",
+            Self::Copy => "COPY",
+            Self::Link => "LINK",
+            Self::Lock => "LOCK",
+            Self::MSearch => "M-SEARCH",
+            Self::Merge => "MERGE",
+            Self::MkActivity => "MKACTIVITY",
+            Self::MkCol => "MKCOL",
+            Self::Move => "MOVE",
+            Self::Notify => "NOTIFY",
+            Self::PropFind => "PROPFIND",
+            Self::PropPatch => "PROPPATCH",
+            Self::Purge => "PURGE",
+            Self::Report => "REPORT",
+            Self::Search => "SEARCH",
+            Self::Subscribe => "SUBSCRIBE",
+            Self::Unlink => "UNLINK",
+            Self::Unlock => "UNLOCK",
+            Self::Unsubscribe => "UNSUBSCRIBE",
         }
     }
 }
@@ -603,6 +696,177 @@ impl RouteContract {
         path: impl AsRef<str>,
     ) -> Self {
         Self::new(name, summary, HttpMethod::Trace, path)
+    }
+
+    #[must_use]
+    pub fn checkout(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Checkout, path)
+    }
+
+    #[must_use]
+    pub fn copy(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Copy, path)
+    }
+
+    #[must_use]
+    pub fn link(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Link, path)
+    }
+
+    #[must_use]
+    pub fn lock(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Lock, path)
+    }
+
+    #[must_use]
+    pub fn m_search(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::MSearch, path)
+    }
+
+    #[must_use]
+    pub fn merge(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Merge, path)
+    }
+
+    #[must_use]
+    pub fn mkactivity(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::MkActivity, path)
+    }
+
+    #[must_use]
+    pub fn mkcol(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::MkCol, path)
+    }
+
+    #[must_use]
+    pub fn move_resource(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Move, path)
+    }
+
+    #[must_use]
+    pub fn notify(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Notify, path)
+    }
+
+    #[must_use]
+    pub fn propfind(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::PropFind, path)
+    }
+
+    #[must_use]
+    pub fn proppatch(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::PropPatch, path)
+    }
+
+    #[must_use]
+    pub fn purge(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Purge, path)
+    }
+
+    #[must_use]
+    pub fn report(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Report, path)
+    }
+
+    #[must_use]
+    pub fn search(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Search, path)
+    }
+
+    #[must_use]
+    pub fn subscribe(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Subscribe, path)
+    }
+
+    #[must_use]
+    pub fn unlink(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Unlink, path)
+    }
+
+    #[must_use]
+    pub fn unlock(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Unlock, path)
+    }
+
+    #[must_use]
+    pub fn unsubscribe(
+        name: impl Into<String>,
+        summary: impl Into<String>,
+        path: impl AsRef<str>,
+    ) -> Self {
+        Self::new(name, summary, HttpMethod::Unsubscribe, path)
     }
 
     #[must_use]

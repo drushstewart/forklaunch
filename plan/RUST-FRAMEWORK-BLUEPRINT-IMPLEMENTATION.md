@@ -802,6 +802,6 @@ require literal Rust clones, but their public request/response behavior does.
 
 - [ ] Audit and support Rust/mixed relay session-ingest and storefront extension behavior, including lifecycle and SDK interactions; these CLI surfaces have no separate published blueprint package.
 
-- [ ] Audit all exported HTTP methods (including WebDAV/link/unlink/subscribe variants) and generated custom-router extension behavior inside built-in Rust modules; preserve actual mounted contracts and fail explicitly for unsupported combinations.
+- [x] Audit all exported HTTP methods (including WebDAV/link/unlink/subscribe variants) and generated custom-router extension behavior inside built-in Rust modules; preserve actual mounted contracts and fail explicitly for unsupported combinations.
 
 - [x] Preserve the actual HTTP method for authentication on implicit HEAD-to-GET dispatch, while retaining explicit HEAD precedence and local-handler compatibility; include request-HMAC regression coverage.

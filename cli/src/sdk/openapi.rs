@@ -2,9 +2,9 @@
 //! document-local references without fetching files or remote URLs.
 use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use convert_case::{Case, Casing};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
     let version = document
@@ -32,12 +32,45 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
         let item = item
             .as_object()
             .context("OpenAPI path item must be an object")?;
-        for method in [
+        let mut operations: Vec<(&str, &Value)> = [
             "get", "put", "post", "delete", "options", "head", "patch", "trace",
-        ] {
-            let Some(operation) = item.get(method) else {
-                continue;
-            };
+        ]
+        .into_iter()
+        .filter_map(|method| item.get(method).map(|value| (method, value)))
+        .collect();
+        if let Some(extended) = item.get("x-forklaunch-http-methods") {
+            for (method, operation) in extended
+                .as_object()
+                .context("x-forklaunch-http-methods must be an object")?
+            {
+                if !matches!(
+                    method.as_str(),
+                    "CHECKOUT"
+                        | "COPY"
+                        | "LINK"
+                        | "LOCK"
+                        | "M-SEARCH"
+                        | "MERGE"
+                        | "MKACTIVITY"
+                        | "MKCOL"
+                        | "MOVE"
+                        | "NOTIFY"
+                        | "PROPFIND"
+                        | "PROPPATCH"
+                        | "PURGE"
+                        | "REPORT"
+                        | "SEARCH"
+                        | "SUBSCRIBE"
+                        | "UNLINK"
+                        | "UNLOCK"
+                        | "UNSUBSCRIBE"
+                ) {
+                    bail!("Unsupported extended OpenAPI HTTP method: {method}");
+                }
+                operations.push((method.as_str(), operation));
+            }
+        }
+        for (method, operation) in operations {
             let operation = operation
                 .as_object()
                 .context("OpenAPI operation must be an object")?;
@@ -330,7 +363,8 @@ mod tests {
             "boolean"
         );
         assert_eq!(
-            route["responses"][0]["body"]["schema"]["jsonSchema"]["properties"]["displayName"]["type"],
+            route["responses"][0]["body"]["schema"]["jsonSchema"]["properties"]["displayName"]
+                ["type"],
             "string"
         );
     }
@@ -367,27 +401,23 @@ mod schema_reference_tests {
     #[test]
     fn expansion_budget_and_validation_siblings_are_rejected() {
         let document = json!({"schema":{"type":"string"}});
-        assert!(
-            resolve(
-                &json!({"$ref":"#/schema", "minLength":5}),
-                &document,
-                0,
-                &mut ExpansionBudget::default()
-            )
-            .is_err()
-        );
-        assert!(
-            resolve(
-                &json!([1, 2, 3]),
-                &document,
-                0,
-                &mut ExpansionBudget {
-                    nodes: 2,
-                    bytes: 1024
-                }
-            )
-            .is_err()
-        );
+        assert!(resolve(
+            &json!({"$ref":"#/schema", "minLength":5}),
+            &document,
+            0,
+            &mut ExpansionBudget::default()
+        )
+        .is_err());
+        assert!(resolve(
+            &json!([1, 2, 3]),
+            &document,
+            0,
+            &mut ExpansionBudget {
+                nodes: 2,
+                bytes: 1024
+            }
+        )
+        .is_err());
     }
 }
 
@@ -402,13 +432,11 @@ mod operation_name_tests {
             "/users/search":{"get":{"responses":response}}
         }});
         let contract = contract_from_openapi(&spec).unwrap();
-        assert!(
-            contract["routes"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|route| route["operationName"] == "getUsersId")
-        );
+        assert!(contract["routes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|route| route["operationName"] == "getUsersId"));
         spec["paths"]["/users/{id}"]["get"]["operationId"] = json!("find-user");
         spec["paths"]["/users/search"]["get"]["operationId"] = json!("findUser");
         assert!(contract_from_openapi(&spec).is_err());
@@ -416,18 +444,16 @@ mod operation_name_tests {
     #[test]
     fn literal_reference_annotations_cannot_bypass_the_byte_budget() {
         let schema = json!({"const": "x".repeat(1000)});
-        assert!(
-            resolve(
-                &schema,
-                &json!({}),
-                0,
-                &mut ExpansionBudget {
-                    nodes: 100,
-                    bytes: 100
-                }
-            )
-            .is_err()
-        );
+        assert!(resolve(
+            &schema,
+            &json!({}),
+            0,
+            &mut ExpansionBudget {
+                nodes: 100,
+                bytes: 100
+            }
+        )
+        .is_err());
     }
 }
 
@@ -498,5 +524,60 @@ mod request_media_tests {
                 media
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod extended_method_tests {
+    use super::*;
+    #[test]
+    fn imports_extended_methods_with_shared_path_parameters_and_rejects_unknown_tokens() {
+        let methods = [
+            "CHECKOUT",
+            "COPY",
+            "LINK",
+            "LOCK",
+            "M-SEARCH",
+            "MERGE",
+            "MKACTIVITY",
+            "MKCOL",
+            "MOVE",
+            "NOTIFY",
+            "PROPFIND",
+            "PROPPATCH",
+            "PURGE",
+            "REPORT",
+            "SEARCH",
+            "SUBSCRIBE",
+            "UNLINK",
+            "UNLOCK",
+            "UNSUBSCRIBE",
+        ];
+        let mut extended = serde_json::Map::new();
+        for method in methods {
+            extended.insert(method.into(), json!({"operationId":method.to_case(Case::Camel),"responses":{"204":{"description":"Done"}}}));
+        }
+        let mut document = json!({"openapi":"3.1.0","paths":{"/probe/{id}":{"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"get":{"operationId":"probe","responses":{"204":{"description":"Done"}}},"x-forklaunch-http-methods":extended}}});
+        let contract = contract_from_openapi(&document).unwrap();
+        let routes = contract["routes"].as_array().unwrap();
+        assert_eq!(routes.len(), 20);
+        for method in methods {
+            let route = routes
+                .iter()
+                .find(|route| route["method"] == method)
+                .unwrap();
+            assert_eq!(route["request"]["params"][0]["name"], "id");
+            assert_eq!(route["responses"][0]["body"], Value::Null);
+        }
+        document["paths"]["/probe/{id}"]["x-forklaunch-http-methods"]["BREW"] = json!({});
+        assert!(contract_from_openapi(&document)
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported extended"));
+        document["paths"]["/probe/{id}"]["x-forklaunch-http-methods"] = json!([]);
+        assert!(contract_from_openapi(&document)
+            .unwrap_err()
+            .to_string()
+            .contains("must be an object"));
     }
 }

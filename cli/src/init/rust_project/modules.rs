@@ -118,6 +118,7 @@ pub(super) fn generate_module_at(
         "Cargo.toml",
         "src/lib.rs",
         "src/main.rs",
+        "src/routes/mod.rs",
         ".env.example",
         "README.md",
     ]
@@ -130,10 +131,13 @@ pub(super) fn generate_module_at(
             ".env.example" => "env.example",
             _ => "README.md",
         };
-        let template = format!("rust/{}/{filename}", kind.template());
+        let template = if output == "src/routes/mod.rs" {
+            "rust/router/native_routes_mod.rs".to_owned()
+        } else { format!("rust/{}/{filename}", kind.template()) };
         RenderedTemplate {
             path: crate_dir.join(output),
-            content: render_rust_template(&template, &data),
+            content: if output == "src/routes/mod.rs" { native_routes_mod_rs(&[]) }
+                else { render_rust_template(&template, &data) },
             context: None,
         }
     })

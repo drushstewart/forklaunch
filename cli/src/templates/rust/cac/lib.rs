@@ -1,3 +1,5 @@
+pub mod routes;
+
 use forklaunch_contract::{ContractRegistry, ServiceContract};
 use forklaunch_cac_interface::contracts;
 use std::{fs, path::Path};
@@ -14,6 +16,7 @@ pub fn contract_registry() -> ContractRegistry {
     for route in contracts::module_registry().routes() {
         registry.register(route.clone());
     }
+    for route in routes::contracts() { registry.register(route); }
     registry
 }
 

@@ -37,6 +37,7 @@ use forklaunch_http::{
 };
 use forklaunch_openapi::{OpenApiOptions, OpenApiServer, generate_openapi_json_with_options};
 use opentelemetry::trace::FutureExt;
+use tower::{Layer, ServiceExt};
 use tower_http::{
     cors::CorsLayer,
     limit::RequestBodyLimitLayer,
@@ -131,24 +132,26 @@ pub struct ForkLaunchRouter {
     base_path: String,
     registry: ContractRegistry,
     routes: HashMap<String, MethodRouter>,
+    extended_routes: HashMap<String, HashMap<String, MethodRouter>>,
     config: RouterConfig,
 }
 
 macro_rules! typed_route_methods {
-    ($($method:ident => $verb:ident),* $(,)?) => {
+    ($($method:ident => $variant:ident),* $(,)?) => {
         $(
-            #[doc = concat!("Registers a `", stringify!($verb), "` route with its contract and handler.")]
+            #[doc = concat!("Registers a `", stringify!($variant), "` route with its contract and handler.")]
+            ///
+            /// # Panics
+            /// Panics if the contract method differs or duplicates an existing route.
             #[must_use]
-            pub fn $method<H, T>(mut self, contract: RouteContract, handler: H) -> Self
+            pub fn $method<H, T>(self, contract: RouteContract, handler: H) -> Self
             where
                 H: Handler<T, ()>,
                 T: 'static,
             {
-                let contract = self.rebase_contract(contract);
-                let path = contract.openapi_path.clone();
-                self.registry.register(contract);
-                self.add_method_router(path, axum::routing::$verb(handler));
-                self
+                assert_eq!(contract.method, HttpMethod::$variant,
+                    "route method must match its contract");
+                self.route(contract, handler)
             }
         )*
     };
@@ -162,6 +165,7 @@ impl ForkLaunchRouter {
             base_path: "/".to_owned(),
             registry: ContractRegistry::for_service(service.contract()),
             routes: HashMap::new(),
+            extended_routes: HashMap::new(),
             config: RouterConfig::default(),
         }
     }
@@ -200,16 +204,7 @@ impl ForkLaunchRouter {
                     }
                 }
             };
-            router = match contract.method {
-                HttpMethod::Get => router.get(contract, handler),
-                HttpMethod::Post => router.post(contract, handler),
-                HttpMethod::Put => router.put(contract, handler),
-                HttpMethod::Patch => router.patch(contract, handler),
-                HttpMethod::Delete => router.delete(contract, handler),
-                HttpMethod::Head => router.head(contract, handler),
-                HttpMethod::Options => router.options(contract, handler),
-                HttpMethod::Trace => router.trace(contract, handler),
-            };
+            router = router.route(contract, handler);
         }
         router
     }
@@ -221,6 +216,7 @@ impl ForkLaunchRouter {
             base_path: "/".to_owned(),
             registry: ContractRegistry::new(),
             routes: HashMap::new(),
+            extended_routes: HashMap::new(),
             config: RouterConfig::default(),
         }
     }
@@ -253,25 +249,87 @@ impl ForkLaunchRouter {
         self
     }
 
+    /// Registers any supported method using the contract as the dispatch source of truth.
+    ///
+    /// # Panics
+    /// Panics when the same method and path are registered twice.
+    #[must_use]
+    pub fn route<H, T>(mut self, contract: RouteContract, handler: H) -> Self
+    where
+        H: Handler<T, ()>,
+        T: 'static,
+    {
+        let contract = self.rebase_contract(contract);
+        let path = contract.openapi_path.clone();
+        let method = contract.method;
+        assert!(
+            !self
+                .registry
+                .routes()
+                .iter()
+                .any(|registered| registered.openapi_path == path && registered.method == method),
+            "duplicate route method and path"
+        );
+        self.registry.register(contract);
+        if let Ok(filter) = axum::routing::MethodFilter::try_from(
+            Method::from_bytes(method.as_str().as_bytes()).expect("valid method"),
+        ) {
+            self.add_method_router(path, axum::routing::on(filter, handler));
+        } else {
+            self.routes.entry(path.clone()).or_default();
+            self.extended_routes
+                .entry(path)
+                .or_default()
+                .insert(method.as_str().to_owned(), axum::routing::any(handler));
+        }
+        self
+    }
+
     typed_route_methods!(
-        get => get,
-        post => post,
-        put => put,
-        patch => patch,
-        delete => delete,
-        head => head,
-        options => options,
-        trace => trace,
+        get => Get,
+        post => Post,
+        put => Put,
+        patch => Patch,
+        delete => Delete,
+        head => Head,
+        options => Options,
+        trace => Trace,
+        checkout => Checkout,
+        copy => Copy,
+        link => Link,
+        lock => Lock,
+        m_search => MSearch,
+        merge => Merge,
+        mkactivity => MkActivity,
+        mkcol => MkCol,
+        move_resource => Move,
+        notify => Notify,
+        propfind => PropFind,
+        proppatch => PropPatch,
+        purge => Purge,
+        report => Report,
+        search => Search,
+        subscribe => Subscribe,
+        unlink => Unlink,
+        unlock => Unlock,
+        unsubscribe => Unsubscribe,
+
     );
 
     /// Nests another router under `prefix`, flattening its contracts and routes
     /// so a single validation layer continues to cover every endpoint.
+    ///
+    /// # Panics
+    /// Panics on overlapping method/path registrations.
     #[must_use]
     pub fn nest(mut self, prefix: impl AsRef<str>, child: ForkLaunchRouter) -> Self {
         let prefix = join_base_path(&self.base_path, prefix.as_ref());
 
         let ForkLaunchRouter {
-            registry, routes, ..
+            registry,
+            routes,
+            extended_routes,
+            ..
         } = child;
 
         for mut route in registry.into_artifact().routes {
@@ -285,6 +343,19 @@ impl ForkLaunchRouter {
             self.add_method_router(nested_path, method_router);
         }
 
+        for (path, methods) in extended_routes {
+            let target = self
+                .extended_routes
+                .entry(join_base_path(&prefix, &path))
+                .or_default();
+            for (method, handler) in methods {
+                assert!(
+                    target.insert(method, handler).is_none(),
+                    "duplicate nested route"
+                );
+            }
+        }
+
         self
     }
 
@@ -295,16 +366,48 @@ impl ForkLaunchRouter {
     }
 
     /// Builds the final [`axum::Router`] with validation, docs, and middleware.
+    ///
+    /// # Panics
+    /// Panics on invalid or overlapping paths, including documentation endpoints.
     pub fn into_router(self) -> Router {
         let Self {
             registry,
             routes,
+            mut extended_routes,
             config,
             ..
         } = self;
 
         let mut router = Router::new();
-        for (path, method_router) in routes {
+        for (path, mut method_router) in routes {
+            if let Some(methods) = extended_routes.remove(&path) {
+                let mut allowed: Vec<_> = registry
+                    .routes()
+                    .iter()
+                    .filter(|route| route.openapi_path == path)
+                    .map(|route| route.method.as_str())
+                    .collect();
+                if allowed.contains(&"GET") && !allowed.contains(&"HEAD") {
+                    allowed.push("HEAD");
+                }
+                allowed.sort_unstable();
+                allowed.dedup();
+                let allow = allowed.join(", ");
+                method_router = method_router.fallback(move |request: Request| {
+                    let handler = methods.get(request.method().as_str()).cloned();
+                    let allow = allow.clone();
+                    async move {
+                        match handler {
+                            Some(handler) => match handler.oneshot(request).await {
+                                Ok(response) => response,
+                                Err(never) => match never {},
+                            },
+                            None => (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, allow)])
+                                .into_response(),
+                        }
+                    }
+                });
+            }
             router = router.route(&path, method_router);
         }
 
@@ -345,7 +448,27 @@ impl ForkLaunchRouter {
                 CounterMakeRequestId::default(),
             ))
             .layer(TraceLayer::new_for_http())
-            .layer(cors)
+            .layer(middleware::from_fn(move |request: Request, next: Next| {
+                let cors = cors.clone();
+                async move {
+                    // Only a genuine CORS preflight may bypass an explicit OPTIONS handler.
+                    let preflight = request.headers().contains_key(header::ORIGIN)
+                        && request
+                            .headers()
+                            .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
+                    if request.method() == Method::OPTIONS && !preflight {
+                        return next.run(request).await;
+                    }
+                    let service = tower::service_fn(move |request| {
+                        let next = next.clone();
+                        async move { Ok::<_, std::convert::Infallible>(next.run(request).await) }
+                    });
+                    match cors.layer(service).oneshot(request).await {
+                        Ok(response) => response,
+                        Err(never) => match never {},
+                    }
+                }
+            }))
     }
 
     /// Binds to `addr` and serves until shutdown.
@@ -639,17 +762,7 @@ fn parse_query(query: &str) -> Vec<(String, String)> {
 }
 
 fn method_to_contract(method: &Method) -> Option<HttpMethod> {
-    match *method {
-        Method::GET => Some(HttpMethod::Get),
-        Method::POST => Some(HttpMethod::Post),
-        Method::PUT => Some(HttpMethod::Put),
-        Method::PATCH => Some(HttpMethod::Patch),
-        Method::DELETE => Some(HttpMethod::Delete),
-        Method::HEAD => Some(HttpMethod::Head),
-        Method::OPTIONS => Some(HttpMethod::Options),
-        Method::TRACE => Some(HttpMethod::Trace),
-        _ => None,
-    }
+    HttpMethod::parse(method.as_str())
 }
 
 /// Converts a framework response, preserving its status, body, and headers.
@@ -1063,5 +1176,164 @@ mod tests {
         let document = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(document.contains("\"openapi\":\"3.1.0\""));
         assert!(document.contains("listUsers"));
+    }
+}
+
+#[cfg(test)]
+mod extended_method_tests {
+    use super::*;
+    use forklaunch_auth::Principal;
+    use forklaunch_contract::FieldContract;
+
+    #[tokio::test]
+    async fn every_exported_method_dispatches_validates_and_authenticates_after_nesting() {
+        let mut child = ForkLaunchRouter::anonymous();
+        for method in HttpMethod::ALL {
+            let contract =
+                RouteContract::new(method.as_str(), "Method probe", method, "/probe/:id")
+                    .with_access(AccessLevel::Authenticated)
+                    .with_param(FieldContract::required("id", "String"))
+                    .with_response(200, None);
+            child = child.route(contract, move |request: Request| async move {
+                assert_eq!(request.method().as_str(), method.as_str());
+                assert!(request.extensions().get::<AuthenticatedSession>().is_some());
+                (StatusCode::OK, [("x-method", method.as_str())])
+            });
+        }
+        let config = RouterConfig::default().with_authenticator(|request, contract| async move {
+            assert_eq!(request.method, contract.method);
+            assert_eq!(request.params.get("id").map(String::as_str), Some("42"));
+            if request.headers.get("authorization").map(String::as_str) != Some("verified") {
+                return Err(AuthError::MissingCredentials);
+            }
+            Ok(AuthenticatedSession::new(
+                Principal::new("tester"),
+                serde_json::json!({"sub":"tester"}),
+            ))
+        });
+        let app = ForkLaunchRouter::anonymous()
+            .nest("/module", child)
+            .with_config(config)
+            .into_router();
+        for method in HttpMethod::ALL {
+            for authorized in [false, true] {
+                let mut request = Request::builder()
+                    .method(method.as_str())
+                    .uri("/module/probe/42");
+                if authorized {
+                    request = request.header("authorization", "verified");
+                }
+                let response = app
+                    .clone()
+                    .oneshot(request.body(AxumBody::empty()).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    if authorized {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::UNAUTHORIZED
+                    },
+                    "{}",
+                    method.as_str()
+                );
+                if authorized {
+                    assert_eq!(response.headers()["x-method"], method.as_str());
+                }
+            }
+        }
+        let preflight = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("OPTIONS")
+                    .uri("/module/probe/42")
+                    .header(header::ORIGIN, "https://browser.example")
+                    .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                    .body(AxumBody::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(preflight.status(), StatusCode::OK);
+        assert!(
+            preflight
+                .headers()
+                .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        );
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("BREW")
+                    .uri("/module/probe/42")
+                    .body(AxumBody::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        let allow = response.headers()[header::ALLOW].to_str().unwrap();
+        for method in HttpMethod::ALL {
+            assert!(
+                allow.split(", ").any(|value| value == method.as_str()),
+                "{allow}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn local_handlers_preserve_extended_methods() {
+        let mut local = LocalRouter::new();
+        let contracts: Vec<_> = HttpMethod::ALL
+            .into_iter()
+            .filter(|method| !method.is_openapi_standard())
+            .map(|method| {
+                let contract =
+                    RouteContract::new(method.as_str(), "Local method", method, "/probe")
+                        .with_response(200, None);
+                local.register(contract.clone(), move |request: FrameworkRequest| {
+                    assert_eq!(request.method, method);
+                    Ok(FrameworkResponse::text(200, method.as_str()))
+                });
+                contract
+            })
+            .collect();
+        let app = ForkLaunchRouter::from_local_router(
+            ServiceInfo::new("methods", "0.1.0"),
+            contracts,
+            local,
+        )
+        .into_router();
+        for method in HttpMethod::ALL
+            .into_iter()
+            .filter(|method| !method.is_openapi_standard())
+        {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method.as_str())
+                        .uri("/probe")
+                        .body(AxumBody::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 1024).await.unwrap(),
+                method.as_str()
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "route method must match its contract")]
+    fn mismatched_handler_method_cannot_bypass_contract_security() {
+        let _ = ForkLaunchRouter::anonymous()
+            .get(RouteContract::post("wrong", "wrong", "/wrong"), || async {
+                StatusCode::OK
+            });
     }
 }
