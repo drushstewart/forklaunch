@@ -15,22 +15,23 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 110 and blueprint 56 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 955 tests pass; latest all-feature framework 110 and blueprint 58 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
 - [x] Validate real Cargo/PNPM mixed release builds with a generated Rust service/TypeScript SDK and a minimal tsx service export hook; reuse those artifacts with intentionally unbuildable source, preserving prebuilt isolation and bounded mixed crate paths.
 - [x] Complete relocated generated-service container build, health/OpenAPI, and SIGTERM shutdown checks. The Docker capacity blocker is resolved; `rust_container_runtime.sh` passes locally and runs in CI. Builder/runtime both use Debian bookworm.
+- [x] Add broker-backed Kafka and generated Kafka workers, real transaction/process-crash/group-fanout tests, CI broker coverage, all three durable-worker source-archive installation, and complete embedded source packaging (129 files).
 - [x] Wire generated Redis/PostgreSQL distributed controls with separate-process command/HTTP fanout, scoped isolation, graceful disconnect failure, explicit restart semantics, and packaged CLI generation checks. HTTP commands apply through the ordered subscription to preserve command ordering.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks. Read-only audit of local `forklaunch-platform` at `3fb59b3cc` found a concrete integration gap: deployment/image planning maps non-Bun runtimes (including Tokio) to PNPM, and generated ECS commands invoke JavaScript start scripts. Rust needs native binary startup and image/build support in the platform before this gate can pass; local container success does not establish ECS parity.
 - [x] Keep generated Rust SDKs for empty worker HTTP contracts free of unused Serde imports, path helpers and client-field warnings; compile packaged PostgreSQL/Redis worker SDKs with warnings denied.
-- [x] Verify the CLI Cargo package file list includes all 120 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 129 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
 - [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive installation is checked; no crate has been published during this port.
 
-PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle, billing and Kafka queue implementations remain explicit tasks in phase 12.
+PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle and billing remain explicit tasks in phase 12. Kafka has a broker-backed implementation and generated runtime coverage; additional TypeScript module families are tracked below.
 
 ## Full TypeScript Parity Scope
 
@@ -586,11 +587,12 @@ Requirements:
 - [x] Add batch-handler settings and per-job batch failure results; preserve existing single handlers, renew all leases, cancel on lease loss, validate complete failure sets before acknowledgments, and exercise concurrency/drain/recovery against both durable backends.
 - [x] Add optional worker HTTP health/readiness and bearer-authenticated pause/resume/drain endpoints; validate lifecycle, authorization, retention coordination, and graceful shutdown in generated Redis/PostgreSQL processes.
 - [x] Wire durable Redis queues into generated worker binaries; preserve application handlers through sync, rename, and Redis/PostgreSQL conversion, and validate real Redis process lifecycle behavior.
-- [ ] Wire durable Kafka queues into generated worker binaries.
+- [x] Wire broker-backed transactional Kafka into generated worker binaries; validate explicit topic provisioning, non-mutating peek/dead-letter inspection, retries, source offsets, actual SIGKILL recovery, authenticated HTTP/Redis distributed controls, source preservation, rename, backend conversion and delete against an isolated broker.
 - [x] Add tenant-bound dead-letter listing/requeue and explicit age-based, bounded completed/failed retention APIs; expose generated administration commands with payload/token-free summaries. Validate races, tenant isolation, retry fencing, and legacy Redis terminal-index upgrades.
 - [x] Add opt-in automatic retention scheduling and runtime policy settings for both durable backends; bound per-status purges and storage waits, stop maintenance during shutdown, and drain handlers on maintenance failure.
 - [x] Implement Redis-backed worker queue. (`redis-client` async leased adapter: atomic mixed-queue batches/claims, persisted retry budgets, fenced ack/renew/fail, bounded expiry recovery, retained terminal jobs; real Redis concurrent-consumer and shared runner integration coverage. Generated Redis workers use the shared runner.)
-- [ ] Implement Kafka-backed worker queue.
+- [x] Implement a broker-backed Kafka producer/consumer with atomic batch publication, offset/retry/dead-letter transactions, namespace/tenant/queue/group scoping, bounded payloads and operation deadlines, explicit consumer-session/handler/drain deadlines, TLS/SASL configuration, stable replica fencing and fail-closed assignment handling. Validate group fanout, offset persistence, pause/drain abandonment recovery, tenant isolation and producer fencing against a pinned ARM64/AMD64 Redpanda broker; run in CI. Kafka uses log/partition semantics rather than the database lease API.
+- [ ] Validate a generated Kafka worker's Linux container build/startup against the isolated broker, including bundled librdkafka/OpenSSL. Host compilation and process tests already pass.
 - [x] Define worker signaling interfaces and an in-memory reference bus. (`SignalBus` + `InMemorySignalBus`)
 - [x] Implement namespace/tenant/queue-bound Redis Pub/Sub worker signaling with ordered bounded subscriptions, sanitized publication deadlines, independent publishers and sticky drain forwarding. Verify actual child-process delivery, isolation, overflow/malformed-message errors and owned TCP disconnect behavior in the Redis CI suite.
 - [x] Add subscriber-free administrative Redis signal publishers and `http::run_with_control` so distributed forwarding, HTTP readiness and durable consumption share one control; test paused jobs, resume completion, readiness changes and graceful drain against real Redis.
@@ -775,3 +777,21 @@ The first useful milestone is not full parity. It is:
 - [ ] Decide whether TypeScript SDKs are generated in the existing CLI package or inside `framework-rs` codegen.
 - [ ] Decide whether `blueprint-rs` should support Better Auth parity directly or provide generic OAuth/JWT/session integration points.
 - [ ] Decide whether persistence helpers should standardize on `sqlx` only or expose optional SeaORM adapters.
+
+## Additional TypeScript Module Coverage Required For Full Parity
+
+The initial phases cover only part of the repository's published TypeScript surface.
+These packages are part of the full-parity target as well; their absence must not
+be hidden by completed framework/blueprint scaffold checks. Audit concrete exports,
+contracts and TypeScript behavior, then implement idiomatic Rust equivalents and
+validate generated modules and SDKs. Runtime-specific JavaScript adapters do not
+require literal Rust clones, but their public request/response behavior does.
+
+- [ ] Inventory every published framework/blueprint package and map its public runtime, provider, service, DTO, contract and generated-module capabilities to Rust implementations and conformance fixtures.
+- [ ] Complete messaging interface/base persistence, generated SMS module and Twilio delivery/status-callback integration with provider fixtures and tenant isolation. (`blueprint/interfaces/messaging`, `blueprint/implementations/messaging/{base,twilio}`, generated messaging modules)
+- [ ] Complete ecommerce interfaces/base persistence and generated modules for products, variants, inventory, carts, orders and payments, including concurrency/idempotency behavior. (`blueprint/interfaces/ecommerce`, `blueprint/implementations/ecommerce/base`)
+- [ ] Complete ecommerce Stripe/PayPal provider behavior, including the actual payment-resume, Connect-fee, confirmation/failure and webhook behavior exported by the TypeScript implementations. (`blueprint/implementations/ecommerce/{stripe,paypal}`)
+- [ ] Port CAC code-set provider interfaces and the existing mock procedure-code provider, preserving descriptor/licensing metadata and lookup behavior; do not invent or bundle licensed clinical data. (`blueprint/interfaces/cac`, `blueprint/implementations/cac/base`, generated CAC module)
+- [ ] Audit BullMQ producer/consumer options, retry/retention behavior, waiting/active inspection and tenant Redis-prefix/ACL handling; cover missing Rust worker behavior and cross-language interoperability requirements explicitly. (`blueprint/implementations/worker/bullmq`)
+- [ ] Audit the configured Better Auth module's actual enabled public behavior and bring Rust IAM/session/provider routes and generated SDKs to equivalent coverage. (`blueprint/iam-better-auth`)
+- [ ] Validate generated-module init/change/sync/delete, contracts, SDKs and mixed-app operation for every added module family; update release/package documentation and compatibility fixtures.

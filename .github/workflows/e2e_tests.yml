@@ -86,7 +86,7 @@ jobs:
 
           - group: 7
             name: "Rust Backend Generation"
-            scripts: "init_rust_projects.sh rust_init_commands.sh rust_change_commands.sh rust_sync_commands.sh rust_delete_commands.sh rust_sdk_openapi_commands.sh rust_http_runtime.sh rust_package_sources.sh rust_release_runtime.sh rust_generated_release_runtime.sh rust_iam_runtime.sh rust_worker_runtime.sh rust_redis_worker_runtime.sh rust_container_runtime.sh"
+            scripts: "init_rust_projects.sh rust_init_commands.sh rust_change_commands.sh rust_sync_commands.sh rust_delete_commands.sh rust_sdk_openapi_commands.sh rust_http_runtime.sh rust_package_sources.sh rust_release_runtime.sh rust_generated_release_runtime.sh rust_iam_runtime.sh rust_worker_runtime.sh rust_redis_worker_runtime.sh rust_kafka_worker_runtime.sh rust_container_runtime.sh"
 
     name: ${{ matrix.name }}
 

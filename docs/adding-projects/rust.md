@@ -308,3 +308,31 @@ fail closed: disconnect, overflow or malformed messages drain active work and ex
 with an error. There is no automatic reconnect or durable desired-state restoration.
 An explicit restart begins running and does not inherit earlier pause/drain commands.
 Without signal configuration HTTP controls retain their process-local behavior.
+
+## Kafka workers
+
+`forklaunch init worker jobs --language rust -t kafka` generates a broker-backed
+Kafka worker. It uses `forklaunch_worker_kafka::client::KafkaWorker`, not the original
+in-memory `KafkaWorkerQueue` reference. Configure `KAFKA_BROKERS`, `WORKER_NAMESPACE`,
+`TENANT_ID`, and a stable unique `KAFKA_TRANSACTIONAL_ID` per worker replica. Separate
+publishers use `KAFKA_PUBLISHER_ID`. Create queue/dead-letter topics explicitly with
+`--migrate`, enqueue with `--enqueue ID JSON`, and inspect with `--peek LIMIT` or
+`--dead-letters LIMIT`. Topics and groups hash length-delimited namespace/tenant/queue
+identities; broker ACLs remain the authorization boundary.
+
+Retry/dead-letter publications and source offsets commit in a Kafka transaction.
+External application effects remain at-least-once. Duplicate IDs are permitted;
+attempt counts reflect handler dispositions, and a crash before commit can repeat
+the same attempt. A producer identity fences an older replica on restart. Assignment
+changes and broker/transaction errors fail closed without acknowledging the current
+record. Handler/drain deadlines bound active application work; failed transactions
+require an explicit restart. Queue administration follows Kafka log semantics, with
+per-partition ordering and broker retention rather than per-job database deletion.
+
+Generated workers support health/readiness, authenticated local HTTP controls, and
+optional Redis distributed controls. TLS/SASL properties are accepted through
+`KAFKA_CLIENT_PROPERTIES`; automatic commits, isolation and transaction settings
+remain framework-controlled. The Docker builder includes CMake, C/C++ tools and
+Perl for the bundled librdkafka/OpenSSL build. The isolated broker tests exercise
+transactions, retry/dead-letter handling, non-mutating inspection, offset persistence,
+replica fanout, pause/drain recovery and producer fencing.

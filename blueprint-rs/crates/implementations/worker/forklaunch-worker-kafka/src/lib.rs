@@ -1,4 +1,9 @@
+//! Kafka worker adapters. `KafkaWorkerQueue` is an in-memory reference only.
+//! Enable `kafka-client` for broker-backed transactional clients in `client`.
 #![forbid(unsafe_code)]
+
+#[cfg(feature = "kafka-client")]
+pub mod client;
 
 use std::{collections::VecDeque, sync::Mutex};
 

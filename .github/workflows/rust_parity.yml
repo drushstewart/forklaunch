@@ -104,6 +104,7 @@ jobs:
     env:
       FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
       FORKLAUNCH_TEST_POSTGRES_URL: postgres://postgres:parity-test-only@127.0.0.1:5432/parity
+      FORKLAUNCH_TEST_KAFKA_BROKERS: 127.0.0.1:9092
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -112,6 +113,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: blueprint-rs
+      - name: Start isolated Kafka-compatible broker
+        run: |
+          docker run --detach --name forklaunch-rust-kafka-ci --memory 1536m --cpus 2 \
+            --publish 127.0.0.1:9092:9092 --tmpfs /var/lib/redpanda/data:rw,size=512m,mode=1777 \
+            redpandadata/redpanda@sha256:218469e5d088757bb2c3ff4c5e272f7eebdc4e94c933e6e15aff10b845cbcd07 \
+            redpanda start --overprovisioned --smp 1 --memory 768M --reserve-memory 0M \
+            --node-id 0 --check=false --kafka-addr 0.0.0.0:9092 --advertise-kafka-addr 127.0.0.1:9092
+          for attempt in $(seq 1 60); do
+            if docker exec forklaunch-rust-kafka-ci rpk cluster health | grep -q 'Healthy:.*true'; then exit 0; fi
+            sleep 1
+          done
+          exit 1
       - run: cargo fmt --manifest-path blueprint-rs/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
@@ -119,3 +132,7 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-blueprint-sample-service --all-features postgres_iam_http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-database --all-features postgres_worker -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-redis --all-features redis_worker -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-kafka --all-features --test kafka_worker -- --ignored
+      - name: Stop isolated Kafka-compatible broker
+        if: always()
+        run: docker rm -f forklaunch-rust-kafka-ci || true

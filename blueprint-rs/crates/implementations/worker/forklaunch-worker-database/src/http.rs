@@ -248,6 +248,45 @@ where
     if let Some(policy) = policy {
         policy.validate()?;
     }
+    let work = async {
+        if let Some(policy) = policy {
+            retention::run_worker_controlled(
+                queue,
+                handler,
+                config,
+                policy,
+                control,
+                std::future::pending(),
+            )
+            .await
+        } else {
+            runner::run_controlled(queue, handler, config, control, std::future::pending())
+                .await
+                .map(|worker| RetainedRunReport {
+                    worker,
+                    ..RetainedRunReport::default()
+                })
+        }
+    };
+    serve_controlled(control, http, publisher, work, shutdown).await
+}
+
+/// Serves optional health and authenticated controls around any worker future.
+/// The worker must observe the shared control and finish draining on shutdown.
+/// HTTP remains available while work drains; server errors also initiate drain.
+/// # Errors
+/// Returns configuration, bind/server, or worker errors after graceful shutdown.
+pub async fn serve_controlled<R, W, F>(
+    control: &WorkerControl,
+    http: Option<&HttpConfig>,
+    publisher: Option<SignalPublisher>,
+    work: W,
+    shutdown: F,
+) -> BlueprintResult<R>
+where
+    W: Future<Output = BlueprintResult<R>>,
+    F: Future<Output = ()> + Send,
+{
     let server = if let Some(http) = http {
         let router = router_with_publisher(control, http, publisher)?;
         let listener = tokio::net::TcpListener::bind(http.address)
@@ -271,26 +310,6 @@ where
                 .map_err(|_| server_error())
         } else {
             std::future::pending::<BlueprintResult<()>>().await
-        }
-    };
-    let work = async {
-        if let Some(policy) = policy {
-            retention::run_worker_controlled(
-                queue,
-                handler,
-                config,
-                policy,
-                control,
-                std::future::pending(),
-            )
-            .await
-        } else {
-            runner::run_controlled(queue, handler, config, control, std::future::pending())
-                .await
-                .map(|worker| RetainedRunReport {
-                    worker,
-                    ..RetainedRunReport::default()
-                })
         }
     };
     tokio::pin!(serving, work, shutdown);

@@ -4,24 +4,28 @@ use super::*;
 pub(super) enum Backend {
     Postgres,
     Redis,
+    Kafka,
 }
 impl Backend {
     fn variant(self) -> &'static str {
         match self {
             Self::Postgres => "worker-postgres",
             Self::Redis => "worker-redis",
+            Self::Kafka => "worker-kafka",
         }
     }
     fn template(self) -> &'static str {
         match self {
             Self::Postgres => "postgres-worker",
             Self::Redis => "redis-worker",
+            Self::Kafka => "kafka-worker",
         }
     }
     pub(super) fn from_options(worker_type: &str, database: &str) -> Option<Self> {
         match (worker_type, database) {
             ("database", "postgresql") => Some(Self::Postgres),
             ("redis", _) => Some(Self::Redis),
+            ("kafka", _) => Some(Self::Kafka),
             _ => None,
         }
     }
@@ -35,6 +39,7 @@ pub(super) fn backend(root: &Path, name: &str) -> Result<Option<Backend>> {
     match variant {
         Some("worker-postgres") => return Ok(Some(Backend::Postgres)),
         Some("worker-redis") => return Ok(Some(Backend::Redis)),
+        Some("worker-kafka") => return Ok(Some(Backend::Kafka)),
         _ => {}
     }
     let directory = root.join("crates").join(name);
@@ -42,6 +47,9 @@ pub(super) fn backend(root: &Path, name: &str) -> Result<Option<Backend>> {
         let source = read_to_string(directory.join("src/main.rs"))?;
         if source.contains("PostgresWorkerQueue") {
             return Ok(Some(Backend::Postgres));
+        }
+        if source.contains("KafkaWorker") {
+            return Ok(Some(Backend::Kafka));
         }
         if source.contains("RedisLeasedQueue") {
             return Ok(Some(Backend::Redis));
@@ -83,7 +91,14 @@ pub(super) fn templates(
     }
     templates.push(RenderedTemplate {
         path: crate_dir.join("src/signals.rs"),
-        content: render_rust_template("rust/leased-worker/signals.rs", &data),
+        content: render_rust_template(
+            if backend == Backend::Kafka {
+                "rust/kafka-worker/signals.rs"
+            } else {
+                "rust/leased-worker/signals.rs"
+            },
+            &data,
+        ),
         context: None,
     });
     Ok(templates
@@ -128,6 +143,19 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
         cargo["dependencies"][name] = toml_edit::value(dependency);
     }
     cargo["dependencies"]["serde_json"] = toml_edit::value("1");
+    if backend == Backend::Kafka {
+        let mut dependency = toml_edit::InlineTable::new();
+        dependency.insert(
+            "path",
+            "../../.forklaunch/blueprint-rs/crates/implementations/worker/forklaunch-worker-kafka"
+                .into(),
+        );
+        dependency.insert(
+            "features",
+            toml_edit::Array::from_iter(["kafka-client"]).into(),
+        );
+        cargo["dependencies"]["forklaunch-worker-kafka"] = toml_edit::value(dependency);
+    }
     if backend == Backend::Postgres {
         let mut sqlx = toml_edit::InlineTable::new();
         sqlx.insert("version", "0.8".into());
@@ -164,7 +192,14 @@ pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
     )?;
     write(
         directory.join("src/signals.rs"),
-        render_rust_template("rust/leased-worker/signals.rs", &data),
+        render_rust_template(
+            if backend == Backend::Kafka {
+                "rust/kafka-worker/signals.rs"
+            } else {
+                "rust/leased-worker/signals.rs"
+            },
+            &data,
+        ),
     )?;
     // Handler code and user documentation survive backend changes.
     for (output, template) in [
@@ -200,6 +235,7 @@ pub(super) fn mark(root: &Path, name: &str, backend: Backend) -> Result<()> {
             match backend {
                 Backend::Postgres => "database",
                 Backend::Redis => "redis",
+                Backend::Kafka => "kafka",
             }
             .into(),
         ),
@@ -215,6 +251,7 @@ pub(super) fn mark(root: &Path, name: &str, backend: Backend) -> Result<()> {
     let (resource, value) = match backend {
         Backend::Postgres => ("database", "postgresql"),
         Backend::Redis => ("cache", "redis"),
+        Backend::Kafka => ("queue", "kafka"),
     };
     resources.insert(resource.into(), Value::String(value.into()));
     write_manifest_value(&path, &manifest)
@@ -234,6 +271,13 @@ pub(super) fn compose(root: &Path, name: &str, backend: Backend) -> Result<()> {
             env.entry("DATABASE_URL".into()).or_insert_with(|| {
                 "${WORKER_DATABASE_URL:?Configure a restricted PostgreSQL role}".into()
             });
+        }
+        Backend::Kafka => {
+            env.entry("KAFKA_BROKERS".into())
+                .or_insert_with(|| "${WORKER_KAFKA_BROKERS:?Configure Kafka brokers}".into());
+            env.entry("WORKER_NAMESPACE".into())
+                .or_insert_with(|| "${WORKER_NAMESPACE:?Configure a worker namespace}".into());
+            env.entry("KAFKA_TRANSACTIONAL_ID".into()).or_insert_with(|| format!("${{WORKER_KAFKA_TRANSACTIONAL_ID:?Configure a stable unique identity for {name}}}"));
         }
         Backend::Redis => {
             env.entry("REDIS_URL".into())

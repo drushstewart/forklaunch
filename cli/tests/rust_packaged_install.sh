@@ -26,6 +26,7 @@ CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" init service accounts --path "$RUN_ROOT/app" --language rust -d postgresql -D Accounts
 "$CLI" init worker postgres-jobs --path "$RUN_ROOT/app" --language rust -t database -d postgresql -D Jobs
 "$CLI" init worker redis-jobs --path "$RUN_ROOT/app" --language rust -t redis -D Jobs
+"$CLI" init worker kafka-jobs --path "$RUN_ROOT/app" --language rust -t kafka -D Jobs
 mv "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
 python3 - "$REPO_ROOT" <<'PYTHON'
@@ -49,13 +50,13 @@ cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-in
 "$CLI" sdk generate --path . --target all --from contract --check
 cargo check --workspace
 # Empty application contracts must also work in consumers that deny warnings.
-for sdk in postgres-jobs-sdk redis-jobs-sdk; do
+for sdk in postgres-jobs-sdk redis-jobs-sdk kafka-jobs-sdk; do
     cargo rustc -p "$sdk" --lib -- -D warnings
 done
 python3 - <<'PYTHON'
 from pathlib import Path
 import json
-for name in ['accounts','postgres-jobs','redis-jobs']:
+for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs']:
     contract=json.loads((Path('.forklaunch/contracts')/name/'contract.json').read_text())
     assert contract['generator']=='framework-rs'
     spec=json.loads((Path('.forklaunch/openapi')/name/'openapi.json').read_text())

@@ -6,9 +6,24 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+kafka-client = ["dep:rdkafka", "dep:tokio", "dep:serde", "dep:serde_json", "dep:sha2", "dep:forklaunch-core", "dep:forklaunch-worker-database"]
+
 [dependencies]
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
 forklaunch-worker-interface = { path = "../../../interfaces/forklaunch-worker-interface" }
+
+rdkafka = { version = "0.39", default-features = false, features = ["tokio", "cmake-build", "ssl-vendored"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+sha2 = { version = "0.10", optional = true }
+forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", optional = true }
+forklaunch-worker-database = { path = "../forklaunch-worker-database", features = ["runtime"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 
 [lints]
 workspace = true

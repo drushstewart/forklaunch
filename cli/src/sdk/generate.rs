@@ -450,7 +450,7 @@ fn rust_sdk_services(manifest: &Value, selected_service: Option<&str>) -> Vec<Sd
             let durable_worker = project_type == "Worker"
                 && matches!(
                     project.get("variant").and_then(Value::as_str),
-                    Some("worker-postgres" | "worker-redis")
+                    Some("worker-postgres" | "worker-redis" | "worker-kafka")
                 );
             let router_names = if durable_worker {
                 Vec::new()
@@ -2029,6 +2029,25 @@ mod wire_name_tests {
 #[cfg(test)]
 mod empty_contract_tests {
     use super::*;
+    #[test]
+    fn durable_worker_lifecycle_fallback_never_advertises_unmounted_routes() {
+        let root = tempfile::tempdir().unwrap();
+        for variant in ["worker-postgres", "worker-redis", "worker-kafka"] {
+            let manifest: Value = toml::from_str(&format!(r#"
+[[projects]]
+name = "jobs"
+type = "Worker"
+variant = "{variant}"
+routers = ["health", "process"]
+[projects.metadata]
+language = "rust"
+"#)).unwrap();
+            let services = rust_sdk_services_for_lifecycle(root.path(), &manifest).unwrap();
+            assert_eq!(services.len(), 1);
+            assert!(services[0].routers.is_empty());
+            assert!(!typescript_sdk(&services).unwrap().contains("/health"));
+        }
+    }
     #[test]
     fn empty_application_contract_does_not_invent_health_routes() {
         let service = sdk_service_from_contract("jobs", &json!({"routes": []})).unwrap();
