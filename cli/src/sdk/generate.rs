@@ -158,6 +158,16 @@ pub(crate) fn generate_or_check_sdk_outputs(
         bail!("No Rust services or workers found for SDK generation");
     }
 
+    // Validate every requested output before mutating workspace files.
+    if matches!(target, "typescript" | "all") {
+        typescript_sdk(&services)?;
+    }
+    if matches!(target, "rust" | "all") {
+        for service in &services {
+            rust_sdk(service)?;
+        }
+    }
+
     if check {
         check_sdk_outputs(app_root, target, &services)?;
         log_ok!(stdout, "SDK outputs are up to date");
@@ -212,18 +222,24 @@ struct SdkOperation {
     method: String,
     path: String,
     request_type: String,
-    response_type: String,
     responses_type: String,
     request_params_type: String,
     request_query_type: String,
     request_body_type: String,
     request_headers_type: String,
-    response_body_type: String,
-    success_status: u16,
-    empty_response: bool,
-    rust_response_type: String,
+    responses: Vec<SdkSuccessResponse>,
     rust_models: Vec<RustModelTemplate>,
     rust_aliases: Vec<RustTypeAliasTemplate>,
+}
+
+#[derive(Content, Debug, Clone)]
+struct SdkSuccessResponse {
+    response_type: String,
+    response_body_type: String,
+    rust_response_type: String,
+    success_status: u16,
+    success_variant: String,
+    empty_response: bool,
 }
 
 #[derive(Content)]
@@ -236,14 +252,12 @@ struct TypeScriptSdkTemplate {
 #[derive(Content)]
 struct TypeScriptOperationTypeTemplate {
     request_type: String,
-    response_type: String,
     responses_type: String,
     request_params_type: String,
     request_query_type: String,
     request_body_type: String,
     request_headers_type: String,
-    response_body_type: String,
-    success_status: String,
+    responses: Vec<SdkSuccessResponse>,
 }
 
 #[derive(Content)]
@@ -310,11 +324,8 @@ struct RustTypeAliasTemplate {
 #[derive(Content)]
 struct RustOperationTemplate {
     request_type: String,
-    response_type: String,
     responses_type: String,
-    success_variant: String,
-    success_status: String,
-    empty_response: bool,
+    responses: Vec<SdkSuccessResponse>,
     execute_method_name: String,
     method_name: String,
     http_method: String,
@@ -487,13 +498,13 @@ fn rust_sdk_services_from_artifacts(
             artifact
         };
 
-        services.push(sdk_service_from_contract(service_name, &contract));
+        services.push(sdk_service_from_contract(service_name, &contract)?);
     }
 
     Ok(services)
 }
 
-fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> SdkService {
+fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result<SdkService> {
     let mut routers = BTreeMap::<String, Vec<SdkOperation>>::new();
     for route in contract
         .get("routes")
@@ -520,31 +531,48 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> SdkSer
             .map(str::to_string)
             .unwrap_or_else(|| sdk_operation_name(&method, &path));
         let request_shapes = request_type_shapes_from_contract(route);
-        let (success_status, response_schema) = success_response_schema(route)
-            .unwrap_or_else(|| (200, Some(default_response_json_schema(&router_name))));
-
-        routers
-            .entry(router_name.clone())
-            .or_default()
-            .push(build_sdk_operation(
+        let responses = success_response_schemas(route)?;
+        let (status, schema) = responses.first().cloned().unwrap_or((200, None));
+        let mut operation = build_sdk_operation(
+            service_name,
+            &router_name,
+            &operation_name,
+            &method,
+            &path,
+            request_shapes.clone(),
+            status,
+            schema.as_ref(),
+        );
+        if responses.is_empty() {
+            operation.responses.clear();
+            operation.rust_models.clear();
+            operation.rust_aliases.clear();
+        }
+        for (status, schema) in responses.iter().skip(1) {
+            let mut alternative = build_sdk_operation(
                 service_name,
                 &router_name,
-                &operation_name,
+                &format!("{operation_name}Status{status}"),
                 &method,
                 &path,
-                request_shapes,
-                success_status,
-                response_schema.as_ref(),
-            ));
+                request_shapes.clone(),
+                *status,
+                schema.as_ref(),
+            );
+            operation.responses.append(&mut alternative.responses);
+            operation.rust_models.append(&mut alternative.rust_models);
+            operation.rust_aliases.append(&mut alternative.rust_aliases);
+        }
+        routers.entry(router_name).or_default().push(operation);
     }
 
-    SdkService {
+    Ok(SdkService {
         name: service_name.to_string(),
         routers: routers
             .into_iter()
             .map(|(name, operations)| SdkRouter { name, operations })
             .collect(),
-    }
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -601,20 +629,23 @@ fn build_sdk_operation(
         method: method.to_ascii_uppercase(),
         path: path.to_string(),
         request_type: format!("{type_prefix}Request"),
-        response_type,
         responses_type: format!("{type_prefix}Responses"),
         request_params_type: request_shapes.params,
         request_query_type: request_shapes.query,
         request_body_type: request_shapes.body,
         request_headers_type: request_shapes.headers,
-        response_body_type: if empty_response {
-            "undefined".into()
-        } else {
-            ts_type_from_schema(response_schema)
-        },
-        success_status,
-        empty_response,
-        rust_response_type,
+        responses: vec![SdkSuccessResponse {
+            response_type,
+            response_body_type: if empty_response {
+                "undefined".into()
+            } else {
+                ts_type_from_schema(response_schema)
+            },
+            success_status,
+            success_variant: format!("Status{success_status}"),
+            empty_response,
+            rust_response_type,
+        }],
         rust_models,
         rust_aliases,
     }
@@ -736,24 +767,32 @@ fn fields_ts_type(fields: Option<&JsonValue>, allow_arbitrary: bool) -> String {
     }
 }
 
-fn success_response_schema(route: &JsonValue) -> Option<(u16, Option<JsonValue>)> {
-    route
+fn success_response_schemas(route: &JsonValue) -> Result<Vec<(u16, Option<JsonValue>)>> {
+    let mut schemas = BTreeMap::new();
+    for response in route
         .get("responses")
-        .and_then(JsonValue::as_array)?
-        .iter()
-        .filter_map(|response| {
-            let status = response.get("statusCode").and_then(JsonValue::as_u64)?;
-            if !(200..300).contains(&status) {
-                return None;
-            }
-            let schema = response
-                .get("body")
-                .and_then(|body| body.get("schema"))
-                .and_then(|schema| schema.get("jsonSchema"))
-                .cloned();
-            Some((status as u16, schema))
-        })
-        .min_by_key(|(status, _)| *status)
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let status = response
+            .get("statusCode")
+            .and_then(JsonValue::as_u64)
+            .filter(|status| (100..=599).contains(status))
+            .context("Invalid SDK response status code")?;
+        if !(200..300).contains(&status) {
+            continue;
+        }
+        let schema = response
+            .get("body")
+            .and_then(|body| body.get("schema"))
+            .and_then(|schema| schema.get("jsonSchema"))
+            .cloned();
+        if schemas.insert(status as u16, schema).is_some() {
+            bail!("Duplicate SDK success response status {status}");
+        }
+    }
+    Ok(schemas.into_iter().collect())
 }
 
 fn router_name_from_path(path: &str) -> String {
@@ -1290,6 +1329,7 @@ fn compare_generated_file(
 }
 
 fn typescript_sdk(services: &[SdkService]) -> Result<String> {
+    let mut type_names = BTreeSet::new();
     let mut operation_types = Vec::new();
     let mut service_blocks = Vec::new();
     let mut aliases = Vec::new();
@@ -1302,16 +1342,27 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
             let router_key = router.name.to_case(Case::Camel);
             let mut operations = Vec::new();
             for (operation_index, operation) in router.operations.iter().enumerate() {
+                for name in [&operation.request_type, &operation.responses_type]
+                    .into_iter()
+                    .chain(
+                        operation
+                            .responses
+                            .iter()
+                            .map(|response| &response.response_type),
+                    )
+                {
+                    if !type_names.insert(name.clone()) {
+                        bail!("Duplicate generated TypeScript SDK type {name}");
+                    }
+                }
                 operation_types.push(TypeScriptOperationTypeTemplate {
                     request_type: operation.request_type.clone(),
-                    response_type: operation.response_type.clone(),
                     responses_type: operation.responses_type.clone(),
                     request_params_type: operation.request_params_type.clone(),
                     request_query_type: operation.request_query_type.clone(),
                     request_body_type: operation.request_body_type.clone(),
                     request_headers_type: operation.request_headers_type.clone(),
-                    response_body_type: operation.response_body_type.clone(),
-                    success_status: operation.success_status.to_string(),
+                    responses: operation.responses.clone(),
                 });
                 operations.push(TypeScriptOperationTemplate {
                     operation_key: operation.name.to_case(Case::Camel),
@@ -1385,14 +1436,34 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
     let mut operations = Vec::new();
     let mut models = BTreeMap::<String, RustModelTemplate>::new();
     let mut aliases = BTreeMap::<String, RustTypeAliasTemplate>::new();
+    let mut operation_type_names = BTreeSet::new();
+    let mut method_names = BTreeSet::new();
     for router in &service.routers {
         for operation in &router.operations {
+            for name in [&operation.request_type, &operation.responses_type] {
+                let name = name.to_case(Case::Pascal);
+                if !operation_type_names.insert(name.clone()) {
+                    bail!("Duplicate generated Rust SDK type {name}");
+                }
+            }
             for model in &operation.rust_models {
+                if models
+                    .get(&model.name)
+                    .is_some_and(|existing| existing != model)
+                {
+                    bail!("Conflicting generated Rust SDK model {}", model.name);
+                }
                 models
                     .entry(model.name.clone())
                     .or_insert_with(|| model.clone());
             }
             for alias in &operation.rust_aliases {
+                if aliases
+                    .get(&alias.name)
+                    .is_some_and(|existing| existing != alias)
+                {
+                    bail!("Conflicting generated Rust SDK alias {}", alias.name);
+                }
                 aliases
                     .entry(alias.name.clone())
                     .or_insert_with(|| alias.clone());
@@ -1407,18 +1478,27 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
                 router.name.to_case(Case::Snake),
                 operation.name.to_case(Case::Snake)
             );
+            if !method_names.insert(method_name.clone())
+                || !method_names.insert(execute_method_name.clone())
+            {
+                bail!("Duplicate generated Rust SDK method {execute_method_name}");
+            }
             operations.push(RustOperationTemplate {
                 request_type: operation.request_type.to_case(Case::Pascal),
-                response_type: operation.rust_response_type.clone(),
                 responses_type: operation.responses_type.to_case(Case::Pascal),
-                success_variant: format!("Status{}", operation.success_status),
-                success_status: operation.success_status.to_string(),
-                empty_response: operation.empty_response,
+                responses: operation.responses.clone(),
                 execute_method_name,
                 method_name,
                 http_method: operation.method.to_string(),
                 path: escape_rust_string(&operation.path),
             });
+        }
+    }
+    for name in models.keys().chain(aliases.keys()) {
+        if operation_type_names.contains(name)
+            || models.contains_key(name) && aliases.contains_key(name)
+        {
+            bail!("Conflicting generated Rust SDK type {name}");
         }
     }
     render_sdk_template(
@@ -1517,7 +1597,7 @@ mod empty_contract_tests {
     use super::*;
     #[test]
     fn empty_application_contract_does_not_invent_health_routes() {
-        let service = sdk_service_from_contract("jobs", &json!({"routes": []}));
+        let service = sdk_service_from_contract("jobs", &json!({"routes": []})).unwrap();
         assert!(service.routers.is_empty());
         let source = rust_sdk(&service).unwrap();
         assert!(!source.contains("pub async fn"));
@@ -1559,15 +1639,76 @@ mod empty_response_tests {
                     "method":method, "path":"/item", "operationName":"call", "responses":[{"statusCode":status, "body":body}]
                 }]}),
             );
-            let operation = &service.routers[0].operations[0];
-            assert_eq!(operation.empty_response, empty);
+            let operation = &service.unwrap().routers[0].operations[0];
+            let response = &operation.responses[0];
+            assert_eq!(response.empty_response, empty);
             assert_eq!(
-                operation.response_body_type,
+                response.response_body_type,
                 if empty { "undefined" } else { "null" }
             );
             assert!(operation.rust_aliases.iter().any(|alias| alias.name
-                == operation.rust_response_type
+                == response.rust_response_type
                 && alias.target_type == "()"));
         }
+    }
+}
+
+#[cfg(test)]
+mod multiple_response_tests {
+    use super::*;
+    #[test]
+    fn generates_distinct_success_models_and_all_status_branches() {
+        let contract = json!({"routes":[{"method":"GET","path":"/item","operationName":"getItem","responses":[
+            {"statusCode":201,"body":{"schema":{"jsonSchema":{"type":"object","properties":{"createdAt":{"type":"string"}}}}}},
+            {"statusCode":200,"body":{"schema":{"jsonSchema":{"type":"object","properties":{"displayName":{"type":"string"}}}}}},
+            {"statusCode":204}
+        ]}]});
+        let service = sdk_service_from_contract("example", &contract).unwrap();
+        let operation = &service.routers[0].operations[0];
+        assert_eq!(
+            operation
+                .responses
+                .iter()
+                .map(|response| response.success_status)
+                .collect::<Vec<_>>(),
+            vec![200, 201, 204]
+        );
+        assert_ne!(
+            operation.responses[0].rust_response_type,
+            operation.responses[1].rust_response_type
+        );
+        let source = rust_sdk(&service).unwrap();
+        assert!(source.contains("Status201(ExampleItemGetItemStatus201Response)"));
+        assert!(source.contains("pub created_at: Option<String>"));
+        let source = typescript_sdk(&[service]).unwrap();
+        assert!(source.contains("201: ExampleItemGetItemStatus201Response"));
+        assert!(source.contains("204: ExampleItemGetItemStatus204Response"));
+    }
+    #[test]
+    fn colliding_response_model_names_fail_before_generation() {
+        let contract = json!({"routes":[
+            {"path":"/item","operationName":"getItem","responses":[
+                {"statusCode":200},
+                {"statusCode":201,"body":{"schema":{"jsonSchema":{"type":"object","properties":{"createdAt":{"type":"string"}}}}}}
+            ]},
+            {"path":"/item/new","operationName":"getItemStatus201","responses":[
+                {"statusCode":200,"body":{"schema":{"jsonSchema":{"type":"object","properties":{"different":{"type":"string"}}}}}}
+            ]}
+        ]});
+        let service = sdk_service_from_contract("example", &contract).unwrap();
+        assert!(rust_sdk(&service).is_err());
+        assert!(typescript_sdk(&[service]).is_err());
+    }
+    #[test]
+    fn duplicate_statuses_fail_and_error_only_contracts_do_not_invent_success() {
+        let duplicate = json!({"routes":[{"path":"/item","responses":[{"statusCode":200},{"statusCode":200}]}]});
+        assert!(sdk_service_from_contract("example", &duplicate).is_err());
+        let service = sdk_service_from_contract(
+            "example",
+            &json!({"routes":[{"path":"/item","responses":[{"statusCode":403}]}]}),
+        )
+        .unwrap();
+        assert!(service.routers[0].operations[0].responses.is_empty());
+        assert!(!rust_sdk(&service).unwrap().contains("Status200"));
     }
 }

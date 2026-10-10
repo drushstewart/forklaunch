@@ -101,7 +101,9 @@ pub struct {{request_type}} {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum {{responses_type}} {
-    {{success_variant}}({{{response_type}}}),
+{{#responses}}
+    {{success_variant}}({{{rust_response_type}}}),
+{{/responses}}
     Error { status: u16, message: String },
 }
 
@@ -241,6 +243,7 @@ impl {{client_name}} {
         let response = builder.send().await?;
         let status = response.status().as_u16();
         match status {
+{{#responses}}
 {{#empty_response}}
             {{success_status}} => {
                 let _ = response.bytes().await?;
@@ -249,9 +252,10 @@ impl {{client_name}} {
 {{/empty_response}}
 {{^empty_response}}
             {{success_status}} => Ok({{responses_type}}::{{success_variant}}(
-                response.json::<{{{response_type}}}>().await?,
+                response.json::<{{{rust_response_type}}}>().await?,
             )),
 {{/empty_response}}
+{{/responses}}
             _ => Ok({{responses_type}}::Error {
                 status,
                 message: response.text().await?,

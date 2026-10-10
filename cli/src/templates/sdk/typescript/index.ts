@@ -45,8 +45,10 @@ export type ForkLaunchErrorResponses = { 400: string; 401: string; 403: string; 
 
 {{#operation_types}}
 export type {{request_type}} = ForkLaunchSdkRequest<{{{request_params_type}}}, {{{request_query_type}}}, {{{request_body_type}}}, {{{request_headers_type}}}>;
+{{#responses}}
 export type {{response_type}} = {{{response_body_type}}};
-export type {{responses_type}} = ForkLaunchErrorResponses & { {{success_status}}: {{response_type}} };
+{{/responses}}
+export type {{responses_type}} = ForkLaunchErrorResponses & { {{#responses}}{{success_status}}: {{response_type}}; {{/responses}} };
 
 {{/operation_types}}
 function pathWithParams(path: string, params?: Record<string, ForkLaunchPathValue>) {

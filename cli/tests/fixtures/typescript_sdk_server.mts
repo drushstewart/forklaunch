@@ -4,7 +4,18 @@ import { createServer } from 'node:http';
 
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? '/', 'http://fixture.invalid');
-  if (request.method === 'DELETE' && url.pathname.startsWith('/users/')) {
+  if (request.method === 'GET' && url.pathname.startsWith('/status/')) {
+    const mode = url.pathname.slice('/status/'.length);
+    if (mode === 'empty' || mode === 'reset') {
+      response.writeHead(mode === 'empty' ? 204 : 205);
+      response.end();
+    } else {
+      const status = { existing: 200, created: 201, queued: 202 }[mode as 'existing' | 'created' | 'queued'];
+      const payload = { existing: { id: 'existing', displayName: 'Existing' }, created: { id: 'created', createdAt: '2026-10-09T00:00:00Z' }, queued: { jobId: 'queued-1' } }[mode as 'existing' | 'created' | 'queued'];
+      response.writeHead(status ?? 400, { 'content-type': status ? 'application/json' : 'text/plain' });
+      response.end(status ? JSON.stringify(payload) : 'Unknown mode');
+    }
+  } else if (request.method === 'DELETE' && url.pathname.startsWith('/users/')) {
     response.writeHead(204);
     response.end();
   } else if ((request.method === 'HEAD' && url.pathname === '/health') || url.pathname === '/empty') {

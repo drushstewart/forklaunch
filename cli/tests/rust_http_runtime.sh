@@ -44,6 +44,11 @@ async function useResponses(client = createForkLaunchSdk()) {
   if (deleted.code === 204) { const empty: undefined = deleted.response; void empty; }
   const emptyReply = await client.accounts.empty.getEmpty();
   if (emptyReply.code === 200) { const empty: undefined = emptyReply.response; void empty; }
+  const several = await client.accounts.status.getStatus({ params: { mode: 'created' } });
+  if (several.code === 200) { const value: string = several.response.displayName; void value; }
+  if (several.code === 201) { const value: string = several.response.createdAt; void value; }
+  if (several.code === 202) { const value: string = several.response.jobId; void value; }
+  if (several.code === 204 || several.code === 205) { const value: undefined = several.response; void value; }
   const nullReply = await client.accounts.nullJson.getNull();
   if (nullReply.code === 200) { const value: null = nullReply.response; void value; }
 }
@@ -106,6 +111,18 @@ async function verifyRustClient(baseUrl) {
     if (client.exitCode === null && client.signalCode === null) client.kill('SIGKILL');
   }
 }
+async function verifyStatusVariants(sdk) {
+  for (const [mode, code, expected] of [
+    ['existing', 200, { id: 'existing', displayName: 'Existing' }],
+    ['created', 201, { id: 'created', createdAt: '2026-10-09T00:00:00Z' }],
+    ['queued', 202, { jobId: 'queued-1' }], ['empty', 204, undefined],
+    ['reset', 205, undefined], ['invalid', 400, 'Unknown mode']
+  ]) {
+    const response = await sdk.accounts.status.getStatus({ params: { mode } });
+    assert.equal(response.code, code);
+    assert.deepEqual(response.response, expected);
+  }
+}
 async function stopServer(child) {
   child.process.kill('SIGTERM');
   const deadline = setTimeout(() => child.process.kill('SIGKILL'), 10000);
@@ -138,6 +155,7 @@ try {
   assert.equal((await sdk.accounts.empty.getEmpty()).response, undefined);
   assert.equal((await sdk.accounts.health.headHealth()).response, undefined);
   assert.equal((await sdk.accounts.nullJson.getNull()).response, null);
+  await verifyStatusVariants(sdk);
   await verifyRustClient(baseUrl);
   await stopServer(service);
   console.log('PASS generated TypeScript and Rust SDKs against relocated Rust HTTP service and graceful shutdown');
@@ -151,6 +169,7 @@ try {
   assert.equal((await tsSdk.accounts.empty.getEmpty()).response, undefined);
   assert.equal((await tsSdk.accounts.health.headHealth()).response, undefined);
   assert.equal((await tsSdk.accounts.nullJson.getNull()).response, null);
+  await verifyStatusVariants(tsSdk);
   await stopServer(typescript);
   console.log('PASS generated Rust and TypeScript SDKs against compiled TypeScript HTTP wire fixture');
 } finally {

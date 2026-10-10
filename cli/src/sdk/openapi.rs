@@ -83,31 +83,36 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 .get("responses")
                 .and_then(Value::as_object)
                 .context("OpenAPI responses must be an object")?;
-            let success = responses
-                .iter()
-                .filter_map(|(code, response)| {
-                    code.parse::<u16>()
-                        .ok()
-                        .filter(|code| (200..300).contains(code))
-                        .map(|code| (code, response))
-                })
-                .min_by_key(|(code, _)| *code)
-                .context("OpenAPI operation requires an explicit success response")?;
-            let body = if matches!(success.0, 204 | 205)
-                || method == "head"
-                || success.1.get("content").is_none()
-                || success
-                    .1
-                    .get("content")
-                    .and_then(Value::as_object)
-                    .is_some_and(serde_json::Map::is_empty)
-            {
-                Value::Null
-            } else {
-                json!({"schema": {"jsonSchema": json_body_schema(success.1)?}})
-            };
+            let mut success_responses = Vec::new();
+            for (code, response) in responses {
+                let Ok(status) = code.parse::<u16>() else {
+                    if code == "default" || code.starts_with("x-") {
+                        continue;
+                    }
+                    bail!("SDK generation requires explicit numeric OpenAPI response statuses");
+                };
+                if !(100..600).contains(&status) {
+                    bail!("Invalid OpenAPI response status {status}");
+                }
+                if !(200..300).contains(&status) {
+                    continue;
+                }
+                let body = if matches!(status, 204 | 205)
+                    || method == "head"
+                    || response.get("content").is_none()
+                    || response
+                        .get("content")
+                        .and_then(Value::as_object)
+                        .is_some_and(serde_json::Map::is_empty)
+                {
+                    Value::Null
+                } else {
+                    json!({"schema": {"jsonSchema": json_body_schema(response)?}})
+                };
+                success_responses.push(json!({"statusCode":status, "body":body}));
+            }
             let mut route = json!({"method": method.to_ascii_uppercase(), "path": path, "request": request,
-                "responses": [{"statusCode": success.0, "body": body}]});
+                "responses": success_responses});
             let operation_name = match operation.get("operationId") {
                 Some(Value::String(name)) if !name.trim().is_empty() => name.clone(),
                 Some(Value::String(_)) | None => {
@@ -442,5 +447,29 @@ mod empty_response_tests {
                 has_body
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod multiple_response_tests {
+    use super::*;
+    #[test]
+    fn imports_all_explicit_success_statuses_and_error_only_operations() {
+        let spec = json!({"openapi":"3.1.0", "paths":{"/item":{"get":{"responses":{
+            "200":{"content":{"application/json":{"schema":{"type":"string"}}}},
+            "201":{"content":{"application/json":{"schema":{"type":"object","properties":{"createdAt":{"type":"string"}}}}}},
+            "204":{"description":"No content"}
+        }},"delete":{"responses":{"403":{"description":"Denied"}}}}}});
+        let contract = contract_from_openapi(&spec).unwrap();
+        assert_eq!(
+            contract["routes"][0]["responses"].as_array().unwrap().len(),
+            3
+        );
+        assert!(
+            contract["routes"][1]["responses"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
     }
 }

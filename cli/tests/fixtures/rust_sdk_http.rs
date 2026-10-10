@@ -50,6 +50,27 @@ async fn verify(base: &str) {
     while let Some(result) = calls.join_next().await {
         result.expect("concurrent Rust SDK request");
     }
+    for mode in ["existing", "created", "queued", "empty", "reset", "invalid"] {
+        let mut input = accounts_sdk::AccountsStatusGetStatusRequest::default();
+        input.params.insert("mode".into(), mode.into());
+        use accounts_sdk::AccountsStatusGetStatusResponses as Status;
+        match (mode, client.status_get_status(input).await.unwrap()) {
+            ("existing", Status::Status200(value)) => assert_eq!(value.display_name, "Existing"),
+            ("created", Status::Status201(value)) => {
+                assert_eq!(value.created_at, "2026-10-09T00:00:00Z")
+            }
+            ("queued", Status::Status202(value)) => assert_eq!(value.job_id, "queued-1"),
+            ("empty", Status::Status204(())) | ("reset", Status::Status205(())) => {}
+            (
+                "invalid",
+                Status::Error {
+                    status: 400,
+                    message,
+                },
+            ) => assert_eq!(message, "Unknown mode"),
+            (_, response) => panic!("Unexpected {mode} response: {response:?}"),
+        }
+    }
     let mut deleted = accounts_sdk::AccountsUsersDeleteUserRequest::default();
     deleted.params.insert("id".into(), "welcome".into());
     assert!(matches!(
