@@ -923,7 +923,14 @@ impl CliCommand for CreateCommand {
         scoped_env_vars.retain(|v| !v.name.starts_with("TEST_"));
 
         // Filter out vars that are irrelevant in deployed environments
-        const EXCLUDED_VARS: &[&str] = &["DOTENV_FILE_PATH"];
+        const EXCLUDED_VARS: &[&str] = &[
+            "DOTENV_FILE_PATH",
+            // Export controls are CLI inputs, never deployed application config.
+            "FORKLAUNCH_MODE",
+            "FORKLAUNCH_OPENAPI_OUTPUT",
+            "FORKLAUNCH_CONTRACT_OUTPUT",
+            "FORKLAUNCH_ASYNCAPI_OUTPUT",
+        ];
         scoped_env_vars.retain(|v| !EXCLUDED_VARS.contains(&v.name.as_str()));
 
         // Only keep application-level variables if they match the allowed criteria

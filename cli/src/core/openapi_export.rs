@@ -194,15 +194,17 @@ pub(crate) fn export_service_openapi(
     };
 
     let mut cmd = ProcessCommand::new(&resolved_bin);
-    cmd.args(&args)
-        .current_dir(service_path)
-        .env("FORKLAUNCH_MODE", "openapi")
-        .env("FORKLAUNCH_OPENAPI_OUTPUT", output_file);
+    cmd.args(&args).current_dir(service_path);
 
     for env_var in env_vars {
         let dummy_value = generate_dummy_value(&env_var.var_name, "string", iam_port);
         cmd.env(&env_var.var_name, &dummy_value);
     }
+
+    // Application scans may include these variables. The explicit export mode
+    // and destination must take precedence over generated dummy values.
+    cmd.env("FORKLAUNCH_MODE", "openapi")
+        .env("FORKLAUNCH_OPENAPI_OUTPUT", output_file);
 
     let mut child = cmd
         .stdout(Stdio::piped())

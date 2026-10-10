@@ -101,7 +101,7 @@ contractArtifactPath = ".forklaunch/contracts/rust-api/contract.json"
                 (ts/'node_modules/tsx/dist/cli.mjs').write_text('// tool fixture\n')
                 (ts/'package.json').write_text('{"name":"ts-api","version":"1.0.0"}')
                 (ts/'tsconfig.json').write_text('{}')
-                (ts/'server.ts').write_text('// Export is simulated by the owned Node fixture.\n')
+                (ts/'server.ts').write_text('const mode = process.env.FORKLAUNCH_MODE;\nconst output = process.env.FORKLAUNCH_OPENAPI_OUTPUT;\n')
                 manifest += '''[[projects]]
 name = "ts-api"
 type = "Service"
