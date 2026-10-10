@@ -8,10 +8,16 @@ repository.workspace = true
 
 [features]
 default = []
-aws-sdk = []
+aws-sdk = ["dep:aws-sdk-s3", "dep:tokio"]
 
 [dependencies]
 forklaunch-core = { path = "../forklaunch-core" }
+
+aws-sdk-s3 = { version = "=1.124.0", default-features = false, features = ["rt-tokio", "rustls", "default-https-client", "behavior-version-latest"], optional = true }
+tokio = { version = "1", features = ["time"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util"] }
 
 [lints]
 workspace = true

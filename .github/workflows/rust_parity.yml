@@ -31,6 +31,7 @@ jobs:
           --health-retries 10
     env:
       FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
+      FORKLAUNCH_TEST_S3_ENDPOINT: http://127.0.0.1:9000
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -39,10 +40,27 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: framework-rs
+      - name: Start isolated S3-compatible storage
+        run: |
+          docker run -d --name forklaunch-rust-s3 --memory 512m \
+            --tmpfs /data:rw,size=128m,mode=1777 -p 127.0.0.1:9000:9000 \
+            -e MINIO_ROOT_USER=parity-test-access -e MINIO_ROOT_PASSWORD=parity-test-secret-only \
+            cgr.dev/chainguard/minio@sha256:6476f81b9739912fa9f50ceae2bb049a30336527cccd24beccfbeb4145f8f696 \
+            server /data --address :9000
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/ready; then exit 0; fi
+            sleep 1
+          done
+          docker logs forklaunch-rust-s3
+          exit 1
       - run: cargo fmt --manifest-path framework-rs/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path framework-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path framework-rs/Cargo.toml --workspace --all-features
       - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-redis --all-features redis_backend -- --ignored
+      - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --all-features s3_backend -- --ignored
+      - name: Remove isolated S3 storage
+        if: always()
+        run: docker rm -f forklaunch-rust-s3 || true
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

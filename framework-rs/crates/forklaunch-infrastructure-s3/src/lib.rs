@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, future::Future};
+
+#[cfg(feature = "aws-sdk")]
+pub mod aws;
 
 use forklaunch_core::common::{FrameworkError, FrameworkResult};
 
@@ -144,6 +147,67 @@ pub trait ObjectStore {
             }
         }
         Ok(deleted)
+    }
+}
+
+/// Async storage boundary for network-backed object stores.
+pub trait AsyncObjectStore: Send + Sync {
+    /// # Errors
+    /// Returns an error for invalid input or a failed backing-store write.
+    fn put(
+        &self,
+        key: &str,
+        body: Vec<u8>,
+        metadata: ObjectMetadata,
+    ) -> impl Future<Output = FrameworkResult<StoredObject>> + Send;
+    /// # Errors
+    /// Returns an error for invalid input or a failed backing-store read.
+    fn get(&self, key: &str) -> impl Future<Output = FrameworkResult<Option<StoredObject>>> + Send;
+    /// # Errors
+    /// Returns an error for invalid input or a failed backing-store delete.
+    fn delete(&self, key: &str) -> impl Future<Output = FrameworkResult<bool>> + Send;
+    /// # Errors
+    /// Returns an error for invalid input, exceeded limits, or a failed listing.
+    fn list(&self, prefix: &str)
+    -> impl Future<Output = FrameworkResult<Vec<StoredObject>>> + Send;
+    /// # Errors
+    /// Returns an error on the first failed write; earlier writes remain committed.
+    fn put_batch(
+        &self,
+        objects: Vec<(String, Vec<u8>, ObjectMetadata)>,
+    ) -> impl Future<Output = FrameworkResult<Vec<StoredObject>>> + Send {
+        async move {
+            let mut stored = Vec::with_capacity(objects.len());
+            for (key, body, metadata) in objects {
+                stored.push(self.put(&key, body, metadata).await?);
+            }
+            Ok(stored)
+        }
+    }
+    /// # Errors
+    /// Returns an error on the first failed read, preserving key order and misses.
+    fn get_batch(
+        &self,
+        keys: &[String],
+    ) -> impl Future<Output = FrameworkResult<Vec<Option<StoredObject>>>> + Send {
+        async move {
+            let mut objects = Vec::with_capacity(keys.len());
+            for key in keys {
+                objects.push(self.get(key).await?);
+            }
+            Ok(objects)
+        }
+    }
+    /// # Errors
+    /// Returns an error on the first failed delete; earlier deletions remain committed.
+    fn delete_batch(&self, keys: &[String]) -> impl Future<Output = FrameworkResult<usize>> + Send {
+        async move {
+            let mut count = 0;
+            for key in keys {
+                count += usize::from(self.delete(key).await?);
+            }
+            Ok(count)
+        }
     }
 }
 
@@ -335,6 +399,34 @@ pub fn get_decrypted<S: ObjectStore, C: ObjectCodec>(
     }
 }
 
+/// Writes an object through a compliance codec using an async backing store.
+/// # Errors
+/// Returns an error if the backing store rejects the encoded object.
+pub async fn put_encrypted_async<S: AsyncObjectStore, C: ObjectCodec>(
+    store: &S,
+    codec: &C,
+    key: &str,
+    body: &[u8],
+    metadata: ObjectMetadata,
+) -> FrameworkResult<StoredObject> {
+    store.put(key, codec.encode(body), metadata).await
+}
+
+/// Reads and decodes an object using an async backing store.
+/// # Errors
+/// Returns an error if storage access or codec verification fails.
+pub async fn get_decrypted_async<S: AsyncObjectStore, C: ObjectCodec>(
+    store: &S,
+    codec: &C,
+    key: &str,
+) -> FrameworkResult<Option<Vec<u8>>> {
+    store
+        .get(key)
+        .await?
+        .map(|object| codec.decode(&object.body))
+        .transpose()
+}
+
 impl ObjectStore for InMemoryS3ObjectStore {
     fn put(
         &mut self,
@@ -395,7 +487,14 @@ fn normalize_key(key: impl Into<String>) -> FrameworkResult<String> {
         ));
     }
 
-    Ok(key.trim_start_matches('/').to_owned())
+    let key = key.trim_start_matches('/');
+    if key.is_empty() {
+        return Err(FrameworkError::new(
+            "s3_object_invalid_key",
+            "object key is required",
+        ));
+    }
+    Ok(key.to_owned())
 }
 
 #[cfg(test)]

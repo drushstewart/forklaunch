@@ -34,6 +34,8 @@ import sys
 for workspace in ['framework-rs','blueprint-rs']:
     root=Path('.forklaunch')/workspace
     assert root.joinpath('Cargo.toml').is_file()
+    if workspace == 'framework-rs':
+        assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws.rs').is_file(), 'Packaged async S3 adapter missing'
     for path in root.rglob('*'):
         assert not path.is_symlink(), f'Packaged source retained a symlink: {path}'
         if path.is_file():
@@ -41,6 +43,7 @@ for workspace in ['framework-rs','blueprint-rs']:
 PYTHON
 export CARGO_TARGET_DIR="$GENERATED_TARGET"
 cargo check --workspace
+cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
 "$CLI" openapi export --path .
 "$CLI" sdk generate --path . --target all --from contract
 "$CLI" sdk generate --path . --target all --from contract --check
