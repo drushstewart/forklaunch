@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 928 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 929 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -61,7 +61,7 @@ Generation is tracked separately from production framework and blueprint parity 
 - [x] Exercise init, change, sync, delete, contract/OpenAPI export, and TypeScript/Rust SDK generation in a dedicated CI matrix group.
 - [x] Add a relocated-app HTTP test calling the generated Rust service through its generated TypeScript SDK.
 - [x] Generate durable PostgreSQL workers and verify renewal, retries, drain, restart recovery, source preservation, backend conversion, rename, and delete against a real database.
-- [x] Export accurate durable-worker contracts without unmounted example HTTP routes or internal management endpoints; validate empty application HTTP SDKs against both generated backends.
+- [x] Export accurate durable-worker contracts without unmounted example HTTP routes or internal management endpoints; validate empty application HTTP SDKs against both generated backends. Empty contracts and durable-worker manifest fallbacks also stay empty during SDK generation instead of inventing health methods.
 - [x] Document usage and distinguish generated examples from production storage and queue integrations.
 
 ## Core Principles

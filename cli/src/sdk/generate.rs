@@ -354,7 +354,14 @@ fn rust_sdk_services(manifest: &Value, selected_service: Option<&str>) -> Vec<Sd
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            let router_names = if router_names.is_empty() {
+            let durable_worker = project_type == "Worker"
+                && matches!(
+                    project.get("variant").and_then(Value::as_str),
+                    Some("worker-postgres" | "worker-redis")
+                );
+            let router_names = if durable_worker {
+                Vec::new()
+            } else if router_names.is_empty() {
                 vec!["health".to_string()]
             } else {
                 router_names
@@ -493,13 +500,6 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> SdkSer
                 success_status,
                 &response_schema,
             ));
-    }
-
-    if routers.is_empty() {
-        return SdkService {
-            name: service_name.to_string(),
-            routers: vec![sdk_router(service_name, "health")],
-        };
     }
 
     SdkService {
@@ -1459,5 +1459,19 @@ mod wire_name_tests {
         .unwrap();
         assert!(source.contains("#[serde(rename = \"recordCount\")]"));
         assert!(source.contains(r#"#[serde(rename = "quote\"\\\n\0")]"#));
+    }
+}
+
+#[cfg(test)]
+mod empty_contract_tests {
+    use super::*;
+    #[test]
+    fn empty_application_contract_does_not_invent_health_routes() {
+        let service = sdk_service_from_contract("jobs", &json!({"routes": []}));
+        assert!(service.routers.is_empty());
+        let source = rust_sdk(&service).unwrap();
+        assert!(!source.contains("pub async fn"));
+        let source = typescript_sdk(&[service]).unwrap();
+        assert!(!source.contains("/health"));
     }
 }

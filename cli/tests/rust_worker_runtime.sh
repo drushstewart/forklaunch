@@ -54,7 +54,9 @@ contract=json.loads(Path('.forklaunch/contracts/jobs/contract.json').read_text()
 spec=json.loads(Path('.forklaunch/openapi/jobs/openapi.json').read_text())
 assert contract['routes']==[], 'Worker advertised application HTTP routes'
 assert spec['paths']=={}, 'Worker advertised unimplemented HTTP endpoints'
-assert 'jobsProcess' not in Path('sdks/typescript/src/index.ts').read_text()
+sdk = Path('sdks/typescript/src/index.ts').read_text()
+assert 'jobsProcess' not in sdk
+assert 'HealthGet' not in sdk
 PYTHON
 env DATABASE_URL="$FORKLAUNCH_TEST_POSTGRES_URL" cargo run -p jobs -- --migrate
 mkdir -p crates/jobs/examples

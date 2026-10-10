@@ -105,7 +105,6 @@ grep -q 'users' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'invoices' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'AccountsUsersListRequest' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'AccountsUsersListResponses' rust-contracts/sdks/typescript/src/index.ts
-grep -q "status: 'ok'" rust-contracts/sdks/typescript/src/index.ts
 grep -q 'records: Array<{ id: string; name: string }>' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'list: (input: AccountsUsersListRequest' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'ForkLaunchSdkResponse<Responses' rust-contracts/sdks/typescript/src/index.ts
@@ -113,6 +112,7 @@ grep -q "contentType: Code extends keyof ForkLaunchErrorResponses ? 'text/plain'
 grep -q 'AccountsClient' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'BillingClient' rust-contracts/sdks/rust/billing-sdk/src/lib.rs
 grep -q 'EmailWorkerClient' rust-contracts/sdks/rust/email-worker-sdk/src/lib.rs
+! grep -q 'pub async fn' rust-contracts/sdks/rust/email-worker-sdk/src/lib.rs
 grep -q 'reqwest = { version = "0.13.2", features = \["json", "query"\] }' rust-contracts/sdks/rust/accounts-sdk/Cargo.toml
 grep -q 'serde = { version = "1.0", features = \["derive"\] }' rust-contracts/sdks/rust/accounts-sdk/Cargo.toml
 grep -q 'AccountsUsersListRequest' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
@@ -196,6 +196,7 @@ compile_typescript_sdk rust-contracts/generated-sdk-live-compat.ts
 cat > rust-contracts/generated-sdk-invalid-usage.ts << 'EOF'
 import { sdk } from './sdks/typescript/src/index';
 
+sdk.emailWorker.health.get({});
 sdk.accounts.users.missing({});
 sdk.accounts.users.list({ body: { unexpected: true } });
 EOF
