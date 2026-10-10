@@ -153,7 +153,7 @@ if operation == 'enqueue' then
         redis.call('ZADD', KEYS[base+2], now, job.member)
     end
     return response(true)
-elseif operation == 'claim' or operation == 'peek' then
+elseif operation == 'claim' or operation == 'claim_batch' or operation == 'peek' then
     if not recover_expired() then return cjson.encode({error='corrupt'}) end
     local members = redis.call('ZRANGEBYSCORE', KEYS[2], '-inf', now, 'LIMIT', 0, input.limit or 1)
     if operation == 'peek' then
@@ -167,18 +167,28 @@ elseif operation == 'claim' or operation == 'peek' then
         if #jobs == 0 then return '{"value":[]}' end
         return response(jobs)
     end
-    if #members == 0 then return response(cjson.null) end
-    local member = members[1]
-    local job = load(string.sub(member,22), 0)
-    if not job then return cjson.encode({error='corrupt'}) end
-    job.status = 'processing'
-    job.attempts = job.attempts+1
-    job.token = input.token
-    job.lease_until = now+input.duration
-    redis.call('ZREM', KEYS[2], member)
-    redis.call('ZADD', KEYS[3], job.lease_until, job.id)
-    save(job, 0)
-    return response(job)
+    if operation == 'claim' and #members == 0 then return response(cjson.null) end
+    local jobs = {}
+    -- Load and validate all selected records before acquiring any delivery.
+    for _,member in ipairs(members) do
+        local job = load(string.sub(member,22), 0)
+        if not job or job.status ~= 'queued' or job.attempts >= job.max_attempts then
+            return cjson.encode({error='corrupt'})
+        end
+        table.insert(jobs, job)
+    end
+    for index,job in ipairs(jobs) do
+        job.status = 'processing'
+        job.attempts = job.attempts+1
+        if operation == 'claim_batch' then job.token = input.tokens[index] else job.token = input.token end
+        job.lease_until = now+input.duration
+        redis.call('ZREM', KEYS[2], members[index])
+        redis.call('ZADD', KEYS[3], job.lease_until, job.id)
+        save(job, 0)
+    end
+    if operation == 'claim' then return response(jobs[1]) end
+    if #jobs == 0 then return '{"value":[]}' end
+    return response(jobs)
 elseif operation == 'stats' then
     return response({queued=redis.call('ZCARD',KEYS[2]), processing=redis.call('ZCARD',KEYS[3])})
 elseif operation == 'inspect' then

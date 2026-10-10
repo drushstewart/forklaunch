@@ -234,3 +234,9 @@ Health and readiness need no token. Controls are disabled (404) unless `WORKER_C
 The listener stays available during handler drain with readiness 503, then shuts down with a five-second connection deadline. Bind failure prevents claims. A server failure stops new claims and drains handlers. Automatic retention continues during pause and stops at drain. Controls affect only the bound tenant/queue in this process; other replicas continue independently. These management routes are separate from application contracts and SDKs.
 
 For library use, enable `forklaunch-worker-database`'s `http-control` feature and use `http::run` with an optional `HttpConfig` and retention policy, or mount `http::router` with your own `WorkerControl` in an existing server. Generated-process tests cover listener conflicts, health-only operation, bearer authentication, pause/resume, readiness during drain, and coordination with retention against both durable backends.
+
+## Atomic batch delivery claims
+
+Both durable adapters implement `AsyncWorkerQueue::claim_batch(queue, lease_duration, limit)` for limits 1–1000. Each atomic operation returns currently eligible jobs in delivery order, with a fresh independent token per job. Concurrent claimers receive disjoint live deliveries. Each lease is acknowledged, renewed, or failed independently, and the existing retry budget and tenant fences apply. An empty queue returns an empty vector. PostgreSQL uses a locked selection and transactional update; Redis validates the entire selected batch before acquiring its deliveries. PostgreSQL requires the built-in `gen_random_uuid` function available in PostgreSQL 13 and later; integration tests use PostgreSQL 16.
+
+The trait's compatibility default supports a limit of one and rejects larger batches before acquiring any delivery. Custom adapters must override it to provide atomic batches. Batch handler execution and generated batch size settings remain tracked separately.

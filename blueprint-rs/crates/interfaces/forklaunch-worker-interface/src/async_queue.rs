@@ -1,6 +1,6 @@
 //! Durable queues use leases to fence acknowledgments from expired consumers.
 use crate::{Job, JobReceipt, JobStatus, QueueStats};
-use forklaunch_blueprint_core::BlueprintResult;
+use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use std::{future::Future, time::Duration};
 
 /// A claimed delivery. Treat the opaque token as a capability: only its current
@@ -53,6 +53,40 @@ pub trait AsyncWorkerQueue: Send + Sync {
         queue: &str,
         lease_duration: Duration,
     ) -> impl Future<Output = BlueprintResult<Option<JobLease>>> + Send;
+
+    /// Atomically claims up to `limit` ready deliveries in queue order, each
+    /// with an independent capability. Durable adapters support 1..=1000.
+    /// The default supports one delivery so existing adapters remain compatible;
+    /// implementations must override this method to offer atomic batches.
+    /// # Errors
+    /// Returns invalid input, unsupported batching, or storage errors. No
+    /// delivery is acquired when the default rejects a larger batch.
+    fn claim_batch(
+        &self,
+        queue: &str,
+        lease_duration: Duration,
+        limit: usize,
+    ) -> impl Future<Output = BlueprintResult<Vec<JobLease>>> + Send {
+        async move {
+            if !(1..=1000).contains(&limit) {
+                return Err(BlueprintError::new(
+                    "worker_invalid_input",
+                    "Invalid worker queue input",
+                ));
+            }
+            if limit != 1 {
+                return Err(BlueprintError::new(
+                    "worker_batch_unsupported",
+                    "This queue does not support atomic batch claims",
+                ));
+            }
+            Ok(self
+                .claim(queue, lease_duration)
+                .await?
+                .into_iter()
+                .collect())
+        }
+    }
 
     /// Returns false for an expired, obsolete, or already completed lease.
     /// # Errors

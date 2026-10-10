@@ -201,7 +201,16 @@ impl AsyncWorkerQueue for PostgresWorkerQueue {
         queue: &str,
         lease_duration: Duration,
     ) -> BlueprintResult<Option<JobLease>> {
-        if !valid_name(queue) {
+        Ok(self.claim_batch(queue, lease_duration, 1).await?.pop())
+    }
+
+    async fn claim_batch(
+        &self,
+        queue: &str,
+        lease_duration: Duration,
+        limit: usize,
+    ) -> BlueprintResult<Vec<JobLease>> {
+        if !valid_name(queue) || !(1..=MAX_BATCH).contains(&limit) {
             return Err(invalid_input());
         }
         let duration = lease_ms(lease_duration)?;
@@ -210,21 +219,24 @@ impl AsyncWorkerQueue for PostgresWorkerQueue {
         // as dead letters rather than reclaiming them beyond their retry budget.
         sqlx::query("UPDATE fl_worker.jobs SET status='failed',lease_token=NULL,lease_until=NULL,last_error='lease expired after final attempt',updated_at=clock_timestamp() WHERE tenant_id=$1 AND queue=$2 AND status='processing' AND lease_until<=clock_timestamp() AND attempts>=max_attempts")
             .bind(self.tenant.id()).bind(queue).execute(&mut *tx).await.map_err(storage_error)?;
-        let token = Uuid::new_v4();
-        let row = sqlx::query("WITH candidate AS (SELECT tenant_id,queue,id FROM fl_worker.jobs WHERE tenant_id=$1 AND queue=$2 AND attempts<max_attempts AND ((status='queued' AND available_at<=clock_timestamp()) OR (status='processing' AND lease_until<=clock_timestamp())) ORDER BY available_at,sequence FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE fl_worker.jobs AS jobs SET status='processing',attempts=jobs.attempts+1,lease_token=$3,lease_until=clock_timestamp()+$4*interval '1 millisecond',updated_at=clock_timestamp() FROM candidate WHERE jobs.tenant_id=candidate.tenant_id AND jobs.queue=candidate.queue AND jobs.id=candidate.id RETURNING jobs.*,floor(extract(epoch FROM jobs.lease_until)*1000)::bigint AS lease_ms")
-            .bind(self.tenant.id()).bind(queue).bind(token).bind(duration)
-            .fetch_optional(&mut *tx).await.map_err(storage_error)?;
-        let lease = row
+        let rows = sqlx::query("WITH candidate AS (SELECT tenant_id,queue,id FROM fl_worker.jobs WHERE tenant_id=$1 AND queue=$2 AND attempts<max_attempts AND ((status='queued' AND available_at<=clock_timestamp()) OR (status='processing' AND lease_until<=clock_timestamp())) ORDER BY available_at,sequence FOR UPDATE SKIP LOCKED LIMIT $4), updated AS (UPDATE fl_worker.jobs AS jobs SET status='processing',attempts=jobs.attempts+1,lease_token=gen_random_uuid(),lease_until=clock_timestamp()+$3*interval '1 millisecond',updated_at=clock_timestamp() FROM candidate WHERE jobs.tenant_id=candidate.tenant_id AND jobs.queue=candidate.queue AND jobs.id=candidate.id RETURNING jobs.*,floor(extract(epoch FROM jobs.lease_until)*1000)::bigint AS lease_ms) SELECT * FROM updated ORDER BY available_at,sequence")
+            .bind(self.tenant.id()).bind(queue).bind(duration).bind(i64::try_from(limit).map_err(|_| invalid_input())?)
+            .fetch_all(&mut *tx).await.map_err(storage_error)?;
+        let leases = rows
+            .iter()
             .map(|row| {
                 Ok(JobLease {
-                    job: decode_job(&row)?,
-                    token: token.to_string(),
+                    job: decode_job(row)?,
+                    token: row
+                        .try_get::<Uuid, _>("lease_token")
+                        .map_err(storage_error)?
+                        .to_string(),
                     expires_at_unix_ms: row.try_get("lease_ms").map_err(storage_error)?,
                 })
             })
-            .transpose()?;
+            .collect::<BlueprintResult<Vec<_>>>()?;
         tx.commit().await.map_err(storage_error)?;
-        Ok(lease)
+        Ok(leases)
     }
 
     async fn ack(&self, lease: &JobLease) -> BlueprintResult<bool> {

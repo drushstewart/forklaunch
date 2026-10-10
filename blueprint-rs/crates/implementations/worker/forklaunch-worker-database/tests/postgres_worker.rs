@@ -341,6 +341,7 @@ async fn postgres_worker_leases_retries_isolation_and_concurrency() {
     let admin_other =
         admin_queue.for_tenant(TenantContext::new(format!("{}-b", fixture.role)).unwrap());
     verify_admin_contract(&admin_queue, &admin_other).await;
+    verify_batch_claim_contract(&admin_queue, &admin_other).await;
     #[cfg(feature = "runtime")]
     verify_retention_contract(&admin_queue, &admin_other).await;
     #[cfg(feature = "runtime")]
@@ -1110,4 +1111,119 @@ async fn verify_control_contract<Q: AsyncWorkerQueue>(queue: &Q) {
             .status,
         JobStatus::Queued
     );
+}
+
+#[allow(clippy::too_many_lines)]
+async fn verify_batch_claim_contract<Q: AsyncWorkerQueue>(queue: &Q, other: &Q) {
+    let jobs = (0..7)
+        .map(|index| Job::new(format!("batch-{index}"), "batch-claims", "{}"))
+        .collect();
+    queue.enqueue_batch(jobs).await.unwrap();
+    other
+        .enqueue(Job::new("batch-0", "batch-claims", "{}"))
+        .await
+        .unwrap();
+    for limit in [0, 1001] {
+        assert_eq!(
+            queue
+                .claim_batch("batch-claims", Duration::from_secs(1), limit)
+                .await
+                .unwrap_err()
+                .code,
+            "worker_invalid_input"
+        );
+    }
+    assert!(
+        queue
+            .claim_batch("batch-claims", Duration::ZERO, 3)
+            .await
+            .is_err()
+    );
+    assert_eq!(queue.stats("batch-claims").await.unwrap().queued, 7);
+    let first = queue
+        .claim_batch("batch-claims", Duration::from_secs(30), 2)
+        .await
+        .unwrap();
+    assert_eq!(
+        first
+            .iter()
+            .map(|lease| lease.job.id.as_str())
+            .collect::<Vec<_>>(),
+        ["batch-0", "batch-1"]
+    );
+    let (second, third) = tokio::join!(
+        queue.claim_batch("batch-claims", Duration::from_secs(30), 3),
+        queue.claim_batch("batch-claims", Duration::from_secs(30), 3)
+    );
+    let leases: Vec<_> = first
+        .into_iter()
+        .chain(second.unwrap())
+        .chain(third.unwrap())
+        .collect();
+    assert_eq!(leases.len(), 7);
+    assert_eq!(
+        leases
+            .iter()
+            .map(|lease| &lease.job.id)
+            .collect::<HashSet<_>>()
+            .len(),
+        7
+    );
+    assert_eq!(
+        leases
+            .iter()
+            .map(|lease| &lease.token)
+            .collect::<HashSet<_>>()
+            .len(),
+        7
+    );
+    assert!(
+        queue
+            .claim_batch("batch-claims", Duration::from_secs(30), 1000)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(other.stats("batch-claims").await.unwrap().queued, 1);
+    for lease in &leases {
+        assert_eq!(lease.job.attempts, 1);
+        assert!(!other.ack(lease).await.unwrap());
+        assert!(queue.renew(lease, Duration::from_secs(30)).await.unwrap());
+        assert!(queue.ack(lease).await.unwrap());
+        assert!(!queue.ack(lease).await.unwrap());
+    }
+    // Final-attempt expired deliveries become retained failures in the same
+    // transaction/script, rather than being handed out beyond their budget.
+    queue
+        .enqueue_batch(vec![
+            Job::new("expired-a", "batch-expired", "{}"),
+            Job::new("expired-b", "batch-expired", "{}"),
+        ])
+        .await
+        .unwrap();
+    let expired = queue
+        .claim_batch("batch-expired", Duration::from_millis(1), 2)
+        .await
+        .unwrap();
+    assert_eq!(expired.len(), 2);
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    assert!(
+        queue
+            .claim_batch("batch-expired", Duration::from_secs(30), 2)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    for lease in expired {
+        assert!(!queue.ack(&lease).await.unwrap());
+        assert_eq!(
+            queue
+                .inspect("batch-expired", &lease.job.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            JobStatus::Failed
+        );
+    }
 }

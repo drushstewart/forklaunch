@@ -286,18 +286,38 @@ impl AsyncWorkerQueue for RedisLeasedQueue {
         queue: &str,
         lease_duration: Duration,
     ) -> BlueprintResult<Option<JobLease>> {
-        let value = self.execute(&self.keys(queue)?, "claim", json!({"duration":duration_ms(lease_duration)?, "token":Uuid::new_v4().to_string()})).await?;
-        if value.is_null() {
-            return Ok(None);
+        Ok(self.claim_batch(queue, lease_duration, 1).await?.pop())
+    }
+    async fn claim_batch(
+        &self,
+        queue: &str,
+        lease_duration: Duration,
+        limit: usize,
+    ) -> BlueprintResult<Vec<JobLease>> {
+        if !(1..=1000).contains(&limit) {
+            return Err(invalid_input());
         }
-        let stored: StoredJob = serde_json::from_value(value).map_err(storage_error)?;
-        Ok(Some(JobLease {
-            job: stored.job(),
-            token: stored.token.ok_or_else(|| storage_error("missing token"))?,
-            expires_at_unix_ms: stored
-                .lease_until
-                .ok_or_else(|| storage_error("missing deadline"))?,
-        }))
+        let tokens: Vec<_> = (0..limit).map(|_| Uuid::new_v4().to_string()).collect();
+        let value = self
+            .execute(
+                &self.keys(queue)?,
+                "claim_batch",
+                json!({"duration":duration_ms(lease_duration)?,"limit":limit,"tokens":tokens}),
+            )
+            .await?;
+        let stored: Vec<StoredJob> = serde_json::from_value(value).map_err(storage_error)?;
+        stored
+            .into_iter()
+            .map(|stored| {
+                Ok(JobLease {
+                    job: stored.job(),
+                    token: stored.token.ok_or_else(|| storage_error("missing token"))?,
+                    expires_at_unix_ms: stored
+                        .lease_until
+                        .ok_or_else(|| storage_error("missing deadline"))?,
+                })
+            })
+            .collect()
     }
     async fn ack(&self, lease: &JobLease) -> BlueprintResult<bool> {
         self.lease_operation(lease, "ack", json!({}))
