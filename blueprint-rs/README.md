@@ -27,3 +27,5 @@ cargo doc --workspace --no-deps
 ## Worker administration
 
 `PostgresWorkerQueue` and `RedisLeasedQueue` implement `AsyncWorkerAdmin`: bounded dead-letter listing, atomic requeue with an explicit retry policy, and age-based purging of completed or failed jobs. Operations stay within the queue's trusted tenant. Retry clears prior attempts and failure reasons; purging permanently frees the job identity. Generated worker binaries expose `--dead-letters`, `--retry`, `--purge-completed`, and `--purge-failed` commands. Automatic retention is disabled by default. Enable `retention::run_worker` with an explicit `RetentionPolicy` to coordinate bounded periodic cleanup with job processing and graceful shutdown.
+
+The shared runner supports `control::WorkerControl` for process-local pause/resume and irreversible drain. The optional `http-control` feature adds health/readiness and bearer-authenticated controls; `http::run` coordinates server lifetime, retention, and active handler drain. Generated workers enable the listener only when `WORKER_HTTP_ADDR` is set; see the [Rust project documentation](../docs/adding-projects/rust.md#worker-http-health-and-controls).

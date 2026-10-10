@@ -92,9 +92,9 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
             "forklaunch-worker-database",
             "../../.forklaunch/blueprint-rs/crates/implementations/worker/forklaunch-worker-database",
             if backend == Backend::Postgres {
-                vec!["postgres", "runtime"]
+                vec!["postgres", "http-control"]
             } else {
-                vec!["runtime"]
+                vec!["http-control"]
             },
         ),
         (

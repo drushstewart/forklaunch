@@ -645,6 +645,7 @@ dependencies = [
 name = "forklaunch-worker-database"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "forklaunch-blueprint-core",
  "forklaunch-core",
  "forklaunch-iam-base",
@@ -652,7 +653,9 @@ dependencies = [
  "futures-util",
  "serde_json",
  "sqlx",
+ "subtle",
  "tokio",
+ "tower",
  "uuid",
 ]
 

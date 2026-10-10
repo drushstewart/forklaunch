@@ -3,6 +3,9 @@
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
+#[cfg(feature = "http-control")]
+pub mod http;
+
 #[cfg(feature = "runtime")]
 pub mod control;
 

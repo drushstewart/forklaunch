@@ -8,10 +8,13 @@ repository.workspace = true
 
 [features]
 default = []
+http-control = ["runtime", "dep:axum", "dep:subtle", "dep:serde_json", "tokio/net"]
 runtime = ["dep:tokio", "dep:futures-util"]
 postgres = ["dep:sqlx", "dep:forklaunch-core", "dep:serde_json", "dep:uuid"]
 
 [dependencies]
+axum = { version = "0.8", optional = true }
+subtle = { version = "2", optional = true }
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
 forklaunch-worker-interface = { path = "../../../interfaces/forklaunch-worker-interface" }
 
@@ -25,6 +28,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 forklaunch-iam-base = { path = "../../iam/forklaunch-iam-base", features = ["postgres"] }
 

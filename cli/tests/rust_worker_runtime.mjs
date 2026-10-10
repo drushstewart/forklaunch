@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {spawn, execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {once} from 'node:events';
+import {createServer} from 'node:net';
 const exec = promisify(execFile);
 const binary = process.argv[2];
 const mode = process.argv[3];
@@ -172,6 +173,86 @@ try {
     assert.equal((await retainedInspect('untouched')).status,'Queued');
     assert.equal(JSON.parse(await command(['--inspect','old-completed'],'b',retentionEnv)).status,'Queued');
     console.log('PASS generated worker opt-in retention, active-job protection, tenant isolation, and coordinated drain');
+
+    // Internal HTTP controls govern this process only and retain health during drain.
+    const reservation=createServer();
+    await new Promise(resolve=>reservation.listen(0,'127.0.0.1',resolve));
+    const address=`127.0.0.1:${reservation.address().port}`;
+    const httpEnv={WORKER_HTTP_ADDR:address,WORKER_QUEUE:'http-control'};
+    const httpCommand=(args)=>command(args,'a',httpEnv);
+    const httpInspect=async id=>JSON.parse(await httpCommand(['--inspect',id]));
+    const httpWait=async(id,status)=>{
+      const deadline=Date.now()+15000;
+      while(Date.now()<deadline) {
+        const job=await httpInspect(id);
+        if(job?.status===status) return job;
+        await sleep(20);
+      }
+      throw new Error(`HTTP-control job ${id} did not reach ${status}`);
+    };
+    try {
+      await httpCommand(['--enqueue','first','{"sleep_ms":2400}']);
+      await assert.rejects(httpCommand([]),/worker_http_error/);
+      assert.equal((await httpInspect('first')).status,'Queued');
+    } finally {
+      await new Promise(resolve=>reservation.close(resolve));
+    }
+    const base=`http://${address}`;
+    const call=(path,token,method='GET')=>fetch(`${base}${path}`,{
+      method,headers:token?{Authorization:`Bearer ${token}`}:{},signal:AbortSignal.timeout(3000),
+    });
+    const waitHttp=async()=>{
+      const deadline=Date.now()+10000;
+      while(Date.now()<deadline) {
+        try { if((await call('/health')).status===200) return; } catch {}
+        await sleep(20);
+      }
+      throw new Error('worker HTTP listener did not start');
+    };
+    // An isolated empty queue keeps the first work untouched for the authenticated case.
+    const healthOnly=await start({...httpEnv,WORKER_QUEUE:'http-health-only'});
+    await waitHttp();
+    assert.equal((await call('/ready')).status,200);
+    assert.equal((await call('/control/drain','ignored','POST')).status,404);
+    await stop(healthOnly);
+    const token='test-only-http-control-token-at-least-32-characters';
+    await assert.rejects(command([],'a',{WORKER_CONTROL_TOKEN:token}),/requires WORKER_HTTP_ADDR/);
+    await assert.rejects(command([],'a',{...httpEnv,WORKER_CONTROL_TOKEN:'short'}),/worker_invalid_http_config/);
+    const controlled=await start({...httpEnv,WORKER_CONTROL_TOKEN:token,
+      WORKER_COMPLETED_RETENTION_SECONDS:'1',WORKER_RETENTION_INTERVAL_MS:'100'});
+    await waitHttp();
+    await httpWait('first','Processing');
+    assert.equal((await call('/control/pause',undefined,'POST')).status,401);
+    assert.equal((await call('/control/pause','wrong','POST')).status,401);
+    assert.equal((await call('/ready')).status,200);
+    assert.equal((await call('/control/pause',token,'POST')).status,202);
+    assert.equal((await call('/ready')).status,503);
+    await httpCommand(['--enqueue','second','{"sleep_ms":2400}']);
+    await httpWait('first','Completed');
+    assert.equal((await httpInspect('second')).status,'Queued');
+    assert.equal((await call('/control/resume',token,'POST')).status,202);
+    await httpWait('second','Processing');
+    await httpCommand(['--enqueue','third','{}']);
+    assert.equal((await call('/control/drain',token,'POST')).status,202);
+    const health=await call('/health');
+    assert.equal(health.status,200);
+    assert.deepEqual(await health.json(),{state:'draining'});
+    assert.equal((await call('/ready')).status,503);
+    assert.equal((await call('/control/resume',token,'POST')).status,409);
+    let controlTimer;
+    const [controlledCode]=await Promise.race([controlled.exit,new Promise((_,reject)=>{
+      controlTimer=setTimeout(()=>reject(new Error('HTTP-controlled worker did not drain')),10000);
+    })]).finally(()=>clearTimeout(controlTimer));
+    assert.equal(controlledCode,0,controlled.error);
+    assert.match(controlled.output,/completed=2/);
+    assert.equal((await httpInspect('second')).status,'Completed');
+    assert.equal((await httpInspect('third')).status,'Queued');
+    // Cleanup stops at HTTP drain, even though the earlier completion ages out.
+    assert.equal((await httpInspect('first')).status,'Completed');
+    assert.ok(!controlled.output.includes(token));
+    assert.ok(!controlled.error.includes(token));
+    console.log('PASS generated worker HTTP authentication, pause/resume, readiness, retention stop, and drain');
+
     console.log('PASS generated worker dead-letter inspection, explicit retry, bounded retention, and privacy');
     console.log(`PASS generated ${redis ? 'Redis' : 'PostgreSQL'} worker: lease renewal, drain, retry, cancellation, crash recovery, and tenant isolation`);
   }

@@ -1,8 +1,9 @@
 use std::{env, time::Duration};
+use forklaunch_worker_database::http::{self, HttpConfig};
 use forklaunch_core::persistence::TenantContext;
-use forklaunch_worker_database::runner::{self, RunnerConfig};
+use forklaunch_worker_database::runner::RunnerConfig;
 use forklaunch_worker_redis::leased::RedisLeasedQueue;
-use forklaunch_worker_database::retention::{self, RetentionPolicy};
+use forklaunch_worker_database::retention::RetentionPolicy;
 use forklaunch_worker_interface::{AsyncWorkerAdmin, AsyncWorkerQueue, Job, JobSnapshot, RetryPolicy, TerminalStatus};
 use {{crate_module}}::{handler::ApplicationHandler, WORKER_NAME, write_contract_artifacts};
 
@@ -57,14 +58,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         config.validate()?;
         let retention = retention_policy()?;
+        let http = http_config()?;
         println!("{} worker ready", WORKER_NAME);
-        let report = if let Some(policy) = retention {
-            let result = retention::run_worker(&queue, &ApplicationHandler, &config, &policy, shutdown()).await?;
+        let result = http::run(&queue, &ApplicationHandler, &config, retention.as_ref(), http.as_ref(), shutdown()).await?;
+        if retention.is_some() {
             println!("retention stopped: completed_purged={} failed_purged={}", result.retention.completed_purged, result.retention.failed_purged);
-            result.worker
-        } else {
-            runner::run(&queue, &ApplicationHandler, &config, shutdown()).await?
-        };
+        }
+        let report = result.worker;
         println!("worker stopped: completed={} retried={} dead_lettered={} lease_lost={} abandoned={}",
             report.completed, report.retried, report.dead_lettered, report.lease_lost, report.abandoned);
     }
@@ -75,6 +75,26 @@ fn snapshot_json(snapshot: JobSnapshot) -> serde_json::Value {
     serde_json::json!({"id":snapshot.job.id, "queue":snapshot.job.queue,
         "attempts":snapshot.job.attempts, "status":format!("{:?}",snapshot.status),
         "last_error":snapshot.last_error})
+}
+
+fn http_config() -> Result<Option<HttpConfig>, Box<dyn std::error::Error>> {
+    let address = match env::var("WORKER_HTTP_ADDR") {
+        Ok(value) => Some(value.parse()?),
+        Err(env::VarError::NotPresent) => None,
+        Err(error) => return Err(error.into()),
+    };
+    let control_token = match env::var("WORKER_CONTROL_TOKEN") {
+        Ok(value) => Some(value),
+        Err(env::VarError::NotPresent) => None,
+        Err(error) => return Err(error.into()),
+    };
+    let Some(address) = address else {
+        if control_token.is_some() { return Err("WORKER_CONTROL_TOKEN requires WORKER_HTTP_ADDR".into()); }
+        return Ok(None);
+    };
+    let config = HttpConfig { address, control_token };
+    config.validate()?;
+    Ok(Some(config))
 }
 
 fn retention_policy() -> Result<Option<RetentionPolicy>, Box<dyn std::error::Error>> {
