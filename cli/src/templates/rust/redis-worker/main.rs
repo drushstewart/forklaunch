@@ -17,6 +17,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         return Ok(());
     }
+    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+        WORKER_NAME, env!("CARGO_PKG_VERSION"),
+    ).await?;
+    let result = run().await;
+    let flushed = telemetry.shutdown().await;
+    result?;
+    flushed?;
+    Ok(())
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
     if !args.is_empty() && !(args.len() == 3 && args[0] == "--enqueue")
         && !(args.len() == 2 && matches!(args[0].as_str(), "--inspect" | "--dead-letters" | "--retry" | "--signal"))

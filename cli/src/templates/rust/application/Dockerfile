@@ -2,7 +2,7 @@ FROM rust:1.91-slim-bookworm AS builder
 
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates cmake make g++ perl \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev libcurl4-openssl-dev ca-certificates cmake make g++ perl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . .

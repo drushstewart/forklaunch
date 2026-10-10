@@ -142,6 +142,16 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
         }
         cargo["dependencies"][name] = toml_edit::value(dependency);
     }
+    // Conversion rewrites the executable, so enable the lifecycle it now uses
+    // even when the original crate predates generated OTLP startup.
+    if cargo["dependencies"]["forklaunch-core"]["features"].is_none() {
+        cargo["dependencies"]["forklaunch-core"]["features"] = toml_edit::value(toml_edit::Array::new());
+    }
+    let core_features = cargo["dependencies"]["forklaunch-core"]["features"]
+        .as_array_mut().context("Expected forklaunch-core feature array")?;
+    if !core_features.iter().any(|feature| feature.as_str() == Some("otlp")) {
+        core_features.push("otlp");
+    }
     cargo["dependencies"]["serde_json"] = toml_edit::value("1");
     if backend == Backend::Kafka {
         let mut dependency = toml_edit::InlineTable::new();

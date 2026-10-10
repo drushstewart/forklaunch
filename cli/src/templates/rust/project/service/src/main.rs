@@ -8,6 +8,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+        {{crate_module}}::SERVICE_NAME, env!("CARGO_PKG_VERSION"),
+    ).await?;
+    let result = run().await;
+    let flushed = telemetry.shutdown().await;
+    result?;
+    flushed?;
+    Ok(())
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = ServiceConfig::from_env();
     let listener = tokio::net::TcpListener::bind(config.bind_addr()).await?;
     let state = build_state(config)?;

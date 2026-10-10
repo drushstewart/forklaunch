@@ -4,11 +4,23 @@ use {{crate_module}}::{
     WORKER_NAME, build_context, config::WorkerConfig, run_once, write_contract_artifacts,
 };
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if export_contract_artifacts()? {
         return Ok(());
     }
 
+    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+        WORKER_NAME, env!("CARGO_PKG_VERSION"),
+    ).await?;
+    let result = run();
+    let flushed = telemetry.shutdown().await;
+    result?;
+    flushed?;
+    Ok(())
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let context = build_context(WorkerConfig::from_env())?;
     let report = run_once(&context)?;
     println!(

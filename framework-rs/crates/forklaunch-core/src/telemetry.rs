@@ -403,3 +403,7 @@ mod tests {
         traces.shutdown().unwrap();
     }
 }
+
+/// Application-owned OTLP providers and lifecycle.
+#[cfg(feature = "otlp")]
+pub mod otlp;

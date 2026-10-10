@@ -13,6 +13,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         return Ok(());
     }
+    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+        {{crate_module}}::SERVICE_NAME, env!("CARGO_PKG_VERSION"),
+    ).await?;
+    let result = run().await;
+    let flushed = telemetry.shutdown().await;
+    result?;
+    flushed?;
+    Ok(())
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = env::args().skip(1).collect();
     if !arguments.is_empty() && arguments != ["--migrate"] {
         return Err("Expected no arguments or --migrate".into());

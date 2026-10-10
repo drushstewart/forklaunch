@@ -9,6 +9,8 @@ on:
       - 'cli/tests/rust_field_encryption_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
+      - 'cli/tests/rust_otlp_runtime.mjs'
+      - 'cli/tests/rust_cac_provider_parity.mjs'
       - '.github/workflows/rust_parity.yml'
   push:
     branches: [main, rohin/rust-framework]
@@ -19,6 +21,8 @@ on:
       - 'cli/tests/rust_field_encryption_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
+      - 'cli/tests/rust_otlp_runtime.mjs'
+      - 'cli/tests/rust_cac_provider_parity.mjs'
       - '.github/workflows/rust_parity.yml'
 
 jobs:
@@ -69,6 +73,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @asyncapi/parser@3.6.3 ajv@8.20.0
+      - run: node cli/tests/rust_otlp_runtime.mjs
       - run: node cli/tests/rust_asyncapi_parity.mjs
         env:
           ASYNCAPI_PARSER_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/@asyncapi/parser
@@ -113,6 +118,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: blueprint-rs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
+      - run: node cli/tests/rust_cac_provider_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - name: Start isolated Kafka-compatible broker
         run: |
           docker run --detach --name forklaunch-rust-kafka-ci --memory 1536m --cpus 2 \

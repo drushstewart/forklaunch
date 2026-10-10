@@ -543,6 +543,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "forklaunch-cac-base"
+version = "0.1.0"
+dependencies = [
+ "forklaunch-blueprint-core",
+ "forklaunch-cac-interface",
+ "forklaunch-core",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "forklaunch-cac-interface"
+version = "0.1.0"
+dependencies = [
+ "forklaunch-blueprint-core",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "forklaunch-common"
 version = "0.1.0"
 

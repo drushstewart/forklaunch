@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
+otlp = ["dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-appender-tracing", "dep:tracing-subscriber", "dep:tokio"]
 postgres = ["dep:sqlx"]
 encryption = ["dep:aes-gcm", "dep:hkdf", "dep:hmac", "dep:sha2", "dep:base64", "dep:rand_core", "dep:zeroize"]
 
@@ -17,6 +18,11 @@ forklaunch-contract = { path = "../forklaunch-contract" }
 
 opentelemetry = { version = "0.31", features = ["metrics", "trace"] }
 tracing = "0.1"
+opentelemetry_sdk = { version = "0.31", features = ["trace", "metrics", "logs"], optional = true }
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["trace", "metrics", "logs", "http-proto", "http-json", "reqwest-blocking-client", "reqwest-rustls"], optional = true }
+opentelemetry-appender-tracing = { version = "0.31", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
+tokio = { version = "1", features = ["rt"], optional = true }
 
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"], optional = true }
 
@@ -38,3 +44,7 @@ workspace = true
 [[example]]
 name = "field_encryption_parity"
 required-features = ["encryption"]
+
+[[example]]
+name = "otlp_runtime"
+required-features = ["otlp"]
