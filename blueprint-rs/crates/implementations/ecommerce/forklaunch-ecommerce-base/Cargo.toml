@@ -1,0 +1,30 @@
+[package]
+name = "forklaunch-ecommerce-base"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+postgres = ["dep:forklaunch-core", "dep:sqlx"]
+
+[dependencies]
+forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
+forklaunch-ecommerce-interface = { path = "../../../interfaces/forklaunch-ecommerce-interface" }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+tokio = { version = "1", features = ["time"] }
+tracing = "0.1"
+forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"], optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+
+[lints]
+workspace = true
