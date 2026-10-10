@@ -10,5 +10,8 @@ repository.workspace = true
 forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-contract = { path = "../forklaunch-contract" }
 
+[dev-dependencies]
+serde_json = "1"
+
 [lints]
 workspace = true

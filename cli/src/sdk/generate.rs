@@ -848,6 +848,7 @@ fn request_type_shapes_from_contract(route: &JsonValue) -> Result<RequestTypeSha
     {
         None | Some("json") => "json",
         Some("text") => "text",
+        Some("urlEncoded") => "urlEncoded",
         Some("binary" | "file") => "binary",
         Some(kind) => bail!("Unsupported SDK request body kind {kind}"),
     };
@@ -858,6 +859,7 @@ fn request_type_shapes_from_contract(route: &JsonValue) -> Result<RequestTypeSha
             .unwrap_or(match kind {
                 "text" => "text/plain",
                 "binary" => "application/octet-stream",
+                "urlEncoded" => "application/x-www-form-urlencoded",
                 _ => "application/json",
             }),
     )?;
@@ -867,6 +869,14 @@ fn request_type_shapes_from_contract(route: &JsonValue) -> Result<RequestTypeSha
         match kind {
             "text" => "string".into(),
             "binary" => "Uint8Array".into(),
+            "urlEncoded" => format!(
+                "URLSearchParams | {}",
+                contract
+                    .and_then(|body| body.get("schema"))
+                    .and_then(|schema| schema.get("jsonSchema"))
+                    .map(ts_type_from_schema)
+                    .unwrap_or_else(|| "Record<string, string | number | boolean | readonly string[] | undefined>".into())
+            ),
             _ => contract
                 .and_then(|body| body.get("schema"))
                 .and_then(|schema| schema.get("jsonSchema"))
@@ -2443,7 +2453,6 @@ mod request_media_tests {
     fn unsupported_request_transports_fail_before_rendering() {
         for body in [
             json!({"kind":"multipart"}),
-            json!({"kind":"urlEncoded"}),
             json!({"kind":"text","contentType":"text/event-stream"}),
             json!({"kind":"binary","contentType":"multipart/form-data"}),
             json!({"kind":"json","contentType":"application/json/injected"}),

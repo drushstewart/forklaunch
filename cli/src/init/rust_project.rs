@@ -123,15 +123,18 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         .into_iter()
         .flatten()
         .collect();
-    if modules.iter().any(|module| modules::BuiltinModule::from_variant(module).is_none()) {
+    if modules
+        .iter()
+        .any(|module| modules::BuiltinModule::from_variant(module).is_none())
+    {
         bail!(
-            "Rust application module generation currently supports iam-base and cac-base; add other modules after their Rust adapters are implemented"
+            "Rust application module generation currently supports iam-base, cac-base, messaging-base and messaging-twilio; add other modules after their Rust adapters are implemented"
         );
     }
     if !modules.is_empty()
         && option(matches, "database").is_some_and(|database| database != "postgresql")
     {
-        bail!("Rust IAM requires PostgreSQL");
+        bail!("Rust modules require PostgreSQL");
     }
     let language = selected_language(matches).to_string();
     let dryrun = matches.get_flag("dryrun");
@@ -250,6 +253,14 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         templates.extend(mixed_typescript_sdk_templates(&root_path, &name));
     }
 
+    let mut module_names = std::collections::HashSet::new();
+    for module in &modules {
+        let kind = modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
+        if !module_names.insert(kind.template()) {
+            bail!("Conflicting Rust modules target the same service: {}", kind.template());
+        }
+    }
+
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     write_rust_rendered_templates(&templates, dryrun, &mut stdout)?;
     ensure_embedded_framework(&root_path, dryrun)?;
@@ -258,10 +269,8 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
             .with_context(|| format!("Failed to create {}", root_path.join("crates").display()))?;
     }
     for module in modules {
-        match modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")? {
-            modules::BuiltinModule::Iam => modules::generate_iam_at(&root_path, "iam", matches, dryrun)?,
-            modules::BuiltinModule::Cac => modules::generate_module_at(&root_path, "cac", matches, dryrun, modules::BuiltinModule::Cac)?,
-        }
+        let kind = modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
+        modules::generate_module_at(&root_path, kind.template(), matches, dryrun, kind)?;
     }
     log_ok!(
         stdout,

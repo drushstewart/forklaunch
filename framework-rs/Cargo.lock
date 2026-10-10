@@ -915,6 +915,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "bytes",
+ "chrono",
  "forklaunch-auth",
  "forklaunch-common",
  "forklaunch-contract",
@@ -923,6 +924,7 @@ dependencies = [
  "forklaunch-openapi",
  "form_urlencoded",
  "http-body 1.0.1",
+ "jsonwebtoken",
  "opentelemetry",
  "opentelemetry_sdk",
  "serde",
@@ -1021,6 +1023,7 @@ version = "0.1.0"
 dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
+ "serde_json",
 ]
 
 [[package]]

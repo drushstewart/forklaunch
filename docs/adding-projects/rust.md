@@ -33,7 +33,7 @@ forklaunch sdk generate --path . --target all --from contract --check
 
 Exports are written under `.forklaunch/contracts/<service>/contract.json` and `.forklaunch/openapi/<service>/openapi.json`. TypeScript output lives in `sdks/typescript`; Rust SDK crates live in `sdks/rust`. New TypeScript SDKs include a strict browser-compatible `tsconfig.json`, so their `build` script and `pnpm sdk:typecheck` work directly. SDK regeneration preserves an existing compiler configuration. `--sdk-targets rust` on app initialization omits the TypeScript package scaffold. Rust services require generated SDKs; live TypeScript SDK mode is rejected.
 
-`--from openapi` reads the actual OpenAPI 3.0/3.1 JSON artifact at each project's `openapiPath`; export it first. It uses operation IDs and JSON parameter schemas, with JSON, text, or raw binary request bodies, resolving document-local references with expansion limits. Missing artifacts, recursive/external references, unsupported identifiers, and unsupported body formats fail before SDK files are written. The importer preserves every explicit 200–599 status with a JSON, text, binary, or absent body, including declared business-error payloads. Each status currently supports one media type. TypeScript narrows each status to its payload, and Rust returns a separate enum variant; the lowest status retains the original response model name, with `StatusNNN` model suffixes for other variants. Conflicting generated names and duplicate statuses fail before output writes. Empty responses (including 204/205 and HEAD) resolve to `undefined` in TypeScript and `()` in Rust; explicit JSON `null` remains distinct. Text responses decode as strings; binary downloads decode as `Uint8Array` in TypeScript and `Vec<u8>` in Rust. Declared JSON errors override default error types, including `application/problem+json`. Schema-free JSON remains `unknown`/`serde_json::Value`. Nullable schemas support OpenAPI 3.0 `nullable`, null-containing type arrays, and single nullable `anyOf`/`oneOf` alternatives. Dictionaries retain typed values, and open objects preserve additional fields through Serde flattening. Rust `oneOf`, `anyOf`, and multiple-type schemas generate untagged enums with ordered `Variant1`, `Variant2`, etc. branches, including nested arrays and objects. Serde chooses the first deserializable branch; full schema-constraint validation remains the server’s responsibility. Closed structured objects reject unknown fields during decoding. Nullable root objects use a distinct inner model. Text uploads use `body: string`; raw binary uploads use `body: Uint8Array` in TypeScript and `body: Option<Vec<u8>>` in Rust. JSON and text Rust requests retain `Option<String>`. Clients send the contract media type and preserve binary view offsets. Recursive schema models, multipart/file-form uploads, streaming, and equivalent framework-native code generator behavior remain parity tasks. Artifact paths must stay inside the application.
+`--from openapi` reads the actual OpenAPI 3.0/3.1 JSON artifact at each project's `openapiPath`; export it first. It uses operation IDs and JSON parameter schemas, with JSON, text, URL-encoded form, or raw binary request bodies, resolving document-local references with expansion limits. Missing artifacts, recursive/external references, unsupported identifiers, and unsupported body formats fail before SDK files are written. The importer preserves every explicit 200–599 status with a JSON, text, binary, or absent body, including declared business-error payloads. Each status currently supports one media type. TypeScript narrows each status to its payload, and Rust returns a separate enum variant; the lowest status retains the original response model name, with `StatusNNN` model suffixes for other variants. Conflicting generated names and duplicate statuses fail before output writes. Empty responses (including 204/205 and HEAD) resolve to `undefined` in TypeScript and `()` in Rust; explicit JSON `null` remains distinct. Text responses decode as strings; binary downloads decode as `Uint8Array` in TypeScript and `Vec<u8>` in Rust. Declared JSON errors override default error types, including `application/problem+json`. Schema-free JSON remains `unknown`/`serde_json::Value`. Nullable schemas support OpenAPI 3.0 `nullable`, null-containing type arrays, and single nullable `anyOf`/`oneOf` alternatives. Dictionaries retain typed values, and open objects preserve additional fields through Serde flattening. Rust `oneOf`, `anyOf`, and multiple-type schemas generate untagged enums with ordered `Variant1`, `Variant2`, etc. branches, including nested arrays and objects. Serde chooses the first deserializable branch; full schema-constraint validation remains the server’s responsibility. Closed structured objects reject unknown fields during decoding. Nullable root objects use a distinct inner model. Text uploads use `body: string`; raw binary uploads use `body: Uint8Array` in TypeScript and `body: Option<Vec<u8>>` in Rust. JSON, text and URL-encoded Rust requests retain `Option<String>`; form strings must already be URL-encoded. TypeScript form requests accept the schema-derived object or `URLSearchParams`, preserve repeated values, omit undefined properties, and reject nested objects/null/non-finite numbers. Clients send the contract media type and preserve binary view offsets. Recursive schema models, multipart/file-form uploads, streaming, and equivalent framework-native code generator behavior remain parity tasks. Artifact paths must stay inside the application.
 
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape. Lifecycle SDK refresh preserves each available service contract independently; a missing artifact falls back only for that service, while malformed artifacts fail explicitly. Generated service fallback methods keep their exported names (`getHealth`, `listUsers`). Deletion refreshes existing Rust SDK crates as well as an existing TypeScript client, including Rust-only applications.
 
@@ -90,7 +90,7 @@ Basic login and credential verification callbacks remain application-configured.
 
 `forklaunch_core::telemetry::OpenTelemetryCollector` records counters, gauges, histograms, and up/down counters, and exposes its meter for observable instruments. It supplies structured trace/debug/info/warn/error/fatal logging through `tracing`.
 
-Inject a collector through `RouterConfig.telemetry` to use application-owned OpenTelemetry providers. `with_meter` and `with_tracer` accept configured SDK instruments without replacing process-global providers. Generated services, IAM/CAC modules and workers initialize `TelemetryRuntime` from the optional `forklaunch-core/otlp` feature. It installs structured JSON stderr logging, W3C trace-context/baggage propagation, and application-owned providers. With no endpoint or explicit signal exporter, telemetry export stays disabled. Offline contract/OpenAPI export runs before telemetry initialization.
+Inject a collector through `RouterConfig.telemetry` to use application-owned OpenTelemetry providers. `with_meter` and `with_tracer` accept configured SDK instruments without replacing process-global providers. Generated services, IAM/CAC/messaging modules and workers initialize `TelemetryRuntime` from the optional `forklaunch-core/otlp` feature. It installs structured JSON stderr logging, W3C trace-context/baggage propagation, and application-owned providers. With no endpoint or explicit signal exporter, telemetry export stays disabled. Offline contract/OpenAPI export runs before telemetry initialization.
 
 HTTP middleware emits server spans, request counts/duration, active requests, actual response-body bytes, auth failures, and error counts. Streaming responses retain their span and active-request measurement until completion, body failure, or cancellation, without buffering. Body failures and client cancellation preserve the HTTP status already sent while recording a failed span. HEAD and bodyless statuses finish without awaiting a body. Metric dimensions use matched route templates instead of user identifiers. Correlation IDs are attached to spans/logs rather than metric dimensions. Active requests and spans also close when handler futures are cancelled. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable traces, metrics and logs using OTLP HTTP/protobuf, or set `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. Signal-specific endpoints/protocols and standard OTLP headers, resource attributes, service name and export intervals are supported. `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER` and `OTEL_LOGS_EXPORTER` accept `otlp` or `none`; `OTEL_SDK_DISABLED=true` disables export. `OTEL_PROPAGATORS` accepts `tracecontext`, `baggage`, their comma-separated combination, or `none`. Unsupported configurations fail with sanitized errors.
 
@@ -149,6 +149,58 @@ are validated. JWKS keys are cached per endpoint and may use RSA, EC or EdDSA.
 The mounted registry drives both SDKs and OpenAPI. Runtime fixtures exercise HMAC,
 JWT/JWKS/RBAC, both generated SDKs, relocation, embedded-workspace upgrades,
 module coexistence, source preservation, rename/sync/delete and graceful shutdown.
+
+## SMS messaging modules
+
+Generate `forklaunch init module --language rust -m messaging-base --path .` for
+persistence hooks or `-m messaging-twilio` for Twilio delivery. App initialization
+also accepts either variant in `--modules`. Both default to the `messaging`
+service name; choose a separate name when installing both for local development.
+The base provider records `sent` without contacting a carrier, matching TypeScript.
+
+Configure a trusted `TENANT_ID`, `ENCRYPTION_KEY`, restricted `DATABASE_URL`,
+`HMAC_SECRET_KEY` and `JWKS_PUBLIC_KEY_URL`. Apply `cargo run -p messaging --
+--migrate` separately using a schema-owner connection. Runtime roles need USAGE
+on `fl_messaging`, SELECT/INSERT/UPDATE/DELETE on `fl_messaging.sms_records`, and
+INSERT on `fl_messaging.pii_read_audit`; SUPERUSER/BYPASSRLS roles are rejected.
+The module stores random-nonce, tenant-derived encrypted records and recipient
+blind indexes, with forced RLS and explicit tenant predicates. Reads, callbacks
+and compliance exports record the verified actor before returning plaintext.
+Audit failures roll back delivery changes and prevent plaintext responses.
+Previous keys configured through `LEGACY_ENCRYPTION_KEYS` support reading older
+records and subject lookup. Callback updates rotate ciphertext and blind indexes;
+rotate all remaining records before retiring their old keys.
+
+Internal `POST /sms` and `GET /sms/:id` use request-bound HMAC authorization.
+`GET /compliance/export/:userId` and `DELETE /compliance/erase/:userId` require a
+verified asymmetric JWT with the `system` role; issuer/audience constraints are
+optional environment settings. The subject is the recipient phone number,
+matching the upstream entity selector. Exports contain only `id`, `to` and
+`body`, plus an explicit failures array. Storage/audit failures return an error
+rather than reporting a successful incomplete subject-access request.
+
+Twilio additionally requires `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
+`TWILIO_FROM_NUMBER` and the exact external HTTPS `TWILIO_STATUS_CALLBACK_URL`.
+Dispatch sends Basic-authenticated form requests and never retries or follows
+redirects. Transport/parse/persistence failures can occur after carrier
+acceptance, so callers must reconcile before retrying. HTTP provider errors
+persist a failed record. Response reads are bounded to 64 KiB with a 15-second
+request deadline. A configured `TWILIO_API_BASE` may use HTTPS, or explicit HTTP
+loopback for fixtures; real-provider credentials are never needed by tests.
+
+`POST /webhook` verifies `X-Twilio-Signature` over the configured URL and every
+form field, including unexpected and repeated fields. Required duplicate fields
+are rejected; Host/forwarded headers never choose the signed URL. This verification
+strengthens the current TypeScript blueprint's unauthenticated webhook controller.
+Callback behavior matches its service: last update wins, `read` means delivered,
+unknown statuses mean queued, missing ErrorMessage clears previous errors, and
+unknown provider IDs fail. Twilio's protocol permits replay; callbacks may repeat.
+
+Both generated SDKs support SMS and URL-encoded callbacks. Fixtures compare the
+actual TypeScript base/Twilio services against Rust, then run generated mixed
+apps through both SDKs, persistence/restarts, tenant isolation, JWT/HMAC failures,
+callback tampering, encryption/auditing and init/rename/sync/delete. Tables and
+migrations are native Rust storage, rather than a shared MikroORM schema.
 
 ## Field encryption compatibility
 

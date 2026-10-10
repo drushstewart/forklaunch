@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 default = ["adapter"]
+remote-jwks = ["adapter", "forklaunch-auth/remote-jwks", "dep:jsonwebtoken"]
 adapter = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes", "dep:form_urlencoded", "dep:http-body"]
 
 [dependencies]
@@ -30,7 +31,10 @@ form_urlencoded = { version = "1", optional = true }
 bytes = { version = "1", optional = true }
 http-body = { version = "1", optional = true }
 
+jsonwebtoken = { version = "9", optional = true }
+
 [dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 opentelemetry_sdk = { version = "0.31", features = ["testing"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"] }
 tower = { version = "0.5", features = ["util"] }

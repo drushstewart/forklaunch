@@ -418,12 +418,19 @@ fn collect_schema_ref(schema: &SchemaRef, schemas: &mut BTreeMap<String, String>
         schema
             .json_schema
             .clone()
-            .unwrap_or_else(default_schema_json)
+            .unwrap_or_else(|| default_schema_json(&schema.name))
     });
 }
 
-fn default_schema_json() -> String {
-    json_object([JsonField::new("type", json_string("object"))])
+fn default_schema_json(name: &str) -> String {
+    let kind = match name.to_ascii_lowercase().as_str() {
+        "string" | "str" | "uuid" | "datetime" | "date" => "string",
+        "bool" | "boolean" => "boolean",
+        "usize" | "u64" | "u32" | "i64" | "i32" | "integer" | "int" => "integer",
+        "number" | "float" | "f64" | "f32" => "number",
+        _ => "object",
+    };
+    json_object([JsonField::new("type", json_string(kind))])
 }
 
 fn security_json(auth: &AuthConfig) -> String {
@@ -566,7 +573,35 @@ mod tests {
 
         assert_eq!(
             json,
-            "{\"components\":{\"schemas\":{\"String\":{\"type\":\"object\"},\"User\":{\"type\":\"object\"}}},\"info\":{\"title\":\"users\",\"version\":\"1.0.0\"},\"openapi\":\"3.1.0\",\"paths\":{\"/users/{id}\":{\"get\":{\"operationId\":\"getUser\",\"parameters\":[{\"in\":\"path\",\"name\":\"id\",\"required\":true,\"schema\":{\"$ref\":\"#/components/schemas/String\"}}],\"responses\":{\"200\":{\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/User\"}}},\"description\":\"Response\"}},\"summary\":\"Get a user\",\"tags\":[\"users\"]}}}}"
+            "{\"components\":{\"schemas\":{\"String\":{\"type\":\"string\"},\"User\":{\"type\":\"object\"}}},\"info\":{\"title\":\"users\",\"version\":\"1.0.0\"},\"openapi\":\"3.1.0\",\"paths\":{\"/users/{id}\":{\"get\":{\"operationId\":\"getUser\",\"parameters\":[{\"in\":\"path\",\"name\":\"id\",\"required\":true,\"schema\":{\"$ref\":\"#/components/schemas/String\"}}],\"responses\":{\"200\":{\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/User\"}}},\"description\":\"Response\"}},\"summary\":\"Get a user\",\"tags\":[\"users\"]}}}}"
         );
+    }
+}
+
+#[cfg(test)]
+mod primitive_schema_tests {
+    use super::*;
+    #[test]
+    fn named_primitive_parameters_export_primitive_schemas_for_sdk_imports() {
+        let mut registry = ContractRegistry::new();
+        registry.register(
+            RouteContract::get("Find", "Find", "/items/:id")
+                .with_param(FieldContract::required("id", "String"))
+                .with_query(FieldContract::optional("enabled", "Boolean"))
+                .with_query(FieldContract::optional("limit", "Integer"))
+                .with_query(FieldContract::optional("score", "Number"))
+                .with_response(200, Some(BodyContract::json("CustomRecord"))),
+        );
+        let document: serde_json::Value =
+            serde_json::from_str(&generate_openapi_json(&registry)).unwrap();
+        for (name, kind) in [
+            ("String", "string"),
+            ("Boolean", "boolean"),
+            ("Integer", "integer"),
+            ("Number", "number"),
+            ("CustomRecord", "object"),
+        ] {
+            assert_eq!(document["components"]["schemas"][name]["type"], kind);
+        }
     }
 }

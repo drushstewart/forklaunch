@@ -1,0 +1,23 @@
+[package]
+name = "{{{name}}}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "{{{description}}}"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+forklaunch-core = { path = "../../.forklaunch/framework-rs/crates/forklaunch-core", features = ["otlp", "postgres", "encryption"] }
+forklaunch-contract = { path = "../../.forklaunch/framework-rs/crates/forklaunch-contract" }
+forklaunch-openapi = { path = "../../.forklaunch/framework-rs/crates/forklaunch-openapi" }
+forklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth", features = ["remote-jwks"] }
+forklaunch-axum = { path = "../../.forklaunch/framework-rs/crates/forklaunch-axum", features = ["remote-jwks"] }
+forklaunch-blueprint-core = { path = "../../.forklaunch/blueprint-rs/crates/forklaunch-blueprint-core" }
+forklaunch-messaging-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/forklaunch-messaging-interface" }
+forklaunch-messaging-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/messaging/forklaunch-messaging-base", features = ["postgres"] }
+forklaunch-messaging-twilio = { path = "../../.forklaunch/blueprint-rs/crates/implementations/messaging/forklaunch-messaging-twilio" }
+forklaunch-messaging-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/messaging/forklaunch-messaging-axum" }
+jsonwebtoken = "9"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }

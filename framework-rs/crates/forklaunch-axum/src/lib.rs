@@ -353,3 +353,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(feature = "remote-jwks")]
+pub mod module_auth;

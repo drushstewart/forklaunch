@@ -9,6 +9,8 @@ const BLUEPRINT_CARGO: &str =
 pub(super) enum BuiltinModule {
     Iam,
     Cac,
+    MessagingBase,
+    MessagingTwilio,
 }
 
 impl BuiltinModule {
@@ -16,6 +18,8 @@ impl BuiltinModule {
         match variant {
             "iam-base" => Some(Self::Iam),
             "cac-base" => Some(Self::Cac),
+            "messaging-base" => Some(Self::MessagingBase),
+            "messaging-twilio" => Some(Self::MessagingTwilio),
             _ => None,
         }
     }
@@ -23,27 +27,40 @@ impl BuiltinModule {
         match self {
             Self::Iam => "iam-base",
             Self::Cac => "cac-base",
+            Self::MessagingBase => "messaging-base",
+            Self::MessagingTwilio => "messaging-twilio",
         }
     }
-    fn template(self) -> &'static str {
+    pub(super) fn template(self) -> &'static str {
         match self {
             Self::Iam => "iam",
             Self::Cac => "cac",
+            Self::MessagingBase | Self::MessagingTwilio => "messaging",
         }
     }
     fn description(self) -> &'static str {
         match self {
             Self::Iam => "Persistent PostgreSQL IAM",
             Self::Cac => "CAC code-set service",
+            Self::MessagingBase => "Persistent messaging hooks",
+            Self::MessagingTwilio => "Persistent Twilio SMS messaging",
         }
     }
+}
+
+#[derive(Content)]
+struct RustModuleTemplate {
+    name: String,
+    description: String,
+    crate_module: String,
+    twilio: bool,
 }
 
 pub(crate) fn generate_rust_module(matches: &ArgMatches) -> Result<()> {
     let kind = option(matches, "module")
         .as_deref()
         .and_then(BuiltinModule::from_variant)
-        .context("Rust module generation currently supports --module iam-base or cac-base")?;
+        .context("Rust module generation currently supports --module iam-base, cac-base, messaging-base or messaging-twilio")?;
     if option(matches, "database").is_some_and(|database| database != "postgresql") {
         bail!("Rust modules currently support --database postgresql");
     }
@@ -61,15 +78,6 @@ pub(crate) fn generate_rust_module(matches: &ArgMatches) -> Result<()> {
     }
     let dryrun = matches.get_flag("dryrun");
     generate_module_at(&root, &name, matches, dryrun, kind)
-}
-
-pub(super) fn generate_iam_at(
-    root: &Path,
-    name: &str,
-    matches: &ArgMatches,
-    dryrun: bool,
-) -> Result<()> {
-    generate_module_at(root, name, matches, dryrun, BuiltinModule::Iam)
 }
 
 pub(super) fn generate_module_at(
@@ -100,7 +108,12 @@ pub(super) fn generate_module_at(
             crate_dir.display()
         );
     }
-    let data = rust_crate_template_data(&name, kind.description(), true);
+    let data = RustModuleTemplate {
+        name: escape_toml_string(name),
+        description: escape_toml_string(kind.description()),
+        crate_module: name.to_case(Case::Snake),
+        twilio: kind == BuiltinModule::MessagingTwilio,
+    };
     let templates = [
         "Cargo.toml",
         "src/lib.rs",
@@ -237,6 +250,12 @@ pub(super) fn ensure_module_compose(
     if kind == BuiltinModule::Iam {
         return ensure_iam_compose(root, name, dryrun);
     }
+    if matches!(
+        kind,
+        BuiltinModule::MessagingBase | BuiltinModule::MessagingTwilio
+    ) {
+        return ensure_messaging_compose(root, name, kind, dryrun);
+    }
     if dryrun {
         return Ok(());
     }
@@ -255,6 +274,68 @@ pub(super) fn ensure_module_compose(
         .or_insert_with(|| "${CAC_HMAC_SECRET_KEY:?Configure a service HMAC secret}".to_owned());
     env.entry("JWKS_PUBLIC_KEY_URL".to_owned())
         .or_insert_with(|| "${CAC_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}".to_owned());
+    write(path, yaml_to_string(&compose)?)?;
+    Ok(())
+}
+
+fn ensure_messaging_compose(
+    root: &Path,
+    name: &str,
+    kind: BuiltinModule,
+    dryrun: bool,
+) -> Result<()> {
+    if dryrun {
+        return Ok(());
+    }
+    let path = root.join("docker-compose.yaml");
+    if !read_or_create_rust_docker_compose(&path)?
+        .services
+        .contains_key(name)
+    {
+        ensure_rust_docker_compose_project(root, RustProjectKind::Service, name, false)?;
+    }
+    let mut compose = read_or_create_rust_docker_compose(&path)?;
+    let service = compose
+        .services
+        .get_mut(name)
+        .context("Expected messaging Compose service")?;
+    let env = service.environment.get_or_insert_with(IndexMap::new);
+    for (key, value) in [
+        (
+            "DATABASE_URL",
+            "${MESSAGING_DATABASE_URL:?Configure a restricted PostgreSQL role}",
+        ),
+        (
+            "TENANT_ID",
+            "${MESSAGING_TENANT_ID:?Configure a trusted tenant}",
+        ),
+        (
+            "ENCRYPTION_KEY",
+            "${ENCRYPTION_KEY:?Configure a field encryption key}",
+        ),
+        (
+            "HMAC_SECRET_KEY",
+            "${MESSAGING_HMAC_SECRET_KEY:?Configure a service HMAC secret}",
+        ),
+        (
+            "JWKS_PUBLIC_KEY_URL",
+            "${MESSAGING_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}",
+        ),
+    ] {
+        env.entry(key.to_owned())
+            .or_insert_with(|| value.to_owned());
+    }
+    if kind == BuiltinModule::MessagingTwilio {
+        for key in [
+            "TWILIO_ACCOUNT_SID",
+            "TWILIO_AUTH_TOKEN",
+            "TWILIO_FROM_NUMBER",
+            "TWILIO_STATUS_CALLBACK_URL",
+        ] {
+            env.entry(key.to_owned())
+                .or_insert_with(|| format!("${{{key}:?Configure Twilio delivery}}"));
+        }
+    }
     write(path, yaml_to_string(&compose)?)?;
     Ok(())
 }
@@ -288,11 +369,16 @@ pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
     for filename in ["src/lib.rs", "src/main.rs"] {
         let path = crate_dir.join(filename);
         if path.exists() {
-            let source = read_to_string(&path)?
-                .replace(
-                    &format!("{}::", old.to_case(Case::Snake)),
-                    &format!("{}::", new.to_case(Case::Snake)),
+            let namespace = regex::Regex::new(&format!(
+                r"\b{}::",
+                regex::escape(&old.to_case(Case::Snake))
+            ))?;
+            let source = namespace
+                .replace_all(
+                    &read_to_string(&path)?,
+                    format!("{}::", new.to_case(Case::Snake)),
                 )
+                .into_owned()
                 .replace(
                     &format!("pub const SERVICE_NAME: &str = \"{old}\";"),
                     &format!("pub const SERVICE_NAME: &str = \"{new}\";"),

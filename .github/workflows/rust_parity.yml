@@ -11,6 +11,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_otlp_runtime.mjs'
       - 'cli/tests/rust_cac_provider_parity.mjs'
+      - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
       - '.github/workflows/rust_parity.yml'
   push:
@@ -24,6 +25,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_otlp_runtime.mjs'
       - 'cli/tests/rust_cac_provider_parity.mjs'
+      - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
       - '.github/workflows/rust_parity.yml'
 
@@ -130,6 +132,9 @@ jobs:
       - run: node cli/tests/rust_cac_provider_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_sms_provider_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - name: Start isolated Kafka-compatible broker
         run: |
           docker run --detach --name forklaunch-rust-kafka-ci --memory 1536m --cpus 2 \
@@ -145,6 +150,7 @@ jobs:
       - run: cargo fmt --manifest-path blueprint-rs/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-messaging-base --all-features --test postgres_sms -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_backend -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-blueprint-sample-service --all-features postgres_iam_http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-database --all-features postgres_worker -- --ignored

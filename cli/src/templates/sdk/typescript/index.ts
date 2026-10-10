@@ -33,7 +33,7 @@ export type ForkLaunchSdkRequestMeta = {
   operation: string;
   method: string;
   path: string;
-  requestKind?: 'json' | 'text' | 'binary';
+  requestKind?: 'json' | 'text' | 'binary' | 'urlEncoded';
   requestContentType?: string;
   responseKinds?: Partial<Record<number, 'empty' | 'json' | 'text' | 'binary'>>;
   input: {
@@ -66,6 +66,20 @@ function pathWithParams(path: string, params?: Record<string, ForkLaunchPathValu
   }).join('/');
 }
 
+function encodeForm(body: unknown): URLSearchParams {
+  if (body instanceof URLSearchParams) return body;
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Form body must be an object or URLSearchParams');
+  const params = new URLSearchParams();
+  for (const [key, raw] of Object.entries(body)) {
+    if (raw === undefined) continue;
+    for (const value of Array.isArray(raw) ? raw : [raw]) {
+      if ((typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') || (typeof value === 'number' && !Number.isFinite(value))) throw new TypeError('Form values must be strings, finite numbers or booleans');
+      params.append(key, String(value));
+    }
+  }
+  return params;
+}
+
 async function request<Responses extends Record<number, unknown>, ContentTypes extends Partial<Record<number, string>> = {}>(
   config: ForkLaunchSdkConfig,
   meta: ForkLaunchSdkRequestMeta
@@ -84,7 +98,7 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
       ...(headers ?? {}),
       ...(body === undefined ? {} : { 'content-type': resolved.requestContentType ?? 'application/json' })
     },
-    body: body === undefined ? undefined : resolved.requestKind === 'binary' ? new Uint8Array(body as Uint8Array).buffer : resolved.requestKind === 'text' ? String(body) : JSON.stringify(body)
+    body: body === undefined ? undefined : resolved.requestKind === 'binary' ? new Uint8Array(body as Uint8Array).buffer : resolved.requestKind === 'text' ? String(body) : resolved.requestKind === 'urlEncoded' ? encodeForm(body) : JSON.stringify(body)
   });
   const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? (response.ok ? 'application/json' : 'text/plain');
   const kind = resolved.responseKinds?.[response.status];

@@ -1,0 +1,26 @@
+[package]
+name = "forklaunch-messaging-base"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+postgres = ["dep:forklaunch-core", "dep:sqlx"]
+
+[dependencies]
+forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
+forklaunch-messaging-interface = { path = "../../../interfaces/forklaunch-messaging-interface" }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde_json = "1"
+forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"], optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+
+[lints]
+workspace = true

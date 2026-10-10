@@ -77,7 +77,14 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 }));
             }
             if let Some(body) = operation.get("requestBody") {
-                request["body"] = response_body(body)?;
+                let mut imported = response_body(body)?;
+                if imported["contentType"].as_str().is_some_and(|media| {
+                    media.split(';').next().unwrap_or_default().trim()
+                        == "application/x-www-form-urlencoded"
+                }) {
+                    imported["kind"] = Value::String("urlEncoded".into());
+                }
+                request["body"] = imported;
             }
             let responses = operation
                 .get("responses")
@@ -480,6 +487,7 @@ mod request_media_tests {
         for (media, kind) in [
             ("text/plain", "text"),
             ("application/octet-stream", "binary"),
+            ("application/x-www-form-urlencoded", "urlEncoded"),
             ("application/vnd.example+json", "json"),
         ] {
             let spec = json!({"openapi":"3.1.0","paths":{"/upload":{"post":{"requestBody":{"required":true,"content":{media:{}}},"responses":{"204":{"description":"Done"}}}}}});
