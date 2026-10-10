@@ -44,11 +44,11 @@ docker compose build accounts
 docker compose up accounts
 ```
 
-The generated Dockerfile builds workspace binaries, and Compose selects the service binary, port, and health check. Container deployment to ECS has not yet been verified.
+The generated Dockerfile builds workspace binaries, and Compose selects the service binary, port, and health check. A relocated generated-service image passes local build, health/OpenAPI, and SIGTERM shutdown checks. Container deployment to ECS has not yet been verified.
 
 ## Current boundaries
 
-Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. Generated workers execute one demonstration batch. Billing, provider integrations, and generated durable worker loops remain unfinished. A PostgreSQL queue adapter is available below. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
+Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. New PostgreSQL database workers use the durable queue and runner described below. Other generated worker backends retain their demonstration batch. Billing, provider integrations, and durable Redis/Kafka workers remain unfinished. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
 
 ## Validate the port
 
@@ -143,4 +143,20 @@ Call `ack` only after successful processing. On failure, `fail` schedules the co
 
 Delivery is at least once. Make handlers idempotent because a consumer can crash after performing a side effect and before acknowledging it. Renew leases during long-running handlers. Queued statistics include delayed retries; processing statistics include expired leases until the next claim recovers or fails them. `peek` returns currently eligible jobs without claiming them.
 
-The adapter is available to application code; generated worker binaries still run their demonstration batch. Generator wiring, polling/drain lifecycle, dead-letter administration and retention, Redis/Kafka durable adapters, and distributed control signals remain tracked separately. CI runs `postgres_worker_leases_retries_isolation_and_concurrency` against PostgreSQL, covering concurrent consumers, tenant RLS, retries, crash recovery, stale tokens, batch rollback, and compatibility with IAM migrations.
+The adapter is available to application code. New PostgreSQL worker binaries use the runner below. Dead-letter administration and retention, Redis/Kafka durable adapters, and distributed control signals remain tracked separately. CI runs `postgres_worker_leases_retries_isolation_and_concurrency` against PostgreSQL, covering concurrent consumers, tenant RLS, retries, crash recovery, stale tokens, batch rollback, and compatibility with IAM migrations.
+
+## Generated PostgreSQL workers
+
+```sh
+forklaunch init worker jobs --language rust -t database -d postgresql --path . -D "Jobs"
+```
+
+New workers with this backend bundle blueprint source and run a continuous polling loop through `forklaunch-worker-database`'s `runtime` feature. Apply migrations with `cargo run -p jobs -- --migrate` using the owner connection. Start the worker with a restricted `DATABASE_URL` and trusted `TENANT_ID`. Implement application work in `crates/jobs/src/handler.rs`; the initial handler fails with `worker_handler_not_implemented` and leaves jobs subject to their retry budget instead of discarding them.
+
+The runner processes one job at a time and renews its lease while the handler runs. Run multiple processes for parallel consumption. `WORKER_QUEUE` defaults to the crate name. Retry policy uses `WORKER_MAX_ATTEMPTS` and `WORKER_BACKOFF_SECONDS`; polling, leases, renewal, and shutdown drain use `WORKER_POLL_MS`, `WORKER_LEASE_MS`, `WORKER_RENEW_MS`, and `WORKER_DRAIN_MS`. Invalid settings fail startup. Queue operations have bounded timeouts. Renewal must run at least three times per lease duration.
+
+Ctrl-C or SIGTERM stops new claims and drains the active job while renewing its lease. If draining times out, the runner cancels the handler and leaves the delivery recoverable after lease expiry. It also cancels a handler when lease renewal reports an obsolete token. Keep all handler work inside its returned future and make external side effects idempotent. Application error codes are retained; detailed handler errors are not automatically persisted.
+
+With runtime environment variables set, use `cargo run -p jobs -- --enqueue ID JSON` to submit a job and `--inspect ID` to read its state. Inspection omits payloads and lease tokens. Contract/OpenAPI export works without a database connection. Reinitialization, sync, and worker rename preserve the application handler and Cargo metadata; rename updates generated SDKs and contract artifacts.
+
+Existing demonstration workers are preserved when reinitialized. To upgrade explicitly, run `forklaunch change worker --path crates/jobs -t database -d postgresql --confirm`; backend conversion installs the runner while retaining an existing handler and unrelated Cargo metadata. Batch-handler configuration, worker HTTP health/control endpoints, distributed signals, and durable Redis/Kafka backends remain parity tasks. `cli/tests/rust_worker_runtime.sh` tests a relocated generated worker against PostgreSQL, including renewal, drain, retries, forced cancellation, process crashes, tenant isolation, source preservation, rename, and delete.

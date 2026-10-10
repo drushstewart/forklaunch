@@ -15,18 +15,18 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 922 tests pass; latest all-feature framework 91 and blueprint 41 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 922 tests pass; latest all-feature framework 91 and blueprint 42 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [ ] Validate Rust-only release export through the shared exporter, including contracts and OpenAPI artifacts.
 - [ ] Validate mixed TypeScript/Rust release export and preserve prebuilt-release isolation from `main`.
-- [ ] Complete generated-container build and HTTP/shutdown smoke checks after Docker disk capacity is available. Local build failed with `No space left on device`; the 2026-10-09 retry reached Rust release compilation but Docker's 122 GiB filesystem remains full and was stopped without pruning shared data. Builder/runtime both use Debian bookworm. `rust_container_runtime.sh` now checks relocated builds, health/OpenAPI, and SIGTERM shutdown in CI.
+- [x] Complete relocated generated-service container build, health/OpenAPI, and SIGTERM shutdown checks. The Docker capacity blocker is resolved; `rust_container_runtime.sh` passes locally and runs in CI. Builder/runtime both use Debian bookworm.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.
-- [x] Verify the CLI Cargo package file list includes all 97 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 102 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [ ] Validate crate publication and installation from published CLI sources (phases 13–15). Embedded framework and blueprint source mirrors are checked; published-source installation remains unverified.
 
-PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle, billing, generated durable worker loops, and Redis/Kafka queue implementations remain explicit tasks in phase 12.
+PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle, billing, batch worker handlers, and Redis/Kafka queue implementations remain explicit tasks in phase 12.
 
 ## Full TypeScript Parity Scope
 
@@ -58,6 +58,7 @@ Generation is tracked separately from production framework and blueprint parity 
 - [x] Shut down generated HTTP services gracefully on Ctrl-C and SIGTERM.
 - [x] Exercise init, change, sync, delete, contract/OpenAPI export, and TypeScript/Rust SDK generation in a dedicated CI matrix group.
 - [x] Add a relocated-app HTTP test calling the generated Rust service through its generated TypeScript SDK.
+- [x] Generate durable PostgreSQL workers and verify renewal, retries, drain, restart recovery, source preservation, backend conversion, rename, and delete against a real database.
 - [x] Document usage and distinguish generated examples from production storage and queue integrations.
 
 ## Core Principles
@@ -554,7 +555,10 @@ Requirements:
 - [x] Implement initial in-memory database, Redis, and Kafka queue adapters behind the worker trait.
 - [x] Implement PostgreSQL-backed worker queue with tenant RLS, atomic batch enqueue, concurrent claims, renewable fenced leases, acknowledgments, fixed retry backoff, crash recovery, and failed-job retention.
 - [x] Define an async leased-queue interface and validate the PostgreSQL adapter against a restricted-role database, including migration coexistence with IAM.
-- [ ] Wire durable queues into generated worker binaries with polling, lease renewal, and graceful drain.
+- [x] Wire PostgreSQL queues into new generated workers with polling, lease renewal, bounded operations, and graceful drain; validate actual process crashes, restart recovery, tenant isolation, and source-preserving lifecycle operations.
+- [x] Convert existing example workers to PostgreSQL on explicit backend changes, preserving their handler and unrelated Cargo metadata.
+- [ ] Add batch-handler and concurrency settings plus worker HTTP health/control endpoints.
+- [ ] Wire durable Redis/Kafka queues into generated worker binaries.
 - [ ] Add dead-letter administration and completed/failed job retention policies.
 - [ ] Implement Redis-backed worker queue.
 - [ ] Implement Kafka-backed worker queue.

@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
+runtime = ["dep:tokio"]
 postgres = ["dep:sqlx", "dep:forklaunch-core", "dep:serde_json", "dep:uuid"]
 
 [dependencies]
@@ -18,6 +19,8 @@ forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core",
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "uuid", "migrate", "macros"], optional = true }
 serde_json = { version = "1", optional = true }
 uuid = { version = "1", features = ["v4"], optional = true }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

@@ -32,6 +32,7 @@ static FRAMEWORK_CRATES: Dir =
 const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.toml.template");
 
 mod iam;
+mod worker;
 pub(crate) use iam::generate_rust_iam_module;
 
 pub(crate) const PROJECT_LANGUAGE_VARIANTS: [&str; 3] = ["typescript", "rust", "mixed"];
@@ -457,6 +458,19 @@ pub(crate) fn sync_rust_project(app_root: &Path, kind: RustProjectKind, name: &s
         iam::ensure_iam_compose(app_root, name, false)?;
         return ensure_rust_package_scripts(app_root, kind, name, false);
     }
+    if kind == RustProjectKind::Worker && worker::is_postgres_worker(app_root, name)? {
+        add_project_to_manifest(
+            app_root,
+            kind,
+            name,
+            &description,
+            &ArgMatches::default(),
+            false,
+        )?;
+        worker::mark(app_root, name)?;
+        worker::compose(app_root, name)?;
+        return ensure_rust_package_scripts(app_root, kind, name, false);
+    }
     let templates = rust_crate_templates(&crate_dir, name, &description, kind)
         .into_iter()
         .filter(|template| !template.path.exists())
@@ -604,6 +618,38 @@ pub(crate) fn change_rust_project(
         .and_then(kind_from_manifest_type)
         .unwrap_or(RustProjectKind::Library);
     let target_kind = to_kind.unwrap_or(current_kind);
+    let persistent_worker = current_kind == RustProjectKind::Worker
+        && worker::is_postgres_worker(app_root, current_name)?;
+    let keep_persistent_worker = persistent_worker
+        && target_kind == RustProjectKind::Worker
+        && database.is_none_or(|database| database == "postgresql")
+        && worker_type.is_none_or(|worker_type| worker_type == "database");
+    let current_project = project_table(&manifest, current_name);
+    let target_database = database
+        .or_else(|| {
+            current_project
+                .and_then(|project| project.get("resources"))
+                .and_then(|resources| resources.get("database"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("postgresql");
+    let target_worker_type = worker_type
+        .or_else(|| {
+            (current_kind == RustProjectKind::Worker)
+                .then(|| {
+                    current_project
+                        .and_then(|project| project.get("metadata"))
+                        .and_then(|metadata| metadata.get("workerType"))
+                        .and_then(Value::as_str)
+                })
+                .flatten()
+        })
+        .unwrap_or("database");
+    let convert_postgres_worker = !persistent_worker
+        && target_kind == RustProjectKind::Worker
+        && target_database == "postgresql"
+        && target_worker_type == "database"
+        && (current_kind != target_kind || worker_type.is_some() || database.is_some());
     let persistent_iam = iam::is_iam_module(app_root, current_name)?;
     if persistent_iam
         && (!matches!(target_kind, RustProjectKind::Service)
@@ -701,9 +747,24 @@ pub(crate) fn change_rust_project(
         }
     }
 
+    if persistent_worker && !keep_persistent_worker {
+        project_table_mut(&mut manifest, target_name)
+            .context("Expected worker")?
+            .remove("variant");
+    }
     write_manifest_value(&manifest_path, &manifest)?;
 
     let crate_dir = app_root.join(&target_crate_path);
+    if keep_persistent_worker {
+        if current_name != target_name {
+            worker::rename_sources(app_root, current_name, target_name)?;
+            rename_rust_project_outputs(app_root, current_name, target_name)?;
+            remove_rust_package_scripts(app_root, current_name)?;
+        }
+        worker::compose(app_root, target_name)?;
+        return ensure_rust_package_scripts(app_root, target_kind, target_name, false)
+            .map(|()| target_name.to_owned());
+    }
     if persistent_iam {
         if current_name != target_name {
             iam::rename_iam_sources(app_root, current_name, target_name)?;
@@ -728,6 +789,9 @@ pub(crate) fn change_rust_project(
     ensure_rust_docker_compose_project(app_root, target_kind, target_name, false)?;
     ensure_rust_package_scripts(app_root, target_kind, target_name, false)?;
     ensure_rust_local_library_dependencies(app_root, false)?;
+    if convert_postgres_worker {
+        worker::convert(app_root, target_name)?;
+    }
     if current_name != target_name {
         rename_rust_project_outputs(app_root, current_name, target_name)?;
     }
@@ -928,9 +992,37 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     )?;
     let crate_path = Path::new("crates").join(&name);
     let crate_dir = app_root.join(&crate_path);
+    let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
+    if let Some(project) = project_table(&manifest, &name) {
+        if !is_rust_project(&app_root, &name)?
+            || project.get("type").and_then(Value::as_str) != Some(kind.manifest_type())
+            || project.get("variant").and_then(Value::as_str) == Some("iam-base")
+        {
+            bail!(
+                "Project {name} already exists with a different project kind or module; use its change command"
+            );
+        }
+    } else if crate_dir.join("Cargo.toml").exists() {
+        bail!(
+            "An existing crate occupies the destination for {name}; sync it before initialization"
+        );
+    }
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     ensure_embedded_framework(&app_root, dryrun)?;
-    let templates = rust_crate_templates(&crate_dir, &name, &description, kind);
+    let postgres_worker = kind == RustProjectKind::Worker
+        && option(matches, "type").as_deref().unwrap_or("database") == "database"
+        && option(matches, "database")
+            .as_deref()
+            .unwrap_or("postgresql")
+            == "postgresql"
+        && (!crate_dir.join("Cargo.toml").exists()
+            || worker::is_postgres_worker(&app_root, &name)?);
+    let templates = if postgres_worker {
+        iam::ensure_blueprint_sources(&app_root, dryrun)?;
+        worker::templates(&crate_dir, &name, &description)?
+    } else {
+        rust_crate_templates(&crate_dir, &name, &description, kind)
+    };
 
     write_rust_rendered_templates(&templates, dryrun, &mut stdout)?;
     add_cargo_member(&app_root, &crate_path.to_string_lossy(), dryrun)?;
@@ -938,6 +1030,10 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     ensure_rust_local_library_dependencies(&app_root, dryrun)?;
     ensure_rust_docker_compose_project(&app_root, kind, &name, dryrun)?;
     ensure_rust_package_scripts(&app_root, kind, &name, dryrun)?;
+    if postgres_worker && !dryrun {
+        worker::mark(&app_root, &name)?;
+        worker::compose(&app_root, &name)?;
+    }
 
     log_ok!(
         stdout,

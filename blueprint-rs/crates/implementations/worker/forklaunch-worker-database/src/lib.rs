@@ -3,6 +3,9 @@
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
+#[cfg(feature = "runtime")]
+pub mod runner;
+
 use std::{collections::VecDeque, sync::Mutex};
 
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};

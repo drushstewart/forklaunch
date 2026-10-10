@@ -1,0 +1,105 @@
+import assert from 'node:assert/strict';
+import {spawn, execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {once} from 'node:events';
+const exec = promisify(execFile);
+const binary = process.argv[2];
+const mode = process.argv[3];
+const role = process.env.FORKLAUNCH_TEST_ROLE;
+const url = new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);
+url.username = role;
+url.password = 'parity-test-only';
+const env = tenant => ({...process.env, DATABASE_URL:url.toString(), TENANT_ID:`${role}-${tenant}`,
+  WORKER_QUEUE:mode === 'stub' ? 'stub' : 'runtime', WORKER_MAX_ATTEMPTS:'2', WORKER_BACKOFF_SECONDS:'0',
+  WORKER_POLL_MS:'20', WORKER_LEASE_MS:'1000', WORKER_RENEW_MS:'250', WORKER_DRAIN_MS:'5000'});
+const children = [];
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function command(args, tenant = 'a') { return (await exec(binary, args, {env:env(tenant), timeout:10000})).stdout; }
+async function inspect(id, tenant = 'a') { return JSON.parse(await command(['--inspect',id],tenant)); }
+async function waitState(id,status,tenant='a') {
+  const deadline=Date.now()+15000;
+  while(Date.now()<deadline) {
+    const job=await inspect(id,tenant);
+    if(job?.status===status) return job;
+    await sleep(25);
+  }
+  throw new Error(`job ${id} did not reach ${status}`);
+}
+async function start(overrides={}) {
+  const child=spawn(binary,[],{env:{...env('a'),...overrides},stdio:['ignore','pipe','pipe']});
+  const exit=once(child,'exit');
+  const record={child,exit,output:'',error:''}; children.push(record);
+  child.stdout.on('data',chunk=>record.output+=chunk);
+  child.stderr.on('data',chunk=>record.error+=chunk);
+  await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error(`worker startup timed out: ${record.error}`)),10000);
+    child.stdout.on('data',()=>{if(record.output.includes('worker ready')) {clearTimeout(timer);resolve();}});
+    child.once('error',error=>{clearTimeout(timer);reject(error);});
+    child.once('exit',code=>{clearTimeout(timer);reject(new Error(`worker exited ${code}: ${record.error}`));});
+  });
+  return record;
+}
+async function stop(record,signal='SIGTERM') {
+  record.child.kill(signal);
+  let timer;
+  const result=await Promise.race([record.exit,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('worker did not stop')),10000);})]).finally(()=>clearTimeout(timer));
+  if(signal==='SIGTERM') assert.equal(result[0],0,record.error);
+  return record.output;
+}
+try {
+  if(mode==='stub') {
+    await command(['--enqueue','unimplemented','{}']);
+    const worker=await start();
+    const job=await waitState('unimplemented','Failed');
+    assert.equal(job.last_error,'worker_handler_not_implemented');
+    await stop(worker);
+    console.log('PASS fresh worker never acknowledges an unimplemented handler');
+  } else {
+    await command(['--enqueue','first',JSON.stringify({sleep_ms:2400})]);
+    await command(['--enqueue','first','{}'],'b');
+    const worker=await start();
+    await waitState('first','Processing');
+    await sleep(1300);
+    const active=await inspect('first');
+    assert.equal(active.status,'Processing'); assert.equal(active.attempts,1);
+    await command(['--enqueue','pending','{}']);
+    const output=await stop(worker);
+    assert.match(output,/completed=1/);
+    assert.equal((await inspect('first')).status,'Completed');
+    assert.equal((await inspect('first','b')).status,'Queued');
+    assert.equal((await inspect('pending')).status,'Queued');
+    await assert.rejects(command(['--enqueue','first','{}']));
+
+    await command(['--enqueue','failure','{"fail":true}']);
+    const restarted=await start();
+    await waitState('pending','Completed');
+    const failed=await waitState('failure','Failed');
+    assert.equal(failed.attempts,2); assert.equal(failed.last_error,'test_handler_failure');
+    await stop(restarted);
+
+    await command(['--enqueue','cancel','{"sleep_ms":10000,"slow_first":true}']);
+    const draining=await start({WORKER_DRAIN_MS:'100'});
+    await waitState('cancel','Processing');
+    const cancelled=await stop(draining);
+    assert.match(cancelled,/abandoned=1/);
+    assert.equal((await inspect('cancel')).status,'Processing');
+    await sleep(1100);
+    const recovery=await start();
+    assert.equal((await waitState('cancel','Completed')).attempts,2);
+    await stop(recovery);
+
+    await command(['--enqueue','crash','{"sleep_ms":10000,"slow_first":true}']);
+    const crashed=await start();
+    await waitState('crash','Processing');
+    await stop(crashed,'SIGKILL');
+    await sleep(1100);
+    const recovered=await start();
+    assert.equal((await waitState('crash','Completed')).attempts,2);
+    await stop(recovered);
+    console.log('PASS generated PostgreSQL worker: lease renewal, drain, retry, cancellation, crash recovery, and tenant isolation');
+  }
+} finally {
+  await Promise.all(children.map(async record=>{
+    if(record.child.exitCode===null && record.child.signalCode===null) {record.child.kill('SIGKILL');await record.exit;}
+  }));
+}

@@ -95,7 +95,7 @@ pub(super) fn generate_iam_at(
     Ok(())
 }
 
-fn ensure_blueprint_sources(root: &Path, dryrun: bool) -> Result<()> {
+pub(super) fn ensure_blueprint_sources(root: &Path, dryrun: bool) -> Result<()> {
     if dryrun {
         return Ok(());
     }

@@ -352,3 +352,296 @@ async fn postgres_worker_leases_retries_isolation_and_concurrency() {
     assert_eq!(error.message, "Worker storage operation failed");
     fixture.close().await;
 }
+
+#[cfg(feature = "runtime")]
+mod runner_tests {
+    use super::*;
+    use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
+    use forklaunch_worker_database::runner::{self, JobHandler, RunnerConfig};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use tokio::sync::Notify;
+
+    struct Active(Arc<AtomicBool>);
+    impl Drop for Active {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    struct Handler {
+        started: Arc<AtomicBool>,
+        active: Arc<AtomicBool>,
+        duration: Duration,
+        fails: bool,
+    }
+    impl JobHandler for Handler {
+        async fn process(&self, _job: Job) -> BlueprintResult<()> {
+            self.active.store(true, Ordering::SeqCst);
+            let _active = Active(Arc::clone(&self.active));
+            self.started.store(true, Ordering::SeqCst);
+            tokio::time::sleep(self.duration).await;
+            if self.fails {
+                Err(BlueprintError::new(
+                    "test_failure",
+                    "secret application message",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+    async fn until(mut condition: impl FnMut() -> bool) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !condition() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    fn config(queue: &str) -> RunnerConfig {
+        RunnerConfig {
+            queue: queue.into(),
+            poll_interval: Duration::from_millis(5),
+            lease_duration: Duration::from_millis(600),
+            renew_interval: Duration::from_millis(150),
+            drain_timeout: Duration::from_secs(2),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires isolated PostgreSQL"]
+    #[allow(clippy::too_many_lines)]
+    async fn postgres_worker_runner_renews_drains_cancels_and_retries() {
+        let fixture = Fixture::new().await;
+        let queue = fixture.queue.clone();
+        queue
+            .enqueue_batch(vec![
+                Job::new("active", "runner", "{}"),
+                Job::new("pending", "runner", "{}"),
+            ])
+            .await
+            .unwrap();
+        let started = Arc::new(AtomicBool::new(false));
+        let active = Arc::new(AtomicBool::new(false));
+        let shutdown = Arc::new(Notify::new());
+        let task = {
+            let consumer = queue.clone();
+            let shutdown = Arc::clone(&shutdown);
+            let handler = Handler {
+                started: Arc::clone(&started),
+                active: Arc::clone(&active),
+                duration: Duration::from_millis(1400),
+                fails: false,
+            };
+            tokio::spawn(async move {
+                runner::run(&consumer, &handler, &config("runner"), shutdown.notified())
+                    .await
+                    .unwrap()
+            })
+        };
+        until(|| started.load(Ordering::SeqCst)).await;
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert!(active.load(Ordering::SeqCst));
+        assert!(
+            queue
+                .claim("runner", Duration::from_secs(30))
+                .await
+                .unwrap()
+                .is_some_and(|lease| lease.job.id == "pending")
+        );
+        // The active job remains leased after more than its original duration.
+        assert!(
+            queue
+                .claim("runner", Duration::from_secs(30))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        shutdown.notify_one();
+        let report = task.await.unwrap();
+        assert_eq!(report.completed, 1);
+        assert_eq!(report.abandoned, 0);
+        assert!(!active.load(Ordering::SeqCst));
+        assert_eq!(
+            queue
+                .inspect("runner", "active")
+                .await
+                .unwrap()
+                .unwrap()
+                .job
+                .attempts,
+            1
+        );
+
+        queue
+            .enqueue(Job::new("cancel", "cancel", "{}"))
+            .await
+            .unwrap();
+        let started = Arc::new(AtomicBool::new(false));
+        let active = Arc::new(AtomicBool::new(false));
+        let shutdown = Arc::new(Notify::new());
+        let task = {
+            let consumer = queue.clone();
+            let shutdown = Arc::clone(&shutdown);
+            let handler = Handler {
+                started: Arc::clone(&started),
+                active: Arc::clone(&active),
+                duration: Duration::from_secs(10),
+                fails: false,
+            };
+            let mut config = config("cancel");
+            config.drain_timeout = Duration::from_millis(100);
+            tokio::spawn(async move {
+                runner::run(&consumer, &handler, &config, shutdown.notified())
+                    .await
+                    .unwrap()
+            })
+        };
+        until(|| started.load(Ordering::SeqCst)).await;
+        shutdown.notify_one();
+        let report = tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(report.abandoned, 1);
+        assert!(!active.load(Ordering::SeqCst));
+        assert_eq!(
+            queue
+                .inspect("cancel", "cancel")
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            JobStatus::Processing
+        );
+        tokio::time::sleep(Duration::from_millis(650)).await;
+        assert_eq!(
+            queue
+                .claim("cancel", Duration::from_secs(30))
+                .await
+                .unwrap()
+                .unwrap()
+                .job
+                .attempts,
+            2
+        );
+
+        queue.enqueue(Job::new("lost", "lost", "{}")).await.unwrap();
+        let started = Arc::new(AtomicBool::new(false));
+        let active = Arc::new(AtomicBool::new(false));
+        let shutdown = Arc::new(Notify::new());
+        let task = {
+            let consumer = queue.clone();
+            let shutdown = Arc::clone(&shutdown);
+            let handler = Handler {
+                started: Arc::clone(&started),
+                active: Arc::clone(&active),
+                duration: Duration::from_secs(10),
+                fails: false,
+            };
+            tokio::spawn(async move {
+                runner::run(&consumer, &handler, &config("lost"), shutdown.notified())
+                    .await
+                    .unwrap()
+            })
+        };
+        until(|| started.load(Ordering::SeqCst)).await;
+        // Replace the capability while work is pending. Renewal must cancel
+        // the obsolete handler instead of letting it acknowledge this delivery.
+        sqlx::query("UPDATE fl_worker.jobs SET lease_token=$2 WHERE tenant_id=$1 AND queue='lost'")
+            .bind(&fixture.role)
+            .bind(uuid::Uuid::new_v4())
+            .execute(&fixture.owner)
+            .await
+            .unwrap();
+        until(|| !active.load(Ordering::SeqCst)).await;
+        shutdown.notify_one();
+        let report = task.await.unwrap();
+        assert_eq!(report.lease_lost, 1);
+        assert_eq!(report.completed, 0);
+
+        let queue = PostgresWorkerQueue::new(
+            fixture.pool.clone(),
+            TenantContext::new(&fixture.role).unwrap(),
+            RetryPolicy::new(2, 0),
+        )
+        .await
+        .unwrap();
+        queue
+            .enqueue(Job::new("failure", "failure", "{}"))
+            .await
+            .unwrap();
+        let started = Arc::new(AtomicBool::new(false));
+        let active = Arc::new(AtomicBool::new(false));
+        let shutdown = Arc::new(Notify::new());
+        let task = {
+            let consumer = queue.clone();
+            let shutdown = Arc::clone(&shutdown);
+            let handler = Handler {
+                started: Arc::clone(&started),
+                active: Arc::clone(&active),
+                duration: Duration::from_millis(5),
+                fails: true,
+            };
+            tokio::spawn(async move {
+                runner::run(
+                    &consumer,
+                    &handler,
+                    &RunnerConfig::new("failure"),
+                    shutdown.notified(),
+                )
+                .await
+                .unwrap()
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if queue
+                    .inspect("failure", "failure")
+                    .await
+                    .unwrap()
+                    .is_some_and(|job| job.status == JobStatus::Failed)
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        shutdown.notify_one();
+        let report = task.await.unwrap();
+        assert_eq!(report.retried, 1);
+        assert_eq!(report.dead_lettered, 1);
+        assert_eq!(
+            queue
+                .inspect("failure", "failure")
+                .await
+                .unwrap()
+                .unwrap()
+                .last_error
+                .as_deref(),
+            Some("test_failure")
+        );
+        // An already requested shutdown never claims a queued job.
+        queue
+            .enqueue(Job::new("untouched", "idle", "{}"))
+            .await
+            .unwrap();
+        let handler = Handler {
+            started,
+            active,
+            duration: Duration::ZERO,
+            fails: false,
+        };
+        let report = runner::run(&queue, &handler, &config("idle"), async {})
+            .await
+            .unwrap();
+        assert_eq!(report, runner::RunReport::default());
+        assert_eq!(queue.stats("idle").await.unwrap().queued, 1);
+        fixture.close().await;
+    }
+}
