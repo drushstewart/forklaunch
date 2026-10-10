@@ -265,7 +265,13 @@ pub(crate) fn export_all_services(
 ) -> Result<Vec<String>> {
     let mut exported_services = export_all_rust_services(app_root, output_dir)?;
 
-    let runtime = manifest.runtime.as_str();
+    // Tokio is the Rust runtime; TypeScript services in that mixed workspace
+    // still export through Node. Bun/Node manifests keep their selected runtime.
+    let runtime = if manifest.runtime == "tokio" {
+        "node"
+    } else {
+        manifest.runtime.as_str()
+    };
     let modules_path = app_root.join(&manifest.modules_path);
 
     let rendered_templates_cache = RenderedTemplatesCache::new();

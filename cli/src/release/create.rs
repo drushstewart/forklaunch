@@ -559,7 +559,9 @@ impl CliCommand for CreateCommand {
             app_root.join(".forklaunch").join("openapi")
         };
         create_dir_all(&openapi_path).with_context(|| "Failed to create openapi directory")?;
-        let _openapi_guard = prebuilt.is_none().then(|| RemoveDirGuard::new(openapi_path.clone()));
+        let _openapi_guard = prebuilt
+            .is_none()
+            .then(|| RemoveDirGuard::new(openapi_path.clone()));
         let exported_services = if prebuilt.is_some() {
             super::prebuilt::validate_specs(&openapi_path, &manifest)?
         } else {
@@ -1235,6 +1237,13 @@ fn release_uses_rust_build(manifest: &ApplicationManifestData) -> bool {
         || manifest.application_language.as_deref() == Some("rust")
         || manifest.application_language.as_deref() == Some("mixed")
         || manifest.cargo_workspace.is_some()
+        || manifest.projects.iter().any(|project| {
+            project
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.language.as_deref())
+                == Some("rust")
+        })
 }
 
 fn release_code_source_path(
@@ -1249,88 +1258,137 @@ fn release_code_source_path(
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct ReleaseBuildStep {
+    program: &'static str,
+    args: Vec<&'static str>,
+    directory: PathBuf,
+    description: &'static str,
+}
+
+fn release_build_steps(
+    app_root: &Path,
+    modules_path: &Path,
+    manifest: &ApplicationManifestData,
+) -> Result<Vec<ReleaseBuildStep>> {
+    let rust = release_uses_rust_build(manifest);
+    let mut steps = Vec::new();
+    if rust {
+        steps.push(ReleaseBuildStep {
+            program: "cargo",
+            args: vec!["build", "--workspace", "--release"],
+            directory: app_root.to_path_buf(),
+            description: "Building Rust workspace",
+        });
+    }
+    let explicit_typescript = manifest.language.as_deref() == Some("mixed")
+        || manifest.application_language.as_deref() == Some("mixed")
+        || manifest.projects.iter().any(|project| {
+            project
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.language.as_deref())
+                == Some("typescript")
+        });
+    let javascript_root = if !rust {
+        Some(modules_path)
+    } else if app_root.join("package.json").is_file() {
+        Some(app_root)
+    } else if modules_path.join("package.json").is_file() {
+        Some(modules_path)
+    } else {
+        if explicit_typescript {
+            bail!(
+                "Mixed release requires a JavaScript workspace package.json at the application or modules root"
+            );
+        }
+        None
+    };
+    let Some(directory) = javascript_root else {
+        return Ok(steps);
+    };
+    let bun = manifest.runtime == "bun";
+    let program = if bun { "bun" } else { "pnpm" };
+    let lockfile = if bun {
+        directory.join("bun.lock").is_file() || directory.join("bun.lockb").is_file()
+    } else {
+        directory.join("pnpm-lock.yaml").is_file()
+    };
+    steps.push(ReleaseBuildStep {
+        program,
+        args: if lockfile {
+            vec!["install", "--frozen-lockfile"]
+        } else {
+            vec!["install"]
+        },
+        directory: directory.to_path_buf(),
+        description: "Installing JavaScript dependencies",
+    });
+    // Rust-generated SDK workspaces have package build scripts but no root
+    // build script. Build those packages recursively without requiring one.
+    let recursive = if rust {
+        let package: Value = serde_json::from_str(&read_to_string(directory.join("package.json"))?)
+            .context("Invalid release workspace package.json")?;
+        !package
+            .get("scripts")
+            .and_then(|scripts| scripts.get("build"))
+            .and_then(Value::as_str)
+            .is_some_and(|script| !script.trim().is_empty())
+    } else {
+        false
+    };
+    steps.push(ReleaseBuildStep {
+        program,
+        args: match (bun, recursive) {
+            (false, false) => vec!["build"],
+            (true, false) => vec!["run", "build"],
+            (false, true) => vec!["--recursive", "--if-present", "run", "build"],
+            (true, true) => vec!["run", "--filter", "*", "--if-present", "build"],
+        },
+        directory: directory.to_path_buf(),
+        description: "Building TypeScript workspace",
+    });
+    Ok(steps)
+}
+
+fn execute_release_build_steps(
+    steps: &[ReleaseBuildStep],
+    stdout: &mut StandardStream,
+    mut execute: impl FnMut(&ReleaseBuildStep) -> Result<bool>,
+) -> Result<()> {
+    for step in steps {
+        log_header!(
+            stdout,
+            Color::Cyan,
+            "{} ({})...",
+            step.description,
+            step.program
+        );
+        writeln!(stdout)?;
+        if !execute(step)? {
+            bail!("{} {} failed", step.program, step.args.join(" "));
+        }
+        log_ok!(stdout, "{} completed", step.description);
+        writeln!(stdout)?;
+    }
+    Ok(())
+}
+
 fn install_and_build_for_release(
     app_root: &Path,
     modules_path: &Path,
     manifest: &ApplicationManifestData,
     stdout: &mut StandardStream,
 ) -> Result<()> {
-    if release_uses_rust_build(manifest) {
-        log_header!(stdout, Color::Cyan, "Building Rust workspace (cargo)...");
-        writeln!(stdout)?;
-
-        let build_status = ProcessCommand::new("cargo")
-            .args(["build", "--workspace", "--release"])
-            .current_dir(app_root)
+    let steps = release_build_steps(app_root, modules_path, manifest)?;
+    execute_release_build_steps(&steps, stdout, |step| {
+        Ok(ProcessCommand::new(resolve_command(step.program))
+            .args(&step.args)
+            .current_dir(&step.directory)
             .status()
-            .with_context(|| "Failed to run cargo build --workspace --release")?;
-
-        if !build_status.success() {
-            bail!("cargo build --workspace --release failed");
-        }
-        log_ok!(stdout, "Rust build completed");
-        writeln!(stdout)?;
-        return Ok(());
-    }
-
-    let runtime_cmd = if manifest.runtime == "bun" {
-        "bun"
-    } else {
-        "pnpm"
-    };
-    let resolved = resolve_command(runtime_cmd);
-
-    log_header!(
-        stdout,
-        Color::Cyan,
-        "Installing dependencies ({})...",
-        runtime_cmd
-    );
-    writeln!(stdout)?;
-
-    let has_lockfile = if manifest.runtime == "bun" {
-        modules_path.join("bun.lock").exists() || modules_path.join("bun.lockb").exists()
-    } else {
-        modules_path.join("pnpm-lock.yaml").exists()
-    };
-
-    let install_args: Vec<&str> = if has_lockfile {
-        vec!["install", "--frozen-lockfile"]
-    } else {
-        vec!["install"]
-    };
-
-    let install_status = ProcessCommand::new(&resolved)
-        .args(&install_args)
-        .current_dir(modules_path)
-        .status()
-        .with_context(|| format!("Failed to run {} install", runtime_cmd))?;
-
-    if !install_status.success() {
-        bail!("{} install failed", runtime_cmd);
-    }
-    log_ok!(stdout, "Dependencies installed");
-
-    log_header!(stdout, Color::Cyan, "Building project ({})...", runtime_cmd);
-    writeln!(stdout)?;
-
-    let build_args = if manifest.runtime == "bun" {
-        vec!["run", "build"]
-    } else {
-        vec!["build"]
-    };
-    let build_status = ProcessCommand::new(&resolved)
-        .args(&build_args)
-        .current_dir(modules_path)
-        .status()
-        .with_context(|| format!("Failed to run {} build", runtime_cmd))?;
-
-    if !build_status.success() {
-        bail!("{} build failed", runtime_cmd);
-    }
-    log_ok!(stdout, "Build completed");
-    writeln!(stdout)?;
-    Ok(())
+            .with_context(|| format!("Failed to run {} {}", step.program, step.args.join(" ")))?
+            .success())
+    })
 }
 
 fn upload_release(
@@ -2677,6 +2735,117 @@ mod tests {
         assert_eq!(
             release_code_source_path(temp_dir.path(), &modules_path, &manifest),
             temp_dir.path()
+        );
+    }
+
+    #[test]
+    fn mixed_release_builds_both_workspaces_and_uses_root_lockfile() {
+        let root = TempDir::new().unwrap();
+        let modules = root.path().join("crates");
+        std::fs::create_dir(&modules).unwrap();
+        std::fs::write(
+            root.path().join("package.json"),
+            r#"{"scripts":{"build":"build-owned-workspaces"}}"#,
+        )
+        .unwrap();
+        std::fs::write(root.path().join("pnpm-lock.yaml"), "lockfileVersion: '9.0'").unwrap();
+        let mut manifest = create_test_manifest(vec![]);
+        manifest.language = Some("mixed".into());
+        let steps = release_build_steps(root.path(), &modules, &manifest).unwrap();
+        assert_eq!(
+            steps.iter().map(|step| step.program).collect::<Vec<_>>(),
+            ["cargo", "pnpm", "pnpm"]
+        );
+        assert!(steps.iter().all(|step| step.directory == root.path()));
+        assert_eq!(steps[1].args, ["install", "--frozen-lockfile"]);
+        assert_eq!(steps[2].args, ["build"]);
+        for fail_at in 0..steps.len() {
+            let mut calls = 0;
+            let result = execute_release_build_steps(
+                &steps,
+                &mut StandardStream::stdout(ColorChoice::Never),
+                |_| {
+                    let success = calls != fail_at;
+                    calls += 1;
+                    Ok(success)
+                },
+            );
+            assert!(result.is_err());
+            assert_eq!(
+                calls,
+                fail_at + 1,
+                "later release stages must not run after failure"
+            );
+        }
+    }
+
+    #[test]
+    fn rust_release_builds_generated_typescript_sdk_packages_without_root_build_script() {
+        let root = TempDir::new().unwrap();
+        std::fs::write(
+            root.path().join("package.json"),
+            r#"{"scripts":{"rust:build":"cargo build"}}"#,
+        )
+        .unwrap();
+        let mut manifest = create_test_manifest(vec![]);
+        manifest.runtime = "tokio".into();
+        let steps =
+            release_build_steps(root.path(), &root.path().join("crates"), &manifest).unwrap();
+        assert_eq!(steps.len(), 3);
+        assert_eq!(steps[1].args, ["install"]);
+        assert_eq!(
+            steps[2].args,
+            ["--recursive", "--if-present", "run", "build"]
+        );
+    }
+
+    #[test]
+    fn mixed_bun_release_uses_modules_workspace_and_both_lockfile_formats() {
+        let root = TempDir::new().unwrap();
+        let modules = root.path().join("src/modules");
+        std::fs::create_dir_all(&modules).unwrap();
+        std::fs::write(
+            modules.join("package.json"),
+            r#"{"scripts":{"build":"build-owned-workspaces"}}"#,
+        )
+        .unwrap();
+        let mut manifest = create_test_manifest(vec![]);
+        manifest.language = Some("mixed".into());
+        manifest.runtime = "bun".into();
+        for name in ["bun.lock", "bun.lockb"] {
+            std::fs::write(modules.join(name), "fixture").unwrap();
+            let steps = release_build_steps(root.path(), &modules, &manifest).unwrap();
+            assert_eq!(steps[0].directory, root.path());
+            assert_eq!(steps[1].directory, modules);
+            assert_eq!(steps[1].program, "bun");
+            assert_eq!(steps[1].args, ["install", "--frozen-lockfile"]);
+            assert_eq!(steps[2].args, ["run", "build"]);
+            std::fs::remove_file(modules.join(name)).unwrap();
+        }
+        std::fs::write(modules.join("package.json"), "{}").unwrap();
+        let steps = release_build_steps(root.path(), &modules, &manifest).unwrap();
+        assert_eq!(
+            steps[2].args,
+            ["run", "--filter", "*", "--if-present", "build"]
+        );
+    }
+
+    #[test]
+    fn release_rejects_missing_or_invalid_mixed_workspace_before_executing_builds() {
+        let root = TempDir::new().unwrap();
+        let modules = root.path().join("crates");
+        let mut manifest = create_test_manifest(vec![]);
+        manifest.language = Some("mixed".into());
+        assert!(release_build_steps(root.path(), &modules, &manifest).is_err());
+        std::fs::write(root.path().join("package.json"), "invalid-json").unwrap();
+        assert!(release_build_steps(root.path(), &modules, &manifest).is_err());
+        std::fs::remove_file(root.path().join("package.json")).unwrap();
+        manifest.language = Some("rust".into());
+        assert_eq!(
+            release_build_steps(root.path(), &modules, &manifest)
+                .unwrap()
+                .len(),
+            1
         );
     }
 
