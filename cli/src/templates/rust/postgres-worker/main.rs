@@ -58,6 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let config = RunnerConfig {
             queue: queue_name,
             concurrency: usize::try_from(number("WORKER_CONCURRENCY", 1)?)?,
+            batch_size: usize::try_from(number("WORKER_BATCH_SIZE", 1)?)?,
             poll_interval: Duration::from_millis(number("WORKER_POLL_MS", 250)?),
             lease_duration: Duration::from_millis(number("WORKER_LEASE_MS", 30000)?),
             renew_interval: Duration::from_millis(number("WORKER_RENEW_MS", 10000)?),

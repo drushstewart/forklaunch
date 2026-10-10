@@ -3,7 +3,7 @@ use crate::control::{WorkerControl, WorkerState};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_worker_interface::{AsyncWorkerQueue, FailureDisposition, Job, JobLease};
 use futures_util::{StreamExt, stream::FuturesUnordered};
-use std::{future::Future, time::Duration};
+use std::{collections::BTreeMap, future::Future, time::Duration};
 use tokio::sync::watch;
 use tokio::time::{Instant, MissedTickBehavior, interval_at, timeout};
 
@@ -13,13 +13,44 @@ pub trait JobHandler: Send + Sync {
     /// # Errors
     /// Returns an application failure; the runner records its code and retries.
     fn process(&self, job: Job) -> impl Future<Output = BlueprintResult<()>> + Send;
+
+    /// Processes a claimed batch and returns only its failed job identities.
+    /// The compatibility implementation invokes the single-job handler in order.
+    /// Override this method for bulk application work; successes are omitted.
+    /// # Errors
+    /// A whole-batch error retries every delivery. Unknown or duplicate failure
+    /// identities invalidate the result and retry every delivery as well.
+    fn process_batch(
+        &self,
+        jobs: Vec<Job>,
+    ) -> impl Future<Output = BlueprintResult<Vec<JobFailure>>> + Send {
+        async move {
+            let mut failures = Vec::new();
+            for job in jobs {
+                let id = job.id.clone();
+                if let Err(error) = self.process(job).await {
+                    failures.push(JobFailure { id, error });
+                }
+            }
+            Ok(failures)
+        }
+    }
+}
+
+/// One failed job in a batch; messages are never persisted by the runner.
+#[derive(Debug, Clone)]
+pub struct JobFailure {
+    pub id: String,
+    pub error: BlueprintError,
 }
 
 #[derive(Debug, Clone)]
 pub struct RunnerConfig {
     pub queue: String,
-    /// Maximum in-flight deliveries in this process (1..=256).
+    /// Maximum concurrent handler batches in this process (1..=256).
     pub concurrency: usize,
+    /// Maximum deliveries per handler batch. Total in flight is capped at 1000.
+    pub batch_size: usize,
     pub poll_interval: Duration,
     pub lease_duration: Duration,
     pub renew_interval: Duration,
@@ -32,6 +63,7 @@ impl RunnerConfig {
         Self {
             queue: queue.into(),
             concurrency: 1,
+            batch_size: 1,
             poll_interval: Duration::from_millis(250),
             lease_duration: Duration::from_secs(30),
             renew_interval: Duration::from_secs(10),
@@ -43,6 +75,8 @@ impl RunnerConfig {
     /// Rejects invalid queue names, time bounds, and concurrency limits.
     pub fn validate(&self) -> BlueprintResult<()> {
         if !(1..=256).contains(&self.concurrency)
+            || !(1..=1000).contains(&self.batch_size)
+            || self.concurrency * self.batch_size > 1000
             || self.queue.trim().is_empty()
             || self.queue.len() > 256
             || self.queue.chars().any(char::is_control)
@@ -82,6 +116,14 @@ enum Outcome {
 }
 
 impl RunReport {
+    fn merge(&mut self, other: Self) {
+        self.completed += other.completed;
+        self.retried += other.retried;
+        self.dead_lettered += other.dead_lettered;
+        self.lease_lost += other.lease_lost;
+        self.abandoned += other.abandoned;
+    }
+
     fn record(&mut self, outcome: Outcome) {
         match outcome {
             Outcome::Completed => self.completed += 1,
@@ -99,7 +141,7 @@ fn operation_timeout() -> BlueprintError {
     )
 }
 
-/// Runs up to the configured number of concurrent deliveries, renewing each
+/// Runs up to the configured number of concurrent handler batches, renewing each
 /// lease while its handler runs. Shutdown stops new claims and drains all active
 /// handlers while continuing renewal. A drain timeout cancels the handler and
 /// leaves its delivery recoverable after lease expiry. A queue error stops all
@@ -169,11 +211,7 @@ where
                 let Some(result) = result else { break; };
                 match result {
                     Ok(partial) => {
-                        report.completed += partial.completed;
-                        report.retried += partial.retried;
-                        report.dead_lettered += partial.dead_lettered;
-                        report.lease_lost += partial.lease_lost;
-                        report.abandoned += partial.abandoned;
+                        report.merge(partial);
                     }
                     Err(error) => {
                         if first_error.is_none() { first_error = Some(error); }
@@ -218,14 +256,14 @@ where
                 }
             }
         }
-        let lease = tokio::select! {
+        let leases = tokio::select! {
             biased;
             () = &mut shutdown => return Ok(report),
-            result = timeout(config.renew_interval, queue.claim(&config.queue, config.lease_duration)) => {
+            result = timeout(config.renew_interval, queue.claim_batch(&config.queue, config.lease_duration, config.batch_size)) => {
                 result.map_err(|_| operation_timeout())??
             }
         };
-        let Some(lease) = lease else {
+        if leases.is_empty() {
             tokio::select! {
                 biased;
                 () = &mut shutdown => return Ok(report),
@@ -233,30 +271,98 @@ where
                 () = tokio::time::sleep(config.poll_interval) => {},
             }
             continue;
-        };
-        let processing = process(queue, handler, config, &lease);
+        }
+        let processing = process(queue, handler, config, &leases);
         tokio::pin!(processing);
         tokio::select! {
             biased;
             () = &mut shutdown => {
                 match timeout(config.drain_timeout, &mut processing).await {
-                    Ok(result) => report.record(result?),
-                    Err(_) => report.abandoned += 1,
+                    Ok(result) => report.merge(result?),
+                    Err(_) => report.abandoned += leases.len() as u64,
                 }
                 return Ok(report);
             }
-            result = &mut processing => report.record(result?),
+            result = &mut processing => report.merge(result?),
         }
     }
+}
+
+fn safe_reason(error: &BlueprintError) -> String {
+    error
+        .code
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .take(256)
+        .collect()
+}
+
+fn failure_reasons(
+    leases: &[JobLease],
+    result: BlueprintResult<Vec<JobFailure>>,
+) -> Vec<Option<String>> {
+    match result {
+        Err(error) => vec![Some(safe_reason(&error)); leases.len()],
+        Ok(failures) => {
+            let mut reasons = BTreeMap::new();
+            for failure in failures {
+                if !leases.iter().any(|lease| lease.job.id == failure.id)
+                    || reasons
+                        .insert(failure.id, safe_reason(&failure.error))
+                        .is_some()
+                {
+                    return vec![Some("worker_invalid_batch_result".to_owned()); leases.len()];
+                }
+            }
+            leases
+                .iter()
+                .map(|lease| reasons.remove(&lease.job.id))
+                .collect()
+        }
+    }
+}
+
+async fn renew_batch<Q: AsyncWorkerQueue>(
+    queue: &Q,
+    config: &RunnerConfig,
+    leases: &[JobLease],
+) -> BlueprintResult<u64> {
+    let renewals = async {
+        let mut pending: FuturesUnordered<_> = leases
+            .iter()
+            .map(|lease| queue.renew(lease, config.lease_duration))
+            .collect();
+        let mut lost = 0;
+        while let Some(renewed) = pending.next().await {
+            if !renewed? {
+                lost += 1;
+            }
+        }
+        Ok(lost)
+    };
+    timeout(config.renew_interval, renewals)
+        .await
+        .map_err(|_| operation_timeout())?
 }
 
 async fn process<Q: AsyncWorkerQueue, H: JobHandler>(
     queue: &Q,
     handler: &H,
     config: &RunnerConfig,
-    lease: &JobLease,
-) -> BlueprintResult<Outcome> {
-    let work = handler.process(lease.job.clone());
+    leases: &[JobLease],
+) -> BlueprintResult<RunReport> {
+    let work = async {
+        if config.batch_size == 1 {
+            handler
+                .process(leases[0].job.clone())
+                .await
+                .map(|()| Vec::new())
+        } else {
+            handler
+                .process_batch(leases.iter().map(|lease| lease.job.clone()).collect())
+                .await
+        }
+    };
     tokio::pin!(work);
     let mut renewal = interval_at(
         Instant::now() + config.renew_interval,
@@ -268,42 +374,42 @@ async fn process<Q: AsyncWorkerQueue, H: JobHandler>(
             biased;
             result = &mut work => break result,
             _ = renewal.tick() => {
-                let renewed = timeout(config.renew_interval, queue.renew(lease, config.lease_duration))
-                    .await.map_err(|_| operation_timeout())??;
-                if !renewed { return Ok(Outcome::LeaseLost); }
+                let lost = renew_batch(queue, config, leases).await?;
+                if lost>0 { return Ok(RunReport {lease_lost:lost,abandoned:leases.len() as u64-lost,..RunReport::default()}); }
             }
         }
     };
-    match result {
-        Ok(()) => {
-            let acknowledged = timeout(config.renew_interval, queue.ack(lease))
-                .await
-                .map_err(|_| operation_timeout())??;
-            Ok(if acknowledged {
-                Outcome::Completed
-            } else {
-                Outcome::LeaseLost
+    // Validate the complete result before acknowledging any batch member.
+    let reasons = failure_reasons(leases, result);
+    let settlement = async {
+        let mut pending: FuturesUnordered<_> = leases
+            .iter()
+            .zip(&reasons)
+            .map(|(lease, reason)| async move {
+                if let Some(reason) = reason {
+                    Ok::<_, BlueprintError>(match queue.fail(lease, reason).await? {
+                        FailureDisposition::RetryScheduled => Outcome::Retried,
+                        FailureDisposition::DeadLetter => Outcome::DeadLettered,
+                        FailureDisposition::LeaseLost => Outcome::LeaseLost,
+                    })
+                } else {
+                    Ok(if queue.ack(lease).await? {
+                        Outcome::Completed
+                    } else {
+                        Outcome::LeaseLost
+                    })
+                }
             })
+            .collect();
+        let mut report = RunReport::default();
+        while let Some(result) = pending.next().await {
+            report.record(result?);
         }
-        Err(error) => {
-            // Application error messages can contain credentials or payloads.
-            // Persist a bounded code only; the handler owns detailed reporting.
-            let reason: String = error
-                .code
-                .chars()
-                .filter(|ch| !ch.is_control())
-                .take(256)
-                .collect();
-            let disposition = timeout(config.renew_interval, queue.fail(lease, &reason))
-                .await
-                .map_err(|_| operation_timeout())??;
-            Ok(match disposition {
-                FailureDisposition::RetryScheduled => Outcome::Retried,
-                FailureDisposition::DeadLetter => Outcome::DeadLettered,
-                FailureDisposition::LeaseLost => Outcome::LeaseLost,
-            })
-        }
-    }
+        Ok(report)
+    };
+    timeout(config.renew_interval, settlement)
+        .await
+        .map_err(|_| operation_timeout())?
 }
 
 #[cfg(test)]
@@ -326,7 +432,134 @@ mod tests {
         config.concurrency = 257;
         assert!(config.validate().is_err());
         config = RunnerConfig::new("email");
+        config.batch_size = 0;
+        assert!(config.validate().is_err());
+        config.batch_size = 1001;
+        assert!(config.validate().is_err());
+        config.batch_size = 1000;
+        assert!(config.validate().is_ok());
+        config.concurrency = 2;
+        assert!(config.validate().is_err());
+        config = RunnerConfig::new("email");
         config.poll_interval = Duration::ZERO;
         assert!(config.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod batch_fencing_tests {
+    use super::*;
+    use forklaunch_worker_interface::{JobReceipt, JobSnapshot, QueueStats};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
+    struct FencedQueue {
+        claimed: AtomicBool,
+        acknowledgments: AtomicUsize,
+        renewed: tokio::sync::Notify,
+    }
+    impl AsyncWorkerQueue for FencedQueue {
+        async fn enqueue(&self, _job: Job) -> BlueprintResult<JobReceipt> {
+            unreachable!()
+        }
+        async fn enqueue_batch(&self, _jobs: Vec<Job>) -> BlueprintResult<Vec<JobReceipt>> {
+            unreachable!()
+        }
+        async fn claim(
+            &self,
+            _queue: &str,
+            _duration: Duration,
+        ) -> BlueprintResult<Option<JobLease>> {
+            unreachable!()
+        }
+        async fn claim_batch(
+            &self,
+            _queue: &str,
+            _duration: Duration,
+            _limit: usize,
+        ) -> BlueprintResult<Vec<JobLease>> {
+            if self.claimed.swap(true, Ordering::SeqCst) {
+                return Ok(Vec::new());
+            }
+            Ok(["lost", "valid"]
+                .into_iter()
+                .map(|id| JobLease {
+                    job: Job::new(id, "jobs", "{}"),
+                    token: id.into(),
+                    expires_at_unix_ms: i64::MAX,
+                })
+                .collect())
+        }
+        async fn ack(&self, _lease: &JobLease) -> BlueprintResult<bool> {
+            self.acknowledgments.fetch_add(1, Ordering::SeqCst);
+            Ok(true)
+        }
+        async fn fail(
+            &self,
+            _lease: &JobLease,
+            _reason: &str,
+        ) -> BlueprintResult<FailureDisposition> {
+            unreachable!()
+        }
+        async fn renew(&self, lease: &JobLease, _duration: Duration) -> BlueprintResult<bool> {
+            self.renewed.notify_one();
+            Ok(lease.job.id != "lost")
+        }
+        async fn peek(&self, _queue: &str, _limit: usize) -> BlueprintResult<Vec<Job>> {
+            unreachable!()
+        }
+        async fn stats(&self, _queue: &str) -> BlueprintResult<QueueStats> {
+            unreachable!()
+        }
+        async fn inspect(&self, _queue: &str, _id: &str) -> BlueprintResult<Option<JobSnapshot>> {
+            unreachable!()
+        }
+    }
+    struct Handler(Arc<AtomicBool>);
+    struct Active(Arc<AtomicBool>);
+    impl Drop for Active {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    impl JobHandler for Handler {
+        async fn process(&self, _job: Job) -> BlueprintResult<()> {
+            unreachable!()
+        }
+        async fn process_batch(&self, _jobs: Vec<Job>) -> BlueprintResult<Vec<JobFailure>> {
+            self.0.store(true, Ordering::SeqCst);
+            let _active = Active(Arc::clone(&self.0));
+            std::future::pending().await
+        }
+    }
+    #[tokio::test]
+    async fn one_lost_delivery_cancels_the_entire_batch_without_acknowledging_others() {
+        let queue = FencedQueue {
+            claimed: AtomicBool::new(false),
+            acknowledgments: AtomicUsize::new(0),
+            renewed: tokio::sync::Notify::new(),
+        };
+        let active = Arc::new(AtomicBool::new(false));
+        let handler = Handler(Arc::clone(&active));
+        let mut config = RunnerConfig::new("jobs");
+        config.batch_size = 2;
+        config.poll_interval = Duration::from_millis(1);
+        config.lease_duration = Duration::from_millis(30);
+        config.renew_interval = Duration::from_millis(10);
+        let report = timeout(
+            Duration::from_secs(1),
+            run(&queue, &handler, &config, async {
+                queue.renewed.notified().await;
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(report.lease_lost, 1);
+        assert_eq!(report.abandoned, 1);
+        assert_eq!(report.completed, 0);
+        assert_eq!(queue.acknowledgments.load(Ordering::SeqCst), 0);
+        assert!(!active.load(Ordering::SeqCst));
     }
 }

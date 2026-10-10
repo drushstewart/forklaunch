@@ -186,9 +186,9 @@ Reinitialization and sync preserve application code. Rename updates imports, art
 
 ## Worker concurrency
 
-Both generated PostgreSQL and Redis workers accept `WORKER_CONCURRENCY` (1–256, default 1). Each active job has its own lease and heartbeat. On shutdown every consumer stops claiming jobs and drains its active handler within `WORKER_DRAIN_MS`; work still queued remains available for the next process. A storage failure stops the other consumers and drains their active work before the runner returns the first error.
+Both generated PostgreSQL and Redis workers accept `WORKER_CONCURRENCY` (1–256, default 1). Each active job has its own lease; batches renew their leases together. On shutdown every consumer stops claiming jobs and drains its active handler within `WORKER_DRAIN_MS`; work still queued remains available for the next process. A storage failure stops the other consumers and drains their active work before the runner returns the first error.
 
-For direct library use, set `RunnerConfig::concurrency`. `RunReport` combines counts from all consumers. Handlers share the same `JobHandler` instance and must support concurrent calls, keep asynchronous work inside the returned future, and make external side effects idempotent. This setting controls concurrent async deliveries; use separate processes or a blocking executor for CPU-heavy work. Batch handlers and distributed worker signals remain separate parity tasks.
+For direct library use, set `RunnerConfig::concurrency`. `RunReport` combines counts from all consumers. Handlers share the same `JobHandler` instance and must support concurrent calls, keep asynchronous work inside the returned future, and make external side effects idempotent. This setting controls concurrent async handler batches; use separate processes or a blocking executor for CPU-heavy work. Batch handlers are described below. Distributed worker signals remain a separate parity task.
 
 ## Dead letters and retention
 
@@ -239,4 +239,14 @@ For library use, enable `forklaunch-worker-database`'s `http-control` feature an
 
 Both durable adapters implement `AsyncWorkerQueue::claim_batch(queue, lease_duration, limit)` for limits 1–1000. Each atomic operation returns currently eligible jobs in delivery order, with a fresh independent token per job. Concurrent claimers receive disjoint live deliveries. Each lease is acknowledged, renewed, or failed independently, and the existing retry budget and tenant fences apply. An empty queue returns an empty vector. PostgreSQL uses a locked selection and transactional update; Redis validates the entire selected batch before acquiring its deliveries. PostgreSQL requires the built-in `gen_random_uuid` function available in PostgreSQL 13 and later; integration tests use PostgreSQL 16.
 
-The trait's compatibility default supports a limit of one and rejects larger batches before acquiring any delivery. Custom adapters must override it to provide atomic batches. Batch handler execution and generated batch size settings remain tracked separately.
+The trait's compatibility default supports a limit of one and rejects larger batches before acquiring any delivery. Custom adapters must override it to provide atomic batches. The runner and generated settings below support batch handler execution.
+
+## Worker batch handlers
+
+Set `WORKER_BATCH_SIZE` (default 1) to claim and process up to that many ready jobs in each handler call. `WORKER_CONCURRENCY` now limits simultaneous handler batches; their product must be at most 1000, and batch size must be 1–1000. Batches contain currently eligible jobs and can be smaller than the limit; the runner does not wait to fill a batch. With size 1, existing `JobHandler::process` behavior is preserved.
+
+Override `JobHandler::process_batch(Vec<Job>) -> BlueprintResult<Vec<JobFailure>>` for bulk application work. Return only failed job IDs and errors; omitted jobs are acknowledged. A whole-batch error retries every job. An unknown or duplicate failure ID invalidates the entire result before any acknowledgments and fails all deliveries with `worker_invalid_batch_result`. Each job follows its own persisted retry budget. The compatibility implementation calls `process` sequentially for each job, so existing generated handlers remain usable. Only bounded, sanitized error codes are stored.
+
+Every claimed lease renews while the batch future runs. If any delivery loses its lease, the runner cancels the entire batch future, counts lost leases and abandons its other deliveries for expiry recovery. Stop all work when the future is dropped and keep external effects idempotent. Shutdown drains active batches with renewal; exceeding the drain timeout cancels the batch and leaves unacknowledged jobs recoverable. Acknowledgments and failures are independently fenced and are not an atomic transaction across the batch. Storage operations, including parallel lease renewal and settlement, remain bounded by the renewal interval; choose timing and batch sizes suitable for the backend connection pool.
+
+Redis and PostgreSQL tests cover partial failures, whole-batch errors, invalid failure identities, concurrency, renewal, and drain. Generated-process suites verify grouped handler calls, per-job retries, long-batch renewal, cancellation/recovery, queued-job protection, and invalid settings.

@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 922 tests pass; latest all-feature framework 91 and blueprint 50 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 922 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [ ] Validate Rust-only release export through the shared exporter, including contracts and OpenAPI artifacts.
 - [ ] Validate mixed TypeScript/Rust release export and preserve prebuilt-release isolation from `main`.
@@ -26,7 +26,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [ ] Validate crate publication and installation from published CLI sources (phases 13–15). Embedded framework and blueprint source mirrors are checked; published-source installation remains unverified.
 
-PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle, billing, batch worker handlers, and Kafka queue implementations remain explicit tasks in phase 12.
+PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle, billing and Kafka queue implementations remain explicit tasks in phase 12.
 
 ## Full TypeScript Parity Scope
 
@@ -560,7 +560,7 @@ Requirements:
 - [x] Add bounded per-process concurrency settings to the shared runner and generated PostgreSQL/Redis workers; renew every active lease and drain all in-flight handlers on shutdown.
 - [x] Add shared process-local pause/resume/drain controls with lease renewal, irreversible drain, retention coordination, and real Redis/PostgreSQL coverage.
 - [x] Add atomic ordered batch claims for PostgreSQL and Redis with independent delivery capabilities, tenant fencing, concurrent-consumer coverage, and Redis selection-validation regression tests.
-- [ ] Add batch-handler settings.
+- [x] Add batch-handler settings and per-job batch failure results; preserve existing single handlers, renew all leases, cancel on lease loss, validate complete failure sets before acknowledgments, and exercise concurrency/drain/recovery against both durable backends.
 - [x] Add optional worker HTTP health/readiness and bearer-authenticated pause/resume/drain endpoints; validate lifecycle, authorization, retention coordination, and graceful shutdown in generated Redis/PostgreSQL processes.
 - [x] Wire durable Redis queues into generated worker binaries; preserve application handlers through sync, rename, and Redis/PostgreSQL conversion, and validate real Redis process lifecycle behavior.
 - [ ] Wire durable Kafka queues into generated worker binaries.

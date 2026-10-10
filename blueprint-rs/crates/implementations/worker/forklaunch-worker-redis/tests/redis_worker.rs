@@ -358,6 +358,7 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
     let config = RunnerConfig {
         queue: "runner".into(),
         concurrency: 1,
+        batch_size: 1,
         poll_interval: Duration::from_millis(25),
         lease_duration: Duration::from_millis(1200),
         renew_interval: Duration::from_millis(300),
@@ -400,6 +401,7 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
     let config = RunnerConfig {
         queue: "parallel".into(),
         concurrency: 4,
+        batch_size: 1,
         ..config
     };
     let (report, ()) = tokio::join!(
@@ -444,6 +446,7 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
     let handler = ErrorDrainHandler(Arc::clone(&completions));
     let config = RunnerConfig {
         concurrency: 4,
+        batch_size: 1,
         ..RunnerConfig::new("fault")
     };
     let ready_key = format!("{}:ready", prefix(&namespace, "tenant-a", "fault"));
@@ -487,6 +490,7 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
     completions.store(0, Ordering::SeqCst);
     let config = RunnerConfig {
         concurrency: 4,
+        batch_size: 1,
         ..RunnerConfig::new("retention-fault")
     };
     let policy = forklaunch_worker_database::retention::RetentionPolicy {
@@ -555,6 +559,7 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
     verify_batch_claim_contract(&admin_queue, &admin_other).await;
     verify_retention_contract(&admin_queue, &admin_other).await;
     verify_control_contract(&admin_queue).await;
+    verify_batch_runner_contract(&admin_queue).await;
     // A corrupt later record must not leave earlier batch members claimed:
     // Redis cannot roll back a script's earlier writes on a runtime error.
     admin_queue
@@ -1082,6 +1087,7 @@ async fn verify_control_contract<Q: AsyncWorkerQueue>(queue: &Q) {
     let config = RunnerConfig {
         queue: "controlled".into(),
         concurrency: 1,
+        batch_size: 1,
         poll_interval: Duration::from_millis(5),
         lease_duration: Duration::from_millis(300),
         renew_interval: Duration::from_millis(75),
@@ -1257,5 +1263,123 @@ async fn verify_batch_claim_contract<Q: AsyncWorkerQueue>(queue: &Q, other: &Q) 
                 .status,
             JobStatus::Failed
         );
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+async fn verify_batch_runner_contract<Q: AsyncWorkerQueue>(queue: &Q) {
+    use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
+    use forklaunch_worker_database::{
+        control::WorkerControl,
+        runner::{self, JobFailure, JobHandler, RunnerConfig},
+    };
+    struct Handler;
+    impl JobHandler for Handler {
+        async fn process(&self, _job: Job) -> BlueprintResult<()> {
+            panic!("single handler used for a configured batch");
+        }
+        async fn process_batch(&self, jobs: Vec<Job>) -> BlueprintResult<Vec<JobFailure>> {
+            tokio::time::sleep(Duration::from_millis(if jobs[0].queue == "batch-drain" {
+                700
+            } else {
+                400
+            }))
+            .await;
+            let failure = |id: String| JobFailure {
+                id,
+                error: BlueprintError::new("batch_failure", "secret payload details"),
+            };
+            match jobs[0].queue.as_str() {
+                "batch-invalid-unknown" => Ok(vec![failure("foreign-job".into())]),
+                "batch-invalid-duplicate" => Ok(vec![
+                    failure(jobs[0].id.clone()),
+                    failure(jobs[0].id.clone()),
+                ]),
+                "batch-error" => Err(BlueprintError::new("batch_error", "secret batch details")),
+                _ => Ok(jobs
+                    .into_iter()
+                    .filter(|job| job.id == "fail")
+                    .map(|job| failure(job.id))
+                    .collect()),
+            }
+        }
+    }
+    for name in [
+        "batch-mixed",
+        "batch-invalid-unknown",
+        "batch-invalid-duplicate",
+        "batch-error",
+        "batch-drain",
+    ] {
+        let drain = name == "batch-drain";
+        let ids: Vec<_> = if drain {
+            (0..7).map(|id| format!("job-{id}")).collect()
+        } else {
+            vec!["ok-a".into(), "fail".into(), "ok-b".into()]
+        };
+        queue
+            .enqueue_batch(ids.iter().map(|id| Job::new(id, name, "{}")).collect())
+            .await
+            .unwrap();
+        let control = WorkerControl::new();
+        let config = RunnerConfig {
+            queue: name.into(),
+            concurrency: if drain { 2 } else { 1 },
+            batch_size: 3,
+            poll_interval: Duration::from_millis(5),
+            lease_duration: Duration::from_millis(300),
+            renew_interval: Duration::from_millis(75),
+            drain_timeout: Duration::from_secs(2),
+        };
+        let (report, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(
+                runner::run_controlled(queue, &Handler, &config, &control, std::future::pending()),
+                async {
+                    loop {
+                        let stats = queue.stats(name).await.unwrap();
+                        if (drain && stats.processing == 6)
+                            || (!drain && stats.processing == 0 && stats.queued == 0)
+                        {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(5)).await;
+                    }
+                    control.drain();
+                }
+            )
+        })
+        .await
+        .unwrap();
+        let report = report.unwrap();
+        if drain {
+            assert_eq!(report.completed, 6);
+            assert_eq!(
+                queue.inspect(name, "job-6").await.unwrap().unwrap().status,
+                JobStatus::Queued
+            );
+        } else if name == "batch-mixed" {
+            assert_eq!(report.completed, 2);
+            assert_eq!(report.dead_lettered, 1);
+            let failure = queue.inspect(name, "fail").await.unwrap().unwrap();
+            assert_eq!(failure.last_error.as_deref(), Some("batch_failure"));
+            assert_eq!(failure.job.attempts, 1);
+        } else {
+            assert_eq!(report.completed, 0);
+            assert_eq!(report.dead_lettered, 3);
+            for id in ids {
+                let snapshot = queue.inspect(name, &id).await.unwrap().unwrap();
+                assert_eq!(snapshot.status, JobStatus::Failed);
+                assert_eq!(
+                    snapshot.last_error.as_deref(),
+                    Some(if name == "batch-error" {
+                        "batch_error"
+                    } else {
+                        "worker_invalid_batch_result"
+                    })
+                );
+            }
+        }
+        assert_eq!(report.lease_lost, 0);
+        assert_eq!(report.abandoned, 0);
     }
 }

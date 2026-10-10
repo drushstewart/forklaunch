@@ -20,7 +20,7 @@ if(redis) {
 }
 const env = tenant => ({...process.env, ...storage, TENANT_ID:`${role}-${tenant}`,
   WORKER_QUEUE:mode === 'stub' ? 'stub' : 'runtime', WORKER_MAX_ATTEMPTS:'2', WORKER_BACKOFF_SECONDS:'0',
-  WORKER_CONCURRENCY:'1', WORKER_POLL_MS:'20', WORKER_LEASE_MS:'1000', WORKER_RENEW_MS:'250', WORKER_DRAIN_MS:'5000'});
+  WORKER_CONCURRENCY:'1', WORKER_BATCH_SIZE:'1', WORKER_POLL_MS:'20', WORKER_LEASE_MS:'1000', WORKER_RENEW_MS:'250', WORKER_DRAIN_MS:'5000'});
 const children = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function command(args, tenant = 'a', overrides={}) { return (await exec(binary, args, {env:{...env(tenant),...overrides}, timeout:10000})).stdout; }
@@ -173,6 +173,65 @@ try {
     assert.equal((await retainedInspect('untouched')).status,'Queued');
     assert.equal(JSON.parse(await command(['--inspect','old-completed'],'b',retentionEnv)).status,'Queued');
     console.log('PASS generated worker opt-in retention, active-job protection, tenant isolation, and coordinated drain');
+
+    const batchEnv={WORKER_QUEUE:'batch-runtime',WORKER_BATCH_SIZE:'3'};
+    const batchCommand=args=>command(args,'a',batchEnv);
+    const batchInspect=async id=>JSON.parse(await batchCommand(['--inspect',id]));
+    const batchWait=async(id,status)=>{
+      const deadline=Date.now()+15000;
+      while(Date.now()<deadline) {
+        const job=await batchInspect(id);
+        if(job?.status===status) return job;
+        await sleep(20);
+      }
+      throw new Error(`batch job ${id} did not reach ${status}`);
+    };
+    for(const id of ['ok-a','fail','ok-b']) {
+      await batchCommand(['--enqueue',id,JSON.stringify({sleep_ms:700,fail:id==='fail'})]);
+    }
+    const batch=await start(batchEnv);
+    await Promise.all(['ok-a','fail','ok-b'].map(id=>batchWait(id,'Processing')));
+    await sleep(1300);
+    for(const id of ['ok-a','fail','ok-b']) {
+      const job=await batchInspect(id);
+      assert.equal(job.status,'Processing'); assert.equal(job.attempts,1);
+    }
+    assert.equal((await batchWait('ok-a','Completed')).attempts,1);
+    assert.equal((await batchWait('ok-b','Completed')).attempts,1);
+    const batchFailed=await batchWait('fail','Failed');
+    assert.equal(batchFailed.attempts,2);
+    assert.equal(batchFailed.last_error,'test_handler_failure');
+    const batchOutput=await stop(batch);
+    assert.match(batchOutput,/batch received: jobs=3/);
+    assert.match(batchOutput,/completed=2 retried=1 dead_lettered=1/);
+    for(const id of ['drain-a','drain-b','drain-c']) {
+      await batchCommand(['--enqueue',id,'{"sleep_ms":700}']);
+    }
+    const batchDrain=await start(batchEnv);
+    await Promise.all(['drain-a','drain-b','drain-c'].map(id=>batchWait(id,'Processing')));
+    await batchCommand(['--enqueue','untouched','{}']);
+    assert.match(await stop(batchDrain),/completed=3/);
+    assert.equal((await batchInspect('untouched')).status,'Queued');
+    // Process the untouched job separately before testing crash recovery.
+    const batchFlush=await start(batchEnv);
+    await batchWait('untouched','Completed');
+    await stop(batchFlush);
+    for(const id of ['cancel-a','cancel-b']) {
+      await batchCommand(['--enqueue',id,'{"sleep_ms":10000,"slow_first":true}']);
+    }
+    const batchCancel=await start({...batchEnv,WORKER_DRAIN_MS:'100'});
+    await Promise.all(['cancel-a','cancel-b'].map(id=>batchWait(id,'Processing')));
+    assert.match(await stop(batchCancel),/abandoned=2/);
+    await sleep(1100);
+    const batchRecovery=await start(batchEnv);
+    for(const id of ['cancel-a','cancel-b']) {
+      assert.equal((await batchWait(id,'Completed')).attempts,2);
+    }
+    await stop(batchRecovery);
+    await assert.rejects(command([],'a',{WORKER_BATCH_SIZE:'0'}),/worker_invalid_config/);
+    await assert.rejects(command([],'a',{WORKER_BATCH_SIZE:'1001'}),/worker_invalid_config/);
+    await assert.rejects(command([],'a',{WORKER_BATCH_SIZE:'1000',WORKER_CONCURRENCY:'2'}),/worker_invalid_config/);
+    console.log('PASS generated worker batches: grouped handlers, per-job retry, lease renewal, drain, and recovery');
 
     // Internal HTTP controls govern this process only and retain health during drain.
     const reservation=createServer();
