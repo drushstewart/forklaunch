@@ -34,7 +34,7 @@ use crate::{
     },
     init::rust_project::{self, RustProjectKind},
     prompt::{ArrayCompleter, prompt_for_confirmation, prompt_with_validation},
-    sdk::generate::regenerate_typescript_sdk_if_present,
+    sdk::generate::regenerate_sdk_outputs_if_present,
 };
 
 #[derive(Debug)]
@@ -102,7 +102,7 @@ impl CliCommand for ServiceCommand {
                 RustProjectKind::Service,
                 &service_name,
             )?;
-            regenerate_typescript_sdk_if_present(&app_root_path, &mut stdout)?;
+            regenerate_sdk_outputs_if_present(&app_root_path, &mut stdout)?;
             log_ok!(stdout, "{} deleted successfully!", service_name);
             return Ok(());
         }

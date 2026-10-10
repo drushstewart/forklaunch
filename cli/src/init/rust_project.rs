@@ -859,7 +859,7 @@ fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> 
             &mut StandardStream::stdout(ColorChoice::Always),
         )?;
     }
-    crate::sdk::generate::regenerate_typescript_sdk_if_present(
+    crate::sdk::generate::regenerate_sdk_outputs_if_present(
         root,
         &mut StandardStream::stdout(ColorChoice::Always),
     )

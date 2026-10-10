@@ -64,6 +64,12 @@ run_cli init router internal-users \
     --path rust-delete/crates/accounts \
     --language rust
 
+# An unaffected service has a custom operation that lifecycle fallback must retain.
+python3 - <<'PYTHON'
+from pathlib import Path
+p = Path('rust-delete/crates/notifications/src/routes/health.rs')
+p.write_text(p.read_text().replace('"Get Health"', '"Get Notification Health"'))
+PYTHON
 run_cli openapi export --path rust-delete
 
 run_cli sdk generate \
@@ -90,8 +96,12 @@ test -f rust-delete/crates/accounts/src/routes/internal_users.rs
 ! grep -q 'pub mod users;' rust-delete/crates/accounts/src/routes/mod.rs
 ! grep -q '"users"' rust-delete/.forklaunch/manifest.toml
 grep -q 'internal-users' rust-delete/.forklaunch/manifest.toml
-! grep -q 'AccountsUsersListRequest' rust-delete/sdks/typescript/src/index.ts
-grep -q 'AccountsInternalUsersListRequest' rust-delete/sdks/typescript/src/index.ts
+! grep -q 'AccountsUsersListUsersRequest' rust-delete/sdks/typescript/src/index.ts
+grep -q 'AccountsInternalUsersListInternalUsersRequest' rust-delete/sdks/typescript/src/index.ts
+grep -q 'getNotificationHealth:' rust-delete/sdks/typescript/src/index.ts
+! grep -q 'AccountsUsersListUsersRequest' rust-delete/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'AccountsInternalUsersListInternalUsersRequest' rust-delete/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'health_get_notification_health' rust-delete/sdks/rust/notifications-sdk/src/lib.rs
 
 run_cli delete worker email-worker \
     --path rust-delete \

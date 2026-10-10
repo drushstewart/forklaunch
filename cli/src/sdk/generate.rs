@@ -187,20 +187,35 @@ pub(crate) fn generate_or_check_sdk_outputs(
     Ok(())
 }
 
-pub(crate) fn regenerate_typescript_sdk_if_present(
+pub(crate) fn regenerate_sdk_outputs_if_present(
     app_root: &Path,
     stdout: &mut StandardStream,
 ) -> Result<()> {
     let sdk_root = app_root.join("sdks").join("typescript");
-    if !sdk_root.join("package.json").exists() && !sdk_root.join("src").join("index.ts").exists() {
+    let typescript_present =
+        sdk_root.join("package.json").exists() || sdk_root.join("src/index.ts").exists();
+    let rust_root = app_root.join("sdks/rust");
+    if !typescript_present && !rust_root.is_dir() {
         return Ok(());
     }
-
     let manifest = read_manifest(app_root)?;
-    let services = rust_sdk_services_from_contracts(app_root, &manifest, None)
-        .unwrap_or_else(|_| rust_sdk_services(&manifest, None));
-    generate_typescript_sdk(app_root, &services)?;
-    log_ok!(stdout, "Regenerated TypeScript SDK");
+    let services = rust_sdk_services_for_lifecycle(app_root, &manifest)?;
+    if typescript_present {
+        generate_typescript_sdk(app_root, &services)?;
+        log_ok!(stdout, "Regenerated TypeScript SDK");
+    }
+    let existing_rust_services = services
+        .into_iter()
+        .filter(|service| {
+            rust_root
+                .join(format!("{}-sdk/Cargo.toml", service.name))
+                .is_file()
+        })
+        .collect::<Vec<_>>();
+    if !existing_rust_services.is_empty() {
+        generate_rust_sdks(app_root, &existing_rust_services)?;
+        log_ok!(stdout, "Regenerated Rust SDK crate(s)");
+    }
     Ok(())
 }
 
@@ -428,7 +443,7 @@ fn rust_sdk_services(manifest: &Value, selected_service: Option<&str>) -> Vec<Sd
             };
             let routers = router_names
                 .iter()
-                .map(|router| sdk_router(name, router))
+                .map(|router| sdk_router(name, router, project_type == "Service"))
                 .collect();
             Some(SdkService {
                 name: name.to_string(),
@@ -438,13 +453,19 @@ fn rust_sdk_services(manifest: &Value, selected_service: Option<&str>) -> Vec<Sd
         .collect()
 }
 
-fn sdk_router(service_name: &str, router_name: &str) -> SdkRouter {
-    let operation_name = if router_name == "health" {
+fn sdk_router(service_name: &str, router_name: &str, service: bool) -> SdkRouter {
+    let operation_name = if service {
+        if router_name == "health" {
+            "getHealth".into()
+        } else {
+            format!("list{}", router_name.to_case(Case::Pascal))
+        }
+    } else if router_name == "health" {
         "get".to_string()
     } else {
         "list".to_string()
     };
-    let path = format!("/{}", router_name.replace('_', "-"));
+    let path = format!("/{router_name}");
     let response_schema = default_response_json_schema(router_name);
 
     SdkRouter {
@@ -464,6 +485,29 @@ fn sdk_router(service_name: &str, router_name: &str) -> SdkRouter {
             },
         )],
     }
+}
+
+// Lifecycle operations can invalidate one project's artifact. Preserve every
+// other project's actual contract, and never conceal malformed artifacts.
+fn rust_sdk_services_for_lifecycle(app_root: &Path, manifest: &Value) -> Result<Vec<SdkService>> {
+    rust_sdk_services(manifest, None)
+        .into_iter()
+        .map(|fallback| {
+            match rust_sdk_services_from_contracts(app_root, manifest, Some(&fallback.name)) {
+                Ok(mut services) => services.pop().context("Missing Rust SDK service"),
+                Err(error)
+                    if error.chain().any(|cause| {
+                        cause
+                            .downcast_ref::<std::io::Error>()
+                            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+                    }) =>
+                {
+                    Ok(fallback)
+                }
+                Err(error) => Err(error),
+            }
+        })
+        .collect()
 }
 
 fn rust_sdk_services_from_contracts(
@@ -2143,5 +2187,81 @@ mod nullable_dictionary_tests {
         let closed = json!({"type":"object","properties":{"id":{"type":"string"}},"additionalProperties":false});
         rust_model_from_schema("Closed", &closed, &mut models);
         assert!(!models["Closed"].fields.iter().any(|field| field.flatten));
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_contract_tests {
+    use super::*;
+    fn manifest() -> Value {
+        toml::from_str(
+            r#"
+[[projects]]
+name = "existing"
+type = "Service"
+routers = ["health", "custom"]
+[projects.metadata]
+language = "rust"
+[[projects]]
+name = "changed"
+type = "Service"
+routers = ["health", "internal-users", "audit_log"]
+[projects.metadata]
+language = "rust"
+"#,
+        )
+        .unwrap()
+    }
+    #[test]
+    fn missing_contract_falls_back_only_for_its_own_service() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join(".forklaunch/contracts/existing");
+        std::fs::create_dir_all(&path).unwrap();
+        write(path.join("contract.json"), json!({"routes":[{"path":"/custom","operationName":"fetchActual","responses":[{"statusCode":202,"body":{"schema":{"jsonSchema":{"type":"object","properties":{"realField":{"type":"boolean"}}}}}}]}]}).to_string()).unwrap();
+        let services = rust_sdk_services_for_lifecycle(root.path(), &manifest()).unwrap();
+        let source = typescript_sdk(&services).unwrap();
+        assert!(source.contains("fetchActual:"));
+        assert!(source.contains("realField?: boolean"));
+        assert!(source.contains("listInternalUsers:"));
+        assert!(source.contains("getHealth:"));
+        assert!(source.contains("path: '/audit_log'"));
+        assert!(!source.contains("listCustom:"));
+    }
+    #[test]
+    fn rust_only_lifecycle_refresh_updates_only_existing_sdk_crates() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join(".forklaunch")).unwrap();
+        write(
+            root.path().join(".forklaunch/manifest.toml"),
+            toml::to_string(&manifest()).unwrap(),
+        )
+        .unwrap();
+        write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = []\n",
+        )
+        .unwrap();
+        let sdk = root.path().join("sdks/rust/changed-sdk");
+        std::fs::create_dir_all(sdk.join("src")).unwrap();
+        write(sdk.join("Cargo.toml"), "old SDK").unwrap();
+        write(sdk.join("src/lib.rs"), "stale method").unwrap();
+        regenerate_sdk_outputs_if_present(
+            root.path(),
+            &mut StandardStream::stdout(ColorChoice::Never),
+        )
+        .unwrap();
+        let source = read_to_string(sdk.join("src/lib.rs")).unwrap();
+        assert!(source.contains("internal_users_list_internal_users"));
+        assert!(!source.contains("stale method"));
+        assert!(!root.path().join("sdks/typescript").exists());
+        assert!(!root.path().join("sdks/rust/existing-sdk").exists());
+    }
+    #[test]
+    fn malformed_existing_artifact_is_not_silently_replaced() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join(".forklaunch/contracts/existing");
+        std::fs::create_dir_all(&path).unwrap();
+        write(path.join("contract.json"), "invalid JSON").unwrap();
+        assert!(rust_sdk_services_for_lifecycle(root.path(), &manifest()).is_err());
     }
 }
