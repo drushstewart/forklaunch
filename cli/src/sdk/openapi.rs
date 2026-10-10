@@ -94,7 +94,7 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 if !(100..600).contains(&status) {
                     bail!("Invalid OpenAPI response status {status}");
                 }
-                if !(200..300).contains(&status) {
+                if status < 200 {
                     continue;
                 }
                 let body = if matches!(status, 204 | 205)
@@ -107,7 +107,7 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 {
                     Value::Null
                 } else {
-                    json!({"schema": {"jsonSchema": json_body_schema(response)?}})
+                    response_body(response)?
                 };
                 success_responses.push(json!({"statusCode":status, "body":body}));
             }
@@ -158,6 +158,29 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
         }
     }
     Ok(json!({"routes": routes}))
+}
+
+fn response_body(response: &Value) -> Result<Value> {
+    let content = response
+        .get("content")
+        .and_then(Value::as_object)
+        .context("OpenAPI response content must be an object")?;
+    if content.len() != 1 {
+        bail!("SDK generation currently requires one response media type per status");
+    }
+    let (media_type, media) = content.iter().next().unwrap();
+    let media_type = media_type.to_ascii_lowercase();
+    let kind = if media_type == "application/json" || media_type.ends_with("+json") {
+        "json"
+    } else if media_type == "text/event-stream" || media_type.starts_with("multipart/") {
+        bail!("Streaming/multipart SDK response transport remains unsupported");
+    } else if media_type.starts_with("text/") {
+        "text"
+    } else {
+        "binary"
+    };
+    let schema = media.get("schema").cloned().unwrap_or_else(|| json!({}));
+    Ok(json!({"kind":kind, "contentType":media_type, "schema":{"jsonSchema":schema}}))
 }
 
 fn json_body_schema(body: &Value) -> Result<Value> {
@@ -465,11 +488,6 @@ mod multiple_response_tests {
             contract["routes"][0]["responses"].as_array().unwrap().len(),
             3
         );
-        assert!(
-            contract["routes"][1]["responses"]
-                .as_array()
-                .unwrap()
-                .is_empty()
-        );
+        assert_eq!(contract["routes"][1]["responses"][0]["statusCode"], 403);
     }
 }

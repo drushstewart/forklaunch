@@ -12,9 +12,18 @@ const server = createServer((request, response) => {
     } else {
       const status = { existing: 200, created: 201, queued: 202 }[mode as 'existing' | 'created' | 'queued'];
       const payload = { existing: { id: 'existing', displayName: 'Existing' }, created: { id: 'created', createdAt: '2026-10-09T00:00:00Z' }, queued: { jobId: 'queued-1' } }[mode as 'existing' | 'created' | 'queued'];
-      response.writeHead(status ?? 400, { 'content-type': status ? 'application/json' : 'text/plain' });
-      response.end(status ? JSON.stringify(payload) : 'Unknown mode');
+      response.writeHead(status ?? (mode === 'conflict' ? 409 : 400), { 'content-type': status || mode === 'conflict' ? 'application/json' : 'application/problem+json' });
+      response.end(JSON.stringify(payload ?? (mode === 'conflict' ? { errorCode: 'conflict', retryAfter: 30 } : { errorCode: 'invalid_mode', message: 'Unknown mode' })));
     }
+  } else if (url.pathname === '/text') {
+    response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+    response.end('Hello\nRust 🦀');
+  } else if (url.pathname === '/binary') {
+    response.writeHead(200, { 'content-type': 'application/octet-stream' });
+    response.end(Buffer.from([0, 255, 13, 10, 42]));
+  } else if (url.pathname === '/unknown') {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify([1, 'two', { three: true }]));
   } else if (request.method === 'DELETE' && url.pathname.startsWith('/users/')) {
     response.writeHead(204);
     response.end();

@@ -1,5 +1,5 @@
 use forklaunch_contract::{BodyContract, BodyKind, FieldContract, RouteContract, SchemaRef};
-use forklaunch_http::{FrameworkRequest, FrameworkResponse, LocalRouter};
+use forklaunch_http::{Body, FrameworkRequest, FrameworkResponse, LocalRouter};
 
 pub fn contracts() -> Vec<RouteContract> {
     vec![
@@ -21,10 +21,17 @@ pub fn contracts() -> Vec<RouteContract> {
             .with_response(204, None)
             .with_response(205, None)
             .with_response(400, Some(BodyContract {
-                kind: BodyKind::Text,
-                schema: SchemaRef::named("ErrorText").with_json_schema(r#"{"type":"string"}"#),
-                content_type: Some("text/plain".into()),
-            })),
+                content_type: Some("application/problem+json".into()),
+                ..json_body("InvalidMode", r#"{"type":"object","required":["errorCode","message"],"properties":{"errorCode":{"type":"string"},"message":{"type":"string"}}}"#)
+            }))
+            .with_response(409, Some(json_body("Conflict", r#"{"type":"object","required":["errorCode","retryAfter"],"properties":{"errorCode":{"type":"string"},"retryAfter":{"type":"integer"}}}"#))),
+        RouteContract::get("Get Text", "UTF8 text", "/text").with_response(200, Some(BodyContract {
+            kind: BodyKind::Text, schema: SchemaRef::named("Text"), content_type: Some("text/plain; charset=utf-8".into()),
+        })),
+        RouteContract::get("Get Binary", "Binary download", "/binary").with_response(200, Some(BodyContract {
+            kind: BodyKind::Binary, schema: SchemaRef::named("Bytes"), content_type: Some("application/octet-stream".into()),
+        })),
+        RouteContract::get("Get Unknown", "Unknown JSON", "/unknown").with_response(200, Some(json_body("Unknown", "{}"))),
         RouteContract::get("Get Empty", "Empty 200 response", "/empty").with_response(200, None),
         RouteContract::head("Head Health", "HEAD has no response body", "/health")
             .with_response(200, None),
@@ -62,8 +69,23 @@ pub fn register(router: &mut LocalRouter) {
                     Some("queued") => FrameworkResponse::json(202, r#"{"jobId":"queued-1"}"#),
                     Some("empty") => FrameworkResponse::new(204),
                     Some("reset") => FrameworkResponse::new(205),
-                    _ => FrameworkResponse::text(400, "Unknown mode"),
+                    Some("conflict") => {
+                        FrameworkResponse::json(409, r#"{"errorCode":"conflict","retryAfter":30}"#)
+                    }
+                    _ => FrameworkResponse::json(
+                        400,
+                        r#"{"errorCode":"invalid_mode","message":"Unknown mode"}"#,
+                    )
+                    .with_header("content-type", "application/problem+json"),
                 }
+            } else if path == "/text" {
+                FrameworkResponse::text(200, "Hello\nRust 🦀")
+            } else if path == "/binary" {
+                FrameworkResponse::new(200)
+                    .with_header("content-type", "application/octet-stream")
+                    .with_body(Body::Binary(vec![0, 255, 13, 10, 42]))
+            } else if path == "/unknown" {
+                FrameworkResponse::json(200, r#"[1,"two",{"three":true}]"#)
             } else if path == "/null-json" {
                 FrameworkResponse::json(status, "null")
             } else {

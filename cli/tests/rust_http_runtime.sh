@@ -49,6 +49,12 @@ async function useResponses(client = createForkLaunchSdk()) {
   if (several.code === 201) { const value: string = several.response.createdAt; void value; }
   if (several.code === 202) { const value: string = several.response.jobId; void value; }
   if (several.code === 204 || several.code === 205) { const value: undefined = several.response; void value; }
+  if (several.code === 400) { const value: string = several.response.errorCode; const mime: 'application/problem+json' = several.contentType; void value; void mime; }
+  if (several.code === 409) { const value: number = several.response.retryAfter; void value; }
+  const textReply = await client.accounts.text.getText();
+  if (textReply.code === 200) { const value: string = textReply.response; void value; }
+  const binaryReply = await client.accounts.binary.getBinary();
+  if (binaryReply.code === 200) { const value: Uint8Array = binaryReply.response; void value; }
   const nullReply = await client.accounts.nullJson.getNull();
   if (nullReply.code === 200) { const value: null = nullReply.response; void value; }
 }
@@ -112,11 +118,20 @@ async function verifyRustClient(baseUrl) {
   }
 }
 async function verifyStatusVariants(sdk) {
+  const text = await sdk.accounts.text.getText();
+  assert.equal(text.response, 'Hello\nRust 🦀');
+  assert.equal(text.contentType, 'text/plain');
+  const binary = await sdk.accounts.binary.getBinary();
+  assert.ok(binary.response instanceof Uint8Array);
+  assert.deepEqual([...binary.response], [0, 255, 13, 10, 42]);
+  assert.equal(binary.contentType, 'application/octet-stream');
+  assert.deepEqual((await sdk.accounts.unknown.getUnknown()).response, [1, 'two', { three: true }]);
   for (const [mode, code, expected] of [
     ['existing', 200, { id: 'existing', displayName: 'Existing' }],
     ['created', 201, { id: 'created', createdAt: '2026-10-09T00:00:00Z' }],
     ['queued', 202, { jobId: 'queued-1' }], ['empty', 204, undefined],
-    ['reset', 205, undefined], ['invalid', 400, 'Unknown mode']
+    ['reset', 205, undefined], ['invalid', 400, { errorCode: 'invalid_mode', message: 'Unknown mode' }],
+    ['conflict', 409, { errorCode: 'conflict', retryAfter: 30 }]
   ]) {
     const response = await sdk.accounts.status.getStatus({ params: { mode } });
     assert.equal(response.code, code);

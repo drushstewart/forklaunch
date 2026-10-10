@@ -227,19 +227,59 @@ struct SdkOperation {
     request_query_type: String,
     request_body_type: String,
     request_headers_type: String,
-    responses: Vec<SdkSuccessResponse>,
+    responses: Vec<SdkResponseVariant>,
     rust_models: Vec<RustModelTemplate>,
     rust_aliases: Vec<RustTypeAliasTemplate>,
 }
 
 #[derive(Content, Debug, Clone)]
-struct SdkSuccessResponse {
+struct SdkResponseVariant {
     response_type: String,
     response_body_type: String,
     rust_response_type: String,
-    success_status: u16,
-    success_variant: String,
+    status_code: u16,
+    status_variant: String,
     empty_response: bool,
+    json_response: bool,
+    text_response: bool,
+    binary_response: bool,
+    response_kind: String,
+    content_type: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResponseDecoder {
+    Empty,
+    Json,
+    Text,
+    Binary,
+}
+impl ResponseDecoder {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Empty => "empty",
+            Self::Json => "json",
+            Self::Text => "text",
+            Self::Binary => "binary",
+        }
+    }
+}
+#[derive(Debug, Clone)]
+struct SdkResponseContract {
+    status: u16,
+    schema: Option<JsonValue>,
+    decoder: ResponseDecoder,
+    content_type: String,
+}
+impl SdkResponseContract {
+    fn empty(status: u16) -> Self {
+        Self {
+            status,
+            schema: None,
+            decoder: ResponseDecoder::Empty,
+            content_type: "application/json".into(),
+        }
+    }
 }
 
 #[derive(Content)]
@@ -257,7 +297,7 @@ struct TypeScriptOperationTypeTemplate {
     request_query_type: String,
     request_body_type: String,
     request_headers_type: String,
-    responses: Vec<SdkSuccessResponse>,
+    responses: Vec<SdkResponseVariant>,
 }
 
 #[derive(Content)]
@@ -285,6 +325,7 @@ struct TypeScriptOperationTemplate {
     operation_name: String,
     method: String,
     path: String,
+    responses: Vec<SdkResponseVariant>,
     last: bool,
 }
 
@@ -325,7 +366,7 @@ struct RustTypeAliasTemplate {
 struct RustOperationTemplate {
     request_type: String,
     responses_type: String,
-    responses: Vec<SdkSuccessResponse>,
+    responses: Vec<SdkResponseVariant>,
     execute_method_name: String,
     method_name: String,
     http_method: String,
@@ -414,8 +455,12 @@ fn sdk_router(service_name: &str, router_name: &str) -> SdkRouter {
             "GET",
             &path,
             RequestTypeShapes::default(),
-            200,
-            Some(&response_schema),
+            &SdkResponseContract {
+                status: 200,
+                schema: Some(response_schema),
+                decoder: ResponseDecoder::Json,
+                content_type: "application/json".into(),
+            },
         )],
     }
 }
@@ -531,8 +576,11 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result
             .map(str::to_string)
             .unwrap_or_else(|| sdk_operation_name(&method, &path));
         let request_shapes = request_type_shapes_from_contract(route);
-        let responses = success_response_schemas(route)?;
-        let (status, schema) = responses.first().cloned().unwrap_or((200, None));
+        let responses = response_contracts(route)?;
+        let first_response = responses
+            .first()
+            .cloned()
+            .unwrap_or_else(|| SdkResponseContract::empty(200));
         let mut operation = build_sdk_operation(
             service_name,
             &router_name,
@@ -540,24 +588,22 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result
             &method,
             &path,
             request_shapes.clone(),
-            status,
-            schema.as_ref(),
+            &first_response,
         );
         if responses.is_empty() {
             operation.responses.clear();
             operation.rust_models.clear();
             operation.rust_aliases.clear();
         }
-        for (status, schema) in responses.iter().skip(1) {
+        for response in responses.iter().skip(1) {
             let mut alternative = build_sdk_operation(
                 service_name,
                 &router_name,
-                &format!("{operation_name}Status{status}"),
+                &format!("{operation_name}Status{}", response.status),
                 &method,
                 &path,
                 request_shapes.clone(),
-                *status,
-                schema.as_ref(),
+                response,
             );
             operation.responses.append(&mut alternative.responses);
             operation.rust_models.append(&mut alternative.rust_models);
@@ -601,8 +647,7 @@ fn build_sdk_operation(
     method: &str,
     path: &str,
     request_shapes: RequestTypeShapes,
-    success_status: u16,
-    response_schema: Option<&JsonValue>,
+    response: &SdkResponseContract,
 ) -> SdkOperation {
     let type_prefix = format!(
         "{}{}{}",
@@ -610,19 +655,39 @@ fn build_sdk_operation(
         router_name.to_case(Case::Pascal),
         operation_name.to_case(Case::Pascal)
     );
+    let status_code = response.status;
     let empty_response = method.eq_ignore_ascii_case("HEAD")
-        || matches!(success_status, 204 | 205)
-        || response_schema.is_none();
-    let empty_schema = json!({"type":"null"});
-    let response_schema = if empty_response {
-        &empty_schema
+        || matches!(status_code, 204 | 205)
+        || response.decoder == ResponseDecoder::Empty;
+    let decoder = if empty_response {
+        ResponseDecoder::Empty
     } else {
-        response_schema.unwrap()
+        response.decoder
+    };
+    let fallback_schema = match decoder {
+        ResponseDecoder::Empty => json!({"type":"null"}),
+        ResponseDecoder::Text | ResponseDecoder::Binary => json!({"type":"string"}),
+        ResponseDecoder::Json => json!({}),
+    };
+    let response_schema = if matches!(
+        decoder,
+        ResponseDecoder::Empty | ResponseDecoder::Text | ResponseDecoder::Binary
+    ) {
+        &fallback_schema
+    } else {
+        response.schema.as_ref().unwrap_or(&fallback_schema)
     };
     let response_type = format!("{type_prefix}Response");
     let response_type_pascal = rust_type_name(&response_type);
-    let (rust_models, rust_aliases, rust_response_type) =
+    let (rust_models, mut rust_aliases, rust_response_type) =
         rust_types_from_schema(&response_type_pascal, response_schema);
+    if decoder == ResponseDecoder::Binary {
+        for alias in &mut rust_aliases {
+            if alias.name == rust_response_type {
+                alias.target_type = "Vec<u8>".into();
+            }
+        }
+    }
 
     SdkOperation {
         name: operation_name.to_string(),
@@ -634,16 +699,22 @@ fn build_sdk_operation(
         request_query_type: request_shapes.query,
         request_body_type: request_shapes.body,
         request_headers_type: request_shapes.headers,
-        responses: vec![SdkSuccessResponse {
+        responses: vec![SdkResponseVariant {
             response_type,
-            response_body_type: if empty_response {
-                "undefined".into()
-            } else {
-                ts_type_from_schema(response_schema)
+            response_body_type: match decoder {
+                ResponseDecoder::Empty => "undefined".into(),
+                ResponseDecoder::Text => "string".into(),
+                ResponseDecoder::Binary => "Uint8Array".into(),
+                ResponseDecoder::Json => ts_type_from_schema(response_schema),
             },
-            success_status,
-            success_variant: format!("Status{success_status}"),
+            status_code,
+            status_variant: format!("Status{status_code}"),
             empty_response,
+            json_response: decoder == ResponseDecoder::Json,
+            text_response: decoder == ResponseDecoder::Text,
+            binary_response: decoder == ResponseDecoder::Binary,
+            response_kind: decoder.as_str().into(),
+            content_type: response.content_type.clone(),
             rust_response_type,
         }],
         rust_models,
@@ -767,8 +838,8 @@ fn fields_ts_type(fields: Option<&JsonValue>, allow_arbitrary: bool) -> String {
     }
 }
 
-fn success_response_schemas(route: &JsonValue) -> Result<Vec<(u16, Option<JsonValue>)>> {
-    let mut schemas = BTreeMap::new();
+fn response_contracts(route: &JsonValue) -> Result<Vec<SdkResponseContract>> {
+    let mut contracts = BTreeMap::new();
     for response in route
         .get("responses")
         .and_then(JsonValue::as_array)
@@ -779,20 +850,66 @@ fn success_response_schemas(route: &JsonValue) -> Result<Vec<(u16, Option<JsonVa
             .get("statusCode")
             .and_then(JsonValue::as_u64)
             .filter(|status| (100..=599).contains(status))
-            .context("Invalid SDK response status code")?;
-        if !(200..300).contains(&status) {
+            .context("Invalid SDK response status code")? as u16;
+        if status < 200 {
             continue;
         }
-        let schema = response
-            .get("body")
+        let body = response.get("body").filter(|body| !body.is_null());
+        let decoder = match body
+            .and_then(|body| body.get("kind"))
+            .and_then(JsonValue::as_str)
+        {
+            _ if body.is_none() => ResponseDecoder::Empty,
+            None | Some("json") => ResponseDecoder::Json,
+            Some("text") => ResponseDecoder::Text,
+            Some("binary" | "file") => ResponseDecoder::Binary,
+            Some(kind) => bail!("Unsupported SDK response body kind {kind}"),
+        };
+        let schema = body
             .and_then(|body| body.get("schema"))
             .and_then(|schema| schema.get("jsonSchema"))
             .cloned();
-        if schemas.insert(status as u16, schema).is_some() {
-            bail!("Duplicate SDK success response status {status}");
+        let content_type = body
+            .and_then(|body| body.get("contentType"))
+            .and_then(JsonValue::as_str)
+            .unwrap_or(match decoder {
+                ResponseDecoder::Empty | ResponseDecoder::Json => "application/json",
+                ResponseDecoder::Text => "text/plain",
+                ResponseDecoder::Binary => "application/octet-stream",
+            })
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        if !content_type
+            .split_once('/')
+            .is_some_and(|(left, right)| !left.is_empty() && !right.is_empty())
+            || !content_type
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"/!#$&^_.+-".contains(&byte))
+        {
+            bail!("Invalid SDK response media type");
+        }
+        if content_type == "text/event-stream" {
+            bail!("Streaming SDK responses remain unsupported");
+        }
+        if contracts
+            .insert(
+                status,
+                SdkResponseContract {
+                    status,
+                    schema,
+                    decoder,
+                    content_type,
+                },
+            )
+            .is_some()
+        {
+            bail!("Duplicate SDK response status {status}");
         }
     }
-    Ok(schemas.into_iter().collect())
+    Ok(contracts.into_values().collect())
 }
 
 fn router_name_from_path(path: &str) -> String {
@@ -1034,7 +1151,7 @@ fn build_rust_type(
         _ if schema.get("properties").is_some() => {
             rust_model_from_schema(type_name, schema, models)
         }
-        _ => "String".to_string(),
+        _ => "serde_json::Value".to_string(),
     }
 }
 
@@ -1376,6 +1493,7 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
                     operation_name: escape_ts_string(&operation.name),
                     method: operation.method.to_string(),
                     path: escape_ts_string(&operation.path),
+                    responses: operation.responses.clone(),
                     last: operation_index + 1 == router.operations.len(),
                 });
             }
@@ -1426,7 +1544,7 @@ fn generate_rust_sdks(app_root: &Path, services: &[SdkService]) -> Result<()> {
 
 fn rust_sdk_cargo_toml(package_name: &str, service_name: &str) -> String {
     format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\nauthors.workspace = true\ndescription = \"Generated Rust SDK for {}\"\n\n[dependencies]\nreqwest = {{ version = \"0.13.2\", features = [\"json\", \"query\"] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\n",
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\nauthors.workspace = true\ndescription = \"Generated Rust SDK for {}\"\n\n[dependencies]\nreqwest = {{ version = \"0.13.2\", features = [\"json\", \"query\"] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
         package_name, service_name
     )
 }
@@ -1669,7 +1787,7 @@ mod multiple_response_tests {
             operation
                 .responses
                 .iter()
-                .map(|response| response.success_status)
+                .map(|response| response.status_code)
                 .collect::<Vec<_>>(),
             vec![200, 201, 204]
         );
@@ -1708,7 +1826,58 @@ mod multiple_response_tests {
             &json!({"routes":[{"path":"/item","responses":[{"statusCode":403}]}]}),
         )
         .unwrap();
-        assert!(service.routers[0].operations[0].responses.is_empty());
+        assert_eq!(
+            service.routers[0].operations[0].responses[0].status_code,
+            403
+        );
         assert!(!rust_sdk(&service).unwrap().contains("Status200"));
+    }
+}
+
+#[cfg(test)]
+mod response_media_tests {
+    use super::*;
+    #[test]
+    fn declared_errors_and_downloads_have_contract_specific_decoders() {
+        let service = sdk_service_from_contract("example", &json!({"routes":[{"path":"/item","operationName":"getItem","responses":[
+            {"statusCode":200,"body":{"kind":"binary","contentType":"application/octet-stream"}},
+            {"statusCode":400,"body":{"kind":"json","contentType":"application/problem+json","schema":{"jsonSchema":{"type":"object","required":["errorCode"],"properties":{"errorCode":{"type":"string"}}}}}},
+            {"statusCode":409,"body":{"kind":"text","contentType":"text/plain; charset=utf-8"}}
+        ]}]})).unwrap();
+        let operation = &service.routers[0].operations[0];
+        assert!(operation.responses[0].binary_response);
+        assert_eq!(operation.responses[0].response_body_type, "Uint8Array");
+        assert!(operation.responses[1].json_response);
+        assert_eq!(
+            operation.responses[1].content_type,
+            "application/problem+json"
+        );
+        assert!(operation.responses[2].text_response);
+        let source = rust_sdk(&service).unwrap();
+        assert!(source.contains("Vec<u8>"));
+        assert!(source.contains("pub error_code: String"));
+        assert!(source.contains("response.bytes().await?"));
+        let source = typescript_sdk(&[service]).unwrap();
+        assert!(source.contains("400: 'application/problem+json'"));
+        assert!(source.contains("Omit<ForkLaunchErrorResponses"));
+    }
+    #[test]
+    fn streaming_and_multipart_responses_fail_explicitly() {
+        for body in [
+            json!({"kind":"text","contentType":"text/event-stream"}),
+            json!({"kind":"multipart"}),
+        ] {
+            assert!(
+                response_contracts(&json!({"responses":[{"statusCode":200,"body":body}]})).is_err()
+            );
+        }
+    }
+    #[test]
+    fn unspecified_json_schema_retains_json_value_type() {
+        let mut models = BTreeMap::new();
+        assert_eq!(
+            build_rust_type("Unknown", &json!({}), &mut models),
+            "serde_json::Value"
+        );
     }
 }

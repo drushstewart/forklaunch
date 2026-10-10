@@ -10,11 +10,11 @@ export type ForkLaunchSdkRequest<Params = never, Query = never, Body = never, He
   ([Body] extends [never] ? {} : { body: Body }) &
   ([Headers] extends [never] ? {} : { headers?: Headers });
 
-export type ForkLaunchSdkResponse<Responses extends Record<number, unknown>, Headers = never> = {
+export type ForkLaunchSdkResponse<Responses extends Record<number, unknown>, Headers = never, ContentTypes extends Partial<Record<number, string>> = {}> = {
   [Code in keyof Responses & number]: {
     code: Code;
     status: Code;
-    contentType: Code extends keyof ForkLaunchErrorResponses ? 'text/plain' : 'application/json';
+    contentType: Code extends keyof ContentTypes ? ContentTypes[Code] : Code extends keyof ForkLaunchErrorResponses ? 'text/plain' : 'application/json';
     response: Responses[Code];
   } & ([Headers] extends [never] ? {} : { headers: Headers });
 }[keyof Responses & number];
@@ -33,6 +33,7 @@ export type ForkLaunchSdkRequestMeta = {
   operation: string;
   method: string;
   path: string;
+  responseKinds?: Partial<Record<number, 'empty' | 'json' | 'text' | 'binary'>>;
   input: {
     params?: Record<string, ForkLaunchPathValue>;
     query?: Record<string, ForkLaunchQueryValue>;
@@ -48,7 +49,9 @@ export type {{request_type}} = ForkLaunchSdkRequest<{{{request_params_type}}}, {
 {{#responses}}
 export type {{response_type}} = {{{response_body_type}}};
 {{/responses}}
-export type {{responses_type}} = ForkLaunchErrorResponses & { {{#responses}}{{success_status}}: {{response_type}}; {{/responses}} };
+export type {{responses_type}}Declared = { {{#responses}}{{status_code}}: {{response_type}}; {{/responses}} };
+export type {{responses_type}} = Omit<ForkLaunchErrorResponses, keyof {{responses_type}}Declared> & {{responses_type}}Declared;
+export type {{responses_type}}ContentTypes = { {{#responses}}{{status_code}}: '{{content_type}}'; {{/responses}} };
 
 {{/operation_types}}
 function pathWithParams(path: string, params?: Record<string, ForkLaunchPathValue>) {
@@ -61,10 +64,10 @@ function pathWithParams(path: string, params?: Record<string, ForkLaunchPathValu
   }).join('/');
 }
 
-async function request<Responses extends Record<number, unknown>>(
+async function request<Responses extends Record<number, unknown>, ContentTypes extends Partial<Record<number, string>> = {}>(
   config: ForkLaunchSdkConfig,
   meta: ForkLaunchSdkRequestMeta
-): Promise<ForkLaunchSdkResponse<Responses>> {
+): Promise<ForkLaunchSdkResponse<Responses, never, ContentTypes>> {
   const fetcher = config.fetch ?? fetch;
   const resolved = config.beforeRequest ? await config.beforeRequest(meta) : meta;
   const { params, query: queryInput, body, headers, ...fetchInit } = resolved.input;
@@ -81,19 +84,23 @@ async function request<Responses extends Record<number, unknown>>(
     },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
-  const text = await response.text();
-  const contentType = response.headers.get('content-type')?.split(';')[0] ?? (response.ok ? 'application/json' : 'text/plain');
-  const parsedResponse = text
-    ? contentType === 'application/json' || contentType.endsWith('+json')
-      ? JSON.parse(text)
-      : text
-    : undefined;
+  const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? (response.ok ? 'application/json' : 'text/plain');
+  const kind = resolved.responseKinds?.[response.status];
+  let parsedResponse: unknown;
+  if (kind === 'binary') {
+    parsedResponse = new Uint8Array(await response.arrayBuffer());
+  } else {
+    const text = await response.text();
+    parsedResponse = kind === 'empty' ? undefined : kind === 'text' ? text : text
+      ? kind === 'json' || contentType === 'application/json' || contentType.endsWith('+json') ? JSON.parse(text) : text
+      : undefined;
+  }
   return {
     code: response.status,
     status: response.status,
     contentType,
     response: parsedResponse
-  } as ForkLaunchSdkResponse<Responses>;
+  } as ForkLaunchSdkResponse<Responses, never, ContentTypes>;
 }
 
 export function createForkLaunchSdk(config: ForkLaunchSdkConfig = {}) {
@@ -103,7 +110,7 @@ export function createForkLaunchSdk(config: ForkLaunchSdkConfig = {}) {
 {{#routers}}
       {{router_key}}: {
 {{#operations}}
-        {{operation_key}}: (input: {{request_type}}{{#optional_input}} = {}{{/optional_input}}) => request<{{responses_type}}>(config, { service: '{{service_name}}', router: '{{router_name}}', operation: '{{operation_name}}', method: '{{method}}', path: '{{path}}', input }){{^last}},{{/last}}
+        {{operation_key}}: (input: {{request_type}}{{#optional_input}} = {}{{/optional_input}}) => request<{{responses_type}}, {{responses_type}}ContentTypes>(config, { service: '{{service_name}}', router: '{{router_name}}', operation: '{{operation_name}}', method: '{{method}}', path: '{{path}}', responseKinds: { {{#responses}}{{status_code}}: '{{response_kind}}', {{/responses}} }, input }){{^last}},{{/last}}
 {{/operations}}
       }{{^last}},{{/last}}
 {{/routers}}

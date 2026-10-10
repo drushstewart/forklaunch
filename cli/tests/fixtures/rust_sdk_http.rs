@@ -50,7 +50,9 @@ async fn verify(base: &str) {
     while let Some(result) = calls.join_next().await {
         result.expect("concurrent Rust SDK request");
     }
-    for mode in ["existing", "created", "queued", "empty", "reset", "invalid"] {
+    for mode in [
+        "existing", "created", "queued", "empty", "reset", "invalid", "conflict",
+    ] {
         let mut input = accounts_sdk::AccountsStatusGetStatusRequest::default();
         input.params.insert("mode".into(), mode.into());
         use accounts_sdk::AccountsStatusGetStatusResponses as Status;
@@ -61,16 +63,20 @@ async fn verify(base: &str) {
             }
             ("queued", Status::Status202(value)) => assert_eq!(value.job_id, "queued-1"),
             ("empty", Status::Status204(())) | ("reset", Status::Status205(())) => {}
-            (
-                "invalid",
-                Status::Error {
-                    status: 400,
-                    message,
-                },
-            ) => assert_eq!(message, "Unknown mode"),
+            ("invalid", Status::Status400(value)) => assert_eq!(value.error_code, "invalid_mode"),
+            ("conflict", Status::Status409(value)) => assert_eq!(value.retry_after, 30),
             (_, response) => panic!("Unexpected {mode} response: {response:?}"),
         }
     }
+    assert!(
+        matches!(client.text_get_text(Default::default()).await.unwrap(), accounts_sdk::AccountsTextGetTextResponses::Status200(value) if value == "Hello\nRust 🦀")
+    );
+    assert!(
+        matches!(client.binary_get_binary(Default::default()).await.unwrap(), accounts_sdk::AccountsBinaryGetBinaryResponses::Status200(value) if value == vec![0, 255, 13, 10, 42])
+    );
+    assert!(
+        matches!(client.unknown_get_unknown(Default::default()).await.unwrap(), accounts_sdk::AccountsUnknownGetUnknownResponses::Status200(value) if value == serde_json::json!([1,"two",{"three":true}]))
+    );
     let mut deleted = accounts_sdk::AccountsUsersDeleteUserRequest::default();
     deleted.params.insert("id".into(), "welcome".into());
     assert!(matches!(
