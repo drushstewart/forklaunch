@@ -1,0 +1,171 @@
+//! Bounded provider HTTP transport. Credentials are attached by typed clients;
+//! redirects/retries are disabled and remote origins require TLS.
+use crate::{BlueprintError, BlueprintResult};
+use reqwest::{Client, Method, RequestBuilder, redirect::Policy};
+use serde_json::Value;
+use std::time::Duration;
+use url::Url;
+#[derive(Clone)]
+pub struct ProviderHttpClient {
+    client: Client,
+    base: Url,
+    max_bytes: usize,
+}
+pub struct ProviderResponse {
+    pub status: u16,
+    pub body: Value,
+}
+impl ProviderResponse {
+    #[must_use]
+    pub const fn is_success(&self) -> bool {
+        self.status >= 200 && self.status < 300
+    }
+}
+impl std::fmt::Debug for ProviderHttpClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderHttpClient")
+            .field("base", &self.base)
+            .field("max_response_bytes", &self.max_bytes)
+            .finish_non_exhaustive()
+    }
+}
+impl ProviderHttpClient {
+    /// # Errors
+    /// Rejects remote plaintext, credentials, queries, fragments and invalid bounds.
+    pub fn new(base: &str, timeout: Duration, max_response_bytes: usize) -> BlueprintResult<Self> {
+        let base = Url::parse(base).map_err(|_| config_error())?;
+        let loopback = base.host_str().is_some_and(|h| {
+            h == "localhost"
+                || h.parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        });
+        if !(base.scheme() == "https" || (base.scheme() == "http" && loopback))
+            || base.host_str().is_none()
+            || !base.username().is_empty()
+            || base.password().is_some()
+            || base.query().is_some()
+            || base.fragment().is_some()
+            || timeout.is_zero()
+            || timeout > Duration::from_secs(120)
+            || max_response_bytes == 0
+            || max_response_bytes > 16 * 1024 * 1024
+        {
+            return Err(config_error());
+        }
+        let client = Client::builder()
+            .redirect(Policy::none())
+            .retry(reqwest::retry::never())
+            .connect_timeout(Duration::from_secs(5).min(timeout))
+            .timeout(timeout)
+            .min_tls_version(reqwest::tls::Version::TLS_1_2)
+            .build()
+            .map_err(|_| config_error())?;
+        Ok(Self {
+            client,
+            base,
+            max_bytes: max_response_bytes,
+        })
+    }
+    /// Each segment is percent-encoded independently, preventing provider IDs
+    /// from changing the trusted endpoint's path, query, origin or credentials.
+    /// # Errors
+    /// Rejects empty/dot segments and opaque endpoint URLs.
+    pub fn request(&self, method: Method, segments: &[&str]) -> BlueprintResult<RequestBuilder> {
+        if segments
+            .iter()
+            .any(|segment| segment.is_empty() || matches!(*segment, "." | ".."))
+        {
+            return Err(config_error());
+        }
+        let mut url = self.base.clone();
+        {
+            let mut path = url.path_segments_mut().map_err(|()| config_error())?;
+            path.pop_if_empty();
+            for segment in segments {
+                path.push(segment);
+            }
+        }
+        Ok(self.client.request(method, url))
+    }
+    /// # Errors
+    /// Rejects network failures, oversized bodies and malformed success JSON.
+    /// Failure-status bodies are discarded to avoid exposing provider PII/secrets.
+    pub async fn execute_json(&self, request: RequestBuilder) -> BlueprintResult<ProviderResponse> {
+        let mut response = request.send().await.map_err(|_| transport_error())?;
+        let status = response.status().as_u16();
+        if !response.status().is_success() {
+            return Ok(ProviderResponse {
+                status,
+                body: Value::Null,
+            });
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > self.max_bytes as u64)
+        {
+            return Err(transport_error());
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| transport_error())? {
+            if chunk.len() > self.max_bytes.saturating_sub(bytes.len()) {
+                return Err(transport_error());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let body = serde_json::from_slice(&bytes).map_err(|_| transport_error())?;
+        Ok(ProviderResponse { status, body })
+    }
+}
+fn config_error() -> BlueprintError {
+    BlueprintError::new(
+        "provider_invalid_config",
+        "Invalid provider HTTP configuration",
+    )
+}
+fn transport_error() -> BlueprintError {
+    BlueprintError::new("provider_transport_error", "Provider HTTP request failed")
+}
+/// Sanitized provider error. No response bodies, credentials or URLs are included.
+#[must_use]
+pub fn provider_status_error(provider: &str, operation: &str, status: u16) -> BlueprintError {
+    BlueprintError::new(
+        "provider_request_failed",
+        format!("{provider} {operation} failed (status {status})"),
+    )
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn endpoints_require_tls_and_cannot_escape_with_provider_ids() {
+        for base in [
+            "http://example.com",
+            "https://user:secret@example.com",
+            "https://example.com?query",
+            "https://example.com#fragment",
+            "file:///tmp/provider",
+        ] {
+            assert!(ProviderHttpClient::new(base, Duration::from_secs(15), 1024).is_err());
+        }
+        let client = ProviderHttpClient::new(
+            "http://127.0.0.1:1234/prefix/",
+            Duration::from_secs(15),
+            1024,
+        )
+        .unwrap();
+        let request = client
+            .request(Method::GET, &["orders", "id/with?query#fragment"])
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(
+            request.url().as_str(),
+            "http://127.0.0.1:1234/prefix/orders/id%2Fwith%3Fquery%23fragment"
+        );
+        assert!(client.request(Method::GET, &[".."]).is_err());
+        assert!(ProviderHttpClient::new("https://example.com", Duration::ZERO, 1024).is_err());
+        assert!(
+            ProviderHttpClient::new("https://example.com", Duration::from_secs(15), 0).is_err()
+        );
+    }
+}

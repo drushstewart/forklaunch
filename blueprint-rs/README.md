@@ -35,3 +35,10 @@ Worker handlers can override `JobHandler::process_batch` to return failures per 
 ## Messaging
 
 `forklaunch-messaging-interface` defines SMS DTOs, asynchronous service/store traits and base/Twilio module contracts. `forklaunch-messaging-base` provides the TypeScript-compatible hooks-only service and an optional encrypted Postgres store. `forklaunch-messaging-twilio` performs bounded, single-attempt Messages REST dispatch and signed delivery callbacks. `forklaunch-messaging-axum` mounts request-HMAC SMS routes, asymmetric-JWT/system-role compliance routes, public health and verified callbacks. Generated modules, both SDKs, tenant RLS, audit failures, key rotation and persistence are exercised by the [messaging fixture](../cli/tests/rust_messaging_runtime.sh). See [setup and behavioral boundaries](../docs/adding-projects/rust.md#sms-messaging-modules).
+
+
+## Ecommerce providers
+
+`forklaunch-ecommerce-stripe` creates and retrieves PaymentIntents, resumes checkout without creating another intent, and supports direct Connect charges with bounded integer application fees. `StripePaymentDto` includes an optional response-only client secret; the shared store persists only the provider reference. `forklaunch-ecommerce-paypal` implements OAuth, Orders creation/capture and remote webhook signature verification. Both clients use a bounded TLS transport with redirects and automatic retries disabled, and sanitized errors.
+
+Both payment wrappers share the base ecommerce store. PayPal uses its atomic confirmation claim before capture and releases the claim on provider failure, matching the TypeScript wrapper. The claim provisionally marks a payment succeeded; process interruption during capture requires reconciliation. Generated provider webhooks and module wiring remain tracked in the [implementation plan](../plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md). Actual TypeScript conformance fixtures cover [Stripe](../cli/tests/rust_ecommerce_stripe_parity.mjs) and [PayPal](../cli/tests/rust_ecommerce_paypal_parity.mjs), alongside native live HTTP tests.

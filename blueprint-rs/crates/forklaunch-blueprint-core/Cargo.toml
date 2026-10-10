@@ -6,12 +6,20 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+provider-http = ["dep:reqwest", "dep:serde_json", "dep:url"]
+
 [dependencies]
 forklaunch-contract = { path = "../../../framework-rs/crates/forklaunch-contract" }
 forklaunch-http = { path = "../../../framework-rs/crates/forklaunch-http" }
 
 serde = { version = "1", features = ["derive"] }
 schemars = "0.8"
+
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
+serde_json = { version = "1", optional = true }
+url = { version = "2", optional = true }
 
 [lints]
 workspace = true

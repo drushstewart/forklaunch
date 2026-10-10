@@ -619,8 +619,11 @@ version = "0.1.0"
 dependencies = [
  "forklaunch-contract",
  "forklaunch-http",
+ "reqwest",
  "schemars",
  "serde",
+ "serde_json",
+ "url",
 ]
 
 [[package]]
@@ -749,6 +752,38 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "forklaunch-ecommerce-paypal"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "forklaunch-blueprint-core",
+ "forklaunch-ecommerce-base",
+ "forklaunch-ecommerce-interface",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "forklaunch-ecommerce-stripe"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "forklaunch-blueprint-core",
+ "forklaunch-ecommerce-base",
+ "forklaunch-ecommerce-interface",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "zeroize",
 ]
 
 [[package]]

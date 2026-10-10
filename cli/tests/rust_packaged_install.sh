@@ -52,7 +52,7 @@ cargo check --workspace
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-cac-axum
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-messaging-axum
-cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features
+cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base -p forklaunch-ecommerce-stripe -p forklaunch-ecommerce-paypal --all-features
 cargo build -p accounts
 node "$REPO_ROOT/cli/tests/rust_mcp_service_startup.mjs" "$CARGO_TARGET_DIR/debug/accounts"
 "$CLI" openapi export --path .

@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "provider-http")]
+pub mod provider_http;
+
 use std::{collections::BTreeMap, error::Error, fmt};
 
 pub use forklaunch_contract as contract;

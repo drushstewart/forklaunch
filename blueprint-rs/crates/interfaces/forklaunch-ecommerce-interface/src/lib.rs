@@ -1004,12 +1004,15 @@ pub trait OrderService: Send + Sync {
 }
 
 pub trait PaymentService: Send + Sync {
+    /// Provider create responses may include ephemeral checkout credentials.
+    /// Persistent reads continue to return the base payment DTO.
+    type CreatedPayment: Into<PaymentDto> + serde::Serialize + Send;
     /// # Errors
     /// Returns typed validation, missing-record, concurrency or provider/storage failures.
     fn create_payment(
         &self,
         request: CreatePaymentDto,
-    ) -> impl Future<Output = BlueprintResult<PaymentDto>> + Send;
+    ) -> impl Future<Output = BlueprintResult<Self::CreatedPayment>> + Send;
     /// # Errors
     /// Returns typed validation, missing-record, concurrency or provider/storage failures.
     fn get_payment(&self, id: &str) -> impl Future<Output = BlueprintResult<PaymentDto>> + Send;

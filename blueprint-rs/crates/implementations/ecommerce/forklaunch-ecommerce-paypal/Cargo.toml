@@ -1,0 +1,24 @@
+[package]
+name = "forklaunch-ecommerce-paypal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core", features = ["provider-http"] }
+forklaunch-ecommerce-interface = { path = "../../../interfaces/forklaunch-ecommerce-interface" }
+forklaunch-ecommerce-base = { path = "../forklaunch-ecommerce-base" }
+reqwest = { version = "0.12", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net", "time"] }
+axum = "0.8"
+
+[lints]
+workspace = true

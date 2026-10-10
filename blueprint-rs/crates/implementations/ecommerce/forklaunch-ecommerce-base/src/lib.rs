@@ -313,6 +313,7 @@ impl<S: EcommerceStore> OrderService for BaseEcommerceService<S> {
     }
 }
 impl<S: EcommerceStore> PaymentService for BaseEcommerceService<S> {
+    type CreatedPayment = PaymentDto;
     async fn create_payment(&self, request: CreatePaymentDto) -> BlueprintResult<PaymentDto> {
         self.create_payment_with_reference(request, None).await
     }
