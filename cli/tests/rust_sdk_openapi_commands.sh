@@ -105,7 +105,7 @@ grep -q 'users' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'invoices' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'AccountsUsersListUsersRequest' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'AccountsUsersListUsersResponses' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'records: Array<{ id: string; name: string }>' rust-contracts/sdks/typescript/src/index.ts
+grep -q 'records: Array<{ id: string; name: string } & Record<string, unknown>>' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'listUsers: (input: AccountsUsersListUsersRequest' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'ForkLaunchSdkResponse<Responses' rust-contracts/sdks/typescript/src/index.ts
 grep -q "Code extends keyof ForkLaunchErrorResponses ? 'text/plain' : 'application/json'" rust-contracts/sdks/typescript/src/index.ts

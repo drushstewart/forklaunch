@@ -88,6 +88,31 @@ async fn verify(base: &str) {
         serde_json::to_value(collision).unwrap(),
         serde_json::json!({"fooBar": {"first": "one"}, "foo_bar": {"second": 2}, "foo_bar2": {"third": true}, "foo_bar_2": {"fourth": "four"}, "type": "kind", "type_": 9, "gen": "future", "_": "underscore", "quote\"\\": "escaped"})
     );
+    for mode in ["null", "full"] {
+        let mut input = accounts_sdk::AccountsShapeGetShapeRequest::default();
+        input.params.insert("mode".into(), mode.into());
+        let accounts_sdk::AccountsShapeGetShapeResponses::Status200(shape) =
+            client.shape_get_shape(input).await.unwrap()
+        else {
+            panic!("Expected shape payload")
+        };
+        assert_eq!(shape.numbers.get("one"), Some(&Some(1)));
+        assert_eq!(shape.numbers.get("missing"), Some(&None));
+        assert_eq!(
+            shape.label.as_deref(),
+            if mode == "full" {
+                Some("present")
+            } else {
+                None
+            }
+        );
+        let expected = if mode == "full" {
+            serde_json::json!({"label": "present", "numbers": {"one": 1, "missing": null}, "metadata": {"id": "meta"}, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": "seven", "list": [1, "two", null]})
+        } else {
+            serde_json::json!({"label": null, "numbers": {"one": 1, "missing": null}, "metadata": null, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": 7, "list": [1, "two", null]})
+        };
+        assert_eq!(serde_json::to_value(shape).unwrap(), expected);
+    }
     let mut deleted = accounts_sdk::AccountsUsersDeleteUserRequest::default();
     deleted.params.insert("id".into(), "welcome".into());
     assert!(matches!(

@@ -33,6 +33,9 @@ pub fn contracts() -> Vec<RouteContract> {
         })),
         RouteContract::get("Get Unknown", "Unknown JSON", "/unknown").with_response(200, Some(json_body("Unknown", "{}"))),
         RouteContract::get("Get Collision", "Wire name collisions", "/collision").with_response(200, Some(json_body("Collision", r#"{"type": "object", "required": ["fooBar", "foo_bar", "foo_bar2", "foo_bar_2", "type", "type_", "gen", "_", "quote\"\\"], "properties": {"fooBar": {"type": "object", "required": ["first"], "properties": {"first": {"type": "string"}}}, "foo_bar": {"type": "object", "required": ["second"], "properties": {"second": {"type": "integer"}}}, "foo_bar2": {"type": "object", "required": ["third"], "properties": {"third": {"type": "boolean"}}}, "foo_bar_2": {"type": "object", "required": ["fourth"], "properties": {"fourth": {"type": "string"}}}, "type": {"type": "string"}, "type_": {"type": "integer"}, "gen": {"type": "string"}, "_": {"type": "string"}, "quote\"\\": {"type": "string"}}}"#))),
+        RouteContract::get("Get Shape", "Nullable schemas and dictionaries", "/shape/:mode")
+            .with_param(FieldContract { name: "mode".into(), required: true, schema: SchemaRef::named("String").with_json_schema(r#"{"type":"string"}"#) })
+            .with_response(200, Some(json_body("Shape", r#"{"type": "object", "required": ["label", "numbers", "metadata", "open", "constrained", "additional_properties", "any", "list"], "properties": {"label": {"type": "string", "nullable": true}, "numbers": {"type": "object", "additionalProperties": {"type": ["integer", "null"]}}, "metadata": {"anyOf": [{"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}, "additionalProperties": false}, {"type": "null"}]}, "open": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}, "constrained": {"type": "object", "required": ["count"], "properties": {"count": {"type": "integer"}}, "additionalProperties": {"type": "string"}}, "additional_properties": {"type": "string"}, "any": {"type": ["string", "integer"]}, "list": {"type": "array"}}}"#))),
         RouteContract::get("Get Empty", "Empty 200 response", "/empty").with_response(200, None),
         RouteContract::head("Head Health", "HEAD has no response body", "/health")
             .with_response(200, None),
@@ -79,6 +82,8 @@ pub fn register(router: &mut LocalRouter) {
                     )
                     .with_header("content-type", "application/problem+json"),
                 }
+            } else if path == "/shape/:mode" {
+                FrameworkResponse::json(200, if request.params.get("mode").map(String::as_str) == Some("full") { r#"{"label": "present", "numbers": {"one": 1, "missing": null}, "metadata": {"id": "meta"}, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": "seven", "list": [1, "two", null]}"# } else { r#"{"label": null, "numbers": {"one": 1, "missing": null}, "metadata": null, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": 7, "list": [1, "two", null]}"# })
             } else if path == "/collision" {
                 FrameworkResponse::json(200, r#"{"fooBar": {"first": "one"}, "foo_bar": {"second": 2}, "foo_bar2": {"third": true}, "foo_bar_2": {"fourth": "four"}, "type": "kind", "type_": 9, "gen": "future", "_": "underscore", "quote\"\\": "escaped"}"#)
             } else if path == "/text" {

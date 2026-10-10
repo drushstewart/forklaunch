@@ -55,6 +55,14 @@ async function useResponses(client = createForkLaunchSdk()) {
   if (textReply.code === 200) { const value: string = textReply.response; void value; }
   const binaryReply = await client.accounts.binary.getBinary();
   if (binaryReply.code === 200) { const value: Uint8Array = binaryReply.response; void value; }
+  const shapeReply = await client.accounts.shape.getShape({ params: { mode: 'null' } });
+  if (shapeReply.code === 200) {
+    const label: string | null = shapeReply.response.label;
+    const number: number | null = shapeReply.response.numbers.one;
+    const metadata: { id: string } | null = shapeReply.response.metadata;
+    const extra: unknown = shapeReply.response.open.extra;
+    void label; void number; void metadata; void extra;
+  }
   const nullReply = await client.accounts.nullJson.getNull();
   if (nullReply.code === 200) { const value: null = nullReply.response; void value; }
 }
@@ -118,6 +126,9 @@ async function verifyRustClient(baseUrl) {
   }
 }
 async function verifyStatusVariants(sdk) {
+  for (const [mode, expected] of [["null", {"label": null, "numbers": {"one": 1, "missing": null}, "metadata": null, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": 7, "list": [1, "two", null]}], ["full", {"label": "present", "numbers": {"one": 1, "missing": null}, "metadata": {"id": "meta"}, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": "seven", "list": [1, "two", null]}]]) {
+    assert.deepEqual((await sdk.accounts.shape.getShape({ params: { mode } })).response, expected);
+  }
   assert.deepEqual((await sdk.accounts.collision.getCollision()).response, {"fooBar": {"first": "one"}, "foo_bar": {"second": 2}, "foo_bar2": {"third": true}, "foo_bar_2": {"fourth": "four"}, "type": "kind", "type_": 9, "gen": "future", "_": "underscore", "quote\"\\": "escaped"});
   const text = await sdk.accounts.text.getText();
   assert.equal(text.response, 'Hello\nRust 🦀');

@@ -351,6 +351,7 @@ struct RustModelTemplate {
 
 #[derive(Content, Debug, Clone, PartialEq, Eq)]
 struct RustModelFieldTemplate {
+    flatten: bool,
     wire_name_literal: String,
     field_name: String,
     field_type: String,
@@ -960,6 +961,11 @@ fn ts_type_from_schema_name(name: &str) -> String {
 }
 
 fn ts_type_from_schema(schema: &JsonValue) -> String {
+    if schema.get("nullable") == Some(&JsonValue::Bool(true)) {
+        let mut value = schema.clone();
+        value.as_object_mut().unwrap().remove("nullable");
+        return format!("{} | null", ts_type_from_schema(&value));
+    }
     if let Some(const_value) = schema.get("const") {
         return ts_literal_type(const_value);
     }
@@ -1019,12 +1025,16 @@ fn ts_type_from_schema(schema: &JsonValue) -> String {
 }
 
 fn ts_object_type(schema: &JsonValue) -> String {
-    let Some(properties) = schema.get("properties").and_then(JsonValue::as_object) else {
-        return "Record<string, unknown>".to_string();
-    };
-    if properties.is_empty() {
-        return "Record<string, unknown>".to_string();
+    let properties = schema.get("properties").and_then(JsonValue::as_object);
+    if properties.is_none_or(serde_json::Map::is_empty) {
+        let value_type = match schema.get("additionalProperties") {
+            Some(JsonValue::Bool(false)) => "never".into(),
+            Some(value) if value.is_object() => ts_type_from_schema(value),
+            _ => "unknown".into(),
+        };
+        return format!("Record<string, {value_type}>");
     }
+    let properties = properties.unwrap();
 
     let required = schema
         .get("required")
@@ -1049,7 +1059,12 @@ fn ts_object_type(schema: &JsonValue) -> String {
         ));
     }
 
-    format!("{{ {} }}", parts.join("; "))
+    let object_type = format!("{{ {} }}", parts.join("; "));
+    if schema.get("additionalProperties") == Some(&JsonValue::Bool(false)) {
+        object_type
+    } else {
+        format!("{object_type} & Record<string, unknown>")
+    }
 }
 
 fn schema_type(schema: &JsonValue) -> Option<&str> {
@@ -1119,28 +1134,92 @@ fn rust_types_from_schema(
     )
 }
 
+// Strip only a representable nullable alternative; other unions retain JSON values.
+fn non_null_schema(schema: &JsonValue) -> Option<JsonValue> {
+    let mut variant = schema.clone();
+    let mut nullable = variant.get("nullable") == Some(&JsonValue::Bool(true));
+    variant.as_object_mut()?.remove("nullable");
+    if let Some(types) = variant.get("type").and_then(JsonValue::as_array) {
+        let non_null = types
+            .iter()
+            .filter(|value| value.as_str() != Some("null"))
+            .cloned()
+            .collect::<Vec<_>>();
+        if non_null.len() != types.len() && !non_null.is_empty() {
+            nullable = true;
+            variant["type"] = if non_null.len() == 1 {
+                non_null[0].clone()
+            } else {
+                JsonValue::Array(non_null)
+            };
+        }
+    }
+    for key in ["anyOf", "oneOf"] {
+        if let Some(alternatives) = variant.get(key).and_then(JsonValue::as_array) {
+            if alternatives.len() == 2
+                && alternatives
+                    .iter()
+                    .any(|value| value.get("type").and_then(JsonValue::as_str) == Some("null"))
+            {
+                return alternatives
+                    .iter()
+                    .find(|value| value.get("type").and_then(JsonValue::as_str) != Some("null"))
+                    .cloned();
+            }
+        }
+    }
+    nullable.then_some(variant)
+}
+
 fn build_rust_type(
     type_name: &str,
     schema: &JsonValue,
     models: &mut BTreeMap<String, RustModelTemplate>,
 ) -> String {
-    if schema.get("const").is_some() {
-        return match schema_type(schema) {
-            Some("integer" | "number") => "i64".to_string(),
-            Some("boolean") => "bool".to_string(),
-            Some("null") => "()".to_string(),
-            _ => "String".to_string(),
-        };
+    if let Some(variant) = non_null_schema(schema) {
+        return format!("Option<{}>", build_rust_type(type_name, &variant, models));
+    }
+    if schema.get("oneOf").is_some() || schema.get("anyOf").is_some() {
+        return "serde_json::Value".into();
+    }
+    if let Some(types) = schema.get("type").and_then(JsonValue::as_array) {
+        if types.len() != 1 {
+            return "serde_json::Value".into();
+        }
+    }
+    if let Some(value) = schema.get("const") {
+        return match value {
+            JsonValue::Null => "()",
+            JsonValue::Bool(_) => "bool",
+            JsonValue::Number(number) if number.is_i64() => "i64",
+            JsonValue::Number(_) => "f64",
+            JsonValue::String(_) => "String",
+            _ => "serde_json::Value",
+        }
+        .into();
     }
 
     match schema_type(schema) {
+        Some("object")
+            if schema
+                .get("properties")
+                .and_then(JsonValue::as_object)
+                .is_none_or(serde_json::Map::is_empty) =>
+        {
+            let value_type = schema
+                .get("additionalProperties")
+                .filter(|value| value.is_object())
+                .map(|value| build_rust_type(&format!("{type_name}Value"), value, models))
+                .unwrap_or_else(|| "serde_json::Value".into());
+            format!("BTreeMap<String, {value_type}>")
+        }
         Some("object") => rust_model_from_schema(type_name, schema, models),
         Some("array") => {
             let item_type_name = format!("{}Item", rust_type_name(type_name));
             let item_type = schema
                 .get("items")
                 .map(|items| build_rust_type(&item_type_name, items, models))
-                .unwrap_or_else(|| "String".to_string());
+                .unwrap_or_else(|| "serde_json::Value".to_string());
             format!("Vec<{item_type}>")
         }
         Some("integer") => "i64".to_string(),
@@ -1201,11 +1280,32 @@ fn rust_model_from_schema(
                 field_type = format!("Option<{field_type}>");
             }
             fields.push(RustModelFieldTemplate {
+                flatten: false,
                 wire_name_literal: format!("{name:?}"),
                 field_name,
                 field_type,
             });
         }
+    }
+
+    if schema.get("additionalProperties") != Some(&JsonValue::Bool(false)) {
+        let mut field_name = "additional_properties".to_string();
+        let mut suffix = 2;
+        while !field_names.insert(field_name.clone()) {
+            field_name = format!("additional_properties_{suffix}");
+            suffix += 1;
+        }
+        let value_type = schema
+            .get("additionalProperties")
+            .filter(|value| value.is_object())
+            .map(|value| build_rust_type(&format!("{model_name}AdditionalValue"), value, models))
+            .unwrap_or_else(|| "serde_json::Value".into());
+        fields.push(RustModelFieldTemplate {
+            flatten: true,
+            wire_name_literal: "\"\"".into(),
+            field_name,
+            field_type: format!("BTreeMap<String, {value_type}>"),
+        });
     }
 
     models.insert(
@@ -1945,7 +2045,11 @@ mod identifier_collision_tests {
         }});
         let mut models = BTreeMap::new();
         let root = rust_model_from_schema("Response", &schema, &mut models);
-        let fields = &models[&root].fields;
+        let fields = models[&root]
+            .fields
+            .iter()
+            .filter(|field| !field.flatten)
+            .collect::<Vec<_>>();
         assert_eq!(fields.len(), 9);
         assert_eq!(
             fields
@@ -1955,7 +2059,7 @@ mod identifier_collision_tests {
                 .len(),
             9
         );
-        for field in fields {
+        for field in &fields {
             assert!(
                 field
                     .field_name
@@ -1977,5 +2081,67 @@ mod identifier_collision_tests {
                 .len(),
             4
         );
+    }
+}
+
+#[cfg(test)]
+mod nullable_dictionary_tests {
+    use super::*;
+    #[test]
+    fn nullable_dialects_and_dictionary_values_preserve_wire_types() {
+        for schema in [
+            json!({"type":["string","null"]}),
+            json!({"type":"string","nullable":true}),
+            json!({"anyOf":[{"type":"string"},{"type":"null"}]}),
+            json!({"oneOf":[{"type":"null"},{"type":"string"}]}),
+        ] {
+            assert_eq!(
+                build_rust_type("Value", &schema, &mut BTreeMap::new()),
+                "Option<String>"
+            );
+            assert!(ts_type_from_schema(&schema).contains("null"));
+        }
+        let dictionary =
+            json!({"type":"object","additionalProperties":{"type":["integer","null"]}});
+        assert_eq!(
+            build_rust_type("Map", &dictionary, &mut BTreeMap::new()),
+            "BTreeMap<String, Option<i64>>"
+        );
+        assert_eq!(
+            ts_type_from_schema(&dictionary),
+            "Record<string, number | null>"
+        );
+        assert_eq!(
+            build_rust_type("List", &json!({"type":"array"}), &mut BTreeMap::new()),
+            "Vec<serde_json::Value>"
+        );
+        assert_eq!(
+            build_rust_type(
+                "Union",
+                &json!({"type":["string","integer"]}),
+                &mut BTreeMap::new()
+            ),
+            "serde_json::Value"
+        );
+        assert_eq!(
+            build_rust_type("Constant", &json!({"const":1.5}), &mut BTreeMap::new()),
+            "f64"
+        );
+    }
+    #[test]
+    fn additional_values_use_a_distinct_flattened_field() {
+        let schema = json!({"type":"object","properties":{"additional_properties":{"type":"string"}},"additionalProperties":{"type":"integer"}});
+        let mut models = BTreeMap::new();
+        rust_model_from_schema("Example", &schema, &mut models);
+        let field = models["Example"]
+            .fields
+            .iter()
+            .find(|field| field.flatten)
+            .unwrap();
+        assert_eq!(field.field_name, "additional_properties_2");
+        assert_eq!(field.field_type, "BTreeMap<String, i64>");
+        let closed = json!({"type":"object","properties":{"id":{"type":"string"}},"additionalProperties":false});
+        rust_model_from_schema("Closed", &closed, &mut models);
+        assert!(!models["Closed"].fields.iter().any(|field| field.flatten));
     }
 }

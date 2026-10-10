@@ -15,6 +15,9 @@ const server = createServer((request, response) => {
       response.writeHead(status ?? (mode === 'conflict' ? 409 : 400), { 'content-type': status || mode === 'conflict' ? 'application/json' : 'application/problem+json' });
       response.end(JSON.stringify(payload ?? (mode === 'conflict' ? { errorCode: 'conflict', retryAfter: 30 } : { errorCode: 'invalid_mode', message: 'Unknown mode' })));
     }
+  } else if (url.pathname.startsWith('/shape/')) {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify(url.pathname.endsWith('/full') ? {"label": "present", "numbers": {"one": 1, "missing": null}, "metadata": {"id": "meta"}, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": "seven", "list": [1, "two", null]} : {"label": null, "numbers": {"one": 1, "missing": null}, "metadata": null, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": 7, "list": [1, "two", null]}));
   } else if (url.pathname === '/collision') {
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({"fooBar": {"first": "one"}, "foo_bar": {"second": 2}, "foo_bar2": {"third": true}, "foo_bar_2": {"fourth": "four"}, "type": "kind", "type_": 9, "gen": "future", "_": "underscore", "quote\"\\": "escaped"}));
