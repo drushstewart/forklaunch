@@ -28,7 +28,7 @@ use axum::{
 use forklaunch_auth::{AuthError, authorize};
 use forklaunch_common::{join_base_path, sanitize_path_slashes};
 use forklaunch_contract::{
-    AccessLevel, ContractRegistry, HttpMethod, RouteContract, ValidationMode,
+    AccessLevel, BodyKind, ContractRegistry, HttpMethod, RouteContract, ValidationMode,
 };
 use forklaunch_core::{ServiceInfo, telemetry::OpenTelemetryCollector};
 use forklaunch_http::{
@@ -602,7 +602,14 @@ fn build_framework_request(
         }
     }
 
-    if !bytes.is_empty() {
+    if contract
+        .request
+        .body
+        .as_ref()
+        .is_some_and(|body| matches!(body.kind, BodyKind::Binary | BodyKind::File))
+    {
+        request = request.with_body(FrameworkBody::Binary(bytes.to_vec()));
+    } else if !bytes.is_empty() {
         request = match std::str::from_utf8(bytes) {
             Ok(text) => request.with_body(FrameworkBody::Text(text.to_owned())),
             Err(_) => request.with_body(FrameworkBody::Binary(bytes.to_vec())),
@@ -729,6 +736,94 @@ mod tests {
         assert_eq!(
             to_bytes(response.into_body(), 100).await.unwrap().as_ref(),
             &[255, 0, 128]
+        );
+    }
+
+    #[tokio::test]
+    async fn declared_binary_and_file_bodies_preserve_utf8_and_empty_bytes() {
+        use forklaunch_contract::SchemaRef;
+        for kind in [BodyKind::Binary, BodyKind::File] {
+            for bytes in [
+                b"plain ASCII".to_vec(),
+                "hello 水".as_bytes().to_vec(),
+                vec![0, 255],
+                vec![],
+            ] {
+                let contract = RouteContract::post("Upload", "Upload bytes", "/upload")
+                    .with_request_body(BodyContract {
+                        kind,
+                        schema: SchemaRef::named("Bytes"),
+                        content_type: Some("application/octet-stream".into()),
+                    })
+                    .with_response(200, None);
+                let expected = bytes.clone();
+                let mut handlers = LocalRouter::new();
+                handlers.register(contract.clone(), move |request: FrameworkRequest| {
+                    assert_eq!(request.body, FrameworkBody::Binary(expected.clone()));
+                    Ok(FrameworkResponse::new(200).with_body(request.body))
+                });
+                let app = ForkLaunchRouter::from_local_router(
+                    ServiceInfo::new("upload", "1"),
+                    [contract],
+                    handlers,
+                )
+                .into_router();
+                let response = app
+                    .oneshot(
+                        Request::builder()
+                            .method("POST")
+                            .uri("/upload")
+                            .header("content-type", "application/octet-stream")
+                            .body(AxumBody::from(bytes.clone()))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                assert_eq!(
+                    to_bytes(response.into_body(), 100).await.unwrap().as_ref(),
+                    bytes
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn declared_text_media_with_charset_passes_transport_validation() {
+        use forklaunch_contract::SchemaRef;
+        let contract = RouteContract::post("Echo Text", "Echo Text", "/text")
+            .with_request_body(BodyContract {
+                kind: BodyKind::Text,
+                schema: SchemaRef::named("String"),
+                content_type: Some("text/plain; charset=utf-8".into()),
+            })
+            .with_response(200, None);
+        let mut handlers = LocalRouter::new();
+        handlers.register(contract.clone(), |request: FrameworkRequest| {
+            assert_eq!(request.body.as_text(), Some("hello 水"));
+            Ok(FrameworkResponse::new(200).with_body(request.body))
+        });
+        let app = ForkLaunchRouter::from_local_router(
+            ServiceInfo::new("echo", "1"),
+            [contract],
+            handlers,
+        )
+        .into_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/text")
+                    .header("content-type", "TEXT/PLAIN; charset=UTF-8")
+                    .body(AxumBody::from("hello 水"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), 100).await.unwrap().as_ref(),
+            "hello 水".as_bytes()
         );
     }
 

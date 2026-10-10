@@ -519,7 +519,13 @@ fn request_body_content_type_matches(headers: &Headers, expected_content_type: &
             .next()
             .unwrap_or_default()
             .trim()
-            .eq_ignore_ascii_case(expected_content_type)
+            .eq_ignore_ascii_case(
+                expected_content_type
+                    .split(';')
+                    .next()
+                    .unwrap_or_default()
+                    .trim(),
+            )
     })
 }
 
@@ -825,6 +831,48 @@ mod tests {
             .expect("valid request should execute");
 
         assert_eq!(valid.status_code, 201);
+    }
+
+    #[test]
+    fn media_validation_compares_types_on_both_sides_without_charset_or_boundary_parameters() {
+        use forklaunch_contract::{BodyKind, SchemaRef};
+        for (expected, actual, valid) in [
+            (
+                "text/plain; charset=utf-8",
+                "TEXT/PLAIN; charset=UTF-8",
+                true,
+            ),
+            ("text/plain; charset=utf-8", "text/plain", true),
+            (
+                "multipart/form-data",
+                "multipart/form-data; boundary=actual-boundary",
+                true,
+            ),
+            (
+                "application/vnd.example+json; charset=utf-8",
+                "application/vnd.example+json",
+                true,
+            ),
+            ("application/json", "application/problem+json", false),
+            ("text/plain; charset=utf-8", "application/json", false),
+        ] {
+            let contract = RouteContract::post("Upload", "Upload", "/upload").with_request_body(
+                BodyContract {
+                    kind: BodyKind::Text,
+                    schema: SchemaRef::named("Body"),
+                    content_type: Some(expected.into()),
+                },
+            );
+            let request =
+                FrameworkRequest::new(HttpMethod::Post, "/upload", RequestContext::new("test"))
+                    .with_header("content-type", actual)
+                    .with_body(Body::Text("payload".into()));
+            assert_eq!(
+                validate_framework_request(&contract, &request).is_empty(),
+                valid,
+                "expected {expected}, actual {actual}"
+            );
+        }
     }
 
     #[test]

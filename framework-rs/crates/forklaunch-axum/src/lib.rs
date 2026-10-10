@@ -60,6 +60,18 @@ impl AxumApplication {
 
             if let Some(params) = match_path(&route.path, &request.path) {
                 request.params = params;
+                if route.request.body.as_ref().is_some_and(|body| {
+                    matches!(
+                        body.kind,
+                        forklaunch_contract::BodyKind::Binary | forklaunch_contract::BodyKind::File
+                    )
+                }) {
+                    request.body = match request.body {
+                        Body::Text(text) => Body::Binary(text.into_bytes()),
+                        Body::Empty => Body::Binary(Vec::new()),
+                        bytes @ Body::Binary(_) => bytes,
+                    };
+                }
                 let validation_errors = validate_framework_request(route, &request);
                 return AxumPreparedRequest {
                     operation_name: Some(route.operation_name.clone()),
@@ -246,6 +258,33 @@ mod tests {
             Some("application/json")
         );
         assert_eq!(request.body.as_text(), Some(r#"{"name":"Test"}"#));
+    }
+
+    #[test]
+    fn facade_keeps_declared_file_and_binary_bodies_as_bytes() {
+        use forklaunch_contract::{BodyContract, BodyKind, SchemaRef};
+        for kind in [BodyKind::File, BodyKind::Binary] {
+            let mut app = HttpApplication::new(ServiceInfo::new("upload", "1"));
+            app.register_route(
+                RouteContract::post("Upload", "Upload", "/upload").with_request_body(
+                    BodyContract {
+                        kind,
+                        schema: SchemaRef::named("Bytes"),
+                        content_type: Some("application/octet-stream".into()),
+                    },
+                ),
+            );
+            let adapter = AxumApplication::new(app);
+            for bytes in [b"ASCII".to_vec(), vec![]] {
+                let prepared = adapter.prepare_request(
+                    AxumRequestParts::new(HttpMethod::Post, "/upload")
+                        .with_header("content-type", "application/octet-stream")
+                        .with_body(bytes.clone()),
+                );
+                assert!(prepared.validation_errors.is_empty());
+                assert_eq!(prepared.request.body, Body::Binary(bytes));
+            }
+        }
     }
 
     #[test]
