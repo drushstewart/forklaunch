@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "redis-client")]
+pub mod leased;
+
 use std::{collections::VecDeque, sync::Mutex};
 
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};

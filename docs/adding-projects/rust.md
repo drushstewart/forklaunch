@@ -94,7 +94,7 @@ HTTP middleware emits server spans, request counts/duration, active requests, ac
 
 Enable the `redis-client` feature of `forklaunch-infrastructure-redis` to use `client::RedisTtlCache` and `client::RedisQueue`. The cache uses Redis expiration, binary-safe reads/writes, atomic batch writes, and SCAN-based literal prefix listing. The queue uses atomic Redis list operations and preserves FIFO order across clients. Connections have bounded connect/read/write timeouts and support TLS URLs.
 
-These adapters implement synchronous operations; call them from a blocking executor in async services. The basic FIFO queue removes items on dequeue. It does not provide worker leases, acknowledgment, retry scheduling, or dead-letter handling; those belong to the production worker implementation still tracked in the parity plan.
+These adapters implement synchronous operations; call them from a blocking executor in async services. The basic FIFO queue removes items on dequeue. It does not provide worker leases, acknowledgment, retry scheduling, or dead-letter handling; use the async Redis worker adapter below for those operations.
 
 ## PostgreSQL IAM
 
@@ -143,7 +143,7 @@ Call `ack` only after successful processing. On failure, `fail` schedules the co
 
 Delivery is at least once. Make handlers idempotent because a consumer can crash after performing a side effect and before acknowledging it. Renew leases during long-running handlers. Queued statistics include delayed retries; processing statistics include expired leases until the next claim recovers or fails them. `peek` returns currently eligible jobs without claiming them.
 
-The adapter is available to application code. New PostgreSQL worker binaries use the runner below. Dead-letter administration and retention, Redis/Kafka durable adapters, and distributed control signals remain tracked separately. CI runs `postgres_worker_leases_retries_isolation_and_concurrency` against PostgreSQL, covering concurrent consumers, tenant RLS, retries, crash recovery, stale tokens, batch rollback, and compatibility with IAM migrations.
+The adapter is available to application code. New PostgreSQL worker binaries use the runner below. Dead-letter administration and retention, Kafka durable adapters, and distributed control signals remain tracked separately. CI runs `postgres_worker_leases_retries_isolation_and_concurrency` against PostgreSQL, covering concurrent consumers, tenant RLS, retries, crash recovery, stale tokens, batch rollback, and compatibility with IAM migrations.
 
 ## Generated PostgreSQL workers
 
@@ -160,3 +160,13 @@ Ctrl-C or SIGTERM stops new claims and drains the active job while renewing its 
 With runtime environment variables set, use `cargo run -p jobs -- --enqueue ID JSON` to submit a job and `--inspect ID` to read its state. Inspection omits payloads and lease tokens. Contract/OpenAPI export works without a database connection. Reinitialization, sync, and worker rename preserve the application handler and Cargo metadata; rename updates generated SDKs and contract artifacts.
 
 Existing demonstration workers are preserved when reinitialized. To upgrade explicitly, run `forklaunch change worker --path crates/jobs -t database -d postgresql --confirm`; backend conversion installs the runner while retaining an existing handler and unrelated Cargo metadata. Batch-handler configuration, worker HTTP health/control endpoints, distributed signals, and durable Redis/Kafka backends remain parity tasks. `cli/tests/rust_worker_runtime.sh` tests a relocated generated worker against PostgreSQL, including renewal, drain, retries, forced cancellation, process crashes, tenant isolation, source preservation, rename, and delete.
+
+## Redis leased worker queue
+
+Enable `forklaunch-worker-redis`'s `redis-client` feature and import `leased::RedisLeasedQueue`. Call `RedisLeasedQueue::connect(url, namespace, trusted_tenant, retry_policy).await` and use `AsyncWorkerQueue` operations. Enable `forklaunch-worker-database`'s `runtime` feature to run the shared async runner with this adapter.
+
+Redis scripts atomically claim jobs, fence acknowledgments and renewal with delivery tokens, schedule retries, and retain completed and failed jobs. A job's retry policy is persisted at enqueue time. Mixed-queue batches validate duplicate identities and Redis key types before writing; identities are unique within a tenant, namespace, and queue. Each claim or peek recovers up to 128 expired leases to bound script execution; larger expired backlogs recover over successive polls. Delivery is at least once, so handlers must be idempotent.
+
+Tenant and namespace names are encoded into Redis keys. This provides logical isolation through trusted application code; configure Redis ACLs separately. Persistence and replication settings determine durability across Redis server restarts. The adapter uses a standalone Redis connection manager with bounded waits and TLS URL support. Keys share a cluster hash slot, but Redis Cluster redirection support is not implemented. Keep payloads small; the adapter caps each payload at 1 MiB and batches at 1,000 jobs.
+
+Real Redis integration tests cover client restart, mixed-queue batches, collision rollback, FIFO ordering, ten concurrent consumers, retry budgets, stale leases, tenant isolation, and shared runner renewal during shutdown drain. Generated Redis workers still use the demonstration template; generator wiring remains tracked separately.
