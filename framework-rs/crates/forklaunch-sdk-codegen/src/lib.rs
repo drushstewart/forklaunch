@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub use forklaunch_contract::BodyKind;
 use forklaunch_contract::{ContractRegistry, HttpMethod};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,7 @@ pub struct SdkOperation {
     pub request_query: Vec<SdkField>,
     pub request_headers: Vec<SdkField>,
     pub request_body: Option<String>,
+    pub request_body_kind: Option<BodyKind>,
     pub request_body_content_type: Option<String>,
     pub responses: Vec<SdkResponse>,
     pub response_status_codes: Vec<u16>,
@@ -62,6 +64,7 @@ impl SdkGenerationPlan {
                         .body
                         .as_ref()
                         .map(|body| body.schema.name.clone()),
+                    request_body_kind: route.request.body.as_ref().map(|body| body.kind),
                     request_body_content_type: route
                         .request
                         .body

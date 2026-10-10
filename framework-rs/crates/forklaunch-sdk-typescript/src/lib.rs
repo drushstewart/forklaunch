@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
+use forklaunch_common::json_string as js_string;
 use std::fmt::Write as _;
 
-use forklaunch_sdk_codegen::{SdkGenerationPlan, SdkOperation};
+use forklaunch_sdk_codegen::{BodyKind, SdkGenerationPlan, SdkOperation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeScriptSdkOptions {
@@ -96,19 +97,52 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
     } else {
         ""
     };
-    let body_line = if operation.request_body.is_some() {
-        "      body: options.body === undefined ? undefined : JSON.stringify(options.body),"
-    } else {
-        "      body: undefined,"
+    let (body_line, body_type, default_content_type) = match operation.request_body_kind {
+        Some(BodyKind::Json | BodyKind::Unknown) => (
+            "      body: options.body === undefined ? undefined : JSON.stringify(options.body),",
+            "unknown",
+            "application/json",
+        ),
+        Some(BodyKind::Text) => ("      body: options.body,", "string", "text/plain"),
+        Some(BodyKind::Binary | BodyKind::File) => (
+            "      body: options.body instanceof Uint8Array ? Uint8Array.from(options.body).buffer : options.body,",
+            "Uint8Array | ArrayBuffer | Blob",
+            "application/octet-stream",
+        ),
+        Some(BodyKind::Multipart) => ("      body: options.body,", "FormData", ""),
+        Some(BodyKind::UrlEncoded) => (
+            "      body: options.body,",
+            "URLSearchParams",
+            "application/x-www-form-urlencoded",
+        ),
+        Some(BodyKind::ServerSentEvent) | None => ("      body: undefined,", "never", ""),
     };
+    let content_type = operation
+        .request_body_content_type
+        .as_deref()
+        .unwrap_or(default_content_type);
+    // Multipart boundaries belong to the browser's FormData encoder.
+    let content_type = if matches!(operation.request_body_kind, Some(BodyKind::Multipart)) {
+        ""
+    } else {
+        content_type
+    };
+    let request_options = format!("Omit<SdkRequestOptions, 'body'> & {{ body?: {body_type} }}");
 
     let _ = writeln!(source);
     let _ = writeln!(
         source,
-        "  {}(options: SdkRequestOptions{}): Promise<Response> {{",
+        "  {}(options: {}{}): Promise<Response> {{",
         typescript_identifier(&operation.name),
+        request_options,
         options_default
     );
+    if matches!(operation.request_body_kind, Some(BodyKind::ServerSentEvent)) {
+        let _ = writeln!(
+            source,
+            "    throw new TypeError('SSE request bodies are unsupported');"
+        );
+    }
     let _ = writeln!(
         source,
         "    const path = pathWithParams(`{}`, options.params);",
@@ -124,10 +158,13 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
     );
     let _ = writeln!(source, "      method: '{}',", operation.method.as_str());
     let _ = writeln!(source, "      headers: {{");
-    let _ = writeln!(
-        source,
-        "        ...(options.body === undefined ? {{}} : {{ 'content-type': 'application/json' }}),"
-    );
+    if !content_type.is_empty() {
+        let _ = writeln!(
+            source,
+            "        ...(options.body === undefined ? {{}} : {{ 'content-type': {} }}),",
+            js_string(content_type)
+        );
+    }
     let _ = writeln!(source, "        ...options.headers,");
     let _ = writeln!(source, "      }},");
     let _ = writeln!(source, "{body_line}");
@@ -168,6 +205,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn native_sdk_preserves_body_kinds_and_wire_content_types() {
+        use forklaunch_contract::{BodyKind, SchemaRef};
+        let mut registry = forklaunch_contract::ContractRegistry::new();
+        for (name, kind, mime) in [
+            ("json", BodyKind::Json, "application/vnd.forklaunch+json"),
+            ("text", BodyKind::Text, "text/plain; charset=utf-8"),
+            ("binary", BodyKind::Binary, "application/octet-stream"),
+            ("file", BodyKind::File, "image/png"),
+            ("form", BodyKind::Multipart, "multipart/form-data"),
+            (
+                "urlencoded",
+                BodyKind::UrlEncoded,
+                "application/x-www-form-urlencoded",
+            ),
+        ] {
+            registry.register(
+                RouteContract::new(
+                    format!("post {name}"),
+                    "Media upload",
+                    HttpMethod::Post,
+                    format!("/{name}"),
+                )
+                .with_request_body(BodyContract {
+                    kind,
+                    schema: SchemaRef::named("Payload"),
+                    content_type: Some(mime.into()),
+                })
+                .with_response(200, None),
+            );
+        }
+        let plan = SdkGenerationPlan::from_registry(SdkTarget::TypeScript, &registry);
+        assert_eq!(plan.operations[2].request_body_kind, Some(BodyKind::Binary));
+        let source =
+            generate_typescript_sdk_source(&plan, &TypeScriptSdkOptions::new("MediaClient"));
+        assert!(source.contains("Uint8Array.from(options.body).buffer"));
+        assert!(source.contains("body?: string"));
+        assert!(source.contains("body?: FormData"));
+        assert!(source.contains("body?: URLSearchParams"));
+        assert!(!source.contains("'content-type': \"multipart/form-data\""));
+        if let Ok(directory) = std::env::var("FORKLAUNCH_TEST_NATIVE_SDK_OUTPUT") {
+            std::fs::write(
+                std::path::Path::new(&directory).join("native-sdk.ts"),
+                source,
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
     fn generates_frontend_client_matching_live_typed_syntax() {
         let mut registry = forklaunch_contract::ContractRegistry::new();
         registry.register(
@@ -188,7 +274,7 @@ mod tests {
 
         assert!(source.contains("export class ApiClient"));
         assert!(source.contains("pathWithParams"));
-        assert!(source.contains("createUser(options: SdkRequestOptions)"));
+        assert!(source.contains("createUser(options: Omit<SdkRequestOptions, 'body'>"));
         assert!(source.contains("options.query"));
         assert!(source.contains("method: 'POST'"));
         assert!(source.contains("JSON.stringify(options.body)"));

@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use forklaunch_sdk_codegen::{SdkGenerationPlan, SdkOperation};
+use forklaunch_sdk_codegen::{BodyKind, SdkGenerationPlan, SdkOperation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RustSdkOptions {
@@ -45,6 +45,8 @@ pub fn generate_rust_sdk_source(plan: &SdkGenerationPlan, options: &RustSdkOptio
     let _ = writeln!(source, "    pub query: BTreeMap<String, String>,");
     let _ = writeln!(source, "    pub headers: BTreeMap<String, String>,");
     let _ = writeln!(source, "    pub body: Option<String>,");
+    let _ = writeln!(source, "    pub body_bytes: Option<Vec<u8>>,");
+    let _ = writeln!(source, "    pub body_content_type: Option<&'static str>,");
     let _ = writeln!(source, "    pub body_schema: Option<&'static str>,");
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
@@ -115,7 +117,7 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
     let body_schema = operation
         .request_body
         .as_ref()
-        .map_or_else(|| "None".to_owned(), |schema| format!("Some(\"{schema}\")"));
+        .map_or_else(|| "None".to_owned(), |schema| format!("Some({schema:?})"));
 
     let _ = writeln!(source);
     let _ = writeln!(source, "    #[must_use]");
@@ -140,7 +142,29 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
     );
     let _ = writeln!(source, "            query: input.query,");
     let _ = writeln!(source, "            headers: input.headers,");
-    let _ = writeln!(source, "            body: input.body,");
+    if binary_body(operation) {
+        let _ = writeln!(source, "            body: None,");
+        let _ = writeln!(source, "            body_bytes: input.body,");
+    } else {
+        let _ = writeln!(source, "            body: input.body,");
+        let _ = writeln!(source, "            body_bytes: None,");
+    }
+    let default_content_type = match operation.request_body_kind {
+        Some(BodyKind::Text) => "text/plain",
+        Some(BodyKind::Binary | BodyKind::File) => "application/octet-stream",
+        Some(BodyKind::UrlEncoded) => "application/x-www-form-urlencoded",
+        Some(BodyKind::Multipart) => "multipart/form-data",
+        Some(BodyKind::ServerSentEvent) => "text/event-stream",
+        _ => "application/json",
+    };
+    let content_type = operation.request_body.as_ref().map(|_| {
+        operation
+            .request_body_content_type
+            .as_deref()
+            .unwrap_or(default_content_type)
+    });
+    let content_type = content_type.map_or_else(|| "None".into(), |mime| format!("Some({mime:?})"));
+    let _ = writeln!(source, "            body_content_type: {content_type},");
     let _ = writeln!(source, "            body_schema: {body_schema},");
     let _ = writeln!(source, "        }}");
     let _ = writeln!(source, "    }}");
@@ -153,9 +177,21 @@ fn write_request_struct(source: &mut String, operation: &SdkOperation) {
     let _ = writeln!(source, "    pub params: BTreeMap<String, String>,");
     let _ = writeln!(source, "    pub query: BTreeMap<String, String>,");
     let _ = writeln!(source, "    pub headers: BTreeMap<String, String>,");
-    let _ = writeln!(source, "    pub body: Option<String>,");
+    let body_type = if binary_body(operation) {
+        "Vec<u8>"
+    } else {
+        "String"
+    };
+    let _ = writeln!(source, "    pub body: Option<{body_type}>,");
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
+}
+
+fn binary_body(operation: &SdkOperation) -> bool {
+    matches!(
+        operation.request_body_kind,
+        Some(BodyKind::Binary | BodyKind::File)
+    )
 }
 
 fn rust_identifier(input: &str) -> String {
@@ -220,6 +256,52 @@ mod tests {
     use forklaunch_sdk_codegen::SdkTarget;
 
     use super::*;
+
+    #[test]
+    fn native_sdk_preserves_body_kinds_and_wire_content_types() {
+        use forklaunch_contract::{BodyKind, SchemaRef};
+        let mut registry = forklaunch_contract::ContractRegistry::new();
+        for (name, kind, mime) in [
+            ("json", BodyKind::Json, "application/vnd.forklaunch+json"),
+            ("text", BodyKind::Text, "text/plain; charset=utf-8"),
+            ("binary", BodyKind::Binary, "application/octet-stream"),
+            ("file", BodyKind::File, "image/png"),
+            ("form", BodyKind::Multipart, "multipart/form-data"),
+            (
+                "urlencoded",
+                BodyKind::UrlEncoded,
+                "application/x-www-form-urlencoded",
+            ),
+        ] {
+            registry.register(
+                RouteContract::new(
+                    format!("post {name}"),
+                    "Media upload",
+                    HttpMethod::Post,
+                    format!("/{name}"),
+                )
+                .with_request_body(BodyContract {
+                    kind,
+                    schema: SchemaRef::named("Payload"),
+                    content_type: Some(mime.into()),
+                })
+                .with_response(200, None),
+            );
+        }
+        let plan = SdkGenerationPlan::from_registry(SdkTarget::Rust, &registry);
+        assert_eq!(plan.operations[2].request_body_kind, Some(BodyKind::Binary));
+        let source = generate_rust_sdk_source(&plan, &RustSdkOptions::new("media-sdk"));
+        assert!(source.contains("pub body: Option<Vec<u8>>"));
+        assert!(source.contains("body_bytes: input.body"));
+        assert!(source.contains("body_content_type: Some(\"image/png\")"));
+        if let Ok(directory) = std::env::var("FORKLAUNCH_TEST_NATIVE_SDK_OUTPUT") {
+            std::fs::write(
+                std::path::Path::new(&directory).join("native-sdk.rs"),
+                source,
+            )
+            .unwrap();
+        }
+    }
 
     #[test]
     fn generates_request_builders_for_rust_sdk() {

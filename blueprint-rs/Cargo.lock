@@ -639,6 +639,7 @@ dependencies = [
 name = "forklaunch-sdk-typescript"
 version = "0.1.0"
 dependencies = [
+ "forklaunch-common",
  "forklaunch-sdk-codegen",
 ]
 
