@@ -132,6 +132,12 @@ async function verifyRustClient(baseUrl) {
   }
 }
 async function verifyStatusVariants(sdk) {
+  assert.equal((await sdk.accounts.nullable.getNullable({ params: { mode: 'null' } })).response, null);
+  assert.deepEqual((await sdk.accounts.nullable.getNullable({ params: { mode: 'full' } })).response, { name: 'nullable' });
+  for (const [mode, expected] of Object.entries({"named": {"name": "Rust"}, "counted": {"count": 42}, "boolean": true, "string": "union", "integer": 7})) {
+    assert.deepEqual((await sdk.accounts.union.getUnion({ params: { mode } })).response, expected);
+  }
+  assert.deepEqual((await sdk.accounts.unionList.getUnionList()).response, [{ name: "nested" }, "two", 3]);
   assert.equal((await sdk.accounts.text.uploadText({ body: '{raw}\n🦀 & text' })).response, '{raw}\n🦀 & text');
   const uploaded = await sdk.accounts.binary.uploadBinary({ body: new Uint8Array([99, 0, 255, 13, 10, 42, 99]).subarray(1, 6) });
   assert.deepEqual([...uploaded.response], [0, 255, 13, 10, 42]);

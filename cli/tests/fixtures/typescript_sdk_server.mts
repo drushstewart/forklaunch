@@ -26,6 +26,16 @@ const server = createServer(async (request, response) => {
       response.writeHead(status ?? (mode === 'conflict' ? 409 : 400), { 'content-type': status || mode === 'conflict' ? 'application/json' : 'application/problem+json' });
       response.end(JSON.stringify(payload ?? (mode === 'conflict' ? { errorCode: 'conflict', retryAfter: 30 } : { errorCode: 'invalid_mode', message: 'Unknown mode' })));
     }
+  } else if (url.pathname.startsWith('/nullable/')) {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify(url.pathname.endsWith('/full') ? { name: 'nullable' } : null));
+  } else if (url.pathname.startsWith('/union/')) {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    const values: Record<string, unknown> = {"named": {"name": "Rust"}, "counted": {"count": 42}, "boolean": true, "string": "union", "integer": 7};
+    response.end(JSON.stringify(values[url.pathname.slice('/union/'.length)] ?? null));
+  } else if (url.pathname === '/union-list') {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify([{ name: 'nested' }, 'two', 3]));
   } else if (url.pathname.startsWith('/shape/')) {
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify(url.pathname.endsWith('/full') ? {"label": "present", "numbers": {"one": 1, "missing": null}, "metadata": {"id": "meta"}, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": "seven", "list": [1, "two", null]} : {"label": null, "numbers": {"one": 1, "missing": null}, "metadata": null, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": 7, "list": [1, "two", null]}));

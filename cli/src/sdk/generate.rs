@@ -366,6 +366,16 @@ struct RustSdkTemplate {
 struct RustModelTemplate {
     name: String,
     fields: Vec<RustModelFieldTemplate>,
+    union: bool,
+    deny_unknown_fields: bool,
+    variants: Vec<RustUnionVariantTemplate>,
+}
+
+#[derive(Content, Debug, Clone, PartialEq, Eq)]
+struct RustUnionVariantTemplate {
+    name: String,
+    value_type: String,
+    first: bool,
 }
 
 #[derive(Content, Debug, Clone, PartialEq, Eq)]
@@ -1264,14 +1274,29 @@ fn build_rust_type(
     models: &mut BTreeMap<String, RustModelTemplate>,
 ) -> String {
     if let Some(variant) = non_null_schema(schema) {
-        return format!("Option<{}>", build_rust_type(type_name, &variant, models));
+        return format!(
+            "Option<{}>",
+            build_rust_type(&format!("{type_name}Value"), &variant, models)
+        );
     }
-    if schema.get("oneOf").is_some() || schema.get("anyOf").is_some() {
-        return "serde_json::Value".into();
+    if let Some(alternatives) = schema
+        .get("oneOf")
+        .or_else(|| schema.get("anyOf"))
+        .and_then(JsonValue::as_array)
+    {
+        return build_rust_union(type_name, alternatives, models);
     }
     if let Some(types) = schema.get("type").and_then(JsonValue::as_array) {
-        if types.len() != 1 {
-            return "serde_json::Value".into();
+        if types.len() > 1 {
+            let alternatives = types
+                .iter()
+                .map(|kind| {
+                    let mut variant = schema.clone();
+                    variant["type"] = kind.clone();
+                    variant
+                })
+                .collect::<Vec<_>>();
+            return build_rust_union(type_name, &alternatives, models);
         }
     }
     if let Some(value) = schema.get("const") {
@@ -1321,6 +1346,44 @@ fn build_rust_type(
     }
 }
 
+fn build_rust_union(
+    type_name: &str,
+    alternatives: &[JsonValue],
+    models: &mut BTreeMap<String, RustModelTemplate>,
+) -> String {
+    if alternatives.is_empty() {
+        return "serde_json::Value".into();
+    }
+    let base = rust_type_name(type_name);
+    let mut name = base.clone();
+    let mut suffix = 2;
+    while models.contains_key(&name) {
+        name = format!("{base}{suffix}");
+        suffix += 1;
+    }
+    models.insert(
+        name.clone(),
+        RustModelTemplate {
+            name: name.clone(),
+            fields: vec![],
+            union: true,
+            deny_unknown_fields: false,
+            variants: vec![],
+        },
+    );
+    let variants = alternatives
+        .iter()
+        .enumerate()
+        .map(|(index, schema)| RustUnionVariantTemplate {
+            name: format!("Variant{}", index + 1),
+            value_type: build_rust_type(&format!("{name}Variant{}", index + 1), schema, models),
+            first: index == 0,
+        })
+        .collect();
+    models.get_mut(&name).unwrap().variants = variants;
+    name
+}
+
 fn rust_model_from_schema(
     type_name: &str,
     schema: &JsonValue,
@@ -1339,6 +1402,9 @@ fn rust_model_from_schema(
         RustModelTemplate {
             name: model_name.clone(),
             fields: vec![],
+            union: false,
+            deny_unknown_fields: false,
+            variants: vec![],
         },
     );
 
@@ -1400,6 +1466,10 @@ fn rust_model_from_schema(
         RustModelTemplate {
             name: model_name.clone(),
             fields,
+            union: false,
+            deny_unknown_fields: schema.get("additionalProperties")
+                == Some(&JsonValue::Bool(false)),
+            variants: vec![],
         },
     );
     model_name
@@ -2212,7 +2282,7 @@ mod nullable_dictionary_tests {
                 &json!({"type":["string","integer"]}),
                 &mut BTreeMap::new()
             ),
-            "serde_json::Value"
+            "Union"
         );
         assert_eq!(
             build_rust_type("Constant", &json!({"const":1.5}), &mut BTreeMap::new()),
@@ -2352,5 +2422,40 @@ mod request_media_tests {
         ] {
             assert!(request_type_shapes_from_contract(&json!({"request":{"body":body}})).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod union_model_tests {
+    use super::*;
+    #[test]
+    fn schema_unions_generate_untagged_models_with_distinct_branches() {
+        let mut models = BTreeMap::new();
+        let schema = json!({"oneOf":[{"type":"object","required":["name"],"properties":{"name":{"type":"string"}},"additionalProperties":false},{"type":"object","required":["count"],"properties":{"count":{"type":"integer"}},"additionalProperties":false},{"type":"boolean"}]});
+        assert_eq!(build_rust_type("Choice", &schema, &mut models), "Choice");
+        let union = &models["Choice"];
+        assert!(union.union);
+        assert_eq!(
+            union
+                .variants
+                .iter()
+                .map(|v| v.value_type.as_str())
+                .collect::<Vec<_>>(),
+            ["ChoiceVariant1", "ChoiceVariant2", "bool"]
+        );
+        assert!(models["ChoiceVariant1"].deny_unknown_fields);
+        let source = render_sdk_template(
+            "sdk/rust/lib.rs",
+            &RustSdkTemplate {
+                client_name: "Client".into(),
+                models: models.into_values().collect(),
+                aliases: vec![],
+                operations: vec![],
+            },
+        )
+        .unwrap();
+        assert!(source.contains("#[serde(untagged)]"));
+        assert!(source.contains("impl Default for Choice"));
+        assert!(source.contains("#[serde(deny_unknown_fields)]"));
     }
 }

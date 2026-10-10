@@ -45,6 +45,14 @@ pub fn contracts() -> Vec<RouteContract> {
         RouteContract::post("Echo Json", "JSON request regression", "/json-echo")
             .with_request_body(json_body("Unknown", "{}"))
             .with_response(200, Some(json_body("Unknown", "{}"))),
+        RouteContract::get("Get Union", "Typed response branches", "/union/:mode")
+            .with_param(FieldContract { name: "mode".into(), required: true, schema: SchemaRef::named("String").with_json_schema(r#"{"type":"string"}"#) })
+            .with_response(200, Some(json_body("Union", r#"{"oneOf": [{"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}, "additionalProperties": false}, {"type": "object", "required": ["count"], "properties": {"count": {"type": "integer"}}, "additionalProperties": false}, {"type": "boolean"}, {"type": "string"}, {"type": "integer"}]}"#))),
+        RouteContract::get("Get Union List", "Nested unions", "/union-list")
+            .with_response(200, Some(json_body("UnionList", r#"{"type": "array", "items": {"anyOf": [{"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}, "additionalProperties": false}, {"type": "string"}, {"type": "integer"}]}}"#))),
+        RouteContract::get("Get Nullable", "Nullable root object", "/nullable/:mode")
+            .with_param(FieldContract { name: "mode".into(), required: true, schema: SchemaRef::named("String").with_json_schema(r#"{"type":"string"}"#) })
+            .with_response(200, Some(json_body("Nullable", r#"{"type":["object","null"],"required":["name"],"properties":{"name":{"type":"string"}},"additionalProperties":false}"#))),
         RouteContract::get("Get Empty", "Empty 200 response", "/empty").with_response(200, None),
         RouteContract::head("Head Health", "HEAD has no response body", "/health")
             .with_response(200, None),
@@ -98,6 +106,19 @@ pub fn register(router: &mut LocalRouter) {
                     )
                     .with_header("content-type", "application/problem+json"),
                 }
+            } else if path == "/nullable/:mode" {
+                FrameworkResponse::json(200, if request.params.get("mode").map(String::as_str) == Some("full") { r#"{"name":"nullable"}"# } else { "null" })
+            } else if path == "/union/:mode" {
+                FrameworkResponse::json(200, match request.params.get("mode").map(String::as_str) {
+                    Some("named") => r#"{"name": "Rust"}"#,
+                    Some("counted") => r#"{"count": 42}"#,
+                    Some("boolean") => r#"true"#,
+                    Some("string") => r#""union""#,
+                    Some("integer") => r#"7"#,
+                    _ => "null",
+                })
+            } else if path == "/union-list" {
+                FrameworkResponse::json(200, r#"[{"name":"nested"},"two",3]"#)
             } else if path == "/shape/:mode" {
                 FrameworkResponse::json(200, if request.params.get("mode").map(String::as_str) == Some("full") { r#"{"label": "present", "numbers": {"one": 1, "missing": null}, "metadata": {"id": "meta"}, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": "seven", "list": [1, "two", null]}"# } else { r#"{"label": null, "numbers": {"one": 1, "missing": null}, "metadata": null, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": 7, "list": [1, "two", null]}"# })
             } else if path == "/collision" {

@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 953 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -307,7 +307,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Keep generated service fallback operation names stable across export; isolate lifecycle fallback per service and refresh existing Rust as well as TypeScript SDKs on deletion. Preserve unaffected custom contracts and reject malformed artifacts explicitly.
 - [x] Generate response models from JSON Schema for TypeScript and Rust SDKs.
 - [x] Preserve nullable schemas across OpenAPI 3.0 and 3.1 forms, typed dictionary values, unconstrained arrays, and additional object fields in CLI SDKs; validate null/populated payloads through both artifact sources and live language fixtures.
-- [ ] Generate typed Rust enums for general schema unions; current clients preserve these values as serde_json::Value.
+- [x] Generate typed untagged Rust enums for oneOf/anyOf and multiple-type schemas, including nested arrays/objects and nullable roots; validate each object/scalar branch through both artifact sources and live language servers. Closed structured objects reject unknown fields; full schema-constraint validation remains server-side.
 - [x] Generate TypeScript request field/body types from contract request schemas.
 - [x] Preserve status-code-specific response typing.
 - [x] Carry params, query, headers, body content type, response headers, and response bodies in `SdkGenerationPlan`.

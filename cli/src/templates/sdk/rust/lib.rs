@@ -79,13 +79,33 @@ pub enum SdkAuth {
 }
 
 {{#models}}
+{{#union}}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum {{name}} {
+{{#variants}}
+    {{name}}({{{value_type}}}),
+{{/variants}}
+}
+
+impl Default for {{name}} {
+    fn default() -> Self {
+{{#variants}}{{#first}}
+        Self::{{name}}(Default::default())
+{{/first}}{{/variants}}
+    }
+}
+{{/union}}
+{{^union}}
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+{{#deny_unknown_fields}}#[serde(deny_unknown_fields)]{{/deny_unknown_fields}}
 pub struct {{name}} {
 {{#fields}}
     {{#flatten}}#[serde(flatten)]{{/flatten}}{{^flatten}}#[serde(rename = {{{wire_name_literal}}})]{{/flatten}}
     pub {{field_name}}: {{{field_type}}},
 {{/fields}}
 }
+{{/union}}
 
 {{/models}}
 {{#aliases}}

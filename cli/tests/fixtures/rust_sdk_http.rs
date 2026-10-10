@@ -134,6 +134,52 @@ async fn verify(base: &str) {
     assert!(
         matches!(client.json_echo_echo_json(json_input).await.unwrap(), accounts_sdk::AccountsJsonEchoEchoJsonResponses::Status200(value) if value == serde_json::json!({"value":[1,null,true]}))
     );
+    for mode in ["named", "counted", "boolean", "string", "integer"] {
+        let mut input = accounts_sdk::AccountsUnionGetUnionRequest::default();
+        input.params.insert("mode".into(), mode.into());
+        let accounts_sdk::AccountsUnionGetUnionResponses::Status200(value) =
+            client.union_get_union(input).await.unwrap()
+        else {
+            panic!("Expected union")
+        };
+        use accounts_sdk::AccountsUnionGetUnionResponse as Union;
+        match (mode, value) {
+            ("named", Union::Variant1(value)) => assert_eq!(value.name, "Rust"),
+            ("counted", Union::Variant2(value)) => assert_eq!(value.count, 42),
+            ("boolean", Union::Variant3(value)) => assert!(value),
+            ("string", Union::Variant4(value)) => assert_eq!(value, "union"),
+            ("integer", Union::Variant5(value)) => assert_eq!(value, 7),
+            (_, value) => panic!("Unexpected union branch: {value:?}"),
+        }
+    }
+    let accounts_sdk::AccountsUnionListGetUnionListResponses::Status200(values) = client
+        .union_list_get_union_list(Default::default())
+        .await
+        .unwrap()
+    else {
+        panic!("Expected union list")
+    };
+    assert_eq!(
+        serde_json::to_value(values).unwrap(),
+        serde_json::json!([{"name":"nested"},"two",3])
+    );
+    for mode in ["null", "full"] {
+        let mut input = accounts_sdk::AccountsNullableGetNullableRequest::default();
+        input.params.insert("mode".into(), mode.into());
+        let accounts_sdk::AccountsNullableGetNullableResponses::Status200(value) =
+            client.nullable_get_nullable(input).await.unwrap()
+        else {
+            panic!("Expected nullable response")
+        };
+        assert_eq!(
+            value.map(|value| value.name),
+            if mode == "full" {
+                Some("nullable".into())
+            } else {
+                None
+            }
+        );
+    }
     let mut deleted = accounts_sdk::AccountsUsersDeleteUserRequest::default();
     deleted.params.insert("id".into(), "welcome".into());
     assert!(matches!(
