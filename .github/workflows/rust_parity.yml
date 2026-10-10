@@ -65,7 +65,6 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-      FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
           POSTGRES_PASSWORD: parity-test-only
           POSTGRES_DB: parity
         ports: ['5432:5432']
@@ -75,6 +74,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
+      FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
       FORKLAUNCH_TEST_POSTGRES_URL: postgres://postgres:parity-test-only@127.0.0.1:5432/parity
     steps:
       - uses: actions/checkout@v7
