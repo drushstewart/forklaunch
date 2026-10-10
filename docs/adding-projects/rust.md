@@ -143,7 +143,7 @@ Call `ack` only after successful processing. On failure, `fail` schedules the co
 
 Delivery is at least once. Make handlers idempotent because a consumer can crash after performing a side effect and before acknowledging it. Renew leases during long-running handlers. Queued statistics include delayed retries; processing statistics include expired leases until the next claim recovers or fails them. `peek` returns currently eligible jobs without claiming them.
 
-The adapter is available to application code. New PostgreSQL worker binaries use the runner below. Dead-letter administration and explicit retention are described below; automatic retention scheduling, Kafka durable adapters, and distributed control signals remain tracked separately. CI runs `postgres_worker_leases_retries_isolation_and_concurrency` against PostgreSQL, covering concurrent consumers, tenant RLS, retries, crash recovery, stale tokens, batch rollback, and compatibility with IAM migrations.
+The adapter is available to application code. New PostgreSQL worker binaries use the runner below. Dead-letter administration and explicit retention are described below; Kafka durable adapters and distributed control signals remain tracked separately. CI runs `postgres_worker_leases_retries_isolation_and_concurrency` against PostgreSQL, covering concurrent consumers, tenant RLS, retries, crash recovery, stale tokens, batch rollback, and compatibility with IAM migrations.
 
 ## Generated PostgreSQL workers
 
@@ -194,7 +194,7 @@ For direct library use, set `RunnerConfig::concurrency`. `RunReport` combines co
 
 Both durable queue adapters implement `forklaunch_worker_interface::AsyncWorkerAdmin`. `dead_letters(queue, limit)` returns retained failures in terminal-time order; ordering within a timestamp tie is backend-specific. `retry_dead_letter(queue, id, policy)` atomically requeues a failed job with an explicit new budget, resets attempts and failure text, and fences old lease capabilities. Concurrent retries of the same failure have one winner.
 
-`purge_terminal(queue, TerminalStatus::Completed | TerminalStatus::Failed, minimum_age, limit)` permanently deletes at most the requested number of terminal jobs older than the given duration. It preserves queued and processing jobs. Limits must be 1–1000 and ages must be at least 1 ms and at most 3650 days. Deletion frees identities for resubmission. Invoke bounded calls from an operator or scheduler; workers perform no automatic retention deletion.
+`purge_terminal(queue, TerminalStatus::Completed | TerminalStatus::Failed, minimum_age, limit)` permanently deletes at most the requested number of terminal jobs older than the given duration. It preserves queued and processing jobs. Limits must be 1–1000 and ages must be at least 1 ms and at most 3650 days. Deletion frees identities for resubmission. Invoke bounded calls from an operator or scheduler, or opt into the periodic policy below. Automatic retention is disabled by default.
 
 Generated workers expose these commands using their configured tenant and queue:
 
@@ -210,3 +210,11 @@ Listing and inspection print summaries without payloads or lease tokens. Retry u
 Redis adds terminal indexes and incrementally upgrades legacy retained records on first administration use. Legacy terminal timestamps were not recorded, so their retention age starts when first observed; existing jobs are not prematurely deleted. Each indexing script scans one page and the client bounds the entire operation by its timeout. An interrupted upgrade resumes from its stored cursor on the next call. Upgrade all consumers before using administration: older consumers do not maintain the new terminal indexes. Redis isolation continues to depend on trusted tenant binding and deployment ACLs.
 
 Integration tests cover stale capabilities after retry, changed retry budgets, concurrent retry/purge races, tenant isolation, bounded purges, protection of active and queued jobs, identity reuse, and legacy Redis indexing. Generated-process tests exercise the commands against both Redis and PostgreSQL.
+
+## Automatic worker retention
+
+Generated Redis and PostgreSQL workers opt into periodic cleanup when `WORKER_COMPLETED_RETENTION_SECONDS` and/or `WORKER_FAILED_RETENTION_SECONDS` is set to a positive age. Each unset status is retained indefinitely. The defaults are no automatic deletion, a 60000 ms interval, at most 100 deletions per enabled status per tick, and a 5000 ms operation timeout. Configure the latter settings with `WORKER_RETENTION_INTERVAL_MS`, `WORKER_RETENTION_BATCH_LIMIT`, and `WORKER_RETENTION_TIMEOUT_MS`. Invalid ages, limits, intervals, and timeouts fail startup.
+
+For direct library use, enable the database worker's `runtime` feature and call `retention::run_worker` with a `RetentionPolicy`, or use `retention::run` for standalone maintenance. Cleanup starts after the first interval and remains scoped to the queue's tenant. Reports count completed and failed deletions separately. Shutdown cancels maintenance and drains current handlers with lease renewal; a cleanup error or timeout also stops new claims and drains active handlers before returning the first error. Newly completed jobs during shutdown drain are retained because maintenance has already stopped.
+
+Real backend tests check default preservation, independent completed/failed ages, tenant isolation, bounded cleanup, and active/queued job protection. Runtime tests check maintenance timeouts and cancellation; a Redis fault test verifies handler drain after maintenance failure. Generated-process suites validate opt-in cleanup and coordinated shutdown against both backends.

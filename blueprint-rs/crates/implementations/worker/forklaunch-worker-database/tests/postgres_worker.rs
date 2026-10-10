@@ -341,6 +341,8 @@ async fn postgres_worker_leases_retries_isolation_and_concurrency() {
     let admin_other =
         admin_queue.for_tenant(TenantContext::new(format!("{}-b", fixture.role)).unwrap());
     verify_admin_contract(&admin_queue, &admin_other).await;
+    #[cfg(feature = "runtime")]
+    verify_retention_contract(&admin_queue, &admin_other).await;
     // RLS also protects direct queries without a tenant context, and pooled
     // transaction-local settings do not escape to a subsequent borrower.
     let count: (i64,) = sqlx::query_as("SELECT count(*) FROM fl_worker.jobs")
@@ -902,4 +904,99 @@ async fn verify_admin_contract<Q: AsyncWorkerAdmin>(queue: &Q, other: &Q) {
     );
     assert_eq!(purged.unwrap() + usize::from(requeued.unwrap()), 1);
     assert!(!queue.ack(&lease).await.unwrap());
+}
+
+#[cfg(feature = "runtime")]
+#[allow(clippy::too_many_lines)]
+async fn verify_retention_contract<Q: AsyncWorkerAdmin>(queue: &Q, other: &Q) {
+    use forklaunch_worker_database::retention::{self, RetentionPolicy, RetentionReport};
+    let name = "retention";
+    queue
+        .enqueue_batch(
+            ["completed", "failed", "active", "queued"]
+                .into_iter()
+                .map(|id| Job::new(id, name, "{}"))
+                .collect(),
+        )
+        .await
+        .unwrap();
+    let completed = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(queue.ack(&completed).await.unwrap());
+    let failed = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        queue.fail(&failed, "retained_failure").await.unwrap(),
+        FailureDisposition::DeadLetter
+    );
+    let active = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(active.job.id, "active");
+    other
+        .enqueue(Job::new("completed", name, "{}"))
+        .await
+        .unwrap();
+    let foreign = other
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(other.ack(&foreign).await.unwrap());
+    let mut policy = RetentionPolicy {
+        interval: Duration::from_millis(25),
+        batch_limit: 1,
+        ..RetentionPolicy::default()
+    };
+    let report = retention::run(queue, name, &policy, async {
+        tokio::time::sleep(Duration::from_millis(75)).await;
+    })
+    .await
+    .unwrap();
+    assert_eq!(report, RetentionReport::default());
+    policy.completed_age = Some(Duration::from_millis(1));
+    let report = retention::run(queue, name, &policy, async {})
+        .await
+        .unwrap();
+    assert_eq!(report, RetentionReport::default());
+    assert!(queue.inspect(name, "completed").await.unwrap().is_some());
+    let report = retention::run(queue, name, &policy, async {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    })
+    .await
+    .unwrap();
+    assert_eq!(report.completed_purged, 1);
+    assert_eq!(report.failed_purged, 0);
+    assert!(queue.inspect(name, "completed").await.unwrap().is_none());
+    assert_eq!(
+        queue.inspect(name, "failed").await.unwrap().unwrap().status,
+        JobStatus::Failed
+    );
+    assert!(other.inspect(name, "completed").await.unwrap().is_some());
+    policy.completed_age = None;
+    policy.failed_age = Some(Duration::from_millis(1));
+    let report = retention::run(queue, name, &policy, async {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    })
+    .await
+    .unwrap();
+    assert_eq!(report.completed_purged, 0);
+    assert_eq!(report.failed_purged, 1);
+    assert!(queue.inspect(name, "failed").await.unwrap().is_none());
+    assert_eq!(
+        queue.inspect(name, "active").await.unwrap().unwrap().status,
+        JobStatus::Processing
+    );
+    assert_eq!(
+        queue.inspect(name, "queued").await.unwrap().unwrap().status,
+        JobStatus::Queued
+    );
 }

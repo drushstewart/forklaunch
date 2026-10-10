@@ -15,13 +15,13 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 922 tests pass; latest all-feature framework 91 and blueprint 43 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 922 tests pass; latest all-feature framework 91 and blueprint 46 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [ ] Validate Rust-only release export through the shared exporter, including contracts and OpenAPI artifacts.
 - [ ] Validate mixed TypeScript/Rust release export and preserve prebuilt-release isolation from `main`.
 - [x] Complete relocated generated-service container build, health/OpenAPI, and SIGTERM shutdown checks. The Docker capacity blocker is resolved; `rust_container_runtime.sh` passes locally and runs in CI. Builder/runtime both use Debian bookworm.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.
-- [x] Verify the CLI Cargo package file list includes all 111 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 112 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [ ] Validate crate publication and installation from published CLI sources (phases 13–15). Embedded framework and blueprint source mirrors are checked; published-source installation remains unverified.
@@ -562,7 +562,7 @@ Requirements:
 - [x] Wire durable Redis queues into generated worker binaries; preserve application handlers through sync, rename, and Redis/PostgreSQL conversion, and validate real Redis process lifecycle behavior.
 - [ ] Wire durable Kafka queues into generated worker binaries.
 - [x] Add tenant-bound dead-letter listing/requeue and explicit age-based, bounded completed/failed retention APIs; expose generated administration commands with payload/token-free summaries. Validate races, tenant isolation, retry fencing, and legacy Redis terminal-index upgrades.
-- [ ] Add automatic retention scheduling and runtime retention-policy settings.
+- [x] Add opt-in automatic retention scheduling and runtime policy settings for both durable backends; bound per-status purges and storage waits, stop maintenance during shutdown, and drain handlers on maintenance failure.
 - [x] Implement Redis-backed worker queue. (`redis-client` async leased adapter: atomic mixed-queue batches/claims, persisted retry budgets, fenced ack/renew/fail, bounded expiry recovery, retained terminal jobs; real Redis concurrent-consumer and shared runner integration coverage. Generated Redis workers use the shared runner.)
 - [ ] Implement Kafka-backed worker queue.
 - [x] Define worker signaling interfaces and an in-memory reference bus. (`SignalBus` + `InMemorySignalBus`)

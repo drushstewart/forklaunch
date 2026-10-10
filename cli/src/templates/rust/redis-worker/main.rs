@@ -2,6 +2,7 @@ use std::{env, time::Duration};
 use forklaunch_core::persistence::TenantContext;
 use forklaunch_worker_database::runner::{self, RunnerConfig};
 use forklaunch_worker_redis::leased::RedisLeasedQueue;
+use forklaunch_worker_database::retention::{self, RetentionPolicy};
 use forklaunch_worker_interface::{AsyncWorkerAdmin, AsyncWorkerQueue, Job, JobSnapshot, RetryPolicy, TerminalStatus};
 use {{crate_module}}::{handler::ApplicationHandler, WORKER_NAME, write_contract_artifacts};
 
@@ -55,8 +56,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             drain_timeout: Duration::from_millis(number("WORKER_DRAIN_MS", 30000)?),
         };
         config.validate()?;
+        let retention = retention_policy()?;
         println!("{} worker ready", WORKER_NAME);
-        let report = runner::run(&queue, &ApplicationHandler, &config, shutdown()).await?;
+        let report = if let Some(policy) = retention {
+            let result = retention::run_worker(&queue, &ApplicationHandler, &config, &policy, shutdown()).await?;
+            println!("retention stopped: completed_purged={} failed_purged={}", result.retention.completed_purged, result.retention.failed_purged);
+            result.worker
+        } else {
+            runner::run(&queue, &ApplicationHandler, &config, shutdown()).await?
+        };
         println!("worker stopped: completed={} retried={} dead_lettered={} lease_lost={} abandoned={}",
             report.completed, report.retried, report.dead_lettered, report.lease_lost, report.abandoned);
     }
@@ -67,6 +75,26 @@ fn snapshot_json(snapshot: JobSnapshot) -> serde_json::Value {
     serde_json::json!({"id":snapshot.job.id, "queue":snapshot.job.queue,
         "attempts":snapshot.job.attempts, "status":format!("{:?}",snapshot.status),
         "last_error":snapshot.last_error})
+}
+
+fn retention_policy() -> Result<Option<RetentionPolicy>, Box<dyn std::error::Error>> {
+    let policy = RetentionPolicy {
+        completed_age: optional_number("WORKER_COMPLETED_RETENTION_SECONDS")?.map(Duration::from_secs),
+        failed_age: optional_number("WORKER_FAILED_RETENTION_SECONDS")?.map(Duration::from_secs),
+        interval: Duration::from_millis(number("WORKER_RETENTION_INTERVAL_MS", 60000)?),
+        batch_limit: usize::try_from(number("WORKER_RETENTION_BATCH_LIMIT", 100)?)?,
+        operation_timeout: Duration::from_millis(number("WORKER_RETENTION_TIMEOUT_MS", 5000)?),
+    };
+    policy.validate()?;
+    Ok((policy.completed_age.is_some() || policy.failed_age.is_some()).then_some(policy))
+}
+
+fn optional_number(name: &str) -> Result<Option<u64>, Box<dyn std::error::Error>> {
+    match env::var(name) {
+        Ok(value) => Ok(Some(value.parse()?)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn number(name: &str, default: u64) -> Result<u64, Box<dyn std::error::Error>> {

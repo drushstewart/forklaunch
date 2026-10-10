@@ -22,7 +22,7 @@ const env = tenant => ({...process.env, ...storage, TENANT_ID:`${role}-${tenant}
   WORKER_CONCURRENCY:'1', WORKER_POLL_MS:'20', WORKER_LEASE_MS:'1000', WORKER_RENEW_MS:'250', WORKER_DRAIN_MS:'5000'});
 const children = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-async function command(args, tenant = 'a') { return (await exec(binary, args, {env:env(tenant), timeout:10000})).stdout; }
+async function command(args, tenant = 'a', overrides={}) { return (await exec(binary, args, {env:{...env(tenant),...overrides}, timeout:10000})).stdout; }
 async function inspect(id, tenant = 'a') { return JSON.parse(await command(['--inspect',id],tenant)); }
 async function waitState(id,status,tenant='a') {
   const deadline=Date.now()+15000;
@@ -139,6 +139,39 @@ try {
     for(const args of [['--dead-letters','0'],['--purge-failed','0','1'],['--purge-completed','1','1001']]) {
       await assert.rejects(command(args));
     }
+    const retentionEnv={WORKER_QUEUE:'auto-retention'};
+    const retainedInspect=async id=>JSON.parse(await command(['--inspect',id],'a',retentionEnv));
+    async function waitRetained(id,status) {
+      const deadline=Date.now()+10000;
+      while(Date.now()<deadline) {
+        const job=await retainedInspect(id);
+        if(job?.status===status) return job;
+        await sleep(25);
+      }
+      throw new Error(`retention job ${id} did not reach ${status}`);
+    }
+    await command(['--enqueue','old-completed','{}'],'a',retentionEnv);
+    await command(['--enqueue','old-failed','{"fail":true}'],'a',retentionEnv);
+    const seedRetention=await start(retentionEnv);
+    await waitRetained('old-completed','Completed');
+    await waitRetained('old-failed','Failed');
+    await stop(seedRetention);
+    await command(['--enqueue','slow','{"sleep_ms":2400}'],'a',retentionEnv);
+    await command(['--enqueue','untouched','{}'],'a',retentionEnv);
+    await command(['--enqueue','old-completed','{}'],'b',retentionEnv);
+    const retaining=await start({...retentionEnv,
+      WORKER_COMPLETED_RETENTION_SECONDS:'1', WORKER_FAILED_RETENTION_SECONDS:'1',
+      WORKER_RETENTION_INTERVAL_MS:'100', WORKER_RETENTION_BATCH_LIMIT:'1'});
+    await waitRetained('slow','Processing');
+    await sleep(1300);
+    assert.equal(await retainedInspect('old-completed'),null);
+    assert.equal(await retainedInspect('old-failed'),null);
+    const retentionOutput=await stop(retaining);
+    assert.match(retentionOutput,/completed_purged=1 failed_purged=1/);
+    assert.equal((await retainedInspect('slow')).status,'Completed');
+    assert.equal((await retainedInspect('untouched')).status,'Queued');
+    assert.equal(JSON.parse(await command(['--inspect','old-completed'],'b',retentionEnv)).status,'Queued');
+    console.log('PASS generated worker opt-in retention, active-job protection, tenant isolation, and coordinated drain');
     console.log('PASS generated worker dead-letter inspection, explicit retry, bounded retention, and privacy');
     console.log(`PASS generated ${redis ? 'Redis' : 'PostgreSQL'} worker: lease renewal, drain, retry, cancellation, crash recovery, and tenant isolation`);
   }

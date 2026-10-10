@@ -475,6 +475,63 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
         .query_async(&mut admin)
         .await
         .unwrap();
+    // Retention failures stop claims and drain handlers before surfacing.
+    queue
+        .enqueue_batch(
+            (0..4)
+                .map(|index| Job::new(format!("fault-{index}"), "retention-fault", "{}"))
+                .collect(),
+        )
+        .await
+        .unwrap();
+    completions.store(0, Ordering::SeqCst);
+    let config = RunnerConfig {
+        concurrency: 4,
+        ..RunnerConfig::new("retention-fault")
+    };
+    let policy = forklaunch_worker_database::retention::RetentionPolicy {
+        completed_age: Some(Duration::from_millis(1)),
+        interval: Duration::from_millis(25),
+        ..forklaunch_worker_database::retention::RetentionPolicy::default()
+    };
+    let ready_key = format!(
+        "{}:ready",
+        prefix(&namespace, "tenant-a", "retention-fault")
+    );
+    let (result, ()) = tokio::join!(
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            forklaunch_worker_database::retention::run_worker(
+                &queue,
+                &handler,
+                &config,
+                &policy,
+                std::future::pending()
+            )
+        ),
+        async {
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while queue.stats("retention-fault").await.unwrap().processing != 4 {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            let _: () = redis::cmd("SET")
+                .arg(&ready_key)
+                .arg("wrong-type")
+                .query_async(&mut admin)
+                .await
+                .unwrap();
+        }
+    );
+    assert_eq!(result.unwrap().unwrap_err().code, "worker_storage_error");
+    assert_eq!(completions.load(Ordering::SeqCst), 4);
+    let _: usize = redis::cmd("DEL")
+        .arg(&ready_key)
+        .query_async(&mut admin)
+        .await
+        .unwrap();
     let error = RedisLeasedQueue::connect(
         "secret-invalid-url",
         &namespace,
@@ -495,6 +552,7 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
     .unwrap();
     let admin_other = admin_queue.for_tenant(TenantContext::new("tenant-a:other").unwrap());
     verify_admin_contract(&admin_queue, &admin_other).await;
+    verify_retention_contract(&admin_queue, &admin_other).await;
     // Legacy retained jobs have no terminal timestamp or indexes. Index them
     // incrementally and start their retention age at first observation.
     admin_queue
@@ -822,4 +880,98 @@ async fn verify_admin_contract<Q: AsyncWorkerAdmin>(queue: &Q, other: &Q) {
     );
     assert_eq!(purged.unwrap() + usize::from(requeued.unwrap()), 1);
     assert!(!queue.ack(&lease).await.unwrap());
+}
+
+#[allow(clippy::too_many_lines)]
+async fn verify_retention_contract<Q: AsyncWorkerAdmin>(queue: &Q, other: &Q) {
+    use forklaunch_worker_database::retention::{self, RetentionPolicy, RetentionReport};
+    let name = "retention";
+    queue
+        .enqueue_batch(
+            ["completed", "failed", "active", "queued"]
+                .into_iter()
+                .map(|id| Job::new(id, name, "{}"))
+                .collect(),
+        )
+        .await
+        .unwrap();
+    let completed = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(queue.ack(&completed).await.unwrap());
+    let failed = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        queue.fail(&failed, "retained_failure").await.unwrap(),
+        FailureDisposition::DeadLetter
+    );
+    let active = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(active.job.id, "active");
+    other
+        .enqueue(Job::new("completed", name, "{}"))
+        .await
+        .unwrap();
+    let foreign = other
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(other.ack(&foreign).await.unwrap());
+    let mut policy = RetentionPolicy {
+        interval: Duration::from_millis(25),
+        batch_limit: 1,
+        ..RetentionPolicy::default()
+    };
+    let report = retention::run(queue, name, &policy, async {
+        tokio::time::sleep(Duration::from_millis(75)).await;
+    })
+    .await
+    .unwrap();
+    assert_eq!(report, RetentionReport::default());
+    policy.completed_age = Some(Duration::from_millis(1));
+    let report = retention::run(queue, name, &policy, async {})
+        .await
+        .unwrap();
+    assert_eq!(report, RetentionReport::default());
+    assert!(queue.inspect(name, "completed").await.unwrap().is_some());
+    let report = retention::run(queue, name, &policy, async {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    })
+    .await
+    .unwrap();
+    assert_eq!(report.completed_purged, 1);
+    assert_eq!(report.failed_purged, 0);
+    assert!(queue.inspect(name, "completed").await.unwrap().is_none());
+    assert_eq!(
+        queue.inspect(name, "failed").await.unwrap().unwrap().status,
+        JobStatus::Failed
+    );
+    assert!(other.inspect(name, "completed").await.unwrap().is_some());
+    policy.completed_age = None;
+    policy.failed_age = Some(Duration::from_millis(1));
+    let report = retention::run(queue, name, &policy, async {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    })
+    .await
+    .unwrap();
+    assert_eq!(report.completed_purged, 0);
+    assert_eq!(report.failed_purged, 1);
+    assert!(queue.inspect(name, "failed").await.unwrap().is_none());
+    assert_eq!(
+        queue.inspect(name, "active").await.unwrap().unwrap().status,
+        JobStatus::Processing
+    );
+    assert_eq!(
+        queue.inspect(name, "queued").await.unwrap().unwrap().status,
+        JobStatus::Queued
+    );
 }
