@@ -21,7 +21,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
 - [x] Validate real Cargo/PNPM mixed release builds with a generated Rust service/TypeScript SDK and a minimal tsx service export hook; reuse those artifacts with intentionally unbuildable source, preserving prebuilt isolation and bounded mixed crate paths.
 - [x] Complete relocated generated-service container build, health/OpenAPI, and SIGTERM shutdown checks. The Docker capacity blocker is resolved; `rust_container_runtime.sh` passes locally and runs in CI. Builder/runtime both use Debian bookworm.
-- [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.
+- [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks. Read-only audit of local `forklaunch-platform` at `3fb59b3cc` found a concrete integration gap: deployment/image planning maps non-Bun runtimes (including Tokio) to PNPM, and generated ECS commands invoke JavaScript start scripts. Rust needs native binary startup and image/build support in the platform before this gate can pass; local container success does not establish ECS parity.
 - [x] Verify the CLI Cargo package file list includes all 117 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
@@ -371,7 +371,7 @@ Requirements:
 - [x] Support auth hooks for JWT, HMAC, Basic, and custom headers.
 - [x] Support Rust-native error enums.
 - [x] Run generated Rust SDKs against a relocated generated Rust HTTP server, including typed models, concurrent requests, HTTP errors, and transport failures (`rust_http_runtime.sh`).
-- [ ] Run generated Rust SDKs against a TypeScript test server.
+- [x] Run generated Rust SDKs against a compiled TypeScript HTTP wire fixture, checking typed payloads, query/header transport, concurrent calls, HTTP errors, and transport failures. Full TypeScript framework conformance remains in phase 14.
 
 ### CLI Integration
 

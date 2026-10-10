@@ -32,31 +32,67 @@ TOML
 mkdir -p sdks/rust/accounts-sdk/examples
 cp "$SCRIPT_DIR/fixtures/rust_sdk_http.rs" sdks/rust/accounts-sdk/examples/http_roundtrip.rs
 cargo build -p accounts-sdk --example http_roundtrip
+NODE_TYPES_ROOT="${NODE_TYPES_ROOT:-$(dirname "$TSC_BIN")/../@types}"
+"$TSC_BIN" --strict --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext \
+    --types node --typeRoots "$NODE_TYPES_ROOT" --outDir "$PWD/generated-wire-fixtures" \
+    "$SCRIPT_DIR/fixtures/typescript_sdk_server.mts"
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s=""; process.stdin.on("data", d => s+=d); process.stdin.on("end", () => console.log(JSON.parse(s).target_directory + "/debug/accounts"))')"
-node --input-type=module - "$BINARY" "$(dirname "$BINARY")/examples/http_roundtrip" <<'JS'
+node --input-type=module - "$BINARY" "$(dirname "$BINARY")/examples/http_roundtrip" "$PWD/generated-wire-fixtures/typescript_sdk_server.mjs" <<'JS'
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createForkLaunchSdk } from './sdks/typescript/dist/index.js';
-const service = spawn(process.argv[2], [], {
-  env: { ...process.env, HOST: '127.0.0.1', SERVICE_HOST: '127.0.0.1', SERVICE_PORT: '0' },
-  stdio: ['ignore', 'pipe', 'pipe']
-});
-const exited = once(service, 'exit');
-let stderr = '';
-service.stderr.on('data', chunk => stderr += chunk);
-try {
-  const baseUrl = await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`startup timed out: ${stderr}`)), 15000);
+const children = [];
+async function startServer(program, args = []) {
+  const process = spawn(program, args, {
+    env: { ...globalThis.process.env, HOST: '127.0.0.1', SERVICE_HOST: '127.0.0.1', SERVICE_PORT: '0' },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  const exited = once(process, 'exit');
+  // Keep a rejection handled even if startup fails before shutdown is awaited.
+  exited.catch(() => {});
+  const child = { process, exited, stderr: '' };
+  children.push(child);
+  process.stderr.on('data', chunk => child.stderr += chunk);
+  child.baseUrl = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`startup timed out: ${child.stderr}`)), 15000);
     let output = '';
-    service.stdout.on('data', chunk => {
+    process.stdout.on('data', chunk => {
       output += chunk;
       const match = output.match(/listening on (http:\/\/[^\s]+)/);
       if (match) { clearTimeout(timeout); resolve(match[1]); }
     });
-    service.once('exit', code => { clearTimeout(timeout); reject(new Error(`service exited ${code}: ${stderr}`)); });
-    service.once('error', error => { clearTimeout(timeout); reject(error); });
+    process.once('exit', code => { clearTimeout(timeout); reject(new Error(`service exited ${code}: ${child.stderr}`)); });
+    process.once('error', error => { clearTimeout(timeout); reject(error); });
   });
+  return child;
+}
+async function verifyRustClient(baseUrl) {
+  const client = spawn(process.argv[3], [baseUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  client.stdout.on('data', chunk => output += chunk);
+  client.stderr.on('data', chunk => output += chunk);
+  const deadline = setTimeout(() => client.kill('SIGKILL'), 15000);
+  try {
+    const [code, signal] = await once(client, 'exit');
+    assert.equal(code, 0, `Rust SDK failed: ${signal} ${output}`);
+    assert.match(output, /PASS Rust SDK live HTTP roundtrip/);
+  } finally {
+    clearTimeout(deadline);
+    if (client.exitCode === null && client.signalCode === null) client.kill('SIGKILL');
+  }
+}
+async function stopServer(child) {
+  child.process.kill('SIGTERM');
+  const deadline = setTimeout(() => child.process.kill('SIGKILL'), 10000);
+  try {
+    const [code, signal] = await child.exited;
+    assert.equal(code, 0, `shutdown failed: ${signal} ${child.stderr}`);
+  } finally { clearTimeout(deadline); }
+}
+try {
+  const service = await startServer(process.argv[2]);
+  const baseUrl = service.baseUrl;
   const sdk = createForkLaunchSdk({ baseUrl });
   const health = await sdk.accounts.health.getHealth();
   assert.equal(health.code, 200);
@@ -72,27 +108,23 @@ try {
   assert.equal(largeHeader.status, 200);
   const responses = await Promise.all(Array.from({ length: 20 }, () => sdk.accounts.health.getHealth()));
   assert(responses.every(response => response.code === 200));
-  const rustClient = spawn(process.argv[3], [baseUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
-  let clientOutput = '';
-  rustClient.stdout.on('data', chunk => clientOutput += chunk);
-  rustClient.stderr.on('data', chunk => clientOutput += chunk);
-  const deadline = setTimeout(() => rustClient.kill('SIGKILL'), 15000);
-  try {
-    const [clientCode, clientSignal] = await once(rustClient, 'exit');
-    assert.equal(clientCode, 0, `Rust SDK failed: ${clientSignal} ${clientOutput}`);
-    assert.match(clientOutput, /PASS Rust SDK live HTTP roundtrip/);
-  } finally {
-    clearTimeout(deadline);
-    if (rustClient.exitCode === null && rustClient.signalCode === null) rustClient.kill('SIGKILL');
-  }
-  service.kill('SIGTERM');
-  const [code, signal] = await exited;
-  assert.equal(code, 0, `shutdown failed: ${signal} ${stderr}`);
+  await verifyRustClient(baseUrl);
+  await stopServer(service);
   console.log('PASS generated TypeScript and Rust SDKs against relocated Rust HTTP service and graceful shutdown');
+  const typescript = await startServer(process.execPath, [process.argv[4]]);
+  await verifyRustClient(typescript.baseUrl);
+  const tsSdk = createForkLaunchSdk({ baseUrl: typescript.baseUrl });
+  const tsHealth = await tsSdk.accounts.health.getHealth();
+  assert.deepEqual(tsHealth.response, health.response);
+  assert.deepEqual((await tsSdk.accounts.users.listUsers()).response, users.response);
+  await stopServer(typescript);
+  console.log('PASS generated Rust and TypeScript SDKs against compiled TypeScript HTTP wire fixture');
 } finally {
-  if (service.exitCode === null && service.signalCode === null) {
-    service.kill('SIGKILL');
-    await exited;
+  for (const child of children) {
+    if (child.process.exitCode === null && child.process.signalCode === null) {
+      child.process.kill('SIGKILL');
+      await child.exited.catch(() => {});
+    }
   }
 }
 JS

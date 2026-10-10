@@ -103,7 +103,7 @@ jobs:
 
       - name: Install TypeScript compiler for SDK checks
         if: matrix.group == 7
-        run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
+        run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@22
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
