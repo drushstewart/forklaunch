@@ -7,7 +7,15 @@ use forklaunch_worker_interface::{
 };
 use forklaunch_worker_redis::leased::RedisLeasedQueue;
 use redis::aio::MultiplexedConnection;
-use std::{collections::HashSet, fmt::Write, time::Duration};
+use std::{
+    collections::HashSet,
+    fmt::Write,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 fn encoded(value: &str) -> String {
     value.bytes().fold(String::new(), |mut output, byte| {
@@ -53,6 +61,20 @@ struct SlowHandler;
 impl JobHandler for SlowHandler {
     async fn process(&self, _job: Job) -> BlueprintResult<()> {
         tokio::time::sleep(Duration::from_millis(1800)).await;
+        Ok(())
+    }
+}
+
+struct ErrorDrainHandler(Arc<AtomicUsize>);
+impl JobHandler for ErrorDrainHandler {
+    async fn process(&self, job: Job) -> BlueprintResult<()> {
+        tokio::time::sleep(Duration::from_millis(if job.id == "fault-0" {
+            1000
+        } else {
+            1500
+        }))
+        .await;
+        self.0.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 }
@@ -334,6 +356,7 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
         .unwrap();
     let config = RunnerConfig {
         queue: "runner".into(),
+        concurrency: 1,
         poll_interval: Duration::from_millis(25),
         lease_duration: Duration::from_millis(1200),
         renew_interval: Duration::from_millis(300),
@@ -365,6 +388,92 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
             .attempts,
         1
     );
+    queue
+        .enqueue_batch(
+            (0..5)
+                .map(|index| Job::new(format!("parallel-{index}"), "parallel", "{}"))
+                .collect(),
+        )
+        .await
+        .unwrap();
+    let config = RunnerConfig {
+        queue: "parallel".into(),
+        concurrency: 4,
+        ..config
+    };
+    let (report, ()) = tokio::join!(
+        runner::run(&queue, &SlowHandler, &config, async {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+        }),
+        async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            let stats = queue.stats("parallel").await.unwrap();
+            assert_eq!(stats.processing, 4);
+            assert_eq!(stats.queued, 1);
+        }
+    );
+    assert_eq!(report.unwrap().completed, 4);
+    let pending = queue
+        .inspect("parallel", "parallel-4")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(pending.status, JobStatus::Queued);
+    assert_eq!(pending.job.attempts, 0);
+    for index in 0..4 {
+        let completed = queue
+            .inspect("parallel", &format!("parallel-{index}"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(completed.status, JobStatus::Completed);
+        assert_eq!(completed.job.attempts, 1);
+    }
+    // A storage error in one consumer must drain the others, not drop their
+    // handler futures immediately. Corrupt only this test's isolated queue.
+    queue
+        .enqueue_batch(
+            (0..4)
+                .map(|index| Job::new(format!("fault-{index}"), "fault", "{}"))
+                .collect(),
+        )
+        .await
+        .unwrap();
+    let completions = Arc::new(AtomicUsize::new(0));
+    let handler = ErrorDrainHandler(Arc::clone(&completions));
+    let config = RunnerConfig {
+        concurrency: 4,
+        ..RunnerConfig::new("fault")
+    };
+    let ready_key = format!("{}:ready", prefix(&namespace, "tenant-a", "fault"));
+    let (result, ()) = tokio::join!(
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            runner::run(&queue, &handler, &config, std::future::pending())
+        ),
+        async {
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while queue.stats("fault").await.unwrap().processing != 4 {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            let _: () = redis::cmd("SET")
+                .arg(&ready_key)
+                .arg("wrong-type")
+                .query_async(&mut admin)
+                .await
+                .unwrap();
+        }
+    );
+    assert_eq!(result.unwrap().unwrap_err().code, "worker_storage_error");
+    assert_eq!(completions.load(Ordering::SeqCst), 4);
+    let _: usize = redis::cmd("DEL")
+        .arg(&ready_key)
+        .query_async(&mut admin)
+        .await
+        .unwrap();
     let error = RedisLeasedQueue::connect(
         "secret-invalid-url",
         &namespace,

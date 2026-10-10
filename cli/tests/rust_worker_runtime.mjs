@@ -19,7 +19,7 @@ if(redis) {
 }
 const env = tenant => ({...process.env, ...storage, TENANT_ID:`${role}-${tenant}`,
   WORKER_QUEUE:mode === 'stub' ? 'stub' : 'runtime', WORKER_MAX_ATTEMPTS:'2', WORKER_BACKOFF_SECONDS:'0',
-  WORKER_POLL_MS:'20', WORKER_LEASE_MS:'1000', WORKER_RENEW_MS:'250', WORKER_DRAIN_MS:'5000'});
+  WORKER_CONCURRENCY:'1', WORKER_POLL_MS:'20', WORKER_LEASE_MS:'1000', WORKER_RENEW_MS:'250', WORKER_DRAIN_MS:'5000'});
 const children = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function command(args, tenant = 'a') { return (await exec(binary, args, {env:env(tenant), timeout:10000})).stdout; }
@@ -104,6 +104,19 @@ try {
     const recovered=await start();
     assert.equal((await waitState('crash','Completed')).attempts,2);
     await stop(recovered);
+    for(const id of ['parallel-1','parallel-2']) {
+      await command(['--enqueue',id,'{"sleep_ms":2400}']);
+    }
+    const parallel=await start({WORKER_CONCURRENCY:'2'});
+    await Promise.all(['parallel-1','parallel-2'].map(id=>waitState(id,'Processing')));
+    await command(['--enqueue','parallel-pending','{}']);
+    const parallelOutput=await stop(parallel);
+    assert.match(parallelOutput,/completed=2/);
+    for(const id of ['parallel-1','parallel-2']) {
+      const job=await inspect(id);
+      assert.equal(job.status,'Completed'); assert.equal(job.attempts,1);
+    }
+    assert.equal((await inspect('parallel-pending')).status,'Queued');
     console.log(`PASS generated ${redis ? 'Redis' : 'PostgreSQL'} worker: lease renewal, drain, retry, cancellation, crash recovery, and tenant isolation`);
   }
 } finally {

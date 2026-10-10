@@ -1,7 +1,9 @@
 //! Polling and graceful drain for asynchronous, leased worker queues.
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_worker_interface::{AsyncWorkerQueue, FailureDisposition, Job, JobLease};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use std::{future::Future, time::Duration};
+use tokio::sync::watch;
 use tokio::time::{Instant, MissedTickBehavior, interval_at, timeout};
 
 /// Application handlers must be idempotent and keep all work inside this future
@@ -15,6 +17,8 @@ pub trait JobHandler: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct RunnerConfig {
     pub queue: String,
+    /// Maximum in-flight deliveries in this process (1..=256).
+    pub concurrency: usize,
     pub poll_interval: Duration,
     pub lease_duration: Duration,
     pub renew_interval: Duration,
@@ -26,6 +30,7 @@ impl RunnerConfig {
     pub fn new(queue: impl Into<String>) -> Self {
         Self {
             queue: queue.into(),
+            concurrency: 1,
             poll_interval: Duration::from_millis(250),
             lease_duration: Duration::from_secs(30),
             renew_interval: Duration::from_secs(10),
@@ -34,9 +39,10 @@ impl RunnerConfig {
     }
 
     /// # Errors
-    /// Rejects empty/control-containing queue names and invalid time bounds.
+    /// Rejects invalid queue names, time bounds, and concurrency limits.
     pub fn validate(&self) -> BlueprintResult<()> {
-        if self.queue.trim().is_empty()
+        if !(1..=256).contains(&self.concurrency)
+            || self.queue.trim().is_empty()
             || self.queue.len() > 256
             || self.queue.chars().any(char::is_control)
             || self.poll_interval.is_zero()
@@ -92,10 +98,11 @@ fn operation_timeout() -> BlueprintError {
     )
 }
 
-/// Polls one delivery at a time, renewing its lease while the handler runs. Run
-/// multiple processes for parallel consumption. Shutdown stops new claims and
-/// drains the current handler while continuing lease renewal. A drain timeout
-/// cancels the handler and leaves its delivery recoverable after lease expiry.
+/// Runs up to the configured number of concurrent deliveries, renewing each
+/// lease while its handler runs. Shutdown stops new claims and drains all active
+/// handlers while continuing renewal. A drain timeout cancels the handler and
+/// leaves its delivery recoverable after lease expiry. A queue error stops all
+/// consumers and drains their active work before returning the first error.
 ///
 /// # Errors
 /// Returns an error for invalid configuration or queue failure/timeout. Handler
@@ -112,6 +119,61 @@ where
     F: Future<Output = ()> + Send,
 {
     config.validate()?;
+    let (stop, receiver) = watch::channel(false);
+    let mut consumers: FuturesUnordered<_> = (0..config.concurrency)
+        .map(|_| {
+            let mut receiver = receiver.clone();
+            run_single(queue, handler, config, async move {
+                if !*receiver.borrow() {
+                    let _ = receiver.changed().await;
+                }
+            })
+        })
+        .collect();
+    tokio::pin!(shutdown);
+    let mut stopping = false;
+    let mut first_error = None;
+    let mut report = RunReport::default();
+    loop {
+        tokio::select! {
+            biased;
+            () = &mut shutdown, if !stopping => {
+                stopping = true;
+                stop.send_replace(true);
+            }
+            result = consumers.next() => {
+                let Some(result) = result else { break; };
+                match result {
+                    Ok(partial) => {
+                        report.completed += partial.completed;
+                        report.retried += partial.retried;
+                        report.dead_lettered += partial.dead_lettered;
+                        report.lease_lost += partial.lease_lost;
+                        report.abandoned += partial.abandoned;
+                    }
+                    Err(error) => {
+                        if first_error.is_none() { first_error = Some(error); }
+                        stopping = true;
+                        stop.send_replace(true);
+                    }
+                }
+            }
+        }
+    }
+    first_error.map_or(Ok(report), Err)
+}
+
+async fn run_single<Q, H, F>(
+    queue: &Q,
+    handler: &H,
+    config: &RunnerConfig,
+    shutdown: F,
+) -> BlueprintResult<RunReport>
+where
+    Q: AsyncWorkerQueue,
+    H: JobHandler,
+    F: Future<Output = ()> + Send,
+{
     tokio::pin!(shutdown);
     let mut report = RunReport::default();
     loop {
@@ -215,6 +277,11 @@ mod tests {
         config.drain_timeout = Duration::ZERO;
         assert!(config.validate().is_err());
         config = RunnerConfig::new("\n");
+        assert!(config.validate().is_err());
+        config = RunnerConfig::new("email");
+        config.concurrency = 0;
+        assert!(config.validate().is_err());
+        config.concurrency = 257;
         assert!(config.validate().is_err());
         config = RunnerConfig::new("email");
         config.poll_interval = Duration::ZERO;

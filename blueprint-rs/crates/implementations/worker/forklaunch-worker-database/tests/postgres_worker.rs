@@ -404,6 +404,7 @@ mod runner_tests {
     fn config(queue: &str) -> RunnerConfig {
         RunnerConfig {
             queue: queue.into(),
+            concurrency: 1,
             poll_interval: Duration::from_millis(5),
             lease_duration: Duration::from_millis(600),
             renew_interval: Duration::from_millis(150),

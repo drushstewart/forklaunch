@@ -649,6 +649,7 @@ dependencies = [
  "forklaunch-core",
  "forklaunch-iam-base",
  "forklaunch-worker-interface",
+ "futures-util",
  "serde_json",
  "sqlx",
  "tokio",

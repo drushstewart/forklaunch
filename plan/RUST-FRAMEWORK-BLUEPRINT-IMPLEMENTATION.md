@@ -557,7 +557,8 @@ Requirements:
 - [x] Define an async leased-queue interface and validate the PostgreSQL adapter against a restricted-role database, including migration coexistence with IAM.
 - [x] Wire PostgreSQL queues into new generated workers with polling, lease renewal, bounded operations, and graceful drain; validate actual process crashes, restart recovery, tenant isolation, and source-preserving lifecycle operations.
 - [x] Convert existing example workers to PostgreSQL on explicit backend changes, preserving their handler and unrelated Cargo metadata.
-- [ ] Add batch-handler and concurrency settings plus worker HTTP health/control endpoints.
+- [x] Add bounded per-process concurrency settings to the shared runner and generated PostgreSQL/Redis workers; renew every active lease and drain all in-flight handlers on shutdown.
+- [ ] Add batch-handler settings and worker HTTP health/control endpoints.
 - [x] Wire durable Redis queues into generated worker binaries; preserve application handlers through sync, rename, and Redis/PostgreSQL conversion, and validate real Redis process lifecycle behavior.
 - [ ] Wire durable Kafka queues into generated worker binaries.
 - [ ] Add dead-letter administration and completed/failed job retention policies.
