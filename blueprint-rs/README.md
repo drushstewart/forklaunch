@@ -23,3 +23,7 @@ cargo doc --workspace --no-deps
 - Implementation crates depend on interfaces, not the other way around.
 - Optional integrations should be feature-gated at the implementation crate that owns them.
 - Generated TypeScript and Rust SDKs should come from framework contract artifacts.
+
+## Worker administration
+
+`PostgresWorkerQueue` and `RedisLeasedQueue` implement `AsyncWorkerAdmin`: bounded dead-letter listing, atomic requeue with an explicit retry policy, and age-based purging of completed or failed jobs. Operations stay within the queue's trusted tenant. Retry clears prior attempts and failure reasons; purging permanently frees the job identity. Generated worker binaries expose `--dead-letters`, `--retry`, `--purge-completed`, and `--purge-failed` commands. Retention is explicit and has no automatic startup deletion.

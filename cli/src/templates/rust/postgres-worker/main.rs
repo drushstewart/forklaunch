@@ -1,7 +1,7 @@
 use std::{env, time::Duration};
 use forklaunch_core::persistence::TenantContext;
 use forklaunch_worker_database::{postgres::PostgresWorkerQueue, runner::{self, RunnerConfig}};
-use forklaunch_worker_interface::{AsyncWorkerQueue, Job, RetryPolicy};
+use forklaunch_worker_interface::{AsyncWorkerAdmin, AsyncWorkerQueue, Job, JobSnapshot, RetryPolicy, TerminalStatus};
 use sqlx::postgres::PgPoolOptions;
 use {{crate_module}}::{handler::ApplicationHandler, WORKER_NAME, write_contract_artifacts};
 
@@ -17,8 +17,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
     if !args.is_empty() && args != ["--migrate"]
         && !(args.len() == 3 && args[0] == "--enqueue")
-        && !(args.len() == 2 && args[0] == "--inspect") {
-        return Err("Expected no arguments, --migrate, --enqueue ID JSON, or --inspect ID".into());
+        && !(args.len() == 2 && matches!(args[0].as_str(), "--inspect" | "--dead-letters" | "--retry"))
+        && !(args.len() == 3 && matches!(args[0].as_str(), "--purge-completed" | "--purge-failed")) {
+        return Err("Expected no arguments, --migrate, --enqueue ID JSON, --inspect ID, --dead-letters LIMIT, --retry ID, or --purge-completed/--purge-failed AGE_SECONDS LIMIT".into());
     }
     let url = env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is required")?;
     let pool = PgPoolOptions::new().max_connections(10).connect(&url).await
@@ -40,11 +41,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("job enqueued");
     } else if args.first().map(String::as_str) == Some("--inspect") {
         let snapshot = queue.inspect(&queue_name, &args[1]).await?;
-        println!("{}", snapshot.map_or(serde_json::Value::Null, |snapshot| serde_json::json!({
-            "id":snapshot.job.id, "queue":snapshot.job.queue,
-            "attempts":snapshot.job.attempts, "status":format!("{:?}",snapshot.status),
-            "last_error":snapshot.last_error,
-        })));
+        println!("{}", snapshot.map_or(serde_json::Value::Null, snapshot_json));
+    } else if args.first().map(String::as_str) == Some("--dead-letters") {
+        let jobs = queue.dead_letters(&queue_name, args[1].parse()?).await?;
+        println!("{}", serde_json::to_string(&jobs.into_iter().map(snapshot_json).collect::<Vec<_>>())?);
+    } else if args.first().map(String::as_str) == Some("--retry") {
+        let requeued = queue.retry_dead_letter(&queue_name, &args[1], policy).await?;
+        println!("{}", serde_json::json!({"requeued":requeued}));
+    } else if args.first().is_some_and(|arg| matches!(arg.as_str(), "--purge-completed" | "--purge-failed")) {
+        let status = if args[0] == "--purge-completed" { TerminalStatus::Completed } else { TerminalStatus::Failed };
+        let purged = queue.purge_terminal(&queue_name, status, Duration::from_secs(args[1].parse()?), args[2].parse()?).await?;
+        println!("{}", serde_json::json!({"purged":purged}));
     } else {
         let config = RunnerConfig {
             queue: queue_name,
@@ -62,6 +69,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     pool.close().await;
     Ok(())
+}
+
+fn snapshot_json(snapshot: JobSnapshot) -> serde_json::Value {
+    serde_json::json!({"id":snapshot.job.id, "queue":snapshot.job.queue,
+        "attempts":snapshot.job.attempts, "status":format!("{:?}",snapshot.status),
+        "last_error":snapshot.last_error})
 }
 
 fn number(name: &str, default: u64) -> Result<u64, Box<dyn std::error::Error>> {

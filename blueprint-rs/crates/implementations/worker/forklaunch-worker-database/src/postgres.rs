@@ -5,8 +5,8 @@
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_core::persistence::{TenantContext, begin_tenant_transaction};
 use forklaunch_worker_interface::{
-    AsyncWorkerQueue, FailureDisposition, Job, JobLease, JobReceipt, JobSnapshot, JobStatus,
-    QueueStats, RetryPolicy,
+    AsyncWorkerAdmin, AsyncWorkerQueue, FailureDisposition, Job, JobLease, JobReceipt, JobSnapshot,
+    JobStatus, QueueStats, RetryPolicy, TerminalStatus,
 };
 use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgRow, types::Json};
 use std::time::Duration;
@@ -59,6 +59,21 @@ fn decode_job(row: &PgRow) -> BlueprintResult<Job> {
         queue: row.try_get("queue").map_err(storage_error)?,
         payload_json: payload.to_string(),
         attempts: u32::try_from(attempts).map_err(storage_error)?,
+    })
+}
+fn decode_snapshot(row: &PgRow) -> BlueprintResult<JobSnapshot> {
+    let status: String = row.try_get("status").map_err(storage_error)?;
+    Ok(JobSnapshot {
+        job: decode_job(row)?,
+        status: match status.as_str() {
+            "queued" => JobStatus::Queued,
+            "processing" => JobStatus::Processing,
+            "completed" => JobStatus::Completed,
+            "failed" => JobStatus::Failed,
+            _ => return Err(storage_error("invalid job status")),
+        },
+        last_error: row.try_get("last_error").map_err(storage_error)?,
+        lease_expires_at_unix_ms: row.try_get("lease_ms").map_err(storage_error)?,
     })
 }
 fn lease_token(lease: &JobLease) -> BlueprintResult<Uuid> {
@@ -288,25 +303,68 @@ impl AsyncWorkerQueue for PostgresWorkerQueue {
         let mut tx = self.transaction().await?;
         let row = sqlx::query("SELECT *,floor(extract(epoch FROM lease_until)*1000)::bigint AS lease_ms FROM fl_worker.jobs WHERE tenant_id=$1 AND queue=$2 AND id=$3")
             .bind(self.tenant.id()).bind(queue).bind(id).fetch_optional(&mut *tx).await.map_err(storage_error)?;
-        let snapshot = row
-            .map(|row| {
-                let status: String = row.try_get("status").map_err(storage_error)?;
-                Ok(JobSnapshot {
-                    job: decode_job(&row)?,
-                    status: match status.as_str() {
-                        "queued" => JobStatus::Queued,
-                        "processing" => JobStatus::Processing,
-                        "completed" => JobStatus::Completed,
-                        "failed" => JobStatus::Failed,
-                        _ => return Err(storage_error("invalid job status")),
-                    },
-                    last_error: row.try_get("last_error").map_err(storage_error)?,
-                    lease_expires_at_unix_ms: row.try_get("lease_ms").map_err(storage_error)?,
-                })
-            })
-            .transpose()?;
+        let snapshot = row.as_ref().map(decode_snapshot).transpose()?;
         tx.commit().await.map_err(storage_error)?;
         Ok(snapshot)
+    }
+}
+
+impl AsyncWorkerAdmin for PostgresWorkerQueue {
+    async fn dead_letters(&self, queue: &str, limit: usize) -> BlueprintResult<Vec<JobSnapshot>> {
+        if !valid_name(queue) || !(1..=MAX_BATCH).contains(&limit) {
+            return Err(invalid_input());
+        }
+        let mut tx = self.transaction().await?;
+        let rows = sqlx::query("SELECT *,NULL::bigint AS lease_ms FROM fl_worker.jobs WHERE tenant_id=$1 AND queue=$2 AND status='failed' ORDER BY updated_at,sequence LIMIT $3")
+            .bind(self.tenant.id()).bind(queue).bind(i64::try_from(limit).map_err(|_| invalid_input())?)
+            .fetch_all(&mut *tx).await.map_err(storage_error)?;
+        let jobs = rows
+            .iter()
+            .map(decode_snapshot)
+            .collect::<BlueprintResult<_>>()?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(jobs)
+    }
+    async fn retry_dead_letter(
+        &self,
+        queue: &str,
+        id: &str,
+        policy: RetryPolicy,
+    ) -> BlueprintResult<bool> {
+        if !valid_name(queue) || !valid_name(id) {
+            return Err(invalid_input());
+        }
+        validate_policy(policy)?;
+        let mut tx = self.transaction().await?;
+        let result = sqlx::query("UPDATE fl_worker.jobs SET status='queued',attempts=0,max_attempts=$4,backoff_ms=$5,available_at=clock_timestamp(),updated_at=clock_timestamp(),last_error=NULL,lease_token=NULL,lease_until=NULL WHERE tenant_id=$1 AND queue=$2 AND id=$3 AND status='failed'")
+            .bind(self.tenant.id()).bind(queue).bind(id).bind(i32::try_from(policy.max_attempts).map_err(|_| invalid_input())?)
+            .bind(i64::try_from(policy.backoff_seconds*1000).map_err(|_| invalid_input())?)
+            .execute(&mut *tx).await.map_err(storage_error)?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(result.rows_affected() == 1)
+    }
+    async fn purge_terminal(
+        &self,
+        queue: &str,
+        status: TerminalStatus,
+        minimum_age: Duration,
+        limit: usize,
+    ) -> BlueprintResult<usize> {
+        if !valid_name(queue)
+            || !(1..=MAX_BATCH).contains(&limit)
+            || minimum_age < Duration::from_millis(1)
+            || minimum_age > Duration::from_secs(3650 * 86400)
+        {
+            return Err(invalid_input());
+        }
+        let age_ms = i64::try_from(minimum_age.as_millis()).map_err(|_| invalid_input())?;
+        let mut tx = self.transaction().await?;
+        let result = sqlx::query("WITH expired AS (SELECT tenant_id,queue,id FROM fl_worker.jobs WHERE tenant_id=$1 AND queue=$2 AND status=$3 AND updated_at<=clock_timestamp()-$4*interval '1 millisecond' ORDER BY updated_at,sequence FOR UPDATE SKIP LOCKED LIMIT $5) DELETE FROM fl_worker.jobs AS jobs USING expired WHERE jobs.tenant_id=expired.tenant_id AND jobs.queue=expired.queue AND jobs.id=expired.id")
+            .bind(self.tenant.id()).bind(queue).bind(status.as_str()).bind(age_ms)
+            .bind(i64::try_from(limit).map_err(|_| invalid_input())?)
+            .execute(&mut *tx).await.map_err(storage_error)?;
+        tx.commit().await.map_err(storage_error)?;
+        usize::try_from(result.rows_affected()).map_err(storage_error)
     }
 }
 

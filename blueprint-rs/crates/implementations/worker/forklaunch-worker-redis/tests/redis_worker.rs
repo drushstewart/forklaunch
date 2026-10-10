@@ -3,7 +3,8 @@ use forklaunch_blueprint_core::BlueprintResult;
 use forklaunch_core::persistence::TenantContext;
 use forklaunch_worker_database::runner::{self, JobHandler, RunnerConfig};
 use forklaunch_worker_interface::{
-    AsyncWorkerQueue, FailureDisposition, Job, JobStatus, RetryPolicy,
+    AsyncWorkerAdmin, AsyncWorkerQueue, FailureDisposition, Job, JobStatus, RetryPolicy,
+    TerminalStatus,
 };
 use forklaunch_worker_redis::leased::RedisLeasedQueue;
 use redis::aio::MultiplexedConnection;
@@ -484,5 +485,341 @@ async fn redis_worker_leases_batches_retries_isolation_and_runner() {
     .err()
     .unwrap();
     assert_eq!(error.message, "Worker storage operation failed");
+    let admin_queue = RedisLeasedQueue::connect(
+        &url,
+        &namespace,
+        TenantContext::new("tenant-a").unwrap(),
+        RetryPolicy::new(1, 0),
+    )
+    .await
+    .unwrap();
+    let admin_other = admin_queue.for_tenant(TenantContext::new("tenant-a:other").unwrap());
+    verify_admin_contract(&admin_queue, &admin_other).await;
+    // Legacy retained jobs have no terminal timestamp or indexes. Index them
+    // incrementally and start their retention age at first observation.
+    admin_queue
+        .enqueue(Job::new("legacy", "legacy", "{}"))
+        .await
+        .unwrap();
+    let lease = admin_queue
+        .claim("legacy", Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        admin_queue.fail(&lease, "legacy_failure").await.unwrap(),
+        FailureDisposition::DeadLetter
+    );
+    let legacy_prefix = prefix(&namespace, "tenant-a", "legacy");
+    let stored: String = redis::cmd("HGET")
+        .arg(format!("{legacy_prefix}:jobs"))
+        .arg("legacy")
+        .query_async(&mut admin)
+        .await
+        .unwrap();
+    let mut record: serde_json::Value = serde_json::from_str(&stored).unwrap();
+    record.as_object_mut().unwrap().remove("terminal_at");
+    let mut pipeline = redis::pipe();
+    for index in 0..250 {
+        let id = format!("legacy-{index}");
+        record["id"] = serde_json::json!(id);
+        pipeline
+            .cmd("HSET")
+            .arg(format!("{legacy_prefix}:jobs"))
+            .arg(&id)
+            .arg(record.to_string())
+            .ignore();
+    }
+    pipeline
+        .cmd("HSET")
+        .arg(format!("{legacy_prefix}:jobs"))
+        .arg("legacy")
+        .arg(stored.replace("\"terminal_at\":", "\"ignored_terminal_at\":"))
+        .ignore();
+    pipeline
+        .cmd("DEL")
+        .arg(format!("{legacy_prefix}:failed"))
+        .arg(format!("{legacy_prefix}:admin-index"))
+        .ignore();
+    let _: () = pipeline.query_async(&mut admin).await.unwrap();
+    assert_eq!(
+        admin_queue
+            .purge_terminal(
+                "legacy",
+                TerminalStatus::Failed,
+                Duration::from_secs(86400),
+                1000
+            )
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        admin_queue
+            .dead_letters("legacy", 1000)
+            .await
+            .unwrap()
+            .len(),
+        251
+    );
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert_eq!(
+        admin_queue
+            .purge_terminal(
+                "legacy",
+                TerminalStatus::Failed,
+                Duration::from_millis(1),
+                1000
+            )
+            .await
+            .unwrap(),
+        251
+    );
     clean(&mut admin, &namespace).await;
+}
+
+#[allow(clippy::too_many_lines)]
+async fn verify_admin_contract<Q: AsyncWorkerAdmin>(queue: &Q, other: &Q) {
+    let name = "admin";
+    queue
+        .enqueue_batch(
+            [
+                "failed-1",
+                "failed-2",
+                "completed-1",
+                "completed-2",
+                "active",
+            ]
+            .into_iter()
+            .map(|id| Job::new(id, name, "{}"))
+            .collect(),
+        )
+        .await
+        .unwrap();
+    let mut failed_lease = None;
+    for id in ["failed-1", "failed-2", "completed-1", "completed-2"] {
+        let lease = queue
+            .claim(name, Duration::from_secs(60))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(lease.job.id, id);
+        if id.starts_with("failed") {
+            assert_eq!(
+                queue.fail(&lease, "test_failure").await.unwrap(),
+                FailureDisposition::DeadLetter
+            );
+            if id == "failed-1" {
+                failed_lease = Some(lease);
+            }
+        } else {
+            assert!(queue.ack(&lease).await.unwrap());
+        }
+    }
+    let active = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(active.job.id, "active");
+    other
+        .enqueue(Job::new("failed-1", name, "{}"))
+        .await
+        .unwrap();
+    let foreign = other
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        other.fail(&foreign, "foreign_failure").await.unwrap(),
+        FailureDisposition::DeadLetter
+    );
+    let failed = queue.dead_letters(name, 1).await.unwrap();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].status, JobStatus::Failed);
+    assert!(failed[0].lease_expires_at_unix_ms.is_none());
+    assert_eq!(queue.dead_letters(name, 1000).await.unwrap().len(), 2);
+    assert!(
+        !queue
+            .retry_dead_letter(name, "missing", RetryPolicy::default())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !queue
+            .retry_dead_letter(name, "active", RetryPolicy::default())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !queue
+            .retry_dead_letter(name, "completed-1", RetryPolicy::default())
+            .await
+            .unwrap()
+    );
+    let policy = RetryPolicy::new(2, 0);
+    let (first, second) = tokio::join!(
+        queue.retry_dead_letter(name, "failed-1", policy),
+        queue.retry_dead_letter(name, "failed-1", policy)
+    );
+    assert_eq!(
+        usize::from(first.unwrap()) + usize::from(second.unwrap()),
+        1
+    );
+    let reset = queue.inspect(name, "failed-1").await.unwrap().unwrap();
+    assert_eq!(reset.status, JobStatus::Queued);
+    assert_eq!(reset.job.attempts, 0);
+    assert!(reset.last_error.is_none());
+    let old = failed_lease.unwrap();
+    assert!(!queue.ack(&old).await.unwrap());
+    assert!(!queue.renew(&old, Duration::from_secs(60)).await.unwrap());
+    assert_eq!(
+        queue.fail(&old, "stale").await.unwrap(),
+        FailureDisposition::LeaseLost
+    );
+    let retry = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retry.job.id, "failed-1");
+    assert_eq!(retry.job.attempts, 1);
+    assert_eq!(
+        queue.fail(&retry, "retry_failure").await.unwrap(),
+        FailureDisposition::RetryScheduled
+    );
+    let retry = queue
+        .claim(name, Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retry.job.attempts, 2);
+    assert_eq!(
+        queue.fail(&retry, "retry_failure").await.unwrap(),
+        FailureDisposition::DeadLetter
+    );
+    queue.enqueue(Job::new("queued", name, "{}")).await.unwrap();
+    assert!(
+        !queue
+            .retry_dead_letter(name, "queued", policy)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        queue
+            .purge_terminal(
+                name,
+                TerminalStatus::Failed,
+                Duration::from_secs(86400),
+                1000
+            )
+            .await
+            .unwrap(),
+        0
+    );
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    for status in [TerminalStatus::Completed, TerminalStatus::Failed] {
+        assert_eq!(
+            queue
+                .purge_terminal(name, status, Duration::from_millis(1), 1)
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            queue
+                .purge_terminal(name, status, Duration::from_millis(1), 1)
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            queue
+                .purge_terminal(name, status, Duration::from_millis(1), 1)
+                .await
+                .unwrap(),
+            0
+        );
+    }
+    assert!(queue.dead_letters(name, 1000).await.unwrap().is_empty());
+    assert_eq!(
+        queue.inspect(name, "queued").await.unwrap().unwrap().status,
+        JobStatus::Queued
+    );
+    assert_eq!(
+        queue.inspect(name, "active").await.unwrap().unwrap().status,
+        JobStatus::Processing
+    );
+    assert_eq!(other.dead_letters(name, 1000).await.unwrap().len(), 1);
+    queue
+        .enqueue(Job::new("completed-1", name, "{}"))
+        .await
+        .unwrap();
+    assert_eq!(
+        queue
+            .inspect(name, "completed-1")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        JobStatus::Queued
+    );
+    for limit in [0, 1001] {
+        assert!(queue.dead_letters(name, limit).await.is_err());
+        assert!(
+            queue
+                .purge_terminal(name, TerminalStatus::Failed, Duration::from_secs(1), limit)
+                .await
+                .is_err()
+        );
+    }
+    for age in [Duration::ZERO, Duration::MAX] {
+        assert!(
+            queue
+                .purge_terminal(name, TerminalStatus::Completed, age, 1)
+                .await
+                .is_err()
+        );
+    }
+    assert!(
+        queue
+            .retry_dead_letter(name, "queued", RetryPolicy::new(0, 0))
+            .await
+            .is_err()
+    );
+    assert!(
+        queue
+            .retry_dead_letter(name, "queued", RetryPolicy::new(1, u64::MAX))
+            .await
+            .is_err()
+    );
+    assert!(queue.dead_letters("", 1).await.is_err());
+    assert!(queue.retry_dead_letter(name, "", policy).await.is_err());
+    // Requeue and retention serialize; exactly one operation wins.
+    queue
+        .enqueue(Job::new("race", "admin-race", "{}"))
+        .await
+        .unwrap();
+    let lease = queue
+        .claim("admin-race", Duration::from_secs(60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        queue.fail(&lease, "race").await.unwrap(),
+        FailureDisposition::DeadLetter
+    );
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let (purged, requeued) = tokio::join!(
+        queue.purge_terminal(
+            "admin-race",
+            TerminalStatus::Failed,
+            Duration::from_millis(1),
+            1
+        ),
+        queue.retry_dead_letter("admin-race", "race", policy)
+    );
+    assert_eq!(purged.unwrap() + usize::from(requeued.unwrap()), 1);
+    assert!(!queue.ack(&lease).await.unwrap());
 }

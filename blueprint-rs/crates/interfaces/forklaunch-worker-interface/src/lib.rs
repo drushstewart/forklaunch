@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod admin;
+pub use admin::{AsyncWorkerAdmin, TerminalStatus};
+
 mod async_queue;
 pub use async_queue::{AsyncWorkerQueue, FailureDisposition, JobLease, JobSnapshot};
 

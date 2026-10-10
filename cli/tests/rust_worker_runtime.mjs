@@ -117,6 +117,29 @@ try {
       assert.equal(job.status,'Completed'); assert.equal(job.attempts,1);
     }
     assert.equal((await inspect('parallel-pending')).status,'Queued');
+    const letters=JSON.parse(await command(['--dead-letters','1']));
+    assert.equal(letters.length,1); assert.equal(letters[0].id,'failure');
+    assert.deepEqual(Object.keys(letters[0]).sort(),['attempts','id','last_error','queue','status']);
+    assert.deepEqual(JSON.parse(await command(['--retry','failure'])),{requeued:true});
+    const reset=await inspect('failure');
+    assert.equal(reset.status,'Queued'); assert.equal(reset.attempts,0); assert.equal(reset.last_error,null);
+    assert.deepEqual(JSON.parse(await command(['--retry','failure'])),{requeued:false});
+    const adminWorker=await start();
+    assert.equal((await waitState('failure','Failed')).attempts,2);
+    await waitState('parallel-pending','Completed');
+    await stop(adminWorker);
+    await command(['--enqueue','retention-pending','{}']);
+    assert.deepEqual(JSON.parse(await command(['--purge-completed','86400','1000'])),{purged:0});
+    await sleep(1100);
+    assert.deepEqual(JSON.parse(await command(['--purge-completed','1','1'])),{purged:1});
+    assert.deepEqual(JSON.parse(await command(['--purge-failed','1','1'])),{purged:1});
+    assert.equal(await inspect('failure'),null);
+    assert.equal((await inspect('retention-pending')).status,'Queued');
+    assert.equal((await inspect('first','b')).status,'Queued');
+    for(const args of [['--dead-letters','0'],['--purge-failed','0','1'],['--purge-completed','1','1001']]) {
+      await assert.rejects(command(args));
+    }
+    console.log('PASS generated worker dead-letter inspection, explicit retry, bounded retention, and privacy');
     console.log(`PASS generated ${redis ? 'Redis' : 'PostgreSQL'} worker: lease renewal, drain, retry, cancellation, crash recovery, and tenant isolation`);
   }
 } finally {

@@ -2,8 +2,8 @@
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_core::persistence::TenantContext;
 use forklaunch_worker_interface::{
-    AsyncWorkerQueue, FailureDisposition, Job, JobLease, JobReceipt, JobSnapshot, JobStatus,
-    QueueStats, RetryPolicy,
+    AsyncWorkerAdmin, AsyncWorkerQueue, FailureDisposition, Job, JobLease, JobReceipt, JobSnapshot,
+    JobStatus, QueueStats, RetryPolicy, TerminalStatus,
 };
 use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 use serde::{Deserialize, Serialize};
@@ -54,6 +54,8 @@ struct StoredJob {
     token: Option<String>,
     lease_until: Option<i64>,
     last_error: Option<String>,
+    #[serde(default)]
+    terminal_at: Option<i64>,
 }
 impl StoredJob {
     fn job(&self) -> Job {
@@ -141,7 +143,7 @@ impl RedisLeasedQueue {
         }
     }
 
-    fn keys(&self, queue: &str) -> BlueprintResult<[String; 4]> {
+    fn keys(&self, queue: &str) -> BlueprintResult<[String; 7]> {
         if !valid_name(queue) {
             return Err(invalid_input());
         }
@@ -151,7 +153,16 @@ impl RedisLeasedQueue {
             encoded(self.tenant.id()),
             encoded(queue)
         );
-        Ok(["jobs", "ready", "leased", "sequence"].map(|suffix| format!("{prefix}:{suffix}")))
+        Ok([
+            "jobs",
+            "ready",
+            "leased",
+            "sequence",
+            "completed",
+            "failed",
+            "admin-index",
+        ]
+        .map(|suffix| format!("{prefix}:{suffix}")))
     }
 
     async fn execute(
@@ -160,29 +171,40 @@ impl RedisLeasedQueue {
         operation: &str,
         input: Value,
     ) -> BlueprintResult<Value> {
-        let mut invocation = SCRIPT.prepare_invoke();
-        for key in keys {
-            invocation.key(key);
-        }
-        invocation.arg(operation).arg(input.to_string());
-        let mut connection = self.connection.clone();
-        let response: String =
-            tokio::time::timeout(TIMEOUT, invocation.invoke_async(&mut connection))
-                .await
-                .map_err(storage_error)?
-                .map_err(storage_error)?;
-        let response: Value = serde_json::from_str(&response).map_err(storage_error)?;
-        if let Some(error) = response.get("error").and_then(Value::as_str) {
-            return Err(if error == "duplicate" {
-                BlueprintError::new("worker_duplicate_job", "Worker job identity already exists")
-            } else {
-                storage_error(error)
-            });
-        }
-        response
-            .get("value")
-            .cloned()
-            .ok_or_else(|| storage_error("missing response"))
+        tokio::time::timeout(TIMEOUT, async {
+            loop {
+                let mut invocation = SCRIPT.prepare_invoke();
+                for key in keys {
+                    invocation.key(key);
+                }
+                invocation.arg(operation).arg(input.to_string());
+                let mut connection = self.connection.clone();
+                let response: String = invocation
+                    .invoke_async(&mut connection)
+                    .await
+                    .map_err(storage_error)?;
+                let response: Value = serde_json::from_str(&response).map_err(storage_error)?;
+                if let Some(error) = response.get("error").and_then(Value::as_str) {
+                    if error == "indexing" {
+                        continue;
+                    }
+                    return Err(if error == "duplicate" {
+                        BlueprintError::new(
+                            "worker_duplicate_job",
+                            "Worker job identity already exists",
+                        )
+                    } else {
+                        storage_error(error)
+                    });
+                }
+                return response
+                    .get("value")
+                    .cloned()
+                    .ok_or_else(|| storage_error("missing response"));
+            }
+        })
+        .await
+        .map_err(storage_error)?
     }
 
     async fn lease_operation(
@@ -229,7 +251,7 @@ impl AsyncWorkerQueue for RedisLeasedQueue {
             }
             let new_index = queues.len();
             let index = *queues.entry(job.queue.clone()).or_insert_with(|| new_index);
-            if index == keys.len() / 4 {
+            if index == keys.len() / 7 {
                 keys.extend(self.keys(&job.queue)?);
             }
             receipts.push(JobReceipt {
@@ -249,6 +271,7 @@ impl AsyncWorkerQueue for RedisLeasedQueue {
                 token: None,
                 lease_until: None,
                 last_error: None,
+                terminal_at: None,
             })
             .map_err(storage_error)?;
             record["key_index"] = json!(index);
@@ -343,6 +366,59 @@ impl AsyncWorkerQueue for RedisLeasedQueue {
         }
         let stored: StoredJob = serde_json::from_value(value).map_err(storage_error)?;
         stored.snapshot().map(Some)
+    }
+}
+
+impl AsyncWorkerAdmin for RedisLeasedQueue {
+    async fn dead_letters(&self, queue: &str, limit: usize) -> BlueprintResult<Vec<JobSnapshot>> {
+        if !(1..=1000).contains(&limit) {
+            return Err(invalid_input());
+        }
+        let value = self
+            .execute(&self.keys(queue)?, "dead_letters", json!({"limit":limit}))
+            .await?;
+        let jobs: Vec<StoredJob> = serde_json::from_value(value).map_err(storage_error)?;
+        jobs.into_iter().map(StoredJob::snapshot).collect()
+    }
+    async fn retry_dead_letter(
+        &self,
+        queue: &str,
+        id: &str,
+        policy: RetryPolicy,
+    ) -> BlueprintResult<bool> {
+        if !valid_name(id)
+            || policy.max_attempts == 0
+            || policy.max_attempts > i32::MAX as u32
+            || policy.backoff_seconds > 604_800
+        {
+            return Err(invalid_input());
+        }
+        self.execute(&self.keys(queue)?, "retry_dead_letter", json!({"id":id,"max_attempts":policy.max_attempts,"backoff_ms":policy.backoff_seconds*1000})).await?
+            .as_bool().ok_or_else(|| storage_error("invalid retry response"))
+    }
+    async fn purge_terminal(
+        &self,
+        queue: &str,
+        status: TerminalStatus,
+        minimum_age: Duration,
+        limit: usize,
+    ) -> BlueprintResult<usize> {
+        if !(1..=1000).contains(&limit)
+            || minimum_age < Duration::from_millis(1)
+            || minimum_age > Duration::from_secs(3650 * 86400)
+        {
+            return Err(invalid_input());
+        }
+        let age_ms = u64::try_from(minimum_age.as_millis()).map_err(|_| invalid_input())?;
+        self.execute(
+            &self.keys(queue)?,
+            "purge_terminal",
+            json!({"status":status.as_str(),"age_ms":age_ms,"limit":limit}),
+        )
+        .await?
+        .as_u64()
+        .and_then(|count| usize::try_from(count).ok())
+        .ok_or_else(|| storage_error("invalid purge response"))
     }
 }
 
