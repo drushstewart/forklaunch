@@ -468,7 +468,8 @@ Requirements:
 - [x] Add MinIO/S3-compatible container integration tests and run them in framework CI; test permission-denied bucket initialization and deadlines separately.
 - [x] Add SDK-signed S3 download links with bounded whole-second lifetimes, namespace/key fences, credential-resolution deadlines, and UTF-8 attachment filenames; verify actual download, expiration, and tampering rejection against MinIO.
 - [x] Add native bounded S3 chunked downloads and exact-length byte-stream/file uploads without whole-object buffering; test actual file transfers, metadata, drop behavior, overflow, truncation, idle deadlines, and source errors. Legacy streaming helpers still buffer.
-- [ ] Add native S3 multipart transfers for unknown-length sources and presigned POST upload policies.
+- [x] Add native S3 multipart transfers for unknown-length sources with bounded part buffering, CRC32 checksums, hidden-until-complete publication, source/byte/deadline bounds, and cancellation abort cleanup; validate real multiple-part, empty/exact-boundary, overflow, failure, timeout and cancellation behavior against MinIO.
+- [ ] Add presigned S3 POST upload policies.
 
 ### Persistence
 

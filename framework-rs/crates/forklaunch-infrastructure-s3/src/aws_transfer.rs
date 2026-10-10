@@ -221,6 +221,227 @@ impl AwsS3ObjectStore {
     }
 }
 
+const MULTIPART_PART_BYTES: usize = 5 * 1024 * 1024;
+const MULTIPART_MAX_PARTS: usize = 10_000;
+
+// Ownership keeps cancellation cleanup alive across every await after creation.
+struct IncompleteUpload {
+    client: aws_sdk_s3::Client,
+    bucket: String,
+    key: String,
+    id: Option<String>,
+}
+impl Drop for IncompleteUpload {
+    fn drop(&mut self) {
+        let Some(id) = self.id.take() else { return };
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let client = self.client.clone();
+        let bucket = self.bucket.clone();
+        let key = self.key.clone();
+        runtime.spawn(async move {
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                client
+                    .abort_multipart_upload()
+                    .bucket(bucket)
+                    .key(key)
+                    .upload_id(id)
+                    .send(),
+            )
+            .await;
+        });
+    }
+}
+
+impl AwsS3ObjectStore {
+    /// Uploads an unknown-length source in bounded, retryable 5 MiB parts.
+    /// The total byte bound and one operation deadline apply to source reads too.
+    /// Failed/cancelled operations attempt bounded abort cleanup. Configure bucket
+    /// lifecycle cleanup as a backstop for process exit or lost creation responses.
+    /// Cancellation during completion can leave a committed object with no receipt.
+    /// # Errors
+    /// Rejects invalid metadata/keys, oversized sources, source errors, failed
+    /// multipart operations, and timeouts. Uploaded parts remain hidden until completion.
+    pub async fn put_multipart_stream(
+        &self,
+        key: &str,
+        body: ByteStream,
+        metadata: ObjectMetadata,
+    ) -> FrameworkResult<UploadedObject> {
+        self.bounded(self.put_multipart_inner(key, body, metadata))
+            .await
+    }
+
+    async fn put_multipart_inner(
+        &self,
+        key: &str,
+        body: ByteStream,
+        metadata: ObjectMetadata,
+    ) -> FrameworkResult<UploadedObject> {
+        use aws_sdk_s3::types::{ChecksumAlgorithm, CompletedMultipartUpload};
+        let deadline = tokio::time::Instant::now()
+            .checked_add(self.options.operation_timeout)
+            .ok_or_else(|| error("s3_config_invalid", "operation deadline is out of range"))?;
+        let (key, wire) = self.wire_key(key)?;
+        let max_bytes = self
+            .options
+            .max_object_bytes
+            .min(MULTIPART_PART_BYTES.saturating_mul(MULTIPART_MAX_PARTS));
+        let (lower, _) = body.size_hint();
+        if lower > max_bytes as u64 {
+            return Err(size_error());
+        }
+        let (metadata, tagging) = upload_metadata(metadata)?;
+        let created = self
+            .client
+            .create_multipart_upload()
+            .bucket(&self.config.bucket)
+            .key(&wire)
+            .checksum_algorithm(ChecksumAlgorithm::Crc32)
+            .set_content_type(metadata.content_type.clone())
+            .set_tagging(tagging)
+            .send()
+            .await
+            .map_err(|_| request_error())?;
+        let id = created.upload_id.ok_or_else(request_error)?;
+        let mut pending = IncompleteUpload {
+            client: self.client.clone(),
+            bucket: self.config.bucket.clone(),
+            key: wire.clone(),
+            id: Some(id.clone()),
+        };
+        let transfer = async {
+            let (parts, length) = self
+                .read_multipart_parts(&wire, &id, body, max_bytes, deadline)
+                .await?;
+            let output = self
+                .client
+                .complete_multipart_upload()
+                .bucket(&self.config.bucket)
+                .key(&wire)
+                .upload_id(&id)
+                .multipart_upload(
+                    CompletedMultipartUpload::builder()
+                        .set_parts(Some(parts))
+                        .build(),
+                )
+                .send()
+                .await
+                .map_err(|_| request_error())?;
+            Ok(UploadedObject {
+                key,
+                content_length: length as u64,
+                metadata,
+                etag: output.e_tag,
+                version_id: output.version_id,
+            })
+        }
+        .await;
+        if transfer.is_ok() {
+            pending.id = None;
+        } else {
+            // Await cleanup on ordinary failure; Drop still covers cancellation here.
+            if matches!(
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    self.client
+                        .abort_multipart_upload()
+                        .bucket(&self.config.bucket)
+                        .key(&wire)
+                        .upload_id(&id)
+                        .send()
+                )
+                .await,
+                Ok(Ok(_))
+            ) {
+                pending.id = None;
+            }
+        }
+        transfer
+    }
+
+    async fn read_multipart_parts(
+        &self,
+        wire: &str,
+        id: &str,
+        mut body: ByteStream,
+        max_bytes: usize,
+        deadline: tokio::time::Instant,
+    ) -> FrameworkResult<(Vec<aws_sdk_s3::types::CompletedPart>, usize)> {
+        let mut parts = Vec::new();
+        let mut buffer = Vec::new();
+        let mut length = 0usize;
+        while let Some(chunk) = body
+            .try_next()
+            .await
+            .map_err(|_| error("s3_source_failed", "unable to read upload source"))?
+        {
+            // A ready source can avoid yielding to the enclosing timeout.
+            if tokio::time::Instant::now() >= deadline {
+                return Err(error("s3_timeout", "object transfer exceeded its deadline"));
+            }
+            if chunk.len() > max_bytes.saturating_sub(length) {
+                return Err(size_error());
+            }
+            length += chunk.len();
+            let mut bytes = chunk.as_ref();
+            while !bytes.is_empty() {
+                let count = bytes.len().min(MULTIPART_PART_BYTES - buffer.len());
+                buffer.extend_from_slice(&bytes[..count]);
+                bytes = &bytes[count..];
+                if buffer.len() == MULTIPART_PART_BYTES {
+                    parts.push(
+                        self.upload_part(wire, id, parts.len(), std::mem::take(&mut buffer))
+                            .await?,
+                    );
+                }
+            }
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(error("s3_timeout", "object transfer exceeded its deadline"));
+        }
+        if !buffer.is_empty() || parts.is_empty() {
+            parts.push(self.upload_part(wire, id, parts.len(), buffer).await?);
+        }
+        Ok((parts, length))
+    }
+
+    async fn upload_part(
+        &self,
+        wire: &str,
+        id: &str,
+        index: usize,
+        bytes: Vec<u8>,
+    ) -> FrameworkResult<aws_sdk_s3::types::CompletedPart> {
+        use aws_sdk_s3::types::{ChecksumAlgorithm, CompletedPart};
+        if index >= MULTIPART_MAX_PARTS {
+            return Err(size_error());
+        }
+        let number = i32::try_from(index + 1).map_err(|_| size_error())?;
+        let output = self
+            .client
+            .upload_part()
+            .bucket(&self.config.bucket)
+            .key(wire)
+            .upload_id(id)
+            .part_number(number)
+            .checksum_algorithm(ChecksumAlgorithm::Crc32)
+            .body(ByteStream::from(bytes))
+            .send()
+            .await
+            .map_err(|_| request_error())?;
+        let etag = output.e_tag.ok_or_else(request_error)?;
+        let checksum = output.checksum_crc32.ok_or_else(request_error)?;
+        Ok(CompletedPart::builder()
+            .part_number(number)
+            .e_tag(etag)
+            .checksum_crc32(checksum)
+            .build())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{

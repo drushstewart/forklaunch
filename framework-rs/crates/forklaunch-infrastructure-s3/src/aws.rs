@@ -728,6 +728,7 @@ mod tests {
         assert_empty_and_codec_roundtrips(&store).await;
         assert_presigned_downloads(&store).await;
         assert_native_transfers(&store, client.clone(), &prefix).await;
+        assert_multipart_transfers(&store).await;
         let metadata = ObjectMetadata::new()
             .with_content_type("application/octet-stream")
             .with_tag("service", "accounts")
@@ -917,6 +918,197 @@ mod tests {
         );
         store.delete(key).await.unwrap();
     }
+    struct MultipartSource {
+        chunks: std::collections::VecDeque<bytes::Bytes>,
+        fail: bool,
+        pending: bool,
+    }
+    impl http_body::Body for MultipartSource {
+        type Data = bytes::Bytes;
+        type Error = std::io::Error;
+        fn poll_frame(
+            mut self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+            if let Some(chunk) = self.chunks.pop_front() {
+                return std::task::Poll::Ready(Some(Ok(http_body::Frame::data(chunk))));
+            }
+            if self.pending {
+                return std::task::Poll::Pending;
+            }
+            if std::mem::take(&mut self.fail) {
+                return std::task::Poll::Ready(Some(Err(std::io::Error::other(
+                    "fixture source failure",
+                ))));
+            }
+            std::task::Poll::Ready(None)
+        }
+    }
+    fn multipart_source(bytes: &[u8], fail: bool, pending: bool) -> ByteStream {
+        ByteStream::new(aws_sdk_s3::primitives::SdkBody::from_body_1_x(
+            MultipartSource {
+                chunks: bytes
+                    .chunks(131_071)
+                    .map(bytes::Bytes::copy_from_slice)
+                    .collect(),
+                fail,
+                pending,
+            },
+        ))
+    }
+    async fn assert_no_incomplete_uploads(store: &AwsS3ObjectStore) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let uploads = store
+                .client
+                .list_multipart_uploads()
+                .bucket(&store.config.bucket)
+                .prefix(&store.options.prefix)
+                .send()
+                .await
+                .unwrap();
+            if uploads.uploads().is_empty() {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "multipart cleanup did not finish"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+    async fn assert_multipart_transfers(store: &AwsS3ObjectStore) {
+        let body = (0u8..=255)
+            .cycle()
+            .take(7 * 1024 * 1024 + 17)
+            .collect::<Vec<_>>();
+        let metadata = ObjectMetadata::new()
+            .with_content_type("application/octet-stream")
+            .with_tag("source", "multipart");
+        let uploaded = store
+            .put_multipart_stream(
+                "multipart/data",
+                multipart_source(&body, false, false),
+                metadata.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(uploaded.content_length, body.len() as u64);
+        assert!(uploaded.etag.is_some());
+        let stored = store.get("multipart/data").await.unwrap().unwrap();
+        assert_eq!(stored.body, body);
+        assert_eq!(stored.metadata, metadata);
+        for (key, bytes) in [
+            ("multipart/empty", Vec::new()),
+            ("multipart/exact", vec![3; 5 * 1024 * 1024]),
+        ] {
+            store
+                .put_multipart_stream(
+                    key,
+                    multipart_source(&bytes, false, false),
+                    ObjectMetadata::new(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(store.get(key).await.unwrap().unwrap().body, bytes);
+            store.delete(key).await.unwrap();
+        }
+        assert_eq!(
+            store
+                .put_multipart_stream(
+                    "multipart/failure",
+                    multipart_source(&body, true, false),
+                    ObjectMetadata::new()
+                )
+                .await
+                .unwrap_err()
+                .code(),
+            "s3_source_failed"
+        );
+        assert!(store.get("multipart/failure").await.unwrap().is_none());
+        assert_no_incomplete_uploads(store).await;
+        let mut tiny = store.clone();
+        tiny.options.max_object_bytes = 4;
+        assert_eq!(
+            tiny.put_multipart_stream(
+                "multipart/overflow",
+                multipart_source(&body[..5], false, false),
+                ObjectMetadata::new()
+            )
+            .await
+            .unwrap_err()
+            .code(),
+            "s3_object_too_large"
+        );
+        assert!(store.get("multipart/overflow").await.unwrap().is_none());
+        assert_no_incomplete_uploads(store).await;
+        let mut short = store.clone();
+        short.options.operation_timeout = Duration::from_millis(150);
+        assert_eq!(
+            short
+                .put_multipart_stream(
+                    "multipart/timeout",
+                    multipart_source(&[], false, true),
+                    ObjectMetadata::new()
+                )
+                .await
+                .unwrap_err()
+                .code(),
+            "s3_timeout"
+        );
+        assert_no_incomplete_uploads(store).await;
+        assert_multipart_cancellation(store).await;
+        store.delete("multipart/data").await.unwrap();
+    }
+
+    async fn assert_multipart_cancellation(store: &AwsS3ObjectStore) {
+        let owned = store.clone();
+        let task = tokio::spawn(async move {
+            owned
+                .put_multipart_stream(
+                    "multipart/cancelled",
+                    multipart_source(&vec![7; 5 * 1024 * 1024], false, true),
+                    ObjectMetadata::new(),
+                )
+                .await
+        });
+        // Wait for a real uploaded part before cancellation; cleanup must remove it.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let uploads = store
+                .client
+                .list_multipart_uploads()
+                .bucket(&store.config.bucket)
+                .prefix(format!("{}multipart/cancelled", store.options.prefix))
+                .send()
+                .await
+                .unwrap();
+            if let Some(upload) = uploads.uploads().first() {
+                let parts = store
+                    .client
+                    .list_parts()
+                    .bucket(&store.config.bucket)
+                    .key(upload.key().unwrap())
+                    .upload_id(upload.upload_id().unwrap())
+                    .send()
+                    .await
+                    .unwrap();
+                if !parts.parts().is_empty() {
+                    break;
+                }
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "multipart part was never uploaded"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_no_incomplete_uploads(store).await;
+        assert!(store.get("multipart/cancelled").await.unwrap().is_none());
+    }
+
     async fn assert_native_transfers(store: &AwsS3ObjectStore, client: Client, prefix: &str) {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("upload.bin");
