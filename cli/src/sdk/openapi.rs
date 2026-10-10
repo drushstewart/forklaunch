@@ -93,9 +93,21 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 })
                 .min_by_key(|(code, _)| *code)
                 .context("OpenAPI operation requires an explicit success response")?;
-            let schema = json_body_schema(success.1)?;
+            let body = if matches!(success.0, 204 | 205)
+                || method == "head"
+                || success.1.get("content").is_none()
+                || success
+                    .1
+                    .get("content")
+                    .and_then(Value::as_object)
+                    .is_some_and(serde_json::Map::is_empty)
+            {
+                Value::Null
+            } else {
+                json!({"schema": {"jsonSchema": json_body_schema(success.1)?}})
+            };
             let mut route = json!({"method": method.to_ascii_uppercase(), "path": path, "request": request,
-                "responses": [{"statusCode": success.0, "body": {"schema": {"jsonSchema": schema}}}]});
+                "responses": [{"statusCode": success.0, "body": body}]});
             let operation_name = match operation.get("operationId") {
                 Some(Value::String(name)) if !name.trim().is_empty() => name.clone(),
                 Some(Value::String(_)) | None => {
@@ -401,5 +413,34 @@ mod operation_name_tests {
             )
             .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod empty_response_tests {
+    use super::*;
+    #[test]
+    fn imports_empty_success_bodies_separately_from_json_null() {
+        for (status, content, has_body) in [
+            ("204", json!(null), false),
+            ("200", json!({}), false),
+            (
+                "200",
+                json!({"application/json":{"schema":{"type":"null"}}}),
+                true,
+            ),
+        ] {
+            let response = if content.is_null() {
+                json!({"description":"No content"})
+            } else {
+                json!({"content":content})
+            };
+            let spec = json!({"openapi":"3.1.0", "paths":{"/item":{"get":{"responses":{status:response}}}}});
+            let contract = contract_from_openapi(&spec).unwrap();
+            assert_eq!(
+                !contract["routes"][0]["responses"][0]["body"].is_null(),
+                has_body
+            );
+        }
     }
 }

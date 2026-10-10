@@ -220,6 +220,7 @@ struct SdkOperation {
     request_headers_type: String,
     response_body_type: String,
     success_status: u16,
+    empty_response: bool,
     rust_response_type: String,
     rust_models: Vec<RustModelTemplate>,
     rust_aliases: Vec<RustTypeAliasTemplate>,
@@ -313,6 +314,7 @@ struct RustOperationTemplate {
     responses_type: String,
     success_variant: String,
     success_status: String,
+    empty_response: bool,
     execute_method_name: String,
     method_name: String,
     http_method: String,
@@ -402,7 +404,7 @@ fn sdk_router(service_name: &str, router_name: &str) -> SdkRouter {
             &path,
             RequestTypeShapes::default(),
             200,
-            &response_schema,
+            Some(&response_schema),
         )],
     }
 }
@@ -519,7 +521,7 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> SdkSer
             .unwrap_or_else(|| sdk_operation_name(&method, &path));
         let request_shapes = request_type_shapes_from_contract(route);
         let (success_status, response_schema) = success_response_schema(route)
-            .unwrap_or_else(|| (200, default_response_json_schema(&router_name)));
+            .unwrap_or_else(|| (200, Some(default_response_json_schema(&router_name))));
 
         routers
             .entry(router_name.clone())
@@ -532,7 +534,7 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> SdkSer
                 &path,
                 request_shapes,
                 success_status,
-                &response_schema,
+                response_schema.as_ref(),
             ));
     }
 
@@ -572,7 +574,7 @@ fn build_sdk_operation(
     path: &str,
     request_shapes: RequestTypeShapes,
     success_status: u16,
-    response_schema: &JsonValue,
+    response_schema: Option<&JsonValue>,
 ) -> SdkOperation {
     let type_prefix = format!(
         "{}{}{}",
@@ -580,6 +582,15 @@ fn build_sdk_operation(
         router_name.to_case(Case::Pascal),
         operation_name.to_case(Case::Pascal)
     );
+    let empty_response = method.eq_ignore_ascii_case("HEAD")
+        || matches!(success_status, 204 | 205)
+        || response_schema.is_none();
+    let empty_schema = json!({"type":"null"});
+    let response_schema = if empty_response {
+        &empty_schema
+    } else {
+        response_schema.unwrap()
+    };
     let response_type = format!("{type_prefix}Response");
     let response_type_pascal = rust_type_name(&response_type);
     let (rust_models, rust_aliases, rust_response_type) =
@@ -596,8 +607,13 @@ fn build_sdk_operation(
         request_query_type: request_shapes.query,
         request_body_type: request_shapes.body,
         request_headers_type: request_shapes.headers,
-        response_body_type: ts_type_from_schema(response_schema),
+        response_body_type: if empty_response {
+            "undefined".into()
+        } else {
+            ts_type_from_schema(response_schema)
+        },
         success_status,
+        empty_response,
         rust_response_type,
         rust_models,
         rust_aliases,
@@ -720,7 +736,7 @@ fn fields_ts_type(fields: Option<&JsonValue>, allow_arbitrary: bool) -> String {
     }
 }
 
-fn success_response_schema(route: &JsonValue) -> Option<(u16, JsonValue)> {
+fn success_response_schema(route: &JsonValue) -> Option<(u16, Option<JsonValue>)> {
     route
         .get("responses")
         .and_then(JsonValue::as_array)?
@@ -734,8 +750,7 @@ fn success_response_schema(route: &JsonValue) -> Option<(u16, JsonValue)> {
                 .get("body")
                 .and_then(|body| body.get("schema"))
                 .and_then(|schema| schema.get("jsonSchema"))
-                .cloned()
-                .unwrap_or_else(|| json!({ "type": "null" }));
+                .cloned();
             Some((status as u16, schema))
         })
         .min_by_key(|(status, _)| *status)
@@ -1398,6 +1413,7 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
                 responses_type: operation.responses_type.to_case(Case::Pascal),
                 success_variant: format!("Status{}", operation.success_status),
                 success_status: operation.success_status.to_string(),
+                empty_response: operation.empty_response,
                 execute_method_name,
                 method_name,
                 http_method: operation.method.to_string(),
@@ -1507,5 +1523,51 @@ mod empty_contract_tests {
         assert!(!source.contains("pub async fn"));
         let source = typescript_sdk(&[service]).unwrap();
         assert!(!source.contains("/health"));
+    }
+}
+
+#[cfg(test)]
+mod empty_response_tests {
+    use super::*;
+    #[test]
+    fn absent_bodies_and_json_null_have_distinct_types() {
+        for (method, status, body, empty) in [
+            ("GET", 200, JsonValue::Null, true),
+            ("DELETE", 204, JsonValue::Null, true),
+            (
+                "POST",
+                205,
+                json!({"schema":{"jsonSchema":{"type":"string"}}}),
+                true,
+            ),
+            (
+                "HEAD",
+                200,
+                json!({"schema":{"jsonSchema":{"type":"string"}}}),
+                true,
+            ),
+            (
+                "GET",
+                200,
+                json!({"schema":{"jsonSchema":{"type":"null"}}}),
+                false,
+            ),
+        ] {
+            let service = sdk_service_from_contract(
+                "example",
+                &json!({"routes":[{
+                    "method":method, "path":"/item", "operationName":"call", "responses":[{"statusCode":status, "body":body}]
+                }]}),
+            );
+            let operation = &service.routers[0].operations[0];
+            assert_eq!(operation.empty_response, empty);
+            assert_eq!(
+                operation.response_body_type,
+                if empty { "undefined" } else { "null" }
+            );
+            assert!(operation.rust_aliases.iter().any(|alias| alias.name
+                == operation.rust_response_type
+                && alias.target_type == "()"));
+        }
     }
 }

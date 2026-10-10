@@ -4,7 +4,16 @@ import { createServer } from 'node:http';
 
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? '/', 'http://fixture.invalid');
-  if (request.method === 'GET' && url.pathname === '/health') {
+  if (request.method === 'DELETE' && url.pathname.startsWith('/users/')) {
+    response.writeHead(204);
+    response.end();
+  } else if ((request.method === 'HEAD' && url.pathname === '/health') || url.pathname === '/empty') {
+    response.writeHead(200);
+    response.end();
+  } else if (request.method === 'GET' && url.pathname === '/null-json') {
+    response.setHeader('content-type', 'application/json');
+    response.end('null');
+  } else if (request.method === 'GET' && url.pathname === '/health') {
     response.setHeader('content-type', 'application/json');
     response.end(JSON.stringify({ service: 'accounts', status: 'ok', recordCount: 1, routes: ['health', 'users'] }));
   } else if (request.method === 'GET' && url.pathname === '/users') {

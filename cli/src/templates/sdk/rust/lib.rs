@@ -241,9 +241,17 @@ impl {{client_name}} {
         let response = builder.send().await?;
         let status = response.status().as_u16();
         match status {
+{{#empty_response}}
+            {{success_status}} => {
+                let _ = response.bytes().await?;
+                Ok({{responses_type}}::{{success_variant}}(()))
+            },
+{{/empty_response}}
+{{^empty_response}}
             {{success_status}} => Ok({{responses_type}}::{{success_variant}}(
                 response.json::<{{{response_type}}}>().await?,
             )),
+{{/empty_response}}
             _ => Ok({{responses_type}}::Error {
                 status,
                 message: response.text().await?,

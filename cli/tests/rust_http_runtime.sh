@@ -19,11 +19,40 @@ run_cli init router users --path runtime-app/crates/accounts --language rust
 # Relocation catches accidental dependencies on the CLI build machine's checkout.
 cp -R runtime-app relocated-app
 cd relocated-app
+cp "$SCRIPT_DIR/fixtures/rust_sdk_transport.rs" crates/accounts/src/routes/transport_fixture.rs
+python3 - <<'PYTHON'
+from pathlib import Path
+p = Path('crates/accounts/src/routes/mod.rs')
+s = p.read_text()
+s = 'pub mod transport_fixture;\n' + s
+s = s.replace('pub fn contracts() -> Vec<RouteContract> {\n    vec![', 'pub fn contracts() -> Vec<RouteContract> {\n    let mut contracts = transport_fixture::contracts();\n    contracts.extend(vec![')
+s = s.replace('::contract(),\n    ]', '::contract(),\n    ]);\n    contracts')
+s = s.replace('pub fn register_handlers(router: &mut LocalRouter, state: AppState) {', 'pub fn register_handlers(router: &mut LocalRouter, state: AppState) {\n    transport_fixture::register(router);')
+p.write_text(s)
+PYTHON
 cargo build --workspace
 run_cli openapi export --path .
-run_cli sdk generate all --path . --from contract
+NODE_TYPES_ROOT="${NODE_TYPES_ROOT:-$(dirname "$TSC_BIN")/../@types}"
+"$TSC_BIN" --strict --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext \
+    --types node --typeRoots "$NODE_TYPES_ROOT" --outDir "$PWD/generated-wire-fixtures" \
+    "$SCRIPT_DIR/fixtures/typescript_sdk_server.mts"
+BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s=""; process.stdin.on("data", d => s+=d); process.stdin.on("end", () => console.log(JSON.parse(s).target_directory + "/debug/accounts"))')"
+cat > generated-empty-response-usage.ts <<'TS'
+import { createForkLaunchSdk } from './sdks/typescript/src/index';
+async function useResponses(client = createForkLaunchSdk()) {
+  const deleted = await client.accounts.users.deleteUser({ params: { id: 'welcome' } });
+  if (deleted.code === 204) { const empty: undefined = deleted.response; void empty; }
+  const emptyReply = await client.accounts.empty.getEmpty();
+  if (emptyReply.code === 200) { const empty: undefined = emptyReply.response; void empty; }
+  const nullReply = await client.accounts.nullJson.getNull();
+  if (nullReply.code === 200) { const value: null = nullReply.response; void value; }
+}
+void useResponses;
+TS
+for SDK_SOURCE in contract openapi; do
+run_cli sdk generate all --path . --from "$SDK_SOURCE"
+"$TSC_BIN" --noEmit --strict --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM generated-empty-response-usage.ts
 "$TSC_BIN" --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --outDir sdks/typescript/dist sdks/typescript/src/index.ts
-# Compile a real Rust SDK consumer in the relocated generated workspace.
 cat >> sdks/rust/accounts-sdk/Cargo.toml <<'TOML'
 
 [dev-dependencies]
@@ -32,11 +61,6 @@ TOML
 mkdir -p sdks/rust/accounts-sdk/examples
 cp "$SCRIPT_DIR/fixtures/rust_sdk_http.rs" sdks/rust/accounts-sdk/examples/http_roundtrip.rs
 cargo build -p accounts-sdk --example http_roundtrip
-NODE_TYPES_ROOT="${NODE_TYPES_ROOT:-$(dirname "$TSC_BIN")/../@types}"
-"$TSC_BIN" --strict --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext \
-    --types node --typeRoots "$NODE_TYPES_ROOT" --outDir "$PWD/generated-wire-fixtures" \
-    "$SCRIPT_DIR/fixtures/typescript_sdk_server.mts"
-BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s=""; process.stdin.on("data", d => s+=d); process.stdin.on("end", () => console.log(JSON.parse(s).target_directory + "/debug/accounts"))')"
 node --input-type=module - "$BINARY" "$(dirname "$BINARY")/examples/http_roundtrip" "$PWD/generated-wire-fixtures/typescript_sdk_server.mjs" <<'JS'
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -108,6 +132,12 @@ try {
   assert.equal(largeHeader.status, 200);
   const responses = await Promise.all(Array.from({ length: 20 }, () => sdk.accounts.health.getHealth()));
   assert(responses.every(response => response.code === 200));
+  const deleted = await sdk.accounts.users.deleteUser({ params: { id: 'welcome' } });
+  assert.equal(deleted.code, 204);
+  assert.equal(deleted.response, undefined);
+  assert.equal((await sdk.accounts.empty.getEmpty()).response, undefined);
+  assert.equal((await sdk.accounts.health.headHealth()).response, undefined);
+  assert.equal((await sdk.accounts.nullJson.getNull()).response, null);
   await verifyRustClient(baseUrl);
   await stopServer(service);
   console.log('PASS generated TypeScript and Rust SDKs against relocated Rust HTTP service and graceful shutdown');
@@ -117,6 +147,10 @@ try {
   const tsHealth = await tsSdk.accounts.health.getHealth();
   assert.deepEqual(tsHealth.response, health.response);
   assert.deepEqual((await tsSdk.accounts.users.listUsers()).response, users.response);
+  assert.equal((await tsSdk.accounts.users.deleteUser({ params: { id: 'welcome' } })).response, undefined);
+  assert.equal((await tsSdk.accounts.empty.getEmpty()).response, undefined);
+  assert.equal((await tsSdk.accounts.health.headHealth()).response, undefined);
+  assert.equal((await tsSdk.accounts.nullJson.getNull()).response, null);
   await stopServer(typescript);
   console.log('PASS generated Rust and TypeScript SDKs against compiled TypeScript HTTP wire fixture');
 } finally {
@@ -128,3 +162,4 @@ try {
   }
 }
 JS
+done

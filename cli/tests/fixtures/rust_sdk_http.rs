@@ -50,6 +50,24 @@ async fn verify(base: &str) {
     while let Some(result) = calls.join_next().await {
         result.expect("concurrent Rust SDK request");
     }
+    let mut deleted = accounts_sdk::AccountsUsersDeleteUserRequest::default();
+    deleted.params.insert("id".into(), "welcome".into());
+    assert!(matches!(
+        client.users_delete_user(deleted).await.unwrap(),
+        accounts_sdk::AccountsUsersDeleteUserResponses::Status204(())
+    ));
+    assert!(matches!(
+        client.empty_get_empty(Default::default()).await.unwrap(),
+        accounts_sdk::AccountsEmptyGetEmptyResponses::Status200(())
+    ));
+    assert!(matches!(
+        client.health_head_health(Default::default()).await.unwrap(),
+        accounts_sdk::AccountsHealthHeadHealthResponses::Status200(())
+    ));
+    assert!(matches!(
+        client.null_json_get_null(Default::default()).await.unwrap(),
+        accounts_sdk::AccountsNullJsonGetNullResponses::Status200(())
+    ));
     let missing = AccountsClient::new(format!("{base}/missing"))
         .users_list_users(Default::default())
         .await
