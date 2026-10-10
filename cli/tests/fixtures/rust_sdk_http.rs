@@ -113,6 +113,27 @@ async fn verify(base: &str) {
         };
         assert_eq!(serde_json::to_value(shape).unwrap(), expected);
     }
+    let text_input = accounts_sdk::AccountsTextUploadTextRequest {
+        body: Some("{raw}\n🦀 & text".into()),
+        ..Default::default()
+    };
+    assert!(
+        matches!(client.text_upload_text(text_input).await.unwrap(), accounts_sdk::AccountsTextUploadTextResponses::Status200(value) if value == "{raw}\n🦀 & text")
+    );
+    let binary_input = accounts_sdk::AccountsBinaryUploadBinaryRequest {
+        body: Some(vec![0, 255, 13, 10, 42]),
+        ..Default::default()
+    };
+    assert!(
+        matches!(client.binary_upload_binary(binary_input).await.unwrap(), accounts_sdk::AccountsBinaryUploadBinaryResponses::Status200(value) if value == vec![0, 255, 13, 10, 42])
+    );
+    let json_input = accounts_sdk::AccountsJsonEchoEchoJsonRequest {
+        body: Some(r#"{"value":[1,null,true]}"#.into()),
+        ..Default::default()
+    };
+    assert!(
+        matches!(client.json_echo_echo_json(json_input).await.unwrap(), accounts_sdk::AccountsJsonEchoEchoJsonResponses::Status200(value) if value == serde_json::json!({"value":[1,null,true]}))
+    );
     let mut deleted = accounts_sdk::AccountsUsersDeleteUserRequest::default();
     deleted.params.insert("id".into(), "welcome".into());
     assert!(matches!(

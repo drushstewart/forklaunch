@@ -77,7 +77,7 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 }));
             }
             if let Some(body) = operation.get("requestBody") {
-                request["body"] = json!({"schema": {"jsonSchema": json_body_schema(body)?}});
+                request["body"] = response_body(body)?;
             }
             let responses = operation
                 .get("responses")
@@ -181,26 +181,6 @@ fn response_body(response: &Value) -> Result<Value> {
     };
     let schema = media.get("schema").cloned().unwrap_or_else(|| json!({}));
     Ok(json!({"kind":kind, "contentType":media_type, "schema":{"jsonSchema":schema}}))
-}
-
-fn json_body_schema(body: &Value) -> Result<Value> {
-    let content = body
-        .get("content")
-        .and_then(Value::as_object)
-        .context("SDK generation currently requires JSON body content")?;
-    let media = content
-        .get("application/json")
-        .or_else(|| {
-            content
-                .iter()
-                .find(|(name, _)| name.ends_with("+json"))
-                .map(|(_, media)| media)
-        })
-        .context("SDK generation currently supports application/json and +json bodies")?;
-    media
-        .get("schema")
-        .cloned()
-        .context("OpenAPI JSON body schema is required")
 }
 
 struct ExpansionBudget {
@@ -489,5 +469,26 @@ mod multiple_response_tests {
             3
         );
         assert_eq!(contract["routes"][1]["responses"][0]["statusCode"], 403);
+    }
+}
+
+#[cfg(test)]
+mod request_media_tests {
+    use super::*;
+    #[test]
+    fn imports_raw_text_and_binary_request_media() {
+        for (media, kind) in [
+            ("text/plain", "text"),
+            ("application/octet-stream", "binary"),
+            ("application/vnd.example+json", "json"),
+        ] {
+            let spec = json!({"openapi":"3.1.0","paths":{"/upload":{"post":{"requestBody":{"required":true,"content":{media:{}}},"responses":{"204":{"description":"Done"}}}}}});
+            let contract = contract_from_openapi(&spec).unwrap();
+            assert_eq!(contract["routes"][0]["request"]["body"]["kind"], kind);
+            assert_eq!(
+                contract["routes"][0]["request"]["body"]["contentType"],
+                media
+            );
+        }
     }
 }

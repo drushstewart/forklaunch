@@ -242,6 +242,8 @@ struct SdkOperation {
     request_query_type: String,
     request_body_type: String,
     request_headers_type: String,
+    request_kind: String,
+    request_content_type: String,
     responses: Vec<SdkResponseVariant>,
     rust_models: Vec<RustModelTemplate>,
     rust_aliases: Vec<RustTypeAliasTemplate>,
@@ -340,6 +342,8 @@ struct TypeScriptOperationTemplate {
     operation_name: String,
     method: String,
     path: String,
+    request_kind: String,
+    request_content_type: String,
     responses: Vec<SdkResponseVariant>,
     last: bool,
 }
@@ -387,6 +391,8 @@ struct RustOperationTemplate {
     method_name: String,
     http_method: String,
     path: String,
+    binary_request: bool,
+    request_content_type: String,
 }
 
 fn read_manifest(app_root: &Path) -> Result<Value> {
@@ -620,7 +626,7 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result
             .filter(|name| !name.trim().is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| sdk_operation_name(&method, &path));
-        let request_shapes = request_type_shapes_from_contract(route);
+        let request_shapes = request_type_shapes_from_contract(route)?;
         let responses = response_contracts(route)?;
         let first_response = responses
             .first()
@@ -668,6 +674,8 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result
 
 #[derive(Debug, Clone)]
 struct RequestTypeShapes {
+    kind: String,
+    content_type: String,
     params: String,
     query: String,
     body: String,
@@ -677,6 +685,8 @@ struct RequestTypeShapes {
 impl Default for RequestTypeShapes {
     fn default() -> Self {
         Self {
+            kind: "json".into(),
+            content_type: "application/json".into(),
             params: "never".to_string(),
             query: "never".to_string(),
             body: "never".to_string(),
@@ -744,6 +754,8 @@ fn build_sdk_operation(
         request_query_type: request_shapes.query,
         request_body_type: request_shapes.body,
         request_headers_type: request_shapes.headers,
+        request_kind: request_shapes.kind,
+        request_content_type: request_shapes.content_type,
         responses: vec![SdkResponseVariant {
             response_type,
             response_body_type: match decoder {
@@ -809,30 +821,55 @@ fn default_response_json_schema(router_name: &str) -> JsonValue {
     }
 }
 
-fn request_type_shapes_from_contract(route: &JsonValue) -> RequestTypeShapes {
+fn request_type_shapes_from_contract(route: &JsonValue) -> Result<RequestTypeShapes> {
     let Some(request) = route.get("request") else {
-        return RequestTypeShapes::default();
+        return Ok(RequestTypeShapes::default());
     };
 
     let params = fields_ts_type(request.get("params"), false);
     let query = fields_ts_type(request.get("query"), false);
     let headers = fields_ts_type(request.get("headers"), true);
-    let body_schema = request
-        .get("body")
-        .and_then(|body| body.get("schema"))
-        .and_then(|schema| schema.get("jsonSchema"))
-        .cloned();
-    let body = body_schema
-        .as_ref()
-        .map(ts_type_from_schema)
-        .unwrap_or_else(|| "never".to_string());
-
-    RequestTypeShapes {
+    let contract = request.get("body").filter(|body| !body.is_null());
+    let kind = match contract
+        .and_then(|body| body.get("kind"))
+        .and_then(JsonValue::as_str)
+    {
+        None | Some("json") => "json",
+        Some("text") => "text",
+        Some("binary" | "file") => "binary",
+        Some(kind) => bail!("Unsupported SDK request body kind {kind}"),
+    };
+    let content_type = normalized_media_type(
+        contract
+            .and_then(|body| body.get("contentType"))
+            .and_then(JsonValue::as_str)
+            .unwrap_or(match kind {
+                "text" => "text/plain",
+                "binary" => "application/octet-stream",
+                _ => "application/json",
+            }),
+    )?;
+    let body = if contract.is_none() {
+        "never".into()
+    } else {
+        match kind {
+            "text" => "string".into(),
+            "binary" => "Uint8Array".into(),
+            _ => contract
+                .and_then(|body| body.get("schema"))
+                .and_then(|schema| schema.get("jsonSchema"))
+                .map(ts_type_from_schema)
+                .unwrap_or_else(|| "unknown".into()),
+        }
+    };
+    Ok(RequestTypeShapes {
         params,
         query,
         body,
         headers,
-    }
+        kind: kind.into(),
+        content_type,
+    })
 }
 
 fn fields_ts_type(fields: Option<&JsonValue>, allow_arbitrary: bool) -> String {
@@ -883,6 +920,28 @@ fn fields_ts_type(fields: Option<&JsonValue>, allow_arbitrary: bool) -> String {
     }
 }
 
+fn normalized_media_type(value: &str) -> Result<String> {
+    let value = value
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if !value
+        .split_once('/')
+        .is_some_and(|(left, right)| !left.is_empty() && !right.is_empty() && !right.contains('/'))
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"/!#$&^_.+-".contains(&byte))
+    {
+        bail!("Invalid SDK body media type");
+    }
+    if value == "text/event-stream" || value.starts_with("multipart/") {
+        bail!("Streaming/multipart SDK body transport remains unsupported");
+    }
+    Ok(value)
+}
+
 fn response_contracts(route: &JsonValue) -> Result<Vec<SdkResponseContract>> {
     let mut contracts = BTreeMap::new();
     for response in route
@@ -914,31 +973,15 @@ fn response_contracts(route: &JsonValue) -> Result<Vec<SdkResponseContract>> {
             .and_then(|body| body.get("schema"))
             .and_then(|schema| schema.get("jsonSchema"))
             .cloned();
-        let content_type = body
-            .and_then(|body| body.get("contentType"))
-            .and_then(JsonValue::as_str)
-            .unwrap_or(match decoder {
-                ResponseDecoder::Empty | ResponseDecoder::Json => "application/json",
-                ResponseDecoder::Text => "text/plain",
-                ResponseDecoder::Binary => "application/octet-stream",
-            })
-            .split(';')
-            .next()
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase();
-        if !content_type
-            .split_once('/')
-            .is_some_and(|(left, right)| !left.is_empty() && !right.is_empty())
-            || !content_type
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"/!#$&^_.+-".contains(&byte))
-        {
-            bail!("Invalid SDK response media type");
-        }
-        if content_type == "text/event-stream" {
-            bail!("Streaming SDK responses remain unsupported");
-        }
+        let content_type = normalized_media_type(
+            body.and_then(|body| body.get("contentType"))
+                .and_then(JsonValue::as_str)
+                .unwrap_or(match decoder {
+                    ResponseDecoder::Empty | ResponseDecoder::Json => "application/json",
+                    ResponseDecoder::Text => "text/plain",
+                    ResponseDecoder::Binary => "application/octet-stream",
+                }),
+        )?;
         if contracts
             .insert(
                 status,
@@ -1686,6 +1729,8 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
                     operation_name: escape_ts_string(&operation.name),
                     method: operation.method.to_string(),
                     path: escape_ts_string(&operation.path),
+                    request_kind: operation.request_kind.clone(),
+                    request_content_type: operation.request_content_type.clone(),
                     responses: operation.responses.clone(),
                     last: operation_index + 1 == router.operations.len(),
                 });
@@ -1802,6 +1847,8 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
                 method_name,
                 http_method: operation.method.to_string(),
                 path: escape_rust_string(&operation.path),
+                binary_request: operation.request_kind == "binary",
+                request_content_type: operation.request_content_type.clone(),
             });
         }
     }
@@ -2263,5 +2310,47 @@ language = "rust"
         std::fs::create_dir_all(&path).unwrap();
         write(path.join("contract.json"), "invalid JSON").unwrap();
         assert!(rust_sdk_services_for_lifecycle(root.path(), &manifest()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod request_media_tests {
+    use super::*;
+    #[test]
+    fn text_binary_and_unspecified_json_requests_have_correct_types() {
+        for (kind, media, expected) in [
+            ("text", "text/plain; charset=utf-8", "string"),
+            ("binary", "application/octet-stream", "Uint8Array"),
+            ("file", "image/png", "Uint8Array"),
+            ("json", "application/problem+json", "unknown"),
+        ] {
+            let shapes = request_type_shapes_from_contract(
+                &json!({"request":{"body":{"kind":kind,"contentType":media}}}),
+            )
+            .unwrap();
+            assert_eq!(shapes.body, expected);
+            assert_eq!(shapes.content_type, media.split(';').next().unwrap());
+        }
+        let service = sdk_service_from_contract("example", &json!({"routes":[{"path":"/bytes","operationName":"upload","method":"POST","request":{"body":{"kind":"binary"}},"responses":[{"statusCode":204}]}]})).unwrap();
+        let source = rust_sdk(&service).unwrap();
+        assert!(source.contains("pub body: Option<Vec<u8>>"));
+        assert!(source.contains("content_type: \"application/octet-stream\""));
+        assert!(
+            typescript_sdk(&[service])
+                .unwrap()
+                .contains("requestKind: 'binary'")
+        );
+    }
+    #[test]
+    fn unsupported_request_transports_fail_before_rendering() {
+        for body in [
+            json!({"kind":"multipart"}),
+            json!({"kind":"urlEncoded"}),
+            json!({"kind":"text","contentType":"text/event-stream"}),
+            json!({"kind":"binary","contentType":"multipart/form-data"}),
+            json!({"kind":"json","contentType":"application/json/injected"}),
+        ] {
+            assert!(request_type_shapes_from_contract(&json!({"request":{"body":body}})).is_err());
+        }
     }
 }

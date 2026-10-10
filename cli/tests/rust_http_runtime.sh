@@ -63,6 +63,12 @@ async function useResponses(client = createForkLaunchSdk()) {
     const extra: unknown = shapeReply.response.open.extra;
     void label; void number; void metadata; void extra;
   }
+  await client.accounts.text.uploadText({ body: 'hello' });
+  await client.accounts.binary.uploadBinary({ body: new Uint8Array([0, 255]) });
+  // @ts-expect-error Binary bodies require bytes, not a JSON string.
+  await client.accounts.binary.uploadBinary({ body: 'wrong' });
+  // @ts-expect-error Text bodies require a string.
+  await client.accounts.text.uploadText({ body: { wrong: true } });
   const nullReply = await client.accounts.nullJson.getNull();
   if (nullReply.code === 200) { const value: null = nullReply.response; void value; }
 }
@@ -126,6 +132,10 @@ async function verifyRustClient(baseUrl) {
   }
 }
 async function verifyStatusVariants(sdk) {
+  assert.equal((await sdk.accounts.text.uploadText({ body: '{raw}\n🦀 & text' })).response, '{raw}\n🦀 & text');
+  const uploaded = await sdk.accounts.binary.uploadBinary({ body: new Uint8Array([99, 0, 255, 13, 10, 42, 99]).subarray(1, 6) });
+  assert.deepEqual([...uploaded.response], [0, 255, 13, 10, 42]);
+  assert.deepEqual((await sdk.accounts.jsonEcho.echoJson({ body: { value: [1, null, true] } })).response, { value: [1, null, true] });
   for (const [mode, expected] of [["null", {"label": null, "numbers": {"one": 1, "missing": null}, "metadata": null, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": 7, "list": [1, "two", null]}], ["full", {"label": "present", "numbers": {"one": 1, "missing": null}, "metadata": {"id": "meta"}, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": "seven", "list": [1, "two", null]}]]) {
     assert.deepEqual((await sdk.accounts.shape.getShape({ params: { mode } })).response, expected);
   }

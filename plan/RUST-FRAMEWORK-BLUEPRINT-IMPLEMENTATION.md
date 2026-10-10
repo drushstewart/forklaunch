@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 950 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 953 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -313,7 +313,8 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Carry params, query, headers, body content type, response headers, and response bodies in `SdkGenerationPlan`.
 - [x] Support params, query, headers, and JSON body transport in deterministic TypeScript and Rust SDK generators. Path substitution matches whole segments and percent-encodes UTF-8/reserved bytes consistently across both SDKs; conformance fixtures cover prefix collisions, recursive-looking values, and repeated parameters.
 - [x] Decode text and binary download responses in CLI-generated Rust and browser TypeScript SDKs, including UTF-8 and arbitrary bytes; validate both artifact sources against live Rust and compiled TypeScript servers.
-- [ ] Support multipart and file uploads, and extend framework-native code generators to the same media behavior.
+- [x] Transport text and raw binary request bodies through CLI-generated TypeScript and Rust clients using the contract media type; validate UTF-8, arbitrary bytes, nonzero binary view offsets, and JSON regressions against both artifact sources and live language servers.
+- [ ] Support multipart and file-form uploads, and extend framework-native code generators to the same media behavior.
 - [x] Support empty success bodies, including 204/205 and HEAD, with TypeScript `undefined` and Rust `()`; preserve explicit JSON null and validate both artifact sources against live Rust and compiled TypeScript servers.
 - [x] Preserve every explicit 2xx response in TypeScript discriminated unions and Rust status enums, including distinct typed JSON models and 204/205 variants. Validate both SDKs and artifact sources against live Rust and compiled TypeScript servers; reject duplicate status/model names before generation, and avoid inventing success responses for error-only contracts.
 - [x] Preserve declared business-error payloads and media types in CLI SDK imports and clients, overriding default error status types with contract-specific JSON/text/binary shapes. Schema-free JSON uses unknown/serde_json::Value.

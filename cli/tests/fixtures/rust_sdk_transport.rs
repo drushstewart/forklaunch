@@ -36,6 +36,15 @@ pub fn contracts() -> Vec<RouteContract> {
         RouteContract::get("Get Shape", "Nullable schemas and dictionaries", "/shape/:mode")
             .with_param(FieldContract { name: "mode".into(), required: true, schema: SchemaRef::named("String").with_json_schema(r#"{"type":"string"}"#) })
             .with_response(200, Some(json_body("Shape", r#"{"type": "object", "required": ["label", "numbers", "metadata", "open", "constrained", "additional_properties", "any", "list"], "properties": {"label": {"type": "string", "nullable": true}, "numbers": {"type": "object", "additionalProperties": {"type": ["integer", "null"]}}, "metadata": {"anyOf": [{"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}, "additionalProperties": false}, {"type": "null"}]}, "open": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}, "constrained": {"type": "object", "required": ["count"], "properties": {"count": {"type": "integer"}}, "additionalProperties": {"type": "string"}}, "additional_properties": {"type": "string"}, "any": {"type": ["string", "integer"]}, "list": {"type": "array"}}}"#))),
+        RouteContract::post("Upload Text", "Raw text request", "/text")
+            .with_request_body(BodyContract { kind: BodyKind::Text, schema: SchemaRef::named("Text"), content_type: Some("text/plain".into()) })
+            .with_response(200, Some(BodyContract { kind: BodyKind::Text, schema: SchemaRef::named("Text"), content_type: Some("text/plain".into()) })),
+        RouteContract::post("Upload Binary", "Raw binary request", "/binary")
+            .with_request_body(BodyContract { kind: BodyKind::Binary, schema: SchemaRef::named("Bytes"), content_type: Some("application/octet-stream".into()) })
+            .with_response(200, Some(BodyContract { kind: BodyKind::Binary, schema: SchemaRef::named("Bytes"), content_type: Some("application/octet-stream".into()) })),
+        RouteContract::post("Echo Json", "JSON request regression", "/json-echo")
+            .with_request_body(json_body("Unknown", "{}"))
+            .with_response(200, Some(json_body("Unknown", "{}"))),
         RouteContract::get("Get Empty", "Empty 200 response", "/empty").with_response(200, None),
         RouteContract::head("Head Health", "HEAD has no response body", "/health")
             .with_response(200, None),
@@ -60,7 +69,14 @@ pub fn register(router: &mut LocalRouter) {
             200
         };
         router.register(contract, move |request: FrameworkRequest| {
-            Ok(if path == "/status/:mode" {
+            Ok(if request.method.as_str() == "POST" && ["/text", "/binary", "/json-echo"].contains(&path.as_str()) {
+                let expected_type = match path.as_str() { "/text" => "text/plain", "/binary" => "application/octet-stream", _ => "application/json" };
+                if request.headers.get("content-type").map(String::as_str) != Some(expected_type) {
+                    FrameworkResponse::text(400, "Unexpected request media type")
+                } else {
+                    FrameworkResponse::new(200).with_header("content-type", expected_type).with_body(request.body)
+                }
+            } else if path == "/status/:mode" {
                 match request.params.get("mode").map(String::as_str) {
                     Some("existing") => FrameworkResponse::json(
                         200,

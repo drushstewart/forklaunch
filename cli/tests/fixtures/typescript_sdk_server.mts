@@ -2,9 +2,20 @@
 // tracked separately; this checks generated clients across language boundaries.
 import { createServer } from 'node:http';
 
-const server = createServer((request, response) => {
+const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://fixture.invalid');
-  if (request.method === 'GET' && url.pathname.startsWith('/status/')) {
+  if (request.method === 'POST' && ['/text', '/binary', '/json-echo'].includes(url.pathname)) {
+    const expectedType = url.pathname === '/text' ? 'text/plain' : url.pathname === '/binary' ? 'application/octet-stream' : 'application/json';
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    if (request.headers['content-type'] !== expectedType) {
+      response.writeHead(400, { 'content-type': 'text/plain' });
+      response.end('Unexpected request media type');
+    } else {
+      response.writeHead(200, { 'content-type': expectedType });
+      response.end(Buffer.concat(chunks));
+    }
+  } else if (request.method === 'GET' && url.pathname.startsWith('/status/')) {
     const mode = url.pathname.slice('/status/'.length);
     if (mode === 'empty' || mode === 'reset') {
       response.writeHead(mode === 'empty' ? 204 : 205);

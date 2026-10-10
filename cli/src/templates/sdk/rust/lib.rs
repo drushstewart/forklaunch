@@ -12,6 +12,8 @@ pub struct SdkRequest {
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
     pub body: Option<String>,
+    pub body_bytes: Option<Vec<u8>>,
+    pub content_type: &'static str,
 }
 
 fn encode_path_segment(value: &str) -> String {
@@ -96,7 +98,7 @@ pub struct {{request_type}} {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
-    pub body: Option<String>,
+    pub body: Option<{{#binary_request}}Vec<u8>{{/binary_request}}{{^binary_request}}String{{/binary_request}}>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -199,7 +201,9 @@ impl {{client_name}} {
             url: format!("{}{}", self.base_url, path),
             query: input.query,
             headers: input.headers,
-            body: input.body,
+            body: {{#binary_request}}None{{/binary_request}}{{^binary_request}}input.body{{/binary_request}},
+            body_bytes: {{#binary_request}}input.body{{/binary_request}}{{^binary_request}}None{{/binary_request}},
+            content_type: "{{request_content_type}}",
         }
     }
 
@@ -236,10 +240,13 @@ impl {{client_name}} {
         }
         if let Some(body) = request.body {
             builder = builder
-                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .header(reqwest::header::CONTENT_TYPE, request.content_type)
                 .body(body);
         }
 
+        if let Some(body) = request.body_bytes {
+            builder = builder.header(reqwest::header::CONTENT_TYPE, request.content_type).body(body);
+        }
         let response = builder.send().await?;
         let status = response.status().as_u16();
         match status {

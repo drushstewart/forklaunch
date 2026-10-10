@@ -33,6 +33,8 @@ export type ForkLaunchSdkRequestMeta = {
   operation: string;
   method: string;
   path: string;
+  requestKind?: 'json' | 'text' | 'binary';
+  requestContentType?: string;
   responseKinds?: Partial<Record<number, 'empty' | 'json' | 'text' | 'binary'>>;
   input: {
     params?: Record<string, ForkLaunchPathValue>;
@@ -80,9 +82,9 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
     headers: {
       ...(config.headers ?? {}),
       ...(headers ?? {}),
-      ...(body === undefined ? {} : { 'content-type': 'application/json' })
+      ...(body === undefined ? {} : { 'content-type': resolved.requestContentType ?? 'application/json' })
     },
-    body: body === undefined ? undefined : JSON.stringify(body)
+    body: body === undefined ? undefined : resolved.requestKind === 'binary' ? new Uint8Array(body as Uint8Array).buffer : resolved.requestKind === 'text' ? String(body) : JSON.stringify(body)
   });
   const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? (response.ok ? 'application/json' : 'text/plain');
   const kind = resolved.responseKinds?.[response.status];
@@ -110,7 +112,7 @@ export function createForkLaunchSdk(config: ForkLaunchSdkConfig = {}) {
 {{#routers}}
       {{router_key}}: {
 {{#operations}}
-        {{operation_key}}: (input: {{request_type}}{{#optional_input}} = {}{{/optional_input}}) => request<{{responses_type}}, {{responses_type}}ContentTypes>(config, { service: '{{service_name}}', router: '{{router_name}}', operation: '{{operation_name}}', method: '{{method}}', path: '{{path}}', responseKinds: { {{#responses}}{{status_code}}: '{{response_kind}}', {{/responses}} }, input }){{^last}},{{/last}}
+        {{operation_key}}: (input: {{request_type}}{{#optional_input}} = {}{{/optional_input}}) => request<{{responses_type}}, {{responses_type}}ContentTypes>(config, { service: '{{service_name}}', router: '{{router_name}}', operation: '{{operation_name}}', method: '{{method}}', path: '{{path}}', requestKind: '{{request_kind}}', requestContentType: '{{request_content_type}}', responseKinds: { {{#responses}}{{status_code}}: '{{response_kind}}', {{/responses}} }, input }){{^last}},{{/last}}
 {{/operations}}
       }{{^last}},{{/last}}
 {{/routers}}
