@@ -25,7 +25,8 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Verify the CLI Cargo package file list includes all 114 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
-- [ ] Validate crate publication and installation from published CLI sources (phases 13–15). Embedded framework and blueprint source mirrors are checked; published-source installation remains unverified.
+- [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
+- [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive installation is checked; no crate has been published during this port.
 
 PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle, billing and Kafka queue implementations remain explicit tasks in phase 12.
 

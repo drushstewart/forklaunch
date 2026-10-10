@@ -47,6 +47,9 @@ jobs:
         # hashFiles('**/Cargo.lock'), hashed nothing.
         run: cargo build --release
 
+      - name: Verify packaged CLI installation and Rust generation
+        run: bash cli/tests/rust_packaged_install.sh
+
       - name: Upload CLI binary
         uses: actions/upload-artifact@v4
         with:
