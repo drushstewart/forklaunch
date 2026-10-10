@@ -163,6 +163,29 @@ pub trait SignalBus {
     fn drain(&self) -> BlueprintResult<Vec<DistributedSignal>>;
 }
 
+/// Asynchronous broadcast control with adapter-owned subscriptions.
+/// Broadcast delivery counts subscribers, not completed control applications.
+/// Adapters must document persistence, disconnect and overflow behavior.
+pub trait AsyncSignalBus: Send {
+    /// # Errors
+    /// Returns an error when publishing fails or the subscription is unhealthy.
+    fn broadcast(
+        &self,
+        signal: DistributedSignal,
+    ) -> impl std::future::Future<Output = BlueprintResult<usize>> + Send;
+    /// Waits for one signal; `None` means the bounded wait elapsed.
+    /// # Errors
+    /// Returns an error on disconnect, malformed messages or buffer overflow.
+    fn next_signal(
+        &mut self,
+        wait: std::time::Duration,
+    ) -> impl std::future::Future<Output = BlueprintResult<Option<DistributedSignal>>> + Send;
+    /// Drains immediately available signals in publication order.
+    /// # Errors
+    /// Returns an error when subscription health cannot be established.
+    fn drain_signals(&mut self) -> BlueprintResult<Vec<DistributedSignal>>;
+}
+
 /// Worker event contracts used to emit `AsyncAPI` documents for job channels.
 pub mod events {
     use forklaunch_asyncapi::{AsyncApiInfo, generate_asyncapi_json};

@@ -15,7 +15,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
 - [x] Remove build-machine Cargo paths by bundling framework source in generated applications.
 - [x] Fix SDK mode's missing path argument and sync discovery's optional-argument panic.
-- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 109 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
+- [x] Revalidate the combined workspaces: latest CLI 954 tests pass; latest all-feature framework 109 and blueprint 54 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [x] Validate a real optimized generated Rust service release build through the shared exporter, including framework contracts and OpenAPI artifacts.
 - [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
@@ -23,7 +23,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Complete relocated generated-service container build, health/OpenAPI, and SIGTERM shutdown checks. The Docker capacity blocker is resolved; `rust_container_runtime.sh` passes locally and runs in CI. Builder/runtime both use Debian bookworm.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks. Read-only audit of local `forklaunch-platform` at `3fb59b3cc` found a concrete integration gap: deployment/image planning maps non-Bun runtimes (including Tokio) to PNPM, and generated ECS commands invoke JavaScript start scripts. Rust needs native binary startup and image/build support in the platform before this gate can pass; local container success does not establish ECS parity.
 - [x] Keep generated Rust SDKs for empty worker HTTP contracts free of unused Serde imports, path helpers and client-field warnings; compile packaged PostgreSQL/Redis worker SDKs with warnings denied.
-- [x] Verify the CLI Cargo package file list includes all 119 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
+- [x] Verify the CLI Cargo package file list includes all 120 embedded framework and blueprint source/template files; use `.template` manifest names to avoid Cargo excluding nested packages, and add a CI regression check.
 - [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
@@ -591,7 +591,8 @@ Requirements:
 - [x] Implement Redis-backed worker queue. (`redis-client` async leased adapter: atomic mixed-queue batches/claims, persisted retry budgets, fenced ack/renew/fail, bounded expiry recovery, retained terminal jobs; real Redis concurrent-consumer and shared runner integration coverage. Generated Redis workers use the shared runner.)
 - [ ] Implement Kafka-backed worker queue.
 - [x] Define worker signaling interfaces and an in-memory reference bus. (`SignalBus` + `InMemorySignalBus`)
-- [ ] Implement cross-process distributed worker signaling.
+- [x] Implement namespace/tenant/queue-bound Redis Pub/Sub worker signaling with ordered bounded subscriptions, sanitized publication deadlines, independent publishers and sticky drain forwarding. Verify actual child-process delivery, isolation, overflow/malformed-message errors and owned TCP disconnect behavior in the Redis CI suite.
+- [ ] Wire opt-in distributed signaling into generated Redis/PostgreSQL worker commands and control endpoints; define reconnect/desired-state behavior separately from ephemeral Pub/Sub.
 - [x] Add AsyncAPI generation for worker events where applicable. (`events::asyncapi_json`)
 
 ## Phase 13 - CLI And Template Integration

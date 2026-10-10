@@ -2,6 +2,8 @@
 
 #[cfg(feature = "redis-client")]
 pub mod leased;
+#[cfg(feature = "redis-client")]
+pub mod signals;
 
 use std::{collections::VecDeque, sync::Mutex};
 

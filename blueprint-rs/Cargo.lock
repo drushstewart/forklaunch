@@ -686,6 +686,7 @@ dependencies = [
  "forklaunch-core",
  "forklaunch-worker-database",
  "forklaunch-worker-interface",
+ "futures-util",
  "redis",
  "serde",
  "serde_json",

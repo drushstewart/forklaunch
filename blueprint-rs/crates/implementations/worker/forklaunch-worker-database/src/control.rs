@@ -1,4 +1,6 @@
 //! Process-local controls shared by all consumers of one worker runner.
+use forklaunch_blueprint_core::BlueprintResult;
+use forklaunch_worker_interface::{AsyncSignalBus, DistributedSignal};
 use tokio::sync::watch;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +42,15 @@ impl WorkerControl {
     pub fn drain(&self) {
         self.set(WorkerState::Draining);
     }
+    /// Applies a distributed signal using the same irreversible drain rules.
+    #[must_use]
+    pub fn apply_signal(&self, signal: DistributedSignal) -> bool {
+        self.set(match signal {
+            DistributedSignal::Pause => WorkerState::Paused,
+            DistributedSignal::Resume => WorkerState::Running,
+            DistributedSignal::Drain => WorkerState::Draining,
+        })
+    }
     fn set(&self, next: WorkerState) -> bool {
         let mut accepted = false;
         self.0.send_if_modified(|state| {
@@ -72,9 +83,50 @@ impl WorkerControl {
     }
 }
 
+/// Forwards distributed signals to a runner's shared process control. Subscription
+/// failure initiates graceful drain so the runner cannot keep claiming work with
+/// an unhealthy control channel. Publications are not durable desired state.
+/// # Errors
+/// Returns the bus error after initiating drain; callers may reconnect/restart.
+pub async fn forward_signals<B, F>(
+    bus: &mut B,
+    control: &WorkerControl,
+    shutdown: F,
+) -> BlueprintResult<()>
+where
+    B: AsyncSignalBus,
+    F: std::future::Future<Output = ()>,
+{
+    tokio::pin!(shutdown);
+    loop {
+        tokio::select! {
+            () = &mut shutdown => { control.drain(); return Ok(()); }
+            () = control.draining() => return Ok(()),
+            signal = bus.next_signal(std::time::Duration::from_secs(30)) => {
+                match signal {
+                    Ok(Some(signal)) => { let _ = control.apply_signal(signal); }
+                    Ok(None) => (),
+                    Err(error) => { control.drain(); return Err(error); }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn distributed_control_keeps_drain_irreversible() {
+        let control = WorkerControl::new();
+        assert!(control.apply_signal(DistributedSignal::Pause));
+        assert_eq!(control.state(), WorkerState::Paused);
+        assert!(control.apply_signal(DistributedSignal::Resume));
+        assert_eq!(control.state(), WorkerState::Running);
+        assert!(control.apply_signal(DistributedSignal::Drain));
+        assert!(!control.apply_signal(DistributedSignal::Resume));
+        assert_eq!(control.state(), WorkerState::Draining);
+    }
     #[tokio::test]
     async fn control_retains_state_without_receivers_and_drain_is_sticky() {
         let control = WorkerControl::new();
