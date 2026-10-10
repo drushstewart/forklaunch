@@ -5,11 +5,19 @@ import {once} from 'node:events';
 const exec = promisify(execFile);
 const binary = process.argv[2];
 const mode = process.argv[3];
+const redis = process.env.FORKLAUNCH_WORKER_TEST_BACKEND === 'redis';
 const role = process.env.FORKLAUNCH_TEST_ROLE;
-const url = new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);
-url.username = role;
-url.password = 'parity-test-only';
-const env = tenant => ({...process.env, DATABASE_URL:url.toString(), TENANT_ID:`${role}-${tenant}`,
+let storage;
+if(redis) {
+  storage = {REDIS_URL:process.env.FORKLAUNCH_TEST_REDIS_URL,
+    WORKER_NAMESPACE:process.env.FORKLAUNCH_TEST_WORKER_NAMESPACE};
+} else {
+  const url = new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);
+  url.username = role;
+  url.password = 'parity-test-only';
+  storage = {DATABASE_URL:url.toString()};
+}
+const env = tenant => ({...process.env, ...storage, TENANT_ID:`${role}-${tenant}`,
   WORKER_QUEUE:mode === 'stub' ? 'stub' : 'runtime', WORKER_MAX_ATTEMPTS:'2', WORKER_BACKOFF_SECONDS:'0',
   WORKER_POLL_MS:'20', WORKER_LEASE_MS:'1000', WORKER_RENEW_MS:'250', WORKER_DRAIN_MS:'5000'});
 const children = [];
@@ -96,7 +104,7 @@ try {
     const recovered=await start();
     assert.equal((await waitState('crash','Completed')).attempts,2);
     await stop(recovered);
-    console.log('PASS generated PostgreSQL worker: lease renewal, drain, retry, cancellation, crash recovery, and tenant isolation');
+    console.log(`PASS generated ${redis ? 'Redis' : 'PostgreSQL'} worker: lease renewal, drain, retry, cancellation, crash recovery, and tenant isolation`);
   }
 } finally {
   await Promise.all(children.map(async record=>{

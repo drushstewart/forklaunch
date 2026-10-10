@@ -20,6 +20,10 @@ expected = {
     "src/templates/rust/postgres-worker/handler.rs",
     "src/templates/rust/postgres-worker/env.example",
     "src/templates/rust/postgres-worker/README.md",
+    "src/templates/rust/redis-worker/main.rs",
+    "src/templates/rust/redis-worker/handler.rs",
+    "src/templates/rust/redis-worker/env.example",
+    "src/templates/rust/redis-worker/README.md",
     "src/templates/rust/blueprint-workspace/Cargo.toml.template",
     "src/templates/rust/framework/Cargo.toml.template",
 }

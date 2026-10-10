@@ -48,7 +48,7 @@ The generated Dockerfile builds workspace binaries, and Compose selects the serv
 
 ## Current boundaries
 
-Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. New PostgreSQL database workers use the durable queue and runner described below. Other generated worker backends retain their demonstration batch. Billing, provider integrations, and durable Redis/Kafka workers remain unfinished. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
+Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. New PostgreSQL database workers use the durable queue and runner described below. New Redis workers also use the durable leased queue and runner. Other generated worker backends retain their demonstration batch. Billing, provider integrations, and durable Kafka workers remain unfinished. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
 
 ## Validate the port
 
@@ -159,7 +159,7 @@ Ctrl-C or SIGTERM stops new claims and drains the active job while renewing its 
 
 With runtime environment variables set, use `cargo run -p jobs -- --enqueue ID JSON` to submit a job and `--inspect ID` to read its state. Inspection omits payloads and lease tokens. Contract/OpenAPI export works without a database connection. Reinitialization, sync, and worker rename preserve the application handler and Cargo metadata; rename updates generated SDKs and contract artifacts.
 
-Existing demonstration workers are preserved when reinitialized. To upgrade explicitly, run `forklaunch change worker --path crates/jobs -t database -d postgresql --confirm`; backend conversion installs the runner while retaining an existing handler and unrelated Cargo metadata. Batch-handler configuration, worker HTTP health/control endpoints, distributed signals, and durable Redis/Kafka backends remain parity tasks. `cli/tests/rust_worker_runtime.sh` tests a relocated generated worker against PostgreSQL, including renewal, drain, retries, forced cancellation, process crashes, tenant isolation, source preservation, rename, and delete.
+Existing demonstration workers are preserved when reinitialized. To upgrade explicitly, run `forklaunch change worker --path crates/jobs -t database -d postgresql --confirm`; backend conversion installs the runner while retaining an existing handler and unrelated Cargo metadata. Batch-handler configuration, worker HTTP health/control endpoints, distributed signals, and durable Kafka backends remain parity tasks. `cli/tests/rust_worker_runtime.sh` tests a relocated generated worker against PostgreSQL, including renewal, drain, retries, forced cancellation, process crashes, tenant isolation, source preservation, rename, and delete.
 
 ## Redis leased worker queue
 
@@ -169,4 +169,17 @@ Redis scripts atomically claim jobs, fence acknowledgments and renewal with deli
 
 Tenant and namespace names are encoded into Redis keys. This provides logical isolation through trusted application code; configure Redis ACLs separately. Persistence and replication settings determine durability across Redis server restarts. The adapter uses a standalone Redis connection manager with bounded waits and TLS URL support. Keys share a cluster hash slot, but Redis Cluster redirection support is not implemented. Keep payloads small; the adapter caps each payload at 1 MiB and batches at 1,000 jobs.
 
-Real Redis integration tests cover client restart, mixed-queue batches, collision rollback, FIFO ordering, ten concurrent consumers, retry budgets, stale leases, tenant isolation, and shared runner renewal during shutdown drain. Generated Redis workers still use the demonstration template; generator wiring remains tracked separately.
+Real Redis integration tests cover client restart, mixed-queue batches, collision rollback, FIFO ordering, ten concurrent consumers, retry budgets, stale leases, tenant isolation, and shared runner renewal during shutdown drain. Generated Redis workers use this adapter and the shared async runner.
+
+## Generated Redis workers
+
+```sh
+forklaunch init worker jobs --language rust -t redis --path . -D "Jobs"
+REDIS_URL=redis://localhost:6379/ WORKER_NAMESPACE=my-app TENANT_ID=acme cargo run -p jobs
+```
+
+The worker bundles portable framework and blueprint sources, requires a trusted tenant and namespace, and runs continuously until Ctrl-C or SIGTERM. Implement idempotent application work in `crates/jobs/src/handler.rs`; the initial handler fails explicitly until implemented. Timing, retry settings, `--enqueue ID JSON`, and `--inspect ID` match the PostgreSQL worker. Redis requires no migration command. OpenAPI and contract export work without Redis credentials.
+
+Reinitialization and sync preserve application code. Rename updates imports, artifacts, SDK names, and Compose entries. Explicit backend changes support both Redis and PostgreSQL while preserving existing handlers and unrelated Cargo metadata. Upgrade an existing demonstration worker with `forklaunch change worker --path crates/jobs -t redis --confirm`. Existing documentation and example env files are preserved during conversion; configure the new backend's environment variables before starting it. `bullmq` remains a separate demonstration backend without BullMQ wire compatibility.
+
+`cli/tests/rust_redis_worker_runtime.sh` validates a relocated generated worker against Redis, including process crashes, lease recovery, renewal, shutdown drain, retry exhaustion, tenant isolation, rename, backend conversion, and delete.
