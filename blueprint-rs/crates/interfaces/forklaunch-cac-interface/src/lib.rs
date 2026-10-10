@@ -105,6 +105,69 @@ pub mod contracts {
         );
         registry
     }
+    /// Complete current CAC skeleton surface, including empty-entity compliance
+    /// routes and service health. Protected compliance uses system-role access.
+    #[must_use]
+    pub fn module_registry() -> ContractRegistry {
+        use forklaunch_blueprint_core::contract::{JwtAuthConfig, RbacConfig};
+        let mut registry = registry();
+        let export = BodyContract {
+            kind: BodyKind::Json,
+            schema: SchemaRef::named("ComplianceExport").with_json_schema(r#"{"type":"object","required":["userId","entities"],"properties":{"userId":{"type":"string"},"entities":{"type":"object","additionalProperties":true}}}"#),
+            content_type: Some("application/json".to_owned()),
+        };
+        let erase = BodyContract {
+            kind: BodyKind::Json,
+            schema: SchemaRef::named("ComplianceErasure").with_json_schema(r#"{"type":"object","required":["entitiesAffected","recordsDeleted"],"properties":{"entitiesAffected":{"type":"array","items":{"type":"string"}},"recordsDeleted":{"type":"number"}}}"#),
+            content_type: Some("application/json".to_owned()),
+        };
+        for (route, response) in [
+            (
+                RouteContract::get(
+                    "Export User Data",
+                    "Exports user data from registered CAC entities",
+                    "/compliance/export/:userId",
+                ),
+                export,
+            ),
+            (
+                RouteContract::delete(
+                    "Erase User Data",
+                    "Erases user data from registered CAC entities",
+                    "/compliance/erase/:userId",
+                ),
+                erase,
+            ),
+        ] {
+            registry.register(
+                route
+                    .with_access(AccessLevel::Protected)
+                    .with_auth(AuthConfig::jwt(JwtAuthConfig::JwksUrl {
+                        url: "${JWKS_PUBLIC_KEY_URL}".to_owned(),
+                    }))
+                    .with_rbac(RbacConfig {
+                        allowed_roles: vec!["system".to_owned()],
+                        ..RbacConfig::default()
+                    })
+                    .with_param(FieldContract::required("userId", "String"))
+                    .with_response(200, Some(response))
+                    .with_response(
+                        404,
+                        Some(BodyContract {
+                            kind: BodyKind::Text,
+                            schema: SchemaRef::named("String")
+                                .with_json_schema(r#"{"type":"string"}"#),
+                            content_type: Some("text/plain".to_owned()),
+                        }),
+                    ),
+            );
+        }
+        registry.register(RouteContract::get("Get Health", "Reports service health", "/health")
+            .with_response(200, Some(BodyContract { kind: BodyKind::Json,
+                schema: SchemaRef::named("CacHealth").with_json_schema(r#"{"type":"object","required":["service","status"],"properties":{"service":{"type":"string"},"status":{"type":"string"}}}"#),
+                content_type: Some("application/json".to_owned()) })));
+        registry
+    }
 }
 
 #[cfg(test)]

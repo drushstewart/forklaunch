@@ -106,7 +106,7 @@ impl CliCommand for ModuleCommand {
             return self.storefront.handler(sub_matches);
         }
         if rust_project::uses_rust_generation(matches) {
-            return rust_project::generate_rust_iam_module(matches);
+            return rust_project::generate_rust_module(matches);
         }
         let mut line_editor = Editor::<ArrayCompleter, DefaultHistory>::new()?;
         let mut stdout = StandardStream::stdout(ColorChoice::Always);

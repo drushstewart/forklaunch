@@ -65,7 +65,13 @@ pub fn verify_jwk<T: DeserializeOwned>(
         return Err(AuthError::InvalidCredentials);
     }
     let key = DecodingKey::from_jwk(jwk).map_err(|_| AuthError::InvalidCredentials)?;
-    decode::<T>(token, &key, validation)
+    // jsonwebtoken rejects a validation list containing any other key family.
+    // The application allowlist and JWK policy were checked above; narrow only
+    // this decode operation to the selected, allowed algorithm. This preserves
+    // rotation across RSA/EC/EdDSA keys without accepting a token-chosen policy.
+    let mut selected = validation.clone();
+    selected.algorithms = vec![header.alg];
+    decode::<T>(token, &key, &selected)
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidCredentials)
 }

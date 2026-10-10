@@ -31,9 +31,9 @@ static FRAMEWORK_CRATES: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/framework/crates");
 const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.toml.template");
 
-mod iam;
+mod modules;
 mod worker;
-pub(crate) use iam::generate_rust_iam_module;
+pub(crate) use modules::generate_rust_module;
 
 pub(crate) const TYPESCRIPT_SDK_TSCONFIG: &str =
     include_str!("../templates/rust/application/typescript-sdk-tsconfig.json");
@@ -123,9 +123,9 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         .into_iter()
         .flatten()
         .collect();
-    if modules.iter().any(|module| module.as_str() != "iam-base") {
+    if modules.iter().any(|module| modules::BuiltinModule::from_variant(module).is_none()) {
         bail!(
-            "Rust application module generation currently supports only iam-base; add other modules after their Rust adapters are implemented"
+            "Rust application module generation currently supports iam-base and cac-base; add other modules after their Rust adapters are implemented"
         );
     }
     if !modules.is_empty()
@@ -257,8 +257,11 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         create_dir_all(root_path.join("crates"))
             .with_context(|| format!("Failed to create {}", root_path.join("crates").display()))?;
     }
-    if !modules.is_empty() {
-        iam::generate_iam_at(&root_path, "iam", matches, dryrun)?;
+    for module in modules {
+        match modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")? {
+            modules::BuiltinModule::Iam => modules::generate_iam_at(&root_path, "iam", matches, dryrun)?,
+            modules::BuiltinModule::Cac => modules::generate_module_at(&root_path, "cac", matches, dryrun, modules::BuiltinModule::Cac)?,
+        }
     }
     log_ok!(
         stdout,
@@ -457,8 +460,8 @@ pub(crate) fn sync_rust_project(app_root: &Path, kind: RustProjectKind, name: &s
     add_cargo_member(app_root, &crate_path.to_string_lossy(), false)?;
     let description = cargo_description(&crate_dir.join("Cargo.toml"))?
         .unwrap_or_else(|| format!("Generated {name} {}", kind.label()));
-    if iam::is_iam_module(app_root, name)? {
-        iam::ensure_iam_compose(app_root, name, false)?;
+    if let Some(module) = modules::module_kind(app_root, name)? {
+        modules::ensure_module_compose(app_root, name, module, false)?;
         return ensure_rust_package_scripts(app_root, kind, name, false);
     }
     if kind == RustProjectKind::Worker
@@ -657,12 +660,12 @@ pub(crate) fn change_rust_project(
     let convert_worker = target_kind == RustProjectKind::Worker
         && !keep_persistent_worker
         && (current_kind != target_kind || worker_type.is_some() || database.is_some());
-    let persistent_iam = iam::is_iam_module(app_root, current_name)?;
-    if persistent_iam
+    let persistent_module = modules::module_kind(app_root, current_name)?;
+    if persistent_module.is_some()
         && (!matches!(target_kind, RustProjectKind::Service)
             || database.is_some_and(|database| database != "postgresql"))
     {
-        bail!("Persistent Rust IAM must remain a PostgreSQL service");
+        bail!("Rust built-in modules must remain services with their supported PostgreSQL configuration");
     }
 
     if current_name != target_name {
@@ -776,13 +779,13 @@ pub(crate) fn change_rust_project(
         return ensure_rust_package_scripts(app_root, target_kind, target_name, false)
             .map(|()| target_name.to_owned());
     }
-    if persistent_iam {
+    if let Some(module) = persistent_module {
         if current_name != target_name {
-            iam::rename_iam_sources(app_root, current_name, target_name)?;
+            modules::rename_sources(app_root, current_name, target_name)?;
             rename_rust_project_outputs(app_root, current_name, target_name)?;
         }
         ensure_rust_package_scripts(app_root, target_kind, target_name, false)?;
-        iam::ensure_iam_compose(app_root, target_name, false)?;
+        modules::ensure_module_compose(app_root, target_name, module, false)?;
         if current_name != target_name {
             remove_rust_package_scripts(app_root, current_name)?;
         }
@@ -1007,7 +1010,7 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     if let Some(project) = project_table(&manifest, &name) {
         if !is_rust_project(&app_root, &name)?
             || project.get("type").and_then(Value::as_str) != Some(kind.manifest_type())
-            || project.get("variant").and_then(Value::as_str) == Some("iam-base")
+            || project.get("variant").and_then(Value::as_str).and_then(modules::BuiltinModule::from_variant).is_some()
         {
             bail!(
                 "Project {name} already exists with a different project kind or module; use its change command"
@@ -1036,7 +1039,7 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
         None
     };
     let templates = if let Some(backend) = backend {
-        iam::ensure_blueprint_sources(&app_root, dryrun)?;
+        modules::ensure_blueprint_sources(&app_root, dryrun)?;
         worker::templates(&crate_dir, &name, &description, backend)?
     } else {
         rust_crate_templates(&crate_dir, &name, &description, kind)

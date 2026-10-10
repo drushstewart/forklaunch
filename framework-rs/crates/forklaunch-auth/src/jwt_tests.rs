@@ -104,6 +104,22 @@ fn jwk_enforces_signature_algorithm_key_usage_and_claim_policy() {
 }
 
 #[test]
+fn jwk_accepts_an_allowed_algorithm_when_policy_spans_key_families() {
+    let signed = token("key-1", &json!({}));
+    let mut validation = policy();
+    validation.algorithms = vec![Algorithm::RS256, Algorithm::ES256, Algorithm::EdDSA];
+    let claims: Value = verify_jwk(&signed, &rsa_jwk("key-1"), &validation).unwrap();
+    assert_eq!(claims["tenant"], "tenant-1");
+    assert_eq!(
+        validation.algorithms.len(),
+        3,
+        "caller policy must remain unchanged"
+    );
+    validation.algorithms = vec![Algorithm::ES256, Algorithm::EdDSA];
+    assert!(verify_jwk::<Value>(&signed, &rsa_jwk("key-1"), &validation).is_err());
+}
+
+#[test]
 fn jwks_rejects_unknown_and_ambiguous_keys() {
     let signed = token("key-1", &json!({}));
     for keys in [

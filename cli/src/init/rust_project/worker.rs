@@ -180,7 +180,7 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
 }
 
 pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
-    iam::ensure_blueprint_sources(root, false)?;
+    modules::ensure_blueprint_sources(root, false)?;
     let directory = root.join("crates").join(name);
     let cargo = directory.join("Cargo.toml");
     write(

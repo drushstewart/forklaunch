@@ -90,7 +90,7 @@ Basic login and credential verification callbacks remain application-configured.
 
 `forklaunch_core::telemetry::OpenTelemetryCollector` records counters, gauges, histograms, and up/down counters, and exposes its meter for observable instruments. It supplies structured trace/debug/info/warn/error/fatal logging through `tracing`.
 
-Inject a collector through `RouterConfig.telemetry` to use application-owned OpenTelemetry providers. `with_meter` and `with_tracer` accept configured SDK instruments without replacing process-global providers. Generated services, IAM modules and workers initialize `TelemetryRuntime` from the optional `forklaunch-core/otlp` feature. It installs structured JSON stderr logging, W3C trace-context/baggage propagation, and application-owned providers. With no endpoint or explicit signal exporter, telemetry export stays disabled. Offline contract/OpenAPI export runs before telemetry initialization.
+Inject a collector through `RouterConfig.telemetry` to use application-owned OpenTelemetry providers. `with_meter` and `with_tracer` accept configured SDK instruments without replacing process-global providers. Generated services, IAM/CAC modules and workers initialize `TelemetryRuntime` from the optional `forklaunch-core/otlp` feature. It installs structured JSON stderr logging, W3C trace-context/baggage propagation, and application-owned providers. With no endpoint or explicit signal exporter, telemetry export stays disabled. Offline contract/OpenAPI export runs before telemetry initialization.
 
 HTTP middleware emits server spans, request counts/duration, active requests, actual response-body bytes, auth failures, and error counts. Streaming responses retain their span and active-request measurement until completion, body failure, or cancellation, without buffering. Body failures and client cancellation preserve the HTTP status already sent while recording a failed span. HEAD and bodyless statuses finish without awaiting a body. Metric dimensions use matched route templates instead of user identifiers. Correlation IDs are attached to spans/logs rather than metric dimensions. Active requests and spans also close when handler futures are cancelled. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable traces, metrics and logs using OTLP HTTP/protobuf, or set `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. Signal-specific endpoints/protocols and standard OTLP headers, resource attributes, service name and export intervals are supported. `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER` and `OTEL_LOGS_EXPORTER` accept `otlp` or `none`; `OTEL_SDK_DISABLED=true` disables export. `OTEL_PROPAGATORS` accepts `tracecontext`, `baggage`, their comma-separated combination, or `none`. Unsupported configurations fail with sanitized errors.
 
@@ -124,6 +124,31 @@ Replace the example URLs with your own credentials. Migration and runtime connec
 The scaffold binds one trusted `TENANT_ID` per process. Login, logout, paginated users and organizations, and permission lookup use PostgreSQL. Provision users through the administrative repository API; the generator creates no default account. Directory endpoints require authentication; add your application's authorization policy before exposing them. Tenant selection from verified identity, cookie/CSRF sessions, email/reset/verification flows, JWT issuance, and OAuth/OIDC providers remain pending.
 
 `cli/tests/rust_iam_runtime.sh` checks a relocated generated module against PostgreSQL through its TypeScript SDK, including cross-tenant rejection, session persistence across restart, revocation, and SIGTERM shutdown. It accepts `FORKLAUNCH_TEST_POSTGRES_URL` or starts its own isolated PostgreSQL container.
+
+## CAC module
+
+Generate `forklaunch init module --language rust -m cac-base --path .`, or pass
+`--modules cac-base` when initializing a Rust/mixed app. IAM and CAC can coexist.
+Set `HMAC_SECRET_KEY` and trusted `JWKS_PUBLIC_KEY_URL`, then run `cargo run -p cac`.
+Offline exports require neither key configuration nor network access.
+
+`GET /codeSet` describes the free mock provider; `GET /codeSet/:code` looks up the
+three upstream placeholder codes. Both use TypeScript-compatible request HMAC,
+key ID `default`, and five-minute timestamp skew. The module includes no licensed
+CPT data. `GET /compliance/export/:userId` and `DELETE /compliance/erase/:userId`
+verify asymmetric JWTs and require the `system` role. The current TypeScript
+skeleton registers no entities, so authorized compliance requests return its
+matching text 404. There is no invented clinical schema or database migration.
+
+Roles come from verified issuer claims by default. Role resolvers receive the complete verified payload, including organization context. Applications can configure
+`CacAuthConfig::with_role_resolver` to surface roles through trusted IAM instead
+of the TypeScript template's placeholder admin-role function. Optional
+`JWT_ISSUER` and `JWT_AUDIENCE` add issuer/audience constraints. Expiry and `nbf`
+are validated. JWKS keys are cached per endpoint and may use RSA, EC or EdDSA.
+
+The mounted registry drives both SDKs and OpenAPI. Runtime fixtures exercise HMAC,
+JWT/JWKS/RBAC, both generated SDKs, relocation, embedded-workspace upgrades,
+module coexistence, source preservation, rename/sync/delete and graceful shutdown.
 
 ## Field encryption compatibility
 

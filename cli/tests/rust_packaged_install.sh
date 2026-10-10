@@ -27,6 +27,7 @@ CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" init worker postgres-jobs --path "$RUN_ROOT/app" --language rust -t database -d postgresql -D Jobs
 "$CLI" init worker redis-jobs --path "$RUN_ROOT/app" --language rust -t redis -D Jobs
 "$CLI" init worker kafka-jobs --path "$RUN_ROOT/app" --language rust -t kafka -D Jobs
+"$CLI" init module coding --path "$RUN_ROOT/app" --language rust -m cac-base
 mv "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
 python3 - "$REPO_ROOT" <<'PYTHON'
@@ -45,6 +46,7 @@ PYTHON
 export CARGO_TARGET_DIR="$GENERATED_TARGET"
 cargo check --workspace
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
+cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-cac-axum
 "$CLI" openapi export --path .
 "$CLI" sdk generate --path . --target all --from contract
 "$CLI" sdk generate --path . --target all --from contract --check
@@ -56,7 +58,7 @@ done
 python3 - <<'PYTHON'
 from pathlib import Path
 import json
-for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs']:
+for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs','coding']:
     contract=json.loads((Path('.forklaunch/contracts')/name/'contract.json').read_text())
     assert contract['generator']=='framework-rs'
     spec=json.loads((Path('.forklaunch/openapi')/name/'openapi.json').read_text())

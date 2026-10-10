@@ -1,0 +1,26 @@
+[package]
+name = "forklaunch-cac-axum"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
+forklaunch-cac-interface = { path = "../../../interfaces/forklaunch-cac-interface" }
+forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum" }
+forklaunch-auth = { path = "../../../../../framework-rs/crates/forklaunch-auth", features = ["remote-jwks"] }
+forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core" }
+axum = "0.8"
+jsonwebtoken = "9"
+serde_json = "1"
+
+[dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+forklaunch-cac-base = { path = "../forklaunch-cac-base" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true
