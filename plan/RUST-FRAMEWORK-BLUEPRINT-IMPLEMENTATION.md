@@ -18,7 +18,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Revalidate the combined workspaces: latest CLI 926 tests pass; latest all-feature framework 91 and blueprint 51 tests pass. Formatting and all-feature Clippy checks pass in both Rust workspaces. Real Redis/PostgreSQL integration and six TypeScript encryption interoperability fixtures pass separately.
 - [x] Complete the post-merge generation rerun: init, change, sync, delete, OpenAPI/SDK, and relocated-service HTTP/TypeScript SDK suites pass.
 - [ ] Validate Rust-only release export through the shared exporter, including contracts and OpenAPI artifacts.
-- [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
+- [x] Validate Rust/mixed release build order, shared export dispatch, SDK package builds, failure stops, mixed crate locations, and prebuilt isolation using the actual CLI with owned platform/command fixtures.
 - [ ] Validate complete generated Rust/mixed release builds and artifacts with real toolchains in addition to the orchestration fixtures.
 - [x] Complete relocated generated-service container build, health/OpenAPI, and SIGTERM shutdown checks. The Docker capacity blocker is resolved; `rust_container_runtime.sh` passes locally and runs in CI. Builder/runtime both use Debian bookworm.
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks.

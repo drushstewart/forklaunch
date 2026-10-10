@@ -61,7 +61,7 @@ if os.getenv('FORKLAUNCH_MODE') in ['contract','openapi']:
             path.write_text(f'#!{sys.executable}\n'+tool_source)
             path.chmod(0o700)
         endpoint = f'http://127.0.0.1:{server.server_port}'
-        for scenario in ['rust','mixed','sdk','fail-cargo','fail-install','fail-javascript','prebuilt']:
+        for scenario in ['rust','mixed','sdk','fail-cargo','fail-install','fail-javascript','prebuilt','prebuilt-escape']:
             app = root/scenario
             rust = app/'crates/rust-api'
             rust.mkdir(parents=True)
@@ -70,7 +70,7 @@ if os.getenv('FORKLAUNCH_MODE') in ['contract','openapi']:
             manifest = f'''id = "release-proof"
 cli_version = "0.0.0"
 app_name = "release-proof"
-modules_path = "crates"
+modules_path = "{'services' if mixed else 'crates'}"
 app_description = "Release fixture"
 linter = "clippy"
 formatter = "rustfmt"
@@ -96,7 +96,7 @@ contractArtifactPath = ".forklaunch/contracts/rust-api/contract.json"
             (rust/'Cargo.toml').write_text('[package]\nname="rust-api"\nversion="0.1.0"\nedition="2024"\n')
             (app/'Cargo.toml').write_text('[workspace]\nmembers=["crates/rust-api"]\n')
             if mixed:
-                ts = app/'crates/ts-api'
+                ts = app/'services/ts-api'
                 (ts/'node_modules/tsx/dist').mkdir(parents=True)
                 (ts/'node_modules/tsx/dist/cli.mjs').write_text('// tool fixture\n')
                 (ts/'package.json').write_text('{"name":"ts-api","version":"1.0.0"}')
@@ -112,6 +112,9 @@ language = "typescript"
             if scenario != 'rust':
                 (app/'package.json').write_text(json.dumps({'private':True,'scripts':{} if scenario=='sdk' else {'build':'owned-build-fixture'}}))
                 (app/'pnpm-lock.yaml').write_text("lockfileVersion: '9.0'\n")
+            if scenario == 'prebuilt-escape':
+                (root/'outside').mkdir()
+                manifest = manifest.replace('cratePath = "crates/rust-api"','cratePath = "../outside"')
             (app/'.forklaunch/manifest.toml').write_text(manifest)
             log = app/'tool-log.jsonl'
             env = {**os.environ, 'HOME':str(home),'PATH':str(tools)+':/usr/bin:/bin',
@@ -120,7 +123,7 @@ language = "typescript"
             args = [str(binary),'release','create','--local','--dry-run','--skip-sync','--yes','--version','1.0.0']
             if scenario.startswith('fail-'):
                 env['RELEASE_TEST_FAIL'] = scenario.removeprefix('fail-')
-            if scenario == 'prebuilt':
+            if scenario.startswith('prebuilt'):
                 for name in ['rust-api','ts-api']:
                     output = app/'.forklaunch/openapi'/name/'openapi.json'
                     output.parent.mkdir(parents=True)
@@ -129,6 +132,10 @@ language = "typescript"
             result = subprocess.run(args,cwd=app,env=env,capture_output=True,text=True,timeout=30)
             calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             release_path = app/'.forklaunch/release-manifest.json'
+            if scenario == 'prebuilt-escape':
+                assert result.returncode != 0 and not release_path.exists(), 'Escaping cratePath accepted'
+                assert not calls, 'Invalid snapshot executed tools'
+                continue
             if scenario.startswith('fail-'):
                 assert result.returncode != 0 and not release_path.exists(), result.stdout+result.stderr
                 assert len(calls) == {'fail-cargo':1,'fail-install':2,'fail-javascript':3}[scenario], calls
@@ -139,7 +146,7 @@ language = "typescript"
             assert {service['name'] for service in release['services']} == ({'rust-api','ts-api'} if mixed else {'rust-api'})
             assert all(service['config']['openApiSpec'] for service in release['services']), release
             assert 'synthetic-release-test-token' not in release_path.read_text()
-            if scenario == 'prebuilt':
+            if scenario.startswith('prebuilt'):
                 assert not calls, 'Prebuilt release executed a package/build/export tool'
                 continue
             assert calls[0]['program']=='cargo' and calls[0]['args']==['build','--workspace','--release']
