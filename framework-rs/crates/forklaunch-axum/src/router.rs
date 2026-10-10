@@ -471,6 +471,70 @@ impl ForkLaunchRouter {
             }))
     }
 
+    /// Mounts an MCP transport whose tools dispatch through this HTTP router.
+    /// # Errors
+    /// Rejects invalid MCP configuration and conflicting tool names or paths.
+    #[cfg(feature = "mcp")]
+    pub fn into_router_with_mcp(
+        self,
+        options: forklaunch_mcp::server::McpServerOptions,
+    ) -> Result<Router, String> {
+        if (self.config.openapi_enabled && options.path == self.config.openapi_path)
+            || (self.config.openapi_enabled
+                && self.config.docs_enabled
+                && options.path == self.config.docs_path)
+            || (self.config.openapi_enabled
+                && self.config.swagger_enabled
+                && options.path == self.config.swagger_path)
+        {
+            return Err("MCP endpoint conflicts with documentation".into());
+        }
+        let registry = self.registry.clone();
+        forklaunch_mcp::server::mount_http(self.into_router(), &registry, options)
+    }
+
+    /// Enables `/mcp` on generated services. Server-owned environment variables
+    /// configure `MCP_ENABLED`, `MCP_PATH`, `MCP_ALLOWED_HOSTS` and
+    /// `MCP_ALLOWED_ORIGINS`; route authentication remains in effect.
+    /// # Errors
+    /// Rejects invalid environment settings and MCP configuration.
+    #[cfg(feature = "mcp")]
+    pub fn into_router_with_default_mcp(self) -> Result<Router, String> {
+        let enabled = std::env::var("MCP_ENABLED").unwrap_or_else(|_| "true".into());
+        match enabled.as_str() {
+            "false" | "0" => return Ok(self.into_router()),
+            "true" | "1" => {}
+            _ => return Err("MCP_ENABLED must be true, false, 1 or 0".into()),
+        }
+        let service = self.registry.service();
+        let mut options = forklaunch_mcp::server::McpServerOptions::new(
+            service.map_or("forklaunch-service", |s| s.name.as_str()),
+            service.map_or("0.1.0", |s| s.version.as_str()),
+        );
+        if let Ok(path) = std::env::var("MCP_PATH") {
+            options.path = path;
+        }
+        for (variable, hosts) in [("MCP_ALLOWED_HOSTS", true), ("MCP_ALLOWED_ORIGINS", false)] {
+            if let Ok(value) = std::env::var(variable) {
+                let values: Vec<_> = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+                if values.is_empty() {
+                    return Err(format!("{variable} must not be empty"));
+                }
+                if hosts {
+                    options.transport = options.transport.with_allowed_hosts(values);
+                } else {
+                    options.transport = options.transport.with_allowed_origins(values);
+                }
+            }
+        }
+        self.into_router_with_mcp(options)
+    }
+
     /// Binds to `addr` and serves until shutdown.
     ///
     /// # Errors

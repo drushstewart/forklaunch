@@ -41,6 +41,7 @@ for workspace in ['framework-rs','blueprint-rs']:
     if workspace == 'framework-rs':
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws.rs').is_file(), 'Packaged async S3 adapter missing'
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws_post.rs').is_file(), 'Packaged S3 POST signer missing'
+        assert root.joinpath('crates/forklaunch-mcp/src/server.rs').is_file(), 'Packaged MCP runtime missing'
     for path in root.rglob('*'):
         assert not path.is_symlink(), f'Packaged source retained a symlink: {path}'
         if path.is_file():
@@ -51,6 +52,9 @@ cargo check --workspace
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-cac-axum
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-messaging-axum
+cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features
+cargo build -p accounts
+node "$REPO_ROOT/cli/tests/rust_mcp_service_startup.mjs" "$CARGO_TARGET_DIR/debug/accounts"
 "$CLI" openapi export --path .
 "$CLI" sdk generate --path . --target all --from contract
 "$CLI" sdk generate --path . --target all --from contract --check

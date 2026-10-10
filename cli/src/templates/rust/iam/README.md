@@ -15,3 +15,5 @@ Create users and roles through `PostgresIamService`'s administrative methods in 
 `POST /auth/login` accepts `{ "email": "...", "password": "..." }` and returns a session whose `id` is the bearer credential. Send `Authorization: Bearer <id>` for user, permission, organization, and logout routes. `POST /auth/logout` revokes the current session. `/health`, `/openapi.json`, and `/docs` are public. Login responses disable caching.
 
 The tenant comes from server configuration, never client headers. This scaffold serves one configured tenant. Add application-specific role/access policies before exposing directory routes to your users. Cookie/CSRF sessions, OAuth/OIDC providers, verification/reset flows, and Better Auth client compatibility remain separate work.
+
+HTTP health and Streamable HTTP MCP share the configured listener. MCP is served at `/mcp` by default, and tools retain HTTP route authentication. Set `MCP_ENABLED=false` to disable it, or configure `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.

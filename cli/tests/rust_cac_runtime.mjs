@@ -1,3 +1,4 @@
+import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign, createHmac, randomUUID } from 'node:crypto';
 import http from 'node:http';
@@ -42,6 +43,12 @@ try {
     const signature = sign('RSA-SHA256', Buffer.from(`${header}.${payload}`), privateKey).toString('base64url');
     return `Bearer ${header}.${payload}.${signature}`;
   }
+  await probeMcp(base,['describeCodeSet','lookupProcedureCode']);
+  const exportMcp=await mcpRpc(base,'tools/call',{name:'exportUserData',arguments:{params:{userId:'user'}}},{authorization:jwt()});assert.equal(exportMcp.isError,true);assert.match(exportMcp.content[0].text,/404/);
+  const forbiddenMcp=await mcpRpc(base,'tools/call',{name:'exportUserData',arguments:{params:{userId:'user'}}},{authorization:jwt(['admin'])});assert.equal(forbiddenMcp.isError,true);assert.match(forbiddenMcp.content[0].text,/403/);
+
+  const deniedMcp=await mcpRpc(base,'tools/call',{name:'lookupProcedureCode',arguments:{params:{code:'PROC-001'}}});assert.equal(deniedMcp.isError,true);
+  const foundMcp=await mcpRpc(base,'tools/call',{name:'lookupProcedureCode',arguments:{params:{code:'PROC-001'},headers:{authorization:hmac('/codeSet/PROC-001')}}});assert.equal(foundMcp.isError,false,JSON.stringify(foundMcp));assert.deepEqual(JSON.parse(foundMcp.content[0].text),{code:'PROC-001',description:'Office Visit'});
   const health = await fetch(`${base}/health`); assert.equal(health.status, 200); await health.arrayBuffer();
   for (const path of ['/codeSet', '/codeSet/PROC-001', '/compliance/export/user']) {
     const response = await fetch(`${base}${path}`); assert.equal(response.status, 401); await response.arrayBuffer();

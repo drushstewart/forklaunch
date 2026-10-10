@@ -1,3 +1,4 @@
+import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync,sign,createHmac,randomUUID } from 'node:crypto';
 import http from 'node:http';
@@ -58,6 +59,8 @@ async function call(base,path,{method='GET',body,authorization=hmac(path,method,
 }
 try{
   let base=await start(baseBinary);const twilio=await start(twilioBinary);const other=await start(twilioBinary,'b');
+  for(const instance of [base,twilio,other])await probeMcp(instance.base,['sendSms','getSmsRecord']);
+  const deniedMcp=await mcpRpc(base.base,'tools/call',{name:'getSmsRecord',arguments:{params:{id:'missing'}}});assert.equal(deniedMcp.isError,true);
   const sdk=await import(pathToFileURL(sdkPath));
   const client=sdk.createForkLaunchSdk({serviceBaseUrls:{messaging:base.base,twilio:twilio.base}});
   assert.equal((await fetch(`${base.base}/health`)).status,200);
@@ -70,6 +73,8 @@ try{
   const sent=await client.messaging.sms.sendSms({body:request,headers:{authorization:hmac('/sms','POST',serialized)}});
   assert.equal(sent.code,200);assert.equal(sent.response.status,'sent');assert.deepEqual(sent.response.metadata,request.metadata);
   const id=sent.response.id;
+  const fetchedMcp=await mcpRpc(base.base,'tools/call',{name:'getSmsRecord',arguments:{params:{id},headers:{authorization:hmac(`/sms/${id}`)}}});assert.equal(fetchedMcp.isError,false,JSON.stringify(fetchedMcp));assert.equal(JSON.parse(fetchedMcp.content[0].text).id,id);
+
   assert.equal((await call(other.base,`/sms/${id}`)).status,404);
   const queued=await client.twilio.sms.sendSms({body:request,headers:{authorization:hmac('/sms','POST',serialized)}});
   assert.equal(queued.code,200);assert.equal(queued.response.status,'queued');assert.equal(dispatches,1);
@@ -91,6 +96,7 @@ try{
   const sdkForm=new URLSearchParams();for(const [key,values]of Object.entries(sdkCallback))for(const value of Array.isArray(values)?values:[values])sdkForm.append(key,value);
   const sdkHandled=await client.twilio.webhook.handleStatusCallback({body:sdkCallback,headers:{'x-twilio-signature':callbackSignature(sdkForm)}});
   assert.equal(sdkHandled.code,200);assert.equal(sdkHandled.response,'Status callback processed');
+  const mcpCallback=await mcpRpc(twilio.base,'tools/call',{name:'handleStatusCallback',arguments:{body:sdkCallback,headers:{'x-twilio-signature':callbackSignature(sdkForm)}}});assert.equal(mcpCallback.isError,false,JSON.stringify(mcpCallback));assert.equal(mcpCallback.content[0].text,'Status callback processed');
   const sdkRaw=await client.twilio.webhook.handleStatusCallback({body:sdkForm,headers:{'x-twilio-signature':callbackSignature(sdkForm)}});assert.equal(sdkRaw.code,200);
   await assert.rejects(()=>client.twilio.webhook.handleStatusCallback({body:{MessageSid:'sid',MessageStatus:'sent',Nested:{invalid:true}},headers:{}}),/Form values/);
   const rustBody=JSON.stringify({to:'+15550000008',body:'private SMS from Rust SDK'});
@@ -113,7 +119,8 @@ try{
   response=await call(base.base,`/sms/${id}`);assert.equal(response.status,404);await response.arrayBuffer();
   response=await call(base.base,'/compliance/erase/'+encodeURIComponent(request.to),{method:'DELETE',authorization:jwt()});assert.equal(response.status,404);await response.arrayBuffer();
   // Leave a persisted record for the owner-side ciphertext check.
-  const last=JSON.stringify({...request,to:'+15550000009'});response=await call(base.base,'/sms',{method:'POST',body:last});assert.equal(response.status,200);await response.arrayBuffer();
+  const lastBody={...request,to:'+15550000009'};const last=JSON.stringify(lastBody);
+  const mcpSent=await mcpRpc(base.base,'tools/call',{name:'sendSms',arguments:{body:lastBody,headers:{authorization:hmac('/sms','POST',last)}}});assert.equal(mcpSent.isError,false,JSON.stringify(mcpSent));assert.equal(JSON.parse(mcpSent.content[0].text).to,lastBody.to);
   for(const instance of [base,twilio,other])await stop(instance);
   for(const info of children){assert.ok(!info.stderr().includes(secret));assert.ok(!info.stderr().includes(token));assert.ok(!info.stderr().includes(request.body));}
   assert.ok(jwksFetches>=2&&jwksFetches<=4);

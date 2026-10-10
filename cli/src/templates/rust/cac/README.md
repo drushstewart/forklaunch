@@ -23,3 +23,5 @@ the configured issuer further. Tokens require an expiry and honor `nbf`.
 route registry. Offline artifact export requires no keys, JWKS network access or
 telemetry configuration. Shutdown drains HTTP work and flushes optional OTLP.
 User source and Cargo metadata survive sync/reinit and module rename.
+
+HTTP health and Streamable HTTP MCP share the configured listener. MCP is served at `/mcp` by default, and tools retain HTTP route authentication. Set `MCP_ENABLED=false` to disable it, or configure `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.

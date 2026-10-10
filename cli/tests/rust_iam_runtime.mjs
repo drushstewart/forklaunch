@@ -1,3 +1,4 @@
+import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -34,6 +35,8 @@ async function start(tenant) {
 try {
   const first = await start('a');
   const second = await start('b');
+  await probeMcp(first.baseUrl,['listUsers']);
+  await probeMcp(second.baseUrl,['listUsers']);
   const publicSdk = createForkLaunchSdk({ baseUrl: first.baseUrl });
   const login = await publicSdk.iam.auth.authenticate({ body: { email: 'member@example.com', password: 'first-password' } });
   assert.equal(login.code, 200);
@@ -43,6 +46,9 @@ try {
   assert.equal(page.code, 200);
   assert.equal(page.response.items[0].display_name, 'First');
   assert.equal(page.response.next_cursor, 'user-1');
+  const mcpPage=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{limit:1}}},{authorization:`Bearer ${token}`});assert.equal(mcpPage.isError,false,JSON.stringify(mcpPage));assert.deepEqual(JSON.parse(mcpPage.content[0].text),page.response);
+  const deniedMcp=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}});assert.equal(deniedMcp.isError,true);
+  const wrongTenantMcp=await mcpRpc(second.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}},{authorization:`Bearer ${token}`});assert.equal(wrongTenantMcp.isError,true);
   const next = await sdk.iam.users.listUsers({ query: { limit: 1, cursor: page.response.next_cursor } });
   assert.equal(next.response.items[0].id, 'user-2');
   assert.equal(next.response.next_cursor, null);
@@ -58,6 +64,7 @@ try {
   assert.equal((await restartedSdk.iam.users.getUser({ params: { id: 'user-1' } })).response.email, 'member@example.com');
   assert.equal((await restartedSdk.iam.auth.logout()).code, 204);
   assert.equal((await restartedSdk.iam.users.listUsers({query:{}})).code, 401);
+  const revokedMcp=await mcpRpc(restarted.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}},{authorization:`Bearer ${token}`});assert.equal(revokedMcp.isError,true);
   console.log('PASS generated PostgreSQL IAM, typed TypeScript SDK, tenant isolation, restart persistence, revocation, and SIGTERM');
 } finally {
   for (const { child } of processes) {

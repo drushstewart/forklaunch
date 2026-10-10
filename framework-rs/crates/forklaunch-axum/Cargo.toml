@@ -8,10 +8,12 @@ repository.workspace = true
 
 [features]
 default = ["adapter"]
+mcp = ["adapter", "dep:forklaunch-mcp"]
 remote-jwks = ["adapter", "forklaunch-auth/remote-jwks", "dep:jsonwebtoken"]
 adapter = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes", "dep:form_urlencoded", "dep:http-body"]
 
 [dependencies]
+forklaunch-mcp = { path = "../forklaunch-mcp", features = ["rmcp-server"], optional = true }
 forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-contract = { path = "../forklaunch-contract" }
 forklaunch-core = { path = "../forklaunch-core" }
@@ -34,6 +36,7 @@ http-body = { version = "1", optional = true }
 jsonwebtoken = { version = "9", optional = true }
 
 [dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 opentelemetry_sdk = { version = "0.31", features = ["testing"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"] }

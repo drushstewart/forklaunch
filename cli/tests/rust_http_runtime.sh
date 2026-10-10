@@ -19,6 +19,7 @@ run_cli init router users --path runtime-app/crates/accounts --language rust
 # Relocation catches accidental dependencies on the CLI build machine's checkout.
 cp -R runtime-app relocated-app
 cd relocated-app
+cp "$SCRIPT_DIR/rust_mcp_probe.mjs" rust_mcp_probe.mjs
 cp "$SCRIPT_DIR/fixtures/rust_sdk_transport.rs" crates/accounts/src/routes/transport_fixture.rs
 python3 - <<'PYTHON'
 from pathlib import Path
@@ -88,6 +89,7 @@ cp "$SCRIPT_DIR/fixtures/rust_sdk_http.rs" sdks/rust/accounts-sdk/examples/http_
 cargo build -p accounts-sdk --example http_roundtrip
 node --input-type=module - "$BINARY" "$(dirname "$BINARY")/examples/http_roundtrip" "$PWD/generated-wire-fixtures/typescript_sdk_server.mjs" <<'JS'
 import assert from 'node:assert/strict';
+import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createForkLaunchSdk } from './sdks/typescript/dist/index.js';
@@ -178,6 +180,9 @@ async function stopServer(child) {
 }
 try {
   const service = await startServer(process.argv[2]);
+  await probeMcp(service.baseUrl,['getText','getBinary']);
+  const mcpText=await mcpRpc(service.baseUrl,'tools/call',{name:'getText',arguments:{}});assert.equal(mcpText.content[0].text,'Hello\nRust 🦀');
+  const mcpBinary=await mcpRpc(service.baseUrl,'tools/call',{name:'getBinary',arguments:{}});assert.deepEqual([...Buffer.from(mcpBinary.content[0].resource.blob,'base64')],[0,255,13,10,42]);
   const baseUrl = service.baseUrl;
   const sdk = createForkLaunchSdk({ baseUrl });
   const health = await sdk.accounts.health.getHealth();

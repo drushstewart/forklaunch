@@ -296,7 +296,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 ### `forklaunch-mcp`
 
 - [x] Generate MCP tools from eligible HTTP contracts. (`mcp_tools`)
-- [ ] Use `rmcp` for server implementation. (reserved behind the `rmcp-server` feature)
+- [x] Use `rmcp` for a Streamable HTTP server behind `rmcp-server`, with bounded HTTP-router dispatch, per-request transport authentication, Host/Origin checks and generated-service wiring.
 - [x] Support per-route MCP opt-in and opt-out. (`route.options.mcp`)
 - [x] Support transport authentication callback. (`McpAuthCallback`)
 - [x] Support additional manually registered tools. (`McpToolRegistry::with_tool`)
@@ -807,4 +807,6 @@ require literal Rust clones, but their public request/response behavior does.
 
 - [x] Preserve the actual HTTP method for authentication on implicit HEAD-to-GET dispatch, while retaining explicit HEAD precedence and local-handler compatibility; include request-HMAC regression coverage.
 
-- [ ] Validate actual service HTTP and MCP startup, MCP initialization/discovery/tool invocation and authenticated dispatch for generated services and built-in module families. Requested explicitly during the full-parity continuation; Rust currently has MCP descriptors but no server transport.
+- [x] Validate actual service HTTP and MCP startup, initialization/discovery/tool invocation and authenticated dispatch for generated generic services, IAM, CAC, base/Twilio messaging and custom routers. Live fixtures cover all 27 HTTP methods, signed JSON/forms, bearer/session/JWT forwarding, tenant rejection, revocation, RBAC, Origin rejection, graceful shutdown and archive-installed enabled/disabled/custom-path startup. Reuse these checks for each additional generated module family.
+
+- [ ] Complete remaining MCP compatibility: additional manually bound tool execution, configurable separate listener/TypeScript port defaults, multipart calls and actual TypeScript generator conformance fixtures.

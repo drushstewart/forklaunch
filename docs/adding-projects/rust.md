@@ -423,3 +423,28 @@ remain framework-controlled. The Docker builder includes CMake, C/C++ tools and
 Perl for the bundled librdkafka/OpenSSL build. The isolated broker tests exercise
 transactions, retry/dead-letter handling, non-mutating inspection, offset persistence,
 replica fanout, pause/drain recovery and producer fencing.
+
+### HTTP and MCP startup
+
+Generated Rust services, IAM, CAC and messaging modules expose Streamable HTTP
+MCP at `/mcp` on their HTTP listener. The transport uses the official `rmcp`
+server and dispatches eligible tools through the same HTTP router, preserving
+validation, route authentication, tenant binding and auditing. Every request
+presents its own credentials; tool arguments can supply route-specific signed
+headers, and bearer credentials on the MCP request also reach JWT routes.
+
+`MCP_ENABLED=false` disables the endpoint. `MCP_PATH` changes its path.
+`MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` accept comma-separated allowlists;
+Hosts default to localhost/loopback and browser Origins are rejected until
+explicitly allowed. Configure the public host when deploying behind a proxy.
+Native applications enable `forklaunch-axum`'s `mcp` feature and call
+`into_router_with_mcp(McpServerOptions)` to configure a transport authentication
+callback, request bounds and tool timeout. JSON/text/form bodies and binary
+response resources are supported; multipart and explicit additional tool
+execution remain in the full-parity backlog.
+
+Live CLI fixtures start generated services and exercise HTTP health, MCP
+initialization, discovery and tool calls, including signed calls, rejected
+credentials and Origins, and graceful shutdown. HTTP and MCP share a listener
+in generated Rust services; TypeScript's default separate MCP port is tracked
+as a remaining configuration compatibility item.

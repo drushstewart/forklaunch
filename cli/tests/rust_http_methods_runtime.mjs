@@ -1,3 +1,4 @@
+import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
@@ -17,6 +18,9 @@ try {
     await new Promise(resolve => setTimeout(resolve,50));
   }
   assert.ok(base, errors);
+  const tools=await probeMcp(base);
+  const probes=tools.filter(tool=>tool.description==='HTTP method');assert.equal(probes.length,27);
+  for(const tool of probes){const result=await mcpRpc(base,'tools/call',{name:tool.name,arguments:{}});assert.equal(result.isError,false,tool.name);assert.equal(result.content[0].text,'');}
   // Node/browser Fetch forbids TRACE. A custom HTTP transport can send it while
   // retaining the generated client's request and response types.
   const transport = (url, options) => new Promise((resolve,reject) => {

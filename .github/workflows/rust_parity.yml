@@ -13,6 +13,8 @@ on:
       - 'cli/tests/rust_cac_provider_parity.mjs'
       - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
+      - 'cli/tests/rust_mcp_probe.mjs'
+      - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
       - '.github/workflows/rust_parity.yml'
   push:
@@ -28,6 +30,8 @@ on:
       - 'cli/tests/rust_cac_provider_parity.mjs'
       - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
+      - 'cli/tests/rust_mcp_probe.mjs'
+      - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
       - '.github/workflows/rust_parity.yml'
 

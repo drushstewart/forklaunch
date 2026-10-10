@@ -8,3 +8,5 @@ Run `cargo run -p {{{name}}} -- --migrate` with a schema-owner database URL. Use
 {{^twilio}}The base provider records a message as sent without contacting a carrier, matching the TypeScript hooks-only provider. Configure the Twilio module for actual delivery.{{/twilio}}
 
 Start with `cargo run -p {{{name}}}`. Optional OTLP export uses standard `OTEL_*` settings. Offline contract/OpenAPI exports run before reading live database, authentication or provider configuration. Custom router extensions within builtin modules and shared TypeScript/Rust database migrations remain separate parity work.
+
+HTTP health and Streamable HTTP MCP share the configured listener. MCP is served at `/mcp` by default, and tools retain HTTP route authentication. Set `MCP_ENABLED=false` to disable it, or configure `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.

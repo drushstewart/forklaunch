@@ -6,8 +6,11 @@
 //! MCP tool descriptors whose JSON-Schema `inputSchema`/`outputSchema` are
 //! derived from the contract's params/query/headers/body and `schemars`
 //! metadata. Additional tools can be registered manually, and a transport
-//! authentication callback gates access. The `rmcp`-backed server runtime is
-//! reserved behind the `rmcp-server` feature.
+//! authentication callback gates access. Enable `rmcp-server` for the streaming
+//! HTTP runtime, dispatching tools through the same authenticated HTTP router.
+
+#[cfg(feature = "rmcp-server")]
+pub mod server;
 
 use forklaunch_common::{JsonField, json_array, json_object, json_string};
 use forklaunch_contract::{ContractRegistry, FieldContract, RouteContract, SchemaRef};
@@ -98,13 +101,16 @@ fn input_schema(route: &RouteContract) -> String {
     if !route.request.params.is_empty() {
         properties.push(JsonField::new(
             "params",
-            fields_schema(&route.request.params),
+            fields_schema(&route.request.params, "params"),
         ));
         // path params are always required
         required.push(json_string("params"));
     }
     if !route.request.query.is_empty() {
-        properties.push(JsonField::new("query", fields_schema(&route.request.query)));
+        properties.push(JsonField::new(
+            "query",
+            fields_schema(&route.request.query, "query"),
+        ));
         if route.request.query.iter().any(|field| field.required) {
             required.push(json_string("query"));
         }
@@ -112,11 +118,14 @@ fn input_schema(route: &RouteContract) -> String {
     if !route.request.headers.is_empty() {
         properties.push(JsonField::new(
             "headers",
-            fields_schema(&route.request.headers),
+            fields_schema(&route.request.headers, "headers"),
         ));
     }
     if let Some(body) = &route.request.body {
-        properties.push(JsonField::new("body", schema_for_name(&body.schema)));
+        properties.push(JsonField::new(
+            "body",
+            input_schema_at(&body.schema, "/properties/body"),
+        ));
         required.push(json_string("body"));
     }
 
@@ -139,12 +148,17 @@ fn output_schema(route: &RouteContract) -> Option<String> {
         .map(|body| schema_for_name(&body.schema))
 }
 
-fn fields_schema(fields: &[FieldContract]) -> String {
-    let properties = json_object(
-        fields
-            .iter()
-            .map(|field| JsonField::new(&field.name, schema_for_name(&field.schema))),
-    );
+fn fields_schema(fields: &[FieldContract], location: &str) -> String {
+    let properties = json_object(fields.iter().map(|field| {
+        let name = field.name.replace('~', "~0").replace('/', "~1");
+        JsonField::new(
+            &field.name,
+            input_schema_at(
+                &field.schema,
+                &format!("/properties/{location}/properties/{name}"),
+            ),
+        )
+    }));
     let required = fields
         .iter()
         .filter(|field| field.required)
@@ -159,6 +173,39 @@ fn fields_schema(fields: &[FieldContract]) -> String {
         fields.push(JsonField::new("required", json_array(required)));
     }
     json_object(fields)
+}
+
+// A schemars root becomes a nested MCP input property. Its local references
+// must follow that move; otherwise #/definitions points at the envelope root.
+fn input_schema_at(schema: &SchemaRef, pointer: &str) -> String {
+    let source = schema_for_name(schema);
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&source) else {
+        return source;
+    };
+    relocate_refs(&mut value, pointer);
+    value.to_string()
+}
+fn relocate_refs(value: &mut serde_json::Value, pointer: &str) {
+    match value {
+        serde_json::Value::Object(fields) => {
+            if let Some(serde_json::Value::String(reference)) = fields.get_mut("$ref") {
+                if reference == "#" {
+                    *reference = format!("#{pointer}");
+                } else if let Some(local) = reference.strip_prefix("#/") {
+                    *reference = format!("#{pointer}/{local}");
+                }
+            }
+            for value in fields.values_mut() {
+                relocate_refs(value, pointer);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                relocate_refs(value, pointer);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn schema_for_name(schema: &SchemaRef) -> String {
@@ -273,6 +320,30 @@ mod tests {
                 .output_schema_json
                 .as_deref()
                 .is_some_and(|schema| schema.contains("User"))
+        );
+    }
+
+    #[test]
+    fn nested_input_references_resolve_inside_the_mcp_envelope() {
+        let mut body = BodyContract::json("Recursive");
+        body.schema = SchemaRef::named("Recursive").with_json_schema(r##"{"type":"object","properties":{"child":{"$ref":"#/definitions/Node"}},"definitions":{"Node":{"type":"object","properties":{"next":{"$ref":"#/definitions/Node"}}}}}"##);
+        let mut registry = ContractRegistry::new();
+        registry
+            .register(RouteContract::post("Create", "Create", "/items").with_request_body(body));
+        let tools = mcp_tools(&registry);
+        let schema: serde_json::Value = serde_json::from_str(&tools[0].input_schema_json).unwrap();
+        let reference = schema["properties"]["body"]["properties"]["child"]["$ref"]
+            .as_str()
+            .unwrap();
+        assert_eq!(reference, "#/properties/body/definitions/Node");
+        assert!(
+            schema
+                .pointer(reference.strip_prefix('#').unwrap())
+                .is_some()
+        );
+        assert_eq!(
+            schema["properties"]["body"]["definitions"]["Node"]["properties"]["next"]["$ref"],
+            reference
         );
     }
 
