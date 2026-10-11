@@ -8,8 +8,11 @@ repository.workspace = true
 
 [dependencies]
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
+forklaunch-iam-base = { path = "../forklaunch-iam-base", features = ["postgres"] }
+uuid = { version = "1", features = ["v4"] }
+form_urlencoded = "1"
 forklaunch-iam-interface = { path = "../../../interfaces/forklaunch-iam-interface" }
-forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum" }
+forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["remote-jwks"] }
 forklaunch-auth = { path = "../../../../../framework-rs/crates/forklaunch-auth" }
 forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core" }
 axum = "0.8"

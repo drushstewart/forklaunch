@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 //! Contract-driven HTTP composition for an asynchronous, tenant-bound IAM backend.
+pub mod directory;
 use axum::{
     Json,
     extract::{
@@ -40,8 +41,24 @@ pub fn session_iam_router_with_service_info<S: AsyncIamSessions + 'static>(
     service: Arc<S>,
     info: ServiceInfo,
 ) -> ForkLaunchRouter {
-    let registry = contracts::session_registry();
+    build_session_router(service, info, false)
+}
+fn build_session_router<S: AsyncIamSessions + 'static>(
+    service: Arc<S>,
+    info: ServiceInfo,
+    combined: bool,
+) -> ForkLaunchRouter {
+    let registry = if combined {
+        forklaunch_iam_interface::module_contracts::combined_registry()
+    } else {
+        contracts::session_registry()
+    };
     let contract = |name: &str| {
+        let name = if combined && name == "getUser" {
+            "getSessionUser"
+        } else {
+            name
+        };
         registry
             .routes()
             .iter()

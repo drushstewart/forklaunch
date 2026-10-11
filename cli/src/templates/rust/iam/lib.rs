@@ -1,7 +1,7 @@
 pub mod routes;
 
 use forklaunch_contract::{ContractRegistry, ServiceContract};
-use forklaunch_iam_interface::contracts;
+use forklaunch_iam_interface::module_contracts;
 use std::{fs, path::Path};
 
 pub const SERVICE_NAME: &str = "{{{name}}}";
@@ -13,7 +13,7 @@ pub fn service_info() -> forklaunch_core::ServiceInfo {
 
 pub fn contract_registry() -> ContractRegistry {
     let mut registry = ContractRegistry::for_service(ServiceContract::new(SERVICE_NAME, SERVICE_VERSION));
-    for route in contracts::session_registry().routes() {
+    for route in module_contracts::combined_registry().routes() {
         registry.register(route.clone());
     }
     for route in routes::contracts() { registry.register(route); }

@@ -1,5 +1,10 @@
 use std::{env, sync::Arc};
-use forklaunch_core::persistence::TenantContext;
+use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
+use forklaunch_iam_base::directory::postgres::PostgresDirectoryStore;
+use forklaunch_auth::jwt::{RemoteJwks,RemoteJwksConfig};
+use forklaunch_axum::module_auth::HmacJwksAuth;
+use forklaunch_blueprint_core::AuditContext;
+use jsonwebtoken::{Algorithm,Validation};
 use forklaunch_iam_base::postgres::PostgresIamService;
 use sqlx::postgres::PgPoolOptions;
 use {{crate_module}}::{service_info, write_contract_artifacts};
@@ -37,12 +42,26 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
-    let store = Arc::new(PostgresIamService::new(pool.clone(), tenant).await?);
+    let store = Arc::new(PostgresIamService::new(pool.clone(), tenant.clone()).await?);
+    let directory=PostgresDirectoryStore::new(pool.clone(),tenant,Arc::new(FieldEncryptor::from_env()?),AuditContext::system("iam-startup")).await?;
+    let secret = env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?;
+    let jwks = RemoteJwks::new(RemoteJwksConfig::new(
+        env::var("JWKS_PUBLIC_KEY_URL").map_err(|_| "JWKS_PUBLIC_KEY_URL is required")?,
+    ))?;
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.algorithms = vec![Algorithm::RS256, Algorithm::RS384, Algorithm::RS512,
+        Algorithm::PS256, Algorithm::PS384, Algorithm::PS512, Algorithm::ES256, Algorithm::ES384, Algorithm::EdDSA];
+    validation.validate_nbf = true;
+    validation.leeway = 0;
+    validation.validate_aud = false;
+    if let Ok(issuer) = env::var("JWT_ISSUER") { validation.set_issuer(&[issuer]); }
+    if let Ok(audience) = env::var("JWT_AUDIENCE") { validation.validate_aud = true; validation.set_audience(&[audience]); }
+    let auth = HmacJwksAuth::new(secret.into_bytes(), jwks, validation)?;
     let host = env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned());
     let port: u16 = env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?;
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
-    let router = forklaunch_iam_axum::session_iam_router_with_service_info(store, service_info());
+    let router = forklaunch_iam_axum::directory::iam_router(store, directory, auth, service_info());
     {{crate_module}}::routes::register_router(router).serve_with_default_mcp(listener, shutdown()).await?;
     pool.close().await;
     Ok(())

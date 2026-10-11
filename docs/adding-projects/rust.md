@@ -170,14 +170,15 @@ Generate a persistent IAM module in an existing Rust or mixed application:
 forklaunch init module --language rust -m iam-base -d postgresql --path .
 # Alternatively, pass --modules iam-base when initializing a Rust application.
 DATABASE_URL=postgres://schema_owner:password@localhost/app cargo run -p iam -- --migrate
+# Export ENCRYPTION_KEY, HMAC_SECRET_KEY and JWKS_PUBLIC_KEY_URL first.
 DATABASE_URL=postgres://restricted_app:password@localhost/app TENANT_ID=acme cargo run -p iam
 ```
 
 Replace the example URLs with your own credentials. Migration and runtime connections use separate database roles. Generated modules bundle blueprint source in `.forklaunch/blueprint-rs`; commit it alongside the bundled framework. Contract/OpenAPI export works without a database connection.
 
-The scaffold binds one trusted `TENANT_ID` per process. Login, logout, paginated users and organizations, and permission lookup use PostgreSQL. Provision users through the administrative repository API; the generator creates no default account. Directory endpoints require authentication; add your application's authorization policy before exposing them. Tenant selection from verified identity, cookie/CSRF sessions, email/reset/verification flows, JWT issuance, and OAuth/OIDC providers remain pending.
+The scaffold binds one trusted `TENANT_ID` per process. Login, logout, paginated users and organizations, and permission lookup use PostgreSQL. Provision users through the administrative repository API; the generator creates no default account. The configured `/user`, `/role`, `/permission`, and `/organization` families add thirty directory CRUD and grant-surfacing routes, shared by HTTP and MCP. Internal operations verify request HMAC signatures; protected operations verify JWKS JWTs and declared roles/permissions. User reads and mutations resolve organization membership from storage and enforce it transactionally. Directory users remain separate from credential/session users; the configured TypeScript CRUD mapper ignores passwords, and the native mapper follows that behavior. Sensitive directory fields use identity-bound encryption, rotated-key uniqueness claims and atomic actor audits. Grant the runtime role access to `fl_iam_directory`, `fl_iam_directory_unique_claims`, `fl_iam_directory_audit` and USAGE on `fl_iam_directory_sequence_seq` in addition to the session tables. The legacy `/users/:id` SDK/MCP operation is named `getSessionUser`; `/user/:id` uses `getUser`. Tenant selection from verified identity, cookie/CSRF sessions, email/reset/verification flows, JWT issuance, and OAuth/OIDC providers remain pending.
 
-`cli/tests/rust_iam_runtime.sh` checks a relocated generated module against PostgreSQL through its TypeScript SDK, including cross-tenant rejection, session persistence across restart, revocation, and SIGTERM shutdown. It accepts `FORKLAUNCH_TEST_POSTGRES_URL` or starts its own isolated PostgreSQL container.
+`cli/tests/rust_iam_runtime.sh` checks a relocated generated module against PostgreSQL through its TypeScript SDK, including all thirty directory routes, HMAC and JWT authorization, organization scoping, atomic mixed-organization rejection, authenticated MCP CRUD, cross-tenant rejection, session persistence across restart, revocation, and SIGTERM shutdown. It accepts `FORKLAUNCH_TEST_POSTGRES_URL` or starts its own isolated PostgreSQL container.
 
 ## CAC module
 

@@ -6,6 +6,7 @@ use std::{
 };
 
 pub mod credentials;
+pub mod directory;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 

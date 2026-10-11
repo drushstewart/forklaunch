@@ -336,7 +336,10 @@ export class BasePermissionService<
     if (this.evaluatedTelemetryOptions.logging) {
       this.openTelemetryCollector.info('Updating permission', permissionDto);
     }
-    const { permission, roles } = await this.updatePermissionDto(permissionDto);
+    const { permission, roles } = await this.updatePermissionDto(
+      permissionDto,
+      em
+    );
     const entities = await (em ?? this.em).upsertMany([permission, ...roles]);
 
     if (em) {
@@ -363,10 +366,12 @@ export class BasePermissionService<
       InferEntity<MapperEntities['RoleEntityMapper']>
     > = {};
     const permissions: InferEntity<MapperEntities['PermissionMapper']>[] = [];
-    await (em ?? this.em).transactional(async (em) => {
-      permissionDtos.map(async (updatePermissionDto) => {
-        const { permission, roles } =
-          await this.updatePermissionDto(updatePermissionDto);
+    await (em ?? this.em).transactional(async (transactionEm) => {
+      for (const updatePermissionDto of permissionDtos) {
+        const { permission, roles } = await this.updatePermissionDto(
+          updatePermissionDto,
+          transactionEm
+        );
         roles.forEach((role) => {
           if (
             rolesCache[role.id] &&
@@ -382,14 +387,10 @@ export class BasePermissionService<
           }
         });
         permissions.push(permission);
-      });
+      }
       const entities = [...permissions, ...Object.values(rolesCache)];
 
-      if (em) {
-        await em.persist(entities);
-      } else {
-        await this.em.persist(entities).flush();
-      }
+      await transactionEm.persist(entities).flush();
     });
 
     return Promise.all(

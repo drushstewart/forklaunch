@@ -1216,10 +1216,13 @@ dependencies = [
  "forklaunch-axum",
  "forklaunch-blueprint-core",
  "forklaunch-core",
+ "forklaunch-iam-base",
  "forklaunch-iam-interface",
+ "form_urlencoded",
  "serde",
  "serde_json",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1227,10 +1230,13 @@ name = "forklaunch-iam-base"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "chrono",
  "forklaunch-blueprint-core",
  "forklaunch-core",
  "forklaunch-iam-interface",
  "rand_core 0.6.4",
+ "regex",
+ "serde",
  "serde_json",
  "sha2",
  "sqlx",
@@ -1242,6 +1248,7 @@ dependencies = [
 name = "forklaunch-iam-interface"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "forklaunch-blueprint-core",
  "schemars 0.8.22",
  "serde",

@@ -160,11 +160,12 @@ export class BaseUserService<
       this.openTelemetryCollector.info('Getting batch users', idsDto);
     }
 
+    const { ids, ...filters } = idsDto;
     return Promise.all(
       (
         await (em ?? this.em).find(
           this.mappers.UserMapper.entity as typeof User,
-          idsDto,
+          { ...filters, id: { $in: ids } },
           {
             populate: ['id', '*']
           }
@@ -261,9 +262,10 @@ export class BaseUserService<
       this.openTelemetryCollector.info('Deleting batch users', idsDto);
     }
 
+    const { ids, ...filters } = idsDto;
     const filter = {
-      ...idsDto,
-      id: { $in: idsDto.ids },
+      ...filters,
+      id: { $in: ids },
       ...(idsDto.organization && {
         organization: idsDto.organization.id
       })

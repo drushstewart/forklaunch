@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 pub mod async_service;
+pub mod module_contracts;
+pub mod services;
 pub use async_service::{AsyncIamRepository, AsyncIamService, AsyncIamSessions};
 
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult, Page, PageRequest};

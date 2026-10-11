@@ -71,12 +71,26 @@ async function check() {
     const nullable: typeof page.response.next_cursor = null;
     console.log(email, nullable);
   }
+  const directoryUser = await sdk.iam.user.getUser({params: {id: '00000000-0000-4000-8000-000000000000'}});
+  if (directoryUser.code === 200) {
+    const slug: string = directoryUser.response.roles[0].permissions[0].slug;
+    console.log(slug);
+  }
+  const updated = await sdk.iam.user.updateUser({body: {id: '00000000-0000-4000-8000-000000000000', firstName: 'Typed'}});
+  if (updated.code === 200) { const message: string = updated.response; console.log(message); }
   // @ts-expect-error Credentials require a string password.
   await sdk.iam.auth.authenticate({body: {email: 'test@example.com', password: 1}});
 }
 void check;
 TS
 "$TSC_BIN" --strict --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --outDir sdks/typescript/dist sdks/typescript/src/index.ts sdks/typescript/src/iam_typecheck.ts
+mkdir -p sdks/rust/iam-sdk/tests
+cp "$SCRIPT_DIR/fixtures/rust_iam_sdk_runtime.rs" sdks/rust/iam-sdk/tests/runtime.rs
+cat >> sdks/rust/iam-sdk/Cargo.toml <<'TOML'
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+TOML
 env DATABASE_URL="$FORKLAUNCH_TEST_POSTGRES_URL" cargo run -p iam -- --migrate
 mkdir -p crates/iam/examples
 cp "$SCRIPT_DIR/fixtures/rust_iam_seed.rs" crates/iam/examples/seed.rs
@@ -88,6 +102,7 @@ cp "$SCRIPT_DIR/rust_mcp_probe.mjs" rust_mcp_probe.mjs
 node sdk_http_test.mjs "$BINARY"
 # Keep the live fixture intact; validate lifecycle mutations in a separate copy.
 cp -R "$RUN_ROOT/relocated-app" "$RUN_ROOT/lifecycle-app"
+rm "$RUN_ROOT/lifecycle-app/sdks/rust/iam-sdk/tests/runtime.rs"
 mkdir -p "$RUN_ROOT/lifecycle-app/crates/occupied"
 printf 'user-owned destination\n' > "$RUN_ROOT/lifecycle-app/crates/occupied/marker"
 if run_cli change service --path "$RUN_ROOT/lifecycle-app/crates/iam" -N occupied --confirm; then

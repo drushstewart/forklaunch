@@ -559,6 +559,13 @@ fn ensure_iam_compose(root: &Path, name: &str, dryrun: bool) -> Result<()> {
     });
     env.entry("TENANT_ID".to_owned())
         .or_insert_with(|| "${IAM_TENANT_ID:?Configure a trusted tenant}".to_owned());
+    for (key, value) in [
+        ("ENCRYPTION_KEY", "${IAM_ENCRYPTION_KEY:?Configure field encryption}"),
+        ("HMAC_SECRET_KEY", "${IAM_HMAC_SECRET_KEY:?Configure service authentication}"),
+        ("JWKS_PUBLIC_KEY_URL", "${IAM_JWKS_PUBLIC_KEY_URL:?Configure JWT verification}"),
+    ] {
+        env.entry(key.to_owned()).or_insert_with(|| value.to_owned());
+    }
     write(path, yaml_to_string(&compose)?)?;
     Ok(())
 }

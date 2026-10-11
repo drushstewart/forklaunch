@@ -8,6 +8,9 @@ on:
       - 'blueprint/ecommerce-stripe/**'
       - 'blueprint/implementations/ecommerce/**'
       - 'blueprint/implementations/billing/**'
+      - 'blueprint/implementations/iam/**'
+      - 'blueprint/iam-base/**'
+      - 'blueprint/interfaces/iam/**'
       - 'blueprint/interfaces/ecommerce/**'
       - 'blueprint/interfaces/billing/**'
       - 'framework/core/src/persistence/fieldEncryptor.ts'
@@ -58,6 +61,7 @@ on:
       - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
+      - 'cli/tests/rust_iam_directory_parity.mjs'
       - 'cli/tests/rust_billing_contracts_parity.mjs'
       - 'cli/tests/rust_actual_validator_fixture.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
@@ -94,6 +98,9 @@ on:
       - 'blueprint/ecommerce-stripe/**'
       - 'blueprint/implementations/ecommerce/**'
       - 'blueprint/implementations/billing/**'
+      - 'blueprint/implementations/iam/**'
+      - 'blueprint/iam-base/**'
+      - 'blueprint/interfaces/iam/**'
       - 'blueprint/interfaces/ecommerce/**'
       - 'blueprint/interfaces/billing/**'
       - 'framework/core/src/persistence/fieldEncryptor.ts'
@@ -144,6 +151,7 @@ on:
       - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
+      - 'cli/tests/rust_iam_directory_parity.mjs'
       - 'cli/tests/rust_billing_contracts_parity.mjs'
       - 'cli/tests/rust_actual_validator_fixture.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
@@ -381,6 +389,9 @@ jobs:
       - run: node cli/tests/rust_billing_contracts_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_iam_directory_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_base_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -435,6 +446,7 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-axum --all-features --test http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-messaging-base --all-features --test postgres_sms -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_backend -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features encrypted_directory -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-blueprint-sample-service --all-features postgres_iam_http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-database --all-features postgres_worker -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-redis --all-features redis_worker -- --ignored

@@ -10,7 +10,8 @@ repository.workspace = true
 forklaunch-blueprint-core = { path = "../../forklaunch-blueprint-core" }
 serde = { version = "1", features = ["derive"] }
 
-schemars = "0.8"
+schemars = { version = "0.8", features = ["chrono"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 serde_json = "1"
 
 [lints]
