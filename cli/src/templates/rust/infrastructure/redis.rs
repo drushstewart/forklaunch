@@ -28,3 +28,14 @@ pub fn encrypted_cache()
         codec,
     ))
 }
+
+/// Explicit encrypted FIFO queue factory sharing the configured Redis URL/key ring.
+pub fn encrypted_queue(
+    name: &str,
+) -> FrameworkResult<forklaunch_infrastructure_redis::json::JsonQueue> {
+    let codec = forklaunch_core::persistence::json::JsonRecordCodec::from_env()?;
+    let queue = forklaunch_infrastructure_redis::client::RedisQueue::connect(&config()?.url, name)?;
+    Ok(forklaunch_infrastructure_redis::json::JsonQueue::new(
+        queue, codec,
+    ))
+}

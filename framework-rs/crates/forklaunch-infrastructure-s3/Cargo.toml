@@ -44,3 +44,7 @@ workspace = true
 [[example]]
 name = "s3_environment_parity"
 required-features = ["aws-sdk"]
+
+[[example]]
+name = "json_object_parity"
+required-features = ["aws-sdk", "encryption"]

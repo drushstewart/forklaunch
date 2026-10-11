@@ -18,7 +18,10 @@ const url=process.env.FORKLAUNCH_TEST_REDIS_URL??'redis://127.0.0.1:32770/12';
 const transport=redisTransport(url),keys=[];
 const client={
  set:(key,value,options)=>transport.command('SET',key,value,'PX',options.PX),
- multi(){const commands=[];const multi={get(key){commands.push(['GET',key]);return multi;},ttl(key){commands.push(['TTL',key]);return multi;},exec:()=>transport.transaction(commands)};return multi;},
+ lPush:(key,value)=>transport.command('LPUSH',key,value),
+ rPop:key=>transport.command('RPOP',key),
+ lRange:(key,start,end)=>transport.command('LRANGE',key,start,end),
+ multi(){const commands=[];const multi={lPush(key,value){commands.push(['LPUSH',key,value]);return multi;},rPop(key){commands.push(['RPOP',key]);return multi;},get(key){commands.push(['GET',key]);return multi;},ttl(key){commands.push(['TTL',key]);return multi;},exec:()=>transport.transaction(commands)};return multi;},
 };
 const exports={};
 vm.runInNewContext(compile(await readFile(path.join(root,'framework/infrastructure/redis/index.ts'),'utf8')),{exports,Buffer,require(name){
@@ -50,6 +53,22 @@ try{
    assert.equal((await native([{op:'get',key:rustKey}],{tenant:null}))[0].error,'record_tenant_required');
    await assert.rejects(actual.readRecord(rustKey,{tenantId:'wrong-tenant'}));
   }
+  const queue=key();
+  await actual.enqueueBatchRecords(queue,[{order:1},{order:2}],compliance);
+  assert.deepEqual(await native([{op:'queuePeekBatch',count:10},{op:'queueGet'},{op:'queuePut',value:{order:3}}],{queue,format}),[[{order:1},{order:2}],{found:true,value:{order:1}},null]);
+  assert.deepEqual(JSON.parse(JSON.stringify(await actual.peekQueueRecords(queue,10,compliance))),[{order:2},{order:3}]);
+  assert.deepEqual(await actual.dequeueRecord(queue,compliance),{order:2});
+  assert.ok((await native([{op:'queuePeek'}],{queue,tenant:'wrong'}))[0].error);
+  assert.deepEqual(await native([{op:'queueGetBatch',count:10}],{queue,format}),[[{order:3}]]);
+  await native([{op:'queuePutBatch',values:[{order:4},{order:5}]}],{queue,format});
+  assert.deepEqual(JSON.parse(JSON.stringify(await actual.dequeueBatchRecords(queue,2,compliance))),[{order:4},{order:5}]);
+  await native([{op:'queuePutBatch',values:[false,0,null]}],{queue,format});
+  assert.deepEqual(await native([{op:'queuePeekBatch',count:10},{op:'queueGetBatch',count:10},{op:'queueGet'}],{queue,format}),[[false,0,null],[false,0,null],{found:false,value:null}]);
+  const timed=key(),persistent=key();
+  const [written,timedRecord]=await native([{op:'put',key:timed,value:false,ttl:1250},{op:'getWithTtl',key:timed}],{format});
+  assert.equal(written,null);assert.equal(timedRecord.value,false);assert.ok(timedRecord.ttl>1000&&timedRecord.ttl<=1250);
+  await transport.command('SET',persistent,JSON.stringify({persistent:true}));
+  assert.deepEqual(await native([{op:'getWithTtl',key:persistent}],{format}),[{key:persistent,value:{persistent:true},ttl:null}]);
   const rotated=key(),plain=key(),missing=key(),corrupt=key();
   const old=new exports.RedisTtlCache(60000,{}, {url},{},{encryptor:new FieldEncryptor(previous[0],{format})});
   await old.putRecord({key:rotated,value:{rotation:'old-key'}},compliance);
@@ -61,5 +80,5 @@ try{
   await new Promise(resolve=>setTimeout(resolve,10));
   assert.deepEqual(await native([{op:'get',key:expires}]),[{found:false,value:null}]);
  }
- console.log('PASS actual TypeScript/native encrypted Redis JSON: v2/v3 both directions, rotation, plaintext migration, falsy values, missing/expired keys and wrong-tenant/corruption rejection');
+ console.log('PASS actual TypeScript/native encrypted Redis cache/queue JSON: millisecond/persistent TTL metadata, FIFO/batches/peeks, v2/v3 both directions, rotation, plaintext migration, falsy values, missing/expired keys and wrong-tenant/corruption rejection');
 }finally{for(const key of keys)await transport.command('DEL',key);}

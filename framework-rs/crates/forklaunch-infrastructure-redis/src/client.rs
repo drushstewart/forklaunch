@@ -46,6 +46,14 @@ pub struct RedisTtlCache {
     connection: Connection,
 }
 
+/// A live value and Redis's remaining expiry, read in one transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RedisRecord {
+    pub value: Vec<u8>,
+    /// `None` means a persistent key written by an external client.
+    pub remaining_ttl: Option<Duration>,
+}
+
 impl RedisTtlCache {
     /// # Errors
     /// Returns an error for invalid configuration or connection failure.
@@ -54,6 +62,38 @@ impl RedisTtlCache {
         ttl_millis(config.default_ttl())?;
         let connection = connect(&config.url)?;
         Ok(Self { config, connection })
+    }
+
+    /// Retrieves the value and millisecond expiry together using MULTI/EXEC.
+    /// # Errors
+    /// Rejects invalid keys and backend failures.
+    pub fn get_with_ttl(&mut self, key: &str) -> FrameworkResult<Option<RedisRecord>> {
+        let key = normalize_key(key)?;
+        let (value, ttl): (Option<Vec<u8>>, i64) = redis::pipe()
+            .atomic()
+            .cmd("GET")
+            .arg(&key)
+            .cmd("PTTL")
+            .arg(&key)
+            .query(&mut self.connection)
+            .map_err(backend_error)?;
+        let Some(value) = value else {
+            return Ok(None);
+        };
+        if ttl == -2 {
+            return Ok(None);
+        }
+        let remaining_ttl = if ttl == -1 {
+            None
+        } else {
+            Some(Duration::from_millis(u64::try_from(ttl).map_err(|_| {
+                FrameworkError::new("redis_backend_error", "Invalid Redis expiration response")
+            })?))
+        };
+        Ok(Some(RedisRecord {
+            value,
+            remaining_ttl,
+        }))
     }
 
     /// Lists live keys with a literal prefix, using SCAN instead of blocking KEYS.

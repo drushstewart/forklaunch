@@ -89,6 +89,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             encrypted
                 .delete_record(&cache_key)
                 .map_err(|error| error.to_string())?;
+            let mut queue = redis_infrastructure::encrypted_queue(&format!("{cache_key}-queue"))
+                .map_err(|error| error.to_string())?;
+            queue
+                .enqueue_batch_records(&[false, true], Some(&tenant))
+                .map_err(|error| error.to_string())?;
+            assert!(queue.peek_record::<bool>(Some(&wrong)).is_err());
+            assert_eq!(
+                queue
+                    .peek_records::<bool>(10, Some(&tenant))
+                    .map_err(|error| error.to_string())?,
+                vec![false, true]
+            );
+            assert_eq!(
+                queue
+                    .dequeue_batch_records::<bool>(10, Some(&tenant))
+                    .map_err(|error| error.to_string())?,
+                vec![false, true]
+            );
+            assert!(
+                queue
+                    .dequeue_record::<bool>(Some(&tenant))
+                    .map_err(|error| error.to_string())?
+                    .is_none()
+            );
         }
         Ok(())
     })
