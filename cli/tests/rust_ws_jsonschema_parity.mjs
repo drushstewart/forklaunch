@@ -1,0 +1,327 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { actualValidator } from './rust_actual_validator_fixture.mjs';
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+);
+const { load } = actualValidator(root),
+  helpers = load(path.join(root, 'framework/core/src/ws/webSocketLike.ts'));
+const require = createRequire(import.meta.url),
+  parserPath = require.resolve(
+    process.env.ASYNCAPI_PARSER_PATH ?? '@asyncapi/parser',
+  ),
+  external = createRequire(parserPath);
+const Ajv = external('ajv'),
+  Ajv2020 = external('ajv/dist/2020').default,
+  addFormats = external('ajv-formats');
+const cache = new Map();
+// Compare decimal representations exactly, rather than accepting a nearby
+// floating-point value through AJV's multipleOfPrecision tolerance.
+function decimal(value) {
+  const [coefficient, exponent = '0'] = String(value).toLowerCase().split('e');
+  const [integer, fraction = ''] = coefficient.split('.');
+  return [BigInt(integer + fraction), Number(exponent) - fraction.length];
+}
+function multipleOf(value, divisor) {
+  let [numerator, scale] = decimal(value);
+  let [denominator, divisorScale] = decimal(divisor);
+  scale -= divisorScale;
+  if (scale >= 0) numerator *= 10n ** BigInt(scale);
+  else denominator *= 10n ** BigInt(-scale);
+  return numerator % denominator === 0n;
+}
+const validator = {
+  parse(schema, value) {
+    const key = JSON.stringify(schema);
+    let validate = cache.get(key);
+    if (!validate) {
+      const engine = new (schema.$schema?.includes('2020-12') ? Ajv2020 : Ajv)({
+        strict: false,
+        validateFormats: true,
+      });
+      addFormats(engine);
+      engine.removeKeyword('multipleOf');
+      engine.addKeyword({
+        keyword: 'multipleOf',
+        type: 'number',
+        schemaType: 'number',
+        compile: (divisor) => (value) => multipleOf(value, divisor),
+      });
+      validate = engine.compile(schema);
+      cache.set(key, validate);
+    }
+    // The actual helpers execute in a VM; AJV constant equality expects values
+    // from its own realm. Preserve the helper output while validating a JSON copy.
+    return validate(JSON.parse(JSON.stringify(value)))
+      ? { ok: true, value }
+      : {
+          ok: false,
+          errors: validate.errors.map((error) => ({
+            path: [error.instancePath],
+            message: error.message,
+          })),
+        };
+  },
+};
+const schemas = [
+  true,
+  false,
+  { type: 'string', minLength: 1, maxLength: 8, pattern: '^[a-z 水]+$' },
+  { type: 'number', minimum: 0, maximum: 10, multipleOf: 0.1 },
+  { type: 'integer', minimum: 0, exclusiveMaximum: 10 },
+  {
+    type: 'object',
+    required: ['message'],
+    properties: { message: { type: 'string', minLength: 1, maxLength: 8 } },
+    additionalProperties: false,
+  },
+  {
+    anyOf: [
+      {
+        type: 'object',
+        required: ['kind', 'message'],
+        properties: {
+          kind: { const: 'chat' },
+          message: { type: 'string', minLength: 1 },
+        },
+        additionalProperties: false,
+      },
+      {
+        type: 'object',
+        required: ['kind', 'count'],
+        properties: {
+          kind: { const: 'count' },
+          count: { type: 'integer', minimum: 0 },
+        },
+        additionalProperties: false,
+      },
+    ],
+  },
+  {
+    type: 'array',
+    items: { type: 'integer' },
+    minItems: 1,
+    maxItems: 2,
+    uniqueItems: true,
+  },
+  {
+    type: 'array',
+    items: [{ type: 'string' }, { type: 'integer' }],
+    additionalItems: false,
+    minItems: 2,
+  },
+  {
+    type: 'object',
+    properties: { a: { type: 'number' }, b: { type: 'number' } },
+    dependencies: { a: ['b'] },
+    additionalProperties: false,
+  },
+  {
+    type: 'object',
+    required: ['mode', 'value'],
+    properties: { mode: { type: 'string' }, value: { type: 'number' } },
+    if: { properties: { mode: { const: 'strict' } } },
+    then: { properties: { value: { minimum: 2 } } },
+    else: { properties: { value: { minimum: 0 } } },
+  },
+  { oneOf: [{ type: 'string' }, {}] },
+  { const: { $ref: 'literal' } },
+  { enum: ['abc', 1, null, { message: 'hello' }] },
+  {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    allOf: [{ properties: { message: { type: 'string' } } }],
+    unevaluatedProperties: false,
+  },
+  {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'array',
+    contains: { const: 1 },
+    minContains: 1,
+    maxContains: 1,
+  },
+  { type: 'string', format: 'email' },
+  { type: 'string', format: 'uuid' },
+  { type: 'string', format: 'date' },
+  { type: 'string', format: 'date-time' },
+  {
+    $ref: '#/definitions/Node',
+    definitions: {
+      Node: {
+        type: 'object',
+        required: ['value'],
+        properties: {
+          value: { type: 'integer' },
+          next: { $ref: '#/definitions/Node' },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'array',
+    prefixItems: [{ type: 'string' }, { type: 'integer' }],
+    items: false,
+    minItems: 2,
+  },
+  {
+    $id: 'https://schemas.example.test/root.json',
+    definitions: { child: { $id: 'child.json', type: 'string', minLength: 1 } },
+    $ref: 'child.json',
+  },
+];
+const values = [
+  '',
+  'hello 水',
+  'abc',
+  '😀😀😀😀😀😀😀😀',
+  '😀😀😀😀😀😀😀😀😀',
+  'bad!',
+  'true',
+  '42',
+  'null',
+  0,
+  1,
+  -1,
+  0.3,
+  0.30000000000000004,
+  3.14,
+  10,
+  1001,
+  null,
+  true,
+  false,
+  [],
+  [1],
+  [1, 1],
+  [1, 2],
+  [1, 2, 3],
+  ['hello', 1],
+  {},
+  { message: 'hello' },
+  { message: '' },
+  { message: 'hello', extra: true },
+  { kind: 'chat', message: 'hello' },
+  { kind: 'chat', message: 42 },
+  { kind: 'count', count: 3 },
+  { mode: 'strict', value: 1 },
+  { mode: 'loose', value: 1 },
+  { a: 1, b: 2 },
+  { a: 1 },
+  { value: 1, next: { value: 2 } },
+  { $ref: 'literal' },
+  'a@example.com',
+  'not@email',
+  'a..b@example.com',
+  'a@-bad.example',
+  'urn:uuid:123e4567-e89b-42d3-a456-426614174000',
+  '123e4567-e89b-42d3-a456-426614174000',
+  'invalid-uuid',
+  '2024-02-29',
+  '2023-02-29',
+  '2024-01-01T12:00:00Z',
+];
+const cases = [];
+for (const schema of schemas)
+  for (const value of values) {
+    cases.push({ schema, action: 'encode', value });
+    cases.push({
+      schema,
+      action: 'decode',
+      bytes: [...Buffer.from(JSON.stringify(value))],
+    });
+  }
+for (const schema of schemas)
+  for (const text of ['raw text', '{broken', 'hello 水'])
+    cases.push({ schema, action: 'decode', bytes: [...Buffer.from(text)] });
+const temporary = await mkdtemp(path.join(tmpdir(), 'fl-ws-jsonschema-'));
+try {
+  const input = path.join(temporary, 'input.json'),
+    output = path.join(temporary, 'output.json');
+  await writeFile(input, JSON.stringify(cases));
+  execFileSync(
+    'cargo',
+    [
+      'test',
+      '--quiet',
+      '--manifest-path',
+      path.join(root, 'framework-rs/Cargo.toml'),
+      '-p',
+      'forklaunch-ws',
+      '--all-features',
+      'json_schema_payload_conformance',
+    ],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        FORKLAUNCH_TEST_WS_JSON_SCHEMA_INPUT: input,
+        FORKLAUNCH_TEST_WS_JSON_SCHEMA_OUTPUT: output,
+      },
+      stdio: 'inherit',
+      timeout: 300000,
+    },
+  );
+  const native = JSON.parse(await readFile(output, 'utf8'));
+  for (let index = 0; index < cases.length; index++) {
+    const input = cases[index];
+    let value, error;
+    try {
+      value =
+        input.action === 'encode'
+          ? helpers.normalizeEncodedValue(
+              helpers.encodeSchemaValue(
+                validator,
+                input.value,
+                input.schema,
+                'fixture',
+              ),
+              'fixture',
+            )
+          : helpers.decodeSchemaValue(
+              validator,
+              Buffer.from(input.bytes),
+              input.schema,
+              'fixture',
+            );
+    } catch (cause) {
+      error = cause;
+    }
+    assert.equal(
+      native[index].ok,
+      !error,
+      `acceptance ${index}: ${JSON.stringify(input)} ${error ?? ''}`,
+    );
+    if (error) continue;
+    if (input.action === 'decode')
+      assert.deepEqual(
+        native[index].value,
+        JSON.parse(JSON.stringify(value)),
+        `decoded value ${index}`,
+      );
+    else if (typeof input.value === 'object' && input.value !== null)
+      assert.deepEqual(
+        JSON.parse(Buffer.from(native[index].bytes).toString()),
+        JSON.parse(value.toString()),
+        `structured wire ${index}`,
+      );
+    else
+      assert.deepEqual(
+        Buffer.from(native[index].bytes),
+        value,
+        `wire bytes ${index}`,
+      );
+  }
+  console.log(
+    `PASS ${cases.length} actual TypeScript WebSocket helper/AJV and native JSON Schema codec cases: bounds, patterns, enums/unions, decimals, arrays/tuples, dependent/conditional properties, formats, recursive and scoped resource references, both directions and raw text`,
+  );
+} finally {
+  await rm(temporary, { recursive: true, force: true });
+}

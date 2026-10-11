@@ -13,6 +13,7 @@ const cases=[];
 for(const kind of Object.keys(schemas))for(const value of ['', 'hello 水', '{broken', 'true', 0, 42, 1001, -1, 1.5, true, false, null, [], [0,false,null], {}, {type:'chat',text:'hello 水',extra:true}, {type:'subscribe',topic:'room'}, {type:'chat',text:''}, {type:'chat',text:42}, {type:'other',text:'hello'}, {type:'chat',text:'x'.repeat(33)}])cases.push({kind,action:'encode',value});
 for(const kind of Object.keys(schemas))for(const text of ['', 'hello 水', '"quoted"', '{broken', 'true', 'false', '0', '42', '-1', '1.5', '1001', 'null', '[]', '[0,false,null]', '{}', '{"type":"chat","text":"hello 水","extra":true}', '{"type":"subscribe","topic":"room"}', '{"type":"chat","text":""}', '{"type":"chat","text":42}', '{"type":"other","text":"hello"}'])cases.push({kind,action:'decode',bytes:[...Buffer.from(text)]});
 for(const kind of ['text','value'])cases.push({kind,action:'decode',bytes:[0xff,0,0xfe]});
+for(const text of ['1e400','['.repeat(130)+'0'+']'.repeat(130)])cases.push({kind:'text',action:'decode',bytes:[...Buffer.from(text)]});
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-payload-'));
 try{
  await writeFile(path.join(temporary,'input.json'),JSON.stringify(cases));

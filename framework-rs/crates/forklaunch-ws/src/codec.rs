@@ -23,8 +23,9 @@ impl fmt::Display for PayloadError {
 }
 impl std::error::Error for PayloadError {}
 
-type Encoder<T> = fn(&T, usize) -> Result<Vec<u8>, PayloadError>;
-type Decoder<T> = fn(&[u8]) -> Result<T, PayloadError>;
+type Encoder<T> = fn(&T, usize, Option<&JsonValidator>) -> Result<Vec<u8>, PayloadError>;
+type Decoder<T> = fn(&[u8], Option<&JsonValidator>) -> Result<T, PayloadError>;
+pub(crate) type JsonValidator = dyn Fn(&Value) -> Result<(), String> + Send + Sync;
 type Validator<T> = dyn Fn(&T) -> Result<(), String> + Send + Sync;
 
 /// Encodes messages as raw UTF-8 strings or JSON bytes, matching the TS helpers.
@@ -34,6 +35,7 @@ pub struct PayloadCodec<T> {
     encoder: Encoder<T>,
     decoder: Decoder<T>,
     validator: Arc<Validator<T>>,
+    json_validator: Option<Arc<JsonValidator>>,
     max_bytes: usize,
 }
 impl<T> Clone for PayloadCodec<T> {
@@ -42,6 +44,7 @@ impl<T> Clone for PayloadCodec<T> {
             encoder: self.encoder,
             decoder: self.decoder,
             validator: self.validator.clone(),
+            json_validator: self.json_validator.clone(),
             max_bytes: self.max_bytes,
         }
     }
@@ -53,8 +56,24 @@ impl<T: Serialize + DeserializeOwned> PayloadCodec<T> {
             encoder: encode_serde::<T>,
             decoder: decode_serde::<T>,
             validator: Arc::new(|_| Ok(())),
+            json_validator: None,
             max_bytes: DEFAULT_MAX_PAYLOAD_BYTES,
         }
+    }
+
+    /// Compile a JSON Schema once and validate original incoming values before
+    /// deserialization and original serialized values before wire encoding.
+    /// Missing dialect declarations use Draft 7. Email uses AJV full-format
+    /// semantics; UUID assertions also apply in Draft 7. Decimal multiples are
+    /// exact. No HTTP/file retrieval is enabled, including through unified features.
+    ///
+    /// # Errors
+    /// Rejects invalid schemas, unresolved resources and schema/regex budget limits.
+    #[cfg(feature = "json-schema")]
+    pub fn json_schema(schema: &Value) -> Result<Self, PayloadError> {
+        let mut codec = Self::serde();
+        codec.json_validator = Some(crate::codec_schema::compile(schema)?);
+        Ok(codec)
     }
 
     /// Use the framework's garde validation in both directions.
@@ -74,12 +93,13 @@ impl PayloadCodec<Vec<u8>> {
     #[must_use]
     pub fn bytes() -> Self {
         Self {
-            encoder: |value, limit| {
+            encoder: |value, limit, _| {
                 check_limit(value.len(), limit)?;
                 Ok(value.clone())
             },
-            decoder: |bytes| Ok(bytes.to_vec()),
+            decoder: |bytes, _| Ok(bytes.to_vec()),
             validator: Arc::new(|_| Ok(())),
+            json_validator: None,
             max_bytes: DEFAULT_MAX_PAYLOAD_BYTES,
         }
     }
@@ -115,7 +135,7 @@ impl<T> PayloadCodec<T> {
     /// Rejects invalid values, null messages, serialization failures and excessive bytes.
     pub fn encode(&self, value: &T) -> Result<Vec<u8>, PayloadError> {
         (self.validator)(value).map_err(PayloadError::Invalid)?;
-        let bytes = (self.encoder)(value, self.max_bytes)?;
+        let bytes = (self.encoder)(value, self.max_bytes, self.json_validator.as_deref())?;
         check_limit(bytes.len(), self.max_bytes)?;
         Ok(bytes)
     }
@@ -124,7 +144,7 @@ impl<T> PayloadCodec<T> {
     /// Rejects excessive bytes, schema/type mismatches and failed validation.
     pub fn decode(&self, bytes: &[u8]) -> Result<T, PayloadError> {
         check_limit(bytes.len(), self.max_bytes)?;
-        let value = (self.decoder)(bytes)?;
+        let value = (self.decoder)(bytes, self.json_validator.as_deref())?;
         (self.validator)(&value).map_err(PayloadError::Invalid)?;
         Ok(value)
     }
@@ -137,12 +157,33 @@ fn check_limit(bytes: usize, max_bytes: usize) -> Result<(), PayloadError> {
         Ok(())
     }
 }
-fn decode_serde<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, PayloadError> {
+fn decode_serde<T: DeserializeOwned>(
+    bytes: &[u8],
+    validate: Option<&JsonValidator>,
+) -> Result<T, PayloadError> {
     let text = String::from_utf8_lossy(bytes);
-    let value = serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text.into_owned()));
+    let value = match serde_json::from_str(&text) {
+        Ok(value) => value,
+        Err(error) if serde_json::from_str::<&serde_json::value::RawValue>(&text).is_ok() => {
+            // RawValue checks JSON syntax iteratively, without numeric conversion
+            // or a recursive Value tree. Resource/number failures must not turn
+            // otherwise valid structured JSON into a schema-valid text message.
+            return Err(PayloadError::Invalid(format!(
+                "JSON payload exceeds representation limits: {error}"
+            )));
+        }
+        Err(_) => Value::String(text.into_owned()),
+    };
+    if let Some(validate) = validate {
+        validate(&value).map_err(PayloadError::Invalid)?;
+    }
     serde_json::from_value(value).map_err(|error| PayloadError::Invalid(error.to_string()))
 }
-fn encode_serde<T: Serialize>(value: &T, max_bytes: usize) -> Result<Vec<u8>, PayloadError> {
+fn encode_serde<T: Serialize>(
+    value: &T,
+    max_bytes: usize,
+    validate: Option<&JsonValidator>,
+) -> Result<Vec<u8>, PayloadError> {
     // JSON escaping can expand raw strings sixfold; the final wire bytes retain the exact limit.
     let mut output = LimitedBytes {
         bytes: Vec::new(),
@@ -154,9 +195,12 @@ fn encode_serde<T: Serialize>(value: &T, max_bytes: usize) -> Result<Vec<u8>, Pa
         return Err(PayloadError::Limit { max_bytes });
     }
     result.map_err(|error| PayloadError::Invalid(error.to_string()))?;
-    match serde_json::from_slice(&output.bytes)
-        .map_err(|error| PayloadError::Invalid(error.to_string()))?
-    {
+    let serialized = serde_json::from_slice(&output.bytes)
+        .map_err(|error| PayloadError::Invalid(error.to_string()))?;
+    if let Some(validate) = validate {
+        validate(&serialized).map_err(PayloadError::Invalid)?;
+    }
+    match serialized {
         Value::String(value) => Ok(value.into_bytes()),
         Value::Null => Err(PayloadError::Invalid(
             "null cannot be sent as a message".into(),
@@ -254,6 +298,26 @@ mod tests {
                 })
                 .unwrap(),
             br#"{"message":"hello"}"#
+        );
+    }
+
+    #[test]
+    fn json_representation_limits_do_not_bypass_schemas_as_plain_text() {
+        let deep = format!("{}0{}", "[".repeat(130), "]".repeat(130));
+        assert!(
+            PayloadCodec::<String>::serde()
+                .decode(deep.as_bytes())
+                .is_err()
+        );
+        assert!(
+            PayloadCodec::<Value>::serde()
+                .decode(deep.as_bytes())
+                .is_err()
+        );
+        assert!(PayloadCodec::<String>::serde().decode(b"1e400").is_err());
+        assert_eq!(
+            PayloadCodec::<String>::serde().decode(b"{broken").unwrap(),
+            "{broken"
         );
     }
 

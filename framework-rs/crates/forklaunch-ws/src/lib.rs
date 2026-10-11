@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 pub mod codec;
+#[cfg(feature = "json-schema")]
+mod codec_schema;
 pub mod contract;
 pub use contract::{AsyncApiEnrichment, SocketContract, SocketSchemaEntry};
 #[cfg(feature = "transport")]
