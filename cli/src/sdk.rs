@@ -10,6 +10,7 @@ use crate::{
 pub(crate) mod generate;
 pub(crate) mod mode;
 mod openapi;
+mod schema;
 pub(crate) mod watch;
 
 #[derive(Debug)]

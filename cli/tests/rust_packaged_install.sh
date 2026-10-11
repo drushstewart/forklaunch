@@ -46,6 +46,19 @@ done
 for resource in redis s3; do
     "$CLI" infra add accounts "$resource" --path .
 done
+cp "$REPO_ROOT/cli/tests/fixtures/rust_recursive_service.rs" crates/accounts/src/recursive_fixture.rs
+python3 - <<'PYTHON'
+from pathlib import Path
+p=Path('crates/accounts/Cargo.toml')
+p.write_text(p.read_text().replace('[dependencies]\n','[dependencies]\nserde_json = "1"\n'))
+p=Path('crates/accounts/src/lib.rs')
+s='pub mod recursive_fixture;\n'+p.read_text()
+s=s.replace('for contract in routes::contracts() {','for contract in routes::contracts().into_iter().chain(recursive_fixture::contracts()) {')
+p.write_text(s)
+p=Path('crates/accounts/src/main.rs')
+s=p.read_text().replace('router(state)', 'accounts::recursive_fixture::register(router(state))')
+p.write_text(s)
+PYTHON
 python3 - "$REPO_ROOT" <<'PYTHON'
 from pathlib import Path
 import sys
@@ -55,6 +68,7 @@ for workspace in ['framework-rs','blueprint-rs']:
     if workspace == 'framework-rs':
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws.rs').is_file(), 'Packaged async S3 adapter missing'
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws_post.rs').is_file(), 'Packaged S3 POST signer missing'
+        assert root.joinpath('crates/forklaunch-openapi/src/schema.rs').is_file(), 'Packaged recursive schema rebasing missing'
         assert root.joinpath('crates/forklaunch-mcp/src/server.rs').is_file(), 'Packaged MCP runtime missing'
         assert root.joinpath('crates/forklaunch-mcp/src/server/manual.rs').is_file(), 'Packaged manual MCP runtime missing'
         assert root.joinpath('crates/forklaunch-mcp/src/server/multipart.rs').is_file(), 'Packaged multipart MCP runtime missing'
@@ -77,10 +91,12 @@ cargo build -p accounts
 node "$REPO_ROOT/cli/tests/rust_mcp_service_startup.mjs" "$CARGO_TARGET_DIR/debug/accounts"
 TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" node "$REPO_ROOT/cli/tests/rust_capabilities_runtime.mjs" "$CARGO_TARGET_DIR/debug/accounts"
 "$CLI" openapi export --path .
-"$CLI" sdk generate --path . --target all --from contract
-"$CLI" sdk generate --path . --target all --from contract --check
-"${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript/tsconfig.json
-cargo check --workspace
+for artifact in contract openapi; do
+    "$CLI" sdk generate --path . --target all --from "$artifact"
+    "$CLI" sdk generate --path . --target all --from "$artifact" --check
+    "${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript/tsconfig.json
+    cargo check --workspace
+done
 # Empty application contracts must also work in consumers that deny warnings.
 for sdk in postgres-jobs-sdk redis-jobs-sdk kafka-jobs-sdk bullmq-jobs-sdk; do
     cargo rustc -p "$sdk" --lib -- -D warnings
@@ -93,5 +109,9 @@ for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs','bullmq-jobs',
     assert contract['generator']=='framework-rs'
     spec=json.loads((Path('.forklaunch/openapi')/name/'openapi.json').read_text())
     assert spec['openapi'].startswith('3.')
+ts=Path('sdks/typescript/src/index.ts').read_text()
+rust=Path('sdks/rust/accounts-sdk/src/lib.rs').read_text()
+assert 'AccountsTreesReadTreeResponse' in ts and 'AccountsChoicesReadChoiceResponse' in ts
+assert 'pub children: Vec<AccountsSchema' in rust
 PYTHON
 echo 'PASS packaged CLI installation, portable service/worker generation, real compiler checks, and contract/SDK exports'

@@ -228,9 +228,9 @@ fn media_body(response: &Value, request: bool) -> Result<Value> {
     Ok(json!({"kind":kind, "contentType":media_type, "schema":{"jsonSchema":schema}}))
 }
 
-struct ExpansionBudget {
-    nodes: usize,
-    bytes: usize,
+pub(super) struct ExpansionBudget {
+    pub(super) nodes: usize,
+    pub(super) bytes: usize,
 }
 impl Default for ExpansionBudget {
     fn default() -> Self {
@@ -241,7 +241,7 @@ impl Default for ExpansionBudget {
     }
 }
 
-fn clone_literal(value: &Value, budget: &mut ExpansionBudget) -> Result<Value> {
+pub(super) fn clone_literal(value: &Value, budget: &mut ExpansionBudget) -> Result<Value> {
     let size = serde_json::to_vec(value)?.len();
     budget.bytes = budget
         .bytes
@@ -309,6 +309,8 @@ fn resolve(
                             "example" | "examples" | "default" | "const" | "enum"
                         ) {
                         clone_literal(value, budget)?
+                    } else if key == "schema" {
+                        super::schema::bundle(value, document, budget)?
                     } else if matches!(
                         key.as_str(),
                         "properties" | "patternProperties" | "$defs" | "dependentSchemas"

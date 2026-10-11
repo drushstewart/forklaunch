@@ -115,17 +115,18 @@ pub enum {{name}} {
 {{/variants}}
 }
 
-impl Default for {{name}} {
+{{#has_default}}impl Default for {{name}} {
     fn default() -> Self {
 {{#variants}}{{#first}}
         Self::{{name}}(Default::default())
 {{/first}}{{/variants}}
     }
 }
+{{/has_default}}
 {{/union}}
 {{^union}}
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-{{#deny_unknown_fields}}#[serde(deny_unknown_fields)]{{/deny_unknown_fields}}
+#[derive(Debug, Clone{{#has_default}}, Default{{/has_default}}, PartialEq, Serialize, Deserialize)]
+{{#deny_unknown_fields}}#[serde(deny_unknown_fields)]{{/deny_unknown_fields}}{{#transparent}}#[serde(transparent)]{{/transparent}}
 pub struct {{name}} {
 {{#fields}}
     {{#flatten}}#[serde(flatten)]{{/flatten}}{{^flatten}}#[serde(rename = {{{wire_name_literal}}})]{{/flatten}}

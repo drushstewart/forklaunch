@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod schema;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -366,7 +368,10 @@ fn content_json(body: &BodyContract) -> String {
 fn schema_ref_json(schema: &SchemaRef) -> String {
     json_object([JsonField::new(
         "$ref",
-        json_string(&format!("#/components/schemas/{}", schema.name)),
+        json_string(&format!(
+            "#/components/schemas/{}",
+            schema.name.replace('~', "~0").replace('/', "~1")
+        )),
     )])
 }
 
@@ -426,10 +431,10 @@ fn collect_body_schema(body: &BodyContract, schemas: &mut BTreeMap<String, Strin
 
 fn collect_schema_ref(schema: &SchemaRef, schemas: &mut BTreeMap<String, String>) {
     schemas.entry(schema.name.clone()).or_insert_with(|| {
-        schema
-            .json_schema
-            .clone()
-            .unwrap_or_else(|| default_schema_json(&schema.name))
+        schema.json_schema.as_ref().map_or_else(
+            || default_schema_json(&schema.name),
+            |value| schema::rebase(value, &schema.name),
+        )
     });
 }
 

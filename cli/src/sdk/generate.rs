@@ -222,6 +222,7 @@ pub(crate) fn regenerate_sdk_outputs_if_present(
 #[derive(Debug, Clone)]
 struct SdkService {
     name: String,
+    ts_models: Vec<RustTypeAliasTemplate>,
     routers: Vec<SdkRouter>,
 }
 
@@ -304,6 +305,7 @@ impl SdkResponseContract {
 
 #[derive(Content)]
 struct TypeScriptSdkTemplate {
+    schema_models: Vec<RustTypeAliasTemplate>,
     form_stringify_source: String,
     sse_source: String,
     operation_types: Vec<TypeScriptOperationTypeTemplate>,
@@ -378,6 +380,8 @@ struct RustModelTemplate {
     fields: Vec<RustModelFieldTemplate>,
     union: bool,
     deny_unknown_fields: bool,
+    transparent: bool,
+    has_default: bool,
     variants: Vec<RustUnionVariantTemplate>,
 }
 
@@ -476,6 +480,7 @@ fn rust_sdk_services(manifest: &Value, selected_service: Option<&str>) -> Vec<Sd
                 .collect();
             Some(SdkService {
                 name: name.to_string(),
+                ts_models: Vec::new(),
                 routers,
             })
         })
@@ -624,6 +629,58 @@ fn rust_sdk_services_from_artifacts(
 }
 
 fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result<SdkService> {
+    let mut contract = contract.clone();
+    let mut ts_models = Vec::new();
+    let mut schema_index = 0;
+    fn prepare(
+        schema: &mut JsonValue,
+        service_name: &str,
+        index: &mut usize,
+        ts_models: &mut Vec<RustTypeAliasTemplate>,
+    ) -> Result<()> {
+        *index += 1;
+        *schema = super::schema::normalize(
+            schema,
+            &format!("{}Schema{}", rust_type_name(service_name), index),
+        )?;
+        if let Some(definitions) = schema
+            .get(super::schema::DEFINITIONS)
+            .and_then(JsonValue::as_object)
+        {
+            for (name, definition) in definitions {
+                ts_models.push(RustTypeAliasTemplate {
+                    name: name.clone(),
+                    target_type: ts_type_from_schema(definition),
+                });
+            }
+        }
+        Ok(())
+    }
+    if let Some(routes) = contract.get_mut("routes").and_then(JsonValue::as_array_mut) {
+        for route in routes {
+            if let Some(request) = route.get_mut("request") {
+                for field in ["params", "query", "headers"] {
+                    if let Some(fields) = request.get_mut(field).and_then(JsonValue::as_array_mut) {
+                        for field in fields {
+                            if let Some(schema) = field.pointer_mut("/schema/jsonSchema") {
+                                prepare(schema, service_name, &mut schema_index, &mut ts_models)?;
+                            }
+                        }
+                    }
+                }
+                if let Some(schema) = request.pointer_mut("/body/schema/jsonSchema") {
+                    prepare(schema, service_name, &mut schema_index, &mut ts_models)?;
+                }
+            }
+            if let Some(responses) = route.get_mut("responses").and_then(JsonValue::as_array_mut) {
+                for response in responses {
+                    if let Some(schema) = response.pointer_mut("/body/schema/jsonSchema") {
+                        prepare(schema, service_name, &mut schema_index, &mut ts_models)?;
+                    }
+                }
+            }
+        }
+    }
     let mut routers = BTreeMap::<String, Vec<SdkOperation>>::new();
     for route in contract
         .get("routes")
@@ -688,6 +745,7 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result
 
     Ok(SdkService {
         name: service_name.to_string(),
+        ts_models,
         routers: routers
             .into_iter()
             .map(|(name, operations)| SdkRouter { name, operations })
@@ -1112,6 +1170,12 @@ fn ts_type_from_schema_name(name: &str) -> String {
 }
 
 fn ts_type_from_schema(schema: &JsonValue) -> String {
+    if let Some(name) = schema
+        .get(super::schema::REFERENCE)
+        .and_then(JsonValue::as_str)
+    {
+        return name.to_owned();
+    }
     if schema.get("nullable") == Some(&JsonValue::Bool(true)) {
         let mut value = schema.clone();
         value.as_object_mut().unwrap().remove("nullable");
@@ -1183,6 +1247,13 @@ fn ts_object_type(schema: &JsonValue) -> String {
             Some(value) if value.is_object() => ts_type_from_schema(value),
             _ => "unknown".into(),
         };
+        if schema
+            .get("additionalProperties")
+            .and_then(|value| value.get(super::schema::REFERENCE))
+            .is_some()
+        {
+            return format!("{{ [key: string]: {value_type} }}");
+        }
         return format!("Record<string, {value_type}>");
     }
     let properties = properties.unwrap();
@@ -1268,7 +1339,80 @@ fn rust_types_from_schema(
     schema: &JsonValue,
 ) -> (Vec<RustModelTemplate>, Vec<RustTypeAliasTemplate>, String) {
     let mut models = BTreeMap::new();
+    if let Some(definitions) = schema
+        .get(super::schema::DEFINITIONS)
+        .and_then(JsonValue::as_object)
+    {
+        for (name, definition) in definitions {
+            let field_type = build_rust_type(name, definition, &mut models);
+            if field_type != *name {
+                models.insert(
+                    name.clone(),
+                    RustModelTemplate {
+                        name: name.clone(),
+                        fields: vec![RustModelFieldTemplate {
+                            flatten: false,
+                            wire_name_literal: "\"value\"".into(),
+                            field_name: "value".into(),
+                            field_type,
+                        }],
+                        union: false,
+                        deny_unknown_fields: false,
+                        transparent: true,
+                        has_default: true,
+                        variants: vec![],
+                    },
+                );
+            }
+        }
+    }
     let response_type = build_rust_type(root_name, schema, &mut models);
+    // Deriving Default across required recursive edges would recurse forever.
+    fn can_default(
+        name: &str,
+        models: &BTreeMap<String, RustModelTemplate>,
+        active: &mut BTreeSet<String>,
+        memo: &mut BTreeMap<String, bool>,
+    ) -> bool {
+        if let Some(result) = memo.get(name) {
+            return *result;
+        }
+        if active.len() >= 64 || !active.insert(name.into()) {
+            return false;
+        }
+        let model = &models[name];
+        let fields = if model.union {
+            model
+                .variants
+                .first()
+                .map(|variant| variant.value_type.as_str())
+                .into_iter()
+                .collect::<Vec<_>>()
+        } else {
+            model
+                .fields
+                .iter()
+                .map(|field| field.field_type.as_str())
+                .collect()
+        };
+        let result = fields.into_iter().all(|ty| {
+            let ty = ty
+                .strip_prefix("Box<")
+                .and_then(|value| value.strip_suffix('>'))
+                .unwrap_or(ty);
+            !models.contains_key(ty) || can_default(ty, models, active, memo)
+        });
+        active.remove(name);
+        memo.insert(name.into(), result);
+        result
+    }
+    let mut defaults = BTreeMap::new();
+    for name in models.keys() {
+        can_default(name, &models, &mut BTreeSet::new(), &mut defaults);
+    }
+    for (name, model) in &mut models {
+        model.has_default = defaults[name];
+    }
     let mut aliases = Vec::new();
 
     if models.get(&response_type).is_none() {
@@ -1327,6 +1471,12 @@ fn build_rust_type(
     schema: &JsonValue,
     models: &mut BTreeMap<String, RustModelTemplate>,
 ) -> String {
+    if let Some(name) = schema
+        .get(super::schema::REFERENCE)
+        .and_then(JsonValue::as_str)
+    {
+        return format!("Box<{name}>");
+    }
     if let Some(variant) = non_null_schema(schema) {
         return format!(
             "Option<{}>",
@@ -1386,6 +1536,10 @@ fn build_rust_type(
                 .get("items")
                 .map(|items| build_rust_type(&item_type_name, items, models))
                 .unwrap_or_else(|| "serde_json::Value".to_string());
+            let item_type = item_type
+                .strip_prefix("Box<")
+                .and_then(|value| value.strip_suffix('>'))
+                .unwrap_or(&item_type);
             format!("Vec<{item_type}>")
         }
         Some("integer") => "i64".to_string(),
@@ -1422,6 +1576,8 @@ fn build_rust_union(
             fields: vec![],
             union: true,
             deny_unknown_fields: false,
+            transparent: false,
+            has_default: true,
             variants: vec![],
         },
     );
@@ -1458,6 +1614,8 @@ fn rust_model_from_schema(
             fields: vec![],
             union: false,
             deny_unknown_fields: false,
+            transparent: false,
+            has_default: true,
             variants: vec![],
         },
     );
@@ -1523,6 +1681,8 @@ fn rust_model_from_schema(
             union: false,
             deny_unknown_fields: schema.get("additionalProperties")
                 == Some(&JsonValue::Bool(false)),
+            transparent: false,
+            has_default: true,
             variants: vec![],
         },
     );
@@ -1807,6 +1967,11 @@ fn compare_generated_file(
 
 fn typescript_sdk(services: &[SdkService]) -> Result<String> {
     let mut type_names = BTreeSet::new();
+    for model in services.iter().flat_map(|service| &service.ts_models) {
+        if !type_names.insert(model.name.clone()) {
+            bail!("Duplicate generated TypeScript SDK type {}", model.name);
+        }
+    }
     let mut operation_types = Vec::new();
     let mut service_blocks = Vec::new();
     let mut aliases = Vec::new();
@@ -1876,6 +2041,10 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
     render_sdk_template(
         "sdk/typescript/index.ts",
         &TypeScriptSdkTemplate {
+            schema_models: services
+                .iter()
+                .flat_map(|service| service.ts_models.clone())
+                .collect(),
             sse_source: TEMPLATES_DIR
                 .get_file("sdk/typescript/sse.ts")
                 .context("Missing SSE SDK helper")?
@@ -2666,5 +2835,50 @@ mod union_model_tests {
         assert!(source.contains("#[serde(untagged)]"));
         assert!(source.contains("impl Default for Choice"));
         assert!(source.contains("#[serde(deny_unknown_fields)]"));
+    }
+}
+
+#[cfg(test)]
+mod recursive_model_tests {
+    use super::*;
+
+    #[test]
+    fn required_recursive_defaults_are_omitted_but_guarded_defaults_remain() {
+        let schema = super::super::schema::normalize(
+            &json!({"type":"object","required":["next"],"properties":{"next":{"$ref":"#"}}}),
+            "Cycle",
+        )
+        .unwrap();
+        let (models, _, _) = rust_types_from_schema("Root", &schema);
+        assert!(models.iter().all(|model| !model.has_default));
+        let schema = super::super::schema::normalize(
+            &json!({"type":"object","properties":{"next":{"$ref":"#"}}}),
+            "Optional",
+        )
+        .unwrap();
+        let (models, _, _) = rust_types_from_schema("Root", &schema);
+        assert!(models.iter().all(|model| model.has_default));
+    }
+
+    #[test]
+    fn acyclic_refs_preserve_existing_inline_types_and_recursive_maps_have_structural_guards() {
+        let schema = super::super::schema::normalize(&json!({"type":"object","required":["label"],"properties":{"label":{"$ref":"#/$defs/Text"}},"$defs":{"Text":{"type":"string"}}}), "Plain").unwrap();
+        let (models, _, _) = rust_types_from_schema("Root", &schema);
+        assert_eq!(models.len(), 1);
+        assert_eq!(
+            models[0]
+                .fields
+                .iter()
+                .find(|field| field.field_name == "label")
+                .unwrap()
+                .field_type,
+            "String"
+        );
+        let schema = super::super::schema::normalize(
+            &json!({"type":"object","additionalProperties":{"$ref":"#"}}),
+            "Map",
+        )
+        .unwrap();
+        assert_eq!(ts_type_from_schema(&schema), "{ [key: string]: MapRef1 }");
     }
 }

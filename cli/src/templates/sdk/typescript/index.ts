@@ -61,6 +61,10 @@ export type {{responses_type}} = Omit<ForkLaunchErrorResponses, keyof {{response
 export type {{responses_type}}ContentTypes = { {{#responses}}{{status_code}}: '{{content_type}}'; {{/responses}} };
 
 {{/operation_types}}
+{{#schema_models}}
+export type {{name}} = {{{target_type}}};
+{{/schema_models}}
+
 function pathWithParams(path: string, params?: Record<string, ForkLaunchPathValue>) {
   if (!params) return path;
   return path.split('/').map(segment => {
