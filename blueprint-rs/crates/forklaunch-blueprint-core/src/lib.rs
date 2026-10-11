@@ -4,6 +4,12 @@
 pub mod instance_gateway;
 #[cfg(feature = "instance-gateway")]
 pub mod payments_client;
+#[cfg(feature = "instance-gateway")]
+pub mod sms_client;
+#[cfg(feature = "instance-gateway")]
+pub mod voice_client;
+#[cfg(feature = "instance-gateway")]
+pub mod whatsapp_client;
 
 #[cfg(feature = "provider-http")]
 pub mod provider_http;

@@ -93,6 +93,22 @@ impl ProviderHttpClient {
     /// Rejects network failures, oversized bodies and malformed success JSON.
     /// Failure-status bodies are discarded to avoid exposing provider PII/secrets.
     pub async fn execute_json(&self, request: RequestBuilder) -> BlueprintResult<ProviderResponse> {
+        self.execute(request, false).await
+    }
+    /// Like `execute_json`, but permits an empty successful body (voice hang-up).
+    /// # Errors
+    /// Rejects network failures, oversized bodies and nonempty malformed JSON.
+    pub async fn execute_json_or_empty(
+        &self,
+        request: RequestBuilder,
+    ) -> BlueprintResult<ProviderResponse> {
+        self.execute(request, true).await
+    }
+    async fn execute(
+        &self,
+        request: RequestBuilder,
+        allow_empty: bool,
+    ) -> BlueprintResult<ProviderResponse> {
         let mut response = request.send().await.map_err(|_| transport_error())?;
         let status = response.status().as_u16();
         let retry_after_seconds = response
@@ -121,7 +137,11 @@ impl ProviderHttpClient {
             }
             bytes.extend_from_slice(&chunk);
         }
-        let body = serde_json::from_slice(&bytes).map_err(|_| transport_error())?;
+        let body = if allow_empty && bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).map_err(|_| transport_error())?
+        };
         Ok(ProviderResponse {
             status,
             body,
