@@ -48,12 +48,28 @@ async fn live_http_and_mcp_initialize_discover_invoke_auth_validate_and_shutdown
             json!({"sub":"verified"}),
         ))
     });
+    let internal = axum::Router::new().route(
+        "/session",
+        axum::routing::get(|headers: HeaderMap| async move {
+            if headers.get("cookie").and_then(|value| value.to_str().ok())
+                == Some("fixture=session")
+            {
+                (axum::http::StatusCode::OK, Json(json!({"internal":true})))
+            } else {
+                (
+                    axum::http::StatusCode::UNAUTHORIZED,
+                    Json(json!({"internal":false})),
+                )
+            }
+        }),
+    );
     let service=ForkLaunchRouter::new(ServiceInfo::new("startup-test","1.2.3"))
         .get(RouteContract::get("Health","Health","/health").with_response(200,Some(BodyContract::json("Health"))),||async{Json(json!({"ok":true}))})
         .get(RouteContract::get("Read Item","Read item","/items/:id").with_param(FieldContract::required("id","String")).with_query(FieldContract::required("q","String")).with_access(AccessLevel::Authenticated).with_response(200,Some(BodyContract::json("Item"))),|Path(id):Path<String>,Query(query):Query<HashMap<String,String>>,headers:HeaderMap|async move {Json(json!({"id":id,"q":query["q"],"authorization":headers["authorization"].to_str().unwrap()}))})
         .get(RouteContract::get("Read Query","Read composite query","/query").with_query(FieldContract::optional("ids","Vec<String>")).with_response(200,Some(BodyContract::json("Query"))),|Query(query):Query<HashMap<String,String>>|async move {Json(query)})
         .post(RouteContract::post("Echo","Echo","/echo").with_request_body(BodyContract::json("Echo")).with_response(200,Some(BodyContract::json("Echo"))),|Json(body):Json<Value>|async move{Json(body)})
         .get(RouteContract::get("Hidden","Hidden","/hidden").with_options(RouteOptions{mcp:false,..RouteOptions::default()}),||async{"hidden"})
+        .nest_internal("/api/auth", internal)
         .with_config(config);
     let decorated = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let layer_count = Arc::clone(&decorated);
@@ -92,6 +108,35 @@ async fn live_http_and_mcp_initialize_discover_invoke_auth_validate_and_shutdown
     });
     let client = reqwest::Client::new();
     let url = format!("{base}/mcp");
+    assert_eq!(
+        client
+            .get(format!("{base}/api/auth/session"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    let internal = client
+        .get(format!("{base}/api/auth/session"))
+        .header("cookie", "fixture=session")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(internal.status(), 200);
+    assert_eq!(
+        internal.json::<Value>().await.unwrap(),
+        json!({"internal":true})
+    );
+    let document = client
+        .get(format!("{base}{}", RouterConfig::default().openapi_path))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    assert!(document["paths"].get("/api/auth/session").is_none());
     let direct_echo = client
         .post(format!("{base}/echo"))
         .json(&json!({"direct":true}))

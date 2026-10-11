@@ -127,6 +127,8 @@ impl RouterConfig {
     }
 }
 
+mod internal;
+
 /// A contract-aware wrapper around [`axum::Router`].
 pub struct ForkLaunchRouter {
     base_path: String,
@@ -134,6 +136,7 @@ pub struct ForkLaunchRouter {
     routes: HashMap<String, MethodRouter>,
     extended_routes: HashMap<String, HashMap<String, MethodRouter>>,
     config: RouterConfig,
+    internal_mounts: Vec<internal::InternalMount>,
 }
 
 macro_rules! typed_route_methods {
@@ -167,6 +170,7 @@ impl ForkLaunchRouter {
             routes: HashMap::new(),
             extended_routes: HashMap::new(),
             config: RouterConfig::default(),
+            internal_mounts: Vec::new(),
         }
     }
 
@@ -218,6 +222,7 @@ impl ForkLaunchRouter {
             routes: HashMap::new(),
             extended_routes: HashMap::new(),
             config: RouterConfig::default(),
+            internal_mounts: Vec::new(),
         }
     }
 
@@ -329,8 +334,14 @@ impl ForkLaunchRouter {
             registry,
             routes,
             extended_routes,
+            internal_mounts,
             ..
         } = child;
+
+        for mut mount in internal_mounts {
+            mount.prefix = join_base_path(&prefix, &mount.prefix);
+            self.internal_mounts.push(mount);
+        }
 
         for mut route in registry.into_artifact().routes {
             route.path = join_base_path(&prefix, &route.path);
@@ -410,9 +421,12 @@ impl ForkLaunchRouter {
             routes,
             mut extended_routes,
             config,
+            internal_mounts,
             ..
         } = self;
 
+        internal::validate(&internal_mounts, &registry, &config)
+            .expect("invalid internal HTTP mount");
         let mut router = Router::new();
         for (path, mut method_router) in routes {
             if let Some(methods) = extended_routes.remove(&path) {
@@ -444,6 +458,10 @@ impl ForkLaunchRouter {
                 });
             }
             router = router.route(&path, method_router);
+        }
+
+        for mount in internal_mounts {
+            router = router.nest(&mount.prefix, mount.router);
         }
 
         if config.openapi_enabled {
@@ -527,6 +545,13 @@ impl ForkLaunchRouter {
         self,
         options: forklaunch_mcp::server::McpServerOptions,
     ) -> Result<(Router, Router), String> {
+        if self
+            .internal_mounts
+            .iter()
+            .any(|mount| internal::contains_path(&mount.prefix, &options.path))
+        {
+            return Err("MCP endpoint conflicts with an internal HTTP namespace".into());
+        }
         if (self.config.openapi_enabled && options.path == self.config.openapi_path)
             || (self.config.openapi_enabled
                 && self.config.docs_enabled

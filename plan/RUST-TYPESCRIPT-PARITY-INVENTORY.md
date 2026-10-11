@@ -237,3 +237,11 @@ invitation grant exercises the actual handler and checks its persisted expiry;
 the actual protocol fixture now passes 49 checks. Stored dynamic role grants
 augment configured static roles, so native organization behavior must support
 those grants as well as the default permission denials.
+
+Native application-owned HTTP namespaces now support the raw Better Auth API's
+routing model. Mounted Axum handlers retain global limits/request IDs while
+remaining outside exported contracts and MCP discovery. Fixed-prefix validation
+also covers parent nesting; namespace collisions with registered routes, docs
+and MCP are rejected. Live HTTP cookie checks, exact MCP tool discovery,
+authenticated invocation and shutdown pass, along with the full Axum suite and
+strict framework clippy. Better Auth handler/storage implementation remains open.
