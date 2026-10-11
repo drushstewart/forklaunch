@@ -156,8 +156,17 @@ pub(super) fn schema_graph(
     root: &Value,
     preserve_resource_bases: bool,
 ) -> FrameworkResult<SchemaGraph> {
-    let mut queue = VecDeque::from([(String::new(), 0)]);
-    let mut seen = BTreeSet::from([String::new()]);
+    schema_graph_from(root, "", preserve_resource_bases)
+}
+
+pub(super) fn schema_graph_from(
+    root: &Value,
+    start: &str,
+    preserve_resource_bases: bool,
+) -> FrameworkResult<SchemaGraph> {
+    let dialect = schema_node(root, start, 0)?;
+    let mut queue = VecDeque::from([(start.to_owned(), 0)]);
+    let mut seen = BTreeSet::from([start.to_owned()]);
     let mut locations = Vec::new();
     let mut literal_ranges = BTreeSet::new();
     let mut reference_targets = BTreeSet::new();
@@ -171,7 +180,7 @@ pub(super) fn schema_graph(
         let Some(object) = node.as_object() else {
             continue;
         };
-        if preserve_resource_bases && has_resource_id(root, object) {
+        if preserve_resource_bases && has_resource_id(dialect, object) {
             continue;
         }
         if let Some(pointer) = object
@@ -185,11 +194,11 @@ pub(super) fn schema_graph(
         }
         for (key, child) in object {
             if matches!(key.as_str(), "enum" | "const" | "default" | "examples")
-                && !is_legacy_schema_annotation(root, key)
+                && !is_legacy_schema_annotation(dialect, key)
             {
                 literal_ranges.insert(append_pointer(&location, key));
             }
-            if is_legacy_schema_annotation(root, key) {
+            if is_legacy_schema_annotation(dialect, key) {
                 continue;
             }
             let child_location = append_pointer(&location, key);

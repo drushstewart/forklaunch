@@ -10,7 +10,7 @@ pub use schema::{
     schema_locations,
 };
 #[cfg(feature = "json-schema")]
-pub use schema_bundle::bundle_literal_schema_references_unscoped;
+pub use schema_bundle::{bundle_document_schema, bundle_literal_schema_references_unscoped};
 
 use std::collections::BTreeMap;
 
