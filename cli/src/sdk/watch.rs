@@ -119,16 +119,40 @@ fn run_sdk_watch(
         interval.as_millis()
     );
 
+    let mut fingerprint_error = None;
     loop {
         sleep(interval);
-        let fingerprint = artifact_fingerprint(app_root, source, selected_service)?;
+        let fingerprint = match artifact_fingerprint(app_root, source, selected_service) {
+            Ok(fingerprint) => {
+                fingerprint_error = None;
+                fingerprint
+            }
+            Err(error) => {
+                let message = format!("{error:#}");
+                if fingerprint_error.as_ref() != Some(&message) {
+                    log_error!(
+                        stdout,
+                        "Unable to read SDK artifacts; waiting for changes: {message}"
+                    );
+                    fingerprint_error = Some(message);
+                }
+                continue;
+            }
+        };
         if fingerprint == last_fingerprint {
             continue;
         }
 
         last_fingerprint = fingerprint;
         log_info!(stdout, "Rust {source} artifacts changed; regenerating SDKs");
-        generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)?;
+        if let Err(error) =
+            generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)
+        {
+            log_error!(
+                stdout,
+                "SDK regeneration failed; waiting for artifact changes: {error:#}"
+            );
+        }
     }
 }
 

@@ -103,6 +103,31 @@ try:
                 time.sleep(0.1)
             else:
                 raise AssertionError('Socket watch did not initialize')
+            manifest.write_text(custom_manifest + '\n[temporarily invalid')
+            rejected_manifest = time.monotonic() + 30
+            while time.monotonic() < rejected_manifest:
+                if b'Unable to read SDK artifacts' in os.pread(log.fileno(), 1024 * 1024, 0):
+                    break
+                assert watch.poll() is None, 'Socket watch stopped on temporarily invalid manifest metadata'
+                time.sleep(0.1)
+            else:
+                raise AssertionError('Invalid watched manifest was not diagnosed')
+            time.sleep(0.3)
+            assert watch.poll() is None, 'Socket watch stopped on temporarily invalid manifest metadata'
+            assert os.pread(log.fileno(), 1024 * 1024, 0).count(b'Unable to read SDK artifacts') == 1
+            manifest.write_text(custom_manifest)
+            custom.write_text(json.dumps(invalid))
+            rejected = time.monotonic() + 30
+            while time.monotonic() < rejected:
+                if b'Invalid socket' in os.pread(log.fileno(), 1024 * 1024, 0):
+                    break
+                assert watch.poll() is None, 'Socket watch stopped on a temporarily invalid contract'
+                time.sleep(0.1)
+            else:
+                raise AssertionError('Invalid watched contract was not diagnosed')
+            time.sleep(0.3)
+            assert watch.poll() is None, 'Socket watch stopped on a temporarily invalid contract'
+            assert json.loads(output.read_text())['info']['title'] == 'Realtime'
             changed = json.loads(original)
             changed['title'] = 'Watched custom artifact'
             custom.write_text(json.dumps(changed))
@@ -129,4 +154,4 @@ finally:
     manifest.write_text(original_manifest)
     artifact.write_bytes(original)
     run()
-print('PASS CLI socket drift checks, all-service staging, input/output containment, custom artifact/AsyncAPI paths and live watch regeneration')
+print('PASS CLI socket drift checks, all-service staging, input/output containment, custom artifact/AsyncAPI paths and live watch recovery after invalid edits')
