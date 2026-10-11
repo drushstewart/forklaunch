@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
 
 mod http;
+mod websocket;
 pub use http::generate_rust_http_sdk_source;
+pub use websocket::generate_rust_websocket_sdk_source;
 
 use std::fmt::Write as _;
 

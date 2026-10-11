@@ -453,7 +453,7 @@ Requirements:
 - [x] Support automatic JSON encoding and decoding. (`WebSocketEnvelope::to_json`/`from_json`)
 - [x] Add integration tests for server/client validation. (real native peers, bidirectional actual TypeScript peers, 168 Zod payload comparisons and 2,323 raw JSON Schema codec comparisons, frame/control byte limits, stalled handshake/write deadlines, cancellation and close handshakes)
 
-Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScript wrappers; the legacy tagged `WebSocketEnvelope` contract remains a separate protocol. `PayloadCodec::framework()` optionally applies serde/garde constraints. Invalid incoming native payloads close with 1008 before delivery; outgoing failures remain local. Control replies preserve exact bytes and validate the outgoing pong schema. Actual TypeScript tests also fixed the wrapper's automatic pong/close paths, which previously revalidated encoded Buffers as objects. Schema coercion follows Rust's documented stricter policy. Optional Axum `websocket::upgrade` now shares the native typed engine on existing HTTP/MCP listeners, with pre-upgrade authorization, subprotocol negotiation, bounded invalid/oversized input, and explicitly propagated connection shutdown tested together. Partial-write cancellation releases the socket. Raw socket schema metadata and checked AsyncAPI export are now implemented; generated clients and CLI artifact integration remain open.
+Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScript wrappers; the legacy tagged `WebSocketEnvelope` contract remains a separate protocol. `PayloadCodec::framework()` optionally applies serde/garde constraints. Invalid incoming native payloads close with 1008 before delivery; outgoing failures remain local. Control replies preserve exact bytes and validate the outgoing pong schema. Actual TypeScript tests also fixed the wrapper's automatic pong/close paths, which previously revalidated encoded Buffers as objects. Schema coercion follows Rust's documented stricter policy. Optional Axum `websocket::upgrade` now shares the native typed engine on existing HTTP/MCP listeners, with pre-upgrade authorization, subprotocol negotiation, bounded invalid/oversized input, and explicitly propagated connection shutdown tested together. Partial-write cancellation releases the socket. Raw socket schema metadata and checked AsyncAPI export are now implemented; generated Rust clients now share these codecs; generated TypeScript clients and CLI artifact integration remain open.
 
 ### `forklaunch-asyncapi`
 
@@ -464,7 +464,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Support client-to-server and server-to-client operations.
 - [x] Add snapshot tests for AsyncAPI output.
 - [ ] Generate TypeScript WebSocket clients.
-- [ ] Generate Rust WebSocket clients.
+- [x] Generate Rust WebSocket clients. (`SocketSdkPlan`, `generate_rust_websocket_sdk_source`: typed directions/controls, recursive unions, retained upgrade responses, actual TypeScript server conformance, invalid peer rejection and warning-free recursive/empty consumer compilation)
 
 ## Phase 9 - Infrastructure Crates
 

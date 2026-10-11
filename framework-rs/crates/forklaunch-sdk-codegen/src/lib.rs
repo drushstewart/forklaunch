@@ -5,6 +5,7 @@ mod models;
 pub mod render;
 pub mod response;
 mod schema;
+pub mod websocket;
 
 pub use models::{
     RustModelFieldTemplate, RustModelTemplate, RustTypeAliasTemplate, RustUnionVariantTemplate,

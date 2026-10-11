@@ -11,7 +11,8 @@ anyhow = "1"
 convert_case = "0.8"
 ramhorns = "1.0.1"
 serde_json = "1"
-forklaunch-contract = { path = "../forklaunch-contract" }
+forklaunch-contract = { path = "../forklaunch-contract", features = ["json-schema"] }
+forklaunch-ws = { path = "../forklaunch-ws", features = ["json-schema"] }
 
 [lints]
 workspace = true
