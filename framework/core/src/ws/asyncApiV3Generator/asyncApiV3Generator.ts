@@ -26,7 +26,11 @@ function pointerSegment(value: string): string {
 
 // AsyncAPI's default Schema Object uses object-form schemas. Keep idiomatic
 // validator instances intact; normalize plain JSON Schema positions only.
-function payloadSchema(schema: unknown, depth = 0): unknown {
+function payloadSchema(
+  schema: unknown,
+  depth = 0,
+  rootDialect?: string
+): unknown {
   if (depth > 64) throw new Error('AsyncAPI schema nesting exceeds 64 levels');
   if (typeof schema === 'boolean') return schema ? {} : { not: {} };
   if (!schema || typeof schema !== 'object' || Array.isArray(schema))
@@ -35,7 +39,26 @@ function payloadSchema(schema: unknown, depth = 0): unknown {
   if (prototype !== null && prototype.constructor?.name !== 'Object')
     return schema;
   const output: Record<string, unknown> = { ...schema };
+  const dialect =
+    rootDialect ?? (typeof output.$schema === 'string' ? output.$schema : '');
+  const draft4 = dialect.includes('/draft-04/');
+  const draft6 = dialect.includes('/draft-06/');
   for (const [key, value] of Object.entries(output)) {
+    if (
+      (draft4 && ['const', 'contains', 'propertyNames'].includes(key)) ||
+      ((draft4 || draft6) &&
+        [
+          'if',
+          'then',
+          'else',
+          'dependentSchemas',
+          'prefixItems',
+          'unevaluatedProperties',
+          'unevaluatedItems',
+          'contentSchema'
+        ].includes(key))
+    )
+      continue;
     if (
       ['additionalProperties', 'additionalItems'].includes(key) &&
       typeof value === 'boolean'
@@ -57,14 +80,16 @@ function payloadSchema(schema: unknown, depth = 0): unknown {
       output[key] = Object.fromEntries(
         Object.entries(value).map(([name, child]) => [
           name,
-          payloadSchema(child, depth + 1)
+          payloadSchema(child, depth + 1, dialect)
         ])
       );
     } else if (
       ['allOf', 'anyOf', 'oneOf', 'prefixItems', 'items'].includes(key) &&
       Array.isArray(value)
     ) {
-      output[key] = value.map((child) => payloadSchema(child, depth + 1));
+      output[key] = value.map((child) =>
+        payloadSchema(child, depth + 1, dialect)
+      );
     } else if (
       [
         'additionalProperties',
@@ -81,7 +106,7 @@ function payloadSchema(schema: unknown, depth = 0): unknown {
         'items'
       ].includes(key)
     ) {
-      output[key] = payloadSchema(value, depth + 1);
+      output[key] = payloadSchema(value, depth + 1, dialect);
     }
   }
   return output;

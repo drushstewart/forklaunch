@@ -1,6 +1,27 @@
 //! Contract schemas are standalone documents; embedding changes their JSON pointer base.
 use serde_json::Value;
 
+/// Keywords added after an explicitly declared Draft 4/6 dialect are literal
+/// annotations, not locations to validate or relocate embedded schemas.
+#[must_use]
+pub fn is_legacy_schema_annotation(root: &Value, keyword: &str) -> bool {
+    let dialect = root.get("$schema").and_then(Value::as_str).unwrap_or("");
+    let draft4 = dialect.contains("/draft-04/");
+    let draft6 = dialect.contains("/draft-06/");
+    (draft4 && matches!(keyword, "const" | "contains" | "propertyNames"))
+        || ((draft4 || draft6)
+            && matches!(
+                keyword,
+                "if" | "then"
+                    | "else"
+                    | "dependentSchemas"
+                    | "prefixItems"
+                    | "unevaluatedProperties"
+                    | "unevaluatedItems"
+                    | "contentSchema"
+            ))
+}
+
 /// Relocate document-local JSON pointers when embedding a standalone schema.
 ///
 /// Location segments are escaped as JSON pointer tokens. Schema literals and
@@ -45,6 +66,9 @@ fn visit(value: &mut Value, root: &Value, base: &str) {
         object.insert("$ref".into(), Value::String(format!("{base}{pointer}")));
     }
     for (key, value) in object {
+        if is_legacy_schema_annotation(root, key) {
+            continue;
+        }
         match key.as_str() {
             "properties" | "patternProperties" | "dependentSchemas" | "dependencies" | "$defs"
             | "definitions" => {
@@ -90,6 +114,32 @@ fn visit(value: &mut Value, root: &Value, base: &str) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn explicit_older_dialects_preserve_ignored_keyword_literals() {
+        for dialect in [
+            "http://json-schema.org/draft-04/schema#",
+            "http://json-schema.org/draft-06/schema#",
+        ] {
+            let input = json!({"$schema":dialect,"type":"object","properties":{"value":{"$ref":"#/definitions/Value"}},"definitions":{"Value":{"type":"string"}},"if":{"$ref":"#"},"then":false,"dependentSchemas":{"literal":{"$ref":"#/definitions/Value"}},"prefixItems":[{"$ref":"#"}],"contentSchema":{"$ref":"#"}});
+            let output: Value =
+                serde_json::from_str(&relocate_schema_json(&input.to_string(), &["payload"]))
+                    .unwrap();
+            assert_eq!(
+                output["properties"]["value"]["$ref"],
+                "#/payload/definitions/Value"
+            );
+            for keyword in [
+                "if",
+                "then",
+                "dependentSchemas",
+                "prefixItems",
+                "contentSchema",
+            ] {
+                assert_eq!(output[keyword], input[keyword]);
+            }
+        }
+    }
 
     #[test]
     fn tuple_and_conditional_schema_refs_move_but_embedded_resources_keep_their_base() {

@@ -122,7 +122,12 @@
           "shape": {
             "$schema": "http://json-schema.org/draft-06/schema#",
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "if": 42,
+            "then": false,
+            "prefixItems": [
+              "literal"
+            ]
           }
         }
       },
@@ -161,7 +166,12 @@
             "$schema": "http://json-schema.org/draft-04/schema#",
             "type": "string",
             "const": "ignored",
-            "minLength": 1
+            "minLength": 1,
+            "if": 42,
+            "then": false,
+            "prefixItems": [
+              "literal"
+            ]
           }
         }
       }

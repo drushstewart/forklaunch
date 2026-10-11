@@ -109,6 +109,21 @@ const validator = {
   },
 };
 const schemas = [
+  ...['draft-04', 'draft-06'].map((version) => ({
+    $schema: `http://json-schema.org/${version}/schema#`,
+    type: 'string',
+    if: 42,
+    then: false,
+    else: true,
+    dependentSchemas: { annotation: 42 },
+    prefixItems: ['literal'],
+    unevaluatedProperties: false,
+    unevaluatedItems: true,
+    contentSchema: false,
+    ...(version === 'draft-04'
+      ? { contains: 42, propertyNames: ['literal'] }
+      : {}),
+  })),
   {
     $schema: 'http://json-schema.org/draft-06/schema#',
     type: 'object',

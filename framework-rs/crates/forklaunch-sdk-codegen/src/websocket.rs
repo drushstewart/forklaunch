@@ -223,6 +223,22 @@ mod tests {
     }
 
     #[test]
+    fn older_dialect_annotations_do_not_enter_the_model_schema_graph() {
+        for dialect in [
+            "http://json-schema.org/draft-04/schema#",
+            "http://json-schema.org/draft-06/schema#",
+        ] {
+            let schema = json!({"$schema":dialect,"type":"string","if":42,"then":false,"else":true,"dependentSchemas":{"literal":42},"prefixItems":["literal"],"contentSchema":false});
+            let contract = SocketContract::new("/legacy")
+                .with_server_message("reply", SocketSchemaEntry::new(schema.clone()));
+            let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+            assert_eq!(plan.incoming.schema, schema);
+            assert_eq!(plan.incoming.models.typescript_type, "string");
+            assert_eq!(plan.incoming.models.rust_aliases[0].target_type, "String");
+        }
+    }
+
+    #[test]
     fn malformed_constraints_scopes_and_mixed_dialects_fail_before_generation() {
         for schema in [
             json!({"type":"string","minLength":-1}),

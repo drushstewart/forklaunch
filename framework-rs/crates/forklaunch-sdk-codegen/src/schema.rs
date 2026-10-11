@@ -162,11 +162,13 @@ impl Graph<'_> {
         {
             bail!("Schema resource IDs and dynamic references are unsupported by SDK generation");
         }
-        let draft4 = self
+        let dialect = self
             .document
             .get("$schema")
             .and_then(Value::as_str)
-            .is_some_and(|dialect| dialect.contains("/draft-04/"));
+            .unwrap_or("");
+        let draft4 = dialect.contains("/draft-04/");
+        let draft6 = dialect.contains("/draft-06/");
         if draft4 && object.contains_key("id") {
             bail!("Schema resource IDs are unsupported by SDK generation");
         }
@@ -218,20 +220,20 @@ impl Graph<'_> {
         }
         let mut result = Map::new();
         for (key, value) in object {
-            // Draft 4 treats these later validation keywords as annotations.
+            // Older dialects treat later validation keywords as annotations.
             // Keep literal data intact; only schema positions pass through visit.
-            if draft4
-                && matches!(
-                    key.as_str(),
-                    "const"
-                        | "contains"
-                        | "propertyNames"
-                        | "if"
-                        | "then"
-                        | "else"
-                        | "dependentSchemas"
-                        | "prefixItems"
-                )
+            if (draft4 && matches!(key.as_str(), "const" | "contains" | "propertyNames"))
+                || ((draft4 || draft6)
+                    && matches!(
+                        key.as_str(),
+                        "if" | "then"
+                            | "else"
+                            | "dependentSchemas"
+                            | "prefixItems"
+                            | "unevaluatedProperties"
+                            | "unevaluatedItems"
+                            | "contentSchema"
+                    ))
             {
                 continue;
             }

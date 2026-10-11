@@ -31,6 +31,11 @@ for(const [version,dialect,shape] of [
  ['2019-09','https://json-schema.org/draft/2019-09/schema',{type:'array',items:{type:'integer'},minContains:2,contains:{minimum:0}}],
  ['2020-12','https://json-schema.org/draft/2020-12/schema',{type:'array',prefixItems:[{type:'string'}],items:false}],
 ])cases.push({path:'/dialects',clientMessages:{[version]:{shape:{$schema:dialect,...shape}}},serverMessages:{}});
+for (const dialect of ['http://json-schema.org/draft-04/schema#', 'http://json-schema.org/draft-06/schema#']) {
+ const annotations={if:42,then:false,else:true,dependentSchemas:{annotation:42},prefixItems:['literal'],unevaluatedProperties:false,unevaluatedItems:true,contentSchema:false};
+ if(dialect.includes('draft-04'))Object.assign(annotations,{contains:42,propertyNames:['literal']});
+ cases.push({path:'/dialect-annotations',clientMessages:{request:{shape:{$schema:dialect,type:'string',...annotations}}},serverMessages:{}});
+}
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-metadata-'));
 async function parse(document){
  assert.equal(validateDocument(document),true,JSON.stringify(validateDocument.errors));

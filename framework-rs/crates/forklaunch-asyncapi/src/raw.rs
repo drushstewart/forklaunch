@@ -209,6 +209,16 @@ fn walk_schema(
     depth: usize,
     visit: &mut impl FnMut(&mut Map<String, Value>) -> FrameworkResult<()>,
 ) -> FrameworkResult<()> {
+    let dialect = json!({"$schema": value.get("$schema")});
+    walk_schema_in(value, depth, &dialect, visit)
+}
+
+fn walk_schema_in(
+    value: &mut Value,
+    depth: usize,
+    dialect: &Value,
+    visit: &mut impl FnMut(&mut Map<String, Value>) -> FrameworkResult<()>,
+) -> FrameworkResult<()> {
     if depth > 64 {
         return Err(invalid("socket schema nesting exceeds 64 levels"));
     }
@@ -226,6 +236,9 @@ fn walk_schema(
         .ok_or_else(|| invalid("socket schema must be an object or boolean"))?;
     visit(object)?;
     for (keyword, child) in object {
+        if forklaunch_contract::is_legacy_schema_annotation(dialect, keyword) {
+            continue;
+        }
         match keyword.as_str() {
             "properties" | "patternProperties" | "dependentSchemas" | "$defs" | "definitions"
             | "dependencies" => {
@@ -236,7 +249,7 @@ fn walk_schema(
                     if keyword == "dependencies" && schema.is_array() {
                         continue;
                     }
-                    walk_schema(schema, depth + 1, visit)?;
+                    walk_schema_in(schema, depth + 1, dialect, visit)?;
                 }
             }
             "additionalProperties" | "additionalItems" if child.is_boolean() => {}
@@ -250,14 +263,14 @@ fn walk_schema(
             | "if"
             | "then"
             | "else"
-            | "propertyNames" => walk_schema(child, depth + 1, visit)?,
-            "items" if !child.is_array() => walk_schema(child, depth + 1, visit)?,
+            | "propertyNames" => walk_schema_in(child, depth + 1, dialect, visit)?,
+            "items" if !child.is_array() => walk_schema_in(child, depth + 1, dialect, visit)?,
             "items" | "allOf" | "anyOf" | "oneOf" | "prefixItems" => {
                 for schema in child
                     .as_array_mut()
                     .ok_or_else(|| invalid("schema alternatives must be an array"))?
                 {
-                    walk_schema(schema, depth + 1, visit)?;
+                    walk_schema_in(schema, depth + 1, dialect, visit)?;
                 }
             }
             _ => {}
@@ -269,6 +282,26 @@ fn walk_schema(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ignored_legacy_annotations_are_not_schema_resources_or_references() {
+        for dialect in [
+            "http://json-schema.org/draft-04/schema#",
+            "http://json-schema.org/draft-06/schema#",
+        ] {
+            let shape = json!({"$schema":dialect,"type":"string","if":{"$ref":"https://example.invalid/literal","$id":"annotation"},"then":false,"dependentSchemas":{"literal":42},"prefixItems":["literal"],"contentSchema":false});
+            let contract = SocketContract::new("/legacy")
+                .with_client_message("request", SocketSchemaEntry::new(shape.clone()));
+            let document: Value = serde_json::from_str(
+                &generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Legacy", "1"), &contract)
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                document["channels"]["request"]["messages"]["request"]["payload"]["schema"],
+                shape
+            );
+        }
+    }
     #[test]
     fn raw_socket_metadata_conformance() {
         let Ok(input) = std::env::var("FORKLAUNCH_TEST_RAW_SOCKET_INPUT") else {

@@ -3,7 +3,7 @@
 #[cfg(feature = "json-schema")]
 mod schema;
 #[cfg(feature = "json-schema")]
-pub use schema::relocate_schema_json;
+pub use schema::{is_legacy_schema_annotation, relocate_schema_json};
 
 use std::collections::BTreeMap;
 
