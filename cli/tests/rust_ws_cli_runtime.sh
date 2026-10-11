@@ -39,6 +39,7 @@ python3 "$SCRIPT_DIR/rust_ws_registry_checks.py" "$CLI"
 "$CLI" sdk generate --path . --target all --from socket-contract --check
 "$CLI" sdk watch --path . --target all --from socket-contract --service realtime --once
 python3 "$SCRIPT_DIR/rust_ws_cli_checks.py" "$CLI"
+python3 "$SCRIPT_DIR/rust_ws_retirement_checks.py" "$CLI"
 python3 - <<'PYTHON'
 from pathlib import Path
 import json, os
@@ -90,4 +91,5 @@ cargo build -p realtime
 BINARY_DIR="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug"))')"
 node "$SCRIPT_DIR/rust_mcp_service_startup.mjs" "$BINARY_DIR/realtime"
 node "$SCRIPT_DIR/rust_ws_cli_runtime.mjs" "$PWD" "$BINARY_DIR/examples/roundtrip"
+python3 "$SCRIPT_DIR/rust_ws_retirement_checks.py" "$CLI" --delete
 echo 'PASS relocated CLI socket contracts, multi-socket TypeScript/Rust consumers, AsyncAPI and generated HTTP/MCP startup'

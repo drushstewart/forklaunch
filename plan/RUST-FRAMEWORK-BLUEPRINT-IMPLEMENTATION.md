@@ -706,7 +706,8 @@ Current CLI structure to build on:
 - [x] Export socket artifacts automatically from generated service registries, with checked module names, service title/version, custom contained output paths, unchanged-owned move/removal cleanup and preserved manual/edited artifacts. Relocated CLI and archive fixtures generate both SDKs from registered metadata and validate HTTP/MCP startup.
 - [ ] Support external AsyncAPI imports/event projects.
 - [x] Prune unchanged obsolete socket modules during regeneration, with per-package hashes, read-only drift checks, all-service staging, preserved edits/untracked files/compiler options and symlink containment.
-- [ ] Prune owned socket SDK packages after last-socket/service removal and update workspaces while preserving user-owned files.
+- [x] Retire owned socket SDK files/AsyncAPI after an exported last-socket removal or explicit service deletion, removing Cargo members and empty directories while preserving edited/untracked files and compiler options. Live watch requires prior registry provenance plus a fresh empty framework contract, survives transient missing artifacts and restores both packages when sockets return. Shared pnpm package globs remain available for retained user packages.
+- [ ] Rename socket artifacts and owned SDK packages with their service, preserving custom compiler options and user files.
 - [x] Ensure release/deploy manifest generation reads TypeScript and Rust outputs uniformly.
 
 ### SDK Commands

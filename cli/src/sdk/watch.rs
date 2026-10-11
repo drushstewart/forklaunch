@@ -253,6 +253,16 @@ fn socket_artifact_fingerprint(
             || format!(".forklaunch/socket-contracts/{name}/socket-contract.json"),
             str::to_owned,
         )));
+        let contract = project
+            .get("metadata")
+            .and_then(|metadata| metadata.get("contractArtifactPath"))
+            .and_then(toml::Value::as_str)
+            .map_or_else(
+                || format!(".forklaunch/contracts/{name}/contract.json"),
+                str::to_owned,
+            );
+        crate::core::application_output::output_path(&root, Path::new(&contract))?;
+        paths.push(root.join(contract));
     }
     let mut fingerprint = BTreeMap::new();
     for path in paths {
@@ -315,6 +325,18 @@ socketContractArtifactPath = "custom/other.json"
         );
         assert_eq!(
             artifact_fingerprint(root, "socket-contract", None)
+                .unwrap()
+                .len(),
+            3
+        );
+        fs::create_dir_all(root.join(".forklaunch/contracts/chat")).unwrap();
+        fs::write(
+            root.join(".forklaunch/contracts/chat/contract.json"),
+            "empty registry",
+        )
+        .unwrap();
+        assert_eq!(
+            artifact_fingerprint(root, "socket-contract", Some("chat"))
                 .unwrap()
                 .len(),
             3

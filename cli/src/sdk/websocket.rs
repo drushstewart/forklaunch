@@ -27,6 +27,7 @@ pub(crate) fn generate(
         toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
     let mut files = BTreeMap::new();
     let mut members = Vec::new();
+    let mut retired_members = Vec::new();
     let mut removals = BTreeMap::new();
     let mut count = 0;
     for project in manifest
@@ -56,15 +57,40 @@ pub(crate) fn generate(
             || format!(".forklaunch/socket-contracts/{name}/socket-contract.json"),
             str::to_owned,
         ));
-        if !artifact.exists() && configured.is_none() && selected.is_none() {
-            continue;
-        }
         if name.is_empty()
             || !name
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
         {
             bail!("Invalid socket service name {name}");
+        }
+        if !artifact.exists() {
+            let mut retired = false;
+            for language in ["typescript", "rust"] {
+                if (target == "all" || target == language)
+                    && ownership::stage_empty_registry(
+                        &root,
+                        &mut files,
+                        &mut removals,
+                        name,
+                        language,
+                        project,
+                    )?
+                {
+                    retired = true;
+                    if language == "rust" {
+                        retired_members.push(format!("sdks/rust/{name}-websocket-sdk"));
+                    }
+                }
+            }
+            if retired {
+                ownership::stage_empty_asyncapi(&root, &mut files, &mut removals, name)?;
+                count += 1;
+                continue;
+            }
+            if configured.is_none() && selected.is_none() {
+                continue;
+            }
         }
         let artifact = artifact
             .canonicalize()
@@ -78,26 +104,46 @@ pub(crate) fn generate(
         {
             bail!("Invalid compiled AsyncAPI document");
         }
-        stage(
+        let registry_exported = ownership::registry_exported(&root, name, &artifact)?;
+        let asyncapi_output = project
+            .get("metadata")
+            .and_then(|metadata| metadata.get("asyncapiPath"))
+            .and_then(toml::Value::as_str)
+            .map_or_else(
+                || format!(".forklaunch/asyncapi/{name}/asyncapi.json"),
+                str::to_owned,
+            );
+        stage(&mut files, &asyncapi_output, pretty(&compiled["asyncapi"])?)?;
+        ownership::stage_asyncapi(
+            &root,
             &mut files,
-            project
-                .get("metadata")
-                .and_then(|metadata| metadata.get("asyncapiPath"))
-                .and_then(toml::Value::as_str)
-                .map_or_else(
-                    || format!(".forklaunch/asyncapi/{name}/asyncapi.json"),
-                    str::to_owned,
-                ),
-            pretty(&compiled["asyncapi"])?,
+            &mut removals,
+            name,
+            Path::new(&asyncapi_output),
+            registry_exported,
         )?;
         if matches!(target, "typescript" | "all") {
             stage_typescript(&root, &mut files, name, &compiled)?;
-            ownership::stage_package(&root, &mut files, &mut removals, name, "typescript")?;
+            ownership::stage_package(
+                &root,
+                &mut files,
+                &mut removals,
+                name,
+                "typescript",
+                registry_exported,
+            )?;
         }
         if matches!(target, "rust" | "all") {
             let member = format!("sdks/rust/{name}-websocket-sdk");
             stage_rust(&mut files, name, &member, &compiled)?;
-            ownership::stage_package(&root, &mut files, &mut removals, name, "rust")?;
+            ownership::stage_package(
+                &root,
+                &mut files,
+                &mut removals,
+                name,
+                "rust",
+                registry_exported,
+            )?;
             members.push(member);
         }
         count += 1;
@@ -106,6 +152,23 @@ pub(crate) fn generate(
         bail!("No socket contract artifacts found for the selected services");
     }
     stage_workspace(&root, &mut files, &members, target)?;
+    if !retired_members.is_empty() {
+        let cargo = files.get_mut(Path::new("Cargo.toml"));
+        let content = match cargo.as_ref() {
+            Some(content) => content.to_string(),
+            None => fs::read_to_string(root.join("Cargo.toml"))?,
+        };
+        let mut document = content.parse::<toml_edit::DocumentMut>()?;
+        let array = document["workspace"]["members"]
+            .as_array_mut()
+            .context("Root Cargo workspace members missing")?;
+        array.retain(|value| {
+            !value
+                .as_str()
+                .is_some_and(|member| retired_members.iter().any(|retired| retired == member))
+        });
+        files.insert(PathBuf::from("Cargo.toml"), document.to_string());
+    }
     for relative in files.keys() {
         validate_destination(&root, relative)?;
     }
@@ -380,6 +443,17 @@ fn stage_workspace(
 }
 fn validate_destination(root: &Path, relative: &Path) -> Result<()> {
     crate::core::application_output::output_path(root, relative).map(|_| ())
+}
+
+pub(crate) fn cleanup_service(root: &Path, name: &str) -> Result<bool> {
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        bail!("Invalid socket service name {name}");
+    }
+    ownership::cleanup_service(&root.canonicalize()?, name)
 }
 
 #[cfg(test)]

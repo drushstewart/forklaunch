@@ -617,6 +617,9 @@ fn cleanup_generated_outputs_for_deleted_rust_project(
         return Ok(());
     }
 
+    if crate::sdk::websocket::cleanup_service(app_root, name)? {
+        remove_cargo_member(app_root, &format!("sdks/rust/{name}-websocket-sdk"))?;
+    }
     remove_rust_project_artifacts(app_root, name)?;
 
     let sdk_member = Path::new("sdks")
@@ -629,7 +632,7 @@ fn cleanup_generated_outputs_for_deleted_rust_project(
 }
 
 pub(crate) fn remove_rust_project_artifacts(app_root: &Path, name: &str) -> Result<()> {
-    for artifact_kind in ["contracts", "openapi", "asyncapi"] {
+    for artifact_kind in ["contracts", "openapi", "asyncapi", "socket-contracts"] {
         remove_path_if_exists(&app_root.join(".forklaunch").join(artifact_kind).join(name))?;
     }
     Ok(())
