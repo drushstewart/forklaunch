@@ -17,10 +17,11 @@ use axum::{
 use chrono::{DateTime, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Value, json};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use url::Url;
 use zeroize::Zeroizing;
 
+mod credential;
 mod request;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -96,20 +97,50 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 header::HeaderName::from_static("x-request-id"),
             ])
     }
-    /// Session/JWT routes only; remaining credential/provider/organization routes
-    /// are added incrementally and are never exposed as permissive placeholders.
+    /// Credential/session/JWT routes. Remaining user/account/provider/organization
+    /// endpoints are added incrementally without permissive placeholders.
     pub fn router(self) -> Router {
         Router::new()
-            .route("/ok", get(|| async { Json(json!({"ok":true})) }))
-            .route("/jwks", get(dispatch::<S>))
-            .route("/token", get(dispatch::<S>))
-            .route("/get-session", get(dispatch::<S>).post(dispatch::<S>))
-            .route("/list-sessions", get(dispatch::<S>))
+            .route("/sign-up/email", post(dispatch::<S>))
+            .route("/sign-in/email", post(dispatch::<S>))
+            .route("/verify-password", post(dispatch::<S>))
+            .route("/change-password", post(dispatch::<S>))
+            .route(
+                "/ok",
+                get(|| async { Json(json!({"ok":true})) }).head(not_found),
+            )
+            .route("/jwks", get(dispatch::<S>).head(not_found))
+            .route("/token", get(dispatch::<S>).head(not_found))
+            .route(
+                "/get-session",
+                get(dispatch::<S>).head(not_found).post(dispatch::<S>),
+            )
+            .route("/list-sessions", get(dispatch::<S>).head(not_found))
             .route("/revoke-session", post(dispatch::<S>))
             .route("/revoke-sessions", post(dispatch::<S>))
             .route("/revoke-other-sessions", post(dispatch::<S>))
             .route("/sign-out", post(dispatch::<S>))
+            .method_not_allowed_fallback(not_found)
             .with_state(Arc::new(self))
+    }
+    async fn session_response(
+        &self,
+        view: Option<SessionView>,
+        pending: &mut HeaderMap,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Value> {
+        if let Some(view) = &view {
+            let jwt = self.jwt(view, now).await?;
+            pending.insert(
+                "set-auth-jwt",
+                HeaderValue::from_str(&jwt).map_err(|_| internal())?,
+            );
+            pending.insert(
+                header::ACCESS_CONTROL_EXPOSE_HEADERS,
+                HeaderValue::from_static("set-auth-jwt"),
+            );
+        }
+        Ok(view.map_or(Value::Null, |view| view.body()))
     }
     async fn jwt(&self, view: &SessionView, now: DateTime<Utc>) -> BlueprintResult<String> {
         KeyRing::new(self.store.clone(), &self.base_url)
@@ -145,10 +176,7 @@ async fn handle<S: AuthStore + 'static>(
 ) -> BlueprintResult<Value> {
     let (parts, body) = request.into_parts();
     let path = parts.uri.path();
-    let query: HashMap<String, String> =
-        url::form_urlencoded::parse(parts.uri.query().unwrap_or("").as_bytes())
-            .into_owned()
-            .collect();
+    let query = request::parse_query(parts.uri.query().unwrap_or(""));
     let (token, transient) = request::session_credentials(app, &parts.headers);
     let mutation = parts.method == Method::POST;
     let payload = request::parse_body(path, mutation, body, &parts.headers).await?;
@@ -158,6 +186,7 @@ async fn handle<S: AuthStore + 'static>(
             &parts,
             payload.as_ref().unwrap_or(&Value::Null),
             &query,
+            false,
         )?;
     }
     request::validate_body(path, payload.as_ref())?;
@@ -173,6 +202,10 @@ async fn handle<S: AuthStore + 'static>(
         }
     }
     let now = (app.clock)();
+    if matches!(path, "/sign-up/email" | "/sign-in/email") {
+        request::guard(app, &parts, &payload, &query, true)?;
+        return credential::login(app, path, payload, &parts.headers, pending, now).await;
+    }
     if path == "/jwks" {
         return KeyRing::new(app.store.clone(), &app.base_url)
             .jwks(now)
@@ -186,7 +219,7 @@ async fn handle<S: AuthStore + 'static>(
     }
     let disable_refresh = query
         .get("disableRefresh")
-        .is_some_and(|value| !value.is_empty());
+        .is_some_and(|value| value.as_str().is_none_or(|value| !value.is_empty()));
     let view = sessions
         .get(
             &token,
@@ -203,21 +236,22 @@ async fn handle<S: AuthStore + 'static>(
         clear(app.cookie, pending)?;
     }
     if path == "/get-session" {
-        if let Some(view) = &view {
-            let jwt = app.jwt(view, now).await?;
-            pending.insert(
-                "set-auth-jwt",
-                HeaderValue::from_str(&jwt).map_err(|_| internal())?,
-            );
-            pending.insert(
-                header::ACCESS_CONTROL_EXPOSE_HEADERS,
-                HeaderValue::from_static("set-auth-jwt"),
-            );
-        }
-        return Ok(view.map_or(Value::Null, |view| view.body()));
+        return app.session_response(view, pending, now).await;
     }
     let view = view.ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))?;
     match path {
+        "/verify-password" | "/change-password" => {
+            credential::authenticated(
+                app,
+                path,
+                payload,
+                (&token, transient),
+                &parts.headers,
+                pending,
+                now,
+            )
+            .await
+        }
         "/token" => Ok(json!({"token":app.jwt(&view, now).await?})),
         "/list-sessions" => sessions.list(&token, transient, now).await,
         "/revoke-session" => {
@@ -268,6 +302,7 @@ fn failure(error: &BlueprintError) -> Response {
         | "INVALID_ERROR_CALLBACK_URL"
         | "INVALID_NEW_USER_CALLBACK_URL"
         | "CROSS_SITE_NAVIGATION_LOGIN_BLOCKED" => StatusCode::FORBIDDEN,
+        "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" => StatusCode::UNPROCESSABLE_ENTITY,
         "UNSUPPORTED_MEDIA_TYPE" => StatusCode::UNSUPPORTED_MEDIA_TYPE,
         "METHOD_NOT_ALLOWED_DEFER_SESSION_REQUIRED" => StatusCode::METHOD_NOT_ALLOWED,
         "PAYLOAD_TOO_LARGE" => StatusCode::PAYLOAD_TOO_LARGE,
@@ -284,4 +319,8 @@ fn failure(error: &BlueprintError) -> Response {
         json!({"code":error.code,"message":error.message})
     };
     (status, Json(body)).into_response()
+}
+
+async fn not_found() -> StatusCode {
+    StatusCode::NOT_FOUND
 }

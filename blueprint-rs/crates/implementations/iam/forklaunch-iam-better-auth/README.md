@@ -2,8 +2,8 @@
 
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
-cookies, Ed25519 JWT issuance/public JWKs and nine raw session/JWT HTTP routes
-behind the `http` feature. Credential HTTP, provider and organization endpoints
+cookies, Ed25519 JWT issuance/public JWKs and thirteen raw credential/session/JWT HTTP routes
+behind the `http` feature. User/account/provider and organization endpoints
 remain in progress, and it is not selectable as a CLI module preset.
 
 `credentials` uses N=16384, r=16, p=1, a 64-byte derived key, NFKC-normalized
@@ -66,11 +66,12 @@ rechecks the account after password verification to reject concurrent password
 changes. Eighty-one actual-handler comparisons cover response/stored state,
 case normalization, callbacks and Unicode password limits; memory and live
 PostgreSQL exercise concurrent signup and persistent credential/session records.
-Credential DTOs are parsed inputs: HTTP media/body validation, CSRF/Origin and
-callback guards still belong to the pending HTTP adapter. Authenticated password
+Credential DTOs are parsed inputs. The `http` feature applies body/media
+validation, CSRF/Origin/callback guards and signed browser cookies. Authenticated password
 verification/rotation rechecks authoritative credentials and session state after
 blocking work. Rotation optionally revokes all own sessions, including current,
-and issues a replacement persistent session. Actual handlers and memory/live
+and issues a replacement session whose cookie inherits the existing browser
+`dont_remember` flag. Actual handlers and memory/live
 PostgreSQL validate wrong/oversized passwords, retained sessions without revocation,
 replacement sessions and isolation of other users. User/account updates and
 provider linking remain open.
@@ -85,7 +86,8 @@ The adapter must apply this policy before mutations and separately validate any
 GET callback URLs; dynamic trusted-origin functions and disabled guards are not
 part of the configured module.
 
-`http::AuthHttp` exposes `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
+`http::AuthHttp` exposes `/sign-up/email`, `/sign-in/email`, `/verify-password`,
+`/change-password`, `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
 `/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token` and `/jwks`.
 It authenticates signed cookies against authoritative tenant-bound storage,
 refreshes sessions, emits verified JWT headers and publishes only public keys.
@@ -109,5 +111,15 @@ sessions, refresh suppression, media/body errors and scoped revocation. Live TCP
 HTTP/MCP tests verify discovery/invocation, cookies, credentialed CORS, signatures,
 CSRF and graceful shutdown using memory and encrypted restricted-role PostgreSQL.
 HTTPS extraction requires the secure cookie prefix and clears secure attributes.
-Credential/provider/org handlers, custom callbacks and module generation remain
-open; these nine routes do not constitute the complete Better Auth preset.
+The credential fixture runs against both the domain backend and production HTTP
+adapter. Its 122 HTTP comparisons cover actual signed-cookie issuance, callback
+headers, case/Unicode password behavior, opaque additional profile values,
+ignored private-field inputs, client metadata and transient session replacement.
+Sixty-three additional parser/schema/guard/method cases compare full HTTP errors,
+including JSON/form media, validation order, duplicate query keys and unsupported
+methods. Live memory and encrypted PostgreSQL exercise credential signup/signin
+and rotation through TCP alongside MCP startup and graceful shutdown.
+
+Production rate limiting, remaining user/account/provider/org routes, real TS ORM
+conformance, custom callbacks and module generation remain open; these thirteen
+routes do not constitute the complete Better Auth preset.

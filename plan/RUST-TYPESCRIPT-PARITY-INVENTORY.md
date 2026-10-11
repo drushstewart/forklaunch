@@ -333,3 +333,14 @@ bundled sources, including live HTTP/MCP and secure-cookie tests. Portable
 services/workers, CLI/native SDKs, listener startup configurations and all five
 managed callbacks pass. Checkout CLI restored; credential HTTP additions and the
 remaining Better Auth preset are tracked separately.
+
+Thirteen raw native HTTP endpoints now include credential signup/signin and
+password verification/rotation. The credential HTTP fixture passes 122 actual
+body/storage/cookie/callback comparisons; 63 parser/schema/guard/method cases match
+full errors. Transient replacement cookies inherit the browser flag, raw additional
+profile values preserve presence, private input fields stay ignored, and forwarded
+IP/agent metadata matches. Live memory/restricted-role PostgreSQL exercise these
+credential operations with MCP startup and shutdown. The 161 session/JWT HTTP
+comparisons remain green. Default production rate limiting, user/account/provider/
+organization routes, real TypeScript ORM conformance, callbacks and CLI generation
+remain open.

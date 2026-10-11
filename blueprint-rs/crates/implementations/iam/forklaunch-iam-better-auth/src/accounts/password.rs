@@ -18,7 +18,8 @@ pub struct ChangePasswordInput {
 }
 
 /// A replacement session is present only when all previous sessions were revoked.
-/// The HTTP adapter must emit its persistent signed cookie in that case.
+/// The HTTP adapter must emit its signed cookie in that case, retaining the
+/// existing browser `dont_remember` flag.
 pub struct PasswordChange {
     pub user: Value,
     pub session: Option<Value>,
@@ -78,7 +79,8 @@ impl<S: AuthStore> CredentialService<S> {
 
     /// Changes the credential atomically. With revokeOtherSessions=true the
     /// actual handler revokes *all* own sessions, including the current one, and
-    /// creates a new persistent session. Unrelated users remain untouched.
+    /// creates a replacement session. Its browser cookie retains the existing
+    /// `dont_remember` flag. Unrelated users remain untouched.
     /// Password work runs outside the write lock; session and credential state
     /// are rechecked inside the transaction to reject concurrent revocation or
     /// password replacement.

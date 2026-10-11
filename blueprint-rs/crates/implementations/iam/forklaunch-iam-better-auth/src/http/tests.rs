@@ -178,6 +178,7 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
     });
     let base = format!("http://{address}");
     let client = reqwest::Client::new();
+    exercise_http_credentials(&client, &base).await;
     let docs: Value = client
         .get(format!("{base}/openapi.json"))
         .send()
@@ -350,4 +351,86 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
         .unwrap()
         .unwrap();
     assert!(tokio::net::TcpStream::connect(address).await.is_err());
+}
+
+async fn exercise_http_credentials(client: &reqwest::Client, base: &str) {
+    let payload = json!({"name":"TCP User","firstName":"TCP","lastName":"User",
+        "email":"tcp-credentials@fixture.test","password":"tcp-test-only-password"});
+    let signup = client
+        .post(format!("{base}/api/auth/sign-up/email"))
+        .header("origin", "http://localhost:3000")
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(signup.status(), StatusCode::OK);
+    let signup_cookie = signup.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let signup: Value = signup.json().await.unwrap();
+    assert_eq!(signup["user"]["email"], payload["email"]);
+    assert!(signup["user"].get("password").is_none());
+    let view: Value = client
+        .get(format!("{base}/api/auth/get-session"))
+        .header("cookie", &signup_cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(view["user"], signup["user"]);
+    let signin = client
+        .post(format!("{base}/api/auth/sign-in/email"))
+        .header("origin", "http://localhost:3000")
+        .json(&json!({"email":payload["email"],"password":payload["password"],"rememberMe":false}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(signin.status(), StatusCode::OK);
+    let headers: Vec<_> = signin
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|header| header.to_str().unwrap())
+        .collect();
+    assert_eq!(headers.len(), 2);
+    assert!(headers.iter().all(|header| !header.contains("Max-Age=")));
+    let cookie = headers
+        .iter()
+        .map(|header| header.split(';').next().unwrap())
+        .collect::<Vec<_>>()
+        .join("; ");
+    let signin: Value = signin.json().await.unwrap();
+    assert_eq!(signin["user"], signup["user"]);
+    assert_ne!(signin["token"], signup["token"]);
+    let changed = client.post(format!("{base}/api/auth/change-password")).header("origin","http://localhost:3000")
+        .header("cookie",cookie).json(&json!({"currentPassword":payload["password"],"newPassword":"replacement-tcp-password","revokeOtherSessions":true}))
+        .send().await.unwrap();
+    assert_eq!(changed.status(), StatusCode::OK);
+    assert_eq!(changed.headers().get_all("set-cookie").iter().count(), 2);
+    assert!(
+        changed
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .all(|header| !header.to_str().unwrap().contains("Max-Age="))
+    );
+    let changed: Value = changed.json().await.unwrap();
+    assert_ne!(changed["token"], signin["token"]);
+    assert_eq!(changed["user"], signup["user"]);
+    let revoked: Value = client
+        .get(format!("{base}/api/auth/get-session"))
+        .header("cookie", signup_cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(revoked, Value::Null);
 }

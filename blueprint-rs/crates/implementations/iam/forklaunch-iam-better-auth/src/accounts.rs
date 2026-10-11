@@ -98,6 +98,18 @@ impl<S: AuthStore> CredentialService<S> {
         agent: &str,
         now: DateTime<Utc>,
     ) -> BlueprintResult<AuthGrant> {
+        self.sign_up_with_fields(input, serde_json::Map::new(), ip, agent, now)
+            .await
+    }
+
+    pub(crate) async fn sign_up_with_fields(
+        &self,
+        input: SignupInput,
+        fields: serde_json::Map<String, Value>,
+        ip: &str,
+        agent: &str,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<AuthGrant> {
         validate_email(&input.email)?;
         validate_length(&input.password, true)?;
         let email = input.email.to_lowercase();
@@ -123,6 +135,14 @@ impl<S: AuthStore> CredentialService<S> {
         }
         if let Some(phone) = input.phone_number {
             user["phoneNumber"] = json!(phone);
+        }
+        // Configured Better Auth additional fields are opaque at its HTTP
+        // schema boundary. Preserve present null/JSON values without granting
+        // writes to IDs, email verification, timestamps or authorization fields.
+        for field in ["firstName", "lastName", "phoneNumber"] {
+            if let Some(value) = fields.get(field) {
+                user[field] = value.clone();
+            }
         }
         tx.insert(Model::User, user.clone()).await?;
         tx.insert(Model::Account,json!({"id":uuid::Uuid::new_v4().to_string(),"userId":id,"accountId":id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
@@ -241,7 +261,7 @@ async fn find_credential<T: AuthTransaction>(
             && account["accountId"] == user_id
     }))
 }
-fn validate_email(email: &str) -> BlueprintResult<()> {
+pub(crate) fn validate_email(email: &str) -> BlueprintResult<()> {
     static EMAIL: OnceLock<Regex> = OnceLock::new();
     // The actual configured Zod 4 default email expression.
     let regex = EMAIL.get_or_init(|| Regex::new(r"^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$").expect("fixed email expression"));
@@ -251,18 +271,18 @@ fn validate_email(email: &str) -> BlueprintResult<()> {
         Err(BlueprintError::new("INVALID_EMAIL", "Invalid email"))
     }
 }
-fn validate_length(password: &str, minimum: bool) -> BlueprintResult<()> {
+pub(crate) fn validate_length(password: &str, minimum: bool) -> BlueprintResult<()> {
     let length = password.encode_utf16().count();
     if minimum && length < 8 {
         return Err(BlueprintError::new(
             "PASSWORD_TOO_SHORT",
-            "Password is too short",
+            "Password too short",
         ));
     }
     if length > 128 {
         return Err(BlueprintError::new(
             "PASSWORD_TOO_LONG",
-            "Password is too long",
+            "Password too long",
         ));
     }
     Ok(())
