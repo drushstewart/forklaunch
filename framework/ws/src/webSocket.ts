@@ -7,7 +7,8 @@ import {
   decodeSchemaValue,
   encodeSchemaValue,
   EventSchema,
-  normalizeEncodedValue
+  normalizeEncodedValue,
+  parseSchemaValue
 } from '@forklaunch/core/ws';
 import {
   AnySchemaValidator,
@@ -208,6 +209,25 @@ export class ForklaunchWebSocket<
     );
 
     return normalizeEncodedValue(encoded, context, allowUndefined);
+  }
+
+  private validateEncodedControl(
+    data: Buffer,
+    schema: IdiomaticSchema<SV> | undefined,
+    context: string
+  ): Buffer {
+    try {
+      parseSchemaValue(
+        this.schemaValidator as SchemaValidator,
+        data,
+        schema,
+        context
+      );
+    } catch {
+      this.decodeAndValidate(data, schema);
+    }
+    // Automatic protocol replies echo the original bytes, including whitespace.
+    return data;
   }
 
   /**
@@ -893,6 +913,16 @@ export class ForklaunchWebSocket<
     code?: number,
     reason?: Schema<ExtractSchemaFromRecord<SV, ES['closeReason']>, SV>
   ): void {
+    if (Buffer.isBuffer(reason)) {
+      return super.close(
+        code,
+        this.validateEncodedControl(
+          reason,
+          this.schemas.closeReasonSchema,
+          'web socket close'
+        )
+      );
+    }
     if (reason) {
       const encoded = this.validateAndEncode(
         reason,
@@ -973,6 +1003,18 @@ export class ForklaunchWebSocket<
     mask?: boolean,
     cb?: (err: Error) => void
   ): void {
+    if (Buffer.isBuffer(data)) {
+      super.pong(
+        this.validateEncodedControl(
+          data,
+          this.schemas.pongSchema,
+          'web socket pong'
+        ),
+        mask,
+        cb
+      );
+      return;
+    }
     if (data !== undefined) {
       const encoded = this.validateAndEncode(
         data,

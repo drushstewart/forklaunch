@@ -1,5 +1,9 @@
 #![forbid(unsafe_code)]
 
+pub mod codec;
+#[cfg(feature = "transport")]
+pub mod transport;
+
 use forklaunch_common::json_string;
 use forklaunch_contract::SchemaRef;
 

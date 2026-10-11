@@ -1,0 +1,334 @@
+//! Typed payload validation for the TypeScript WebSocket wire format.
+use std::{fmt, sync::Arc};
+
+use serde::{Serialize, de::DeserializeOwned};
+use serde_json::Value;
+
+pub const DEFAULT_MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PayloadError {
+    Invalid(String),
+    Limit { max_bytes: usize },
+}
+impl fmt::Display for PayloadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(message) => write!(formatter, "invalid WebSocket payload: {message}"),
+            Self::Limit { max_bytes } => {
+                write!(formatter, "WebSocket payload exceeds {max_bytes} bytes")
+            }
+        }
+    }
+}
+impl std::error::Error for PayloadError {}
+
+type Encoder<T> = fn(&T, usize) -> Result<Vec<u8>, PayloadError>;
+type Decoder<T> = fn(&[u8]) -> Result<T, PayloadError>;
+type Validator<T> = dyn Fn(&T) -> Result<(), String> + Send + Sync;
+
+/// Encodes messages as raw UTF-8 strings or JSON bytes, matching the TS helpers.
+/// Decoding first attempts JSON, then falls back to a lossy UTF-8 string.
+/// A validator runs after decoding and before encoding; byte limits apply in both directions.
+pub struct PayloadCodec<T> {
+    encoder: Encoder<T>,
+    decoder: Decoder<T>,
+    validator: Arc<Validator<T>>,
+    max_bytes: usize,
+}
+impl<T> Clone for PayloadCodec<T> {
+    fn clone(&self) -> Self {
+        Self {
+            encoder: self.encoder,
+            decoder: self.decoder,
+            validator: self.validator.clone(),
+            max_bytes: self.max_bytes,
+        }
+    }
+}
+impl<T: Serialize + DeserializeOwned> PayloadCodec<T> {
+    #[must_use]
+    pub fn serde() -> Self {
+        Self {
+            encoder: encode_serde::<T>,
+            decoder: decode_serde::<T>,
+            validator: Arc::new(|_| Ok(())),
+            max_bytes: DEFAULT_MAX_PAYLOAD_BYTES,
+        }
+    }
+
+    /// Use the framework's garde validation in both directions.
+    #[cfg(feature = "validation")]
+    #[must_use]
+    pub fn framework() -> Self
+    where
+        T: forklaunch_validation::FrameworkSchema,
+    {
+        Self::serde().with_validator(|value| {
+            forklaunch_validation::validate_value(value).map_err(|errors| format!("{errors:?}"))
+        })
+    }
+}
+impl PayloadCodec<Vec<u8>> {
+    /// Explicit binary payloads bypass JSON/text interpretation.
+    #[must_use]
+    pub fn bytes() -> Self {
+        Self {
+            encoder: |value, limit| {
+                check_limit(value.len(), limit)?;
+                Ok(value.clone())
+            },
+            decoder: |bytes| Ok(bytes.to_vec()),
+            validator: Arc::new(|_| Ok(())),
+            max_bytes: DEFAULT_MAX_PAYLOAD_BYTES,
+        }
+    }
+}
+impl<T> PayloadCodec<T> {
+    #[must_use]
+    pub fn with_validator(
+        mut self,
+        validate: impl Fn(&T) -> Result<(), String> + Send + Sync + 'static,
+    ) -> Self {
+        self.validator = Arc::new(validate);
+        self
+    }
+
+    /// # Errors
+    /// Rejects zero limits.
+    pub fn with_max_bytes(mut self, max_bytes: usize) -> Result<Self, PayloadError> {
+        if max_bytes == 0 {
+            return Err(PayloadError::Invalid(
+                "payload limit must be positive".into(),
+            ));
+        }
+        self.max_bytes = max_bytes;
+        Ok(self)
+    }
+
+    #[must_use]
+    pub const fn max_bytes(&self) -> usize {
+        self.max_bytes
+    }
+
+    /// # Errors
+    /// Rejects invalid values, null messages, serialization failures and excessive bytes.
+    pub fn encode(&self, value: &T) -> Result<Vec<u8>, PayloadError> {
+        (self.validator)(value).map_err(PayloadError::Invalid)?;
+        let bytes = (self.encoder)(value, self.max_bytes)?;
+        check_limit(bytes.len(), self.max_bytes)?;
+        Ok(bytes)
+    }
+
+    /// # Errors
+    /// Rejects excessive bytes, schema/type mismatches and failed validation.
+    pub fn decode(&self, bytes: &[u8]) -> Result<T, PayloadError> {
+        check_limit(bytes.len(), self.max_bytes)?;
+        let value = (self.decoder)(bytes)?;
+        (self.validator)(&value).map_err(PayloadError::Invalid)?;
+        Ok(value)
+    }
+}
+
+fn check_limit(bytes: usize, max_bytes: usize) -> Result<(), PayloadError> {
+    if bytes > max_bytes {
+        Err(PayloadError::Limit { max_bytes })
+    } else {
+        Ok(())
+    }
+}
+fn decode_serde<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, PayloadError> {
+    let text = String::from_utf8_lossy(bytes);
+    let value = serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text.into_owned()));
+    serde_json::from_value(value).map_err(|error| PayloadError::Invalid(error.to_string()))
+}
+fn encode_serde<T: Serialize>(value: &T, max_bytes: usize) -> Result<Vec<u8>, PayloadError> {
+    // JSON escaping can expand raw strings sixfold; the final wire bytes retain the exact limit.
+    let mut output = LimitedBytes {
+        bytes: Vec::new(),
+        limit: max_bytes.saturating_mul(6).saturating_add(2),
+        exceeded: false,
+    };
+    let result = serde_json::to_writer(&mut output, value);
+    if output.exceeded {
+        return Err(PayloadError::Limit { max_bytes });
+    }
+    result.map_err(|error| PayloadError::Invalid(error.to_string()))?;
+    match serde_json::from_slice(&output.bytes)
+        .map_err(|error| PayloadError::Invalid(error.to_string()))?
+    {
+        Value::String(value) => Ok(value.into_bytes()),
+        Value::Null => Err(PayloadError::Invalid(
+            "null cannot be sent as a message".into(),
+        )),
+        _ => Ok(output.bytes),
+    }
+}
+struct LimitedBytes {
+    bytes: Vec<u8>,
+    limit: usize,
+    exceeded: bool,
+}
+impl std::io::Write for LimitedBytes {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+            self.exceeded = true;
+            return Err(std::io::Error::other(
+                "WebSocket encoding exceeds payload limit",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Serialize, serde::Deserialize)]
+    #[serde(tag = "type")]
+    enum AppMessage {
+        #[serde(rename = "chat")]
+        Chat { text: String },
+        #[serde(rename = "subscribe")]
+        Subscribe { topic: String },
+    }
+    fn messages() -> PayloadCodec<AppMessage> {
+        PayloadCodec::serde().with_validator(|value| {
+            let text = match value {
+                AppMessage::Chat { text } => text,
+                AppMessage::Subscribe { topic } => topic,
+            };
+            if text.is_empty() || text.chars().count() > 32 {
+                Err("message must contain 1–32 characters".into())
+            } else {
+                Ok(())
+            }
+        })
+    }
+    fn case<T: Serialize + DeserializeOwned>(codec: &PayloadCodec<T>, input: &Value) -> Value {
+        if input["action"] == "encode" {
+            let result = serde_json::from_value(input["value"].clone())
+                .map_err(|error| PayloadError::Invalid(error.to_string()))
+                .and_then(|value| codec.encode(&value));
+            match result {
+                Ok(bytes) => serde_json::json!({"ok":true,"bytes":bytes}),
+                Err(_) => serde_json::json!({"ok":false}),
+            }
+        } else {
+            let bytes: Vec<u8> = serde_json::from_value(input["bytes"].clone()).unwrap();
+            match codec.decode(&bytes) {
+                Ok(value) => serde_json::json!({"ok":true,"value":value}),
+                Err(_) => serde_json::json!({"ok":false}),
+            }
+        }
+    }
+
+    #[cfg(feature = "validation")]
+    #[test]
+    fn framework_codec_enforces_garde_on_incoming_and_outgoing_payloads() {
+        #[derive(Serialize, serde::Deserialize, schemars::JsonSchema, garde::Validate)]
+        struct Input {
+            #[garde(length(min = 1, max = 8))]
+            message: String,
+        }
+        let codec = PayloadCodec::<Input>::framework();
+        assert!(codec.decode(br#"{"message":"hello"}"#).is_ok());
+        assert!(codec.decode(br#"{"message":""}"#).is_err());
+        assert!(codec.decode(br#"{"message":"too long string"}"#).is_err());
+        assert!(
+            codec
+                .encode(&Input {
+                    message: String::new()
+                })
+                .is_err()
+        );
+        assert_eq!(
+            codec
+                .encode(&Input {
+                    message: "hello".into()
+                })
+                .unwrap(),
+            br#"{"message":"hello"}"#
+        );
+    }
+
+    #[test]
+    fn native_ws_payload_conformance() {
+        let Ok(input) = std::env::var("FORKLAUNCH_TEST_WS_PAYLOAD_INPUT") else {
+            return;
+        };
+        let cases: Vec<Value> = serde_json::from_slice(&std::fs::read(input).unwrap()).unwrap();
+        let output = cases
+            .iter()
+            .map(|input| match input["kind"].as_str().unwrap() {
+                "text" => case(&PayloadCodec::<String>::serde(), input),
+                "value" => case(&PayloadCodec::<Value>::serde(), input),
+                "message" => case(&messages(), input),
+                "count" => case(
+                    &PayloadCodec::<u64>::serde().with_validator(|count| {
+                        if *count <= 1000 {
+                            Ok(())
+                        } else {
+                            Err("count exceeds limit".into())
+                        }
+                    }),
+                    input,
+                ),
+                _ => panic!("unknown payload fixture kind"),
+            })
+            .collect::<Vec<_>>();
+        std::fs::write(
+            std::env::var("FORKLAUNCH_TEST_WS_PAYLOAD_OUTPUT").unwrap(),
+            serde_json::to_vec(&output).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn payload_types_validation_and_byte_limits_apply_before_delivery() {
+        let codec = messages();
+        let valid = br#"{"type":"chat","text":"hello","discarded":true}"#;
+        assert_eq!(
+            codec.decode(valid).unwrap(),
+            AppMessage::Chat {
+                text: "hello".into()
+            }
+        );
+        for invalid in [
+            br#"{"type":"chat","text":""}"#.as_slice(),
+            br#"{"type":"other","text":"hello"}"#,
+            br#"{"type":"chat","text":12}"#,
+            b"null",
+            b"not JSON",
+        ] {
+            assert!(codec.decode(invalid).is_err());
+        }
+        assert!(
+            codec
+                .encode(&AppMessage::Chat {
+                    text: String::new()
+                })
+                .is_err()
+        );
+        let text = PayloadCodec::<String>::serde().with_max_bytes(3).unwrap();
+        assert_eq!(text.encode(&"水".into()).unwrap(), "水".as_bytes());
+        assert_eq!(text.encode(&"\0\0\0".into()).unwrap(), [0, 0, 0]);
+        assert!(text.encode(&"水水".into()).is_err());
+        assert!(text.decode(b"1234").is_err());
+        assert!(PayloadCodec::<Value>::serde().encode(&Value::Null).is_err());
+        assert_eq!(
+            PayloadCodec::<Value>::serde().decode(b"null").unwrap(),
+            Value::Null
+        );
+        assert!(PayloadCodec::<String>::serde().with_max_bytes(0).is_err());
+        let bytes = PayloadCodec::bytes().with_max_bytes(3).unwrap();
+        assert_eq!(bytes.decode(&[0, 255, 1]).unwrap(), [0, 255, 1]);
+        assert_eq!(bytes.encode(&vec![0, 255, 1]).unwrap(), [0, 255, 1]);
+        assert!(bytes.encode(&vec![0; 4]).is_err());
+    }
+}

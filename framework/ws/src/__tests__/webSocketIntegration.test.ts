@@ -97,6 +97,24 @@ describe('WebSocket Integration', () => {
     }
   });
 
+  it('echoes encoded automatic pong and close payloads byte for byte', async () => {
+    const result = await createServer();
+    server = result.server;
+    const client = new WebSocket(`ws://localhost:${result.port}`);
+    clients.push(client);
+    await waitForOpen(client);
+    const pingBytes = Buffer.from(' { "ts" : 42 } ');
+    const pong = new Promise<Buffer>((resolve) => client.once('pong', resolve));
+    client.ping(pingBytes);
+    expect(await pong).toEqual(pingBytes);
+    const reasonBytes = Buffer.from(' { "code" : 7, "message" : "done 水" } ');
+    const closed = new Promise<[number, Buffer]>((resolve) => {
+      client.once('close', (code, reason) => resolve([code, reason]));
+    });
+    client.close(1000, reasonBytes);
+    expect(await closed).toEqual([1000, reasonBytes]);
+  });
+
   it('should not infinitely recurse when a client connects', async () => {
     const result = await createServer();
     server = result.server;
