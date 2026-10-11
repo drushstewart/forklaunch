@@ -11,6 +11,7 @@ pub(super) enum BuiltinModule {
     Cac,
     MessagingBase,
     MessagingTwilio,
+    EcommerceStripe,
 }
 
 impl BuiltinModule {
@@ -20,6 +21,7 @@ impl BuiltinModule {
             "cac-base" => Some(Self::Cac),
             "messaging-base" => Some(Self::MessagingBase),
             "messaging-twilio" => Some(Self::MessagingTwilio),
+            "ecommerce-stripe" => Some(Self::EcommerceStripe),
             _ => None,
         }
     }
@@ -29,6 +31,7 @@ impl BuiltinModule {
             Self::Cac => "cac-base",
             Self::MessagingBase => "messaging-base",
             Self::MessagingTwilio => "messaging-twilio",
+            Self::EcommerceStripe => "ecommerce-stripe",
         }
     }
     pub(super) fn template(self) -> &'static str {
@@ -36,6 +39,7 @@ impl BuiltinModule {
             Self::Iam => "iam",
             Self::Cac => "cac",
             Self::MessagingBase | Self::MessagingTwilio => "messaging",
+            Self::EcommerceStripe => "ecommerce",
         }
     }
     fn description(self) -> &'static str {
@@ -44,6 +48,7 @@ impl BuiltinModule {
             Self::Cac => "CAC code-set service",
             Self::MessagingBase => "Persistent messaging hooks",
             Self::MessagingTwilio => "Persistent Twilio SMS messaging",
+            Self::EcommerceStripe => "Persistent ecommerce with Stripe and optional PayPal",
         }
     }
 }
@@ -60,7 +65,7 @@ pub(crate) fn generate_rust_module(matches: &ArgMatches) -> Result<()> {
     let kind = option(matches, "module")
         .as_deref()
         .and_then(BuiltinModule::from_variant)
-        .context("Rust module generation currently supports --module iam-base, cac-base, messaging-base or messaging-twilio")?;
+        .context("Rust module generation currently supports --module iam-base, cac-base, messaging-base, messaging-twilio or ecommerce-stripe")?;
     if option(matches, "database").is_some_and(|database| database != "postgresql") {
         bail!("Rust modules currently support --database postgresql");
     }
@@ -254,6 +259,9 @@ pub(super) fn ensure_module_compose(
     if kind == BuiltinModule::Iam {
         return ensure_iam_compose(root, name, dryrun);
     }
+    if kind == BuiltinModule::EcommerceStripe {
+        return ensure_ecommerce_compose(root, name, dryrun);
+    }
     if matches!(
         kind,
         BuiltinModule::MessagingBase | BuiltinModule::MessagingTwilio
@@ -278,6 +286,29 @@ pub(super) fn ensure_module_compose(
         .or_insert_with(|| "${CAC_HMAC_SECRET_KEY:?Configure a service HMAC secret}".to_owned());
     env.entry("JWKS_PUBLIC_KEY_URL".to_owned())
         .or_insert_with(|| "${CAC_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}".to_owned());
+    write(path, yaml_to_string(&compose)?)?;
+    Ok(())
+}
+
+fn ensure_ecommerce_compose(root: &Path, name: &str, dryrun: bool) -> Result<()> {
+    if dryrun { return Ok(()); }
+    let path = root.join("docker-compose.yaml");
+    if !read_or_create_rust_docker_compose(&path)?.services.contains_key(name) {
+        ensure_rust_docker_compose_project(root, RustProjectKind::Service, name, false)?;
+    }
+    let mut compose = read_or_create_rust_docker_compose(&path)?;
+    let service = compose.services.get_mut(name).context("Expected ecommerce Compose service")?;
+    let env = service.environment.get_or_insert_with(IndexMap::new);
+    for (key, value) in [
+        ("DATABASE_URL", "${ECOMMERCE_DATABASE_URL:?Configure a restricted PostgreSQL role}"),
+        ("TENANT_ID", "${ECOMMERCE_TENANT_ID:?Configure a trusted tenant}"),
+        ("ENCRYPTION_KEY", "${ENCRYPTION_KEY:?Configure a field encryption key}"),
+        ("HMAC_SECRET_KEY", "${ECOMMERCE_HMAC_SECRET_KEY:?Configure a service HMAC secret}"),
+        ("JWKS_PUBLIC_KEY_URL", "${ECOMMERCE_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}"),
+        ("STRIPE_API_KEY", "${STRIPE_API_KEY:?Configure Stripe payment creation}"),
+    ] {
+        env.entry(key.to_owned()).or_insert_with(|| value.to_owned());
+    }
     write(path, yaml_to_string(&compose)?)?;
     Ok(())
 }

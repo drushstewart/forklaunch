@@ -30,6 +30,7 @@ CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" init module coding --path "$RUN_ROOT/app" --language rust -m cac-base
 "$CLI" init module messaging --path "$RUN_ROOT/app" --language rust -m messaging-base
 "$CLI" init module texting --path "$RUN_ROOT/app" --language rust -m messaging-twilio
+"$CLI" init module ecommerce --path "$RUN_ROOT/app" --language rust -m ecommerce-stripe
 mv "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
 python3 - "$REPO_ROOT" <<'PYTHON'
@@ -66,7 +67,7 @@ done
 python3 - <<'PYTHON'
 from pathlib import Path
 import json
-for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs','coding','messaging','texting']:
+for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs','coding','messaging','texting','ecommerce']:
     contract=json.loads((Path('.forklaunch/contracts')/name/'contract.json').read_text())
     assert contract['generator']=='framework-rs'
     spec=json.loads((Path('.forklaunch/openapi')/name/'openapi.json').read_text())

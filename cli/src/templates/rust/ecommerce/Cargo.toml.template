@@ -1,0 +1,27 @@
+[package]
+name = "{{{name}}}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "{{{description}}}"
+
+[dependencies]
+serde_json = "1"
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+forklaunch-core = { path = "../../.forklaunch/framework-rs/crates/forklaunch-core", features = ["otlp", "postgres", "encryption"] }
+forklaunch-contract = { path = "../../.forklaunch/framework-rs/crates/forklaunch-contract" }
+forklaunch-openapi = { path = "../../.forklaunch/framework-rs/crates/forklaunch-openapi" }
+forklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth", features = ["remote-jwks"] }
+forklaunch-axum = { path = "../../.forklaunch/framework-rs/crates/forklaunch-axum", features = ["remote-jwks", "mcp"] }
+forklaunch-blueprint-core = { path = "../../.forklaunch/blueprint-rs/crates/forklaunch-blueprint-core", features = ["provider-http"] }
+forklaunch-ecommerce-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/forklaunch-ecommerce-interface" }
+forklaunch-ecommerce-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/ecommerce/forklaunch-ecommerce-base", features = ["postgres", "worker"] }
+forklaunch-ecommerce-stripe = { path = "../../.forklaunch/blueprint-rs/crates/implementations/ecommerce/forklaunch-ecommerce-stripe" }
+forklaunch-ecommerce-paypal = { path = "../../.forklaunch/blueprint-rs/crates/implementations/ecommerce/forklaunch-ecommerce-paypal" }
+forklaunch-ecommerce-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/ecommerce/forklaunch-ecommerce-axum" }
+forklaunch-worker-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/forklaunch-worker-interface" }
+forklaunch-worker-database = { path = "../../.forklaunch/blueprint-rs/crates/implementations/worker/forklaunch-worker-database", features = ["postgres", "runtime", "http-control"] }
+jsonwebtoken = "9"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }

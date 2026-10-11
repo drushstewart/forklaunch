@@ -128,7 +128,7 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         .any(|module| modules::BuiltinModule::from_variant(module).is_none())
     {
         bail!(
-            "Rust application module generation currently supports iam-base, cac-base, messaging-base and messaging-twilio; add other modules after their Rust adapters are implemented"
+            "Rust application module generation currently supports iam-base, cac-base, messaging-base, messaging-twilio and ecommerce-stripe; add other modules after their Rust adapters are implemented"
         );
     }
     if !modules.is_empty()
