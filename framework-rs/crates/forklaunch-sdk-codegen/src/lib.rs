@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod media;
 mod models;
 pub mod render;
 pub mod response;
@@ -68,6 +69,12 @@ pub fn compile_schema_ref(
         }
     };
     compile_schema(root_name, &value)
+}
+
+/// Escape data embedded in a single-quoted TypeScript string literal.
+#[must_use]
+pub fn escape_typescript_string(value: &str) -> String {
+    models::escape_ts_string(value)
 }
 
 pub use forklaunch_contract::{BodyKind, SchemaRef};

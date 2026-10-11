@@ -94,11 +94,14 @@ try{
   const unknown=new URLSearchParams(callback);unknown.set('MessageSid','unknown');response=await sendCallback(unknown);assert.equal(response.status,404);await response.arrayBuffer();
   const sdkCallback={MessageSid:queued.response.providerMessageId,MessageStatus:'delivered',Extra:'💬 + = &',Repeated:['z','a','a']};
   const sdkForm=new URLSearchParams();for(const [key,values]of Object.entries(sdkCallback))for(const value of Array.isArray(values)?values:[values])sdkForm.append(key,value);
-  const sdkHandled=await client.twilio.webhook.handleStatusCallback({body:sdkCallback,headers:{'x-twilio-signature':callbackSignature(sdkForm)}});
+  // Record forms use the universal SDK's single JSON value per composite field.
+  // Explicit URLSearchParams retains repeated values; MCP records match SDK records.
+  const recordForm=new URLSearchParams(Object.entries(sdkCallback).map(([key,value])=>[key,typeof value==='string'?value:JSON.stringify(value)]));
+  const sdkHandled=await client.twilio.webhook.handleStatusCallback({body:sdkCallback,headers:{'x-twilio-signature':callbackSignature(recordForm)}});
   assert.equal(sdkHandled.code,200);assert.equal(sdkHandled.response,'Status callback processed');
-  const mcpCallback=await mcpRpc(twilio.base,'tools/call',{name:'handleStatusCallback',arguments:{body:sdkCallback,headers:{'x-twilio-signature':callbackSignature(sdkForm)}}});assert.equal(mcpCallback.isError,false,JSON.stringify(mcpCallback));assert.equal(mcpCallback.content[0].text,'Status callback processed');
+  const mcpCallback=await mcpRpc(twilio.base,'tools/call',{name:'handleStatusCallback',arguments:{body:sdkCallback,headers:{'x-twilio-signature':callbackSignature(recordForm)}}});assert.equal(mcpCallback.isError,false,JSON.stringify(mcpCallback));assert.equal(mcpCallback.content[0].text,'Status callback processed');
   const sdkRaw=await client.twilio.webhook.handleStatusCallback({body:sdkForm,headers:{'x-twilio-signature':callbackSignature(sdkForm)}});assert.equal(sdkRaw.code,200);
-  await assert.rejects(()=>client.twilio.webhook.handleStatusCallback({body:{MessageSid:'sid',MessageStatus:'sent',Nested:{invalid:true}},headers:{}}),/Form values/);
+  const unsigned=await client.twilio.webhook.handleStatusCallback({body:{MessageSid:'sid',MessageStatus:'sent',Nested:{invalid:true}},headers:{}});assert.equal(unsigned.code,401);
   const rustBody=JSON.stringify({to:'+15550000008',body:'private SMS from Rust SDK'});
   const rust=spawn('cargo',['test','-p','twilio-sdk','--test','runtime','--','--nocapture'],{env:{...process.env,SMS_BASE_URL:twilio.base,SMS_RECORD_ID:queued.response.id,SMS_GET_HEADER:hmac(`/sms/${queued.response.id}`),SMS_MISSING_HEADER:hmac('/sms/missing'),SMS_CALLBACK_FORM:sdkForm.toString(),SMS_CALLBACK_SIGNATURE:callbackSignature(sdkForm),SMS_SEND_BODY:rustBody,SMS_SEND_HEADER:hmac('/sms','POST',rustBody)},stdio:['ignore','pipe','pipe']});
   let rustOutput='';rust.stdout.on('data',d=>rustOutput+=d);rust.stderr.on('data',d=>rustOutput+=d);

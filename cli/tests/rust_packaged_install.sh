@@ -118,4 +118,7 @@ PYTHON
 cargo run --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-sdk-rust --example recursive_client -- \
     "$PWD/.forklaunch/contracts/accounts/contract.json" "$PWD/sdks/rust/accounts-sdk/src/lib.rs"
 cargo clippy -p accounts-sdk --all-targets -- -D warnings
+cargo run --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-sdk-typescript --example recursive_client -- \
+    "$PWD/.forklaunch/contracts/accounts/contract.json" "$PWD/sdks/typescript/src/index.ts"
+"${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript/tsconfig.json
 echo 'PASS packaged CLI installation, portable services/workers, CLI/native SDK generation and HTTP/MCP surfaces'

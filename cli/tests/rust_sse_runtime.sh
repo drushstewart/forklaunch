@@ -47,5 +47,7 @@ Path('sdks/rust/streams-sdk/examples/sse_roundtrip.rs').write_text(Path(sys.argv
 PYTHON
 cargo build -p streams-sdk --example sse_roundtrip
 cargo clippy -p streams-sdk --all-targets -- -D warnings
+cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-typescript --example stream_client -- "$PWD/sdks/typescript/src/index.ts"
+"$TSC_BIN" --project sdks/typescript/tsconfig.json --noEmit false --outDir "$PWD/sdks/typescript/dist"
 node "$SCRIPT_DIR/rust_sse_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/sse_roundtrip" "$PWD/sdks/typescript/dist/index.js"
-echo 'PASS relocated generated SSE service, CLI/native clients and both artifact formats'
+echo 'PASS relocated generated SSE service, CLI/both native clients and both artifact formats'

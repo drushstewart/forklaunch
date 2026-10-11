@@ -7,10 +7,14 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow = "1"
+ramhorns = "1.0.1"
+convert_case = "0.8"
 forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-sdk-codegen = { path = "../forklaunch-sdk-codegen" }
 
 [dev-dependencies]
+serde_json = "1"
 forklaunch-contract = { path = "../forklaunch-contract" }
 
 [lints]

@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod http;
+pub use http::{TypeScriptHttpSdkOptions, generate_typescript_http_sdk_source};
+
 use forklaunch_common::json_string as js_string;
 use std::fmt::Write as _;
 
@@ -211,12 +214,91 @@ mod tests {
 
     use super::*;
 
+    fn echo_body() -> BodyContract {
+        BodyContract {
+            schema: forklaunch_contract::SchemaRef::named("Echo").with_json_schema(r#"{"type":"object","required":["method","body","contentType"],"properties":{"method":{"type":"string"},"body":{"type":"string"},"contentType":{"type":"string"}}}"#),
+            ..BodyContract::json("Echo")
+        }
+    }
+
+    fn register_response_fixture(registry: &mut forklaunch_contract::ContractRegistry) {
+        use forklaunch_contract::{BodyKind, SchemaRef};
+        for (name, path, kind, mime, schema) in [
+            (
+                "Read Text",
+                "/responses/text",
+                BodyKind::Text,
+                "text/plain; charset=utf-8",
+                r#"{"type":"string"}"#,
+            ),
+            (
+                "Read Binary",
+                "/responses/binary",
+                BodyKind::Binary,
+                "application/octet-stream",
+                r#"{"type":"string"}"#,
+            ),
+            (
+                "Read Null",
+                "/responses/null",
+                BodyKind::Json,
+                "application/json",
+                r#"{"type":"null"}"#,
+            ),
+            (
+                "Read Invalid Json",
+                "/responses/invalid",
+                BodyKind::Json,
+                "application/json",
+                r#"{"type":"object"}"#,
+            ),
+        ] {
+            registry.register(
+                RouteContract::get(name, "Typed response fixture", path).with_response(
+                    200,
+                    Some(BodyContract {
+                        kind,
+                        content_type: Some(mime.into()),
+                        schema: SchemaRef::named("Payload").with_json_schema(schema),
+                    }),
+                ),
+            );
+        }
+        registry.register(
+            RouteContract::get("Read Empty", "Empty response", "/responses/empty")
+                .with_response(204, None),
+        );
+        registry.register(
+            RouteContract::new(
+                "Read Head",
+                "HEAD response",
+                HttpMethod::Head,
+                "/responses/head",
+            )
+            .with_response(200, Some(echo_body())),
+        );
+        registry.register(RouteContract::get("Read Error", "Business error", "/responses/error").with_response(409, Some(BodyContract {
+            schema: SchemaRef::named("Conflict").with_json_schema(r#"{"type":"object","required":["errorCode"],"properties":{"errorCode":{"type":"string"}}}"#),
+            content_type: Some("application/problem+json".into()), ..BodyContract::json("Conflict")
+        })));
+        registry.register(RouteContract::get("Read Several", "Multiple success responses", "/responses/several/:mode")
+            .with_param(FieldContract::required("mode", "String"))
+            .with_response(200, Some(echo_body()))
+            .with_response(201, Some(BodyContract { schema: SchemaRef::named("Created").with_json_schema(r#"{"type":"object","required":["createdAt"],"properties":{"createdAt":{"type":"string"}}}"#), ..BodyContract::json("Created") }))
+            .with_response(202, Some(BodyContract { schema: SchemaRef::named("Queued").with_json_schema(r#"{"type":"object","required":["jobId"],"properties":{"jobId":{"type":"integer"}}}"#), ..BodyContract::json("Queued") }))
+            .with_response(204, None));
+    }
+
     #[test]
     fn native_sdk_preserves_body_kinds_and_wire_content_types() {
         use forklaunch_contract::{BodyKind, SchemaRef};
         let mut registry = forklaunch_contract::ContractRegistry::new();
         for (name, kind, mime) in [
-            ("json", BodyKind::Json, "application/vnd.forklaunch+json"),
+            (
+                "json",
+                BodyKind::Json,
+                "application/vnd.forklaunch+json; profile=\"https://example.test/v1\"",
+            ),
             ("text", BodyKind::Text, "text/plain; charset=utf-8"),
             ("binary", BodyKind::Binary, "application/octet-stream"),
             ("file", BodyKind::File, "image/png"),
@@ -232,14 +314,18 @@ mod tests {
                     format!("post {name}"),
                     "Media upload",
                     HttpMethod::Post,
-                    format!("/{name}"),
+                    if name == "json" {
+                        "/json/a'b&c".into()
+                    } else {
+                        format!("/{name}")
+                    },
                 )
                 .with_request_body(BodyContract {
                     kind,
                     schema: SchemaRef::named("Payload"),
                     content_type: Some(mime.into()),
                 })
-                .with_response(200, None),
+                .with_response(200, Some(echo_body())),
             );
         }
         let plan = SdkGenerationPlan::from_registry(SdkTarget::TypeScript, &registry);
@@ -251,13 +337,63 @@ mod tests {
         assert!(source.contains("body?: FormData"));
         assert!(source.contains("body?: URLSearchParams"));
         assert!(!source.contains("'content-type': \"multipart/form-data\""));
+        register_response_fixture(&mut registry);
+        let typed = generate_typescript_http_sdk_source(
+            &SdkGenerationPlan::from_registry(SdkTarget::TypeScript, &registry),
+            &TypeScriptHttpSdkOptions::new("media"),
+        )
+        .unwrap();
         if let Ok(directory) = std::env::var("FORKLAUNCH_TEST_NATIVE_SDK_OUTPUT") {
             std::fs::write(
                 std::path::Path::new(&directory).join("native-sdk.ts"),
                 source,
             )
             .unwrap();
+            std::fs::write(
+                std::path::Path::new(&directory).join("typed-native-sdk.ts"),
+                typed,
+            )
+            .unwrap();
         }
+    }
+
+    #[test]
+    fn typed_generator_rejects_invalid_contracts_before_emitting_source() {
+        use forklaunch_contract::SchemaRef;
+        let make_plan = |body: BodyContract| {
+            let mut registry = forklaunch_contract::ContractRegistry::new();
+            registry.register(
+                RouteContract::get("Read Item", "Read", "/items")
+                    .with_request_body(body)
+                    .with_response(200, Some(BodyContract::json("String"))),
+            );
+            SdkGenerationPlan::from_registry(SdkTarget::TypeScript, &registry)
+        };
+        let options = TypeScriptHttpSdkOptions::new("items");
+        for schema in [
+            r#"{"$ref":"https://example.test/schema"}"#,
+            r##"{"$ref":"#/$defs/A","$defs":{"A":{"$ref":"#/$defs/A"}}}"##,
+        ] {
+            let plan = make_plan(BodyContract {
+                schema: SchemaRef::named("Body").with_json_schema(schema),
+                ..BodyContract::json("Body")
+            });
+            assert!(generate_typescript_http_sdk_source(&plan, &options).is_err());
+        }
+        let mut plan = make_plan(BodyContract::json("String"));
+        assert!(
+            generate_typescript_http_sdk_source(&plan, &TypeScriptHttpSdkOptions::new("bad.name"))
+                .is_err()
+        );
+        plan.operations[0].request_body_content_type =
+            Some("application/json\r\nX-Injected: yes".into());
+        assert!(generate_typescript_http_sdk_source(&plan, &options).is_err());
+        plan.operations[0].request_body_content_type = None;
+        plan.operations[0].responses[0].status_code = 700;
+        assert!(generate_typescript_http_sdk_source(&plan, &options).is_err());
+        plan.operations[0].responses[0].status_code = 200;
+        plan.operations.push(plan.operations[0].clone());
+        assert!(generate_typescript_http_sdk_source(&plan, &options).is_err());
     }
 
     #[test]

@@ -91,28 +91,7 @@ pub fn compile_response(
     ))
 }
 
-/// Normalize a declared MIME type, ignoring case and parameters.
-///
-/// # Errors
-/// Rejects invalid MIME tokens.
-pub fn normalized_media_type(value: &str) -> Result<String> {
-    let value = value
-        .split(';')
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase();
-    if !value
-        .split_once('/')
-        .is_some_and(|(left, right)| !left.is_empty() && !right.is_empty() && !right.contains('/'))
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"/!#$&^_.+-".contains(&byte))
-    {
-        bail!("Invalid SDK body media type");
-    }
-    Ok(value)
-}
+pub use crate::media::normalized_media_type;
 
 /// Normalize a schema type name for Rust declarations.
 #[must_use]

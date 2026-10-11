@@ -1,5 +1,6 @@
 //! Shared schema-to-model compiler used by native generators and the packaged CLI.
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 
 use convert_case::{Case, Casing};
 use ramhorns::Content;
@@ -640,7 +641,18 @@ pub(crate) fn is_rust_keyword(input: &str) -> bool {
 }
 
 pub(crate) fn escape_ts_string(input: &str) -> String {
-    input.replace('\\', "\\\\").replace('\'', "\\'")
+    let mut escaped = String::new();
+    for ch in input.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '\'' => escaped.push_str("\\'"),
+            '\u{0}'..='\u{1f}' | '\u{2028}' | '\u{2029}' => {
+                let _ = write!(escaped, "\\u{:04x}", u32::from(ch));
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 fn can_default(

@@ -1268,9 +1268,13 @@ dependencies = [
 name = "forklaunch-sdk-typescript"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "convert_case",
  "forklaunch-common",
  "forklaunch-contract",
  "forklaunch-sdk-codegen",
+ "ramhorns",
+ "serde_json",
 ]
 
 [[package]]

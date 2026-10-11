@@ -17,10 +17,40 @@ function run(command, args, env = process.env) {
 let server;
 try {
   run('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-sdk-rust', '-p', 'forklaunch-sdk-typescript', 'native_sdk_preserves'], { ...process.env, FORKLAUNCH_TEST_NATIVE_SDK_OUTPUT: temporary });
+  writeFileSync(join(temporary, 'typed-usage.ts'), `
+import { createForkLaunchSdk } from './typed-native-sdk';
+export async function verifyTypes(sdk = createForkLaunchSdk()) {
+  await sdk.media.file.postFile({ body: new Blob() });
+  await sdk.media.binary.postBinary({ body: new ArrayBuffer(0) });
+  await sdk.media.urlencoded.postUrlencoded({ body: { key: ['a', 'b'] } });
+  await sdk.media.form.postForm({ body: { label: 'text' } });
+  // @ts-expect-error Binary requests reject JSON objects.
+  await sdk.media.binary.postBinary({ body: { wrong: true } });
+  // @ts-expect-error Text requests reject byte arrays.
+  await sdk.media.text.postText({ body: new Uint8Array() });
+  const several = await sdk.media.responses.readSeveral({ params: { mode: 'created' } });
+  if (several.code === 201) {
+    const value: string = several.response.createdAt;
+    // @ts-expect-error Status 201 does not contain the queued response.
+    const wrong: number = several.response.jobId;
+    void [value, wrong];
+  }
+  if (several.code === 202) { const value: number = several.response.jobId; void value; }
+  if (several.code === 204) { const value: undefined = several.response; void value; }
+  const error = await sdk.media.responses.readError();
+  if (error.code === 409) {
+    const code: string = error.response.errorCode;
+    const mime: 'application/problem+json' = error.contentType;
+    void [code, mime];
+  }
+  // @ts-expect-error Error-only contracts do not invent success statuses.
+  if (error.code === 200) throw Error('invented success');
+}
+`);
   writeFileSync(join(temporary, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
     strict: true, target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext',
     lib: ['ES2022', 'DOM'], types: [], outDir: 'compiled'
-  }, include: ['native-sdk.ts'] }));
+  }, include: ['*.ts'] }));
   run(process.env.TSC_BIN || join(root, 'framework/node_modules/.bin/tsc'), ['--project', join(temporary, 'tsconfig.json')]);
   appendFileSync(join(temporary, 'native-sdk.rs'), String.raw`
 fn main() {
@@ -64,6 +94,22 @@ fn main() {
   assert.deepEqual([...new Uint8Array(await rustForm.getAll('file')[0].arrayBuffer())], [0,255,1]);
   assert.equal(rustForm.getAll('file')[1].size, 0);
   server = createServer(async (request, response) => {
+    if (request.url.startsWith('/responses/')) {
+      const mode = request.url.slice('/responses/'.length);
+      const send = (code, mime, value) => { response.writeHead(code, { 'content-type': mime }); response.end(value); };
+      if (mode === 'text') return send(200, 'text/plain; charset=utf-8', 'hello 水\n');
+      if (mode === 'binary') return send(200, 'application/octet-stream', Buffer.from([0, 255, 13, 10]));
+      if (mode === 'null') return send(200, 'application/json', 'null');
+      if (mode === 'invalid') return send(200, 'application/json', '{broken');
+      if (mode === 'empty') return send(204, 'application/json');
+      if (mode === 'head') return send(200, 'application/json');
+      if (mode === 'error') return send(409, 'application/problem+json', JSON.stringify({ errorCode: 'CONFLICT' }));
+      if (mode === 'several/created') return send(201, 'application/json', JSON.stringify({ createdAt: 'today' }));
+      if (mode === 'several/queued') return send(202, 'application/json', JSON.stringify({ jobId: 42 }));
+      if (mode === 'several/empty') return send(204, 'application/json');
+      return send(404, 'text/plain', 'Unknown fixture');
+    }
+    if (request.url.startsWith('/json')) assert.equal(request.url, "/json/a'b&c");
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     response.writeHead(200, { 'content-type': 'application/json' });
@@ -72,11 +118,14 @@ fn main() {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const { MediaClient } = require(join(temporary, 'compiled/native-sdk.js'));
   const client = new MediaClient(`http://127.0.0.1:${server.address().port}`);
+  const { createForkLaunchSdk } = require(join(temporary, 'compiled/typed-native-sdk.js'));
+  const typed = createForkLaunchSdk({ baseUrl: `http://127.0.0.1:${server.address().port}` }).media;
   for (const [method, body, expected, contentType] of [
-    ['postJson', { user: '水', active: true }, Buffer.from(JSON.stringify({ user: '水', active: true })), 'application/vnd.forklaunch+json'],
+    ['postJson', { user: '水', active: true }, Buffer.from(JSON.stringify({ user: '水', active: true })), 'application/vnd.forklaunch+json; profile="https://example.test/v1"'],
     ['postText', 'hello 水', Buffer.from('hello 水'), 'text/plain; charset=utf-8'],
     ['postText', '', Buffer.alloc(0), 'text/plain; charset=utf-8'],
     ['postUrlencoded', new URLSearchParams(), Buffer.alloc(0), 'application/x-www-form-urlencoded'],
+    ['postBinary', new Uint8Array([0, 255, 13]).buffer, Buffer.from([0, 255, 13]), 'application/octet-stream'],
     ['postBinary', new Uint8Array([99, 0, 255, 1, 99]).subarray(1, 4), Buffer.from([0, 255, 1]), 'application/octet-stream'],
     ['postFile', new Blob([new Uint8Array([137, 80, 78, 71])]), Buffer.from([137, 80, 78, 71]), 'image/png'],
     ['postUrlencoded', new URLSearchParams([['key', 'a b'], ['key', 'c/d']]), Buffer.from('key=a+b&key=c%2Fd'), 'application/x-www-form-urlencoded']
@@ -85,6 +134,10 @@ fn main() {
     assert.equal(echoed.method, 'POST');
     assert.equal(echoed.body, expected.toString('hex'));
     assert.equal(echoed.contentType, contentType);
+    const router = method.slice('post'.length).toLowerCase();
+    const reply = await typed[router][method]({ body });
+    assert.equal(reply.code, 200);
+    assert.deepEqual(reply.response, echoed);
   }
   const form = new FormData();
   form.append('label', 'hello 水');
@@ -95,6 +148,35 @@ fn main() {
   assert.ok(bytes.includes(Buffer.from('hello 水')));
   assert.ok(bytes.includes(Buffer.from([0, 255, 1])));
   assert.ok(bytes.includes(Buffer.from('filename="data.bin"')));
+  for (const body of [form, { label: 'hello 水', file: new Blob([new Uint8Array([0, 255, 1])]) }, {}]) {
+    const reply = await typed.form.postForm({ body, headers: { 'Content-Type': 'multipart/form-data; boundary=incorrect' } });
+    assert.equal(reply.code, 200);
+    const parsed = await new Response(Buffer.from(reply.response.body, 'hex'), { headers: { 'content-type': reply.response.contentType } }).formData();
+    if (Object.keys(body).length || body instanceof FormData) {
+      assert.equal(parsed.get('label'), 'hello 水');
+      assert.deepEqual([...new Uint8Array(await parsed.get('file').arrayBuffer())], [0, 255, 1]);
+    } else assert.equal([...parsed].length, 0);
+  }
+  const urlencoded = await typed.urlencoded.postUrlencoded({ body: { key: ['a', '水'], empty: [], number: 42 } });
+  const encoded = new URLSearchParams(Buffer.from(urlencoded.response.body, 'hex').toString());
+  assert.equal(encoded.get('key'), '["a","水"]');
+  assert.equal(encoded.get('empty'), '[]');
+  assert.equal(encoded.get('number'), '42');
+  assert.equal((await typed.responses.readText()).response, 'hello 水\n');
+  assert.deepEqual([...(await typed.responses.readBinary()).response], [0, 255, 13, 10]);
+  assert.equal((await typed.responses.readNull()).response, null);
+  assert.equal((await typed.responses.readEmpty()).response, undefined);
+  assert.equal((await typed.responses.readHead()).response, undefined);
+  const businessError = await typed.responses.readError();
+  assert.equal(businessError.code, 409);
+  assert.equal(businessError.contentType, 'application/problem+json');
+  assert.deepEqual(businessError.response, { errorCode: 'CONFLICT' });
+  for (const [mode, code, value] of [['created', 201, { createdAt: 'today' }], ['queued', 202, { jobId: 42 }], ['empty', 204, undefined]]) {
+    const reply = await typed.responses.readSeveral({ params: { mode } });
+    assert.equal(reply.code, code);
+    assert.deepEqual(reply.response, value);
+  }
+  await assert.rejects(typed.responses.readInvalidJson(), SyntaxError);
   console.log('PASS framework SDKs: strict TypeScript and Rust compilation, raw text/binary/file bytes, vendor JSON media, real multipart boundaries and URL-encoded uploads');
 } finally {
   if (server) {

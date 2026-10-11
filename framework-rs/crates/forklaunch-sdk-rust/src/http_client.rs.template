@@ -219,7 +219,7 @@ impl {{client_name}} {
 {{#operations}}
     #[must_use]
     pub fn {{method_name}}(&self, input: {{request_type}}) -> SdkRequest {
-        let path = path_with_params("{{path}}", &input.params);
+        let path = path_with_params("{{{path}}}", &input.params);
         SdkRequest {
             method: "{{http_method}}",
             url: format!("{}{}", self.base_url, path),
@@ -228,7 +228,7 @@ impl {{client_name}} {
             body: {{#multipart_request}}None{{/multipart_request}}{{^multipart_request}}{{#binary_request}}None{{/binary_request}}{{^binary_request}}input.body{{/binary_request}}{{/multipart_request}},
             body_bytes: {{#binary_request}}input.body{{/binary_request}}{{^binary_request}}None{{/binary_request}},
             {{{multipart_field}}}
-            content_type: "{{request_content_type}}",
+            content_type: "{{{request_content_type}}}",
         }
     }
 

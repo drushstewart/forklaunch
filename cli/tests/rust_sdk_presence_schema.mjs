@@ -4,10 +4,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+export const escapedValue = "line\n'\\\0\u2028\u2029";
+export const escapedKey = "wire\t'\\\n\0";
 export function presenceSchema() {
   const { statics: v, validator } = actualValidator(root);
   const nested = v.schemify({ required: v.string.nullable(), optional: v.optional(v.string), optionalNull: v.optional(v.string.nullable()) }).strict();
-  const schema = v.schemify({ required: v.string.nullable(), optional: v.optional(v.string), optionalNull: v.optional(v.string.nullable()), nested: v.optional(nested.nullable()), list: v.array(nested.nullable()), choice: v.optional(v.union([v.string, nested, v.null_])) }).strict();
+  const schema = v.schemify({ required: v.string.nullable(), optional: v.optional(v.string), optionalNull: v.optional(v.string.nullable()), nested: v.optional(nested.nullable()), list: v.array(nested.nullable()), choice: v.optional(v.union([v.string, nested, v.null_])), escaped: v.optional(v.literal(escapedValue)), [escapedKey]: v.optional(v.string) }).strict();
   return { schema, validator };
 }
 
@@ -31,6 +33,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     { extra: 'unexpected' }, { required: 42 }, { list: null },
   ]) values.push({ required: null, list: [], ...extra });
   values.push({ required: null });
+  values.push({ required: null, list: [], escaped: escapedValue, [escapedKey]: 'hello 水' });
   const cases = values.map(value => {
     const result = validator.parse(schema, value);
     return { value, valid: result.ok, ...(result.ok ? { normalized: result.value } : {}) };

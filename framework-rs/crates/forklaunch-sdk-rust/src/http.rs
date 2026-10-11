@@ -97,7 +97,7 @@ pub fn generate_rust_http_sdk_source(
             } else {
                 String::new()
             },
-            request_content_type: content_type,
+            request_content_type: content_type.replace('\\', "\\\\").replace('"', "\\\""),
         });
     }
     for name in models.keys().chain(aliases.keys()) {
@@ -150,20 +150,23 @@ fn request_content_type(op: &forklaunch_sdk_codegen::SdkOperation) -> Result<(Bo
     if kind == BodyKind::ServerSentEvent {
         bail!("SSE request bodies are unsupported");
     }
-    let content_type = normalized_media_type(op.request_body_content_type.as_deref().unwrap_or(
-        match kind {
-            BodyKind::Text => "text/plain",
-            BodyKind::Binary | BodyKind::File => "application/octet-stream",
-            BodyKind::Multipart => "multipart/form-data",
-            BodyKind::UrlEncoded => "application/x-www-form-urlencoded",
-            _ => "application/json",
-        },
-    ))?;
-    if content_type == "text/event-stream" {
+    let content_type = forklaunch_sdk_codegen::media::request_media_type(
+        op.request_body_content_type
+            .as_deref()
+            .unwrap_or(match kind {
+                BodyKind::Text => "text/plain",
+                BodyKind::Binary | BodyKind::File => "application/octet-stream",
+                BodyKind::Multipart => "multipart/form-data",
+                BodyKind::UrlEncoded => "application/x-www-form-urlencoded",
+                _ => "application/json",
+            }),
+    )?;
+    let normalized_content_type = normalized_media_type(&content_type)?;
+    if normalized_content_type == "text/event-stream" {
         bail!("SSE request bodies are unsupported");
     }
-    if content_type.starts_with("multipart/") != (kind == BodyKind::Multipart)
-        || kind == BodyKind::Multipart && content_type != "multipart/form-data"
+    if normalized_content_type.starts_with("multipart/") != (kind == BodyKind::Multipart)
+        || kind == BodyKind::Multipart && normalized_content_type != "multipart/form-data"
     {
         bail!("Multipart SDK requests require multipart/form-data and the multipart body kind");
     }

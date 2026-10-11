@@ -324,15 +324,17 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [ ] Finish multipart response decoding and automatic typed runtime multipart extraction beyond explicit Axum extractors.
 - [x] Generate bounded, pull-driven SSE response clients from both contract and OpenAPI artifacts, with typed Rust envelopes, iterator/abort/drop cancellation, auth before work, standard framing, terminal errors and live HTTP/MCP startup/shutdown verification.
 - [x] Generate framework-native Rust HTTP clients with typed status decoding, guarded recursive models, Serde presence rules and bounded SSE through the shared CLI compiler/template; validate live presence, recursion and SSE with HTTP/MCP startup/shutdown.
-- [ ] Complete framework-native TypeScript typed response/model generation and audit remaining SSE emitter/helper/schema-validation behavior against TypeScript.
+- [x] Generate framework-native TypeScript typed HTTP/status/business-error responses, request schemas, omission/null models and bounded SSE using the shared CLI compiler/runtime; validate actual media/status handling and live presence/recursive/SSE clients with HTTP/MCP startup/shutdown.
+- [ ] Complete remaining SSE emitter/helper/schema-validation conformance against TypeScript.
 - [x] Support empty success bodies, including 204/205 and HEAD, with TypeScript `undefined` and Rust `()`; preserve explicit JSON null and validate both artifact sources against live Rust and compiled TypeScript servers.
 - [x] Preserve every explicit 2xx response in TypeScript discriminated unions and Rust status enums, including distinct typed JSON models and 204/205 variants. Validate both SDKs and artifact sources against live Rust and compiled TypeScript servers; reject duplicate status/model names before generation, and avoid inventing success responses for error-only contracts.
 - [x] Preserve declared business-error payloads and media types in CLI SDK imports and clients, overriding default error status types with contract-specific JSON/text/binary shapes. Schema-free JSON uses unknown/serde_json::Value.
 - [x] Support guarded recursive schemas in CLI SDK imports/clients through contract and OpenAPI artifacts, preserving bounded reference processing and explicit unsupported-reference errors.
-- [x] Share the bounded local schema graph/model compiler between CLI and framework-native Rust generators.
-- [ ] Bring the framework-native TypeScript generator to recursive model parity and complete remaining schema-constraint/emitter conformance.
+- [x] Share the bounded local schema graph/model compiler between CLI and both framework-native HTTP generators.
+- [x] Bring the framework-native TypeScript generator to guarded recursive model parity through the shared bounded compiler and strict/live recursive fixtures.
+- [ ] Complete remaining schema-constraint/emitter conformance.
 - [ ] Resolve schema resource IDs, anchors and dynamic references in SDK imports.
-- [x] Preserve Rust model omission versus explicit null and reject missing required nullable fields, with 94 actual TypeScript validator cases through both SDK artifact formats and live Rust/TypeScript HTTP and MCP.
+- [x] Preserve Rust model omission versus explicit null and reject missing required nullable fields, with 95 actual TypeScript validator cases through both SDK artifact formats and live Rust/TypeScript HTTP and MCP.
 - [x] Add contract snapshot tests to ensure generated SDKs stay stable. (`client-sdk::tests::sdk_generation_is_deterministic`)
 
 ### TypeScript SDKs For Frontend
@@ -350,7 +352,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Generate request and response TypeScript types.
 - [x] Generate discriminated response unions by status code.
 - [x] Support binary downloads as Uint8Array in browser TypeScript clients.
-- [ ] Support file upload in browser contexts.
+- [x] Support browser file uploads through FormData, Blob and ArrayBuffer, preserving byte-view bounds and encoder-owned multipart boundaries.
 - [ ] Add optional TanStack Query helpers as a later feature.
 - [x] Add TypeScript SDK tests against a relocated generated Rust HTTP server (`rust_http_runtime.sh`).
 
@@ -783,7 +785,7 @@ The first useful milestone is not full parity. It is:
 - [ ] Choose `aide` versus `utoipa` as the preferred OpenAPI helper, or keep both as optional emitters.
 - [ ] Decide how much TypeScript-style coercion Rust should preserve.
 - [x] Generate Rust SDKs from both OpenAPI and the richer ForkLaunch contract artifact; verify equivalent live HTTP behavior from both formats.
-- [ ] Decide whether TypeScript SDKs are generated in the existing CLI package or inside `framework-rs` codegen.
+- [x] Generate TypeScript SDKs through both the CLI and framework-native API using shared model compilation, templates and fetch/SSE runtimes.
 - [ ] Decide whether `blueprint-rs` should support Better Auth parity directly or provide generic OAuth/JWT/session integration points.
 - [ ] Decide whether persistence helpers should standardize on `sqlx` only or expose optional SeaORM adapters.
 
@@ -928,3 +930,8 @@ The production S3 checkpoint also passes archive-installed CLI generation, porta
 - [x] Preserve generated Rust SDK field presence: omit absent optional fields, reject null for non-nullable optional fields, distinguish optional null from omission and reject missing required nullable fields, including nested records, arrays and unions. Compare 94 cases against the actual TypeScript validator through contract/OpenAPI generation, strict TypeScript/Rust compilation and both live SDKs against Rust/TypeScript HTTP, with MCP invocation and graceful shutdown. Fix the canonical TypeScript null schema enum to contain JSON null. Box generated JSON model response variants to keep status enums small; update inner-union matching accordingly. All 977 CLI tests, fourteen existing/new Zod validator tests, ordinary HTTP/multipart/recursive/SSE regressions, formatting and 299 embedded asset checks pass. A fresh archive-installed CLI compiles both SDK artifact formats, all four worker types/modules and passes HTTP/MCP listener configurations and all five capability callbacks. CI includes the presence fixture and pinned actual-validator dependencies. Framework-native typed response/recursive generation and broader schema/realtime/mixed SDK tasks remain open.
 
 - [x] Share the bounded local schema graph, Rust/TypeScript type compiler, Serde model renderer and Rust client/SSE templates between CLI and native framework generators. Retain request/field JSON schemas and response kind/MIME/schema metadata in SdkGenerationPlan. Add checked generate_rust_http_sdk_source with typed status responses, guarded recursive models, field presence, auth/hooks, multipart uploads and bounded owned SSE streams. Reject duplicate/runtime-reserved names, invalid media/statuses and unsupported schema graphs before source output. Bound literal data depth/node/bytes before cloning and stream-count serialization bytes; reject oversized JSON schema strings before parsing. Native clients pass strict compilation and the same 94 actual validator cases against both language servers, recursive tree/array/dictionary/union/mutual-record calls and live SSE cancellation/error/resource-cleanup checks with HTTP/MCP startup/discovery/invocation/shutdown. All 978 CLI tests, eight native codegen/four Rust SDK/three TypeScript SDK tests, full framework all-feature test suites, strict workspace clippy/formatting and 311 embedded assets pass. Existing native request-builder/media and ordinary HTTP/multipart SDK regressions pass. An archive-installed CLI compiles all four workers/modules and both SDK artifact formats, passes listener settings/capability callbacks, and invokes the native recursive generator entirely from bundled sources with generated-SDK warnings denied. Native TypeScript typed response/recursive emission, advanced schema constraints/resources, multipart responses and realtime/mixed SDK work remain open.
+
+Native typed TypeScript HTTP SDK checkpoint: the same CLI model/runtime now handles status/business-error unions, recursive aliases, exact presence/null and bounded SSE. The 95-case validator, recursive and streaming fixtures exercise both native generators and both CLI artifact sources. Real media tests cover Blob/ArrayBuffer/sliced bytes, URL-encoded/multipart records, quoted MIME parameters, escaped paths, invalid JSON and status narrowing. Correct the messaging callback fixture to sign record composites as single JSON values, matching the actual TS universal SDK and MCP generator; explicit URLSearchParams retains repeated fields. All five generated module runtime suites (IAM, CAC, base/Twilio messaging, base/Stripe billing and ecommerce) pass HTTP/MCP discovery/invocation, SDK checks and their authenticated persistence/provider/lifecycle checks. Broader parity gates above remain open.
+
+- [x] Share checked TypeScript HTTP generation with CLI types/runtime/templates; validate typed media/status errors, 95-case presence, recursive and SSE clients, all five module HTTP/MCP runtime suites and portable native generation from an archive install. All 979 CLI tests, nine codegen/four Rust SDK/four TypeScript SDK tests, strict workspace clippy/formatting and 319 embedded assets pass. Both artifact sources preserve quoted MIME parameters and escaped metadata.
+- [ ] Adapt SSE response ownership/cancellation to cross-fetch's Node readable streams; an actual cross-fetch 4.1.0 probe currently fails because the decoder requires `getReader()`.

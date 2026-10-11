@@ -18,7 +18,7 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ contentType, bytes: [...bytes] }));
   } else if (request.method === 'POST'  && ['/text', '/binary', '/json-echo'].includes(url.pathname)) {
-    const expectedType = url.pathname === '/text' ? 'text/plain' : url.pathname === '/binary' ? 'application/octet-stream' : 'application/json';
+    const expectedType = url.pathname === '/text' ? 'text/plain; charset=utf-8; profile="urn:forklaunch:quoted\'&v1"' : url.pathname === '/binary' ? 'application/octet-stream' : 'application/json';
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     if (request.headers['content-type'] !== expectedType) {

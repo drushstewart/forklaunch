@@ -37,7 +37,7 @@ pub fn contracts() -> Vec<RouteContract> {
             .with_param(FieldContract { name: "mode".into(), required: true, schema: SchemaRef::named("String").with_json_schema(r#"{"type":"string"}"#) })
             .with_response(200, Some(json_body("Shape", r#"{"type": "object", "required": ["label", "numbers", "metadata", "open", "constrained", "additional_properties", "any", "list"], "properties": {"label": {"type": "string", "nullable": true}, "numbers": {"type": "object", "additionalProperties": {"type": ["integer", "null"]}}, "metadata": {"anyOf": [{"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}, "additionalProperties": false}, {"type": "null"}]}, "open": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}, "constrained": {"type": "object", "required": ["count"], "properties": {"count": {"type": "integer"}}, "additionalProperties": {"type": "string"}}, "additional_properties": {"type": "string"}, "any": {"type": ["string", "integer"]}, "list": {"type": "array"}}}"#))),
         RouteContract::post("Upload Text", "Raw text request", "/text")
-            .with_request_body(BodyContract { kind: BodyKind::Text, schema: SchemaRef::named("Text"), content_type: Some("text/plain".into()) })
+            .with_request_body(BodyContract { kind: BodyKind::Text, schema: SchemaRef::named("Text"), content_type: Some("text/plain; charset=utf-8; profile=\"urn:forklaunch:quoted'&v1\"".into()) })
             .with_response(200, Some(BodyContract { kind: BodyKind::Text, schema: SchemaRef::named("Text"), content_type: Some("text/plain".into()) })),
         RouteContract::post("Upload Binary", "Raw binary request", "/binary")
             .with_request_body(BodyContract { kind: BodyKind::Binary, schema: SchemaRef::named("Bytes"), content_type: Some("application/octet-stream".into()) })
@@ -85,7 +85,7 @@ pub fn register(router: &mut LocalRouter) {
                 let content_type = request.headers.get("content-type").cloned().unwrap_or_default();
                 FrameworkResponse::json(200, serde_json::json!({"contentType": content_type, "bytes": bytes}).to_string())
             } else if request.method.as_str() == "POST" && ["/text", "/binary", "/json-echo"].contains(&path.as_str()) {
-                let expected_type = match path.as_str() { "/text" => "text/plain", "/binary" => "application/octet-stream", _ => "application/json" };
+                let expected_type = match path.as_str() { "/text" => "text/plain; charset=utf-8; profile=\"urn:forklaunch:quoted'&v1\"", "/binary" => "application/octet-stream", _ => "application/json" };
                 if request.headers.get("content-type").map(String::as_str) != Some(expected_type) {
                     FrameworkResponse::text(400, "Unexpected request media type")
                 } else {

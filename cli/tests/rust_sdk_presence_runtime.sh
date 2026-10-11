@@ -48,5 +48,8 @@ Path('sdks/rust/presence-sdk/examples/presence_roundtrip.rs').write_text(Path(sy
 PYTHON
 cargo build -p presence-sdk --example presence_roundtrip
 cargo clippy -p presence-sdk --all-targets -- -D warnings
+cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-typescript --example presence_client -- \
+    "$PWD/crates/presence/src/presence_schema.json" "$PWD/sdks/typescript/src/index.ts"
+"$TSC_BIN" --project sdks/typescript/tsconfig.json --noEmit false --outDir "$PWD/sdks/typescript/dist"
 node "$SCRIPT_DIR/rust_sdk_presence_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/presence_roundtrip" "$PWD/sdks/typescript/dist/presence_fixture.js" "$PWD/crates/presence/src/presence_cases.json"
-echo 'PASS CLI and framework-native SDK field presence/null parity against actual TypeScript validator, Rust and TypeScript HTTP services and MCP'
+echo 'PASS CLI and both framework-native SDK field presence/null parity against actual TypeScript validator, Rust and TypeScript HTTP services and MCP'

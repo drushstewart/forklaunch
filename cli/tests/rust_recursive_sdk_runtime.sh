@@ -49,5 +49,7 @@ Path('sdks/rust/trees-sdk/examples/recursive_roundtrip.rs').write_text(source)
 PYTHON
 cargo build -p trees-sdk --example recursive_roundtrip
 cargo clippy -p trees-sdk --all-targets -- -D warnings
+cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-typescript --example recursive_client -- "$PWD/.forklaunch/contracts/trees/contract.json" "$PWD/sdks/typescript/src/index.ts"
+"$TSC_BIN" --project sdks/typescript/tsconfig.json --noEmit false --outDir "$PWD/sdks/typescript/dist"
 node "$SCRIPT_DIR/rust_recursive_sdk_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/recursive_roundtrip" "$PWD/sdks/typescript/dist/recursive_fixture.js"
-echo 'PASS relocated generated CLI/native recursive SDKs, both artifact formats and HTTP/MCP startup'
+echo 'PASS relocated generated CLI/both native recursive SDKs, both artifact formats and HTTP/MCP startup'

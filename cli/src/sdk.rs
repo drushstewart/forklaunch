@@ -9,6 +9,7 @@ use crate::{
 
 pub(crate) mod generate;
 pub(crate) mod mode;
+mod media;
 mod models;
 mod render;
 mod openapi;
