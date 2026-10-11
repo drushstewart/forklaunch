@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod module_contracts;
 pub mod services;
 
 use forklaunch_blueprint_core::{AuditContext, BlueprintResult, Page, PageRequest};
