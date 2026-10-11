@@ -27,6 +27,7 @@ serde_json = "1"
 tokio = { version = "1", default-features = false, features = ["sync", "rt"] }
 serde = { version = "1", features = ["derive"] }
 regex = "1"
+url = "2"
 forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"], optional = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros", "uuid"], optional = true }
 uuid = { version = "1", features = ["v4"] }

@@ -312,3 +312,9 @@ credentials/sessions; revocation replaces all own sessions with one new persiste
 session and preserves unrelated users. Memory and encrypted PostgreSQL tests cover
 the same lifecycle. Production raw HTTP validation/cookies/Origin/CSRF and the
 remaining user/account/provider/organization routes stay open.
+
+Native trusted-origin and mutation/login CSRF policies now pass 2,822 comparisons
+against the actual Better Auth matcher and configured HTTP handlers. Wildcard and
+custom schemes, relative redirects, encoded traversal/separators, Cookie header
+presence, null origins, Referer fallback and Fetch Metadata are covered. These
+policies still require wiring into the production raw HTTP adapter.

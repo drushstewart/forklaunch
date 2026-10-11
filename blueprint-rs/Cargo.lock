@@ -1266,6 +1266,7 @@ dependencies = [
  "subtle",
  "tokio",
  "unicode-normalization",
+ "url",
  "uuid",
  "zeroize",
 ]

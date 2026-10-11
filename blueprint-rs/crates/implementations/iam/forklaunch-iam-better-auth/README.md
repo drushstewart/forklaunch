@@ -73,3 +73,13 @@ and issues a replacement persistent session. Actual handlers and memory/live
 PostgreSQL validate wrong/oversized passwords, retained sessions without revocation,
 replacement sessions and isolation of other users. User/account updates and
 provider linking remain open.
+
+`origins` matches the configured Better Auth trusted-origin protocol: exact HTTP
+origins, wildcard hosts, custom-scheme path boundaries, UTF-16 wildcard semantics
+and safe root-relative callbacks. The mutation policy checks Cookie header presence,
+Origin/Referer fallback, null origins with same-origin Fetch Metadata, login CSRF
+and all four callback fields. The actual-library/HTTP fixture compares 2,822 cases,
+including encoded separators, traversal, forged origins and browser navigation.
+The adapter must apply this policy before mutations and separately validate any
+GET callback URLs; dynamic trusted-origin functions and disabled guards are not
+part of the configured module.
