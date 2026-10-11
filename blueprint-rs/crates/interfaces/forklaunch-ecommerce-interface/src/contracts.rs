@@ -281,6 +281,8 @@ pub fn module_registry() -> ContractRegistry {
     let mut base = registry();
     base.register(import_contract());
     base.register(checkout_contract());
+    base.register(stripe_webhook_contract());
+    base.register(paypal_webhook_contract());
     let mut registry = ContractRegistry::for_service(ServiceContract::new("ecommerce", "0.1.0"));
     for source in base.routes() {
         let mut route = source.clone();
@@ -340,4 +342,48 @@ pub fn checkout_contract() -> RouteContract {
     )
     .with_response(400, Some(text()))
     .with_response(502, Some(text()))
+}
+
+/// Provider-authenticated callback with exact raw JSON body verification.
+/// # Panics
+/// Panics only if package-owned schemas fail to serialize.
+#[must_use]
+pub fn stripe_webhook_contract() -> RouteContract {
+    RouteContract::post(
+        "Handle Stripe Webhook",
+        "Handle a Stripe payment webhook event",
+        "/webhook/stripe",
+    )
+    .with_access(AccessLevel::Public)
+    .with_header(FieldContract::required("stripe-signature", "String"))
+    .with_request_body(json::<serde_json::Value>("StripeWebhookEvent"))
+    .with_response(200, Some(text()))
+    .with_response(400, Some(text()))
+}
+/// Provider-authenticated callback; signature verification receives the complete raw event.
+/// # Panics
+/// Panics only if package-owned schemas fail to serialize.
+#[must_use]
+pub fn paypal_webhook_contract() -> RouteContract {
+    let mut route = RouteContract::post(
+        "Handle PayPal Webhook",
+        "Handle a PayPal approval/capture-denial webhook",
+        "/webhook/paypal",
+    )
+    .with_access(AccessLevel::Public)
+    .with_request_body(json::<crate::webhook::PaypalWebhookEvent>(
+        "PaypalWebhookEvent",
+    ))
+    .with_response(200, Some(text()))
+    .with_response(400, Some(text()));
+    for header in [
+        "paypal-transmission-id",
+        "paypal-transmission-time",
+        "paypal-transmission-sig",
+        "paypal-cert-url",
+        "paypal-auth-algo",
+    ] {
+        route = route.with_header(FieldContract::required(header, "String"));
+    }
+    route
 }

@@ -130,7 +130,7 @@ impl EcommerceBackend {
         // is the unique-insert race winner, rather than a stale basket replacement.
         let observed = service.pending_order_for_cart(&input.cart_id).await?;
         let _slot = self
-            .checkout_slots
+            .orchestration_slots
             .acquire()
             .await
             .map_err(|_| invalid("Checkout unavailable"))?;

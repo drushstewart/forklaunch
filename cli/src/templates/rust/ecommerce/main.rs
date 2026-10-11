@@ -1,3 +1,4 @@
+use {{crate_module}}::{service_info, write_contract_artifacts};
 use forklaunch_auth::jwt::{RemoteJwks, RemoteJwksConfig};
 use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_blueprint_core::AuditContext;
@@ -12,7 +13,6 @@ use forklaunch_worker_database::{
     http::HttpConfig, postgres::PostgresWorkerQueue, runner::RunnerConfig,
 };
 use forklaunch_worker_interface::RetryPolicy;
-use {{crate_module}}::{service_info, write_contract_artifacts};
 use jsonwebtoken::{Algorithm, Validation};
 use sqlx::postgres::PgPoolOptions;
 use std::{env, sync::Arc, time::Duration};
@@ -114,7 +114,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         env::var("STRIPE_API_KEY").map_err(|_| "STRIPE_API_KEY is required")?,
         stripe_http,
     )?;
-    let mut backend = EcommerceBackend::new(store, queue, stripe);
+    let mut backend = EcommerceBackend::new(store, queue, stripe).with_stripe_webhook(
+        forklaunch_ecommerce_stripe::webhook::StripeWebhookVerifier::new(
+            env::var("STRIPE_WEBHOOK_SECRET").map_err(|_| "STRIPE_WEBHOOK_SECRET is required")?,
+        )?,
+    );
     if let Ok(account) = env::var("STRIPE_CONNECTED_ACCOUNT_ID") {
         backend = backend.with_connect(StripeConnect::new(
             account,
@@ -128,12 +132,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         env::var("PAYPAL_CLIENT_SECRET"),
     ) {
         (Ok(id), Ok(secret)) => {
-            backend = backend.with_paypal(PaypalClient::new(
-                id,
-                secret,
-                &env::var("PAYPAL_BASE_URL")
-                    .map_err(|_| "PAYPAL_BASE_URL is required with PayPal credentials")?,
-            )?)
+            backend = backend
+                .with_paypal(PaypalClient::new(
+                    id,
+                    secret,
+                    &env::var("PAYPAL_BASE_URL")
+                        .map_err(|_| "PAYPAL_BASE_URL is required with PayPal credentials")?,
+                )?)
+                .with_paypal_webhook_id(
+                    env::var("PAYPAL_WEBHOOK_ID")
+                        .map_err(|_| "PAYPAL_WEBHOOK_ID is required with PayPal credentials")?,
+                )?;
         }
         (Err(env::VarError::NotPresent), Err(env::VarError::NotPresent)) => {}
         _ => {

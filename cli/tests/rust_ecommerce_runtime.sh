@@ -64,15 +64,17 @@ from pathlib import Path
 import json
 for name in ['ecommerce','spare-shop']:
     routes=json.loads((Path('.forklaunch/contracts')/name/'contract.json').read_text())['routes']
-    assert len(routes)==30,(name,routes)
+    assert len(routes)==32,(name,routes)
 PYTHON
 env DATABASE_URL="$FORKLAUNCH_TEST_POSTGRES_URL" cargo run -p ecommerce -- --migrate
 mkdir -p crates/ecommerce/examples
 cp "$SCRIPT_DIR/fixtures/rust_ecommerce_seed.rs" crates/ecommerce/examples/seed.rs
+cp "$SCRIPT_DIR/fixtures/rust_ecommerce_webhook_bridge.rs" crates/ecommerce/examples/webhook_bridge.rs
+cargo build -p ecommerce --example webhook_bridge
 ROLE_CREATED=true
 cargo run -p ecommerce --example seed
 TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
-node "$SCRIPT_DIR/rust_ecommerce_runtime.mjs" "$TARGET_DIR/debug/ecommerce" "$PWD/sdks/typescript/dist/index.js"
+node "$SCRIPT_DIR/rust_ecommerce_runtime.mjs" "$TARGET_DIR/debug/ecommerce" "$PWD/sdks/typescript/dist/index.js" "$TARGET_DIR/debug/examples/webhook_bridge"
 cargo run -p ecommerce --example seed -- --inspect
 run_cli change service --path crates/spare-shop -N renamed-shop --confirm
 grep -q USER_SHOP_MARKER crates/renamed-shop/src/lib.rs

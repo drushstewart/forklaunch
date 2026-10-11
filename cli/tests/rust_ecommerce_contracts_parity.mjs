@@ -13,7 +13,7 @@ const ts=require(require.resolve('typescript',{paths:[path.dirname(await realpat
 const captured=[];const cache=new Map();
 const handlers=new Proxy({}, {get:(_,method)=>(_validator,_path,options,_handler)=>({method,options})});
 function router(prefix) {return new Proxy({}, {get:(_,method)=>(suffix,handler)=>{assert.equal(method,handler.method);captured.push({method:method.toUpperCase(),path:prefix+suffix,options:handler.options});return handler;}});}
-const schema={handlers,forklaunchRouter:router,schemaValidator:{},string:'String',number:'Number',boolean:'Boolean',IdSchema:{id:'String'},IdsSchema:{ids:{optional:['String']}},array:value=>[value],optional:value=>({optional:value}),record:(key,value)=>({record:[key,value]}),enum_:value=>({enum:Object.values(value)})};
+const schema={handlers,forklaunchRouter:router,schemaValidator:{},unknown:'Unknown',string:'String',number:'Number',boolean:'Boolean',IdSchema:{id:'String'},IdsSchema:{ids:{optional:['String']}},array:value=>[value],optional:value=>({optional:value}),record:(key,value)=>({record:[key,value]}),enum_:value=>({enum:Object.values(value)})};
 const tokens=new Proxy({}, {get:(_,key)=>key});const ci={resolve:()=>({}),scopedResolver:()=>()=>({})};
 function load(file) {
  if(cache.has(file))return cache.get(file);
@@ -25,6 +25,8 @@ function load(file) {
   if(spec==='@mikro-orm/core')return {NotFoundError:class extends Error{},UniqueConstraintViolationException:class extends Error{}};
   if(spec.includes('/domain/schemas/checkout.schema'))return {CheckoutResultSchema:{},ShippingAddressSchema:{}};
   if(spec.includes('/domain/schemas/catalogImport.schema'))return load(path.resolve(path.dirname(file),spec+'.ts'));
+  if(spec==='stripe')return {default:{webhooks:{}}};
+  if(spec.includes('/domain/schemas/webhook.schema'))return load(path.resolve(path.dirname(file),spec+'.ts'));
   if(spec==='node:crypto')return require(spec);
   if(spec==='@forklaunch/interfaces-ecommerce/types')return {OrderStatus:Object.fromEntries(['pending','paid','fulfilled','shipped','delivered','cancelled'].map(value=>[value.toUpperCase(),value]))};
   if(spec==='@forklaunch/implementation-ecommerce-base/services')return {IllegalOrderTransitionError:class extends Error{},CartValidationError:class extends Error{}};
@@ -35,16 +37,18 @@ function load(file) {
   throw Error('unexpected runtime import '+spec);
  }});return exports;
 }
-for(const name of ['product','variant','inventory','cart','order','payment','catalogImport','checkout'])load(path.join(root,`blueprint/ecommerce-stripe/api/routes/${name}.routes.ts`));
+for(const name of ['product','variant','inventory','cart','order','payment','catalogImport','checkout','webhook'])load(path.join(root,`blueprint/ecommerce-stripe/api/routes/${name}.routes.ts`));
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-ecommerce-interface','--example','module_contract'],{cwd:root,encoding:'utf8',timeout:120000}));
 assert.equal(native.routes.length,captured.length);
-const simpleNative=route=>({method:route.method,path:route.path,operation:route.operationName,access:route.access,params:route.request.params.map(field=>field.name).sort(),query:route.request.query.map(field=>field.name).sort(),body:route.request.body!==null&&route.request.body!==undefined,statuses:route.responses.map(response=>response.statusCode).sort()});
+const {toPrettyCamelCase}=load(path.join(root,"framework/common/src/camelCase.ts"));
+const simpleNative=route=>({method:route.method,path:route.path,operation:route.operationName,access:route.access,headers:route.request.headers.map(field=>field.name).sort(),params:route.request.params.map(field=>field.name).sort(),query:route.request.query.map(field=>field.name).sort(),body:route.request.body!==null&&route.request.body!==undefined,statuses:route.responses.map(response=>response.statusCode).sort()});
 // Express accepts a trailing slash by default; Rust contracts canonicalize it.
-const simpleTs=route=>({method:route.method,path:route.path.replace(/\/$/,''),operation:route.options.name.split(' ').map((word,i)=>i===0?word[0].toLowerCase()+word.slice(1):word).join(''),access:route.options.access,params:Object.keys(route.options.params??{}).sort(),query:Object.keys(route.options.query??{}).sort(),body:route.options.body!==undefined,statuses:Object.keys(route.options.responses).map(Number).sort()});
+const simpleTs=route=>({method:route.method,path:route.path.replace(/\/$/,''),operation:toPrettyCamelCase(route.options.name),access:route.options.access,headers:Object.keys(route.options.requestHeaders??{}).sort(),params:Object.keys(route.options.params??{}).sort(),query:Object.keys(route.options.query??{}).sort(),body:route.options.body!==undefined,statuses:Object.keys(route.options.responses).map(Number).sort()});
 for(const route of captured) {
  const expected=simpleTs(route);const actual=native.routes.find(candidate=>candidate.operationName===expected.operation);assert(actual,expected.operation);
  assert.deepEqual(simpleNative(actual),expected,expected.operation);
- assert(route.options.auth.hmac);assert.equal(actual.auth.method,'hmac');
+ assert.equal(actual.name,route.options.name);
+ if(route.options.auth?.hmac)assert.equal(actual.auth.method,'hmac');else assert.equal(actual.auth??null,null);
  for(const response of actual.responses)if(response.body?.kind==='json')assert(response.body.schema.jsonSchema.type);
 }
 const payment=native.routes.find(route=>route.operationName==='createPayment');

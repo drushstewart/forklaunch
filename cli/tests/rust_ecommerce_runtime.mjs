@@ -6,9 +6,10 @@ import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
 import {compareCheckout} from './fixtures/rust_ecommerce_checkout_reference.mjs';
-const [binary,sdkPath]=process.argv.slice(2);
+import {compareWebhooks} from './fixtures/rust_ecommerce_webhook_reference.mjs';
+const [binary,sdkPath,bridgeBinary]=process.argv.slice(2);
 const role=process.env.FORKLAUNCH_TEST_ROLE,secret='ecommerce-generated-hmac-secret';
-const children=[];let stripeCalls=0,paypalCalls=0,providerFailure,checkoutTaxDelay=0;
+const children=[];let stripeCalls=0,paypalCalls=0,providerFailure,checkoutTaxDelay=0,captures=0,captureFailure=false;
 const provider=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   res.setHeader('content-type','application/json');
@@ -31,7 +32,17 @@ const provider=http.createServer(async(req,res)=>{
     paypalCalls++;assert.equal(req.headers.authorization,'Bearer fixture-access-token');
     assert.ok(Number(JSON.parse(raw).purchase_units[0].amount.value)>0);
     res.end(JSON.stringify({id:`paypal_fixture_${paypalCalls}`,status:'CREATED'}));
-  }else{res.writeHead(404);res.end('{}');}
+  }else if(/^\/v2\/checkout\/orders\/[^/]+\/capture$/.test(req.url)){
+    captures++;assert.equal(req.headers.authorization,'Bearer fixture-access-token');
+    if(captureFailure){res.writeHead(503);res.end('{}');return;}
+    res.end(JSON.stringify({id:req.url.split('/').at(-2),status:'COMPLETED'}));
+  }else if(req.url==='/v1/notifications/verify-webhook-signature'){
+    assert.equal(req.headers.authorization,'Bearer fixture-access-token');const body=JSON.parse(raw);
+    assert.equal(body.webhook_id,'paypal-webhook-fixture');
+    for(const key of ['transmission_id','transmission_time','transmission_sig','cert_url','auth_algo'])assert.ok(body[key]);
+    assert.ok(body.webhook_event.create_time);assert.ok(Array.isArray(body.webhook_event.links));
+    res.end(JSON.stringify({verification_status:body.transmission_sig==='valid'?'SUCCESS':'FAILURE'}));
+  }else{assert.notEqual(req.url,'/must-not-fetch-certificate');res.writeHead(404);res.end('{}');}
 });
 await new Promise(resolve=>provider.listen(0,'127.0.0.1',resolve));
 const providerBase=`http://127.0.0.1:${provider.address().port}`;
@@ -44,8 +55,8 @@ function hmac(path,method='GET',body){
 async function freePort(){const server=net.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
 async function start({tenant='a',worker=false,extra={}}={}){
   const db=new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);db.username=role;db.password='parity-test-only';
-  const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_'))),DATABASE_URL:db.toString(),TENANT_ID:`${role}-${tenant}`,ENCRYPTION_KEY:'ecommerce-fixture-key',HOST:'127.0.0.1',SERVICE_PORT:'0',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`${providerBase}/jwks`,STRIPE_API_KEY:'sk_fixture',STRIPE_API_BASE:providerBase,PAYPAL_CLIENT_ID:'paypal-id',PAYPAL_CLIENT_SECRET:'paypal-secret',PAYPAL_BASE_URL:providerBase,WORKER_POLL_MS:'20',...extra};
-  if(worker)for(const key of ['HMAC_SECRET_KEY','JWKS_PUBLIC_KEY_URL','STRIPE_API_KEY','STRIPE_API_BASE','PAYPAL_CLIENT_ID','PAYPAL_CLIENT_SECRET','PAYPAL_BASE_URL'])delete env[key];
+  const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_'))),DATABASE_URL:db.toString(),TENANT_ID:`${role}-${tenant}`,ENCRYPTION_KEY:'ecommerce-fixture-key',HOST:'127.0.0.1',SERVICE_PORT:'0',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`${providerBase}/jwks`,STRIPE_API_KEY:'sk_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture',STRIPE_API_BASE:providerBase,PAYPAL_CLIENT_ID:'paypal-id',PAYPAL_CLIENT_SECRET:'paypal-secret',PAYPAL_BASE_URL:providerBase,PAYPAL_WEBHOOK_ID:'paypal-webhook-fixture',WORKER_POLL_MS:'20',...extra};
+  if(worker)for(const key of ['HMAC_SECRET_KEY','JWKS_PUBLIC_KEY_URL','STRIPE_API_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_API_BASE','PAYPAL_CLIENT_ID','PAYPAL_CLIENT_SECRET','PAYPAL_BASE_URL','PAYPAL_WEBHOOK_ID'])delete env[key];
   const child=spawn(binary,worker?['--worker']:[],{env,stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
   child.stdout.on('data',data=>stdout+=data);child.stderr.on('data',data=>stderr+=data);
   const exited=new Promise(resolve=>child.once('close',resolve));const instance={child,exited,stderr:()=>stderr,stdout:()=>stdout};children.push(instance);
@@ -64,7 +75,7 @@ async function value(response){assert.equal(response.status,200,await response.c
 async function eventually(check){for(let i=0;i<300;i++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,25));}throw new Error('Inventory worker did not apply the order event');}
 try{
   let service=await start();const other=await start({tenant:'b'});
-  for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment','importCatalog','checkout'])).length,30);
+  for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment','importCatalog','checkout','handleStripeWebhook','handlePaypalWebhook'])).length,32);
   assert.equal((await fetch(service.base+'/product')).status,401);
   const denied=await mcpRpc(service.base,'tools/call',{name:'getProduct',arguments:{params:{id:'missing'}}});assert.equal(denied.isError,true);
   const sdk=await import(pathToFileURL(sdkPath));const client=sdk.createForkLaunchSdk({serviceBaseUrls:{ecommerce:service.base}});
@@ -140,10 +151,14 @@ try{
   const sdkCheckoutBody=await checkoutCart('sdk-checkout');
   const sdkCheckout=await liveSdk.ecommerce.checkout.checkout({body:sdkCheckoutBody,headers:{authorization:hmac('/checkout','POST',JSON.stringify(sdkCheckoutBody))}});
   assert.equal(sdkCheckout.code,200);assert.equal(sdkCheckout.response.order.totalCents,813);
-  await stop(peer);
   console.log('PASS generated checkout cross-process race: one order/payment/provider call, and ten concurrent carts without application-pool starvation');
 
-  await stop(service);await stop(other);
+  const webhookInventory=await compareWebhooks({base:service.base,otherBase:other.base,peerBase:peer.base,call,providerBase,bridgeBinary,setCaptureFailure(value){captureFailure=value;},captureCount:()=>captures,mcpRpc,sdk});
+  const webhookWorker=await start({worker:true});
+  await eventually(async()=>(await value(await call(service.base,`/inventory/${webhookInventory.variantId}`))).stock===webhookInventory.expectedStock);
+  await stop(webhookWorker);
+  console.log('PASS verified provider callbacks deliver durable inventory events through the generated worker');
+  await stop(peer);await stop(service);await stop(other);
   console.log('PASS generated ecommerce HTTP/MCP, both SDKs, Stripe/PayPal, tenant isolation, encrypted orders, separate inventory worker and restart persistence');
 }finally{
   for(const instance of children)if(instance.child.exitCode===null)instance.child.kill('SIGKILL');

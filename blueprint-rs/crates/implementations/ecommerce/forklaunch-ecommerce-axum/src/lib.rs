@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 mod checkout;
 mod query;
+mod webhook;
 use axum::{
     Extension, Json,
     extract::{Path, RawQuery},
@@ -28,6 +29,7 @@ use forklaunch_ecommerce_paypal::{PaypalClient, PaypalPaymentService};
 use forklaunch_ecommerce_stripe::{StripeClient, StripeConnect, StripePaymentService};
 use forklaunch_worker_database::postgres::PostgresWorkerQueue;
 use std::sync::Arc;
+use webhook::{handle_paypal_webhook, handle_stripe_webhook};
 
 pub struct EcommerceBackend {
     store: PostgresEcommerceStore,
@@ -36,7 +38,9 @@ pub struct EcommerceBackend {
     paypal: Option<PaypalClient>,
     connect: Option<StripeConnect>,
     cart_cache: Option<Arc<dyn CartCache>>,
-    checkout_slots: tokio::sync::Semaphore,
+    orchestration_slots: tokio::sync::Semaphore,
+    stripe_webhook: Option<forklaunch_ecommerce_stripe::webhook::StripeWebhookVerifier>,
+    paypal_webhook_id: Option<String>,
 }
 impl EcommerceBackend {
     #[must_use]
@@ -52,7 +56,9 @@ impl EcommerceBackend {
             paypal: None,
             connect: None,
             cart_cache: None,
-            checkout_slots: tokio::sync::Semaphore::const_new(4),
+            orchestration_slots: tokio::sync::Semaphore::const_new(4),
+            stripe_webhook: None,
+            paypal_webhook_id: None,
         }
     }
     #[must_use]
@@ -66,6 +72,26 @@ impl EcommerceBackend {
         self
     }
     #[must_use]
+    pub fn with_stripe_webhook(
+        mut self,
+        verifier: forklaunch_ecommerce_stripe::webhook::StripeWebhookVerifier,
+    ) -> Self {
+        self.stripe_webhook = Some(verifier);
+        self
+    }
+    /// # Errors
+    /// Rejects empty/control-containing provider configuration.
+    pub fn with_paypal_webhook_id(mut self, id: String) -> BlueprintResult<Self> {
+        if id.is_empty() || id.len() > 1024 || id.bytes().any(|byte| byte.is_ascii_control()) {
+            return Err(BlueprintError::new(
+                "provider_invalid_config",
+                "Invalid PayPal webhook identifier",
+            ));
+        }
+        self.paypal_webhook_id = Some(id);
+        Ok(self)
+    }
+    #[must_use]
     pub fn with_cart_cache(mut self, cache: Arc<dyn CartCache>) -> Self {
         self.cart_cache = Some(cache);
         self
@@ -74,10 +100,16 @@ impl EcommerceBackend {
         &self,
         session: &AuthenticatedSession,
     ) -> BlueprintResult<BaseEcommerceService<PostgresEcommerceStore>> {
-        let store = self.store.with_audit_context(AuditContext::actor(
+        self.audited_service(AuditContext::actor(
             &session.principal.subject,
             uuid::Uuid::new_v4().to_string(),
-        ))?;
+        ))
+    }
+    fn audited_service(
+        &self,
+        audit: AuditContext,
+    ) -> BlueprintResult<BaseEcommerceService<PostgresEcommerceStore>> {
+        let store = self.store.with_audit_context(audit)?;
         let mut service = BaseEcommerceService::new(Arc::new(store));
         if let Some(cache) = &self.cart_cache {
             service = service.with_cart_cache(Arc::clone(cache));
@@ -211,7 +243,18 @@ pub fn ecommerce_router(
         }};
     }
 
+    macro_rules! public_handler {
+        ($name:ident) => {{
+            let backend = Arc::clone(&backend);
+            move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                let backend = Arc::clone(&backend);
+                async move { $name(Extension(backend), headers, body).await }
+            }
+        }};
+    }
     ForkLaunchRouter::new(service)
+        .post(route("handleStripeWebhook"),public_handler!(handle_stripe_webhook))
+        .post(route("handlePaypalWebhook"),public_handler!(handle_paypal_webhook))
         .post(route("checkout"),handler!(checkout,input:CheckedJson<forklaunch_ecommerce_interface::module::Checkout>))
         .post(
             route("importCatalog"),

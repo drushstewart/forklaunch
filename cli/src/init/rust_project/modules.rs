@@ -306,6 +306,7 @@ fn ensure_ecommerce_compose(root: &Path, name: &str, dryrun: bool) -> Result<()>
         ("HMAC_SECRET_KEY", "${ECOMMERCE_HMAC_SECRET_KEY:?Configure a service HMAC secret}"),
         ("JWKS_PUBLIC_KEY_URL", "${ECOMMERCE_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}"),
         ("STRIPE_API_KEY", "${STRIPE_API_KEY:?Configure Stripe payment creation}"),
+        ("STRIPE_WEBHOOK_SECRET", "${STRIPE_WEBHOOK_SECRET:?Configure Stripe webhook verification}"),
     ] {
         env.entry(key.to_owned()).or_insert_with(|| value.to_owned());
     }

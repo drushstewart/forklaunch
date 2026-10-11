@@ -200,9 +200,25 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
     )
     .unwrap();
     let router = ecommerce_router(backend, auth, ServiceInfo::new("ecommerce", "1.0.0"));
-    assert_eq!(router.registry().routes().len(), 30);
+    assert_eq!(router.registry().routes().len(), 32);
     let (base, stop, task) = serve(router.into_router_with_default_mcp().unwrap()).await;
     let client = Client::new();
+    // Public callbacks use provider authentication and must not require an internal session.
+    for provider in ["stripe", "paypal"] {
+        let response = client
+            .post(format!("{base}/webhook/{provider}"))
+            .header("stripe-signature", "invalid")
+            .header("paypal-transmission-id", "fixture")
+            .header("paypal-transmission-time", "fixture")
+            .header("paypal-transmission-sig", "invalid")
+            .header("paypal-cert-url", "https://example.invalid/cert")
+            .header("paypal-auth-algo", "SHA256withRSA")
+            .json(&json!({"id":"unverified", "event_type":"UNKNOWN", "resource":{}}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 400);
+    }
     assert_eq!(
         client
             .get(format!("{base}/health"))
@@ -569,7 +585,7 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
             .as_array()
             .unwrap()
             .len(),
-        30
+        32
     );
     let tool=rpc(&client,&base,"tools/call",json!({"name":"listProducts","arguments":{"query":{"ids":["product"]},"headers":{"authorization":sign("GET","/product",None)}}})).await;
     let products: Value =
