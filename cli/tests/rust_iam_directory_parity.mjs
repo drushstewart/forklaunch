@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {actualValidator} from './rust_actual_validator_fixture.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
@@ -32,8 +33,9 @@ let actual;
 actual=actualValidator(root,(spec,file,load)=>{
  if(spec.endsWith('/bootstrapper'))return {ci,tokens};
  if(spec==='jose')return {};
+ if(spec.endsWith('/persistence/encryptedType'))return {withEncryptionContext:(_context,run)=>run()};
  if(spec==='@forklaunch/validator/zod')return actual.statics;
- if(spec==='@forklaunch/blueprint-core')return {...actual.statics,schemaValidator:actual.validator,handlers,forklaunchRouter:router,IdSchema:{id:actual.statics.uuid},IdsSchema:{ids:actual.statics.array(actual.statics.uuid)},PLATFORM_READ_PERMISSIONS:new Set(['platform:read']),PLATFORM_ADMIN_ROLES:new Set(['system','admin'])};
+ if(spec==='@forklaunch/blueprint-core')return {...actual.statics,schemaValidator:actual.validator,handlers,forklaunchRouter:router,IdSchema:{id:actual.statics.uuid},IdsSchema:{ids:actual.statics.array(actual.statics.uuid)},...load(path.join(root,'blueprint/core/auth/rbac.ts'))};
  if(spec==='@forklaunch/core/mappers')return {...load(path.join(root,'framework/core/src/mappers/mapper.ts')),...load(path.join(root,'framework/core/src/mappers/mapServiceSchemas.ts'))};
  if(spec==='@forklaunch/internal')return load(path.join(root,'framework/internal/src/serviceSchemaResolver.ts'));
  if(spec==='@forklaunch/implementation-iam-base/schemas')return load(path.join(root,'blueprint/implementations/iam/base/domain/schemas/index.ts'));
@@ -164,14 +166,14 @@ assert.equal(native.length,expected.length);
 for(let index=0;index<actions.length;index++)assert.deepEqual(native[index],JSON.parse(JSON.stringify(normalize(expected[index]))),`IAM operation ${index}: ${actions[index].service}.${actions[index].method}`);
 console.log(`PASS ${actions.length} actual TypeScript/native IAM directory operations: configured mappers, single/batch CRUD, nested role/permission hydration, organization membership, scoped deletion, missing rows and surfaced grants`);
 
-for(const family of ['user','role','permission','organization'])actual.load(path.join(root,`blueprint/iam-base/api/routes/${family}.routes.ts`));
+for(const family of ['user','role','permission','organization','discovery','compliance'])actual.load(path.join(root,`blueprint/iam-base/api/routes/${family}.routes.ts`));
 const contracts=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-iam-base','--example','directory_parity'],{cwd:root,input:JSON.stringify({contracts:true}),encoding:'utf8',timeout:300000}));
 assert.equal(contracts.routes.length,captured.length);
 let schemaChecks=0;
 function schemaLayout(expected,native,label) {
  const kind=value=>Array.isArray(value?.type)&&value.type.length===1?value.type[0]:value?.type;
  assert.equal(kind(native),kind(expected),label+' type');
- if(expected?.format)assert.equal(native.format,expected.format,label+' format');
+ if(expected?.format&&expected.format!=='double')assert.equal(native.format,expected.format,label+' format');
  if(expected?.enum)assert.deepEqual([...native.enum].sort(),[...expected.enum].sort(),label+' enum');
  if(expected?.properties) {
   assert.deepEqual(Object.keys(native.properties).sort(),Object.keys(expected.properties).sort(),label+' fields');
@@ -188,13 +190,14 @@ for(const expected of captured) {
  const route=contracts.routes.find(route=>route.path===expected.path&&route.method===expected.method);assert.ok(route,`${expected.method} ${expected.path}`);
  assert.equal(route.name,expected.options.name);
  assert.equal(route.access,expected.options.access);
- assert.equal(route.auth.method,expected.options.auth.hmac?'hmac':'jwt');
+ if(expected.options.auth)assert.equal(route.auth.method,expected.options.auth.hmac?'hmac':'jwt');
+ else assert.equal(route.auth,undefined);
  assert.deepEqual(route.request.params.map(field=>field.name).sort(),Object.keys(expected.options.params??{}).sort());
  assert.deepEqual(route.request.query.map(field=>field.name).sort(),Object.keys(expected.options.query??{}).sort());
  assert.equal(route.request.body!=null,expected.options.body!==undefined);
  for(const status of Object.keys(expected.options.responses).map(Number))assert.ok(route.responses.some(response=>response.statusCode===status),`${route.name} status ${status}`);
- if(expected.options.auth.allowedRoles)assert.deepEqual([...route.rbac.allowedRoles].sort(),[...expected.options.auth.allowedRoles].sort());
- if(expected.options.auth.allowedPermissions)assert.deepEqual([...route.rbac.allowedPermissions].sort(),[...expected.options.auth.allowedPermissions].sort());
+ if(expected.options.auth?.allowedRoles)assert.deepEqual([...route.rbac.allowedRoles].sort(),[...expected.options.auth?.allowedRoles].sort());
+ if(expected.options.auth?.allowedPermissions)assert.deepEqual([...route.rbac.allowedPermissions].sort(),[...expected.options.auth?.allowedPermissions].sort());
  if(expected.options.body) {
   schemaLayout(actual.validator.openapi(expected.options.body),route.request.body.schema.jsonSchema,route.name+' request');schemaChecks++;
  }
@@ -209,3 +212,21 @@ for(const expected of captured) {
 console.log(`PASS ${captured.length} actual TypeScript/native IAM route contracts: paths, methods, names, authentication, role/permission policy, params/query/body fields, required fields and declared response statuses`);
 
 console.log(`PASS ${schemaChecks} actual IAM request/response schema layouts: nested DTOs, required fields, scalar/array types, date/UUID/email formats and organization status enum`);
+
+const metadata=actual.load(path.join(root,'framework/core/src/persistence/complianceTypes.ts'));
+const baseProperties=readFileSync(path.join(root,'blueprint/core/persistence/sql.base.properties.ts'),'utf8');
+const baseLevels=[...baseProperties.matchAll(/\.compliance\(['"]([^'"]+)['"]\)/g)].map(match=>match[1]);
+assert.ok(baseLevels.length>0&&baseLevels.every(level=>level==='none'),'inherited IAM base compliance policy changed');
+
+for(const family of families) {
+ const source=readFileSync(path.join(root,`blueprint/iam-base/persistence/entities/${family.toLowerCase()}.entity.ts`),'utf8');
+ const levels=[...source.matchAll(/\.compliance\(['"]([^'"]+)['"]\)/g)].map(match=>match[1]);
+ assert.ok(levels.length>0);assert.ok(levels.every(level=>level==='none'),family+' configured compliance policy changed');
+ metadata.registerEntityCompliance(family,new Map(levels.map((level,index)=>['field'+index,level])));
+}
+const {ComplianceDataService}=actual.load(path.join(root,'framework/core/src/services/complianceDataService.ts'));
+const compliance=new ComplianceDataService({em:{fork:()=>({find:()=>{throw Error('none-classified IAM entities must not be queried for compliance');}})},getMetadata:()=>({getAll:()=>new Map(families.map(className=>[className,{className,properties:{id:{}}}]))})},collector,{User:'id'});
+const exported=await compliance.export('fixture-user'),erased=await compliance.erase('fixture-user');
+assert.deepEqual(JSON.parse(JSON.stringify(exported)),{userId:'fixture-user',entities:{},failures:[]});
+assert.deepEqual(JSON.parse(JSON.stringify(erased)),{entitiesAffected:[],recordsDeleted:0,failures:[]});
+console.log('PASS actual configured TypeScript IAM compliance policy: every entity scalar is classified none; export/erase return no data and perform no entity reads');

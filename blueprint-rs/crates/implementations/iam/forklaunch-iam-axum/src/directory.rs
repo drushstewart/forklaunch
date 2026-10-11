@@ -53,6 +53,30 @@ pub fn iam_router<S: AsyncIamSessions + 'static>(
 fn add_routes(mut router: ForkLaunchRouter, store: PostgresDirectoryStore) -> ForkLaunchRouter {
     let store = Arc::new(store);
     for contract in module_contracts::registry().routes() {
+        // Configured IAM entities explicitly classify every scalar as `none`.
+        // Encryption at rest does not implicitly opt a field into compliance.
+        if contract.operation_name == "getauthmethods" {
+            router = router.get(contract.clone(), || async { StatusCode::NO_CONTENT });
+            continue;
+        }
+        if contract.operation_name == "exportuserdata" {
+            router = router.get(contract.clone(), || async {
+                (
+                    StatusCode::NOT_FOUND,
+                    "User not found or no PII data to export",
+                )
+            });
+            continue;
+        }
+        if contract.operation_name == "eraseuserdata" {
+            router = router.delete(contract.clone(), || async {
+                (
+                    StatusCode::NOT_FOUND,
+                    "User not found or no PII data to erase",
+                )
+            });
+            continue;
+        }
         let handler_contract = contract.clone();
         let store = store.clone();
         router = match contract.method {

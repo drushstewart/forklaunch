@@ -236,6 +236,50 @@ pub fn registry() -> ContractRegistry {
             false,
         ));
     }
+    registry.register(
+        RouteContract::get(
+            "GetAuthMethods",
+            "Get configured authentication methods",
+            "/discovery/auth-methods",
+        )
+        .with_response(204, Some(text())),
+    );
+    for (name, path, method, schema) in [
+        (
+            "ExportUserData",
+            "/compliance/export/:userId",
+            forklaunch_blueprint_core::contract::HttpMethod::Get,
+            json!({"type":"object","required":["userId","entities"],"properties":{"userId":{"type":"string"},"entities":{"type":"object","additionalProperties":{}}}}),
+        ),
+        (
+            "EraseUserData",
+            "/compliance/erase/:userId",
+            forklaunch_blueprint_core::contract::HttpMethod::Delete,
+            json!({"type":"object","required":["entitiesAffected","recordsDeleted"],"properties":{"entitiesAffected":{"type":"array","items":{"type":"string"}},"recordsDeleted":{"type":"number"}}}),
+        ),
+    ] {
+        let mut response = BodyContract::json(name);
+        response.schema.json_schema = Some(schema.to_string());
+        let route = if method == forklaunch_blueprint_core::contract::HttpMethod::Get {
+            RouteContract::get(name, name, path)
+        } else {
+            RouteContract::delete(name, name, path)
+        };
+        registry.register(
+            route
+                .with_access(AccessLevel::Protected)
+                .with_auth(AuthConfig::jwt(JwtAuthConfig::JwksUrl {
+                    url: "${JWKS_PUBLIC_KEY_URL}".into(),
+                }))
+                .with_rbac(RbacConfig {
+                    allowed_roles: vec!["system".into()],
+                    ..RbacConfig::default()
+                })
+                .with_param(FieldContract::required("userId", "String"))
+                .with_response(200, Some(response))
+                .with_response(404, Some(text())),
+        );
+    }
     registry
 }
 

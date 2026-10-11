@@ -57,9 +57,18 @@ try {
   const first = await start('a');
   const second = await start('b');
   const tools=await probeMcp(first.baseUrl,['listUsers','getSessionUser','createUser','getUser','getBatchPermissions','surfaceUserRoles']);
-  assert.equal(tools.length,37);
+  assert.equal(tools.length,40);
   await probeMcp(second.baseUrl,['listUsers']);
   const publicSdk = createForkLaunchSdk({ baseUrl: first.baseUrl });
+  const discovery=await publicSdk.iam.discovery.getauthmethods();assert.equal(discovery.code,204);assert.equal(discovery.response,undefined);
+  const mcpDiscovery=await mcpRpc(first.baseUrl,'tools/call',{name:'getauthmethods',arguments:{}});assert.equal(mcpDiscovery.isError,false,JSON.stringify(mcpDiscovery));
+  for(const [path,method,operation]of [['export','GET','exportuserdata'],['erase','DELETE','eraseuserdata']]) {
+   await call(first.baseUrl,`/compliance/${path}/fixture-user`,method,undefined,403,jwt());
+   await call(first.baseUrl,`/compliance/${path}/fixture-user`,method,undefined,404,jwt(directory.a.users[0].id,['system']));
+   const result=await mcpRpc(first.baseUrl,'tools/call',{name:operation,arguments:{params:{userId:'fixture-user'}}},{authorization:jwt(directory.a.users[0].id,['system'])});assert.equal(result.isError,true);
+  }
+  console.log('PASS configured IAM discovery and compliance over HTTP/MCP: public 204, system-role authorization and no classified export/erase data');
+
   const login = await publicSdk.iam.auth.authenticate({ body: { email: 'member@example.com', password: 'first-password' } });
   assert.equal(login.code, 200);
   const token = login.response.id;
