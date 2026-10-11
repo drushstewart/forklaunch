@@ -3,7 +3,7 @@
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
 cookies, Ed25519 JWT issuance and public JWKs. It does not yet expose the authentication HTTP API or
-session/organization behavior and is not selectable as a CLI module preset.
+credential/organization endpoints and is not selectable as a CLI module preset.
 
 `credentials` uses N=16384, r=16, p=1, a 64-byte derived key, NFKC-normalized
 passwords and a random 16-byte salt encoded as lowercase hex text. The salt text
@@ -47,3 +47,13 @@ reconstruction, rotation, exact grace expiry and corrupt-public-key rejection.
 The actual-library lifecycle fixture checks stable insertion ties and expired
 key replacement as well. Token/JWKS HTTP endpoints remain to be integrated with
 persistent sessions.
+
+`sessions::SessionService` implements native authoritative session creation,
+one-hour refresh, creation-based freshness, scoped revocation, sign-out and
+transient/expired-session cleanup. Memory and live PostgreSQL lifecycle tests
+pass. The actual configured HTTP fixture compares 48 native response bodies and
+stored states after session operations; credential endpoints seed identical
+records, so this does not claim native sign-up/sign-in. Signed cookie extraction
+is exercised at the fixture boundary; production HTTP cookie headers/clearing,
+CSRF/Origin guards and the CLI preset remain to be integrated. Session queries
+currently use the explicitly bounded store scan; indexed lookup remains open.

@@ -1,5 +1,7 @@
 // Actual configured session refresh, freshness and revocation semantics.
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { betterAuthReference } from './fixtures/rust_better_auth_reference.mjs';
@@ -9,6 +11,44 @@ const root = path.resolve(
   '../..',
 );
 const reference = await betterAuthReference(root);
+// Credential endpoints seed identical records; only session behavior is compared.
+const child = spawn(
+  'cargo',
+  [
+    'run',
+    '--quiet',
+    '--manifest-path',
+    'blueprint-rs/Cargo.toml',
+    '-p',
+    'forklaunch-iam-better-auth',
+    '--example',
+    'sessions_parity',
+  ],
+  {
+    cwd: root,
+    env: { ...process.env, CARGO_INCREMENTAL: '0' },
+    stdio: ['pipe', 'pipe', 'inherit'],
+  },
+);
+const pending = [];
+const lines = createInterface({ input: child.stdout });
+lines.on('line', (line) => pending.shift().resolve(JSON.parse(line)));
+const completion = new Promise((resolve, reject) => {
+  child.once('error', reject);
+  child.once('exit', (code) => {
+    if (code === 0) resolve();
+    else reject(new Error(`Session fixture exited ${code}`));
+    for (const next of pending.splice(0))
+      next.reject(new Error('Native bridge closed'));
+  });
+});
+completion.catch(() => {});
+const native = (input) =>
+  new Promise((resolve, reject) => {
+    pending.push({ resolve, reject });
+    child.stdin.write(`${JSON.stringify(input)}\n`);
+  });
+let nativeComparisons = 0;
 const RealDate = Date;
 const start = Math.floor(RealDate.now() / 1000) * 1000;
 const hour = 3600 * 1000,
@@ -30,6 +70,9 @@ async function atTime(now, work) {
 }
 let checks = 0;
 async function call(who, now, route, body, status = 200, code, request = {}) {
+  const cookie = [...who.cookies]
+    .map(([name, value]) => `${name}=${value}`)
+    .join('; ');
   const response = await atTime(now, () => who.call(route, body, request));
   assert.equal(
     response.status,
@@ -38,6 +81,45 @@ async function call(who, now, route, body, status = 200, code, request = {}) {
   );
   if (code) assert.equal(response.body.code, code);
   checks++;
+  if (route === '/sign-up/email' || route === '/sign-in/email') {
+    assert.equal(
+      (
+        await native({
+          op: 'seed',
+          now,
+          users: reference.database.user,
+          sessions: reference.database.session,
+        })
+      ).body,
+      true,
+    );
+  } else if (status !== 405) {
+    const pathname = route.split('?')[0];
+    const op = {
+      '/get-session': 'get',
+      '/list-sessions': 'list',
+      '/revoke-session': 'one',
+      '/revoke-other-sessions': 'others',
+      '/revoke-sessions': 'all',
+    }[pathname];
+    assert.ok(op, `Unmapped native session operation: ${route}`);
+    const result = await native({
+      op,
+      now,
+      cookie,
+      target: body?.token,
+      disableRefresh: route.includes('disableRefresh=true'),
+    });
+    if (status === 200) assert.deepEqual(result.body, response.body, route);
+    else assert.equal(result.error, response.body.code, route);
+    const stored = await native({ op: 'records', now });
+    assert.deepEqual(
+      stored.body,
+      JSON.parse(JSON.stringify(reference.database.session)),
+      `${route}: persistent state`,
+    );
+    nativeComparisons += 2;
+  }
   return response;
 }
 const signup = (email, rememberMe = true) => ({
@@ -239,10 +321,26 @@ try {
   );
   assert.equal(transient.cookies.has('better-auth.session_token'), false);
   assert.equal(transient.cookies.has('better-auth.dont_remember'), false);
-  checks += 29;
+  const nativeCreated = (
+    await native({
+      op: 'create',
+      now: transientStart + day + 2,
+      userId: transientLogin.body.user.id,
+    })
+  ).body;
+  assert.match(nativeCreated.token, /^[a-zA-Z0-9]{32}$/);
+  assert.equal(nativeCreated.userId, transientLogin.body.user.id);
+  assert.equal(
+    new RealDate(nativeCreated.expiresAt).getTime(),
+    transientStart + 2 * day + 2,
+  );
+  checks += 32;
   console.log(
-    `Configured Better Auth session lifecycle: ${checks} checks passed`,
+    `Configured Better Auth session lifecycle: ${checks} checks and ${nativeComparisons} native body/storage comparisons passed`,
   );
 } finally {
   globalThis.Date = RealDate;
+  child.stdin.end();
+  await completion;
+  lines.close();
 }

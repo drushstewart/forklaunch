@@ -289,3 +289,10 @@ Fresh archive `kSwMp4` passed relocated auth foundation tests, live HTTP/MCP,
 the complete generated startup/listener matrix, all five managed callbacks,
 portable services/workers and both SDK generators; checkout CLI was restored.
 Better Auth raw endpoints/preset and indexed auth lookups remain open.
+
+The native persistent session backend now matches actual hourly refresh,
+creation-based freshness, revocation scoping and transient expiry behavior.
+The fixture passes 63 checks and 48 native body/storage comparisons, with shared
+credential records seeded at the storage boundary. Memory and real encrypted
+PostgreSQL lifecycle tests also pass. Native signup/sign-in, production HTTP
+cookies/Origin/CSRF integration and indexed lookup remain open.

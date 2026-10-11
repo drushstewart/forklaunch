@@ -8,4 +8,5 @@ pub mod cookies;
 pub mod credentials;
 pub mod jwt;
 pub mod keyring;
+pub mod sessions;
 pub mod store;

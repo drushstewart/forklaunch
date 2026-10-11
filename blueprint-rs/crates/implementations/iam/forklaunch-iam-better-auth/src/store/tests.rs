@@ -252,6 +252,7 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     )
     .await
     .unwrap();
+    crate::sessions::tests::exercise_sessions(Arc::new(rotated.clone())).await;
     let mut tx = rotated.begin(true).await.unwrap();
     assert_eq!(
         tx.get(Model::Account, "account-1").await.unwrap().unwrap()["password"],
