@@ -5,6 +5,7 @@ pub(super) enum Backend {
     Postgres,
     Redis,
     Kafka,
+    BullMq,
 }
 impl Backend {
     fn variant(self) -> &'static str {
@@ -12,6 +13,7 @@ impl Backend {
             Self::Postgres => "worker-postgres",
             Self::Redis => "worker-redis",
             Self::Kafka => "worker-kafka",
+            Self::BullMq => "worker-bullmq",
         }
     }
     fn template(self) -> &'static str {
@@ -19,6 +21,7 @@ impl Backend {
             Self::Postgres => "postgres-worker",
             Self::Redis => "redis-worker",
             Self::Kafka => "kafka-worker",
+            Self::BullMq => "bullmq-worker",
         }
     }
     pub(super) fn from_options(worker_type: &str, database: &str) -> Option<Self> {
@@ -26,6 +29,7 @@ impl Backend {
             ("database", "postgresql") => Some(Self::Postgres),
             ("redis", _) => Some(Self::Redis),
             ("kafka", _) => Some(Self::Kafka),
+            ("bullmq", _) => Some(Self::BullMq),
             _ => None,
         }
     }
@@ -40,11 +44,15 @@ pub(super) fn backend(root: &Path, name: &str) -> Result<Option<Backend>> {
         Some("worker-postgres") => return Ok(Some(Backend::Postgres)),
         Some("worker-redis") => return Ok(Some(Backend::Redis)),
         Some("worker-kafka") => return Ok(Some(Backend::Kafka)),
+        Some("worker-bullmq") => return Ok(Some(Backend::BullMq)),
         _ => {}
     }
-    let directory = root.join("crates").join(name);
+    let directory = root.join(crate_path_for_project(&manifest, name).unwrap_or_else(|| format!("crates/{name}")));
     if directory.join("src/handler.rs").exists() {
         let source = read_to_string(directory.join("src/main.rs"))?;
+        if source.contains("BullMqConsumer") {
+            return Ok(Some(Backend::BullMq));
+        }
         if source.contains("PostgresWorkerQueue") {
             return Ok(Some(Backend::Postgres));
         }
@@ -59,6 +67,7 @@ pub(super) fn backend(root: &Path, name: &str) -> Result<Option<Backend>> {
 }
 
 pub(super) fn templates(
+    root: &Path,
     crate_dir: &Path,
     name: &str,
     description: &str,
@@ -75,7 +84,7 @@ pub(super) fn templates(
         } else if template.path == crate_dir.join("tests/smoke.rs") {
             template.content = render_rust_template("rust/leased-worker/smoke.rs", &data);
         } else if template.path == crate_dir.join("Cargo.toml") {
-            template.content = cargo_with_backend(&template.content, backend)?;
+            template.content = cargo_with_backend(&template.content, backend, root, crate_dir)?;
         }
     }
     for (output, source) in [
@@ -92,7 +101,9 @@ pub(super) fn templates(
     templates.push(RenderedTemplate {
         path: crate_dir.join("src/signals.rs"),
         content: render_rust_template(
-            if backend == Backend::Kafka {
+            if backend == Backend::BullMq {
+                "rust/bullmq-worker/signals.rs"
+            } else if backend == Backend::Kafka {
                 "rust/kafka-worker/signals.rs"
             } else {
                 "rust/leased-worker/signals.rs"
@@ -107,7 +118,7 @@ pub(super) fn templates(
         .collect())
 }
 
-fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
+fn cargo_with_backend(content: &str, backend: Backend, root: &Path, directory: &Path) -> Result<String> {
     let mut cargo: toml_edit::DocumentMut = content.parse()?;
     for (name, path, features) in [
         (
@@ -122,7 +133,7 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
         (
             "forklaunch-worker-redis",
             "../../.forklaunch/blueprint-rs/crates/implementations/worker/forklaunch-worker-redis",
-            vec!["redis-client"],
+            if backend == Backend::BullMq { vec!["bullmq"] } else { vec!["redis-client"] },
         ),
         (
             "forklaunch-worker-interface",
@@ -136,7 +147,9 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
         ),
     ] {
         let mut dependency = toml_edit::InlineTable::new();
-        dependency.insert("path", path.into());
+        let absolute = root.join(".forklaunch").join(path.trim_start_matches("../../.forklaunch/"));
+        let relative = crate::core::relative_path::get_relative_path(directory, &absolute);
+        dependency.insert("path", relative.to_string_lossy().as_ref().into());
         if !features.is_empty() {
             dependency.insert("features", toml_edit::Array::from_iter(features).into());
         }
@@ -155,11 +168,9 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
     cargo["dependencies"]["serde_json"] = toml_edit::value("1");
     if backend == Backend::Kafka {
         let mut dependency = toml_edit::InlineTable::new();
-        dependency.insert(
-            "path",
-            "../../.forklaunch/blueprint-rs/crates/implementations/worker/forklaunch-worker-kafka"
-                .into(),
-        );
+        let target = root.join(".forklaunch/blueprint-rs/crates/implementations/worker/forklaunch-worker-kafka");
+        let relative = crate::core::relative_path::get_relative_path(directory, &target);
+        dependency.insert("path", relative.to_string_lossy().as_ref().into());
         dependency.insert(
             "features",
             toml_edit::Array::from_iter(["kafka-client"]).into(),
@@ -181,11 +192,12 @@ fn cargo_with_backend(content: &str, backend: Backend) -> Result<String> {
 
 pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
     modules::ensure_blueprint_sources(root, false)?;
-    let directory = root.join("crates").join(name);
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let directory = root.join(crate_path_for_project(&manifest, name).unwrap_or_else(|| format!("crates/{name}")));
     let cargo = directory.join("Cargo.toml");
     write(
         &cargo,
-        cargo_with_backend(&read_to_string(&cargo)?, backend)?,
+        cargo_with_backend(&read_to_string(&cargo)?, backend, root, &directory)?,
     )?;
     let data = rust_crate_template_data(name, "Durable worker", true);
     write(
@@ -203,7 +215,9 @@ pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
     write(
         directory.join("src/signals.rs"),
         render_rust_template(
-            if backend == Backend::Kafka {
+            if backend == Backend::BullMq {
+                "rust/bullmq-worker/signals.rs"
+            } else if backend == Backend::Kafka {
                 "rust/kafka-worker/signals.rs"
             } else {
                 "rust/leased-worker/signals.rs"
@@ -246,6 +260,7 @@ pub(super) fn mark(root: &Path, name: &str, backend: Backend) -> Result<()> {
                 Backend::Postgres => "database",
                 Backend::Redis => "redis",
                 Backend::Kafka => "kafka",
+                Backend::BullMq => "bullmq",
             }
             .into(),
         ),
@@ -260,7 +275,7 @@ pub(super) fn mark(root: &Path, name: &str, backend: Backend) -> Result<()> {
     }
     let (resource, value) = match backend {
         Backend::Postgres => ("database", "postgresql"),
-        Backend::Redis => ("cache", "redis"),
+        Backend::Redis | Backend::BullMq => ("cache", "redis"),
         Backend::Kafka => ("queue", "kafka"),
     };
     resources.insert(resource.into(), Value::String(value.into()));
@@ -289,15 +304,22 @@ pub(super) fn compose(root: &Path, name: &str, backend: Backend) -> Result<()> {
                 .or_insert_with(|| "${WORKER_NAMESPACE:?Configure a worker namespace}".into());
             env.entry("KAFKA_TRANSACTIONAL_ID".into()).or_insert_with(|| format!("${{WORKER_KAFKA_TRANSACTIONAL_ID:?Configure a stable unique identity for {name}}}"));
         }
-        Backend::Redis => {
+        Backend::Redis | Backend::BullMq => {
             env.entry("REDIS_URL".into())
                 .or_insert_with(|| "${WORKER_REDIS_URL:?Configure Redis}".into());
-            env.entry("WORKER_NAMESPACE".into())
-                .or_insert_with(|| "${WORKER_NAMESPACE:?Configure a worker namespace}".into());
+            if backend == Backend::Redis {
+                env.entry("WORKER_NAMESPACE".into())
+                    .or_insert_with(|| "${WORKER_NAMESPACE:?Configure a worker namespace}".into());
+            }
         }
     }
-    env.entry("TENANT_ID".into())
-        .or_insert_with(|| "${WORKER_TENANT_ID:?Configure a trusted tenant}".into());
+    if backend == Backend::BullMq {
+        env.entry("REDIS_KEY_PREFIX".into()).or_insert_with(|| "${WORKER_REDIS_KEY_PREFIX:?Configure the application Redis ACL namespace}".into());
+    }
+    if backend != Backend::BullMq {
+        env.entry("TENANT_ID".into())
+            .or_insert_with(|| "${WORKER_TENANT_ID:?Configure a trusted tenant}".into());
+    }
     write(path, yaml_to_string(&compose)?)?;
     Ok(())
 }

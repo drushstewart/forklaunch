@@ -78,6 +78,21 @@ impl WorkerControl {
             }
         }
     }
+    /// Waits until the current state differs from `previous`, including transitions
+    /// that happened before this future was polled.
+    pub async fn changed(&self, previous: WorkerState) -> WorkerState {
+        let mut receiver = self.0.subscribe();
+        loop {
+            let state = *receiver.borrow_and_update();
+            if state != previous {
+                return state;
+            }
+            if receiver.changed().await.is_err() {
+                return state;
+            }
+        }
+    }
+
     pub(crate) fn subscribe(&self) -> watch::Receiver<WorkerState> {
         self.0.subscribe()
     }
@@ -127,6 +142,34 @@ mod tests {
         assert!(!control.apply_signal(DistributedSignal::Resume));
         assert_eq!(control.state(), WorkerState::Draining);
     }
+    #[tokio::test]
+    async fn change_waiter_observes_existing_and_future_transitions() {
+        let control = WorkerControl::new();
+        assert!(control.pause());
+        assert_eq!(
+            control.changed(WorkerState::Running).await,
+            WorkerState::Paused
+        );
+        let waiting = control.changed(WorkerState::Paused);
+        tokio::pin!(waiting);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(1), &mut waiting)
+                .await
+                .is_err()
+        );
+        control.drain();
+        assert_eq!(waiting.await, WorkerState::Draining);
+        assert!(!control.resume());
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(1),
+                control.changed(WorkerState::Draining)
+            )
+            .await
+            .is_err()
+        );
+    }
+
     #[tokio::test]
     async fn control_retains_state_without_receivers_and_drain_is_sticky() {
         let control = WorkerControl::new();

@@ -1093,9 +1093,11 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
             .map(PathBuf::from)
             .unwrap_or(std::env::current_dir().context("Failed to read current directory")?),
     )?;
-    let crate_path = Path::new("crates").join(&name);
-    let crate_dir = app_root.join(&crate_path);
     let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
+    let crate_path = crate_path_for_project(&manifest, &name)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new("crates").join(&name));
+    let crate_dir = app_root.join(&crate_path);
     if let Some(project) = project_table(&manifest, &name) {
         if !is_rust_project(&app_root, &name)?
             || project.get("type").and_then(Value::as_str) != Some(kind.manifest_type())
@@ -1129,7 +1131,7 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     };
     let templates = if let Some(backend) = backend {
         modules::ensure_blueprint_sources(&app_root, dryrun)?;
-        worker::templates(&crate_dir, &name, &description, backend)?
+        worker::templates(&app_root, &crate_dir, &name, &description, backend)?
     } else {
         rust_crate_templates(&crate_dir, &name, &description, kind)
     };

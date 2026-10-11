@@ -6,7 +6,9 @@ use ::bullmq::{types::BackoffStrategy, worker::WorkerEvent};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::{
+    collections::{HashMap, VecDeque},
     future::{Future, IntoFuture},
+    sync::Arc,
     time::Duration,
 };
 
@@ -139,7 +141,10 @@ impl BullMqProducer {
 }
 
 pub struct BullMqConsumer {
+    queue: Queue,
+    timeout: Duration,
     worker: Worker,
+    events: Arc<tokio::sync::Mutex<HashMap<String, VecDeque<Value>>>>,
     close_timeout: Duration,
 }
 impl BullMqConsumer {
@@ -152,13 +157,47 @@ impl BullMqConsumer {
         options: BullMqOptions,
     ) -> BlueprintResult<Self> {
         let options = options.scoped()?;
-        let worker = bounded(
+        let queue = bounded(
             options.operation_timeout,
-            Worker::with_options(name, processor, options.worker),
+            Queue::with_options(name, options.queue),
         )
         .await?;
+        let events = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let captured = events.clone();
+        let processor = processor.into_processor();
+        let worker = bounded(
+            options.operation_timeout,
+            Worker::with_options(
+                name,
+                move |job: protocol::Job, token| {
+                    let events = captured.clone();
+                    let processor = processor.clone();
+                    async move {
+                        events
+                            .lock()
+                            .await
+                            .entry(job.id().to_owned())
+                            .or_insert_with(VecDeque::new)
+                            .push_back(job.data().clone());
+                        processor(job, token).await
+                    }
+                },
+                options.worker,
+            ),
+        )
+        .await;
+        let worker = match worker {
+            Ok(worker) => worker,
+            Err(error) => {
+                queue.close().await;
+                return Err(error);
+            }
+        };
         Ok(Self {
+            queue,
+            timeout: options.operation_timeout,
             worker,
+            events,
             close_timeout: options.close_timeout,
         })
     }
@@ -168,6 +207,24 @@ impl BullMqConsumer {
     /// # Errors
     /// Returns sanitized startup, storage and bounded shutdown errors.
     pub async fn run_until<F: Future<Output = ()>>(&self, shutdown: F) -> BlueprintResult<()> {
+        self.run_until_with_failure_handler(shutdown, |_, _| {})
+            .await
+    }
+
+    /// Reports every failed processing attempt, including retries, with its original
+    /// event even when `remove_on_fail` deletes the persisted job. Error details are
+    /// redacted; observers can enqueue diagnostics for asynchronous handling.
+    /// # Errors
+    /// Returns sanitized startup, storage and bounded shutdown errors.
+    pub async fn run_until_with_failure_handler<F, H>(
+        &self,
+        shutdown: F,
+        failure_handler: H,
+    ) -> BlueprintResult<()>
+    where
+        F: Future<Output = ()>,
+        H: Fn(Value, BlueprintError),
+    {
         self.worker
             .run()
             .await
@@ -175,16 +232,66 @@ impl BullMqConsumer {
         tokio::pin!(shutdown);
         let result = loop {
             tokio::select! {
-                ()=&mut shutdown=>break Ok(()),
+                biased;
                 event=self.worker.next_event()=>match event {
                     Some(WorkerEvent::Error(error))=>break Err(message_error(&error)),
                     Some(WorkerEvent::Closed)|None=>break Ok(()),
-                    _=>{},
-                }
+                    Some(event)=>self.report_event(event, &failure_handler).await,
+                },
+                ()=&mut shutdown=>break Ok(()),
             }
         };
-        let closed = self.close().await;
+        let closing = self.close();
+        tokio::pin!(closing);
+        let closed = loop {
+            tokio::select! {
+                biased;
+                event = self.worker.next_event() => match event {
+                    Some(event) => self.report_event(event, &failure_handler).await,
+                    None => break closing.await,
+                },
+                result = &mut closing => break result,
+            }
+        };
+        // close drains processors and reports their outcomes before releasing values.
+        self.events.lock().await.clear();
         result.and(closed)
+    }
+
+    async fn report_event<H: Fn(Value, BlueprintError)>(
+        &self,
+        event: WorkerEvent,
+        failure_handler: &H,
+    ) {
+        let (job_id, failed) = match event {
+            WorkerEvent::Completed { job_id, .. } => (job_id, false),
+            WorkerEvent::Failed { job_id, .. } => (job_id, true),
+            _ => return,
+        };
+        let mut events = self.events.lock().await;
+        let event = events.get_mut(&job_id).and_then(VecDeque::pop_front);
+        if events.get(&job_id).is_some_and(VecDeque::is_empty) {
+            events.remove(&job_id);
+        }
+        drop(events);
+        if failed && let Some(event) = event {
+            failure_handler(
+                event,
+                BlueprintError::new("worker_job_failed", "BullMQ processing attempt failed"),
+            );
+        }
+    }
+
+    /// Lists waiting/active event bodies without starting this consumer.
+    /// # Errors
+    /// Returns sanitized storage and timeout errors.
+    pub async fn peek_events(&self) -> BlueprintResult<Vec<Value>> {
+        bounded(
+            self.timeout,
+            self.queue.get_jobs(&["waiting", "active"], 0, -1, false),
+        )
+        .await
+        .map(|jobs| jobs.iter().map(|job| job.data().clone()).collect())
     }
 
     #[must_use]
@@ -197,11 +304,17 @@ impl BullMqConsumer {
     pub async fn close(&self) -> BlueprintResult<()> {
         let milliseconds =
             u64::try_from(self.close_timeout.as_millis()).map_err(|_| invalid_input())?;
-        bounded(
+        let worker_result = bounded(
             self.close_timeout + Duration::from_secs(1),
             self.worker.close(milliseconds),
         )
-        .await
+        .await;
+        let queue_result = bounded(self.timeout, async {
+            self.queue.close().await;
+            Ok(())
+        })
+        .await;
+        worker_result.and(queue_result)
     }
 }
 

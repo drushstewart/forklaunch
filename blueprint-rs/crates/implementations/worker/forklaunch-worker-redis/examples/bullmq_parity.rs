@@ -12,6 +12,18 @@ fn options(input: &Value) -> Result<BullMqOptions, Box<dyn std::error::Error>> {
     } else {
         protocol::types::BackoffStrategy::Exponential(interval)
     };
+    if input["removeOnFail"] == true {
+        options.worker.remove_on_fail = Some(protocol::types::RemoveOnFinish::Bool(true));
+    }
+    if let Some(count) = input["keepCount"].as_u64() {
+        options.queue.default_job_options = protocol::JobOptions::default()
+            .remove_on_complete(protocol::types::RemoveOnFinish::Count(usize::try_from(
+                count,
+            )?))
+            .remove_on_fail(protocol::types::RemoveOnFinish::Count(usize::try_from(
+                count,
+            )?));
+    }
     options.close_timeout = Duration::from_secs(5);
     Ok(options)
 }
@@ -26,8 +38,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             |_: protocol::Job, _token| async { Ok(Value::Null) },
             options(&input)?,
         )
-        .await?;
-        let error = worker.run_until(std::future::pending()).await.unwrap_err();
+        .await;
+        let error = match worker {
+            Ok(worker) => worker.run_until(std::future::pending()).await.unwrap_err(),
+            Err(error) => error,
+        };
         println!("{}", json!({"error":error.code}));
         return Ok(());
     }
@@ -60,6 +75,7 @@ async fn consume(
     input: &Value,
     producer: &BullMqProducer,
 ) -> Result<Value, Box<dyn std::error::Error>> {
+    let failures = std::sync::Mutex::new(Vec::new());
     let attempts = Arc::new(tokio::sync::Mutex::new(Vec::new()));
     let captured = attempts.clone();
     let worker = BullMqConsumer::connect(
@@ -71,6 +87,9 @@ async fn consume(
                     .lock()
                     .await
                     .push(json!({"event":job.data(),"attempt":job.attempts_made()}));
+                if let Some(delay) = job.data()["sleepMs"].as_u64() {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                }
                 if u64::from(job.attempts_made()) < job.data()["failAttempts"].as_u64().unwrap_or(0)
                 {
                     return Err(protocol::Error::ProcessingError("fixture_failure".into()));
@@ -81,26 +100,48 @@ async fn consume(
         options(input)?,
     )
     .await?;
+    let peek = worker.peek_events().await?;
     let expected = input["expected"]
         .as_u64()
         .ok_or("Expected count required")?;
     worker
-        .run_until(async {
-            loop {
-                let counts = producer
-                    .inner()
-                    .get_job_counts()
-                    .await
-                    .expect("Counts available");
-                if counts.completed + counts.failed >= expected {
-                    break;
+        .run_until_with_failure_handler(
+            async {
+                loop {
+                    if let Some(expected) = input["expectedAttempts"].as_u64()
+                        && u64::try_from(attempts.lock().await.len()).unwrap() >= expected
+                    {
+                        break;
+                    }
+                    if input["shutdownAfterStart"] == true && !attempts.lock().await.is_empty() {
+                        break;
+                    }
+                    if input["removeOnFail"] == true
+                        && u64::try_from(failures.lock().unwrap().len()).unwrap() >= expected
+                    {
+                        break;
+                    }
+                    let counts = producer
+                        .inner()
+                        .get_job_counts()
+                        .await
+                        .expect("Counts available");
+                    if counts.completed + counts.failed >= expected {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
                 }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-        })
+            },
+            |event, error| {
+                failures
+                    .lock()
+                    .unwrap()
+                    .push(json!({"event":event,"error":error.code}));
+            },
+        )
         .await?;
     let counts = producer.inner().get_job_counts().await?;
     Ok(
-        json!({"attempts":*attempts.lock().await,"completed":counts.completed,"failed":counts.failed}),
+        json!({"peek":peek,"attempts":*attempts.lock().await,"failures":*failures.lock().unwrap(),"completed":counts.completed,"failed":counts.failed}),
     )
 }

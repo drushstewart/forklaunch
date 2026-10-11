@@ -450,7 +450,7 @@ fn rust_sdk_services(manifest: &Value, selected_service: Option<&str>) -> Vec<Sd
             let durable_worker = project_type == "Worker"
                 && matches!(
                     project.get("variant").and_then(Value::as_str),
-                    Some("worker-postgres" | "worker-redis" | "worker-kafka")
+                    Some("worker-postgres" | "worker-redis" | "worker-kafka" | "worker-bullmq")
                 );
             let router_names = if durable_worker {
                 Vec::new()
@@ -2042,7 +2042,7 @@ mod empty_contract_tests {
     #[test]
     fn durable_worker_lifecycle_fallback_never_advertises_unmounted_routes() {
         let root = tempfile::tempdir().unwrap();
-        for variant in ["worker-postgres", "worker-redis", "worker-kafka"] {
+        for variant in ["worker-postgres", "worker-redis", "worker-kafka", "worker-bullmq"] {
             let manifest: Value = toml::from_str(&format!(r#"
 [[projects]]
 name = "jobs"
