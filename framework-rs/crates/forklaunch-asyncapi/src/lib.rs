@@ -1,5 +1,11 @@
 #![forbid(unsafe_code)]
 
+mod raw;
+pub use raw::{
+    SocketAsyncApiOptions, generate_raw_socket_asyncapi_json,
+    generate_raw_socket_asyncapi_json_with_options,
+};
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Write as _,

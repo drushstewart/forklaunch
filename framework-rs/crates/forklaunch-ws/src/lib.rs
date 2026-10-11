@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 pub mod codec;
+pub mod contract;
+pub use contract::{AsyncApiEnrichment, SocketContract, SocketSchemaEntry};
 #[cfg(feature = "transport")]
 pub mod transport;
 

@@ -1116,6 +1116,7 @@ dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
  "forklaunch-ws",
+ "percent-encoding",
  "serde_json",
 ]
 

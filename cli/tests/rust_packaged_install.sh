@@ -74,6 +74,8 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-mcp/src/server/multipart.rs').is_file(), 'Packaged multipart MCP runtime missing'
         assert root.joinpath('crates/forklaunch-axum/src/mcp_runtime.rs').is_file(), 'Packaged separate MCP listeners missing'
         assert root.joinpath('crates/forklaunch-ws/src/transport.rs').is_file(), 'Packaged typed WebSocket runtime missing'
+        assert root.joinpath('crates/forklaunch-ws/src/contract.rs').is_file(), 'Packaged raw socket schema metadata missing'
+        assert root.joinpath('crates/forklaunch-asyncapi/src/raw.rs').is_file(), 'Packaged raw socket AsyncAPI exporter missing'
         assert root.joinpath('crates/forklaunch-ws/tests/transport.rs').is_file(), 'Packaged WebSocket transport tests missing'
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
     else:
@@ -86,6 +88,7 @@ PYTHON
 export CARGO_TARGET_DIR="$GENERATED_TARGET"
 cargo check --workspace
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-ws --all-features
+cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-asyncapi
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-axum --all-features --test websocket
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-billing-base -p forklaunch-billing-stripe -p forklaunch-billing-axum --features forklaunch-billing-base/postgres
