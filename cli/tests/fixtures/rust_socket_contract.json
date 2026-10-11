@@ -123,8 +123,14 @@
             "$schema": "http://json-schema.org/draft-06/schema#",
             "type": "string",
             "minLength": 1,
-            "if": 42,
-            "then": false,
+            "if": {
+              "id": "https://example.invalid/ignored",
+              "$id": "https://example.invalid/ignored"
+            },
+            "then": {
+              "id": "https://example.invalid/ignored",
+              "$id": "https://example.invalid/ignored"
+            },
             "prefixItems": [
               "literal"
             ]
@@ -167,8 +173,14 @@
             "type": "string",
             "const": "ignored",
             "minLength": 1,
-            "if": 42,
-            "then": false,
+            "if": {
+              "id": "https://example.invalid/ignored",
+              "$id": "https://example.invalid/ignored"
+            },
+            "then": {
+              "id": "https://example.invalid/ignored",
+              "$id": "https://example.invalid/ignored"
+            },
             "prefixItems": [
               "literal"
             ]

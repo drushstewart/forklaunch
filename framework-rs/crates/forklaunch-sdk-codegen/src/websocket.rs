@@ -239,6 +239,22 @@ mod tests {
     }
 
     #[test]
+    fn ignored_legacy_resource_ids_do_not_become_active_schema_resources() {
+        for dialect in [
+            "http://json-schema.org/draft-04/schema#",
+            "http://json-schema.org/draft-06/schema#",
+        ] {
+            let identity = json!({"id":"https://example.invalid/ignored","$id":"https://example.invalid/ignored"});
+            let schema = json!({"$schema":dialect,"type":"string","if":identity,"then":identity});
+            let contract = SocketContract::new("/legacy")
+                .with_server_message("reply", SocketSchemaEntry::new(schema));
+            let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+            let codec = PayloadCodec::<Value>::json_schema(&plan.incoming.schema).unwrap();
+            assert_eq!(codec.decode(b"value").unwrap(), json!("value"));
+        }
+    }
+
+    #[test]
     fn malformed_constraints_scopes_and_mixed_dialects_fail_before_generation() {
         for schema in [
             json!({"type":"string","minLength":-1}),

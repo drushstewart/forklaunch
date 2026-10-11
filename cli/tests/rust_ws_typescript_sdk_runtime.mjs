@@ -193,6 +193,81 @@ export async function types(client: ForkLaunchSocketClient) {
   const { ForkLaunchSocketClient: NativeClient } = await import(
     pathToFileURL(path.join(temporary, 'compiled/native.js'))
   );
+  for (const Codec of [SocketCodec, commonjs.SocketCodec]) {
+    for (const version of ['draft-04', 'draft-06']) {
+      const identity = {
+        id: 'https://example.invalid/ignored',
+        $id: 'https://example.invalid/ignored',
+      };
+      const schema = {
+        $schema: `http://json-schema.org/${version}/schema#`,
+        type: 'string',
+        if: { ...identity },
+        then: { ...identity },
+      };
+      const original = structuredClone(schema);
+      const ignored = new Codec(schema, 4096);
+      assert.equal(ignored.decode(ignored.encode('value')), 'value');
+      assert.deepEqual(
+        schema,
+        original,
+        'validation must not mutate caller schemas',
+      );
+      const selected = new Codec(
+        {
+          $schema: schema.$schema,
+          $ref: '#/if/properties/id',
+          if: { properties: { id: { type: 'string', minLength: 2 } } },
+          then: { ...identity },
+          else: { ...identity },
+        },
+        4096,
+      );
+      assert.equal(selected.decode(selected.encode('valid')), 'valid');
+      assert.throws(() => selected.encode('x'));
+      const recursive = new Codec(
+        {
+          $schema: schema.$schema,
+          $ref: '#/if',
+          if: {
+            type: 'object',
+            required: ['value'],
+            properties: { value: { type: 'integer' }, next: { $ref: '#/if' } },
+          },
+          then: { ...identity },
+          else: { ...identity },
+        },
+        4096,
+      );
+      const tree = { value: 1, next: { value: 2 } };
+      assert.deepEqual(recursive.decode(recursive.encode(tree)), tree);
+      assert.throws(() =>
+        recursive.encode({ value: 1, next: { value: 'wrong' } }),
+      );
+    }
+    const literal = {
+      $id: 'literal',
+      id: 'literal',
+      nested: { $anchor: 'literal' },
+    };
+    const selectedLiteral = new Codec(
+      {
+        $schema: 'http://json-schema.org/draft-06/schema#',
+        $ref: '#/if',
+        if: { const: literal },
+        then: { $id: 'https://example.invalid/ignored' },
+        else: { $id: 'https://example.invalid/ignored' },
+      },
+      4096,
+    );
+    assert.deepEqual(
+      selectedLiteral.decode(selectedLiteral.encode(literal)),
+      literal,
+    );
+    assert.throws(() =>
+      selectedLiteral.encode({ ...literal, id: 'different' }),
+    );
+  }
   const nestedPrototype = JSON.parse(
     '{"type":"object","required":["水/outer~"],"properties":{"水/outer~":{"type":"object","required":["__proto__"],"properties":{"__proto__":{"$ref":"#/$defs/Allowed"}},"additionalProperties":false}},"$defs":{"Allowed":{"type":"integer","minimum":2}}}',
   );

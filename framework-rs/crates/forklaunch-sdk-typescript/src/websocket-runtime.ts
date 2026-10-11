@@ -174,6 +174,87 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
     'propertyNames',
     'contentSchema',
   ]);
+  const dialect = typeof copy === 'object' ? copy.$schema : undefined;
+  const draft4 = typeof dialect === 'string' && dialect.includes('/draft-04/');
+  const draft6 = typeof dialect === 'string' && dialect.includes('/draft-06/');
+  if (draft4 || draft6) {
+    const ignored = new Set([
+      'if',
+      'then',
+      'else',
+      'dependentSchemas',
+      'prefixItems',
+      'unevaluatedProperties',
+      'unevaluatedItems',
+      'contentSchema',
+      ...(draft4 ? ['const', 'contains', 'propertyNames'] : []),
+    ]);
+    const active = new WeakSet<object>();
+    const pending: unknown[] = [copy];
+    const annotations: unknown[] = [];
+    // AJV discovers resource IDs before consulting its dialect vocabulary.
+    // Identify real schema positions, including explicit local references into
+    // ignored annotation storage, before cleaning its private compilation copy.
+    while (pending.length) {
+      const node = pending.pop();
+      if (
+        !node ||
+        typeof node !== 'object' ||
+        Array.isArray(node) ||
+        active.has(node)
+      )
+        continue;
+      active.add(node);
+      const object = node as Record<string, unknown>;
+      if (typeof object.$ref === 'string' && object.$ref.startsWith('#')) {
+        const pointer = decodeURIComponent(object.$ref.slice(1));
+        let target: unknown = copy;
+        if (pointer.startsWith('/')) {
+          for (const segment of pointer.slice(1).split('/')) {
+            const key = segment.replace(/~1/g, '/').replace(/~0/g, '~');
+            target =
+              target &&
+              typeof target === 'object' &&
+              Object.prototype.hasOwnProperty.call(target, key)
+                ? (target as Record<string, unknown>)[key]
+                : undefined;
+          }
+        } else if (pointer !== '') target = undefined;
+        pending.push(target);
+      }
+      for (const [key, child] of Object.entries(object)) {
+        if (ignored.has(key)) annotations.push(child);
+        else if (
+          dictionaries.has(key) &&
+          child &&
+          typeof child === 'object' &&
+          !Array.isArray(child)
+        ) {
+          for (const value of Object.values(child)) pending.push(value);
+        } else if (singles.has(key)) pending.push(child);
+        else if (
+          ['items', 'prefixItems', 'allOf', 'anyOf', 'oneOf'].includes(key)
+        ) {
+          if (Array.isArray(child)) {
+            for (const value of child) pending.push(value);
+          } else pending.push(child);
+        }
+      }
+    }
+    function cleanAnnotation(value: unknown): void {
+      if (!value || typeof value !== 'object' || active.has(value)) return;
+      if (Array.isArray(value)) {
+        value.forEach(cleanAnnotation);
+        return;
+      }
+      const object = value as Record<string, unknown>;
+      for (const keyword of ['$id', 'id', '$anchor', '$dynamicAnchor']) {
+        if (typeof object[keyword] === 'string') delete object[keyword];
+      }
+      Object.values(object).forEach(cleanAnnotation);
+    }
+    annotations.forEach(cleanAnnotation);
+  }
   function visit(node: unknown, location: string[]): void {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     const object = node as Record<string, unknown>;

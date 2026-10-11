@@ -145,6 +145,7 @@ fn client_names(client_name: &str) -> Result<BTreeSet<String>> {
         "Error",
         "Promise",
         "Set",
+        "WeakSet",
         "Object",
         "Number",
         "String",
