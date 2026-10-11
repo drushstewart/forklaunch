@@ -278,7 +278,8 @@ pub fn registry() -> ContractRegistry {
 /// Complete core runtime registry, including framework and typed-handler errors.
 #[must_use]
 pub fn module_registry() -> ContractRegistry {
-    let base = registry();
+    let mut base = registry();
+    base.register(import_contract());
     let mut registry = ContractRegistry::for_service(ServiceContract::new("ecommerce", "0.1.0"));
     for source in base.routes() {
         let mut route = source.clone();
@@ -300,4 +301,23 @@ pub fn module_registry() -> ContractRegistry {
 pub fn health_contract() -> RouteContract {
     RouteContract::get("Get Health", "Reports service health", "/health")
         .with_response(200, Some(BodyContract::json("Health")))
+}
+
+/// Normalized bulk catalog import contract; additional runtime errors are added by `module_registry`.
+/// # Panics
+/// Panics only if package-owned schemas fail to serialize.
+#[must_use]
+pub fn import_contract() -> RouteContract {
+    internal(RouteContract::post(
+        "Import Catalog",
+        "Bulk import a normalized product catalog",
+        "/catalog-import/",
+    ))
+    .with_request_body(json::<crate::import::CatalogImport>("CatalogImport"))
+    .with_response(
+        200,
+        Some(json::<crate::import::CatalogImportResult>(
+            "CatalogImportResult",
+        )),
+    )
 }

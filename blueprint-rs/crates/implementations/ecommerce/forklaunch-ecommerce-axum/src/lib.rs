@@ -194,6 +194,10 @@ pub fn ecommerce_router(
 
     ForkLaunchRouter::new(service)
         .post(
+            route("importCatalog"),
+            handler!(import_catalog, input:CheckedJson<forklaunch_ecommerce_interface::import::CatalogImport>),
+        )
+        .post(
             route("createProduct"),
             handler!(create_product, input:CheckedJson<CreateProductDto>),
         )
@@ -567,4 +571,12 @@ async fn list_orders(
         Ok(ids) => response(service!(backend, session).list_orders(ids).await),
         Err(error) => failure(&error),
     }
+}
+
+async fn import_catalog(
+    Extension(backend): Extension<Arc<EcommerceBackend>>,
+    Extension(session): Extension<AuthenticatedSession>,
+    CheckedJson(Json(input)): CheckedJson<forklaunch_ecommerce_interface::import::CatalogImport>,
+) -> Response {
+    response(service!(backend, session).import_catalog(input).await)
 }

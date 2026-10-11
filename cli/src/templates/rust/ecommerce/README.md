@@ -10,4 +10,4 @@ Order transitions and their inventory jobs commit together. The worker decrement
 
 Connect charges default to zero platform fees, matching the TypeScript module. Client secrets appear only in Stripe creation responses. `STRIPE_API_BASE` accepts HTTPS proxies or explicit loopback fixtures. PayPal requires its client ID/secret/base URL together.
 
-This template covers the core 27 application routes. Checkout/tax/shipping/import, provider webhook reconciliation and compliance controllers remain tracked in the Rust parity plan; native database tables are not a shared MikroORM schema. Add custom HTTP routers through `routes::contracts()` and `routes::register_router(...)` and regenerate both SDKs after changing contracts.
+This template covers 28 application routes, including external-ID catalog imports that preserve live stock. Checkout, provider webhook reconciliation and compliance controllers remain tracked in the Rust parity plan; native database tables are not a shared MikroORM schema. Add custom HTTP routers through `routes::contracts()` and `routes::register_router(...)` and regenerate both SDKs after changing contracts.

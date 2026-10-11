@@ -24,6 +24,7 @@ on:
       - 'cli/tests/rust_ecommerce_stripe_parity.mjs'
       - 'cli/tests/rust_ecommerce_paypal_parity.mjs'
       - 'cli/tests/rust_ecommerce_pricing_parity.mjs'
+      - 'cli/tests/rust_ecommerce_import_parity.mjs'
       - 'cli/tests/rust_mcp_probe.mjs'
       - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
@@ -52,6 +53,7 @@ on:
       - 'cli/tests/rust_ecommerce_stripe_parity.mjs'
       - 'cli/tests/rust_ecommerce_paypal_parity.mjs'
       - 'cli/tests/rust_ecommerce_pricing_parity.mjs'
+      - 'cli/tests/rust_ecommerce_import_parity.mjs'
       - 'cli/tests/rust_mcp_probe.mjs'
       - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
@@ -188,6 +190,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_ecommerce_pricing_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_ecommerce_import_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - name: Start isolated Kafka-compatible broker

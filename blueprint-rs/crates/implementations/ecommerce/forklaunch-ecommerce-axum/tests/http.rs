@@ -200,7 +200,7 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
     )
     .unwrap();
     let router = ecommerce_router(backend, auth, ServiceInfo::new("ecommerce", "1.0.0"));
-    assert_eq!(router.registry().routes().len(), 28);
+    assert_eq!(router.registry().routes().len(), 29);
     let (base, stop, task) = serve(router.into_router_with_default_mcp().unwrap()).await;
     let client = Client::new();
     assert_eq!(
@@ -569,7 +569,7 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
             .as_array()
             .unwrap()
             .len(),
-        28
+        29
     );
     let tool=rpc(&client,&base,"tools/call",json!({"name":"listProducts","arguments":{"query":{"ids":["product"]},"headers":{"authorization":sign("GET","/product",None)}}})).await;
     let products: Value =

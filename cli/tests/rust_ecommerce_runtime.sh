@@ -64,7 +64,7 @@ from pathlib import Path
 import json
 for name in ['ecommerce','spare-shop']:
     routes=json.loads((Path('.forklaunch/contracts')/name/'contract.json').read_text())['routes']
-    assert len(routes)==28,(name,routes)
+    assert len(routes)==29,(name,routes)
 PYTHON
 env DATABASE_URL="$FORKLAUNCH_TEST_POSTGRES_URL" cargo run -p ecommerce -- --migrate
 mkdir -p crates/ecommerce/examples

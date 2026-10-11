@@ -55,7 +55,7 @@ async function value(response){assert.equal(response.status,200,await response.c
 async function eventually(check){for(let i=0;i<300;i++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,25));}throw new Error('Inventory worker did not apply the order event');}
 try{
   let service=await start();const other=await start({tenant:'b'});
-  for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment'])).length,28);
+  for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment','importCatalog'])).length,29);
   assert.equal((await fetch(service.base+'/product')).status,401);
   const denied=await mcpRpc(service.base,'tools/call',{name:'getProduct',arguments:{params:{id:'missing'}}});assert.equal(denied.isError,true);
   const sdk=await import(pathToFileURL(sdkPath));const client=sdk.createForkLaunchSdk({serviceBaseUrls:{ecommerce:service.base}});
@@ -70,6 +70,17 @@ try{
   assert.equal((await call(service.base,'/cart/items',{method:'POST',body:{cartId:'cart',variantId:'variant',quantity:1.5}})).status,400);
   const mcpCatalog=await mcpRpc(service.base,'tools/call',{name:'listCatalog',arguments:{query:{ids:['product'],limit:1},headers:{authorization:hmac('/product/catalog')}}});
   assert.equal(mcpCatalog.isError,false,JSON.stringify(mcpCatalog));assert.deepEqual(JSON.parse(mcpCatalog.content[0].text),catalog.response);
+  const importedBody={products:[{externalId:'imported',handle:'imported',title:'Imported',variants:[{externalId:'imported-variant',title:'Box',priceCents:75,initialStock:12}]}]};
+  const imported=await client.ecommerce.catalogImport.importCatalog({body:importedBody,headers:{authorization:hmac('/catalog-import','POST',JSON.stringify(importedBody))}});
+  assert.equal(imported.code,200);assert.deepEqual(imported.response,{productsImported:1,variantsImported:1});
+  const importedProduct=await value(await call(service.base,'/product/handle/imported'));
+  const importedVariant=(await value(await call(service.base,`/variant/product/${importedProduct.id}`)))[0];
+  await value(await call(service.base,'/inventory/adjust',{method:'PUT',body:{variantId:importedVariant.id,delta:-2}}));
+  const reimport=await mcpRpc(service.base,'tools/call',{name:'importCatalog',arguments:{body:importedBody,headers:{authorization:hmac('/catalog-import','POST',JSON.stringify(importedBody))}}});
+  assert.equal(reimport.isError,false);assert.deepEqual(JSON.parse(reimport.content[0].text),{productsImported:1,variantsImported:1});
+  assert.equal((await value(await call(service.base,`/inventory/${importedVariant.id}`))).stock,10);
+  assert.equal((await value(await call(service.base,`/variant/product/${importedProduct.id}`))).length,1);
+  assert.equal((await call(service.base,'/catalog-import',{method:'POST',body:{products:[{...importedBody.products[0],variants:[{...importedBody.products[0].variants[0],initialStock:null}]}]}})).status,400);
   const cart={id:'cart'};
   const mcpCart=await mcpRpc(service.base,'tools/call',{name:'createCart',arguments:{body:cart,headers:{authorization:hmac('/cart','POST',JSON.stringify(cart))}}});assert.equal(mcpCart.isError,false);
   await value(await call(service.base,'/cart/items',{method:'POST',body:{cartId:'cart',variantId:'variant',quantity:2}}));
