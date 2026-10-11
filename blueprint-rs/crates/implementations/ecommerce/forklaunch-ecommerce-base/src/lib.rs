@@ -1,6 +1,7 @@
 //! Persistent ecommerce business rules with atomic storage seams. The memory
 //! adapter is for development; `PostgreSQL` owns production tenant isolation.
 #![forbid(unsafe_code)]
+pub mod catalog;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod store;

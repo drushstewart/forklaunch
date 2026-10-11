@@ -123,6 +123,7 @@ pub struct Query {
     pub kind: RecordKind,
     pub ids: Option<Vec<String>>,
     pub equals: Option<(Field, String)>,
+    pub equals_many: Option<(Field, Vec<String>)>,
     pub title: Option<String>,
 }
 impl Query {
@@ -132,6 +133,7 @@ impl Query {
             kind,
             ids: None,
             equals: None,
+            equals_many: None,
             title: None,
         }
     }
@@ -170,6 +172,13 @@ pub struct MutationResult {
     pub changed: bool,
 }
 
+/// Bounded product rows in stable createdAt/id order, with the pre-page total.
+#[derive(Debug, Clone)]
+pub struct ProductPage {
+    pub products: Vec<ProductDto>,
+    pub total: u64,
+}
+
 /// Every mutation must atomically check and persist the current row. Returning
 /// plaintext order data also requires the backend's audit to commit first.
 pub trait EcommerceStore: Send + Sync {
@@ -179,6 +188,17 @@ pub trait EcommerceStore: Send + Sync {
     /// # Errors
     /// Returns storage/audit failures; results must remain within the trusted tenant.
     fn find(&self, query: Query) -> impl Future<Output = BlueprintResult<Vec<Record>>> + Send;
+    /// Implementations must page before loading product rows into the process.
+    /// Empty ids mean no restriction, matching TypeScript's catalog lookup.
+    /// # Errors
+    /// Returns storage failures. Limits must remain within 1..=100.
+    fn product_page(
+        &self,
+        ids: Option<Vec<String>>,
+        title: Option<String>,
+        limit: u32,
+        offset: u64,
+    ) -> impl Future<Output = BlueprintResult<ProductPage>> + Send;
     /// # Errors
     /// Returns missing-record, invalid transition, stock/quantity or storage failures.
     fn mutate(
@@ -402,6 +422,13 @@ fn matches(record: &Record, query: &Query) -> BlueprintResult<bool> {
     {
         return Ok(false);
     }
+    if query.equals_many.as_ref().is_some_and(|(field, values)| {
+        !data[field.as_str()]
+            .as_str()
+            .is_some_and(|value| values.iter().any(|candidate| candidate == value))
+    }) {
+        return Ok(false);
+    }
     if let Some(title) = query.title.as_deref().filter(|value| !value.is_empty()) {
         let pattern = format!(
             "(?is).*{}.*",
@@ -442,6 +469,49 @@ impl EcommerceStore for InMemoryEcommerceStore {
                 Err(error) => Some(Err(error)),
             })
             .collect()
+    }
+    async fn product_page(
+        &self,
+        ids: Option<Vec<String>>,
+        title: Option<String>,
+        limit: u32,
+        offset: u64,
+    ) -> BlueprintResult<ProductPage> {
+        if !(1..=100).contains(&limit) {
+            return Err(validation("Catalog limit must be within 1..=100"));
+        }
+        let records = self.records.lock().map_err(storage_error)?;
+        let query = Query {
+            ids,
+            title,
+            ..Query::all(RecordKind::Product)
+        };
+        let mut products = Vec::new();
+        for record in records.values() {
+            if matches(record, &query)?
+                && let Record::Product(product) = record
+            {
+                products.push(product);
+            }
+        }
+        products.sort_by(|a, b| {
+            a.created_at
+                .is_none()
+                .cmp(&b.created_at.is_none())
+                .then(a.created_at.cmp(&b.created_at))
+                .then(a.id.cmp(&b.id))
+        });
+        let total = products.len() as u64;
+        let start = usize::try_from(offset)
+            .unwrap_or(usize::MAX)
+            .min(products.len());
+        let products = products
+            .into_iter()
+            .skip(start)
+            .take(limit as usize)
+            .cloned()
+            .collect();
+        Ok(ProductPage { products, total })
     }
     async fn mutate(
         &self,

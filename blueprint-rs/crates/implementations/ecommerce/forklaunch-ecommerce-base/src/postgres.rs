@@ -1,8 +1,8 @@
 //! Tenant-bound `PostgreSQL` records. Order addresses are encrypted with the
 //! tenant key; plaintext address reads and their audit inserts commit together.
 use crate::store::{
-    EcommerceStore, Mutation, MutationResult, Query, Record, RecordKind, Selector, apply_mutation,
-    not_found, storage_error,
+    EcommerceStore, Mutation, MutationResult, ProductPage, Query, Record, RecordKind, Selector,
+    apply_mutation, not_found, storage_error,
 };
 use forklaunch_blueprint_core::{AuditContext, BlueprintError, BlueprintResult};
 use forklaunch_core::persistence::{
@@ -177,9 +177,13 @@ impl EcommerceStore for PostgresEcommerceStore {
         let (field, value) = query.equals.map_or((None, None), |(field, value)| {
             (Some(field.as_str()), Some(value))
         });
+        let (many_field, many_values) =
+            query.equals_many.map_or((None, None), |(field, values)| {
+                (Some(field.as_str()), Some(values))
+            });
         let rows:Vec<(String,sqlx::types::Json<Value>)>=sqlx::query_as(
-            "SELECT id,data FROM fl_ecommerce.records WHERE tenant_id=$1 AND kind=$2 AND ($3::text[] IS NULL OR cardinality($3)=0 OR id=ANY($3)) AND ($4::text IS NULL OR data->>$4::text=$5::text) AND ($6::text IS NULL OR $6='' OR data->>'title' ILIKE '%'||$6||'%') ORDER BY id")
-            .bind(self.tenant.id()).bind(query.kind.as_str()).bind(query.ids).bind(field).bind(value).bind(query.title)
+            "SELECT id,data FROM fl_ecommerce.records WHERE tenant_id=$1 AND kind=$2 AND ($3::text[] IS NULL OR cardinality($3)=0 OR id=ANY($3)) AND ($4::text IS NULL OR data->>$4::text=$5::text) AND ($6::text IS NULL OR $6='' OR data->>'title' ILIKE '%'||$6||'%') AND ($7::text IS NULL OR data->>$7::text=ANY($8::text[])) ORDER BY id")
+            .bind(self.tenant.id()).bind(query.kind.as_str()).bind(query.ids).bind(field).bind(value).bind(query.title).bind(many_field).bind(many_values)
             .fetch_all(&mut *tx).await.map_err(storage_error)?;
         let mut records = Vec::with_capacity(rows.len());
         for (id, data) in rows {
@@ -190,6 +194,50 @@ impl EcommerceStore for PostgresEcommerceStore {
         }
         tx.commit().await.map_err(storage_error)?;
         Ok(records)
+    }
+    async fn product_page(
+        &self,
+        ids: Option<Vec<String>>,
+        title: Option<String>,
+        limit: u32,
+        offset: u64,
+    ) -> BlueprintResult<ProductPage> {
+        if !(1..=100).contains(&limit) {
+            return Err(BlueprintError::new(
+                "ecommerce_validation",
+                "Catalog limit must be within 1..=100",
+            ));
+        }
+        let mut tx = self.transaction().await?;
+        // NOT MATERIALIZED lets the page branch load only its bounded rows.
+        // The count branch returns a total even when OFFSET is past the end.
+        let rows: Vec<(i64, Option<sqlx::types::Json<Value>>)> = sqlx::query_as(
+            "WITH filtered AS NOT MATERIALIZED (
+                SELECT id,data FROM fl_ecommerce.records WHERE tenant_id=$1 AND kind='product'
+                AND ($2::text[] IS NULL OR cardinality($2)=0 OR id=ANY($2))
+                AND ($3::text IS NULL OR $3='' OR data->>'title' ILIKE '%'||$3||'%')
+             ), page AS (
+                SELECT id,data FROM filtered ORDER BY data->>'createdAt',id LIMIT $4 OFFSET $5
+             )
+             SELECT totals.total,page.data FROM (SELECT COUNT(*) AS total FROM filtered) totals
+             LEFT JOIN page ON TRUE ORDER BY page.data->>'createdAt',page.id",
+        )
+        .bind(self.tenant.id())
+        .bind(ids)
+        .bind(title)
+        .bind(i64::from(limit))
+        .bind(i64::try_from(offset).unwrap_or(i64::MAX))
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+        let total = rows.first().map_or(0, |(total, _)| total.unsigned_abs());
+        let products = rows
+            .into_iter()
+            .filter_map(|(_, data)| data)
+            .map(|data| serde_json::from_value(data.0).map_err(storage_error))
+            .collect::<BlueprintResult<_>>()?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(ProductPage { products, total })
     }
     async fn mutate(
         &self,

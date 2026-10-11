@@ -1,3 +1,5 @@
+#[path = "support/catalog.rs"]
+mod catalog;
 use forklaunch_ecommerce_base::{
     BaseEcommerceService,
     store::{EcommerceStore, Field, InMemoryEcommerceStore, Mutation, RecordKind, Selector},
@@ -325,6 +327,7 @@ async fn business_rules<S: EcommerceStore + 'static>(store: Arc<S>) {
         "p1",
         "base deletion does not cascade"
     );
+    catalog::catalog_rules(store).await;
 }
 #[tokio::test]
 async fn memory_business_rules_and_concurrency() {
@@ -437,6 +440,14 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     let other = BaseEcommerceService::new(Arc::clone(&b));
     assert!(other.get_order("order").await.is_err());
     assert!(other.get_variant("v1").await.is_err());
+    assert_eq!(
+        other
+            .list_catalog(forklaunch_ecommerce_interface::catalog::CatalogQuery::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
     let (count,): (i64,) = sqlx::query_as("SELECT count(*) FROM fl_ecommerce.records")
         .fetch_one(&runtime)
         .await
