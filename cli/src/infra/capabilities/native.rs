@@ -21,6 +21,85 @@ const MOCK_STATE: &str = ".forklaunch/native-capabilities/.gateway-mock.json";
 #[derive(Serialize, Deserialize)]
 struct GatewayOwnership {
     original: Option<DockerService>,
+    #[serde(default)]
+    last: Option<DockerService>,
+}
+
+fn current_gateway_mock(edit: &CapabilityEdit) -> Result<Option<DockerService>> {
+    Ok(edit
+        .read(&edit.app_root.join("docker-compose.yaml"))?
+        .map(|source| serde_yml::from_str::<DockerCompose>(&source))
+        .transpose()?
+        .and_then(|compose| compose.services.get(GATEWAY_MOCK_SERVICE).cloned()))
+}
+
+fn remember_gateway_edits(
+    state: &mut GatewayOwnership,
+    current: Option<DockerService>,
+) -> Result<()> {
+    let Some(last) = state.last.as_ref() else {
+        return Ok(());
+    };
+    let previous = serde_json::to_value(last)?;
+    let current = serde_json::to_value(current)?;
+    if previous == current {
+        return Ok(());
+    }
+    let mut original = serde_json::to_value(&state.original)?;
+    if original.is_null() {
+        // Retain a developer-adopted mock, excluding unchanged CLI callbacks.
+        original = current.clone();
+        if let Some(env) = original
+            .get_mut("environment")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            env.retain(|key, value| {
+                !key.starts_with("MOCK_EVENTS_URL_")
+                    || previous.get("environment").and_then(|env| env.get(key)) != Some(value)
+            });
+        }
+    } else {
+        merge_human_delta(&mut original, &previous, &current);
+    }
+    state.original = serde_json::from_value(original)?;
+    Ok(())
+}
+
+fn merge_human_delta(
+    baseline: &mut serde_json::Value,
+    previous: &serde_json::Value,
+    current: &serde_json::Value,
+) {
+    if previous == current {
+        return;
+    }
+    if let (Some(previous), Some(current)) = (previous.as_object(), current.as_object()) {
+        if !baseline.is_object() {
+            *baseline = serde_json::json!({});
+        }
+        let baseline = baseline.as_object_mut().expect("object baseline");
+        for key in previous
+            .keys()
+            .chain(current.keys())
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            if let Some(value) = current.get(key) {
+                if previous.get(key) != Some(value) {
+                    merge_human_delta(
+                        baseline
+                            .entry(key.clone())
+                            .or_insert(serde_json::Value::Null),
+                        previous.get(key).unwrap_or(&serde_json::Value::Null),
+                        value,
+                    );
+                }
+            } else {
+                baseline.remove(key);
+            }
+        }
+    } else {
+        *baseline = current.clone();
+    }
 }
 
 fn capability_owners(
@@ -96,6 +175,9 @@ pub(crate) fn rename_native_ownership(root: &Path, old: &str, new: &str) -> Resu
         if let Some(mock) = state.original.as_mut() {
             rename_callback_targets(mock, old, new);
         }
+        if let Some(mock) = state.last.as_mut() {
+            rename_callback_targets(mock, old, new);
+        }
         edit.write(
             root.join(MOCK_STATE),
             serde_json::to_string_pretty(&state)? + "\n",
@@ -164,10 +246,13 @@ pub(crate) fn cleanup_deleted_native_service(
         .map(|text| serde_json::from_str::<Ownership>(&text))
         .transpose()?
         .and_then(|state| state.original_mock);
-    let gateway_state = edit
+    let mut gateway_state = edit
         .read(&root.join(MOCK_STATE))?
         .map(|text| serde_json::from_str::<GatewayOwnership>(&text))
         .transpose()?;
+    if let Some(state) = gateway_state.as_mut() {
+        remember_gateway_edits(state, current_gateway_mock(&edit)?)?;
+    }
     if !features.is_empty() && root.join("docker-compose.yaml").exists() {
         let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(
             root.join(".forklaunch/manifest.toml"),
@@ -202,8 +287,9 @@ pub(crate) fn cleanup_deleted_native_service(
             }
             if remaining.is_empty() && !compose.services.contains_key(GATEWAY_MOCK_SERVICE) {
                 if let Some(mock) = gateway_state
-                    .and_then(|state| state.original)
-                    .or(original_mock)
+                    .as_ref()
+                    .map(|state| state.original.clone())
+                    .unwrap_or(original_mock)
                 {
                     compose.services.insert(GATEWAY_MOCK_SERVICE.into(), mock);
                 }
@@ -212,6 +298,12 @@ pub(crate) fn cleanup_deleted_native_service(
         })?;
         if app_empty {
             edit.delete(root.join(MOCK_STATE));
+        } else if let Some(mut state) = gateway_state {
+            state.last = current_gateway_mock(&edit)?;
+            edit.write(
+                root.join(MOCK_STATE),
+                serde_json::to_string_pretty(&state)? + "\n",
+            );
         }
     }
     edit.delete(state_path);
@@ -292,8 +384,18 @@ pub(super) fn apply(
             .and_then(|compose| compose.services.get(GATEWAY_MOCK_SERVICE).cloned());
         edit.write(
             gateway_path.clone(),
-            serde_json::to_string_pretty(&GatewayOwnership { original })? + "\n",
+            serde_json::to_string_pretty(&GatewayOwnership {
+                original,
+                last: None,
+            })? + "\n",
         );
+    }
+    let mut gateway_ownership = edit
+        .read(&gateway_path)?
+        .map(|source| serde_json::from_str::<GatewayOwnership>(&source))
+        .transpose()?;
+    if let Some(state) = gateway_ownership.as_mut() {
+        remember_gateway_edits(state, current_gateway_mock(edit)?)?;
     }
     let mut state = if let Some(text) = edit.read(&state_path)? {
         serde_json::from_str::<Ownership>(&text)?
@@ -469,11 +571,10 @@ pub(super) fn apply(
                 .context("Application manifest is missing")?,
         )?;
         let owners = capability_owners(&manifest, Some((&service, &edit.service_capabilities)));
-        let global_original = edit
-            .read(&gateway_path)?
-            .map(|text| serde_json::from_str::<GatewayOwnership>(&text))
-            .transpose()?
-            .and_then(|state| state.original);
+        let global_original = gateway_ownership
+            .as_ref()
+            .map(|state| state.original.clone())
+            .unwrap_or_else(|| state.original_mock.clone());
         edit.update_compose(|compose| {
             let previous = compose
                 .services
@@ -507,7 +608,7 @@ pub(super) fn apply(
                     }
                 }
                 if app_empty && !compose.services.contains_key(GATEWAY_MOCK_SERVICE) {
-                    if let Some(mock) = global_original.as_ref().or(state.original_mock.as_ref()) {
+                    if let Some(mock) = global_original.as_ref() {
                         compose
                             .services
                             .insert(GATEWAY_MOCK_SERVICE.into(), mock.clone());
@@ -517,7 +618,13 @@ pub(super) fn apply(
             Ok(())
         })?;
         if app_empty {
-            edit.delete(gateway_path);
+            edit.delete(gateway_path.clone());
+        }
+    }
+    if !edit.app_capabilities.is_empty() {
+        if let Some(mut state) = gateway_ownership {
+            state.last = current_gateway_mock(edit)?;
+            edit.write(gateway_path, serde_json::to_string_pretty(&state)? + "\n");
         }
     }
     if edit.service_capabilities.is_empty() {
