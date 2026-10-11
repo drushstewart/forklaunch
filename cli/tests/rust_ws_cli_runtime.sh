@@ -91,5 +91,7 @@ cargo build -p realtime
 BINARY_DIR="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug"))')"
 node "$SCRIPT_DIR/rust_mcp_service_startup.mjs" "$BINARY_DIR/realtime"
 node "$SCRIPT_DIR/rust_ws_cli_runtime.mjs" "$PWD" "$BINARY_DIR/examples/roundtrip"
-python3 "$SCRIPT_DIR/rust_ws_retirement_checks.py" "$CLI" --delete
+python3 "$SCRIPT_DIR/rust_ws_rename_checks.py" "$CLI"
+node "$SCRIPT_DIR/rust_mcp_service_startup.mjs" "$BINARY_DIR/stream-events"
+python3 "$SCRIPT_DIR/rust_ws_retirement_checks.py" "$CLI" --delete stream-events
 echo 'PASS relocated CLI socket contracts, multi-socket TypeScript/Rust consumers, AsyncAPI and generated HTTP/MCP startup'

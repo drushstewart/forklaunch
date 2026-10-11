@@ -121,6 +121,108 @@ fn read_ownership(root: &Path, name: &str, target: &str) -> Result<Option<Owners
     }
 }
 
+pub(super) fn owned_targets(root: &Path, name: &str) -> Result<Vec<&'static str>> {
+    let mut targets = Vec::new();
+    for target in ["typescript", "rust"] {
+        if read_ownership(root, name, target)?.is_some() {
+            targets.push(target);
+        }
+    }
+    Ok(targets)
+}
+
+pub(super) fn rename_service(
+    root: &Path,
+    old: &str,
+    new: &str,
+    stdout: &mut StandardStream,
+) -> Result<()> {
+    let targets = owned_targets(root, old)?;
+    let manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
+    let project = manifest
+        .get("projects")
+        .and_then(toml::Value::as_array)
+        .and_then(|projects| {
+            projects
+                .iter()
+                .find(|project| project.get("name").and_then(toml::Value::as_str) == Some(new))
+        })
+        .context("Renamed socket service missing from manifest")?;
+    let metadata = project.get("metadata").and_then(toml::Value::as_table);
+    let contract = read_json(
+        root,
+        Path::new(&format!(".forklaunch/contracts/{new}/contract.json")),
+        16 * 1024 * 1024,
+    )?;
+    let registered = crate::core::openapi_export::rename_registered_sockets(
+        root,
+        old,
+        new,
+        metadata,
+        contract.as_ref(),
+    )?;
+    let configured = metadata
+        .and_then(|metadata| metadata.get("socketContractArtifactPath"))
+        .and_then(toml::Value::as_str);
+    let new_artifact = configured.map_or_else(
+        || format!(".forklaunch/socket-contracts/{new}/socket-contract.json"),
+        str::to_owned,
+    );
+    let old_default = format!(".forklaunch/socket-contracts/{old}/socket-contract.json");
+    let new_default = format!(".forklaunch/socket-contracts/{new}/socket-contract.json");
+    let old_artifact = configured
+        .filter(|configured| *configured != new_default)
+        .map_or_else(|| old_default, str::to_owned);
+    if !registered {
+        if let Some(mut artifact) = read_json(root, Path::new(&old_artifact), 16 * 1024 * 1024)? {
+            if artifact["title"] == old {
+                artifact["title"] = json!(new);
+            }
+            validate_destination(root, Path::new(&new_artifact))?;
+            let destination = root.join(&new_artifact);
+            fs::create_dir_all(destination.parent().context("Socket artifact parent")?)?;
+            fs::write(&destination, pretty(&artifact)?)?;
+            if old_artifact != new_artifact {
+                fs::remove_file(root.join(old_artifact))?;
+            }
+        }
+    }
+    let has_artifact = root.join(&new_artifact).is_file();
+    if has_artifact && targets.contains(&"typescript") {
+        let source = package(old, "typescript").join("tsconfig.json");
+        let destination = package(new, "typescript").join("tsconfig.json");
+        validate_destination(root, &source)?;
+        validate_destination(root, &destination)?;
+        if root.join(&source).is_file() {
+            let mut config = Vec::new();
+            fs::File::open(root.join(source))?
+                .take(1024 * 1024 + 1)
+                .read_to_end(&mut config)?;
+            if config.len() > 1024 * 1024 {
+                bail!("Socket TypeScript configuration exceeds 1 MiB");
+            }
+            fs::create_dir_all(root.join(destination.parent().unwrap()))?;
+            fs::write(root.join(destination), config)?;
+        }
+    }
+    if cleanup_service(root, old)? {
+        crate::init::rust_project::remove_cargo_member(
+            root,
+            &format!("sdks/rust/{old}-websocket-sdk"),
+        )?;
+    }
+    if has_artifact && !targets.is_empty() {
+        let target = if targets.len() == 2 {
+            "all"
+        } else {
+            targets[0]
+        };
+        generate(root, target, Some(new), false, stdout)?;
+    }
+    Ok(())
+}
+
 pub(super) fn stage_asyncapi(
     root: &Path,
     files: &mut BTreeMap<PathBuf, String>,
@@ -182,6 +284,18 @@ pub(super) fn cleanup_service(root: &Path, name: &str) -> Result<bool> {
         removals.insert(marker.clone(), hash(&fs::read(root.join(marker))?));
     }
     remove_unchanged(root, &removals)?;
+    let directory = root.join(format!(".forklaunch/socket-sdk-outputs/{name}"));
+    if directory.canonicalize().ok().as_ref() == Some(&directory) {
+        match fs::remove_dir(directory) {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+                ) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
     Ok(rust_owned)
 }
 

@@ -530,7 +530,7 @@ fn export_rust_service_artifacts(
     Ok(artifact)
 }
 
-fn export_registered_sockets(
+pub(crate) fn export_registered_sockets(
     app_root: &Path,
     service_name: &str,
     metadata: Option<&toml::map::Map<String, toml::Value>>,
@@ -604,6 +604,52 @@ fn export_registered_sockets(
         format!("{}\n", serde_json::to_string_pretty(&ownership)?),
     )?;
     Ok(())
+}
+
+pub(crate) fn rename_registered_sockets(
+    app_root: &Path,
+    old: &str,
+    new: &str,
+    metadata: Option<&toml::map::Map<String, toml::Value>>,
+    artifact: Option<&serde_json::Value>,
+) -> Result<bool> {
+    let root = app_root.canonicalize()?;
+    let marker = crate::core::application_output::output_path(
+        &root,
+        Path::new(&format!(
+            ".forklaunch/socket-contracts/{old}/registry-export.json"
+        )),
+    )?;
+    let Some(previous) = read_socket_export_marker(&marker)? else {
+        return Ok(false);
+    };
+    let artifact =
+        artifact.context("Registered socket rename requires its exported framework contract")?;
+    export_registered_sockets(&root, new, metadata, artifact)?;
+    let output = metadata
+        .and_then(|metadata| metadata.get("socketContractArtifactPath"))
+        .and_then(toml::Value::as_str)
+        .map_or_else(
+            || format!(".forklaunch/socket-contracts/{new}/socket-contract.json"),
+            str::to_owned,
+        );
+    let output = crate::core::application_output::output_path(&root, Path::new(&output))?;
+    cleanup_socket_export(&root, Some(&previous), Some(&output))?;
+    fs::remove_file(&marker)?;
+    if let Some(parent) = marker.parent() {
+        if parent.canonicalize().ok().as_deref() == Some(parent) {
+            match fs::remove_dir(parent) {
+                Ok(()) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+                    ) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    Ok(true)
 }
 
 fn socket_export_digest(bytes: &[u8]) -> String {
@@ -724,6 +770,37 @@ mod socket_export_tests {
         fs::write(&output, "manual artifact").unwrap();
         export_registered_sockets(root.path(), "realtime", None, &json!({"routes":[]})).unwrap();
         assert_eq!(fs::read_to_string(output).unwrap(), "manual artifact");
+    }
+
+    #[test]
+    fn registry_rename_updates_custom_output_ownership_without_removing_active_file() {
+        let root = tempfile::tempdir().unwrap();
+        let metadata: toml::Table =
+            toml::from_str("socketContractArtifactPath = 'custom/socket.json'").unwrap();
+        let mut artifact = registered();
+        export_registered_sockets(root.path(), "old", Some(&metadata), &artifact).unwrap();
+        artifact["service"]["name"] = json!("new");
+        assert!(
+            rename_registered_sockets(root.path(), "old", "new", Some(&metadata), Some(&artifact))
+                .unwrap()
+        );
+        let output: Value =
+            serde_json::from_slice(&fs::read(root.path().join("custom/socket.json")).unwrap())
+                .unwrap();
+        assert_eq!(output["title"], "new");
+        assert!(
+            !root
+                .path()
+                .join(".forklaunch/socket-contracts/old")
+                .exists()
+        );
+        assert!(
+            root.path()
+                .join(".forklaunch/socket-contracts/new/registry-export.json")
+                .exists()
+        );
+        export_registered_sockets(root.path(), "new", None, &json!({"sockets":{}})).unwrap();
+        assert!(!root.path().join("custom/socket.json").exists());
     }
 
     #[test]

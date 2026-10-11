@@ -620,6 +620,7 @@ fn cleanup_generated_outputs_for_deleted_rust_project(
     if crate::sdk::websocket::cleanup_service(app_root, name)? {
         remove_cargo_member(app_root, &format!("sdks/rust/{name}-websocket-sdk"))?;
     }
+    crate::core::openapi_export::export_registered_sockets(app_root, name, None, &json!({"sockets": {}}))?;
     remove_rust_project_artifacts(app_root, name)?;
 
     let sdk_member = Path::new("sdks")
@@ -750,6 +751,10 @@ pub(crate) fn change_rust_project(
             format!(".forklaunch/openapi/{target_name}"),
             format!(".forklaunch/asyncapi/{target_name}"),
             format!("sdks/rust/{target_name}-sdk"),
+            format!(".forklaunch/socket-contracts/{target_name}"),
+            format!(".forklaunch/socket-sdk-outputs/{target_name}"),
+            format!("sdks/rust/{target_name}-websocket-sdk"),
+            format!("sdks/typescript-websocket/{target_name}"),
         ] {
             if app_root.join(&relative).exists() {
                 bail!("Generated output destination {relative} already exists");
@@ -820,6 +825,11 @@ pub(crate) fn change_rust_project(
             "asyncapiPath".to_string(),
             Value::String(format!(".forklaunch/asyncapi/{target_name}/asyncapi.json")),
         );
+        if metadata.get("socketContractArtifactPath").and_then(Value::as_str)
+            == Some(format!(".forklaunch/socket-contracts/{current_name}/socket-contract.json").as_str())
+        {
+            metadata.insert("socketContractArtifactPath".into(), Value::String(format!(".forklaunch/socket-contracts/{target_name}/socket-contract.json")));
+        }
         if let Some(worker_type) = worker_type {
             metadata.insert(
                 "workerType".to_string(),
@@ -923,6 +933,7 @@ fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> 
             write(&path, serde_json::to_string_pretty(&artifact)?)?;
         }
     }
+    crate::sdk::websocket::rename_service(root, old, new, &mut StandardStream::stdout(ColorChoice::Always))?;
     let old_member = format!("sdks/rust/{old}-sdk");
     if root.join(&old_member).exists() {
         remove_cargo_member(root, &old_member)?;
@@ -2507,7 +2518,7 @@ fn cargo_description(cargo_path: &Path) -> Result<Option<String>> {
         .map(str::to_string))
 }
 
-fn remove_cargo_member(app_root: &Path, member: &str) -> Result<()> {
+pub(crate) fn remove_cargo_member(app_root: &Path, member: &str) -> Result<()> {
     if !app_root.join("Cargo.toml").exists() {
         return Ok(());
     }

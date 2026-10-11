@@ -8,10 +8,11 @@ import tempfile
 import time
 
 cli = sys.argv[1]
-artifact = Path('.forklaunch/socket-contracts/realtime/socket-contract.json')
-rust = Path('sdks/rust/realtime-websocket-sdk')
-typescript = Path('sdks/typescript-websocket/realtime')
-ownership = Path('.forklaunch/socket-sdk-outputs/realtime')
+name = sys.argv[3] if '--delete' in sys.argv and len(sys.argv) > 3 else 'realtime'
+artifact = Path(f'.forklaunch/socket-contracts/{name}/socket-contract.json')
+rust = Path(f'sdks/rust/{name}-websocket-sdk')
+typescript = Path(f'sdks/typescript-websocket/{name}')
+ownership = Path(f'.forklaunch/socket-sdk-outputs/{name}')
 generate = [cli, 'sdk', 'generate', '--path', '.', '--from', 'socket-contract', '--target', 'all', '--service', 'realtime']
 
 
@@ -26,7 +27,7 @@ def run(command, failure=None):
 
 def workspace_has_sdk():
     import tomllib
-    return 'sdks/rust/realtime-websocket-sdk' in tomllib.loads(Path('Cargo.toml').read_text())['workspace']['members']
+    return f'sdks/rust/{name}-websocket-sdk' in tomllib.loads(Path('Cargo.toml').read_text())['workspace']['members']
 
 
 if '--delete' in sys.argv:
@@ -34,15 +35,17 @@ if '--delete' in sys.argv:
     edited.write_bytes(edited.read_bytes() + b'\n// user-owned retained source\n')
     manual = typescript / 'src/user.ts'
     manual.write_text('// user-owned file\n')
-    run([cli, 'delete', 'service', 'realtime', '--path', '.', '--continue'])
+    run([cli, 'delete', 'service', name, '--path', '.', '--continue'])
     assert not workspace_has_sdk()
     assert edited.read_bytes().endswith(b'// user-owned retained source\n')
     assert manual.read_text() == '// user-owned file\n'
     assert not (typescript / 'package.json').exists()
     assert not (typescript / 'src/socket_chat.ts').exists()
-    assert not Path('.forklaunch/asyncapi/realtime').exists()
+    assert not Path(f'.forklaunch/asyncapi/{name}').exists()
     assert not artifact.parent.exists()
     assert not list(ownership.glob('*.json'))
+    if name == 'stream-events':
+        assert not Path('custom/renamed-sockets.json').exists()
     print('PASS explicit service deletion prunes owned socket SDK files/workspace entries and preserves user edits/files')
     sys.exit(0)
 

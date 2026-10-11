@@ -456,6 +456,15 @@ pub(crate) fn cleanup_service(root: &Path, name: &str) -> Result<bool> {
     ownership::cleanup_service(&root.canonicalize()?, name)
 }
 
+pub(crate) fn rename_service(
+    root: &Path,
+    old: &str,
+    new: &str,
+    stdout: &mut StandardStream,
+) -> Result<()> {
+    ownership::rename_service(&root.canonicalize()?, old, new, stdout)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

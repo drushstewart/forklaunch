@@ -707,7 +707,7 @@ Current CLI structure to build on:
 - [ ] Support external AsyncAPI imports/event projects.
 - [x] Prune unchanged obsolete socket modules during regeneration, with per-package hashes, read-only drift checks, all-service staging, preserved edits/untracked files/compiler options and symlink containment.
 - [x] Retire owned socket SDK files/AsyncAPI after an exported last-socket removal or explicit service deletion, removing Cargo members and empty directories while preserving edited/untracked files and compiler options. Live watch requires prior registry provenance plus a fresh empty framework contract, survives transient missing artifacts and restores both packages when sockets return. Shared pnpm package globs remain available for retained user packages.
-- [ ] Rename socket artifacts and owned SDK packages with their service, preserving custom compiler options and user files.
+- [x] Rename socket artifacts and owned SDK packages with their service, preserving compiler options and retaining edited/untracked files at old SDK locations. Default/explicit default paths follow the new name, custom paths retain their location, occupied destinations reject before source mutation, strict consumers compile and renamed HTTP/MCP startup passes. Deletion also removes unchanged owned custom registry artifacts.
 - [x] Ensure release/deploy manifest generation reads TypeScript and Rust outputs uniformly.
 
 ### SDK Commands
