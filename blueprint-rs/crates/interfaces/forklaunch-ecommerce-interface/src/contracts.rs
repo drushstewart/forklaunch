@@ -1,0 +1,276 @@
+//! Ecommerce HTTP contracts for the catalog/cart/order/payment module.
+use crate::{
+    AddCartItemDto, AdjustStockDto, CartDto, CreateCartDto, CreateOrderDto, CreateProductDto,
+    CreateVariantDto, InventoryDto, OrderDto, PaymentDto, ProductDto, ProductSearchDto,
+    StockCheckDto, StockCheckResultDto, UpdateProductDto, UpdateVariantDto, VariantDto,
+    catalog::{CatalogPage, CatalogQuery},
+    module::{CreateProviderPayment, CreatedPayment, OrderTransition},
+};
+use forklaunch_blueprint_core::contract::{
+    AccessLevel, AuthConfig, BodyContract, BodyKind, ContractRegistry, FieldContract, HmacAuth,
+    RouteContract, SchemaRef, ServiceContract,
+};
+use schemars::JsonSchema;
+fn json<T: JsonSchema>(name: &str) -> BodyContract {
+    let mut body = BodyContract::json(name);
+    let mut settings = schemars::r#gen::SchemaSettings::draft07();
+    settings.inline_subschemas = true;
+    body.schema.json_schema = Some(
+        serde_json::to_string(&settings.into_generator().into_root_schema_for::<T>())
+            .expect("schema serializes"),
+    );
+    body
+}
+fn text() -> BodyContract {
+    BodyContract {
+        kind: BodyKind::Text,
+        schema: SchemaRef::named("String").with_json_schema(r#"{"type":"string"}"#),
+        content_type: Some("text/plain".into()),
+    }
+}
+fn internal(route: RouteContract) -> RouteContract {
+    route
+        .with_access(AccessLevel::Internal)
+        .with_auth(AuthConfig::Hmac(
+            HmacAuth::new().with_header_name("authorization"),
+        ))
+}
+fn param(route: RouteContract, name: &str) -> RouteContract {
+    route.with_param(FieldContract::required(name, "String"))
+}
+fn query<T: JsonSchema>(mut route: RouteContract) -> RouteContract {
+    let schema = schemars::schema_for!(T);
+    if let Some(object) = schema.schema.object {
+        for (name, schema) in object.properties {
+            let mut field = FieldContract::optional(&name, &name);
+            field.schema.json_schema =
+                Some(serde_json::to_string(&schema).expect("query schema serializes"));
+            route = route.with_query(field);
+        }
+    }
+    route
+}
+fn ids(route: RouteContract) -> RouteContract {
+    let mut field = FieldContract::optional("ids", "Vec<String>");
+    field.schema.json_schema = Some(r#"{"type":"array","items":{"type":"string"}}"#.into());
+    route.with_query(field)
+}
+/// Core module surface shared by contracts, both SDKs and MCP discovery.
+/// Checkout/import/provider webhooks and compliance add their own registries.
+/// # Panics
+/// Panics only if package-owned JSON schemas fail serialization.
+#[must_use]
+#[allow(clippy::too_many_lines)]
+pub fn registry() -> ContractRegistry {
+    let mut registry = ContractRegistry::for_service(ServiceContract::new("ecommerce", "0.1.0"));
+    macro_rules! route {
+        ($method:ident,$name:literal,$path:literal,$output:ty,$schema:literal) => {
+            internal(RouteContract::$method($name, $name, $path))
+                .with_response(200, Some(json::<$output>($schema)))
+        };
+    }
+    registry.register(
+        route!(post, "Create Product", "/product/", ProductDto, "Product")
+            .with_request_body(json::<CreateProductDto>("CreateProduct")),
+    );
+    registry.register(query::<ProductSearchDto>(route!(
+        get,
+        "List Products",
+        "/product/",
+        Vec<ProductDto>,
+        "Products"
+    )));
+    registry.register(query::<CatalogQuery>(route!(
+        get,
+        "List Catalog",
+        "/product/catalog",
+        CatalogPage,
+        "CatalogPage"
+    )));
+    registry.register(param(
+        route!(
+            get,
+            "Get Product By Handle",
+            "/product/handle/:handle",
+            ProductDto,
+            "Product"
+        ),
+        "handle",
+    ));
+    registry.register(param(
+        route!(get, "Get Product", "/product/:id", ProductDto, "Product"),
+        "id",
+    ));
+    registry.register(
+        route!(put, "Update Product", "/product/", ProductDto, "Product")
+            .with_request_body(json::<UpdateProductDto>("UpdateProduct")),
+    );
+    registry.register(
+        param(
+            internal(RouteContract::delete(
+                "Delete Product",
+                "Delete a product",
+                "/product/:id",
+            )),
+            "id",
+        )
+        .with_response(200, Some(text())),
+    );
+    registry.register(
+        route!(post, "Create Variant", "/variant/", VariantDto, "Variant")
+            .with_request_body(json::<CreateVariantDto>("CreateVariant")),
+    );
+    registry.register(ids(route!(
+        get,
+        "List Variants",
+        "/variant/",
+        Vec<VariantDto>,
+        "Variants"
+    )));
+    registry.register(param(
+        route!(
+            get,
+            "List Variants By Product",
+            "/variant/product/:productId",
+            Vec<VariantDto>,
+            "Variants"
+        ),
+        "productId",
+    ));
+    registry.register(param(
+        route!(get, "Get Variant", "/variant/:id", VariantDto, "Variant"),
+        "id",
+    ));
+    registry.register(
+        route!(put, "Update Variant", "/variant/", VariantDto, "Variant")
+            .with_request_body(json::<UpdateVariantDto>("UpdateVariant")),
+    );
+    registry.register(
+        param(
+            internal(RouteContract::delete(
+                "Delete Variant",
+                "Delete a variant",
+                "/variant/:id",
+            )),
+            "id",
+        )
+        .with_response(200, Some(text())),
+    );
+    registry.register(param(
+        route!(
+            get,
+            "Get Inventory",
+            "/inventory/:variantId",
+            InventoryDto,
+            "Inventory"
+        ),
+        "variantId",
+    ));
+    registry.register(
+        route!(
+            put,
+            "Adjust Stock",
+            "/inventory/adjust",
+            InventoryDto,
+            "Inventory"
+        )
+        .with_request_body(json::<AdjustStockDto>("AdjustStock")),
+    );
+    registry.register(
+        route!(
+            post,
+            "Check Stock",
+            "/inventory/check",
+            StockCheckResultDto,
+            "StockCheckResult"
+        )
+        .with_request_body(json::<StockCheckDto>("StockCheck")),
+    );
+    registry.register(
+        route!(post, "Create Cart", "/cart/", CartDto, "Cart").with_request_body(json::<
+            CreateCartDto,
+        >(
+            "CreateCart"
+        )),
+    );
+    registry.register(param(
+        route!(get, "Get Cart", "/cart/:id", CartDto, "Cart"),
+        "id",
+    ));
+    registry.register(
+        route!(post, "Add Cart Item", "/cart/items", CartDto, "Cart")
+            .with_request_body(json::<AddCartItemDto>("AddCartItem"))
+            .with_response(400, Some(text())),
+    );
+    registry.register(param(
+        param(
+            route!(
+                delete,
+                "Remove Cart Item",
+                "/cart/:cartId/items/:variantId",
+                CartDto,
+                "Cart"
+            ),
+            "cartId",
+        ),
+        "variantId",
+    ));
+    registry.register(
+        param(
+            internal(RouteContract::delete(
+                "Clear Cart",
+                "Clears a cart",
+                "/cart/:id",
+            )),
+            "id",
+        )
+        .with_response(200, Some(text())),
+    );
+    registry.register(
+        route!(post, "Create Order", "/order/", OrderDto, "Order").with_request_body(json::<
+            CreateOrderDto,
+        >(
+            "CreateOrder",
+        )),
+    );
+    registry.register(ids(route!(
+        get,
+        "List Orders",
+        "/order/",
+        Vec<OrderDto>,
+        "Orders"
+    )));
+    registry.register(param(
+        route!(get, "Get Order", "/order/:id", OrderDto, "Order"),
+        "id",
+    ));
+    registry.register(
+        param(
+            route!(
+                put,
+                "Transition Order",
+                "/order/:id/transition",
+                OrderDto,
+                "Order"
+            ),
+            "id",
+        )
+        .with_request_body(json::<OrderTransition>("OrderTransition"))
+        .with_response(400, Some(text())),
+    );
+    registry.register(
+        route!(
+            post,
+            "Create Payment",
+            "/payment/",
+            CreatedPayment,
+            "CreatedPayment"
+        )
+        .with_request_body(json::<CreateProviderPayment>("CreatePayment")),
+    );
+    registry.register(param(
+        route!(get, "Get Payment", "/payment/:id", PaymentDto, "Payment"),
+        "id",
+    ));
+    registry
+}
