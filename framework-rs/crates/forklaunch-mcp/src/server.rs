@@ -27,6 +27,16 @@ use serde_json::{Map, Value};
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tower::ServiceExt;
 
+mod manual;
+use manual::ManualHandler;
+pub use manual::{ManualTool, ManualToolError};
+
+#[derive(Clone)]
+enum ToolBinding {
+    Http(Box<RouteContract>),
+    Manual(ManualHandler),
+}
+
 const URI_COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'_')
@@ -48,6 +58,9 @@ pub struct McpServerOptions {
     pub authorize: Arc<dyn McpAuthCallback + Send + Sync>,
     pub call_timeout: Duration,
     pub max_response_bytes: usize,
+    /// Additional typed tools. Their handlers apply application authorization;
+    /// the transport authorization callback still gates every request.
+    pub manual_tools: Vec<ManualTool>,
 }
 impl McpServerOptions {
     #[must_use]
@@ -64,13 +77,14 @@ impl McpServerOptions {
             authorize: Arc::new(AllowAllAuth),
             call_timeout: Duration::from_secs(30),
             max_response_bytes: 2 * 1024 * 1024,
+            manual_tools: Vec::new(),
         }
     }
 }
 #[derive(Clone)]
 struct ContractServer {
     router: Router,
-    tools: Arc<BTreeMap<String, (Tool, RouteContract)>>,
+    tools: Arc<BTreeMap<String, (Tool, ToolBinding)>>,
     info: ServerConfig,
     timeout: Duration,
     max_bytes: usize,
@@ -131,7 +145,22 @@ pub fn mount_http(
             tool.output_schema = None;
         }
         if tools
-            .insert(definition.name, (tool, route.clone()))
+            .insert(
+                definition.name,
+                (tool, ToolBinding::Http(Box::new(route.clone()))),
+            )
+            .is_some()
+        {
+            return Err("Duplicate MCP tool name".into());
+        }
+    }
+    for manual in options.manual_tools {
+        let name = manual.definition.name.to_string();
+        if tools
+            .insert(
+                name,
+                (manual.definition, ToolBinding::Manual(manual.handler)),
+            )
             .is_some()
         {
             return Err("Duplicate MCP tool name".into());
@@ -193,7 +222,7 @@ impl ServerHandler for ContractServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        let (_, route) = self
+        let (_, binding) = self
             .tools
             .get(request.name.as_ref())
             .ok_or_else(|| ErrorData::invalid_params("Unknown tool", None))?;
@@ -202,6 +231,19 @@ impl ServerHandler for ContractServer {
             .extensions
             .get::<axum::http::request::Parts>()
             .map(|parts| &parts.headers);
+        let route = match binding {
+            ToolBinding::Http(route) => route,
+            ToolBinding::Manual(handler) => {
+                return manual::execute(
+                    handler,
+                    args,
+                    headers.cloned().unwrap_or_default(),
+                    self.timeout,
+                    self.max_bytes,
+                )
+                .await;
+            }
+        };
         let http_request = build_request(route, &args, headers)
             .map_err(|message| ErrorData::invalid_params(message, None))?;
         let response = tokio::time::timeout(self.timeout, async {

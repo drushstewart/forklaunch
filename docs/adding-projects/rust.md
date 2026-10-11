@@ -472,7 +472,7 @@ replica fanout, pause/drain recovery and producer fencing.
 
 ### HTTP and MCP startup
 
-Generated Rust services, IAM, CAC and messaging modules expose Streamable HTTP
+Generated Rust services, IAM, CAC, messaging, billing and ecommerce modules expose Streamable HTTP
 MCP at `/mcp` on their HTTP listener. The transport uses the official `rmcp`
 server and dispatches eligible tools through the same HTTP router, preserving
 validation, route authentication, tenant binding and auditing. Every request
@@ -486,8 +486,10 @@ explicitly allowed. Configure the public host when deploying behind a proxy.
 Native applications enable `forklaunch-axum`'s `mcp` feature and call
 `into_router_with_mcp(McpServerOptions)` to configure a transport authentication
 callback, request bounds and tool timeout. JSON/text/form bodies and binary
-response resources are supported; multipart and explicit additional tool
-execution remain in the full-parity backlog.
+response resources and typed additional tool execution are supported; multipart
+remains in the full-parity backlog.
+
+Additional runtime tools bind through `McpServerOptions.manual_tools` using `forklaunch_mcp::server::ManualTool::typed`. A `FrameworkSchema` input supplies serde parsing, garde validation and schemars discovery metadata. Invalid input fails before the handler runs; handlers receive fresh request headers and must apply operation/tenant authorization. Transport authentication also remains active. Explicit public handler errors become MCP tool errors, with invocation timeouts and response bounds. Duplicate manual/contract tool names fail at startup. See [the framework example](../../framework-rs/README.md#additional-mcp-tools).
 
 Live CLI fixtures start generated services and exercise HTTP health, MCP
 initialization, discovery and tool calls, including signed calls, rejected

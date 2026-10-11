@@ -21,3 +21,21 @@ cargo doc --workspace --no-deps
 - Optional integrations should be feature-gated at the crate that owns the integration.
 - Core contract types should stay independent of any specific HTTP framework.
 - `forklaunch-axum` is the first adapter, not the framework core.
+
+## Additional MCP tools
+
+Enable `forklaunch-mcp`'s `rmcp-server` feature and append a `server::ManualTool::typed` binding to `McpServerOptions.manual_tools` before calling `ForkLaunchRouter::into_router_with_mcp(options)` (or `server::mount_http`). Input types implement `forklaunch_validation::FrameworkSchema`: serde parses arguments, garde validates them and schemars describes discovery metadata. Declare matching schemars constraints when a garde rule should appear in the schema. Unknown-field behavior follows the input type's serde configuration.
+
+```rust,ignore
+let tool = ManualTool::typed::<LookupInput, serde_json::Value, _, _>(
+    "lookup", "Look up application data", |input, headers| async move {
+        // Authorize this operation with fresh request headers and trusted state.
+        authorize_lookup(&headers, &input)?;
+        Ok(serde_json::json!({"result": lookup(input).await?}))
+    },
+)?;
+options.manual_tools.push(tool);
+let router = application.into_router_with_mcp(options)?;
+```
+
+Transport authentication still gates every request. Manually bound handlers must apply their own operation/tenant authorization; HTTP route guards apply to contract-derived tools. Every call receives fresh headers, and tool arguments cannot replace them. Invalid typed input fails before application work; handler errors use explicitly public `ManualToolError` messages. Timeouts cancel the invocation future and response size limits apply. Duplicate manual/HTTP names fail at startup. Object results expose structured content; scalars and arrays remain JSON text.

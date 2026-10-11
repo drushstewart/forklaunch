@@ -8,7 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
-rmcp-server = ["dep:rmcp", "dep:axum", "dep:tokio", "dep:tower", "dep:percent-encoding", "dep:form_urlencoded", "dep:base64"]
+rmcp-server = ["dep:rmcp", "dep:axum", "dep:tokio", "dep:tower", "dep:percent-encoding", "dep:form_urlencoded", "dep:base64", "dep:serde", "dep:forklaunch-validation"]
 
 [dependencies]
 forklaunch-common = { path = "../forklaunch-common" }
@@ -23,6 +23,15 @@ percent-encoding = { version = "2", optional = true }
 form_urlencoded = { version = "1", optional = true }
 
 base64 = { version = "0.22", optional = true }
+
+serde = { version = "1", optional = true }
+forklaunch-validation = { path = "../forklaunch-validation", optional = true }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+schemars = "0.8"
+garde = { version = "0.20", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [lints]
 workspace = true
