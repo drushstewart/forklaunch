@@ -137,6 +137,8 @@ fn has_resource_ancestor(root: &Value, location: &str) -> bool {
 /// Rejects graphs exceeding 100,000 locations or 64 traversal steps.
 /// References into literal assertion/default/example data require bundling and
 /// are rejected to avoid changing those literals while relocating schemas.
+/// Unscoped checked profiles reject percent-encoded pointer separators
+/// to match payload validators; URI encoding within pointer tokens is supported.
 pub fn schema_locations(
     root: &Value,
     preserve_resource_bases: bool,
@@ -182,6 +184,9 @@ pub(super) fn schema_graph_from(
         };
         if preserve_resource_bases && has_resource_id(dialect, object) {
             continue;
+        }
+        if !preserve_resource_bases {
+            validate_reference_profile(object)?;
         }
         if let Some(pointer) = object
             .get("$ref")
@@ -257,6 +262,22 @@ pub(super) fn schema_graph_from(
         literal_ranges,
         reference_targets,
     })
+}
+
+fn validate_reference_profile(object: &serde_json::Map<String, Value>) -> FrameworkResult<()> {
+    if object
+        .get("$ref")
+        .and_then(Value::as_str)
+        .is_some_and(|reference| {
+            reference.starts_with('#') && (reference.contains("%2F") || reference.contains("%2f"))
+        })
+    {
+        return Err(FrameworkError::new(
+            "schema_reference_profile_unsupported",
+            "checked schemas require literal JSON-pointer separators; escape slash tokens with ~1",
+        ));
+    }
+    Ok(())
 }
 
 fn schema_node<'a>(root: &'a Value, location: &str, depth: usize) -> FrameworkResult<&'a Value> {
@@ -335,6 +356,27 @@ fn enqueue(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn checked_profiles_reject_encoded_separators_only_at_schema_positions() {
+        for reference in [
+            "#%2Fdefinitions/Value",
+            "#%2fdefinitions/Value",
+            "#/definitions%2FValue",
+            "#/definitions%2fValue",
+        ] {
+            let schema = json!({"$ref": reference, "definitions": {"Value": {"type": "string"}}});
+            assert_eq!(
+                schema_locations(&schema, false).unwrap_err().code(),
+                "schema_reference_profile_unsupported"
+            );
+            assert!(schema_locations(&schema, true).is_ok());
+            let literal = json!({"type": "object", "const": {"$ref": reference}, "default": {"$ref": reference}});
+            assert!(schema_locations(&literal, false).is_ok());
+            let reachable = json!({"$ref": "#/default", "default": schema});
+            assert!(schema_locations(&reachable, false).is_err());
+        }
+    }
 
     #[test]
     fn reachable_annotation_schemas_and_percent_encoded_targets_are_located_once() {

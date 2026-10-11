@@ -240,6 +240,23 @@ fn walk_schema(
 mod tests {
     use super::*;
     #[test]
+    fn checked_export_rejects_encoded_pointer_separators() {
+        for reference in [
+            "#%2Fdefinitions/Value",
+            "#%2fdefinitions/Value",
+            "#/definitions%2FValue",
+            "#/definitions%2fValue",
+        ] {
+            let shape = json!({"$ref": reference, "definitions": {"Value": {"type": "string"}}});
+            let contract = SocketContract::new("/encoded")
+                .with_client_message("request", SocketSchemaEntry::new(shape));
+            let error =
+                generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Encoded", "1"), &contract)
+                    .unwrap_err();
+            assert!(error.message().contains("literal JSON-pointer separators"));
+        }
+    }
+    #[test]
     fn references_into_literal_assertions_bundle_without_changing_payload_constraints() {
         let shape = json!({"type":"object","required":["item"],"properties":{"item":{"$ref":"#/definitions/Storage/const"}},"definitions":{"Storage":{"const":{"allOf":[{"$ref":"#/definitions/Value"}]}},"Value":{"type":"string","minLength":2}},"default":{"$ref":"literal default"}});
         let contract = SocketContract::new("/literal")

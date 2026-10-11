@@ -57,6 +57,20 @@ elif '--rename' not in sys.argv:
     for target in ['rust', 'typescript']:
         marker = Path(f'.forklaunch/socket-sdk-outputs/realtime/{target}.json')
         assert json.loads(marker.read_text())['source'] == 'asyncapi'
+    # Schema pointers must use literal separators in the checked profile.
+    for reference in ['#%2Fcomponents/schemas/Request', '#/components%2Fschemas/Request']:
+        invalid = json.loads(original)
+        invalid['components']['messages']['Request']['payload']['$ref'] = reference
+        artifact.write_text(json.dumps(invalid))
+        edited_input = artifact.read_bytes()
+        try:
+            for flags in [[], ['--check']]:
+                output = run(generate() + flags, failure=True)
+                assert 'literal JSON-pointer separators' in output, output
+                assert snapshot() == before
+                assert artifact.read_bytes() == edited_input
+        finally:
+            artifact.write_bytes(original)
     # Regenerating one language from native metadata must protect the other
     # language's imported document, including the shared default input path.
     socket = Path('.forklaunch/socket-contracts/realtime/socket-contract.json')

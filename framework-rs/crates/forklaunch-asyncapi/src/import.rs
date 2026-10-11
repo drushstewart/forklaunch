@@ -743,6 +743,7 @@ mod tests {
             "overlap",
             "array-tags",
             "external",
+            "encoded-leading-separator",
             "cycle",
             "subset",
             "protocol",
@@ -765,6 +766,10 @@ mod tests {
                 "external" => {
                     input["components"]["messages"]["Request"]["payload"]["$ref"] =
                         json!("https://example.invalid/schema");
+                }
+                "encoded-leading-separator" => {
+                    input["components"]["messages"]["Request"]["payload"]["$ref"] =
+                        json!("#%2Fcomponents/schemas/Request");
                 }
                 "cycle" => {
                     input["channels"]["chat"]["messages"]["request"] =

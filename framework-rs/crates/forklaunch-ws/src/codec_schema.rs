@@ -223,7 +223,9 @@ mod tests {
         let results: Vec<_> = cases
             .iter()
             .map(|case| {
-                let codec = PayloadCodec::<Value>::json_schema(&case["schema"]).unwrap();
+                let Ok(codec) = PayloadCodec::<Value>::json_schema(&case["schema"]) else {
+                    return json!({"ok":false,"compileError":true});
+                };
                 if case["action"] == "encode" {
                     match codec.encode(&case["value"]) {
                         Ok(bytes) => json!({"ok":true,"bytes":bytes}),

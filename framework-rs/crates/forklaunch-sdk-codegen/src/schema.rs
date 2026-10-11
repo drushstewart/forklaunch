@@ -187,6 +187,13 @@ impl Graph<'_> {
         }
         if let Some(reference) = object.get("$ref") {
             let reference = reference.as_str().context("Schema $ref must be a string")?;
+            if reference.starts_with('#')
+                && (reference.contains("%2F") || reference.contains("%2f"))
+            {
+                bail!(
+                    "Checked schemas require literal JSON-pointer separators; escape slash tokens with ~1"
+                );
+            }
             self.budget.bytes = self
                 .budget
                 .bytes
@@ -579,6 +586,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn checked_references_require_literal_pointer_separators() {
+        for reference in [
+            "#%2Fdefinitions/Value",
+            "#%2fdefinitions/Value",
+            "#/definitions%2FValue",
+            "#/definitions%2fValue",
+        ] {
+            let schema = json!({"$ref": reference, "definitions": {"Value": {"type": "string"}}});
+            assert!(normalize(&schema, "Encoded").is_err());
+        }
+        let schema = json!({"$ref": "#/definitions/Value%252F", "definitions": {"Value%2F": {"type": "string"}}});
+        assert!(normalize(&schema, "LiteralPercent").is_ok());
+        assert_eq!(document_pointer("#"), Some(String::new()));
+    }
+
+    #[test]
     fn literal_data_cannot_bypass_graph_resource_limits() {
         let mut deep = json!(null);
         for _ in 0..66 {
@@ -634,7 +657,7 @@ mod tests {
     fn encoded_schema_fragments_decode_once_and_equivalent_recursive_edges_share_models() {
         let schema = json!({"type":"object","properties":{
             "encoded":{"$ref":"#/$defs/Node%2525~1~0%20%E6%B0%B4"},
-            "equivalent":{"$ref":"#%2F$defs%2FNode%2525~1~0%20%E6%B0%B4"}
+            "equivalent":{"$ref":"#/%24defs/%4Eode%2525~1~0%20%E6%B0%B4"}
         },"$defs":{"Node%25/~ 水":{"type":"object","properties":{"value":{"type":"string"},"next":{"$ref":"#/$defs/Node%2525~1~0%20%E6%B0%B4"}}}}});
         let value = normalize(&schema, "Encoded").unwrap();
         assert_eq!(value["properties"]["encoded"][REFERENCE], "EncodedRef1");

@@ -109,6 +109,10 @@ const validator = {
   },
 };
 const schemas = [
+  ...['#%2Fdefinitions/Value', '#%2fdefinitions/Value'].map(($ref) => ({
+    $ref,
+    definitions: { Value: { type: 'string' } },
+  })),
   ...['draft-04', 'draft-06'].map((version) => ({
     $schema: `http://json-schema.org/${version}/schema#`,
     type: 'string',
@@ -414,14 +418,14 @@ try {
     const input = cases[index];
     if (generated) {
       const key = JSON.stringify(input.schema);
-      if (!generatedCodecs.has(key))
-        generatedCodecs.set(
-          key,
-          new generated.SocketCodec(input.schema, 1024 * 1024),
-        );
-      const codec = generatedCodecs.get(key);
       let value, error;
       try {
+        if (!generatedCodecs.has(key))
+          generatedCodecs.set(
+            key,
+            new generated.SocketCodec(input.schema, 1024 * 1024),
+          );
+        const codec = generatedCodecs.get(key);
         value =
           input.action === 'encode'
             ? codec.encode(input.value)
