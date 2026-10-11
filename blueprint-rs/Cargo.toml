@@ -13,6 +13,7 @@ members = [
     "crates/implementations/cac/forklaunch-cac-base",
     "crates/implementations/messaging/forklaunch-messaging-base",
     "crates/implementations/ecommerce/forklaunch-ecommerce-base",
+    "crates/implementations/ecommerce/forklaunch-ecommerce-axum",
     "crates/implementations/ecommerce/forklaunch-ecommerce-stripe",
     "crates/implementations/ecommerce/forklaunch-ecommerce-paypal",
     "crates/implementations/messaging/forklaunch-messaging-twilio",

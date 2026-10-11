@@ -201,6 +201,7 @@ jobs:
       - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test business_rules -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-axum --all-features --test http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-messaging-base --all-features --test postgres_sms -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_backend -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-blueprint-sample-service --all-features postgres_iam_http -- --ignored

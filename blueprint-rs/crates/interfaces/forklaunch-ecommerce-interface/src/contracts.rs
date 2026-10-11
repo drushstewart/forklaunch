@@ -274,3 +274,30 @@ pub fn registry() -> ContractRegistry {
     ));
     registry
 }
+
+/// Complete core runtime registry, including framework and typed-handler errors.
+#[must_use]
+pub fn module_registry() -> ContractRegistry {
+    let base = registry();
+    let mut registry = ContractRegistry::for_service(ServiceContract::new("ecommerce", "0.1.0"));
+    for source in base.routes() {
+        let mut route = source.clone();
+        for status in [400, 404, 409, 500, 502] {
+            if !route
+                .responses
+                .iter()
+                .any(|response| response.status_code == status)
+            {
+                route = route.with_response(status, Some(text()));
+            }
+        }
+        registry.register(route);
+    }
+    registry.register(health_contract());
+    registry
+}
+#[must_use]
+pub fn health_contract() -> RouteContract {
+    RouteContract::get("Get Health", "Reports service health", "/health")
+        .with_response(200, Some(BodyContract::json("Health")))
+}
