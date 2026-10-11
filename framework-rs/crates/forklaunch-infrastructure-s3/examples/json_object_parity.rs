@@ -4,9 +4,20 @@ use forklaunch_core::persistence::{
     json::JsonRecordCodec,
 };
 use forklaunch_infrastructure_s3::{
-    ObjectMetadata, aws::environment::S3Environment, json::JsonObjectStore,
+    ObjectMetadata,
+    aws::environment::S3Environment,
+    json::{JsonObjectRecord, JsonObjectStore},
 };
 use serde_json::{Value, json};
+
+fn object_json(value: Option<JsonObjectRecord<Value>>) -> Value {
+    match value {
+        Some((value, metadata)) => {
+            json!({"found":true,"value":value,"contentType":metadata.content_type})
+        }
+        None => json!({"found":false}),
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,29 +43,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_array()
         .ok_or("Operations required")?
     {
-        let key = operation["key"].as_str().ok_or("Key required")?;
-        let result =
-            match operation["op"].as_str().ok_or("Operation required")? {
-                "put" => store
-                    .put_object(
-                        key,
-                        &operation["value"],
-                        ObjectMetadata::new().with_content_type("application/json"),
-                        tenant.as_ref(),
-                    )
+        let key = operation["key"].as_str().unwrap_or("");
+        let result = match operation["op"].as_str().ok_or("Operation required")? {
+            "put" => store
+                .put_object(
+                    key,
+                    &operation["value"],
+                    ObjectMetadata::new(),
+                    tenant.as_ref(),
+                )
+                .await
+                .map(|()| Value::Null),
+            "get" => store
+                .get_object::<Value>(key, tenant.as_ref())
+                .await
+                .map(object_json),
+            "putBatch" => {
+                let objects = operation["objects"]
+                    .as_array()
+                    .ok_or("Objects required")?
+                    .iter()
+                    .map(|object| {
+                        Ok((
+                            object["key"]
+                                .as_str()
+                                .ok_or("Object key required")?
+                                .to_owned(),
+                            object["value"].clone(),
+                            ObjectMetadata::new(),
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+                store
+                    .put_batch_objects(objects, tenant.as_ref())
                     .await
-                    .map(|()| Value::Null),
-                "get" => store
-                    .get_object::<Value>(key, tenant.as_ref())
+                    .map(|()| Value::Null)
+            }
+            "getBatch" => {
+                let keys: Vec<String> = serde_json::from_value(operation["keys"].clone())?;
+                store
+                    .get_batch_objects::<Value>(&keys, tenant.as_ref())
                     .await
-                    .map(|value| match value {
-                        Some((value, metadata)) => {
-                            json!({"found":true,"value":value,"contentType":metadata.content_type})
-                        }
-                        None => json!({"found":false}),
-                    }),
-                _ => return Err("Unknown operation".into()),
-            };
+                    .map(|objects| Value::Array(objects.into_iter().map(object_json).collect()))
+            }
+            "delete" => store.delete_object(key).await.map(|deleted| json!(deleted)),
+            "deleteBatch" => {
+                let keys: Vec<String> = serde_json::from_value(operation["keys"].clone())?;
+                store
+                    .delete_batch_objects(&keys)
+                    .await
+                    .map(|deleted| json!(deleted))
+            }
+            _ => return Err("Unknown operation".into()),
+        };
         output.push(match result {
             Ok(value) => value,
             Err(error) => json!({"error":error.code()}),

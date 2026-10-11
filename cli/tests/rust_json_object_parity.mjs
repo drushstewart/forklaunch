@@ -26,6 +26,7 @@ const server=createServer(async(request,response)=>{
    const chunks=[];for await(const chunk of request)chunks.push(chunk);
    objects.set(url.pathname,{body:Buffer.concat(chunks),contentType:request.headers['content-type']});response.end();return;
   }
+  if(request.method==='DELETE'){objects.delete(url.pathname);response.statusCode=204;response.end();return;}
   const object=objects.get(url.pathname);
   if(!object){response.statusCode=404;response.setHeader('content-type','application/xml');response.end('<Error><Code>NoSuchKey</Code></Error>');return;}
   response.setHeader('content-type',object.contentType);response.setHeader('content-length',object.body.length);response.end(object.body);
@@ -35,16 +36,20 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`;
 class PutObjectCommand {constructor(input){this.input=input;}}
 class GetObjectCommand {constructor(input){this.input=input;}}
+class DeleteObjectCommand {constructor(input){this.input=input;}}
+class DeleteObjectsCommand {constructor(input){this.input=input;}}
 // Execute actual TS object-store methods over their injected SDK client boundary.
 const client={async send(command){
- const {Bucket,Key,Body,ContentType}=command.input;
+ const {Bucket,Key,Body,ContentType,Delete}=command.input;
+ if(command instanceof DeleteObjectsCommand){await Promise.all(Delete.Objects.map(({Key})=>client.send(new DeleteObjectCommand({Bucket,Key}))));return {};}
+ if(command instanceof DeleteObjectCommand){await fetch(`${base}/${Bucket}/${Key}`,{method:'DELETE'});return {};}
  const response=await fetch(`${base}/${Bucket}/${Key}`,command instanceof PutObjectCommand?{method:'PUT',body:Body,headers:{'content-type':ContentType}}:{});
  if(!response.ok)throw new Error('Fixture object missing');
  return command instanceof PutObjectCommand?{}:{Body:{transformToString:()=>response.text()}};
 }};
 const exports={};
 vm.runInNewContext(compile(await readFile(path.join(root,'framework/infrastructure/S3/index.ts'),'utf8')),{exports,Date,Number,require(name){
- if(name==='@aws-sdk/client-s3')return {PutObjectCommand,GetObjectCommand};
+ if(name==='@aws-sdk/client-s3')return {PutObjectCommand,GetObjectCommand,DeleteObjectCommand,DeleteObjectsCommand};
  if(['@aws-sdk/s3-presigned-post','@aws-sdk/lib-storage','@aws-sdk/s3-request-presigner'].includes(name))return {};
  if(name==='stream')return {Readable};
  throw new Error(`Unexpected runtime import ${name}`);
@@ -74,11 +79,23 @@ try{
   await old.putObject({key:`${format}-old`,...value},compliance);
   await store.putObject({key:`${format}-plain`,...value});
   assert.deepEqual(await native([{op:'get',key:`${format}-old`},{op:'get',key:`${format}-plain`},{op:'get',key:'missing'}],{format}),[{found:true,value,contentType:'application/json'},{found:true,value,contentType:'application/json'},{found:false}]);
+
+  const batch=[{key:`${format}-batch-a`,order:1},{key:`${format}-batch-b`,order:2}];
+  await store.streamUploadBatchObjects(batch,compliance);
+  assert.deepEqual(await native([{op:'getBatch',keys:[batch[1].key,'missing',batch[0].key]}],{format}),[[{found:true,value:{order:2},contentType:'application/json'},{found:false},{found:true,value:{order:1},contentType:'application/json'}]]);
+  const falsy=[false,0,null];const nativeKeys=falsy.map((_,index)=>`${format}-falsy-${index}`);
+  await native([{op:'putBatch',objects:nativeKeys.map((key,index)=>({key,value:falsy[index]}))}],{format});
+  assert.deepEqual(JSON.parse(JSON.stringify(await store.readBatchObjects(nativeKeys,compliance))),falsy);
+  assert.deepEqual(await native([{op:'deleteBatch',keys:[...nativeKeys,'missing']}],{format}),[3]);
+  await store.deleteBatchObjects(batch.map(object=>object.key));
+  assert.deepEqual(await native([{op:'getBatch',keys:batch.map(object=>object.key)},{op:'putBatch',objects:[]},{op:'getBatch',keys:[]},{op:'deleteBatch',keys:[]}],{format}),[[{found:false},{found:false}],null,[],0]);
+  await store.streamUploadObject({key:`${format}-stream-alias`,order:3},compliance);
+  assert.deepEqual(await native([{op:'delete',key:`${format}-stream-alias`},{op:'delete',key:`${format}-stream-alias`}],{format}),[true,false]);
   objects.set(`/${bucket}/${prefix}corrupt`,{body:Buffer.from('v2:bad:bad:bad'),contentType:'application/json'});
   assert.ok((await native([{op:'get',key:'corrupt'}]))[0].error);
  }
  assert.ifError(server.fixtureError);
  const signed=requests.filter(request=>request.authorization);assert.ok(signed.length>10);
  for(const request of signed)assert.match(request.authorization,/Credential=owned-json-fixture\//);
- console.log('PASS actual TypeScript/native S3 JSON wire exchange over injected TS client and signed native SDK requests: v2/v3 both directions, prefix, content type, rotation, plaintext migration, misses and tenant/corruption rejection');
+ console.log('PASS actual TypeScript/native S3 JSON wire exchange over injected TS client and signed native SDK requests: batches, JSON stream aliases, falsy values, deletes, v2/v3 both directions, prefix, content type, rotation, plaintext migration, misses and tenant/corruption rejection');
 }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

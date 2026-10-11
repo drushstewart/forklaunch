@@ -171,6 +171,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .contains("private@example.test")
         );
         assert!(store.delete(&key).await?);
+        let first = format!("{key}-batch-a");
+        let second = format!("{key}-batch-b");
+        let missing = format!("{key}-absent");
+        encrypted
+            .put_batch_objects(
+                vec![
+                    (
+                        first.clone(),
+                        vec!["first".to_owned()],
+                        ObjectMetadata::new(),
+                    ),
+                    (second.clone(), vec!["second".to_owned()], metadata.clone()),
+                ],
+                Some(&tenant),
+            )
+            .await?;
+        assert_eq!(
+            encrypted
+                .get_batch_objects::<Vec<String>>(
+                    &[second.clone(), missing.clone(), first.clone()],
+                    Some(&tenant)
+                )
+                .await?,
+            vec![
+                Some((vec!["second".to_owned()], metadata)),
+                None,
+                Some((
+                    vec!["first".to_owned()],
+                    ObjectMetadata::new().with_content_type("application/json")
+                )),
+            ]
+        );
+        assert!(
+            encrypted
+                .get_batch_objects::<Vec<String>>(&[first.clone(), second.clone()], Some(&wrong))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            encrypted
+                .delete_batch_objects(&[first, missing, second])
+                .await?,
+            2
+        );
+        println!(
+            "PASS generated encrypted Redis cache/queue and S3 single/batch JSON factories: actual backends, at-rest envelopes, metadata, expiry, misses and tenant rejection"
+        );
     }
     println!(
         "PASS generated native Redis and S3 factories round-trip binary data through actual backends"
