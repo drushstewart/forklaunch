@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {appendFileSync,mkdirSync,mkdtempSync,existsSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const cli=process.env.FORKLAUNCH_CLI??path.join(root,'cli/target/debug/forklaunch');
+const output=path.join(root,'cli/tests/output/rust-capabilities-ownership');mkdirSync(output,{recursive:true});
+const app=path.join(mkdtempSync(path.join(output,'run.')),'app');
+const run=(...args)=>execFileSync(cli,args,{cwd:root,stdio:'inherit'});
+run('init','application','ownership-app','--path',app,'--language','rust','-D','Ownership','-A','ForkLaunch','-L','MIT');
+for(const service of ['alpha','beta'])run('init','service',service,'--path',app,'--language','rust','-d','postgresql','-D',service);
+const compose=()=>JSON.parse(execFileSync('docker',['compose','config','--no-interpolate','--format','json'],{cwd:app,encoding:'utf8'}));
+const edit=(operation,service,feature)=>run('infra',operation,service,feature,'--path',app);
+const target=()=>compose().services['gateway-mock'].environment.MOCK_EVENTS_URL_EMAIL;
+appendFileSync(path.join(app,'docker-compose.yaml'),'\n  gateway-mock:\n    image: human/mock:fixture\n    environment:\n      USER_SETTING: preserved\n      MOCK_EVENTS_URL_EMAIL: https://human.example/callback\n');
+const original=compose().services['gateway-mock'];
+edit('add','alpha','email');edit('add','beta','email');
+assert.equal(target(),'http://beta:8001');
+edit('remove','alpha','email');assert.equal(target(),'http://beta:8001');
+edit('remove','beta','email');assert.deepEqual(compose().services['gateway-mock'],original);
+assert.equal(existsSync(path.join(app,'.forklaunch/native-capabilities/.gateway-mock.json')),false);
+// Removing the active callback owner promotes another service with that feature.
+edit('add','alpha','email');edit('add','beta','email');
+edit('remove','beta','email');assert.equal(target(),'http://alpha:8000');
+edit('remove','alpha','email');assert.deepEqual(compose().services['gateway-mock'],original);
+// Deletion follows the same ownership lifetime, even if the first owner leaves first.
+edit('add','alpha','email');edit('add','beta','email');
+run('delete','service','alpha','--path',app,'--continue');assert.equal(target(),'http://beta:8001');
+run('delete','service','beta','--path',app,'--continue');assert.deepEqual(compose().services['gateway-mock'],original);
+assert.equal(existsSync(path.join(app,'.forklaunch/native-capabilities/.gateway-mock.json')),false);
+console.log('PASS native multi-service gateway ownership: both removal orders, callback promotion, deletion and original custom mock restoration');

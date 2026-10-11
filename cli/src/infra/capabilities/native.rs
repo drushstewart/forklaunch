@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, path::Path};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use toml_edit::{Array, DocumentMut, InlineTable, Item, value};
+use toml_edit::{Array, DocumentMut, InlineTable, value};
 
 use super::{
     Capability, CapabilityEdit, GATEWAY_MOCK_SERVICE, ensure_gateway_mock, local_gateway_env,
@@ -16,10 +16,91 @@ const BEGIN: &str = "// BEGIN FORKLAUNCH MANAGED CAPABILITIES\n";
 const END: &str = "// END FORKLAUNCH MANAGED CAPABILITIES\n";
 const LIB_EXPORT: &str = "pub mod capabilities;\n";
 const REGISTRY: &str = "    capabilities::register_contracts(&mut registry);\n";
+const MOCK_STATE: &str = ".forklaunch/native-capabilities/.gateway-mock.json";
+
+#[derive(Serialize, Deserialize)]
+struct GatewayOwnership {
+    original: Option<DockerService>,
+}
+
+fn capability_owners(
+    manifest: &toml::Value,
+    updated: Option<(&str, &[String])>,
+) -> BTreeMap<String, String> {
+    let mut owners = BTreeMap::new();
+    if let Some(projects) = manifest.get("projects").and_then(toml::Value::as_array) {
+        for project in projects {
+            let Some(service) = project.get("name").and_then(toml::Value::as_str) else {
+                continue;
+            };
+            let features = if let Some((_, features)) = updated.filter(|(name, _)| *name == service)
+            {
+                features.to_vec()
+            } else {
+                project
+                    .get("resources")
+                    .and_then(|resources| resources.get("capabilities"))
+                    .and_then(toml::Value::as_array)
+                    .map(|features| {
+                        features
+                            .iter()
+                            .filter_map(toml::Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            for feature in features {
+                owners.entry(feature).or_insert_with(|| service.into());
+            }
+        }
+    }
+    owners
+}
+
+fn retain_callback_target(
+    compose: &mut DockerCompose,
+    removed: &str,
+    feature: &str,
+    previous: Option<String>,
+    owners: &BTreeMap<String, String>,
+) {
+    let Some(service) = owners.get(feature) else {
+        return;
+    };
+    let port = compose
+        .services
+        .get(service)
+        .and_then(|service| service.environment.as_ref())
+        .and_then(|env| env.get("SERVICE_PORT").or_else(|| env.get("PORT")))
+        .cloned()
+        .unwrap_or_else(|| "8000".into());
+    let target = previous
+        .filter(|url| retarget_service_url(url, removed, service).is_none())
+        .unwrap_or_else(|| format!("http://{service}:{port}"));
+    if let Some(mock) = compose.services.get_mut(GATEWAY_MOCK_SERVICE) {
+        mock.environment
+            .get_or_insert_with(Default::default)
+            .insert(
+                format!("MOCK_EVENTS_URL_{}", feature.to_uppercase()),
+                target,
+            );
+    }
+}
 
 pub(crate) fn rename_native_ownership(root: &Path, old: &str, new: &str) -> Result<()> {
     let mut edit = CapabilityEdit::new(root, "", new, root, vec![], vec![]);
     edit.native = true;
+    if let Some(text) = edit.read(&root.join(MOCK_STATE))? {
+        let mut state: GatewayOwnership = serde_json::from_str(&text)?;
+        if let Some(mock) = state.original.as_mut() {
+            rename_callback_targets(mock, old, new);
+        }
+        edit.write(
+            root.join(MOCK_STATE),
+            serde_json::to_string_pretty(&state)? + "\n",
+        );
+    }
     let previous = root.join(format!(".forklaunch/native-capabilities/{old}.json"));
     if let Some(text) = edit.read(&previous)? {
         let mut ownership: Ownership = serde_json::from_str(&text)?;
@@ -52,19 +133,22 @@ fn rename_callback_targets(mock: &mut DockerService, old: &str, new: &str) {
             if !key.starts_with("MOCK_EVENTS_URL_") {
                 continue;
             }
-            for scheme in ["http", "https"] {
-                let prefix = format!("{scheme}://{old}:");
-                if let Some(suffix) = value.strip_prefix(&prefix) {
-                    *value = format!("{scheme}://{new}:{suffix}");
-                    break;
-                }
-                if value == &format!("{scheme}://{old}") {
-                    *value = format!("{scheme}://{new}");
-                    break;
-                }
+            if let Some(target) = retarget_service_url(value, old, new) {
+                *value = target;
             }
         }
     }
+}
+
+fn retarget_service_url(url: &str, old: &str, new: &str) -> Option<String> {
+    for scheme in ["http", "https"] {
+        if let Some(suffix) = url.strip_prefix(&format!("{scheme}://{old}")) {
+            if suffix.is_empty() || suffix.starts_with([':', '/', '?', '#']) {
+                return Some(format!("{scheme}://{new}{suffix}"));
+            }
+        }
+    }
+    None
 }
 
 pub(crate) fn cleanup_deleted_native_service(
@@ -80,31 +164,26 @@ pub(crate) fn cleanup_deleted_native_service(
         .map(|text| serde_json::from_str::<Ownership>(&text))
         .transpose()?
         .and_then(|state| state.original_mock);
+    let gateway_state = edit
+        .read(&root.join(MOCK_STATE))?
+        .map(|text| serde_json::from_str::<GatewayOwnership>(&text))
+        .transpose()?;
     if !features.is_empty() && root.join("docker-compose.yaml").exists() {
         let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(
             root.join(".forklaunch/manifest.toml"),
         )?)?;
-        let mut remaining = BTreeMap::<String, String>::new();
-        if let Some(projects) = manifest.get("projects").and_then(toml::Value::as_array) {
-            for project in projects {
-                if let (Some(service), Some(capabilities)) = (
-                    project.get("name").and_then(toml::Value::as_str),
-                    project
-                        .get("resources")
-                        .and_then(|resources| resources.get("capabilities"))
-                        .and_then(toml::Value::as_array),
-                ) {
-                    for feature in capabilities.iter().filter_map(toml::Value::as_str) {
-                        remaining
-                            .entry(feature.into())
-                            .or_insert_with(|| service.into());
-                    }
-                }
-            }
-        }
+        let remaining = capability_owners(&manifest, None);
+        let app_empty = remaining.is_empty();
         edit.update_compose(|compose| {
             for feature in features {
+                let previous = compose
+                    .services
+                    .get(GATEWAY_MOCK_SERVICE)
+                    .and_then(|mock| mock.environment.as_ref())
+                    .and_then(|env| env.get(&format!("MOCK_EVENTS_URL_{}", feature.to_uppercase())))
+                    .cloned();
                 release_gateway_mock(compose, name, feature, true, remaining.is_empty());
+                retain_callback_target(compose, name, feature, previous, &remaining);
             }
             for (feature, service) in &remaining {
                 let port = compose
@@ -122,12 +201,18 @@ pub(crate) fn cleanup_deleted_native_service(
                 }
             }
             if remaining.is_empty() && !compose.services.contains_key(GATEWAY_MOCK_SERVICE) {
-                if let Some(mock) = original_mock {
+                if let Some(mock) = gateway_state
+                    .and_then(|state| state.original)
+                    .or(original_mock)
+                {
                     compose.services.insert(GATEWAY_MOCK_SERVICE.into(), mock);
                 }
             }
             Ok(())
         })?;
+        if app_empty {
+            edit.delete(root.join(MOCK_STATE));
+        }
     }
     edit.delete(state_path);
     edit.commit()
@@ -198,6 +283,18 @@ pub(super) fn apply(
         .context("Native service src/main.rs is missing")?;
     let current_module = edit.read(&module_path)?;
     let current_env = edit.read(&env_path)?;
+    let gateway_path = edit.app_root.join(MOCK_STATE);
+    if adding && edit.app_capabilities.len() == 1 && edit.read(&gateway_path)?.is_none() {
+        let original = edit
+            .read(&edit.app_root.join("docker-compose.yaml"))?
+            .map(|source| serde_yml::from_str::<DockerCompose>(&source))
+            .transpose()?
+            .and_then(|compose| compose.services.get(GATEWAY_MOCK_SERVICE).cloned());
+        edit.write(
+            gateway_path.clone(),
+            serde_json::to_string_pretty(&GatewayOwnership { original })? + "\n",
+        );
+    }
     let mut state = if let Some(text) = edit.read(&state_path)? {
         serde_json::from_str::<Ownership>(&text)?
     } else {
@@ -260,7 +357,7 @@ pub(super) fn apply(
             },
         }
     };
-    remember_dependency_edits(&mut state, &cargo, &cargo_text)?;
+    remember_dependency_edits(&mut state, &cargo_text)?;
     state.cargo_modified |= cargo_text != state.last_cargo;
     state.module_modified |= current_module != state.last_module;
     state.env_modified |= current_env != state.last_env;
@@ -366,8 +463,26 @@ pub(super) fn apply(
         let feature = capability.id;
         let service_empty = edit.service_capabilities.is_empty();
         let app_empty = edit.app_capabilities.is_empty();
+        let manifest: toml::Value = toml::from_str(
+            &edit
+                .read(&edit.app_root.join(".forklaunch/manifest.toml"))?
+                .context("Application manifest is missing")?,
+        )?;
+        let owners = capability_owners(&manifest, Some((&service, &edit.service_capabilities)));
+        let global_original = edit
+            .read(&gateway_path)?
+            .map(|text| serde_json::from_str::<GatewayOwnership>(&text))
+            .transpose()?
+            .and_then(|state| state.original);
         edit.update_compose(|compose| {
+            let previous = compose
+                .services
+                .get(GATEWAY_MOCK_SERVICE)
+                .and_then(|mock| mock.environment.as_ref())
+                .and_then(|env| env.get(&format!("MOCK_EVENTS_URL_{}", feature.to_uppercase())))
+                .cloned();
             release_gateway_mock(compose, &service, feature, service_empty, app_empty);
+            retain_callback_target(compose, &service, feature, previous, &owners);
             if service_empty {
                 if let Some(target) = compose.services.get_mut(&service) {
                     let env = target.environment.get_or_insert_with(Default::default);
@@ -392,7 +507,7 @@ pub(super) fn apply(
                     }
                 }
                 if app_empty && !compose.services.contains_key(GATEWAY_MOCK_SERVICE) {
-                    if let Some(mock) = &state.original_mock {
+                    if let Some(mock) = global_original.as_ref().or(state.original_mock.as_ref()) {
                         compose
                             .services
                             .insert(GATEWAY_MOCK_SERVICE.into(), mock.clone());
@@ -401,6 +516,9 @@ pub(super) fn apply(
             }
             Ok(())
         })?;
+        if app_empty {
+            edit.delete(gateway_path);
+        }
     }
     if edit.service_capabilities.is_empty() {
         if !state.cargo_modified && cargo_text == state.last_cargo {
@@ -517,7 +635,8 @@ fn ensure_dependency(
 }
 fn restore_dependencies(cargo: &mut DocumentMut, state: &Ownership) -> Result<()> {
     let before: DocumentMut = state.original_cargo.parse()?;
-    let after: DocumentMut = state.last_cargo.parse()?;
+    let after: toml::Value = toml::from_str(&state.last_cargo)?;
+    let current: toml::Value = toml::from_str(&cargo.to_string())?;
     for name in ["forklaunch-blueprint-core", "forklaunch-billing-stripe"] {
         let original = state
             .dependency_overrides
@@ -526,8 +645,8 @@ fn restore_dependencies(cargo: &mut DocumentMut, state: &Ownership) -> Result<()
             .transpose()?
             .unwrap_or_else(|| before.clone());
         if state.dependency_overrides.contains_key(name)
-            || cargo["dependencies"].get(name).map(Item::to_string)
-                == after["dependencies"].get(name).map(Item::to_string)
+            || current.get("dependencies").and_then(|deps| deps.get(name))
+                == after.get("dependencies").and_then(|deps| deps.get(name))
         {
             if let Some(original) = original["dependencies"].get(name) {
                 cargo["dependencies"][name] = original.clone();
@@ -539,24 +658,15 @@ fn restore_dependencies(cargo: &mut DocumentMut, state: &Ownership) -> Result<()
     Ok(())
 }
 
-fn remember_dependency_edits(
-    state: &mut Ownership,
-    cargo: &DocumentMut,
-    source: &str,
-) -> Result<()> {
+fn remember_dependency_edits(state: &mut Ownership, source: &str) -> Result<()> {
     if source == state.last_cargo {
         return Ok(());
     }
-    let last: DocumentMut = state.last_cargo.parse()?;
+    let last: toml::Value = toml::from_str(&state.last_cargo)?;
+    let current: toml::Value = toml::from_str(source)?;
     for name in ["forklaunch-blueprint-core", "forklaunch-billing-stripe"] {
-        let current = cargo
-            .get("dependencies")
-            .and_then(|deps| deps.get(name))
-            .map(Item::to_string);
-        let previous = last
-            .get("dependencies")
-            .and_then(|deps| deps.get(name))
-            .map(Item::to_string);
+        let current = current.get("dependencies").and_then(|deps| deps.get(name));
+        let previous = last.get("dependencies").and_then(|deps| deps.get(name));
         if current != previous {
             state
                 .dependency_overrides
@@ -637,7 +747,7 @@ mod tests {
                 ..Default::default()
             };
             let mut cargo: DocumentMut = human.parse().unwrap();
-            remember_dependency_edits(&mut state, &cargo, human).unwrap();
+            remember_dependency_edits(&mut state, human).unwrap();
             // A later capability command can add a dependency back to compile
             // its handlers; removal must recover the user's prior edit.
             ensure_dependency(
@@ -651,6 +761,27 @@ mod tests {
             restore_dependencies(&mut cargo, &state).unwrap();
             assert_eq!(cargo.to_string(), human);
         }
+    }
+
+    #[test]
+    fn cargo_reformatting_is_not_a_human_dependency_override() {
+        let before = "[dependencies]\nuser = \"1\"\n";
+        let generated = "[dependencies]\nuser = \"1\"\nforklaunch-blueprint-core = { path = \"owned\", features = [\"instance-gateway\"] }\n";
+        let formatted =
+            toml::to_string_pretty(&toml::from_str::<toml::Value>(generated).unwrap()).unwrap();
+        let mut state = Ownership {
+            original_cargo: before.into(),
+            last_cargo: generated.into(),
+            ..Default::default()
+        };
+        remember_dependency_edits(&mut state, &formatted).unwrap();
+        assert!(state.dependency_overrides.is_empty());
+        let mut cargo: DocumentMut = formatted.parse().unwrap();
+        restore_dependencies(&mut cargo, &state).unwrap();
+        assert_eq!(
+            toml::from_str::<toml::Value>(&cargo.to_string()).unwrap(),
+            toml::from_str::<toml::Value>(before).unwrap()
+        );
     }
 
     #[test]
