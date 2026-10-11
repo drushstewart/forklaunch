@@ -92,6 +92,8 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-ws/tests/transport.rs').is_file(), 'Packaged WebSocket transport tests missing'
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
     else:
+        for source in ['Cargo.toml', 'src/credentials.rs', 'src/cookies.rs', 'src/jwt.rs', 'src/keyring.rs', 'src/store/postgres.rs', 'migrations/0001_auth.sql']:
+            assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged Better Auth foundation missing: {source}'
         assert root.joinpath('crates/implementations/worker/forklaunch-worker-redis/src/bullmq.rs').is_file(), 'Packaged BullMQ adapter missing'
         assert root.joinpath('crates/vendor/bullmq-official/src/worker.rs').is_file(), 'Packaged BullMQ outcome hook missing'
         assert root.joinpath('crates/vendor/bullmq-official/LICENSE').is_file(), 'Packaged BullMQ license missing'
@@ -132,6 +134,8 @@ cargo rustc -p accounts-websocket-sdk --lib -- -D warnings
 "$CLI" sdk generate --path . --service accounts --target all --from socket-contract
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-asyncapi
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-axum --all-features --test websocket
+cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-axum --all-features --test mcp_http
+cargo test --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-billing-base -p forklaunch-billing-stripe -p forklaunch-billing-axum --features forklaunch-billing-base/postgres
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-cac-axum
