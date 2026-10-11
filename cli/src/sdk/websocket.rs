@@ -364,27 +364,7 @@ fn stage_workspace(
     Ok(())
 }
 fn validate_destination(root: &Path, relative: &Path) -> Result<()> {
-    if relative.is_absolute()
-        || relative
-            .components()
-            .any(|component| !matches!(component, std::path::Component::Normal(_)))
-    {
-        bail!("Invalid socket output path");
-    }
-    let mut existing = root.join(relative);
-    while !existing.exists() {
-        if fs::symlink_metadata(&existing).is_ok() {
-            bail!("Socket output contains a dangling symlink");
-        }
-        existing = existing
-            .parent()
-            .context("Socket output parent missing")?
-            .into();
-    }
-    if !existing.canonicalize()?.starts_with(root) {
-        bail!("Socket output must stay inside the application");
-    }
-    Ok(())
+    crate::core::application_output::output_path(root, relative).map(|_| ())
 }
 
 #[cfg(test)]

@@ -47,6 +47,7 @@ for resource in redis s3; do
     "$CLI" infra add accounts "$resource" --path .
 done
 cp "$REPO_ROOT/cli/tests/fixtures/rust_recursive_service.rs" crates/accounts/src/recursive_fixture.rs
+cp "$REPO_ROOT/cli/tests/fixtures/rust_socket_contract.json" crates/accounts/src/socket_contract_fixture.json
 python3 - <<'PYTHON'
 from pathlib import Path
 p=Path('crates/accounts/Cargo.toml')
@@ -54,6 +55,10 @@ p.write_text(p.read_text().replace('[dependencies]\n','[dependencies]\nserde_jso
 p=Path('crates/accounts/src/lib.rs')
 s='pub mod recursive_fixture;\n'+p.read_text()
 s=s.replace('for contract in routes::contracts() {','for contract in routes::contracts().into_iter().chain(recursive_fixture::contracts()) {')
+s=s.replace('    registry\n}', '''    let sockets: serde_json::Value = serde_json::from_str(include_str!("socket_contract_fixture.json")).unwrap();
+    for (name, socket) in sockets["sockets"].as_object().unwrap() { registry.register_socket(name, socket).unwrap(); }
+    registry
+}''',1)
 p.write_text(s)
 p=Path('crates/accounts/src/main.rs')
 s=p.read_text().replace('router(state)', 'accounts::recursive_fixture::register(router(state))')
@@ -91,8 +96,15 @@ cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-ws 
 FORKLAUNCH_TEST_FRAMEWORK_ROOT="$PWD/.forklaunch/framework-rs" node "$REPO_ROOT/cli/tests/rust_ws_sdk_runtime.mjs" --compile-only
 npm install --prefix "$RUN_ROOT/websocket-consumer" --no-save --package-lock=false --ignore-scripts ws@8.22.0 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5
 FORKLAUNCH_TEST_FRAMEWORK_ROOT="$PWD/.forklaunch/framework-rs" FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES="$RUN_ROOT/websocket-consumer" FORKLAUNCH_TEST_WS_SDK_DEPENDENCIES="$RUN_ROOT/websocket-consumer" node "$REPO_ROOT/cli/tests/rust_ws_typescript_sdk_runtime.mjs" --compile-only
-mkdir -p .forklaunch/socket-contracts/accounts
-cp "$REPO_ROOT/cli/tests/fixtures/rust_socket_contract.json" .forklaunch/socket-contracts/accounts/socket-contract.json
+"$CLI" openapi export --path .
+python3 - <<'PYTHON'
+from pathlib import Path
+import json
+artifact=json.loads(Path('.forklaunch/socket-contracts/accounts/socket-contract.json').read_text())
+fixture=json.loads(Path('crates/accounts/src/socket_contract_fixture.json').read_text())
+assert artifact['sockets']==fixture['sockets']
+assert artifact['title']=='accounts'
+PYTHON
 "$CLI" sdk generate --path . --service accounts --target all --from socket-contract
 "$CLI" sdk generate --path . --service accounts --target all --from socket-contract --check
 cargo rustc -p accounts-websocket-sdk --lib -- -D warnings

@@ -10,8 +10,31 @@ cd "$(mktemp -d output/rust-ws-cli-runtime/run.XXXXXX)"
 "$CLI" init service realtime --path app --language rust -d postgresql -D Realtime
 mv app relocated-app
 cd relocated-app
-mkdir -p .forklaunch/socket-contracts/realtime
-cp "$SCRIPT_DIR/fixtures/rust_socket_contract.json" .forklaunch/socket-contracts/realtime/socket-contract.json
+cp "$SCRIPT_DIR/fixtures/rust_socket_contract.json" crates/realtime/src/socket_contract_fixture.json
+python3 - <<'PYTHON'
+from pathlib import Path
+p=Path('crates/realtime/Cargo.toml');s=p.read_text().replace('[dependencies]\n','[dependencies]\nserde_json = "1"\n')
+s+='\n[dependencies.forklaunch-ws]\npath = "../../.forklaunch/framework-rs/crates/forklaunch-ws"\n';p.write_text(s)
+p=Path('crates/realtime/src/lib.rs');s=p.read_text()
+s=s.replace('    registry\n}', '''    let sockets: forklaunch_ws::SocketContractArtifact = serde_json::from_str(include_str!("socket_contract_fixture.json")).unwrap();
+    for (name, socket) in sockets.sockets { registry.register_socket(name, &socket).unwrap(); }
+    registry
+}''',1);p.write_text(s)
+PYTHON
+"$CLI" openapi export --path .
+python3 - <<'PYTHON'
+from pathlib import Path
+import json
+expected=json.loads(Path('crates/realtime/src/socket_contract_fixture.json').read_text())
+artifact=json.loads(Path('.forklaunch/socket-contracts/realtime/socket-contract.json').read_text())
+contract=json.loads(Path('.forklaunch/contracts/realtime/contract.json').read_text())
+for socket in expected['sockets'].values():
+    socket.setdefault('clientMessages',{});socket.setdefault('serverMessages',{})
+assert artifact['sockets']==expected['sockets']==contract['sockets']
+assert artifact['title']==contract['service']['name']
+assert artifact['version']==contract['service']['version']
+PYTHON
+python3 "$SCRIPT_DIR/rust_ws_registry_checks.py" "$CLI"
 "$CLI" sdk generate --path . --target all --from socket-contract
 "$CLI" sdk generate --path . --target all --from socket-contract --check
 "$CLI" sdk watch --path . --target all --from socket-contract --service realtime --once

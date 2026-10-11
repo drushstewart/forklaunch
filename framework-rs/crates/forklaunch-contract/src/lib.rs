@@ -1035,6 +1035,7 @@ impl ServiceContract {
 pub struct ContractRegistry {
     service: Option<ServiceContract>,
     routes: Vec<RouteContract>,
+    sockets: BTreeMap<String, String>,
 }
 
 impl ContractRegistry {
@@ -1048,11 +1049,46 @@ impl ContractRegistry {
         Self {
             service: Some(service),
             routes: Vec::new(),
+            sockets: BTreeMap::new(),
         }
     }
 
     pub fn register(&mut self, route: RouteContract) {
         self.routes.push(route);
+    }
+
+    /// Register a raw socket contract for portable service artifact exports.
+    /// Pass a `forklaunch_ws::SocketContract` or equivalent serialized metadata.
+    /// This records metadata; applications compose their runtime upgrade handlers.
+    ///
+    /// # Errors
+    /// Rejects duplicate/invalid module names and metadata serialization failures.
+    #[cfg(feature = "json-schema")]
+    pub fn register_socket<T: serde::Serialize + ?Sized>(
+        &mut self,
+        name: impl Into<String>,
+        socket: &T,
+    ) -> Result<(), serde_json::Error> {
+        let name = name.into();
+        if name.is_empty()
+            || name.len() > 128
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        {
+            return Err(serde::ser::Error::custom("Invalid socket module name"));
+        }
+        if self.sockets.contains_key(&name) {
+            return Err(serde::ser::Error::custom("Duplicate socket module name"));
+        }
+        let serialized = serde_json::to_string(socket)?;
+        self.sockets.insert(name, serialized);
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn socket_contracts(&self) -> &BTreeMap<String, String> {
+        &self.sockets
     }
 
     #[must_use]
@@ -1072,6 +1108,7 @@ impl ContractRegistry {
             generator: "framework-rs".to_owned(),
             service: self.service,
             routes: self.routes,
+            sockets: self.sockets,
         }
     }
 }
@@ -1082,6 +1119,7 @@ pub struct ContractArtifact {
     pub generator: String,
     pub service: Option<ServiceContract>,
     pub routes: Vec<RouteContract>,
+    pub sockets: BTreeMap<String, String>,
 }
 
 pub type Contract = ContractArtifact;
@@ -1105,6 +1143,16 @@ impl ContractArtifact {
             "\"routes\":{}",
             json_array(self.routes.iter().map(RouteContract::to_json))
         ));
+        if !self.sockets.is_empty() {
+            fields.push(format!(
+                "\"sockets\":{{{}}}",
+                self.sockets
+                    .iter()
+                    .map(|(name, socket)| format!("{}:{socket}", json_string(name)))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
+        }
         format!("{{{}}}", fields.join(","))
     }
 }
@@ -1112,6 +1160,34 @@ impl ContractArtifact {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "json-schema")]
+    #[test]
+    fn socket_registration_exports_raw_metadata_and_rejects_duplicates_without_replacement() {
+        let socket = serde_json::json!({"path":"/chat","clientMessages":{"request":{"shape":{"type":"string","const":"water 水"}}}});
+        let mut registry = ContractRegistry::for_service(ServiceContract::new("Realtime", "1"));
+        assert!(
+            !registry
+                .clone()
+                .into_artifact()
+                .to_json()
+                .contains("\"sockets\"")
+        );
+        registry.register_socket("chat", &socket).unwrap();
+        assert!(
+            registry
+                .register_socket("chat", &serde_json::json!({"path":"/replacement"}))
+                .is_err()
+        );
+        for name in ["", "../escape", "Upper", "has-dash"] {
+            assert!(registry.register_socket(name, &socket).is_err());
+        }
+        assert_eq!(registry.socket_contracts().len(), 1);
+        let artifact: serde_json::Value =
+            serde_json::from_str(&registry.into_artifact().to_json()).unwrap();
+        assert_eq!(artifact["sockets"]["chat"], socket);
+        assert_eq!(artifact["service"]["name"], "Realtime");
+    }
 
     #[test]
     fn route_contract_normalizes_sdk_and_openapi_names() {

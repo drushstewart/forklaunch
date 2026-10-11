@@ -83,7 +83,7 @@ try:
             saved.rename(directory)
 
     custom = Path('custom/socket-contract.json')
-    custom.parent.mkdir(parents=True)
+    custom.parent.mkdir(parents=True, exist_ok=True)
     custom.write_bytes(original)
     custom_manifest = original_manifest.replace('[projects.metadata]\n', '[projects.metadata]\nsocketContractArtifactPath = "custom/socket-contract.json"\n')
     custom_manifest = custom_manifest.replace('asyncapiPath = ".forklaunch/asyncapi/realtime/asyncapi.json"', 'asyncapiPath = "custom/asyncapi.json"')
@@ -91,7 +91,7 @@ try:
     run()
     run(['--check'])
     output = Path('custom/asyncapi.json')
-    assert json.loads(output.read_text())['info']['title'] == 'Realtime'
+    assert json.loads(output.read_text())['info']['title'] == json.loads(original)['title']
     with tempfile.TemporaryFile() as log:
         watch = subprocess.Popen([cli, 'sdk', 'watch', '--path', '.', '--service', 'realtime', '--target', 'all', '--from', 'socket-contract', '--interval-ms', '100'], stdout=log, stderr=log)
         try:
@@ -127,7 +127,7 @@ try:
                 raise AssertionError('Invalid watched contract was not diagnosed')
             time.sleep(0.3)
             assert watch.poll() is None, 'Socket watch stopped on a temporarily invalid contract'
-            assert json.loads(output.read_text())['info']['title'] == 'Realtime'
+            assert json.loads(output.read_text())['info']['title'] == json.loads(original)['title']
             changed = json.loads(original)
             changed['title'] = 'Watched custom artifact'
             custom.write_text(json.dumps(changed))

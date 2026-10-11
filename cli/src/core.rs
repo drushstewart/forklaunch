@@ -3,6 +3,7 @@ pub(crate) mod log;
 #[macro_use]
 pub(crate) mod accounts;
 pub(crate) mod ast;
+pub(crate) mod application_output;
 pub(crate) mod base_path;
 pub(crate) mod bunfig;
 pub(crate) mod choices;
