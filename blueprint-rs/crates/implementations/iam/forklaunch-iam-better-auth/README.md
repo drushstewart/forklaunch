@@ -2,8 +2,8 @@
 
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
-cookies, Ed25519 JWT issuance and public JWKs. It does not yet expose the authentication HTTP API or persistent
-session/organization management and is not selectable as a CLI module preset.
+cookies, Ed25519 JWT issuance and public JWKs. It does not yet expose the authentication HTTP API or
+session/organization behavior and is not selectable as a CLI module preset.
 
 `credentials` uses N=16384, r=16, p=1, a 64-byte derived key, NFKC-normalized
 passwords and a random 16-byte salt encoded as lowercase hex text. The salt text
@@ -27,3 +27,14 @@ wrapped in tenant-bound encryption by storage. Key restoration preserves IDs
 and signatures; database lifecycle/rotation is still pending. The JWT fixture
 compares native tokens/JWKS with actual configured Better Auth signing and JOSE
 verification, including expiry, issuer/audience and signature failures.
+
+`store` provides atomic memory and PostgreSQL backends for the eleven configured
+models. PostgreSQL encrypts whole records with tenant/model/record binding,
+forces tenant RLS, rejects bypass roles, keeps encrypted unique-field claims
+compatible across key rotation, and commits audit events with mutations. The
+`fl_better_auth` schema owns its migration ledger independently of other modules.
+Use a migration owner to initialize it and grant the runtime role schema usage,
+table DML and sequence usage, without SUPERUSER/BYPASSRLS. Request-specific audit
+contexts require a nonempty correlation ID. Graph relationships and cascades
+belong to the auth service. Model scans currently fail above 4096 records;
+indexed queries/pagination remain necessary for larger deployments.

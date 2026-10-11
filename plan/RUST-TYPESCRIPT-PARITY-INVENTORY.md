@@ -258,3 +258,11 @@ signing profile and 15-minute claims, with 26 cross-library comparisons against
 Better Auth/JOSE. Restoring private key bytes preserves IDs and signatures;
 public JWKs exclude secrets. Durable encrypted key storage, key lifecycle and
 the HTTP token endpoint remain open.
+
+Native Better Auth storage now covers all eleven configured models with atomic
+memory and fully encrypted PostgreSQL backends. Live database tests cover forced
+tenant RLS, rejected bypass roles, atomic rollback/audit behavior, read-only
+transactions, private key restoration, blind-index uniqueness across key
+rotation and record/model ciphertext binding. Its schema migration ledger is
+independent of other modules. Auth endpoint semantics, graph relationships and
+indexed/paginated queries beyond the 4096-row scan bound are still open.
