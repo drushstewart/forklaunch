@@ -469,6 +469,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [ ] Add declared Draft 4 support to generated TypeScript socket codecs, preserving its older keyword/model semantics; currently source generation rejects it explicitly.
 - [ ] Carry explicit raw binary payload metadata through checked socket contracts and both generated clients.
 - [x] Exercise and harden actual TypeScript automatic control-reply failures and abnormal closes with required pong/close schemas. (one error and 1008 before typed delivery, five-second unresponsive-peer close bound, preserved manual validation and explicit autoPong=false; live CI fixture and 110 unit/integration tests)
+- [x] Reject boolean `false` message schemas before typed delivery on actual TypeScript client and server sockets; preserve `true` decoding and absent-schema raw frames, with a reproduced live regression and outgoing validation checks.
 - [x] Generate Rust WebSocket clients. (`SocketSdkPlan`, `generate_rust_websocket_sdk_source`: typed directions/controls, recursive unions, retained upgrade responses, actual TypeScript server conformance, invalid peer rejection and warning-free recursive/empty consumer compilation)
 
 ## Phase 9 - Infrastructure Crates

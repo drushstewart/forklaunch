@@ -273,7 +273,7 @@ export class ForklaunchWebSocket<
       const data = args[0];
 
       const serverSchema = this.schemas.serverMessagesSchema;
-      if (serverSchema) {
+      if (serverSchema !== undefined) {
         const validated = this.decodeAndValidate(data, serverSchema);
         transformedArgs = [validated, false, ...args.slice(2)];
       }

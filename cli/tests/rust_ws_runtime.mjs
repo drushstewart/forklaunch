@@ -34,6 +34,42 @@ function native(...args){
   child.stdout.on('data',check);done.then(()=>{if(!output.includes('ws://'))reject(new Error('native server produced no URL'));},reject);check();
  })};
 }
+async function verifyBooleanMessageSchemas(){
+ const rawValidator={
+  union:values=>({anyOf:values}),
+  parse:(schema,value)=>schema===false
+   ?{ok:false,errors:[{path:[],message:'false schema rejects every value'}]}
+   :{ok:true,value}
+ };
+ for(const shape of [false,true,undefined]){
+  const eventSchemas=shape===undefined?{}:{clientMessages:{raw:{shape}},serverMessages:{raw:{shape}}};
+  const server=new ForklaunchWebSocketServer(rawValidator,eventSchemas,{host:'127.0.0.1',port:0});servers.add(server);
+  await once(server,'listening');const accepted=once(server,'connection');
+  const client=new ForklaunchWebSocket(rawValidator,eventSchemas,`ws://127.0.0.1:${server.address().port}`);sockets.add(client);
+  await once(client,'open');const [socket]=await accepted;sockets.add(socket);
+  for(const [sender,receiver] of [[client,socket],[socket,client]]){
+   let delivered=0;const errors=[];
+   const observed=new Promise(resolve=>{
+    receiver.once('message',value=>{delivered++;resolve(value);});
+    receiver.once('error',error=>{errors.push(error);resolve(error);});
+   });
+   // Bypass outgoing validation to exercise incoming policy on both surfaces.
+   WebSocket.prototype.send.call(sender,JSON.stringify({value:'water 水'}));
+   const value=await observed;
+   if(shape===false){
+    assert.equal(delivered,0);assert.equal(errors.length,1);assert.match(value.message,/false schema rejects/);
+    assert.throws(()=>sender.send({value:'water 水'}));
+   }else{
+    assert.equal(delivered,1);assert.equal(errors.length,0);
+    assert.deepEqual(shape===undefined?JSON.parse(value.toString()):JSON.parse(JSON.stringify(value)),{value:'water 水'});
+   }
+   assert.equal(receiver.readyState,WebSocket.OPEN);
+   receiver.removeAllListeners('message');receiver.removeAllListeners('error');
+  }
+  const closed=once(socket,'close');client.close();await closed;
+ }
+ console.log('PASS actual TypeScript client/server boolean message schemas: false rejects before typed delivery, true decodes and absent schemas preserve raw frames');
+}
 async function verifyProtocolFailures(){
  const mismatched={...schemas,pong:{shape:v.schemify({ts:v.number.innerType().int().min(100)})}};
  for(const kind of ['pong','close','stalled']){
@@ -118,6 +154,7 @@ try{
  await once(tsServer,'listening');
  const peer=native('client',`ws://127.0.0.1:${tsServer.address().port}/chat`);
  await Promise.all([connection,peer.done]);
+ await verifyBooleanMessageSchemas();
  await verifyProtocolFailures();
  console.log('PASS actual TypeScript/native Rust WebSockets in both directions: upgrade authorization, typed Unicode messages, outgoing validation, automatic and explicit pong, typed close handshake');
 }finally{
