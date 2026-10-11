@@ -124,7 +124,7 @@ fn input_schema(route: &RouteContract) -> String {
     if let Some(body) = &route.request.body {
         properties.push(JsonField::new(
             "body",
-            input_schema_at(&body.schema, "/properties/body"),
+            input_schema_at(&body.schema, &["properties", "body"]),
         ));
         required.push(json_string("body"));
     }
@@ -150,12 +150,11 @@ fn output_schema(route: &RouteContract) -> Option<String> {
 
 fn fields_schema(fields: &[FieldContract], location: &str) -> String {
     let properties = json_object(fields.iter().map(|field| {
-        let name = field.name.replace('~', "~0").replace('/', "~1");
         JsonField::new(
             &field.name,
             input_schema_at(
                 &field.schema,
-                &format!("/properties/{location}/properties/{name}"),
+                &["properties", location, "properties", &field.name],
             ),
         )
     }));
@@ -177,35 +176,8 @@ fn fields_schema(fields: &[FieldContract], location: &str) -> String {
 
 // A schemars root becomes a nested MCP input property. Its local references
 // must follow that move; otherwise #/definitions points at the envelope root.
-fn input_schema_at(schema: &SchemaRef, pointer: &str) -> String {
-    let source = schema_for_name(schema);
-    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&source) else {
-        return source;
-    };
-    relocate_refs(&mut value, pointer);
-    value.to_string()
-}
-fn relocate_refs(value: &mut serde_json::Value, pointer: &str) {
-    match value {
-        serde_json::Value::Object(fields) => {
-            if let Some(serde_json::Value::String(reference)) = fields.get_mut("$ref") {
-                if reference == "#" {
-                    *reference = format!("#{pointer}");
-                } else if let Some(local) = reference.strip_prefix("#/") {
-                    *reference = format!("#{pointer}/{local}");
-                }
-            }
-            for value in fields.values_mut() {
-                relocate_refs(value, pointer);
-            }
-        }
-        serde_json::Value::Array(values) => {
-            for value in values {
-                relocate_refs(value, pointer);
-            }
-        }
-        _ => {}
-    }
+fn input_schema_at(schema: &SchemaRef, location: &[&str]) -> String {
+    forklaunch_contract::relocate_schema_json(&schema_for_name(schema), location)
 }
 
 fn schema_for_name(schema: &SchemaRef) -> String {
@@ -345,6 +317,40 @@ mod tests {
             schema["properties"]["body"]["definitions"]["Node"]["properties"]["next"]["$ref"],
             reference
         );
+    }
+
+    #[test]
+    fn relocating_recursive_inputs_preserves_literal_refs_and_escapes_field_names() {
+        let source = serde_json::json!({"type":"object","properties":{
+            "$ref":{"type":"string"},"child":{"$ref":"#"}
+        },"default":{"$ref":"#"},"const":{"$ref":"#/literal"},
+        "enum":[{"$ref":"#"}],"examples":[{"$ref":"#"}],"x-data":{"$ref":"#"}});
+        let mut body = BodyContract::json("Recursive");
+        body.schema = SchemaRef::named("Recursive").with_json_schema(source.to_string());
+        let mut query = FieldContract::optional("filter/name~", "Recursive");
+        query.schema = body.schema.clone();
+        let mut registry = ContractRegistry::new();
+        registry.register(
+            RouteContract::post("Create", "Create", "/items")
+                .with_query(query)
+                .with_request_body(body),
+        );
+        let tools = mcp_tools(&registry);
+        let schema: serde_json::Value = serde_json::from_str(&tools[0].input_schema_json).unwrap();
+        for (input, pointer) in [
+            (&schema["properties"]["body"], "/properties/body"),
+            (
+                &schema["properties"]["query"]["properties"]["filter/name~"],
+                "/properties/query/properties/filter~1name~0",
+            ),
+        ] {
+            assert_eq!(input["properties"]["child"]["$ref"], format!("#{pointer}"));
+            assert!(schema.pointer(pointer).is_some());
+            assert_eq!(input["properties"]["$ref"], source["properties"]["$ref"]);
+            for keyword in ["default", "const", "enum", "examples", "x-data"] {
+                assert_eq!(input[keyword], source[keyword], "{keyword}");
+            }
+        }
     }
 
     #[test]

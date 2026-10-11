@@ -14,7 +14,10 @@ try {
     server.stdout.on('data', chunk => { output += chunk; const match = output.match(/listening on (http:\/\/[^\s]+)/); if (match) resolve(match[1]); });
     server.once('exit', () => reject(Error(`Recursive service startup failed: ${errors}`)));
   });
-  await probeMcp(baseUrl, ['readTree', 'writeTree', 'readForest', 'readChoice', 'readMutual']);
+  const tools = await probeMcp(baseUrl, ['readTree', 'writeTree', 'readForest', 'readChoice', 'readMutual']);
+  const inputSchema = tools.find(tool => tool.name === 'writeTree').inputSchema;
+  assert.equal(inputSchema.properties.body.examples[0].metadata.$ref, '#');
+  assert.equal(inputSchema.properties.body.properties.children.items.$ref, '#/properties/body');
   for (const [tool, route] of [['readTree', 'trees'], ['readForest', 'forests'], ['readChoice', 'choices'], ['readMutual', 'mutual']]) {
     const http = await (await fetch(`${baseUrl}/${route}`)).json();
     const result = await mcpRpc(baseUrl, 'tools/call', { name: tool, arguments: {} });

@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-mod schema;
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -433,7 +431,12 @@ fn collect_schema_ref(schema: &SchemaRef, schemas: &mut BTreeMap<String, String>
     schemas.entry(schema.name.clone()).or_insert_with(|| {
         schema.json_schema.as_ref().map_or_else(
             || default_schema_json(&schema.name),
-            |value| schema::rebase(value, &schema.name),
+            |value| {
+                forklaunch_contract::relocate_schema_json(
+                    value,
+                    &["components", "schemas", &schema.name],
+                )
+            },
         )
     });
 }

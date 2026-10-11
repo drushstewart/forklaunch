@@ -3,7 +3,7 @@ use forklaunch_axum::ForkLaunchRouter;
 use forklaunch_contract::{BodyContract, BodyKind, RouteContract, SchemaRef};
 use serde_json::{Value, json};
 
-const TREE: &str = r##"{"type":"object","additionalProperties":false,"required":["label","children","parent"],"properties":{"label":{"type":"string"},"children":{"type":"array","items":{"$ref":"#"}},"parent":{"anyOf":[{"$ref":"#"},{"type":"null"}]},"optional":{"$ref":"#"}}}"##;
+const TREE: &str = r##"{"type":"object","additionalProperties":false,"required":["label","children","parent"],"properties":{"label":{"type":"string"},"children":{"type":"array","items":{"$ref":"#"}},"parent":{"anyOf":[{"$ref":"#"},{"type":"null"}]},"optional":{"$ref":"#"},"metadata":{"type":"object"}},"examples":[{"label":"literal","children":[],"parent":null,"metadata":{"$ref":"#"}}]}"##;
 const FOREST: &str = r##"{"type":"array","items":{"$ref":"#"}}"##;
 const CHOICE: &str = r##"{"anyOf":[{"type":"string"},{"type":"array","items":{"$ref":"#"}},{"type":"object","additionalProperties":{"$ref":"#"}}]}"##;
 const MUTUAL: &str = r##"{"$ref":"#/$defs/A","$defs":{"A":{"type":"object","additionalProperties":false,"required":["id","peer"],"properties":{"id":{"type":"string"},"peer":{"$ref":"#/$defs/B"}}},"B":{"type":"object","additionalProperties":false,"required":["children"],"properties":{"children":{"type":"array","items":{"$ref":"#/$defs/A"}}}}}}"##;

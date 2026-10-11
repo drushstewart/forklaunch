@@ -1,5 +1,10 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "json-schema")]
+mod schema;
+#[cfg(feature = "json-schema")]
+pub use schema::relocate_schema_json;
+
 use std::collections::BTreeMap;
 
 use forklaunch_common::{

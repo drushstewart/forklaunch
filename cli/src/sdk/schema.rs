@@ -304,6 +304,12 @@ impl Graph<'_> {
             }
             return clone_literal(schema, self.budget);
         };
+        if object.contains_key("$id")
+            || object.contains_key("$dynamicRef")
+            || object.contains_key("$recursiveRef")
+        {
+            bail!("Schema resource IDs and dynamic references are unsupported by SDK generation");
+        }
         if object.contains_key(REFERENCE) || object.contains_key(DEFINITIONS) {
             bail!("Reserved SDK schema annotation");
         }
@@ -500,6 +506,8 @@ mod tests {
             json!({"$ref":"#"}),
             json!({"anyOf":[{"$ref":"#"},{"type":"string"}]}),
             json!({REFERENCE:"Forged"}),
+            json!({"$id":"https://example.invalid/schema","type":"object","properties":{"child":{"$ref":"#"}}}),
+            json!({"$dynamicRef":"#node"}),
             json!({"$ref":"#/$defs/A","title":"annotation","$defs":{"A":true}}),
             json!({"$ref":"#/$defs/A","$defs":{"A":42}}),
             json!({"$ref":"#/$defs/A","minLength":3,"$defs":{"A":{"type":"string"}}}),

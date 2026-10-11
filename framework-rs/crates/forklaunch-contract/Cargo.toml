@@ -6,8 +6,13 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+json-schema = ["dep:serde_json"]
+
 [dependencies]
 forklaunch-common = { path = "../forklaunch-common" }
+serde_json = { version = "1", optional = true }
 
 [lints]
 workspace = true

@@ -68,7 +68,7 @@ for workspace in ['framework-rs','blueprint-rs']:
     if workspace == 'framework-rs':
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws.rs').is_file(), 'Packaged async S3 adapter missing'
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws_post.rs').is_file(), 'Packaged S3 POST signer missing'
-        assert root.joinpath('crates/forklaunch-openapi/src/schema.rs').is_file(), 'Packaged recursive schema rebasing missing'
+        assert root.joinpath('crates/forklaunch-contract/src/schema.rs').is_file(), 'Packaged recursive schema rebasing missing'
         assert root.joinpath('crates/forklaunch-mcp/src/server.rs').is_file(), 'Packaged MCP runtime missing'
         assert root.joinpath('crates/forklaunch-mcp/src/server/manual.rs').is_file(), 'Packaged manual MCP runtime missing'
         assert root.joinpath('crates/forklaunch-mcp/src/server/multipart.rs').is_file(), 'Packaged multipart MCP runtime missing'
