@@ -73,7 +73,9 @@ impl AxumApplication {
                 if route.request.body.as_ref().is_some_and(|body| {
                     matches!(
                         body.kind,
-                        forklaunch_contract::BodyKind::Binary | forklaunch_contract::BodyKind::File
+                        forklaunch_contract::BodyKind::Binary
+                            | forklaunch_contract::BodyKind::File
+                            | forklaunch_contract::BodyKind::Multipart
                     )
                 }) {
                     request.body = match request.body {
@@ -283,7 +285,7 @@ mod tests {
     #[test]
     fn facade_keeps_declared_file_and_binary_bodies_as_bytes() {
         use forklaunch_contract::{BodyContract, BodyKind, SchemaRef};
-        for kind in [BodyKind::File, BodyKind::Binary] {
+        for kind in [BodyKind::File, BodyKind::Binary, BodyKind::Multipart] {
             let mut app = HttpApplication::new(ServiceInfo::new("upload", "1"));
             app.register_route(
                 RouteContract::post("Upload", "Upload", "/upload").with_request_body(

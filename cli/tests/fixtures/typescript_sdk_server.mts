@@ -4,7 +4,20 @@ import { createServer } from 'node:http';
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://fixture.invalid');
-  if (request.method === 'POST' && ['/text', '/binary', '/json-echo'].includes(url.pathname)) {
+  if (request.method === 'POST' && url.pathname === '/multipart') {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const bytes = Buffer.concat(chunks);
+    const contentType = String(request.headers['content-type']);
+    const parsed = await new Response(bytes, { headers: { 'content-type': contentType } }).formData();
+    if (parsed.has('label')) {
+      if (parsed.get('label') !== 'hello 水') throw new Error('Multipart text lost');
+      const files = parsed.getAll('file') as File[];
+      if (files.length !== 2 || files[0].name !== 'data.bin' || Buffer.from(await files[0].arrayBuffer()).toString('hex') !== '00ff010d0a') throw new Error('Multipart file lost');
+    }
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ contentType, bytes: [...bytes] }));
+  } else if (request.method === 'POST'  && ['/text', '/binary', '/json-echo'].includes(url.pathname)) {
     const expectedType = url.pathname === '/text' ? 'text/plain' : url.pathname === '/binary' ? 'application/octet-stream' : 'application/json';
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));

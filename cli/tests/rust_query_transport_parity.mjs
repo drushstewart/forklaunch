@@ -36,7 +36,7 @@ try {
  await writeFile(path.join(temporary,'cases.json'),JSON.stringify(cases));
  execFileSync('cargo',['test','--quiet','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-mcp','-p','forklaunch-sdk-typescript','--all-features','native_query_transport'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_QUERY_TRANSPORT_INPUT:path.join(temporary,'cases.json'),FORKLAUNCH_TEST_QUERY_TRANSPORT_OUTPUT:temporary},encoding:'utf8',timeout:180000});
  const native=JSON.parse(await readFile(path.join(temporary,'mcp-targets.json'),'utf8'));
- const template=await readFile(path.join(root,'cli/src/templates/sdk/typescript/index.ts'),'utf8');
+ const template=(await readFile(path.join(root,'cli/src/templates/sdk/typescript/index.ts'),'utf8')).replace('{{{form_stringify_source}}}',await readFile(path.join(root,'framework/common/src/safeStringify.ts'),'utf8'));
  const runtime=template.slice(0,template.indexOf('{{#operation_types}}'))+template.slice(template.indexOf('function pathWithParams'),template.indexOf('export function createForkLaunchSdk'))+'\nexport {request};\n';
  await writeFile(path.join(temporary,'cli-sdk.ts'),runtime);
  await writeFile(path.join(temporary,'consumer.ts'),`import { QueryClient } from './query-sdk';\nimport {request} from './cli-sdk';\nnew QueryClient('').readQuery({params:{id:'id'},query:{ids:['a','b'],filter:{active:false},nullable:null}});\nvoid request({}, {service:'ecommerce',router:'product',operation:'query',method:'GET',path:'/query/:id',input:{params:{id:'id'},query:{ids:['a','b'],filter:{active:false},nullable:null}}});\n`);

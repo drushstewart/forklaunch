@@ -33,7 +33,7 @@ export type ForkLaunchSdkRequestMeta = {
   operation: string;
   method: string;
   path: string;
-  requestKind?: 'json' | 'text' | 'binary' | 'urlEncoded';
+  requestKind?: 'json' | 'text' | 'binary' | 'urlEncoded' | 'multipart';
   requestContentType?: string;
   responseKinds?: Partial<Record<number, 'empty' | 'json' | 'text' | 'binary'>>;
   input: {
@@ -45,6 +45,8 @@ export type ForkLaunchSdkRequestMeta = {
 };
 
 export type ForkLaunchErrorResponses = { 400: string; 401: string; 403: string; 404: string; 500: string };
+
+{{{form_stringify_source}}}
 
 {{#operation_types}}
 export type {{request_type}} = ForkLaunchSdkRequest<{{{request_params_type}}}, {{{request_query_type}}}, {{{request_body_type}}}, {{{request_headers_type}}}>;
@@ -71,13 +73,21 @@ function encodeForm(body: unknown): URLSearchParams {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Form body must be an object or URLSearchParams');
   const params = new URLSearchParams();
   for (const [key, raw] of Object.entries(body)) {
-    if (raw === undefined) continue;
-    for (const value of Array.isArray(raw) ? raw : [raw]) {
-      if ((typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') || (typeof value === 'number' && !Number.isFinite(value))) throw new TypeError('Form values must be strings, finite numbers or booleans');
-      params.append(key, String(value));
-    }
+    params.append(key, safeStringify(raw));
   }
   return params;
+}
+
+function encodeMultipart(body: unknown): FormData {
+  if (body instanceof FormData) return body;
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Multipart body must be an object or FormData');
+  const form = new FormData();
+  for (const [name, raw] of Object.entries(body)) {
+    for (const value of Array.isArray(raw) ? raw : [raw]) {
+      form.append(name, value instanceof Blob ? value : safeStringify(value));
+    }
+  }
+  return form;
 }
 
 async function request<Responses extends Record<number, unknown>, ContentTypes extends Partial<Record<number, string>> = {}>(
@@ -90,15 +100,18 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
   const query = queryInput ? `?${new URLSearchParams(Object.entries(queryInput).filter(([, value]) => value !== undefined).map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]))}` : '';
   const path = pathWithParams(resolved.path, params);
   const baseUrl = config.serviceBaseUrls?.[resolved.service] ?? config.baseUrl ?? '';
+  const requestHeaders = new Headers(config.headers);
+  for (const [name, value] of Object.entries(headers ?? {})) requestHeaders.set(name, value);
+  if (body !== undefined) requestHeaders.set('content-type', resolved.requestContentType ?? 'application/json');
+  if (resolved.requestKind === 'multipart') {
+    // The encoder must select the boundary, including after hooks/default headers.
+    requestHeaders.delete('content-type');
+  }
   const response = await fetcher(`${baseUrl}${path}${query}`, {
     ...fetchInit,
     method: resolved.method,
-    headers: {
-      ...(config.headers ?? {}),
-      ...(headers ?? {}),
-      ...(body === undefined ? {} : { 'content-type': resolved.requestContentType ?? 'application/json' })
-    },
-    body: body === undefined ? undefined : resolved.requestKind === 'binary' ? new Uint8Array(body as Uint8Array).buffer : resolved.requestKind === 'text' ? String(body) : resolved.requestKind === 'urlEncoded' ? encodeForm(body) : JSON.stringify(body)
+    headers: requestHeaders,
+    body: body === undefined ? undefined : resolved.requestKind === 'multipart' ? encodeMultipart(body) : resolved.requestKind === 'binary' ? new Uint8Array(body as Uint8Array).buffer : resolved.requestKind === 'text' ? String(body) : resolved.requestKind === 'urlEncoded' ? encodeForm(body) : JSON.stringify(body)
   });
   const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? (response.ok ? 'application/json' : 'text/plain');
   const kind = resolved.responseKinds?.[response.status];

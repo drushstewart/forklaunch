@@ -24,6 +24,8 @@ on:
       - 'cli/tests/rust_bullmq_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
+      - 'cli/tests/rust_sdk_body_parity.mjs'
+      - 'cli/src/templates/sdk/typescript/safeStringify.ts'
       - 'cli/tests/rust_query_transport_parity.mjs'
       - 'cli/tests/rust_mcp_body_parity.mjs'
       - 'framework/core/src/http/router/discriminateBody.ts'
@@ -88,6 +90,8 @@ on:
       - 'cli/tests/rust_bullmq_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
+      - 'cli/tests/rust_sdk_body_parity.mjs'
+      - 'cli/src/templates/sdk/typescript/safeStringify.ts'
       - 'cli/tests/rust_query_transport_parity.mjs'
       - 'cli/tests/rust_mcp_body_parity.mjs'
       - 'framework/core/src/http/router/discriminateBody.ts'
@@ -200,6 +204,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_native_sdk_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_sdk_body_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_s3_post_parity.mjs

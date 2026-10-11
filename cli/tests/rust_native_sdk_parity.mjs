@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -28,17 +28,41 @@ fn main() {
     let request = client.post_binary_request(PostBinaryRequest { body: Some(vec![0, 255, 1]), ..Default::default() });
     assert_eq!(request.body_bytes, Some(vec![0, 255, 1]));
     assert!(request.body.is_none());
-    assert_eq!(request.body_content_type, Some("application/octet-stream"));
+    assert_eq!(request.body_content_type.as_deref(), Some("application/octet-stream"));
     let file = client.post_file_request(PostFileRequest { body: Some(vec![137, 80, 78, 71]), ..Default::default() });
-    assert_eq!(file.body_content_type, Some("image/png"));
+    assert_eq!(file.body_content_type.as_deref(), Some("image/png"));
     assert_eq!(file.body_bytes, Some(vec![137, 80, 78, 71]));
     let text = client.post_text_request(PostTextRequest { body: Some("hello 水".into()), ..Default::default() });
     assert_eq!(text.body.as_deref(), Some("hello 水"));
-    assert_eq!(text.body_content_type, Some("text/plain; charset=utf-8"));
+    assert_eq!(text.body_content_type.as_deref(), Some("text/plain; charset=utf-8"));
+    let form = MultipartForm::new().text("label", "hello 水").text("newlines", "a\nb\rc\r\nd")
+        .part("file", MultipartPart::bytes(vec![0,255,1]).file_name("data.bin").mime_str("application/octet-stream").unwrap())
+        .part("file", MultipartPart::bytes(Vec::new()).file_name("empty.bin"));
+    let upload = client.post_form_request(PostFormRequest { body: Some(form), headers: [("Content-Type".into(), "incorrect".into())].into(), ..Default::default() });
+    assert!(upload.headers["content-type"].starts_with("multipart/form-data; boundary="));
+    assert!(!upload.headers.contains_key("Content-Type"));
+    assert_eq!(upload.body_content_type.as_deref(), Some(upload.headers["content-type"].as_str()));
+    std::fs::write(std::env::args().nth(2).unwrap(), &upload.headers["content-type"]).unwrap();
+    let bytes = upload.body_bytes.unwrap();
+    std::fs::write(std::env::args().nth(1).unwrap(), &bytes).unwrap();
+    assert!(bytes.windows(3).any(|b| b == [0,255,1]));
+    assert!(bytes.windows(10).any(|b| b == b"a\r\nb\r\nc\r\nd"));
+    assert!(MultipartPart::bytes(vec![]).mime_str("text/plain\r\nInjected: true").is_err());
+    let empty = client.post_form_request(PostFormRequest { body: Some(MultipartForm::new()), ..Default::default() });
+    let boundary = empty.body_content_type.unwrap().split("boundary=").nth(1).unwrap().to_owned();
+    assert_eq!(empty.body_bytes.unwrap(), format!("--{boundary}--\r\n").as_bytes());
+
 }
 `);
   run('rustc', ['--edition=2024', '-D', 'warnings', join(temporary, 'native-sdk.rs'), '-o', join(temporary, 'native-sdk')]);
-  run(join(temporary, 'native-sdk'), []);
+  run(join(temporary, 'native-sdk'), [join(temporary, 'multipart-bytes'), join(temporary, 'multipart-content-type')]);
+  const rustForm = await new Response(readFileSync(join(temporary, 'multipart-bytes')), { headers: { 'content-type': readFileSync(join(temporary, 'multipart-content-type'), 'utf8') } }).formData();
+  assert.equal(rustForm.get('label'), 'hello 水');
+  assert.equal(rustForm.get('newlines'), 'a\r\nb\r\nc\r\nd');
+  assert.equal(rustForm.getAll('file').length, 2);
+  assert.equal(rustForm.getAll('file')[0].name, 'data.bin');
+  assert.deepEqual([...new Uint8Array(await rustForm.getAll('file')[0].arrayBuffer())], [0,255,1]);
+  assert.equal(rustForm.getAll('file')[1].size, 0);
   server = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -65,7 +89,7 @@ fn main() {
   const form = new FormData();
   form.append('label', 'hello 水');
   form.append('file', new Blob([new Uint8Array([0, 255, 1])]), 'data.bin');
-  const echoed = await (await client.postForm({ body: form })).json();
+  const echoed = await (await client.postForm({ body: form, headers: { 'Content-Type': 'multipart/form-data; boundary=incorrect' } })).json();
   assert.match(echoed.contentType, /^multipart\/form-data; boundary=.+/);
   const bytes = Buffer.from(echoed.body, 'hex');
   assert.ok(bytes.includes(Buffer.from('hello 水')));

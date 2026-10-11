@@ -869,12 +869,12 @@ fn build_framework_request(
         }
     }
 
-    if contract
-        .request
-        .body
-        .as_ref()
-        .is_some_and(|body| matches!(body.kind, BodyKind::Binary | BodyKind::File))
-    {
+    if contract.request.body.as_ref().is_some_and(|body| {
+        matches!(
+            body.kind,
+            BodyKind::Binary | BodyKind::File | BodyKind::Multipart
+        )
+    }) {
         request = request.with_body(FrameworkBody::Binary(bytes.to_vec()));
     } else if !bytes.is_empty()
         || contract
@@ -1005,7 +1005,7 @@ mod tests {
     #[tokio::test]
     async fn declared_binary_and_file_bodies_preserve_utf8_and_empty_bytes() {
         use forklaunch_contract::SchemaRef;
-        for kind in [BodyKind::Binary, BodyKind::File] {
+        for kind in [BodyKind::Binary, BodyKind::File, BodyKind::Multipart] {
             for bytes in [
                 b"plain ASCII".to_vec(),
                 "hello 水".as_bytes().to_vec(),

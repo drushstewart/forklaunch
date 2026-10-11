@@ -23,6 +23,8 @@ cp "$SCRIPT_DIR/rust_mcp_probe.mjs" rust_mcp_probe.mjs
 cp "$SCRIPT_DIR/fixtures/rust_sdk_transport.rs" crates/accounts/src/routes/transport_fixture.rs
 python3 - <<'PYTHON'
 from pathlib import Path
+manifest = Path('crates/accounts/Cargo.toml')
+manifest.write_text(manifest.read_text().replace('[dependencies]\n', '[dependencies]\nserde_json = \"1.0\"\n'))
 p = Path('crates/accounts/src/routes/mod.rs')
 s = p.read_text()
 s = 'pub mod transport_fixture;\n' + s
@@ -145,6 +147,27 @@ async function verifyStatusVariants(sdk) {
   assert.deepEqual(Array.from((await sdk.accounts.binary.uploadBinary({ body: new Uint8Array() })).response), []);
   const uploaded = await sdk.accounts.binary.uploadBinary({ body: new Uint8Array([99, 0, 255, 13, 10, 42, 99]).subarray(1, 6) });
   assert.deepEqual([...uploaded.response], [0, 255, 13, 10, 42]);
+  for (const empty of [false, true]) {
+    const form = new FormData();
+    if (!empty) {
+      form.append('label', 'hello 水');
+      form.append('file', new Blob([new Uint8Array([0,255,1,13,10])]), 'data.bin');
+      form.append('file', new Blob([]), 'empty.bin');
+    }
+    const uploaded = await sdk.accounts.multipart.uploadMultipart({ body: form, headers: { 'Content-Type': 'multipart/form-data; boundary=incorrect' } });
+    assert.equal(uploaded.code, 200);
+    assert.match(uploaded.response.contentType, /^multipart\/form-data; boundary=/);
+    assert.ok(!uploaded.response.contentType.includes('incorrect'));
+    const parsed = await new Response(new Uint8Array(uploaded.response.bytes), { headers: { 'content-type': uploaded.response.contentType } }).formData();
+    assert.equal([...parsed.keys()].length, empty ? 0 : 3);
+    if (!empty) {
+      assert.equal(parsed.get('label'), 'hello 水');
+      const files = parsed.getAll('file');
+      assert.equal(files[0].name, 'data.bin');
+      assert.deepEqual([...new Uint8Array(await files[0].arrayBuffer())], [0,255,1,13,10]);
+      assert.equal(files[1].size, 0);
+    }
+  }
   assert.deepEqual((await sdk.accounts.jsonEcho.echoJson({ body: { value: [1, null, true] } })).response, { value: [1, null, true] });
   for (const [mode, expected] of [["null", {"label": null, "numbers": {"one": 1, "missing": null}, "metadata": null, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": 7, "list": [1, "two", null]}], ["full", {"label": "present", "numbers": {"one": 1, "missing": null}, "metadata": {"id": "meta"}, "open": {"id": "open", "extra": {"nested": true}}, "constrained": {"count": 2, "extra": "text"}, "additional_properties": "explicit", "unknownExtra": [1, false], "any": "seven", "list": [1, "two", null]}]]) {
     assert.deepEqual((await sdk.accounts.shape.getShape({ params: { mode } })).response, expected);

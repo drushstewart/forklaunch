@@ -110,7 +110,7 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 }));
             }
             if let Some(body) = operation.get("requestBody") {
-                let mut imported = response_body(body)?;
+                let mut imported = media_body(body, true)?;
                 if imported["contentType"].as_str().is_some_and(|media| {
                     media.split(';').next().unwrap_or_default().trim()
                         == "application/x-www-form-urlencoded"
@@ -147,7 +147,7 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 {
                     Value::Null
                 } else {
-                    response_body(response)?
+                    media_body(response, false)?
                 };
                 success_responses.push(json!({"statusCode":status, "body":body}));
             }
@@ -200,7 +200,7 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
     Ok(json!({"routes": routes}))
 }
 
-fn response_body(response: &Value) -> Result<Value> {
+fn media_body(response: &Value, request: bool) -> Result<Value> {
     let content = response
         .get("content")
         .and_then(Value::as_object)
@@ -210,11 +210,14 @@ fn response_body(response: &Value) -> Result<Value> {
     }
     let (media_type, media) = content.iter().next().unwrap();
     let media_type = media_type.to_ascii_lowercase();
-    let kind = if media_type == "application/json" || media_type.ends_with("+json") {
+    let base_media_type = media_type.split(';').next().unwrap_or_default().trim();
+    let kind = if base_media_type == "application/json" || base_media_type.ends_with("+json") {
         "json"
-    } else if media_type == "text/event-stream" || media_type.starts_with("multipart/") {
+    } else if request && base_media_type == "multipart/form-data" {
+        "multipart"
+    } else if base_media_type == "text/event-stream" || base_media_type.starts_with("multipart/") {
         bail!("Streaming/multipart SDK response transport remains unsupported");
-    } else if media_type.starts_with("text/") {
+    } else if base_media_type.starts_with("text/") {
         "text"
     } else {
         "binary"
@@ -512,6 +515,9 @@ mod request_media_tests {
     fn imports_raw_text_and_binary_request_media() {
         for (media, kind) in [
             ("text/plain", "text"),
+            ("multipart/form-data", "multipart"),
+            ("multipart/form-data; boundary=encoder-owned", "multipart"),
+            ("application/vnd.example+json; charset=utf-8", "json"),
             ("application/octet-stream", "binary"),
             ("application/x-www-form-urlencoded", "urlEncoded"),
             ("application/vnd.example+json", "json"),

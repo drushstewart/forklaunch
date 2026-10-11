@@ -46,10 +46,14 @@ pub fn generate_rust_sdk_source(plan: &SdkGenerationPlan, options: &RustSdkOptio
     let _ = writeln!(source, "    pub headers: BTreeMap<String, String>,");
     let _ = writeln!(source, "    pub body: Option<String>,");
     let _ = writeln!(source, "    pub body_bytes: Option<Vec<u8>>,");
-    let _ = writeln!(source, "    pub body_content_type: Option<&'static str>,");
+    let _ = writeln!(source, "    pub body_content_type: Option<String>,");
     let _ = writeln!(source, "    pub body_schema: Option<&'static str>,");
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
+    if plan.operations.iter().any(multipart_body) {
+        source.push_str(include_str!("multipart.rs"));
+        source.push('\n');
+    }
     source.push_str(
         r#"fn encode_path_segment(value: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
@@ -130,6 +134,9 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
         "        let path = path_with_params(\"{}\", &input.params);",
         escape_rust_string(&operation.path)
     );
+    if multipart_body(operation) {
+        source.push_str("        let mut headers = input.headers;\n        let body_bytes = input.body.map(|form| {\n            let (bytes, content_type) = form.encode();\n            headers.retain(|name, _| !name.eq_ignore_ascii_case(\"content-type\"));\n            headers.insert(\"content-type\".into(), content_type);\n            bytes\n        });\n        let body_content_type = body_bytes.as_ref().and_then(|_| headers.get(\"content-type\").cloned());\n");
+    }
     let _ = writeln!(source, "        SdkRequest {{");
     let _ = writeln!(
         source,
@@ -141,11 +148,14 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
         "            url: format!(\"{{}}{{}}\", self.base_url, path),"
     );
     let _ = writeln!(source, "            query: input.query,");
-    let _ = writeln!(source, "            headers: input.headers,");
-    if binary_body(operation) {
+    if multipart_body(operation) {
+        source.push_str("            headers,\n            body: None,\n            body_bytes,\n");
+    } else if binary_body(operation) {
+        let _ = writeln!(source, "            headers: input.headers,");
         let _ = writeln!(source, "            body: None,");
         let _ = writeln!(source, "            body_bytes: input.body,");
     } else {
+        let _ = writeln!(source, "            headers: input.headers,");
         let _ = writeln!(source, "            body: input.body,");
         let _ = writeln!(source, "            body_bytes: None,");
     }
@@ -163,7 +173,11 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
             .as_deref()
             .unwrap_or(default_content_type)
     });
-    let content_type = content_type.map_or_else(|| "None".into(), |mime| format!("Some({mime:?})"));
+    let content_type = if multipart_body(operation) {
+        "body_content_type".into()
+    } else {
+        content_type.map_or_else(|| "None".into(), |mime| format!("Some({mime:?}.into())"))
+    };
     let _ = writeln!(source, "            body_content_type: {content_type},");
     let _ = writeln!(source, "            body_schema: {body_schema},");
     let _ = writeln!(source, "        }}");
@@ -177,7 +191,9 @@ fn write_request_struct(source: &mut String, operation: &SdkOperation) {
     let _ = writeln!(source, "    pub params: BTreeMap<String, String>,");
     let _ = writeln!(source, "    pub query: BTreeMap<String, String>,");
     let _ = writeln!(source, "    pub headers: BTreeMap<String, String>,");
-    let body_type = if binary_body(operation) {
+    let body_type = if multipart_body(operation) {
+        "MultipartForm"
+    } else if binary_body(operation) {
         "Vec<u8>"
     } else {
         "String"
@@ -185,6 +201,10 @@ fn write_request_struct(source: &mut String, operation: &SdkOperation) {
     let _ = writeln!(source, "    pub body: Option<{body_type}>,");
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
+}
+
+fn multipart_body(operation: &SdkOperation) -> bool {
+    matches!(operation.request_body_kind, Some(BodyKind::Multipart))
 }
 
 fn binary_body(operation: &SdkOperation) -> bool {
@@ -293,7 +313,7 @@ mod tests {
         let source = generate_rust_sdk_source(&plan, &RustSdkOptions::new("media-sdk"));
         assert!(source.contains("pub body: Option<Vec<u8>>"));
         assert!(source.contains("body_bytes: input.body"));
-        assert!(source.contains("body_content_type: Some(\"image/png\")"));
+        assert!(source.contains("body_content_type: Some(\"image/png\".into())"));
         if let Ok(directory) = std::env::var("FORKLAUNCH_TEST_NATIVE_SDK_OUTPUT") {
             std::fs::write(
                 std::path::Path::new(&directory).join("native-sdk.rs"),

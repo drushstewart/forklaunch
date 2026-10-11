@@ -301,6 +301,7 @@ impl SdkResponseContract {
 
 #[derive(Content)]
 struct TypeScriptSdkTemplate {
+    form_stringify_source: String,
     operation_types: Vec<TypeScriptOperationTypeTemplate>,
     services: Vec<TypeScriptServiceTemplate>,
     aliases: Vec<TypeScriptAliasTemplate>,
@@ -357,6 +358,7 @@ struct TypeScriptAliasTemplate {
 #[derive(Content)]
 struct RustSdkTemplate {
     has_operations: bool,
+    has_multipart: bool,
     has_serde: bool,
     client_name: String,
     models: Vec<RustModelTemplate>,
@@ -404,6 +406,8 @@ struct RustOperationTemplate {
     http_method: String,
     path: String,
     binary_request: bool,
+    multipart_request: bool,
+    multipart_field: String,
     request_content_type: String,
 }
 
@@ -849,6 +853,7 @@ fn request_type_shapes_from_contract(route: &JsonValue) -> Result<RequestTypeSha
         None | Some("json") => "json",
         Some("text") => "text",
         Some("urlEncoded") => "urlEncoded",
+        Some("multipart") => "multipart",
         Some("binary" | "file") => "binary",
         Some(kind) => bail!("Unsupported SDK request body kind {kind}"),
     };
@@ -860,22 +865,36 @@ fn request_type_shapes_from_contract(route: &JsonValue) -> Result<RequestTypeSha
                 "text" => "text/plain",
                 "binary" => "application/octet-stream",
                 "urlEncoded" => "application/x-www-form-urlencoded",
+                "multipart" => "multipart/form-data",
                 _ => "application/json",
             }),
     )?;
+    if content_type.starts_with("multipart/") != (kind == "multipart")
+        || kind == "multipart" && content_type != "multipart/form-data"
+    {
+        bail!("Multipart SDK requests require multipart/form-data and the multipart body kind");
+    }
     let body = if contract.is_none() {
         "never".into()
     } else {
         match kind {
             "text" => "string".into(),
             "binary" => "Uint8Array".into(),
+            "multipart" => format!(
+                "FormData | {}",
+                contract
+                    .and_then(|body| body.get("schema"))
+                    .and_then(|schema| schema.get("jsonSchema"))
+                    .map(ts_type_from_schema)
+                    .unwrap_or_else(|| "Record<string, unknown>".into())
+            ),
             "urlEncoded" => format!(
                 "URLSearchParams | {}",
                 contract
                     .and_then(|body| body.get("schema"))
                     .and_then(|schema| schema.get("jsonSchema"))
                     .map(ts_type_from_schema)
-                    .unwrap_or_else(|| "Record<string, string | number | boolean | readonly string[] | undefined>".into())
+                    .unwrap_or_else(|| { "Record<string, unknown>".into() })
             ),
             _ => contract
                 .and_then(|body| body.get("schema"))
@@ -958,8 +977,8 @@ fn normalized_media_type(value: &str) -> Result<String> {
     {
         bail!("Invalid SDK body media type");
     }
-    if value == "text/event-stream" || value.starts_with("multipart/") {
-        bail!("Streaming/multipart SDK body transport remains unsupported");
+    if value == "text/event-stream" {
+        bail!("SSE SDK body transport remains unsupported");
     }
     Ok(value)
 }
@@ -1004,6 +1023,9 @@ fn response_contracts(route: &JsonValue) -> Result<Vec<SdkResponseContract>> {
                     ResponseDecoder::Binary => "application/octet-stream",
                 }),
         )?;
+        if content_type.starts_with("multipart/") {
+            bail!("Multipart SDK response transport remains unsupported");
+        }
         if contracts
             .insert(
                 status,
@@ -1723,7 +1745,7 @@ fn check_sdk_outputs(app_root: &Path, target: &str, services: &[SdkService]) -> 
             let crate_dir = app_root.join("sdks").join("rust").join(&package_name);
             compare_generated_file(
                 &crate_dir.join("Cargo.toml"),
-                &rust_sdk_cargo_toml(&package_name, &service.name),
+                &rust_sdk_cargo_toml(&package_name, &service.name, service_has_multipart(service)),
                 &mut stale_outputs,
             )?;
             compare_generated_file(
@@ -1834,6 +1856,12 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
     render_sdk_template(
         "sdk/typescript/index.ts",
         &TypeScriptSdkTemplate {
+            form_stringify_source: TEMPLATES_DIR
+                .get_file("sdk/typescript/safeStringify.ts")
+                .context("Missing SDK form stringifier")?
+                .contents_utf8()
+                .context("Invalid SDK form stringifier")?
+                .to_owned(),
             operation_types,
             services: service_blocks,
             aliases,
@@ -1848,7 +1876,7 @@ fn generate_rust_sdks(app_root: &Path, services: &[SdkService]) -> Result<()> {
         create_dir_all(crate_dir.join("src"))?;
         write(
             crate_dir.join("Cargo.toml"),
-            rust_sdk_cargo_toml(&package_name, &service.name),
+            rust_sdk_cargo_toml(&package_name, &service.name, service_has_multipart(service)),
         )?;
         write(crate_dir.join("src").join("lib.rs"), rust_sdk(service)?)?;
         add_rust_workspace_member(
@@ -1862,14 +1890,25 @@ fn generate_rust_sdks(app_root: &Path, services: &[SdkService]) -> Result<()> {
     Ok(())
 }
 
-fn rust_sdk_cargo_toml(package_name: &str, service_name: &str) -> String {
+fn service_has_multipart(service: &SdkService) -> bool {
+    service.routers.iter().any(|router| {
+        router
+            .operations
+            .iter()
+            .any(|operation| operation.request_kind == "multipart")
+    })
+}
+
+fn rust_sdk_cargo_toml(package_name: &str, service_name: &str, multipart: bool) -> String {
+    let multipart_feature = if multipart { ", \"multipart\"" } else { "" };
     format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\nauthors.workspace = true\ndescription = \"Generated Rust SDK for {}\"\n\n[dependencies]\nreqwest = {{ version = \"0.13.2\", features = [\"json\", \"query\"] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
-        package_name, service_name
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\nauthors.workspace = true\ndescription = \"Generated Rust SDK for {}\"\n\n[dependencies]\nreqwest = {{ version = \"0.13.2\", features = [\"json\", \"query\"{}] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
+        package_name, service_name, multipart_feature
     )
 }
 
 fn rust_sdk(service: &SdkService) -> Result<String> {
+    let has_multipart = service_has_multipart(service);
     let client_name = format!("{}Client", service.name.to_case(Case::Pascal));
     let mut operations = Vec::new();
     let mut models = BTreeMap::<String, RustModelTemplate>::new();
@@ -1930,6 +1969,19 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
                 http_method: operation.method.to_string(),
                 path: escape_rust_string(&operation.path),
                 binary_request: operation.request_kind == "binary",
+                multipart_request: operation.request_kind == "multipart",
+                multipart_field: if has_multipart {
+                    format!(
+                        "multipart: {},",
+                        if operation.request_kind == "multipart" {
+                            "input.body"
+                        } else {
+                            "None"
+                        }
+                    )
+                } else {
+                    String::new()
+                },
                 request_content_type: operation.request_content_type.clone(),
             });
         }
@@ -1945,6 +1997,7 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
         "sdk/rust/lib.rs",
         &RustSdkTemplate {
             has_operations: !operations.is_empty(),
+            has_multipart,
             has_serde: !models.is_empty() || !operations.is_empty(),
             client_name,
             models: models.into_values().collect(),
@@ -2023,6 +2076,7 @@ mod wire_name_tests {
             "sdk/rust/lib.rs",
             &RustSdkTemplate {
                 has_operations: false,
+                has_multipart: false,
                 has_serde: !models.is_empty(),
                 client_name: "Client".into(),
                 models: models.into_values().collect(),
@@ -2042,8 +2096,14 @@ mod empty_contract_tests {
     #[test]
     fn durable_worker_lifecycle_fallback_never_advertises_unmounted_routes() {
         let root = tempfile::tempdir().unwrap();
-        for variant in ["worker-postgres", "worker-redis", "worker-kafka", "worker-bullmq"] {
-            let manifest: Value = toml::from_str(&format!(r#"
+        for variant in [
+            "worker-postgres",
+            "worker-redis",
+            "worker-kafka",
+            "worker-bullmq",
+        ] {
+            let manifest: Value = toml::from_str(&format!(
+                r#"
 [[projects]]
 name = "jobs"
 type = "Worker"
@@ -2051,7 +2111,9 @@ variant = "{variant}"
 routers = ["health", "process"]
 [projects.metadata]
 language = "rust"
-"#)).unwrap();
+"#
+            ))
+            .unwrap();
             let services = rust_sdk_services_for_lifecycle(root.path(), &manifest).unwrap();
             assert_eq!(services.len(), 1);
             assert!(services[0].routers.is_empty());
@@ -2450,9 +2512,36 @@ mod request_media_tests {
         );
     }
     #[test]
+    fn multipart_requests_use_native_forms_and_encoder_owned_boundaries() {
+        let service = sdk_service_from_contract("uploads", &json!({"routes":[{"path":"/upload","operationName":"upload","method":"POST","request":{"body":{"kind":"multipart"}},"responses":[{"statusCode":204}]}]})).unwrap();
+        assert!(service_has_multipart(&service));
+        let source = rust_sdk(&service).unwrap();
+        assert!(source.contains("pub body: Option<MultipartForm>"));
+        assert!(source.contains("builder.multipart(form)"));
+        assert!(source.contains("multipart: input.body,"));
+        assert!(source.contains("name.eq_ignore_ascii_case(\"content-type\")"));
+        let cargo: toml::Value =
+            toml::from_str(&rust_sdk_cargo_toml("uploads-sdk", "uploads", true)).unwrap();
+        assert!(
+            cargo["dependencies"]["reqwest"]["features"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| feature.as_str() == Some("multipart"))
+        );
+        let source = typescript_sdk(&[service]).unwrap();
+        assert!(
+            source
+                .contains("ForkLaunchSdkRequest<never, never, FormData | Record<string, unknown>,")
+        );
+        assert!(source.contains("requestKind: 'multipart'"));
+        assert!(source.contains("requestHeaders.delete('content-type')"));
+    }
+
+    #[test]
     fn unsupported_request_transports_fail_before_rendering() {
         for body in [
-            json!({"kind":"multipart"}),
+            json!({"kind":"multipart","contentType":"multipart/mixed"}),
             json!({"kind":"text","contentType":"text/event-stream"}),
             json!({"kind":"binary","contentType":"multipart/form-data"}),
             json!({"kind":"json","contentType":"application/json/injected"}),
@@ -2485,6 +2574,7 @@ mod union_model_tests {
             "sdk/rust/lib.rs",
             &RustSdkTemplate {
                 has_operations: false,
+                has_multipart: false,
                 has_serde: !models.is_empty(),
                 client_name: "Client".into(),
                 models: models.into_values().collect(),

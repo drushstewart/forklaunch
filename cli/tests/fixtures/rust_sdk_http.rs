@@ -131,6 +131,23 @@ async fn verify(base: &str) {
     assert!(
         matches!(client.binary_upload_binary(binary_input).await.unwrap(), accounts_sdk::AccountsBinaryUploadBinaryResponses::Status200(value) if value == vec![0, 255, 13, 10, 42])
     );
+    for empty in [false, true] {
+        let form = if empty { accounts_sdk::MultipartForm::new() } else {
+            accounts_sdk::MultipartForm::new().text("label", "hello 水")
+                .part("file", accounts_sdk::MultipartPart::bytes(vec![0,255,1,13,10]).file_name("data.bin").mime_str("application/octet-stream").unwrap())
+                .part("file", accounts_sdk::MultipartPart::bytes(Vec::new()).file_name("empty.bin"))
+        };
+        let mut input = accounts_sdk::AccountsMultipartUploadMultipartRequest { body: Some(form), ..Default::default() };
+        input.headers.insert("Content-Type".into(), "multipart/form-data; boundary=incorrect".into());
+        let accounts_sdk::AccountsMultipartUploadMultipartResponses::Status200(upload) = client.multipart_upload_multipart(input).await.unwrap() else { panic!("multipart upload failed") };
+        assert!(upload.content_type.starts_with("multipart/form-data; boundary="));
+        assert!(!upload.content_type.contains("incorrect"));
+        let bytes: Vec<u8> = upload.bytes.into_iter().map(|b| u8::try_from(b).unwrap()).collect();
+        if !empty {
+            assert!(bytes.windows("hello 水".len()).any(|b| b == "hello 水".as_bytes()));
+            assert!(bytes.windows(5).any(|b| b == [0,255,1,13,10]));
+        }
+    }
     let json_input = accounts_sdk::AccountsJsonEchoEchoJsonRequest {
         body: Some(r#"{"value":[1,null,true]}"#.into()),
         ..Default::default()

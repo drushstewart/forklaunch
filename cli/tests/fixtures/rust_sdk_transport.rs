@@ -42,6 +42,9 @@ pub fn contracts() -> Vec<RouteContract> {
         RouteContract::post("Upload Binary", "Raw binary request", "/binary")
             .with_request_body(BodyContract { kind: BodyKind::Binary, schema: SchemaRef::named("Bytes"), content_type: Some("application/octet-stream".into()) })
             .with_response(200, Some(BodyContract { kind: BodyKind::Binary, schema: SchemaRef::named("Bytes"), content_type: Some("application/octet-stream".into()) })),
+        RouteContract::post("Upload Multipart", "Multipart text and binary files", "/multipart")
+            .with_request_body(BodyContract { kind: BodyKind::Multipart, schema: SchemaRef::named("Upload"), content_type: Some("multipart/form-data".into()) })
+            .with_response(200, Some(json_body("UploadEcho", r#"{"type":"object","required":["contentType","bytes"],"properties":{"contentType":{"type":"string"},"bytes":{"type":"array","items":{"type":"integer"}}}}"#))),
         RouteContract::post("Echo Json", "JSON request regression", "/json-echo")
             .with_request_body(json_body("Unknown", "{}"))
             .with_response(200, Some(json_body("Unknown", "{}"))),
@@ -77,7 +80,11 @@ pub fn register(router: &mut LocalRouter) {
             200
         };
         router.register(contract, move |request: FrameworkRequest| {
-            Ok(if request.method.as_str() == "POST" && ["/text", "/binary", "/json-echo"].contains(&path.as_str()) {
+            Ok(if path == "/multipart" {
+                let bytes = match request.body { Body::Binary(bytes) => bytes, Body::Text(value) => value.into_bytes(), Body::Empty => Vec::new() };
+                let content_type = request.headers.get("content-type").cloned().unwrap_or_default();
+                FrameworkResponse::json(200, serde_json::json!({"contentType": content_type, "bytes": bytes}).to_string())
+            } else if request.method.as_str() == "POST" && ["/text", "/binary", "/json-echo"].contains(&path.as_str()) {
                 let expected_type = match path.as_str() { "/text" => "text/plain", "/binary" => "application/octet-stream", _ => "application/json" };
                 if request.headers.get("content-type").map(String::as_str) != Some(expected_type) {
                     FrameworkResponse::text(400, "Unexpected request media type")

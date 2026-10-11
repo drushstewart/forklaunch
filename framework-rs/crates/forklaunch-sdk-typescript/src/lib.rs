@@ -152,21 +152,28 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
         source,
         "    const query = options.query ? `?${{new URLSearchParams(Object.entries(options.query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]))}}` : '';"
     );
+    if matches!(operation.request_body_kind, Some(BodyKind::Multipart)) {
+        source.push_str("    const headers = new Headers(options.headers);\n    headers.delete('content-type');\n");
+    }
     let _ = writeln!(
         source,
         "    return this.fetcher(`${{this.baseUrl}}${{path}}${{query}}`, {{"
     );
     let _ = writeln!(source, "      method: '{}',", operation.method.as_str());
-    let _ = writeln!(source, "      headers: {{");
-    if !content_type.is_empty() {
-        let _ = writeln!(
-            source,
-            "        ...(options.body === undefined ? {{}} : {{ 'content-type': {} }}),",
-            js_string(content_type)
-        );
+    if matches!(operation.request_body_kind, Some(BodyKind::Multipart)) {
+        source.push_str("      headers,\n");
+    } else {
+        let _ = writeln!(source, "      headers: {{");
+        if !content_type.is_empty() {
+            let _ = writeln!(
+                source,
+                "        ...(options.body === undefined ? {{}} : {{ 'content-type': {} }}),",
+                js_string(content_type)
+            );
+        }
+        let _ = writeln!(source, "        ...options.headers,");
+        let _ = writeln!(source, "      }},");
     }
-    let _ = writeln!(source, "        ...options.headers,");
-    let _ = writeln!(source, "      }},");
     let _ = writeln!(source, "{body_line}");
     let _ = writeln!(source, "    }});");
     let _ = writeln!(source, "  }}");

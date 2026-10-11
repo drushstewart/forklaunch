@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 
 {{#has_serde}}use serde::{Deserialize, Serialize};{{/has_serde}}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+{{#has_multipart}}pub use reqwest::multipart::{Form as MultipartForm, Part as MultipartPart};{{/has_multipart}}
+
+#[derive(Debug{{^has_multipart}}, Clone, PartialEq, Eq{{/has_multipart}})]
 pub struct SdkRequest {
     pub method: &'static str,
     pub url: String,
@@ -13,6 +15,7 @@ pub struct SdkRequest {
     pub headers: BTreeMap<String, String>,
     pub body: Option<String>,
     pub body_bytes: Option<Vec<u8>>,
+    {{#has_multipart}}pub multipart: Option<MultipartForm>,{{/has_multipart}}
     pub content_type: &'static str,
 }
 
@@ -116,12 +119,12 @@ pub type {{name}} = {{{target_type}}};
 
 {{/aliases}}
 {{#operations}}
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default{{^multipart_request}}, Clone, PartialEq, Eq, Serialize, Deserialize{{/multipart_request}})]
 pub struct {{request_type}} {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
-    pub body: Option<{{#binary_request}}Vec<u8>{{/binary_request}}{{^binary_request}}String{{/binary_request}}>,
+    pub body: Option<{{#multipart_request}}MultipartForm{{/multipart_request}}{{^multipart_request}}{{#binary_request}}Vec<u8>{{/binary_request}}{{^binary_request}}String{{/binary_request}}{{/multipart_request}}>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -224,8 +227,9 @@ impl {{client_name}} {
             url: format!("{}{}", self.base_url, path),
             query: input.query,
             headers: input.headers,
-            body: {{#binary_request}}None{{/binary_request}}{{^binary_request}}input.body{{/binary_request}},
+            body: {{#multipart_request}}None{{/multipart_request}}{{^multipart_request}}{{#binary_request}}None{{/binary_request}}{{^binary_request}}input.body{{/binary_request}}{{/multipart_request}},
             body_bytes: {{#binary_request}}input.body{{/binary_request}}{{^binary_request}}None{{/binary_request}},
+            {{{multipart_field}}}
             content_type: "{{request_content_type}}",
         }
     }
@@ -248,6 +252,7 @@ impl {{client_name}} {
             builder = builder.query(&request.query);
         }
         for (name, value) in request.headers {
+            {{#has_multipart}}if request.multipart.is_some() && name.eq_ignore_ascii_case("content-type") { continue; }{{/has_multipart}}
             builder = builder.header(name, value);
         }
         if let Some(auth) = &self.auth {
@@ -270,7 +275,23 @@ impl {{client_name}} {
         if let Some(body) = request.body_bytes {
             builder = builder.header(reqwest::header::CONTENT_TYPE, request.content_type).body(body);
         }
-        let response = builder.send().await?;
+        {{#has_multipart}}
+        let mut multipart_boundary = None;
+        if let Some(form) = request.multipart {
+            multipart_boundary = Some(form.boundary().to_owned());
+            builder = builder.multipart(form);
+        }
+        let mut prepared = builder.build()?;
+        // Reqwest emits zero bytes for an empty form; MIME still needs a closing delimiter.
+        if let Some(boundary) = multipart_boundary {
+            if prepared.body().and_then(reqwest::Body::as_bytes).is_some_and(|bytes| bytes.is_empty()) {
+                let closing = format!("--{boundary}--\r\n");
+                prepared.headers_mut().insert(reqwest::header::CONTENT_LENGTH, reqwest::header::HeaderValue::from(closing.len()));
+                *prepared.body_mut() = Some(closing.into());
+            }
+        }
+        let response = self.http.execute(prepared).await?;
+        {{/has_multipart}}{{^has_multipart}}let response = builder.send().await?;{{/has_multipart}}
         let status = response.status().as_u16();
         match status {
 {{#responses}}
