@@ -89,6 +89,8 @@ export CARGO_TARGET_DIR="$GENERATED_TARGET"
 cargo check --workspace
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-ws --all-features
 FORKLAUNCH_TEST_FRAMEWORK_ROOT="$PWD/.forklaunch/framework-rs" node "$REPO_ROOT/cli/tests/rust_ws_sdk_runtime.mjs" --compile-only
+npm install --prefix "$RUN_ROOT/websocket-consumer" --no-save --package-lock=false --ignore-scripts ws@8.22.0 ajv@8.20.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5
+FORKLAUNCH_TEST_FRAMEWORK_ROOT="$PWD/.forklaunch/framework-rs" FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES="$RUN_ROOT/websocket-consumer" FORKLAUNCH_TEST_WS_SDK_DEPENDENCIES="$RUN_ROOT/websocket-consumer" node "$REPO_ROOT/cli/tests/rust_ws_typescript_sdk_runtime.mjs" --compile-only
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-asyncapi
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-axum --all-features --test websocket
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk

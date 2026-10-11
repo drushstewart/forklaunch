@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
 
 mod http;
+mod websocket;
 pub use http::{TypeScriptHttpSdkOptions, generate_typescript_http_sdk_source};
+pub use websocket::{TypeScriptWebSocketSdkOptions, generate_typescript_websocket_sdk_source};
 
 use forklaunch_common::json_string as js_string;
 use std::fmt::Write as _;

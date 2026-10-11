@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { actualValidator } from './rust_actual_validator_fixture.mjs';
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -18,6 +18,7 @@ const require = createRequire(import.meta.url),
   ),
   external = createRequire(parserPath);
 const Ajv = external('ajv'),
+  Ajv2019 = external('ajv/dist/2019').default,
   Ajv2020 = external('ajv/dist/2020').default,
   addFormats = external('ajv-formats');
 const cache = new Map();
@@ -41,9 +42,16 @@ const validator = {
     const key = JSON.stringify(schema);
     let validate = cache.get(key);
     if (!validate) {
-      const engine = new (schema.$schema?.includes('2020-12') ? Ajv2020 : Ajv)({
+      const engine = new (
+        schema.$schema?.includes('2020-12')
+          ? Ajv2020
+          : schema.$schema?.includes('2019-09')
+            ? Ajv2019
+            : Ajv
+      )({
         strict: false,
         validateFormats: true,
+        ownProperties: true,
       });
       addFormats(engine);
       engine.removeKeyword('multipleOf');
@@ -53,7 +61,18 @@ const validator = {
         schemaType: 'number',
         compile: (divisor) => (value) => multipleOf(value, divisor),
       });
-      validate = engine.compile(schema);
+      // Independently cover AJV's excluded __proto__ property through a pattern;
+      // generated clients also support nested/scoped versions of this case.
+      const checked =
+        schema.properties && Object.hasOwn(schema.properties, '__proto__')
+          ? {
+              ...schema,
+              patternProperties: {
+                '^__proto__(?![\\s\\S])': schema.properties.__proto__,
+              },
+            }
+          : schema;
+      validate = engine.compile(checked);
       cache.set(key, validate);
     }
     // The actual helpers execute in a VM; AJV constant equality expects values
@@ -72,6 +91,15 @@ const validator = {
 const schemas = [
   true,
   false,
+  {
+    $schema: 'https://json-schema.org/draft/2019-09/schema',
+    type: 'object',
+    dependentRequired: { a: ['b'] },
+  },
+  { type: 'object', required: ['toString'] },
+  JSON.parse(
+    '{"type":"object","required":["__proto__"],"properties":{"__proto__":{"type":"object"}},"additionalProperties":false}',
+  ),
   { type: 'string', minLength: 1, maxLength: 8, pattern: '^[a-z 水]+$' },
   { type: 'number', minimum: 0, maximum: 10, multipleOf: 0.1 },
   { type: 'integer', minimum: 0, exclusiveMaximum: 10 },
@@ -217,6 +245,8 @@ const values = [
   { a: 1 },
   { value: 1, next: { value: 2 } },
   { $ref: 'literal' },
+  { toString: 'own property' },
+  JSON.parse('{"__proto__":{"allowed":true}}'),
   'a@example.com',
   'not@email',
   'a..b@example.com',
@@ -242,6 +272,12 @@ for (const schema of schemas)
   for (const text of ['raw text', '{broken', 'hello 水'])
     cases.push({ schema, action: 'decode', bytes: [...Buffer.from(text)] });
 const temporary = await mkdtemp(path.join(tmpdir(), 'fl-ws-jsonschema-'));
+const generated = process.env.FORKLAUNCH_TEST_TS_WS_SDK_CODEC_MODULE
+  ? await import(
+      pathToFileURL(process.env.FORKLAUNCH_TEST_TS_WS_SDK_CODEC_MODULE)
+    )
+  : undefined;
+const generatedCodecs = new Map();
 try {
   const input = path.join(temporary, 'input.json'),
     output = path.join(temporary, 'output.json');
@@ -272,6 +308,49 @@ try {
   const native = JSON.parse(await readFile(output, 'utf8'));
   for (let index = 0; index < cases.length; index++) {
     const input = cases[index];
+    if (generated) {
+      const key = JSON.stringify(input.schema);
+      if (!generatedCodecs.has(key))
+        generatedCodecs.set(
+          key,
+          new generated.SocketCodec(input.schema, 1024 * 1024),
+        );
+      const codec = generatedCodecs.get(key);
+      let value, error;
+      try {
+        value =
+          input.action === 'encode'
+            ? codec.encode(input.value)
+            : codec.decode(Buffer.from(input.bytes));
+      } catch (cause) {
+        error = cause;
+      }
+      assert.equal(
+        native[index].ok,
+        !error,
+        `generated codec acceptance ${index}: ${JSON.stringify(input)} ${error ?? ''}`,
+      );
+      if (!error) {
+        if (input.action === 'decode')
+          assert.deepEqual(
+            native[index].value,
+            value,
+            `generated decoded value ${index}`,
+          );
+        else if (typeof input.value === 'object' && input.value !== null)
+          assert.deepEqual(
+            JSON.parse(Buffer.from(native[index].bytes).toString()),
+            JSON.parse(value.toString()),
+            `generated structured bytes ${index}`,
+          );
+        else
+          assert.deepEqual(
+            Buffer.from(native[index].bytes),
+            value,
+            `generated wire bytes ${index}`,
+          );
+      }
+    }
     let value, error;
     try {
       value =
@@ -319,6 +398,10 @@ try {
         `wire bytes ${index}`,
       );
   }
+  if (generated)
+    console.log(
+      `PASS ${cases.length} generated TypeScript/native JSON Schema codec comparisons`,
+    );
   console.log(
     `PASS ${cases.length} actual TypeScript WebSocket helper/AJV and native JSON Schema codec cases: bounds, patterns, enums/unions, decimals, arrays/tuples, dependent/conditional properties, formats, recursive and scoped resource references, both directions and raw text`,
   );

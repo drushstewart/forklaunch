@@ -1394,6 +1394,7 @@ dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
  "forklaunch-sdk-codegen",
+ "forklaunch-ws",
  "ramhorns",
  "serde_json",
 ]
