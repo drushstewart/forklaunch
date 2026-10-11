@@ -59,13 +59,21 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(audience) = env::var("JWT_AUDIENCE") { validation.validate_aud = true; validation.set_audience(&[audience]); }
     let auth = HmacJwksAuth::new(secret.into_bytes(), jwks, validation)?;
     {{#stripe}}
-    let secret = env::var("STRIPE_SECRET_KEY").map_err(|_| "STRIPE_SECRET_KEY is required")?;
-    let client = if let Ok(base) = env::var("STRIPE_API_BASE") {
-        StripeBillingClient::with_transport(secret, ProviderHttpClient::new(&base,Duration::from_secs(15),1024*1024)?)?
-    } else {StripeBillingClient::new(secret)?};
+    let gateway = env::var("PLATFORM_GATEWAY_URL").ok().filter(|value|!value.is_empty());
+    let instance_id = env::var("INSTANCE_ID").ok().filter(|value|!value.is_empty());
+    let instance_key = env::var("INSTANCE_HMAC_KEY").ok().filter(|value|!value.is_empty());
+    let client = if let (Some(gateway),Some(instance_id),Some(key)) = (&gateway,&instance_id,&instance_key) {
+        StripeBillingClient::managed(gateway,instance_id.clone(),key.clone())?
+    } else {
+        if gateway.is_some() || instance_id.is_some() { return Err("Managed Stripe requires PLATFORM_GATEWAY_URL, INSTANCE_ID and INSTANCE_HMAC_KEY together".into()); }
+        let secret = env::var("STRIPE_API_KEY").ok().filter(|value|!value.is_empty()).or_else(||env::var("STRIPE_SECRET_KEY").ok().filter(|value|!value.is_empty())).ok_or(()).map_err(|_| "STRIPE_API_KEY or STRIPE_SECRET_KEY is required outside managed mode")?;
+        if let Ok(base) = env::var("STRIPE_API_BASE") {
+            StripeBillingClient::with_transport(secret, ProviderHttpClient::new(&base,Duration::from_secs(15),1024*1024)?)?
+        } else {StripeBillingClient::new(secret)?}
+    };
     let mut backend = BillingBackend::stripe(store,client);
-    if let Ok(secret) = env::var("STRIPE_WEBHOOK_SECRET") { backend = backend.with_webhook_secret(secret)?; }
-    if let Ok(secret) = env::var("INSTANCE_HMAC_KEY") { backend = backend.with_platform_event_key(secret)?; }
+    if let Some(secret) = env::var("STRIPE_WEBHOOK_SECRET").ok().filter(|value|!value.is_empty()) { backend = backend.with_webhook_secret(secret)?; }
+    if let Some(secret) = instance_key { backend = backend.with_platform_event_key(secret)?; }
     {{/stripe}}{{^stripe}}let backend = BillingBackend::base(store);{{/stripe}}
     let backend = backend.with_database_backup(env::var("BILLING_DATABASE_BACKUP").unwrap_or_else(|_|"false".into()).parse()?);
     let host = env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned());

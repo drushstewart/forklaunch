@@ -13,14 +13,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = String::new();
     io::stdin().read_to_string(&mut input)?;
     let input: Value = serde_json::from_str(&input)?;
-    let client = StripeBillingClient::with_transport(
-        "sk_fixture".to_owned(),
-        ProviderHttpClient::new(
-            input["base"].as_str().ok_or("Missing fixture endpoint")?,
-            Duration::from_millis(100),
-            1024 * 1024,
-        )?,
-    )?;
+    let client = if input["managed"] == true {
+        StripeBillingClient::managed(
+            input["base"].as_str().ok_or("base")?,
+            "instance_fixture".into(),
+            "instance-secret-fixture".into(),
+        )?
+    } else {
+        StripeBillingClient::with_transport(
+            "sk_fixture".to_owned(),
+            ProviderHttpClient::new(
+                input["base"].as_str().ok_or("Missing fixture endpoint")?,
+                Duration::from_millis(100),
+                1024 * 1024,
+            )?,
+        )?
+    };
     assert!(!format!("{client:?}").contains("sk_fixture"));
     let mut results = Vec::new();
     for action in input["actions"].as_array().ok_or("Missing actions")? {
@@ -35,6 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn run(client: &StripeBillingClient, action: &Value) -> BlueprintResult<Value> {
     let resource = match action["resource"].as_str().unwrap_or("") {
         "plans" => StripeResource::Plan,
+        "products" => StripeResource::Product,
+        "prices" => StripeResource::Price,
         "subscriptions" => StripeResource::Subscription,
         "checkout" => StripeResource::CheckoutSession,
         "links" => StripeResource::PaymentLink,

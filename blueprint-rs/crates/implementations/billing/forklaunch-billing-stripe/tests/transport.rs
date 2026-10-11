@@ -136,3 +136,74 @@ async fn pagination_rejects_missing_cursors_cycles_and_malformed_pages() {
     );
     server.abort();
 }
+
+#[tokio::test]
+async fn managed_json_capabilities_bind_raw_body_path_and_fresh_nonce() {
+    use axum::{body::Bytes, http::HeaderMap};
+    use forklaunch_auth::request_hmac::{HmacAuthorization, SignedBody};
+    use forklaunch_blueprint_core::instance_gateway::InstanceGatewayClient;
+    use std::sync::{Arc, Mutex};
+    let nonces = Arc::new(Mutex::new(std::collections::HashSet::new()));
+    let observed = Arc::clone(&nonces);
+    let app = Router::new().route(
+        "/prefix/instance-gateway/payments/onboarding-link",
+        axum::routing::post(move |headers: HeaderMap, body: Bytes| {
+            let observed = Arc::clone(&observed);
+            async move {
+                let auth =
+                    HmacAuthorization::parse(headers["authorization"].to_str().unwrap()).unwrap();
+                assert_eq!(auth.key_id(), "instance_fixture");
+                assert!(auth.verify_at(
+                    b"instance-secret-fixture",
+                    "POST",
+                    "/payments/onboarding-link",
+                    SignedBody::Bytes(&body),
+                    chrono::Utc::now().timestamp_millis(),
+                    Duration::from_secs(5)
+                ));
+                assert!(observed.lock().unwrap().insert(auth.nonce().to_owned()));
+                assert_eq!(
+                    serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+                    json!({"returnUrl":"https://example.test/💬?a=1&b=2"})
+                );
+                Json(json!({"url":"https://provider.example/onboard"}))
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}/prefix/", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let client = InstanceGatewayClient::new(
+        &base,
+        "instance_fixture".into(),
+        "instance-secret-fixture".into(),
+    )
+    .unwrap();
+    assert!(!format!("{client:?}").contains("instance-secret-fixture"));
+    for _ in 0..2 {
+        let result = client
+            .request_json(
+                reqwest::Method::POST,
+                &["payments", "onboarding-link"],
+                Some(&json!({"returnUrl":"https://example.test/💬?a=1&b=2"})),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.status, 200);
+        assert_eq!(result.body["url"], "https://provider.example/onboard");
+    }
+    assert_eq!(nonces.lock().unwrap().len(), 2);
+    for (url, id, key) in [
+        (base.as_str(), "", "key"),
+        (base.as_str(), "bad id", "key"),
+        (base.as_str(), "id", ""),
+        (base.as_str(), "id", "secret\n"),
+        ("http://example.com", "id", "key"),
+        ("https://user:secret@example.com", "id", "key"),
+    ] {
+        assert!(InstanceGatewayClient::new(url, id.into(), key.into()).is_err());
+    }
+    server.abort();
+}

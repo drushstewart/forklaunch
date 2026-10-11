@@ -10,8 +10,15 @@ const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048}),jwk
 const jwks=http.createServer((_request,response)=>{response.setHeader('content-type','application/json');response.end(JSON.stringify({keys:[jwk]}));});
 const records=new Map(),counts={};let providerCalls=0;
 const provider=http.createServer(async(request,response)=>{
- providerCalls++;assert.equal(request.headers.authorization,'Bearer sk_fixture');assert.equal(request.headers['stripe-version'],'2026-08-26.dahlia');
+ providerCalls++;assert.equal(request.headers['stripe-version'],'2026-08-26.dahlia');
  let raw='';for await(const chunk of request)raw+=chunk;const url=new URL(request.url,'http://fixture'),fields=new URLSearchParams(request.method==='GET'?url.search:raw);
+ if(url.pathname.startsWith('/managed/instance-gateway/stripe/')) {
+  const signedPath=url.pathname.slice('/managed/instance-gateway'.length)+url.search;
+  const match=/^HMAC keyId=(\S+) ts=(\S+) nonce=(\S+) signature=(\S+)$/.exec(request.headers.authorization??'');assert.ok(match);const [,keyId,ts,nonce,signature]=match;
+  assert.equal(keyId,'instance_fixture');assert.ok(Math.abs(Date.now()-new Date(ts).getTime())<5000);
+  assert.equal(signature,createHmac('sha256','platform-fixture-key').update(`${request.method}\n${signedPath}\n${raw?raw+'\n':'undefined'}${ts}\n${nonce}`).digest('base64'));
+  url.pathname=url.pathname.slice('/managed/instance-gateway/stripe'.length);
+ } else assert.equal(request.headers.authorization,'Bearer sk_fixture');
  const match=url.pathname.match(/^\/v1\/(plans|subscriptions|checkout\/sessions|payment_links|billing_portal\/sessions)(?:\/([^/]+))?(?:\/(resume|expire))?$/);assert.ok(match,url.pathname);
  const [,resource,existing,action]=match,prefix={plans:'plan_',subscriptions:'sub_','checkout/sessions':'cs_',payment_links:'plink_','billing_portal/sessions':'bps_'}[resource];
  response.setHeader('content-type','application/json');
@@ -30,7 +37,7 @@ function hmac(path,method='GET',body,key=secret,keyId='default',nonce=randomUUID
 function jwt(roles=['admin']){const header=Buffer.from(JSON.stringify({alg:'RS256',kid:jwk.kid,typ:'JWT'})).toString('base64url'),payload=Buffer.from(JSON.stringify({sub:'billing-admin',roles,iss:issuer,aud:audience,exp:Math.floor(Date.now()/1000)+300})).toString('base64url');return `Bearer ${header}.${payload}.${sign('RSA-SHA256',Buffer.from(`${header}.${payload}`),privateKey).toString('base64url')}`;}
 async function start(binary,tenant='a',extra={}){
  const db=new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);db.username=role;db.password='parity-test-only';
- const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_')&&!key.startsWith('MCP_'))),DATABASE_URL:db.toString(),TENANT_ID:`${role}-${tenant}`,ENCRYPTION_KEY:'billing-fixture-encryption-only',HOST:'127.0.0.1',SERVICE_PORT:'0',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience,STRIPE_SECRET_KEY:'sk_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture',INSTANCE_HMAC_KEY:'platform-fixture-key',STRIPE_API_BASE:`http://127.0.0.1:${provider.address().port}`,...extra};
+ const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_')&&!key.startsWith('MCP_')&&!['PLATFORM_GATEWAY_URL','INSTANCE_ID','INSTANCE_HMAC_KEY','STRIPE_API_KEY','STRIPE_SECRET_KEY','STRIPE_API_BASE','STRIPE_WEBHOOK_SECRET'].includes(key))),DATABASE_URL:db.toString(),TENANT_ID:`${role}-${tenant}`,ENCRYPTION_KEY:'billing-fixture-encryption-only',HOST:'127.0.0.1',SERVICE_PORT:'0',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience,STRIPE_SECRET_KEY:'sk_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture',INSTANCE_HMAC_KEY:'platform-fixture-key',STRIPE_API_BASE:`http://127.0.0.1:${provider.address().port}`,...extra};
  const child=spawn(binary,[],{env,stdio:['ignore','pipe','pipe']});let output='',errors='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>errors+=chunk);const exit=new Promise(resolve=>child.once('close',resolve)),info={child,exit,errors:()=>errors};children.push(info);
  for(let i=0;i<300;i++){const base=output.match(/listening on (http:\/\/127\.0\.0\.1:\d+)/)?.[1];if(base)return{...info,base};assert.equal(child.exitCode,null,errors);await new Promise(resolve=>setTimeout(resolve,25));}throw Error(errors);
 }
@@ -96,7 +103,15 @@ try{
   const other=await start(binary,'b');await call(other.base,`/plan/${plan.id}`,'GET',undefined,404);await stop(other);
   await stop(running);const reopened=await start(binary);await call(reopened.base,`/plan/${plan.id}`);await call(reopened.base,`/subscription/${sub.id}`);if(stripe){await stripeEvent(reopened.base,replayEvent);assert.equal((await call(reopened.base,`/subscription/${sub.id}`)).active,true);const disabled=await start(binary,'a',{STRIPE_WEBHOOK_SECRET:undefined,INSTANCE_HMAC_KEY:undefined});assert.equal((await fetch(disabled.base+'/webhook',{method:'POST',body:'{}',headers:{'content-type':'application/json','stripe-signature':'invalid'}})).status,400);await stop(disabled);}await stop(reopened);
  }
+ const managed=await start(stripeBinary,'a',{STRIPE_SECRET_KEY:undefined,STRIPE_API_KEY:undefined,STRIPE_API_BASE:undefined,PLATFORM_GATEWAY_URL:`http://127.0.0.1:${provider.address().port}/managed/`,INSTANCE_ID:'instance_fixture'});
+ await probeMcp(managed.base,['createPlan','handlewebhookevent','receiveplatformevent']);
+ const managedPlan=await call(managed.base,'/plan','POST',{name:'Managed',price:499,cadence:'month',currency:'USD',externalId:'ignored',billingProvider:'stripe',active:true,stripeFields:{}});
+ await call(managed.base,`/plan/${managedPlan.id}`);await call(managed.base,'/plan');await stop(managed);
+ const ignoredKeys=await start(stripeBinary,'a',{STRIPE_API_KEY:'must-ignore-local-api-key',STRIPE_SECRET_KEY:'must-ignore-local-secret-key',PLATFORM_GATEWAY_URL:`http://127.0.0.1:${provider.address().port}/managed/`,INSTANCE_ID:'instance_fixture'});
+ await call(ignoredKeys.base,`/plan/${managedPlan.id}`);await stop(ignoredKeys);
+ await assert.rejects(start(stripeBinary,'a',{PLATFORM_GATEWAY_URL:`http://127.0.0.1:${provider.address().port}/managed/`,INSTANCE_ID:undefined,INSTANCE_HMAC_KEY:undefined,STRIPE_SECRET_KEY:undefined}),/Managed Stripe requires/);
+
  for(const config of [{MCP_ENABLED:'false'},{MCP_ENABLED:'true',MCP_PATH:'/tools'}]){const info=await start(baseBinary,'a',config);assert.equal((await fetch(info.base+'/health')).status,200);assert.equal((await fetch(info.base+'/mcp',{method:'POST'})).status,404);if(config.MCP_ENABLED==='true')await probeMcp(info.base,[],config.MCP_PATH);await stop(info);}
  assert.ok(providerCalls>20);
- console.log('PASS generated base/Stripe billing: all five service families over HTTP, authenticated MCP tools, both SDKs, JWT roles, configured party lookups, encrypted persistence, tenant isolation, restart, MCP settings and graceful shutdown');
+ console.log('PASS generated base/Stripe billing: all five service families over HTTP, authenticated MCP tools, both SDKs, JWT roles, configured party lookups, verified webhooks/platform events, keyless managed gateway calls, configuration failures, encrypted persistence, tenant isolation, restart, MCP settings and graceful shutdown');
 }finally{for(const info of children)if(info.child.exitCode===null)await stop(info);await Promise.all([jwks,provider].map(server=>new Promise(resolve=>server.close(resolve))));}

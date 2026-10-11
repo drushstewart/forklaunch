@@ -6,7 +6,9 @@ Apply `cargo run -p {{{name}}} -- --migrate` with a schema owner. Run the servic
 
 Checkout/payment-link/portal records use a ten-minute PostgreSQL TTL cache. Set `BILLING_DATABASE_BACKUP=true` for durable backups. Provider session expiry remains separate from cache expiry. Plans and subscriptions are durable.
 
-{{#stripe}}The provider performs authenticated Stripe API requests pinned to the repository SDK version. `stripeFields` contains provider request fields and response objects. Provider calls precede local persistence; external effects can need reconciliation after transport or database failures. Plan replacement deletes the old provider plan first. Cancelled subscriptions cannot be resumed. Mutation retries are disabled.{{/stripe}}
+{{#stripe}}Set `STRIPE_API_KEY` (or the existing native `STRIPE_SECRET_KEY` alias) for local/self-hosted requests. With `PLATFORM_GATEWAY_URL`, `INSTANCE_ID` and `INSTANCE_HMAC_KEY` configured together, the service sends instance-signed requests through the platform gateway and ignores vendor keys. Signatures bind query filters and exact form bytes; each call uses a fresh nonce. Gateway URLs require HTTPS except explicit loopback fixtures. Incomplete managed settings fail startup.
+
+The provider performs authenticated Stripe API requests pinned to the repository SDK version. `stripeFields` contains provider request fields and response objects. Provider calls precede local persistence; external effects can need reconciliation after transport or database failures. Plan replacement deletes the old provider plan first. Cancelled subscriptions cannot be resumed. Mutation retries are disabled.{{/stripe}}
 
 Offline contract and OpenAPI exports do not require live database or provider settings. Add custom routes under `src/routes`. Compliance export/erasure require a `system`-role JWT. The current TS billing entities classify all fields as non-PII, so these endpoints report no classified data with HTTP 404. Provider payloads and session URLs remain encrypted in native storage.
 

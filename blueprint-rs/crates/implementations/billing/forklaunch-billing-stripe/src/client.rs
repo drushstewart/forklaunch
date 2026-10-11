@@ -2,6 +2,7 @@
 //! SDK 22.6.2; mutation retries are disabled to avoid duplicate provider effects.
 use forklaunch_blueprint_core::{
     BlueprintError, BlueprintResult,
+    instance_gateway::InstanceGatewayClient,
     provider_http::{ProviderHttpClient, provider_status_error},
 };
 use reqwest::Method;
@@ -34,14 +35,29 @@ impl StripeResource {
 }
 #[derive(Clone)]
 pub struct StripeBillingClient {
-    http: ProviderHttpClient,
-    secret: Arc<Zeroizing<String>>,
+    transport: BillingTransport,
     api_version: Arc<String>,
+}
+#[derive(Clone)]
+enum BillingTransport {
+    Direct {
+        http: ProviderHttpClient,
+        secret: Arc<Zeroizing<String>>,
+    },
+    Managed(InstanceGatewayClient),
+}
+impl std::fmt::Debug for BillingTransport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Direct { http, .. } => f.debug_tuple("Direct").field(http).finish(),
+            Self::Managed(gateway) => f.debug_tuple("Managed").field(gateway).finish(),
+        }
+    }
 }
 impl std::fmt::Debug for StripeBillingClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StripeBillingClient")
-            .field("http", &self.http)
+            .field("transport", &self.transport)
             .field("api_version", &self.api_version)
             .finish_non_exhaustive()
     }
@@ -67,8 +83,27 @@ impl StripeBillingClient {
             return Err(invalid_config());
         }
         Ok(Self {
-            http,
-            secret: Arc::new(Zeroizing::new(secret)),
+            transport: BillingTransport::Direct {
+                http,
+                secret: Arc::new(Zeroizing::new(secret)),
+            },
+            api_version: Arc::new(STRIPE_API_VERSION.to_owned()),
+        })
+    }
+    /// Uses an instance-signed platform gateway without a vendor secret key.
+    /// # Errors
+    /// Rejects incomplete credentials and unsafe gateway configuration.
+    pub fn managed(
+        gateway_url: &str,
+        instance_id: String,
+        hmac_key: String,
+    ) -> BlueprintResult<Self> {
+        Ok(Self {
+            transport: BillingTransport::Managed(InstanceGatewayClient::new(
+                gateway_url,
+                instance_id,
+                hmac_key,
+            )?),
             api_version: Arc::new(STRIPE_API_VERSION.to_owned()),
         })
     }
@@ -210,17 +245,27 @@ impl StripeBillingClient {
             segments.push(action);
         }
         let params = form_fields(fields)?;
-        let mut request = self
-            .http
-            .request(method.clone(), &segments)?
-            .bearer_auth(self.secret.as_str())
-            .header("stripe-version", self.api_version.as_str());
-        if method == Method::GET {
-            request = request.query(&params);
-        } else {
-            request = request.form(&params);
-        }
-        let response = self.http.execute_json(request).await?;
+        let response = match &self.transport {
+            BillingTransport::Direct { http, secret } => {
+                let mut request = http
+                    .request(method.clone(), &segments)?
+                    .bearer_auth(secret.as_str())
+                    .header("stripe-version", self.api_version.as_str());
+                if method == Method::GET {
+                    request = request.query(&params);
+                } else {
+                    request = request.form(&params);
+                }
+                http.execute_json(request).await?
+            }
+            BillingTransport::Managed(gateway) => {
+                let mut route = vec!["stripe"];
+                route.extend_from_slice(&segments);
+                gateway
+                    .request_form(method.clone(), &route, &params, Some(&self.api_version))
+                    .await?
+            }
+        };
         if !(200..300).contains(&response.status) {
             return Err(provider_status_error("stripe", "billing", response.status));
         }

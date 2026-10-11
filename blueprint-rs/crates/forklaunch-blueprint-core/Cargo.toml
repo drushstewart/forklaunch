@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
+instance-gateway = ["provider-http", "dep:forklaunch-auth", "dep:chrono", "dep:uuid", "dep:zeroize"]
 stripe-webhook = ["dep:hmac", "dep:sha2", "dep:zeroize"]
 provider-http = ["dep:reqwest", "dep:serde_json", "dep:url"]
 
@@ -25,6 +26,10 @@ url = { version = "2", optional = true }
 hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 zeroize = { version = "1", optional = true }
+
+forklaunch-auth = { path = "../../../framework-rs/crates/forklaunch-auth", optional = true }
+chrono = { version = "0.4", features = ["clock"], optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
 
 [lints]
 workspace = true

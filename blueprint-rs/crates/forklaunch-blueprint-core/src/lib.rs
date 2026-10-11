@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "instance-gateway")]
+pub mod instance_gateway;
+
 #[cfg(feature = "provider-http")]
 pub mod provider_http;
 #[cfg(feature = "stripe-webhook")]

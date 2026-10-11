@@ -529,11 +529,10 @@ fn ensure_billing_compose(
             .or_insert_with(|| value.to_owned());
     }
     if kind == BuiltinModule::BillingStripe {
-        for key in [
-            "STRIPE_SECRET_KEY",
-        ] {
+        for key in ["STRIPE_SECRET_KEY", "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET",
+            "PLATFORM_GATEWAY_URL", "INSTANCE_ID", "INSTANCE_HMAC_KEY"] {
             env.entry(key.to_owned())
-                .or_insert_with(|| format!("${{{key}:?Configure Stripe billing}}"));
+                .or_insert_with(|| format!("${{{key}:-}}"));
         }
     }
     write(path, yaml_to_string(&compose)?)?;

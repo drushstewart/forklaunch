@@ -651,6 +651,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "forklaunch-auth",
  "forklaunch-billing-base",
  "forklaunch-billing-interface",
  "forklaunch-blueprint-core",
@@ -681,6 +682,8 @@ dependencies = [
 name = "forklaunch-blueprint-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "forklaunch-auth",
  "forklaunch-contract",
  "forklaunch-http",
  "hmac",
@@ -690,6 +693,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "url",
+ "uuid",
  "zeroize",
 ]
 
