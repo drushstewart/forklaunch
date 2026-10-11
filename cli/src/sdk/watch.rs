@@ -52,8 +52,8 @@ impl CliCommand for WatchCommand {
                 Arg::new("from")
                     .long("from")
                     .default_value("contract")
-                    .value_parser(["openapi", "contract", "socket-contract"])
-                    .help("Artifact source to watch"),
+                    .value_parser(["openapi", "contract", "socket-contract", "asyncapi"])
+                    .help("Artifact source to watch (asyncapi describes a WebSocket server)"),
             )
             .arg(
                 Arg::new("interval_ms")
@@ -161,8 +161,8 @@ fn artifact_fingerprint(
     source: &str,
     selected_service: Option<&str>,
 ) -> Result<BTreeMap<PathBuf, (u64, u128)>> {
-    if source == "socket-contract" {
-        return socket_artifact_fingerprint(app_root, selected_service);
+    if matches!(source, "socket-contract" | "asyncapi") {
+        return socket_artifact_fingerprint(app_root, selected_service, source);
     }
     let root = match source {
         "contract" => app_root.join(".forklaunch").join("contracts"),
@@ -222,6 +222,7 @@ fn collect_artifact_fingerprint(
 fn socket_artifact_fingerprint(
     app_root: &Path,
     selected: Option<&str>,
+    source: &str,
 ) -> Result<BTreeMap<PathBuf, (u64, u128)>> {
     let root = app_root.canonicalize()?;
     let manifest_path = root.join(".forklaunch/manifest.toml");
@@ -247,12 +248,27 @@ fn socket_artifact_fingerprint(
         }
         let configured = project
             .get("metadata")
-            .and_then(|metadata| metadata.get("socketContractArtifactPath"))
+            .and_then(|metadata| {
+                metadata.get(if source == "asyncapi" {
+                    "asyncapiArtifactPath"
+                } else {
+                    "socketContractArtifactPath"
+                })
+            })
             .and_then(toml::Value::as_str);
         paths.push(root.join(configured.map_or_else(
-            || format!(".forklaunch/socket-contracts/{name}/socket-contract.json"),
+            || {
+                if source == "asyncapi" {
+                    format!(".forklaunch/asyncapi/{name}/asyncapi.json")
+                } else {
+                    format!(".forklaunch/socket-contracts/{name}/socket-contract.json")
+                }
+            },
             str::to_owned,
         )));
+        if source == "asyncapi" {
+            continue;
+        }
         let contract = project
             .get("metadata")
             .and_then(|metadata| metadata.get("contractArtifactPath"))
@@ -288,6 +304,41 @@ fn socket_artifact_fingerprint(
 #[cfg(test)]
 mod socket_tests {
     use super::*;
+    #[test]
+    fn tracks_asyncapi_inputs_without_generated_contract_outputs() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::create_dir_all(root.join(".forklaunch/contracts/chat")).unwrap();
+        fs::create_dir_all(root.join("custom")).unwrap();
+        fs::write(
+            root.join(".forklaunch/manifest.toml"),
+            r#"[[projects]]
+name = "chat"
+type = "Service"
+[projects.metadata]
+asyncapiArtifactPath = "custom/server.json"
+"#,
+        )
+        .unwrap();
+        fs::write(root.join("custom/server.json"), "{}").unwrap();
+        let initial = artifact_fingerprint(root, "asyncapi", Some("chat")).unwrap();
+        assert_eq!(initial.len(), 2);
+        fs::write(
+            root.join(".forklaunch/contracts/chat/contract.json"),
+            "changed",
+        )
+        .unwrap();
+        assert_eq!(
+            initial,
+            artifact_fingerprint(root, "asyncapi", Some("chat")).unwrap()
+        );
+        fs::write(root.join("custom/server.json"), "changed input").unwrap();
+        assert_ne!(
+            initial,
+            artifact_fingerprint(root, "asyncapi", Some("chat")).unwrap()
+        );
+    }
+
     #[test]
     fn tracks_configured_socket_artifacts_and_service_selection() {
         let directory = tempfile::tempdir().unwrap();

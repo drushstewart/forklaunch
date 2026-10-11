@@ -830,6 +830,11 @@ pub(crate) fn change_rust_project(
         {
             metadata.insert("socketContractArtifactPath".into(), Value::String(format!(".forklaunch/socket-contracts/{target_name}/socket-contract.json")));
         }
+        if metadata.get("asyncapiArtifactPath").and_then(Value::as_str)
+            == Some(format!(".forklaunch/asyncapi/{current_name}/asyncapi.json").as_str())
+        {
+            metadata.insert("asyncapiArtifactPath".into(), Value::String(format!(".forklaunch/asyncapi/{target_name}/asyncapi.json")));
+        }
         if let Some(worker_type) = worker_type {
             metadata.insert(
                 "workerType".to_string(),
@@ -906,6 +911,7 @@ pub(crate) fn change_rust_project(
 // Generated artifacts retain their schemas while their service metadata and SDK
 // names follow the renamed project. Other services' artifacts are left intact.
 fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> {
+    let imported = crate::sdk::websocket::imported_service(root, old)?;
     crate::infra::capabilities::rename_native_ownership(root, old, new)?;
     crate::infra::native_local::rename_ownership(root, old, new)?;
     for (kind, filename) in [
@@ -920,7 +926,7 @@ fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> 
         }
         rename(&source, &destination)?;
         let path = destination.join(filename);
-        if path.exists() {
+        if path.exists() && !(kind == "asyncapi" && imported) {
             let mut artifact: JsonValue = serde_json::from_str(&read_to_string(&path)?)?;
             if let Some(name) = artifact.pointer_mut("/service/name") {
                 *name = json!(new);

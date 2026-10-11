@@ -10,6 +10,8 @@ struct Ownership {
     format_version: u8,
     #[serde(default)]
     registry_exported: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
     files: BTreeMap<PathBuf, String>,
 }
 
@@ -52,6 +54,7 @@ pub(super) fn stage_package(
     name: &str,
     target: &str,
     registry_exported: bool,
+    source: &str,
 ) -> Result<()> {
     let directory = package(name, target);
     let previous = read_ownership(root, name, target)?
@@ -75,7 +78,15 @@ pub(super) fn stage_package(
             removals.insert(relative, expected);
         }
     }
-    stage_record(root, files, name, target, registry_exported, owned)
+    stage_record(
+        root,
+        files,
+        name,
+        target,
+        registry_exported,
+        (source == "asyncapi").then_some(source),
+        owned,
+    )
 }
 
 fn marker(name: &str, target: &str) -> PathBuf {
@@ -96,7 +107,13 @@ fn read_ownership(root: &Path, name: &str, target: &str) -> Result<Option<Owners
             }
             let previous: Ownership =
                 serde_json::from_slice(&bytes).context("Invalid socket SDK ownership record")?;
-            if previous.format_version != 1 || previous.files.len() > 4096 {
+            if previous.format_version != 1
+                || previous.files.len() > 4096
+                || previous
+                    .source
+                    .as_deref()
+                    .is_some_and(|source| source != "asyncapi")
+            {
                 bail!("Unsupported socket SDK ownership record");
             }
             let directory = (target != "asyncapi").then(|| package(name, target));
@@ -138,6 +155,14 @@ pub(super) fn rename_service(
     stdout: &mut StandardStream,
 ) -> Result<()> {
     let targets = owned_targets(root, old)?;
+    let mut imported_targets = Vec::new();
+    for target in &targets {
+        if read_ownership(root, old, target)?
+            .is_some_and(|record| record.source.as_deref() == Some("asyncapi"))
+        {
+            imported_targets.push(*target);
+        }
+    }
     let manifest: toml::Value =
         toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
     let project = manifest
@@ -188,7 +213,8 @@ pub(super) fn rename_service(
             }
         }
     }
-    let has_artifact = root.join(&new_artifact).is_file();
+    let has_socket_artifact = root.join(&new_artifact).is_file();
+    let has_artifact = has_socket_artifact || !imported_targets.is_empty();
     if has_artifact && targets.contains(&"typescript") {
         let source = package(old, "typescript").join("tsconfig.json");
         let destination = package(new, "typescript").join("tsconfig.json");
@@ -212,15 +238,50 @@ pub(super) fn rename_service(
             &format!("sdks/rust/{old}-websocket-sdk"),
         )?;
     }
-    if has_artifact && !targets.is_empty() {
-        let target = if targets.len() == 2 {
-            "all"
-        } else {
-            targets[0]
-        };
-        generate(root, target, Some(new), false, stdout)?;
+    for source in ["asyncapi", "socket-contract"] {
+        let selected: Vec<_> = targets
+            .iter()
+            .copied()
+            .filter(|target| imported_targets.contains(target) == (source == "asyncapi"))
+            .collect();
+        if !selected.is_empty() && (source == "asyncapi" || has_socket_artifact) {
+            let target = if selected.len() == 2 {
+                "all"
+            } else {
+                selected[0]
+            };
+            generate_from(root, target, source, Some(new), false, stdout)?;
+        }
     }
     Ok(())
+}
+
+pub(super) fn release_asyncapi(
+    root: &Path,
+    removals: &mut BTreeMap<PathBuf, String>,
+    name: &str,
+) -> Result<()> {
+    if read_ownership(root, name, "asyncapi")?.is_some() {
+        let marker = marker(name, "asyncapi");
+        removals.insert(marker.clone(), hash(&fs::read(root.join(marker))?));
+    }
+    Ok(())
+}
+
+pub(super) fn imported_service(root: &Path, name: &str) -> Result<bool> {
+    for target in ["typescript", "rust"] {
+        if read_ownership(root, name, target)?
+            .is_some_and(|record| record.source.as_deref() == Some("asyncapi"))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+pub(super) fn imported_target(root: &Path, name: &str, target: &str) -> Result<bool> {
+    Ok(read_ownership(root, name, target)?
+        .is_some_and(|record| record.source.as_deref() == Some("asyncapi")))
 }
 
 pub(super) fn stage_asyncapi(
@@ -247,7 +308,15 @@ pub(super) fn stage_asyncapi(
             }
         }
     }
-    stage_record(root, files, name, "asyncapi", registry_exported, owned)
+    stage_record(
+        root,
+        files,
+        name,
+        "asyncapi",
+        registry_exported,
+        None,
+        owned,
+    )
 }
 
 pub(super) fn stage_empty_asyncapi(
@@ -263,7 +332,7 @@ pub(super) fn stage_empty_asyncapi(
                     removals.insert(relative, expected);
                 }
             }
-            stage_record(root, files, name, "asyncapi", true, BTreeMap::new())?;
+            stage_record(root, files, name, "asyncapi", true, None, BTreeMap::new())?;
         }
     }
     Ok(())
@@ -305,6 +374,7 @@ fn stage_record(
     name: &str,
     target: &str,
     registry_exported: bool,
+    source: Option<&str>,
     owned: BTreeMap<PathBuf, String>,
 ) -> Result<()> {
     let marker = marker(name, target);
@@ -317,6 +387,7 @@ fn stage_record(
             serde_json::to_string_pretty(&Ownership {
                 format_version: 1,
                 registry_exported,
+                source: source.map(str::to_owned),
                 files: owned,
             })?
         ),
@@ -404,7 +475,7 @@ pub(super) fn stage_empty_registry(
             removals.insert(relative, expected);
         }
     }
-    stage_record(root, files, name, target, true, BTreeMap::new())?;
+    stage_record(root, files, name, target, true, None, BTreeMap::new())?;
     Ok(true)
 }
 
@@ -471,6 +542,7 @@ mod tests {
             "chat",
             "rust",
             false,
+            "socket-contract",
         )
         .unwrap();
         write_staged(&root, &files);
@@ -496,6 +568,7 @@ mod tests {
             "chat",
             "rust",
             true,
+            "socket-contract",
         )
         .unwrap();
         write_staged(&root, &files);
@@ -554,6 +627,7 @@ mod tests {
             "chat",
             "rust",
             false,
+            "socket-contract",
         )
         .unwrap();
         let api = PathBuf::from("custom/asyncapi.json");
@@ -599,13 +673,23 @@ mod tests {
             "chat",
             "typescript",
             false,
+            "socket-contract",
         )
         .unwrap();
         write_staged(&root, &first);
         fs::write(root.join(&edited), "user edits").unwrap();
         let mut next = BTreeMap::from([(base.join("src/socket_new.ts"), "new".into())]);
         let mut removals = BTreeMap::new();
-        stage_package(&root, &mut next, &mut removals, "chat", "typescript", false).unwrap();
+        stage_package(
+            &root,
+            &mut next,
+            &mut removals,
+            "chat",
+            "typescript",
+            false,
+            "socket-contract",
+        )
+        .unwrap();
         assert_eq!(removals.keys().collect::<Vec<_>>(), vec![&obsolete]);
         assert!(root.join(&obsolete).exists(), "staging must be read-only");
         remove_unchanged(&root, &removals).unwrap();
@@ -621,6 +705,7 @@ mod tests {
             "chat",
             "typescript",
             false,
+            "socket-contract",
         )
         .unwrap();
         assert_eq!(next, repeat, "regeneration should be stable");
@@ -639,6 +724,7 @@ mod tests {
             "chat",
             "rust",
             false,
+            "socket-contract",
         )
         .unwrap();
         write_staged(&root, &first);
@@ -650,6 +736,7 @@ mod tests {
             "chat",
             "rust",
             false,
+            "socket-contract",
         )
         .unwrap();
         fs::write(root.join(&relative), "concurrent edits").unwrap();
@@ -667,7 +754,8 @@ mod tests {
                 &mut removals,
                 "chat",
                 "rust",
-                false
+                false,
+                "socket-contract"
             )
             .is_err()
         );
@@ -687,6 +775,7 @@ mod tests {
             "chat",
             "rust",
             false,
+            "socket-contract",
         )
         .unwrap();
         write_staged(&root, &files);
@@ -700,6 +789,7 @@ mod tests {
             "chat",
             "rust",
             false,
+            "socket-contract",
         )
         .unwrap();
         assert!(removals.is_empty());

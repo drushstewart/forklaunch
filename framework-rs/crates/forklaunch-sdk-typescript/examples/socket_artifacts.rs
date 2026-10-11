@@ -17,8 +17,14 @@ fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let input = args.next().context("socket contract artifact path")?;
     let target = args.next().context("target: typescript, rust or all")?;
-    if args.next().is_some() || !matches!(target.as_str(), "typescript" | "rust" | "all") {
-        bail!("Expected socket artifact path and target: typescript, rust or all");
+    let source = args.next().unwrap_or_else(|| "socket-contract".into());
+    if args.next().is_some()
+        || !matches!(source.as_str(), "socket-contract" | "asyncapi")
+        || !matches!(target.as_str(), "typescript" | "rust" | "all")
+    {
+        bail!(
+            "Expected artifact path, target (typescript/rust/all), and optional source (socket-contract/asyncapi)"
+        );
     }
     let mut bytes = Vec::new();
     std::fs::File::open(input)?
@@ -27,8 +33,18 @@ fn main() -> Result<()> {
     if bytes.len() > 16 * 1024 * 1024 {
         bail!("Socket artifact exceeds 16 MiB");
     }
-    let artifact: SocketContractArtifact = serde_json::from_slice(&bytes)?;
-    let output = compile(&artifact, &target)?;
+    let document = (source == "asyncapi")
+        .then(|| serde_json::from_slice::<Value>(&bytes))
+        .transpose()?;
+    let artifact: SocketContractArtifact = if let Some(document) = &document {
+        forklaunch_asyncapi::import_server_websocket_asyncapi(document)?
+    } else {
+        serde_json::from_slice(&bytes)?
+    };
+    let mut output = compile(&artifact, &target)?;
+    if let Some(document) = document {
+        output["asyncapi"] = document;
+    }
     let mut bytes = LimitedOutput(Vec::new());
     serde_json::to_writer(&mut bytes, &output)?;
     std::io::stdout().write_all(&bytes.0)?;

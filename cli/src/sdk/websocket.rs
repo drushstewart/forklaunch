@@ -15,13 +15,19 @@ use termcolor::{StandardStream, WriteColor};
 
 mod ownership;
 
-pub(crate) fn generate(
+pub(crate) fn generate_from(
     root: &Path,
     target: &str,
+    source: &str,
     selected: Option<&str>,
     check: bool,
     stdout: &mut StandardStream,
 ) -> Result<()> {
+    anyhow::ensure!(
+        matches!(source, "socket-contract" | "asyncapi"),
+        "Invalid socket SDK source"
+    );
+    let imported = source == "asyncapi";
     let root = root.canonicalize()?;
     let manifest: toml::Value =
         toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
@@ -30,6 +36,7 @@ pub(crate) fn generate(
     let mut retired_members = Vec::new();
     let mut removals = BTreeMap::new();
     let mut count = 0;
+    let mut inputs = Vec::new();
     for project in manifest
         .get("projects")
         .and_then(toml::Value::as_array)
@@ -49,12 +56,49 @@ pub(crate) fn generate(
         if selected.is_some_and(|selected| selected != name) {
             continue;
         }
+        // A separately imported language still depends on its document when
+        // another target is regenerated from native socket contracts.
+        if !imported && target != "all" {
+            let other = if target == "rust" {
+                "typescript"
+            } else {
+                "rust"
+            };
+            if ownership::imported_target(&root, name, other)? {
+                let input = project
+                    .get("metadata")
+                    .and_then(|metadata| metadata.get("asyncapiArtifactPath"))
+                    .and_then(toml::Value::as_str)
+                    .map_or_else(
+                        || format!(".forklaunch/asyncapi/{name}/asyncapi.json"),
+                        str::to_owned,
+                    );
+                let path = root.join(input).canonicalize()?;
+                anyhow::ensure!(
+                    path.starts_with(&root),
+                    "Socket artifact path must stay inside the application"
+                );
+                inputs.push(path);
+            }
+        }
         let configured = project
             .get("metadata")
-            .and_then(|metadata| metadata.get("socketContractArtifactPath"))
+            .and_then(|metadata| {
+                metadata.get(if imported {
+                    "asyncapiArtifactPath"
+                } else {
+                    "socketContractArtifactPath"
+                })
+            })
             .and_then(toml::Value::as_str);
         let artifact = root.join(configured.map_or_else(
-            || format!(".forklaunch/socket-contracts/{name}/socket-contract.json"),
+            || {
+                if imported {
+                    format!(".forklaunch/asyncapi/{name}/asyncapi.json")
+                } else {
+                    format!(".forklaunch/socket-contracts/{name}/socket-contract.json")
+                }
+            },
             str::to_owned,
         ));
         if name.is_empty()
@@ -67,7 +111,8 @@ pub(crate) fn generate(
         if !artifact.exists() {
             let mut retired = false;
             for language in ["typescript", "rust"] {
-                if (target == "all" || target == language)
+                if !imported
+                    && (target == "all" || target == language)
                     && ownership::stage_empty_registry(
                         &root,
                         &mut files,
@@ -98,30 +143,35 @@ pub(crate) fn generate(
         if !artifact.starts_with(&root) {
             bail!("Socket artifact path must stay inside the application");
         }
-        let compiled = compile(&root, &artifact, target)
+        inputs.push(artifact.clone());
+        let compiled = compile(&root, &artifact, target, source)
             .with_context(|| format!("Socket artifact compilation failed for {name}"))?;
         if compiled["asyncapi"]["asyncapi"] != "3.0.0" || !compiled["asyncapi"]["info"].is_object()
         {
             bail!("Invalid compiled AsyncAPI document");
         }
-        let registry_exported = ownership::registry_exported(&root, name, &artifact)?;
-        let asyncapi_output = project
-            .get("metadata")
-            .and_then(|metadata| metadata.get("asyncapiPath"))
-            .and_then(toml::Value::as_str)
-            .map_or_else(
-                || format!(".forklaunch/asyncapi/{name}/asyncapi.json"),
-                str::to_owned,
-            );
-        stage(&mut files, &asyncapi_output, pretty(&compiled["asyncapi"])?)?;
-        ownership::stage_asyncapi(
-            &root,
-            &mut files,
-            &mut removals,
-            name,
-            Path::new(&asyncapi_output),
-            registry_exported,
-        )?;
+        let registry_exported = !imported && ownership::registry_exported(&root, name, &artifact)?;
+        if !imported {
+            let asyncapi_output = project
+                .get("metadata")
+                .and_then(|metadata| metadata.get("asyncapiPath"))
+                .and_then(toml::Value::as_str)
+                .map_or_else(
+                    || format!(".forklaunch/asyncapi/{name}/asyncapi.json"),
+                    str::to_owned,
+                );
+            stage(&mut files, &asyncapi_output, pretty(&compiled["asyncapi"])?)?;
+            ownership::stage_asyncapi(
+                &root,
+                &mut files,
+                &mut removals,
+                name,
+                Path::new(&asyncapi_output),
+                registry_exported,
+            )?;
+        } else {
+            ownership::release_asyncapi(&root, &mut removals, name)?;
+        }
         if matches!(target, "typescript" | "all") {
             stage_typescript(&root, &mut files, name, &compiled)?;
             ownership::stage_package(
@@ -131,6 +181,7 @@ pub(crate) fn generate(
                 name,
                 "typescript",
                 registry_exported,
+                source,
             )?;
         }
         if matches!(target, "rust" | "all") {
@@ -143,6 +194,7 @@ pub(crate) fn generate(
                 name,
                 "rust",
                 registry_exported,
+                source,
             )?;
             members.push(member);
         }
@@ -171,6 +223,17 @@ pub(crate) fn generate(
     }
     for relative in files.keys() {
         validate_destination(&root, relative)?;
+        if root
+            .join(relative)
+            .canonicalize()
+            .ok()
+            .is_some_and(|path| inputs.contains(&path))
+        {
+            bail!(
+                "Socket SDK output would overwrite an input artifact: {}",
+                relative.display()
+            );
+        }
     }
     for relative in removals.keys() {
         validate_destination(&root, relative)?;
@@ -187,7 +250,15 @@ pub(crate) fn generate(
                 bail!("Socket SDK output is out of date: {}", relative.display());
             }
         }
-        log_ok!(stdout, "Socket SDK and AsyncAPI outputs are up to date");
+        log_ok!(
+            stdout,
+            "{}",
+            if imported {
+                "Imported socket SDK outputs are up to date"
+            } else {
+                "Socket SDK and AsyncAPI outputs are up to date"
+            }
+        );
     } else {
         ownership::remove_unchanged(&root, &removals)?;
         for (relative, content) in files {
@@ -197,12 +268,17 @@ pub(crate) fn generate(
         }
         log_ok!(
             stdout,
-            "Generated socket SDKs and AsyncAPI for {count} service(s)"
+            "Generated socket SDKs{} for {count} service(s)",
+            if imported {
+                " from AsyncAPI"
+            } else {
+                " and AsyncAPI"
+            }
         );
     }
     Ok(())
 }
-fn compile(root: &Path, artifact: &Path, target: &str) -> Result<Value> {
+fn compile(root: &Path, artifact: &Path, target: &str, source: &str) -> Result<Value> {
     let manifest = root.join(".forklaunch/framework-rs/Cargo.toml").canonicalize().context("Bundled Rust framework missing; generate or upgrade the application's bundled framework first")?;
     if !manifest.starts_with(root) {
         bail!("Bundled socket compiler must stay inside the application");
@@ -220,6 +296,7 @@ fn compile(root: &Path, artifact: &Path, target: &str) -> Result<Value> {
         ])
         .arg(artifact)
         .arg(target)
+        .arg(source)
         .current_dir(root)
         .env("CARGO_INCREMENTAL", "0")
         .stdin(Stdio::null())
@@ -527,4 +604,8 @@ mod tests {
             assert!(validate_destination(&root, Path::new("sdks/chat/src/lib.rs")).is_err());
         }
     }
+}
+
+pub(crate) fn imported_service(root: &Path, name: &str) -> Result<bool> {
+    ownership::imported_service(root, name)
 }

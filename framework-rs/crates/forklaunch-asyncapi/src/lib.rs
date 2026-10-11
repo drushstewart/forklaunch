@@ -1,5 +1,10 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "import")]
+mod import;
+#[cfg(feature = "import")]
+pub use import::import_server_websocket_asyncapi;
+
 mod raw;
 pub use raw::{
     SocketAsyncApiOptions, generate_raw_socket_asyncapi_json,

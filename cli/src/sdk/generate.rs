@@ -66,8 +66,8 @@ impl CliCommand for GenerateCommand {
                 Arg::new("from")
                     .long("from")
                     .default_value("openapi")
-                    .value_parser(["openapi", "contract", "socket-contract"])
-                    .help("Artifact source for SDK generation"),
+                    .value_parser(["openapi", "contract", "socket-contract", "asyncapi"])
+                    .help("Artifact source for SDK generation (asyncapi describes a WebSocket server)"),
             )
             .arg(
                 Arg::new("check")
@@ -147,8 +147,10 @@ pub(crate) fn generate_or_check_sdk_outputs(
     check: bool,
     stdout: &mut StandardStream,
 ) -> Result<()> {
-    if source == "socket-contract" {
-        return super::websocket::generate(app_root, target, selected_service, check, stdout);
+    if matches!(source, "socket-contract" | "asyncapi") {
+        return super::websocket::generate_from(
+            app_root, target, source, selected_service, check, stdout,
+        );
     }
     let manifest = read_manifest(app_root)?;
     let services = match source {

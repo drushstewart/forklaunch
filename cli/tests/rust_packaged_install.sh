@@ -81,6 +81,10 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-ws/src/transport.rs').is_file(), 'Packaged typed WebSocket runtime missing'
         assert root.joinpath('crates/forklaunch-ws/src/contract.rs').is_file(), 'Packaged raw socket schema metadata missing'
         assert root.joinpath('crates/forklaunch-asyncapi/src/raw.rs').is_file(), 'Packaged raw socket AsyncAPI exporter missing'
+        assert root.joinpath('crates/forklaunch-asyncapi/src/import.rs').is_file(), 'Packaged AsyncAPI importer missing'
+        assert root.joinpath('crates/forklaunch-asyncapi/src/asyncapi-3.0.0.json').is_file(), 'Packaged offline AsyncAPI schema missing'
+        assert root.joinpath('crates/forklaunch-asyncapi/src/ASYNCAPI_SPEC_LICENSE').is_file(), 'Packaged AsyncAPI schema license missing'
+        assert root.joinpath('crates/forklaunch-asyncapi/src/ASYNCAPI_SPEC_NOTICE').is_file(), 'Packaged AsyncAPI schema attribution missing'
         assert root.joinpath('crates/forklaunch-ws/tests/transport.rs').is_file(), 'Packaged WebSocket transport tests missing'
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
     else:
@@ -110,6 +114,14 @@ PYTHON
 cargo rustc -p accounts-websocket-sdk --lib -- -D warnings
 ln -s "$RUN_ROOT/websocket-consumer/node_modules" sdks/typescript-websocket/accounts/node_modules
 "${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript-websocket/accounts/tsconfig.json
+cp "$REPO_ROOT/cli/tests/fixtures/rust_asyncapi_socket.json" .forklaunch/asyncapi/accounts/asyncapi.json
+"$CLI" sdk generate --path . --service accounts --target all --from asyncapi
+"$CLI" sdk generate --path . --service accounts --target all --from asyncapi --check
+cmp "$REPO_ROOT/cli/tests/fixtures/rust_asyncapi_socket.json" .forklaunch/asyncapi/accounts/asyncapi.json
+test ! -f .forklaunch/socket-sdk-outputs/accounts/asyncapi.json
+cargo rustc -p accounts-websocket-sdk --lib -- -D warnings
+"${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript-websocket/accounts/tsconfig.json
+"$CLI" sdk generate --path . --service accounts --target all --from socket-contract
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-asyncapi
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-axum --all-features --test websocket
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
