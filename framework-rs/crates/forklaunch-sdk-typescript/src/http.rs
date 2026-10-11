@@ -331,6 +331,7 @@ fn render_client(
             .map(|(name, target_type)| RustTypeAliasTemplate { name, target_type })
             .collect(),
         form_stringify_source: include_str!("safeStringify.ts").into(),
+        transport_source: include_str!("transport.ts").into(),
         sse_source: include_str!("sse.ts").into(),
         operation_types,
         services: vec![TypeScriptServiceTemplate {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, symlinkSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -47,6 +47,11 @@ export async function verifyTypes(sdk = createForkLaunchSdk()) {
   if (error.code === 200) throw Error('invented success');
 }
 `);
+  const tsc = process.env.TSC_BIN || join(root, 'framework/node_modules/.bin/tsc');
+  const crossFetchPath = process.env.CROSS_FETCH_PATH || join(dirname(tsc), '../cross-fetch');
+  const crossFetch = require(crossFetchPath);
+  mkdirSync(join(temporary, 'node_modules'));
+  symlinkSync(crossFetchPath, join(temporary, 'node_modules/cross-fetch'));
   writeFileSync(join(temporary, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
     strict: true, target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext',
     lib: ['ES2022', 'DOM'], types: [], outDir: 'compiled'
@@ -109,17 +114,18 @@ fn main() {
       if (mode === 'several/empty') return send(204, 'application/json');
       return send(404, 'text/plain', 'Unknown fixture');
     }
-    if (request.url.startsWith('/json')) assert.equal(request.url, "/json/a'b&c");
+    if (request.url.startsWith('/json')) assert.equal(decodeURIComponent(request.url), "/json/a'b&c");
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ method: request.method, body: Buffer.concat(chunks).toString('hex'), contentType: request.headers['content-type'] }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const { MediaClient } = require(join(temporary, 'compiled/native-sdk.js'));
-  const client = new MediaClient(`http://127.0.0.1:${server.address().port}`);
-  const { createForkLaunchSdk } = require(join(temporary, 'compiled/typed-native-sdk.js'));
-  const typed = createForkLaunchSdk({ baseUrl: `http://127.0.0.1:${server.address().port}` }).media;
+  for (const [suffix, fetcher] of [['', undefined], ['', crossFetch], ['-import', undefined]]) {
+  const { MediaClient } = require(join(temporary, `compiled/native-sdk${suffix}.js`));
+  const client = new MediaClient(`http://127.0.0.1:${server.address().port}`, fetcher);
+  const { createForkLaunchSdk } = require(join(temporary, `compiled/typed-native-sdk${suffix}.js`));
+  const typed = createForkLaunchSdk({ baseUrl: `http://127.0.0.1:${server.address().port}`, fetch: fetcher }).media;
   for (const [method, body, expected, contentType] of [
     ['postJson', { user: '水', active: true }, Buffer.from(JSON.stringify({ user: '水', active: true })), 'application/vnd.forklaunch+json; profile="https://example.test/v1"'],
     ['postText', 'hello 水', Buffer.from('hello 水'), 'text/plain; charset=utf-8'],
@@ -141,19 +147,23 @@ fn main() {
   }
   const form = new FormData();
   form.append('label', 'hello 水');
+  form.append('label', 'repeat');
   form.append('file', new Blob([new Uint8Array([0, 255, 1])]), 'data.bin');
+  form.append('file', new Blob([]), 'empty.bin');
   const echoed = await (await client.postForm({ body: form, headers: { 'Content-Type': 'multipart/form-data; boundary=incorrect' } })).json();
   assert.match(echoed.contentType, /^multipart\/form-data; boundary=.+/);
   const bytes = Buffer.from(echoed.body, 'hex');
   assert.ok(bytes.includes(Buffer.from('hello 水')));
   assert.ok(bytes.includes(Buffer.from([0, 255, 1])));
   assert.ok(bytes.includes(Buffer.from('filename="data.bin"')));
-  for (const body of [form, { label: 'hello 水', file: new Blob([new Uint8Array([0, 255, 1])]) }, {}]) {
+  for (const body of [form, { label: ['hello 水', 'repeat'], file: [new Blob([new Uint8Array([0, 255, 1])]), new Blob([])] }, {}]) {
     const reply = await typed.form.postForm({ body, headers: { 'Content-Type': 'multipart/form-data; boundary=incorrect' } });
     assert.equal(reply.code, 200);
     const parsed = await new Response(Buffer.from(reply.response.body, 'hex'), { headers: { 'content-type': reply.response.contentType } }).formData();
     if (Object.keys(body).length || body instanceof FormData) {
-      assert.equal(parsed.get('label'), 'hello 水');
+      assert.deepEqual(parsed.getAll('label'), ['hello 水', 'repeat']);
+      assert.equal(parsed.getAll('file').length, 2);
+      assert.equal((await parsed.getAll('file')[1].arrayBuffer()).byteLength, 0);
       assert.deepEqual([...new Uint8Array(await parsed.get('file').arrayBuffer())], [0, 255, 1]);
     } else assert.equal([...parsed].length, 0);
   }
@@ -177,6 +187,8 @@ fn main() {
     assert.deepEqual(reply.response, value);
   }
   await assert.rejects(typed.responses.readInvalidJson(), SyntaxError);
+  console.log(`PASS native SDK transport: ${suffix ? 'imported cross-fetch' : fetcher ? 'injected cross-fetch' : 'native fetch'}`);
+  }
   console.log('PASS framework SDKs: strict TypeScript and Rust compilation, raw text/binary/file bytes, vendor JSON media, real multipart boundaries and URL-encoded uploads');
 } finally {
   if (server) {

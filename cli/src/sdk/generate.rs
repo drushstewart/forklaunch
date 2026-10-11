@@ -1279,6 +1279,12 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
                 .contents_utf8()
                 .context("Invalid SSE SDK helper")?
                 .to_owned(),
+            transport_source: TEMPLATES_DIR
+                .get_file("sdk/typescript/transport.ts")
+                .context("Missing SDK transport helper")?
+                .contents_utf8()
+                .context("Invalid SDK transport helper")?
+                .to_owned(),
             form_stringify_source: TEMPLATES_DIR
                 .get_file("sdk/typescript/safeStringify.ts")
                 .context("Missing SDK form stringifier")?

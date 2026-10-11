@@ -49,6 +49,8 @@ export type ForkLaunchErrorResponses = { 400: string; 401: string; 403: string; 
 
 {{{form_stringify_source}}}
 
+{{{transport_source}}}
+
 {{{sse_source}}}
 
 {{#operation_types}}
@@ -138,7 +140,7 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
       signal: controller?.signal ?? fetchInit.signal,
       method: resolved.method,
       headers: requestHeaders,
-      body: body === undefined ? undefined : resolved.requestKind === 'multipart' ? encodeMultipart(body) : resolved.requestKind === 'binary' ? encodeBinary(body) : resolved.requestKind === 'text' ? String(body) : resolved.requestKind === 'urlEncoded' ? encodeForm(body) : JSON.stringify(body)
+      body: await compatibleFetchBody(body === undefined ? undefined : resolved.requestKind === 'multipart' ? encodeMultipart(body) : resolved.requestKind === 'binary' ? encodeBinary(body) : resolved.requestKind === 'text' ? String(body) : resolved.requestKind === 'urlEncoded' ? encodeForm(body) : JSON.stringify(body), requestHeaders, fetcher)
     });
     const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? (response.ok ? 'application/json' : 'text/plain');
     const kind = resolved.responseKinds?.[response.status];

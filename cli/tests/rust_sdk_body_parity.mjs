@@ -32,7 +32,7 @@ async function describe(request) {
 }
 try {
   const stringifier = await readFile(path.join(root, 'framework/common/src/safeStringify.ts'), 'utf8');
-  const template = (await readFile(path.join(root, 'cli/src/templates/sdk/typescript/index.ts'), 'utf8')).replace('{{{form_stringify_source}}}', stringifier);
+  const template = (await readFile(path.join(root, 'cli/src/templates/sdk/typescript/index.ts'), 'utf8')).replace('{{{transport_source}}}', await readFile(path.join(root, 'cli/src/templates/sdk/typescript/transport.ts'), 'utf8')).replace('{{{form_stringify_source}}}', stringifier);
   const sseSource = await readFile(path.join(root, 'cli/src/templates/sdk/typescript/sse.ts'), 'utf8');
   const runtime = template.slice(0, template.indexOf('{{#operation_types}}')).replace('{{{sse_source}}}', sseSource) + template.slice(template.indexOf('function pathWithParams'), template.indexOf('export function createForkLaunchSdk')) + '\nexport { request };\n';
   await writeFile(path.join(temporary, 'runtime.ts'), runtime);

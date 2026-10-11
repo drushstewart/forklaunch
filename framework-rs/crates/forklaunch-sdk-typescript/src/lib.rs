@@ -78,6 +78,7 @@ pub fn generate_typescript_sdk_source(
     );
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
+    source.push_str(include_str!("transport.ts"));
     let _ = writeln!(source, "export class {} {{", options.client_name);
     let _ = writeln!(
         source,
@@ -100,25 +101,25 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
     } else {
         ""
     };
-    let (body_line, body_type, default_content_type) = match operation.request_body_kind {
+    let (body_expression, body_type, default_content_type) = match operation.request_body_kind {
         Some(BodyKind::Json | BodyKind::Unknown) => (
-            "      body: options.body === undefined ? undefined : JSON.stringify(options.body),",
+            "options.body === undefined ? undefined : JSON.stringify(options.body)",
             "unknown",
             "application/json",
         ),
-        Some(BodyKind::Text) => ("      body: options.body,", "string", "text/plain"),
+        Some(BodyKind::Text) => ("options.body", "string", "text/plain"),
         Some(BodyKind::Binary | BodyKind::File) => (
-            "      body: options.body instanceof Uint8Array ? Uint8Array.from(options.body).buffer : options.body,",
+            "options.body instanceof Uint8Array ? Uint8Array.from(options.body).buffer : options.body",
             "Uint8Array | ArrayBuffer | Blob",
             "application/octet-stream",
         ),
-        Some(BodyKind::Multipart) => ("      body: options.body,", "FormData", ""),
+        Some(BodyKind::Multipart) => ("options.body", "FormData", ""),
         Some(BodyKind::UrlEncoded) => (
-            "      body: options.body,",
+            "options.body",
             "URLSearchParams",
             "application/x-www-form-urlencoded",
         ),
-        Some(BodyKind::ServerSentEvent) | None => ("      body: undefined,", "never", ""),
+        Some(BodyKind::ServerSentEvent) | None => ("undefined", "never", ""),
     };
     let content_type = operation
         .request_body_content_type
@@ -135,7 +136,7 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
     let _ = writeln!(source);
     let _ = writeln!(
         source,
-        "  {}(options: {}{}): Promise<Response> {{",
+        "  async {}(options: {}{}): Promise<Response> {{",
         typescript_identifier(&operation.name),
         request_options,
         options_default
@@ -155,29 +156,26 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
         source,
         "    const query = options.query ? `?${{new URLSearchParams(Object.entries(options.query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]))}}` : '';"
     );
+    source.push_str("    const headers = new Headers(options.headers);\n");
     if matches!(operation.request_body_kind, Some(BodyKind::Multipart)) {
-        source.push_str("    const headers = new Headers(options.headers);\n    headers.delete('content-type');\n");
+        source.push_str("    headers.delete('content-type');\n");
+    } else if !content_type.is_empty() {
+        let _ = writeln!(
+            source,
+            "    if (options.body !== undefined && !headers.has('content-type')) headers.set('content-type', {});",
+            js_string(content_type)
+        );
     }
+    let _ = writeln!(
+        source,
+        "    const body = await compatibleFetchBody({body_expression}, headers, this.fetcher);"
+    );
     let _ = writeln!(
         source,
         "    return this.fetcher(`${{this.baseUrl}}${{path}}${{query}}`, {{"
     );
     let _ = writeln!(source, "      method: '{}',", operation.method.as_str());
-    if matches!(operation.request_body_kind, Some(BodyKind::Multipart)) {
-        source.push_str("      headers,\n");
-    } else {
-        let _ = writeln!(source, "      headers: {{");
-        if !content_type.is_empty() {
-            let _ = writeln!(
-                source,
-                "        ...(options.body === undefined ? {{}} : {{ 'content-type': {} }}),",
-                js_string(content_type)
-            );
-        }
-        let _ = writeln!(source, "        ...options.headers,");
-        let _ = writeln!(source, "      }},");
-    }
-    let _ = writeln!(source, "{body_line}");
+    source.push_str("      headers,\n      body,\n");
     let _ = writeln!(source, "    }});");
     let _ = writeln!(source, "  }}");
 }
@@ -352,6 +350,23 @@ mod tests {
             std::fs::write(
                 std::path::Path::new(&directory).join("typed-native-sdk.ts"),
                 typed,
+            )
+            .unwrap();
+            std::fs::write(
+                std::path::Path::new(&directory).join("native-sdk-import.ts"),
+                generate_typescript_sdk_source(
+                    &plan,
+                    &TypeScriptSdkOptions::new("MediaClient").with_fetch_import(true),
+                ),
+            )
+            .unwrap();
+            std::fs::write(
+                std::path::Path::new(&directory).join("typed-native-sdk-import.ts"),
+                generate_typescript_http_sdk_source(
+                    &SdkGenerationPlan::from_registry(SdkTarget::TypeScript, &registry),
+                    &TypeScriptHttpSdkOptions::new("media").with_fetch_import(true),
+                )
+                .unwrap(),
             )
             .unwrap();
         }

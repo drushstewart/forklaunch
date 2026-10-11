@@ -51,6 +51,7 @@ pub struct RustOperationTemplate {
 pub struct TypeScriptSdkTemplate {
     pub schema_models: Vec<RustTypeAliasTemplate>,
     pub form_stringify_source: String,
+    pub transport_source: String,
     pub sse_source: String,
     pub operation_types: Vec<TypeScriptOperationTypeTemplate>,
     pub services: Vec<TypeScriptServiceTemplate>,
