@@ -29,6 +29,10 @@ impl<S: BillingStore> StripeBillingService<S> {
     pub const fn base(&self) -> &BaseBillingService<S> {
         &self.base
     }
+    #[must_use]
+    pub const fn client(&self) -> &StripeBillingClient {
+        &self.client
+    }
     async fn expanded_plan(&self, id: &str) -> BlueprintResult<Value> {
         self.client
             .retrieve(

@@ -12,6 +12,8 @@ pub const STRIPE_API_VERSION: &str = "2026-08-26.dahlia";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StripeResource {
     Plan,
+    Product,
+    Price,
     Subscription,
     CheckoutSession,
     PaymentLink,
@@ -21,6 +23,8 @@ impl StripeResource {
     const fn path(self) -> &'static [&'static str] {
         match self {
             Self::Plan => &["v1", "plans"],
+            Self::Product => &["v1", "products"],
+            Self::Price => &["v1", "prices"],
             Self::Subscription => &["v1", "subscriptions"],
             Self::CheckoutSession => &["v1", "checkout", "sessions"],
             Self::PaymentLink => &["v1", "payment_links"],
@@ -151,6 +155,43 @@ impl StripeBillingClient {
             return Err(invalid_response());
         }
         Ok(response)
+    }
+    /// Visits all Stripe pages with bounded work and cursor-cycle rejection.
+    /// At most 100,000 objects are collected for bounded memory use.
+    /// # Errors
+    /// Rejects malformed pages, cursor cycles and more than 1,000 pages.
+    pub async fn list_pages(
+        &self,
+        resource: StripeResource,
+        fields: &Value,
+    ) -> BlueprintResult<Vec<Value>> {
+        let mut query = fields.as_object().ok_or_else(invalid_request)?.clone();
+        let mut result = Vec::new();
+        let mut cursors = std::collections::HashSet::new();
+        for _ in 0..1000 {
+            let page = self.list(resource, &Value::Object(query.clone())).await?;
+            let items = page["data"].as_array().ok_or_else(invalid_response)?;
+            if items.len() > 100 || result.len() + items.len() > 100_000 {
+                return Err(invalid_response());
+            }
+            result.extend(items.iter().cloned());
+            match page["has_more"].as_bool() {
+                Some(false) => return Ok(result),
+                Some(true) => {
+                    let cursor = items
+                        .last()
+                        .and_then(|item| item["id"].as_str())
+                        .ok_or_else(invalid_response)?;
+                    validate_id(cursor).map_err(|_| invalid_response())?;
+                    if !cursors.insert(cursor.to_owned()) {
+                        return Err(invalid_response());
+                    }
+                    query.insert("starting_after".into(), Value::String(cursor.to_owned()));
+                }
+                None => return Err(invalid_response()),
+            }
+        }
+        Err(invalid_response())
     }
     async fn request(
         &self,

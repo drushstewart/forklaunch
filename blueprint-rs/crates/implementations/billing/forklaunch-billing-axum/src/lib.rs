@@ -1,5 +1,6 @@
 //! Persistent billing HTTP handlers shared with authenticated MCP dispatch.
 #![forbid(unsafe_code)]
+mod webhook;
 use axum::{
     Extension, Json,
     extract::{Path, RawQuery},
@@ -29,6 +30,8 @@ pub struct BillingBackend {
     store: PostgresBillingStore,
     client: Option<StripeBillingClient>,
     backup: bool,
+    webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
+    platform_key: Option<zeroize::Zeroizing<String>>,
 }
 impl BillingBackend {
     #[must_use]
@@ -37,6 +40,8 @@ impl BillingBackend {
             store,
             client: None,
             backup: false,
+            webhook: None,
+            platform_key: None,
         }
     }
     #[must_use]
@@ -45,12 +50,33 @@ impl BillingBackend {
             store,
             client: Some(client),
             backup: false,
+            webhook: None,
+            platform_key: None,
         }
     }
     #[must_use]
     pub const fn with_database_backup(mut self, enabled: bool) -> Self {
         self.backup = enabled;
         self
+    }
+    /// # Errors
+    /// Rejects invalid server-owned webhook secrets.
+    pub fn with_webhook_secret(mut self, secret: String) -> BlueprintResult<Self> {
+        self.webhook =
+            Some(forklaunch_billing_stripe::webhook::StripeWebhookVerifier::new(secret)?);
+        Ok(self)
+    }
+    /// # Errors
+    /// Rejects empty or control-containing instance credentials.
+    pub fn with_platform_event_key(mut self, secret: String) -> BlueprintResult<Self> {
+        if secret.is_empty() || secret.len() > 4096 || secret.chars().any(char::is_control) {
+            return Err(BlueprintError::new(
+                "billing_configuration",
+                "Invalid platform event key",
+            ));
+        }
+        self.platform_key = Some(zeroize::Zeroizing::new(secret));
+        Ok(self)
     }
     async fn call(
         &self,
@@ -166,8 +192,16 @@ fn invalid() -> BlueprintError {
 fn failure(error: &BlueprintError) -> Response {
     let (status, message) = match error.code.as_str() {
         "billing_not_found" => (StatusCode::NOT_FOUND, "Billing record not found"),
-        "billing_validation" => (StatusCode::BAD_REQUEST, "Invalid billing request"),
-        "billing_conflict" => (StatusCode::CONFLICT, "Billing record conflict"),
+        "billing_validation" | "billing_invalid_webhook" => {
+            (StatusCode::BAD_REQUEST, "Invalid billing request")
+        }
+        "billing_conflict" | "billing_event_conflict" => {
+            (StatusCode::CONFLICT, "Billing record conflict")
+        }
+        "billing_webhook_busy" => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Billing event is being processed",
+        ),
         "provider_request_failed" | "provider_transport_error" | "stripe_invalid_response" => {
             (StatusCode::BAD_GATEWAY, "Billing provider operation failed")
         }
@@ -214,6 +248,28 @@ pub fn billing_router(
         .filter(|route| route.operation_name != "getHealth")
     {
         let contract = contract.clone();
+        if contract.operation_name == "handlewebhookevent" {
+            let backend = Arc::clone(&backend);
+            router = router.post(
+                contract,
+                move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                    webhook::stripe(Arc::clone(&backend), headers, body)
+                },
+            );
+            continue;
+        }
+        if contract.operation_name == "receiveplatformevent" {
+            let backend = Arc::clone(&backend);
+            router = router.post(
+                contract,
+                move |Path(feature): Path<String>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    webhook::platform(Arc::clone(&backend), feature, headers, body)
+                },
+            );
+            continue;
+        }
         if contract.operation_name == "exportuserdata" {
             router = router.get(contract, || async {
                 (

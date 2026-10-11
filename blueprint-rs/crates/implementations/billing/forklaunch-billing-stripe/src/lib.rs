@@ -2,6 +2,7 @@
 
 pub mod client;
 pub mod services;
+pub mod synchronization;
 
 use forklaunch_billing_interface::{BillingService, CheckoutSession, Customer, Subscription};
 use forklaunch_blueprint_core::{AuditContext, BlueprintError, BlueprintResult, Page, PageRequest};

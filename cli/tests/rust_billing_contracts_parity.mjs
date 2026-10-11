@@ -27,6 +27,9 @@ function load(file) {
   if(spec.startsWith('../controllers/'))return load(path.resolve(path.dirname(file),spec+'.ts'));
   if(spec.endsWith('/domain/schemas'))return new Proxy({}, {get:()=>new Proxy({}, {get:()=>()=>({})})});
   if(spec==='@forklaunch/validator/zod')return validator;
+  if(spec==='stripe')return {};
+  if(spec==='@forklaunch/core/http')return {};
+  if(spec==='../platformEvents')return {platformEventHandlers:{}};
   throw Error('unexpected runtime import '+spec);
  }});return exports;
 }
@@ -40,10 +43,10 @@ let count=0,schemaCount=0;
 for(const stripe of [false,true]){
  captured.length=0;
  const variant=stripe?'stripe':'base';
- for(const family of [...families,'compliance'])load(path.join(root,`blueprint/billing-${variant}/api/routes/${family}.routes.ts`));
+ for(const family of [...families,'compliance',...(stripe?['webhook','platformEvents']:[])])load(path.join(root,`blueprint/billing-${variant}/api/routes/${family}.routes.ts`));
  const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-billing-interface','--example','module_contract',...(stripe?['--','--stripe']:[])],{cwd:root,encoding:'utf8',timeout:120000}));
  assert.equal(native.routes.length,captured.length);
- for(const route of captured){const expected=simpleTs(route),actual=native.routes.find(candidate=>candidate.operationName===expected.operation);assert.ok(actual,expected.operation);assert.deepEqual(simpleNative(actual),expected);assert.equal(actual.name,route.options.name);assert.equal(actual.auth.method,route.options.auth?.hmac?'hmac':'jwt');if(route.options.auth?.allowedRoles)assert.deepEqual(actual.rbac.allowedRoles,[...route.options.auth.allowedRoles]);count++;}
+ for(const route of captured){const expected=simpleTs(route),actual=native.routes.find(candidate=>candidate.operationName===expected.operation);assert.ok(actual,expected.operation);assert.deepEqual(simpleNative(actual),expected);assert.equal(actual.name,route.options.name);if(route.options.access!=='public')assert.equal(actual.auth.method,route.options.auth?.hmac?'hmac':'jwt');if(route.options.auth?.allowedRoles)assert.deepEqual(actual.rbac.allowedRoles,[...route.options.auth.allowedRoles]);count++;}
  const enums={};
  for(const name of ['planCadence','currency','billingProvider','paymentMethod','party','status']){
   const directory=stripe&&!['party','status'].includes(name)?'blueprint/implementations/billing/stripe':'blueprint/billing-'+variant;

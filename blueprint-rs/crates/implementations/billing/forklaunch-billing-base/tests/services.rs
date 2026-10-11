@@ -212,6 +212,7 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     use forklaunch_blueprint_core::AuditContext;
     use forklaunch_core::persistence::{TenantContext, encryption::FieldEncryptor};
     use sqlx::postgres::PgPoolOptions;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     let owner = PgPoolOptions::new()
         .max_connections(2)
         .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
@@ -220,7 +221,7 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     PostgresBillingStore::migrate(&owner).await.unwrap();
     let role = format!("fl_bill_{}", uuid::Uuid::new_v4().simple());
     let password = "billing-fixture-only";
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role}; GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role}; GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}; GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.platform_event_nonces TO {role}")).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(10)
         .connect_with(
@@ -266,6 +267,136 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
         .await
         .unwrap(),
     );
+    let effects = AtomicUsize::new(0);
+    assert!(
+        store
+            .with_webhook_receipt("stripe", "evt_once", "unknown", || async {
+                effects.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            })
+            .await
+            .unwrap()
+    );
+    assert!(
+        !store
+            .with_webhook_receipt("stripe", "evt_once", "unknown", || async {
+                panic!("Duplicate delivery must not apply effects")
+            })
+            .await
+            .unwrap()
+    );
+    assert_eq!(effects.load(Ordering::SeqCst), 1);
+    assert!(
+        store
+            .with_webhook_receipt("stripe", "evt_once", "other", || async { Ok(()) })
+            .await
+            .is_err()
+    );
+    assert!(
+        other
+            .with_webhook_receipt("stripe", "evt_once", "unknown", || async { Ok(()) })
+            .await
+            .unwrap()
+    );
+    assert!(
+        store
+            .with_webhook_receipt("stripe", "evt_retry", "unknown", || async {
+                Err(forklaunch_blueprint_core::BlueprintError::new(
+                    "fixture", "failed",
+                ))
+            })
+            .await
+            .is_err()
+    );
+    assert!(
+        store
+            .with_webhook_receipt("stripe", "evt_retry", "unknown", || async { Ok(()) })
+            .await
+            .unwrap()
+    );
+    let (entered, ready) = tokio::sync::oneshot::channel();
+    let (release, resume) = tokio::sync::oneshot::channel();
+    let concurrent_store = Arc::clone(&store);
+    let processing = tokio::spawn(async move {
+        concurrent_store
+            .with_webhook_receipt("stripe", "evt_busy", "unknown", || async {
+                entered.send(()).unwrap();
+                resume.await.unwrap();
+                Ok(())
+            })
+            .await
+    });
+    ready.await.unwrap();
+    assert_eq!(
+        store
+            .with_webhook_receipt("stripe", "evt_busy", "unknown", || async {
+                panic!("Concurrent delivery must not apply effects")
+            })
+            .await
+            .unwrap_err()
+            .code,
+        "billing_webhook_busy"
+    );
+    release.send(()).unwrap();
+    assert!(processing.await.unwrap().unwrap());
+    assert!(store.claim_platform_event_nonce("nonce").await.unwrap());
+    assert!(!store.claim_platform_event_nonce("nonce").await.unwrap());
+    assert!(other.claim_platform_event_nonce("nonce").await.unwrap());
+    let limited_pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect_with(
+            (*owner.connect_options())
+                .clone()
+                .username(&role)
+                .password(password),
+        )
+        .await
+        .unwrap();
+    let limited = Arc::new(
+        PostgresBillingStore::new(
+            limited_pool.clone(),
+            tenant.clone(),
+            Arc::clone(&keys),
+            audit.clone(),
+        )
+        .await
+        .unwrap(),
+    );
+    let (entered, ready) = tokio::sync::oneshot::channel();
+    let (release, resume) = tokio::sync::oneshot::channel();
+    let worker_store = Arc::clone(&limited);
+    let worker = tokio::spawn(async move {
+        worker_store
+            .with_webhook_receipt("stripe", "evt_capacity", "unknown", || async {
+                // Receipt holds one connection; a business read still has another.
+                worker_store
+                    .get(Scope::Durable, BillingKind::Plan, "plan")
+                    .await?;
+                entered.send(()).unwrap();
+                resume.await.unwrap();
+                Ok(())
+            })
+            .await
+    });
+    ready.await.unwrap();
+    assert_eq!(
+        limited
+            .with_webhook_receipt("stripe", "evt_other", "unknown", || async { Ok(()) })
+            .await
+            .unwrap_err()
+            .code,
+        "billing_webhook_busy"
+    );
+    release.send(()).unwrap();
+    assert!(worker.await.unwrap().unwrap());
+    assert!(
+        limited
+            .with_webhook_receipt("stripe", "evt_other", "unknown", || async { Ok(()) })
+            .await
+            .unwrap()
+    );
+    drop(limited);
+    limited_pool.close().await;
     let other_service = BaseBillingService::new(Arc::clone(&other));
     assert!(other_service.get_plan("plan").await.is_err());
     assert!(other_service.get_user_subscription("party").await.is_err());
@@ -424,7 +555,12 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     drop(other_service);
     drop(other);
     pool.close().await;
-    for table in ["records", "sensitive_read_audit"] {
+    for table in [
+        "records",
+        "sensitive_read_audit",
+        "webhook_receipts",
+        "platform_event_nonces",
+    ] {
         sqlx::query(&format!(
             "DELETE FROM fl_billing.{table} WHERE tenant_id=ANY($1)"
         ))

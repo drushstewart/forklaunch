@@ -81,3 +81,58 @@ async fn responses_are_bounded_sanitized_and_validated_without_redirects() {
     );
     server.abort();
 }
+
+#[tokio::test]
+async fn pagination_rejects_missing_cursors_cycles_and_malformed_pages() {
+    use axum::extract::Query;
+    use std::collections::HashMap;
+    let app = Router::new().route(
+        "/v1/prices",
+        get(|Query(query): Query<HashMap<String, String>>| async move {
+            let value = match query.get("product").map(String::as_str) {
+                Some("empty") => json!({"data":[],"has_more":true}),
+                Some("missing-more") => json!({"data":[]}),
+                Some("cycle") => json!({"data":[{"id":"same"}],"has_more":true}),
+                Some("large") => json!({"data":vec![json!({"id":"item"});101],"has_more":false}),
+                _ => {
+                    if query.contains_key("starting_after") {
+                        json!({"data":[{"id":"second"}],"has_more":false})
+                    } else {
+                        json!({"data":[{"id":"first"}],"has_more":true})
+                    }
+                }
+            };
+            Json(value)
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let client = StripeBillingClient::with_transport(
+        "sk_fixture".into(),
+        ProviderHttpClient::new(&base, Duration::from_secs(2), 1024 * 1024).unwrap(),
+    )
+    .unwrap();
+    for product in ["empty", "missing-more", "cycle", "large"] {
+        assert!(
+            client
+                .list_pages(StripeResource::Price, &json!({"product":product}))
+                .await
+                .is_err()
+        );
+    }
+    let values = client
+        .list_pages(StripeResource::Price, &json!({"product":"good"}))
+        .await
+        .unwrap();
+    assert_eq!(
+        values,
+        json!([{"id":"first"},{"id":"second"}])
+            .as_array()
+            .unwrap()
+            .clone()
+    );
+    server.abort();
+}

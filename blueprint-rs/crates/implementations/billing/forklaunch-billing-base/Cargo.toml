@@ -8,7 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
-postgres = ["dep:forklaunch-core", "dep:sqlx"]
+postgres = ["dep:forklaunch-core", "dep:sqlx", "dep:tokio"]
 
 [dependencies]
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
@@ -20,6 +20,8 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"], optional = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros"], optional = true }
+
+tokio = { version = "1", default-features = false, features = ["sync"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

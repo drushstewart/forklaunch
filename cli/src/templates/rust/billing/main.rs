@@ -63,7 +63,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let client = if let Ok(base) = env::var("STRIPE_API_BASE") {
         StripeBillingClient::with_transport(secret, ProviderHttpClient::new(&base,Duration::from_secs(15),1024*1024)?)?
     } else {StripeBillingClient::new(secret)?};
-    let backend = BillingBackend::stripe(store,client);
+    let mut backend = BillingBackend::stripe(store,client);
+    if let Ok(secret) = env::var("STRIPE_WEBHOOK_SECRET") { backend = backend.with_webhook_secret(secret)?; }
+    if let Ok(secret) = env::var("INSTANCE_HMAC_KEY") { backend = backend.with_platform_event_key(secret)?; }
     {{/stripe}}{{^stripe}}let backend = BillingBackend::base(store);{{/stripe}}
     let backend = backend.with_database_backup(env::var("BILLING_DATABASE_BACKUP").unwrap_or_else(|_|"false".into()).parse()?);
     let host = env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned());

@@ -778,6 +778,21 @@ pub fn module_registry(stripe: bool) -> ContractRegistry {
     for route in compliance_contracts() {
         result.register(route);
     }
+    if stripe {
+        for route in callback_contracts() {
+            let mut route = route;
+            for status in [400, 409, 500, 502, 503] {
+                if !route
+                    .responses
+                    .iter()
+                    .any(|response| response.status_code == status)
+                {
+                    route = route.with_response(status, Some(text()));
+                }
+            }
+            result.register(route);
+        }
+    }
     result.register(health_contract());
     result
 }
@@ -853,4 +868,34 @@ pub fn compliance_contracts() -> Vec<RouteContract> {
             .with_response(404, Some(text()))
     })
     .collect()
+}
+
+/// Provider and platform callbacks authenticate the exact raw body in their handlers.
+#[must_use]
+pub fn callback_contracts() -> Vec<RouteContract> {
+    let mut raw = text();
+    raw.content_type = Some("application/json".into());
+    vec![
+        RouteContract::post(
+            "handleWebhookEvent",
+            "Handle a stripe event via webhook",
+            "/webhook",
+        )
+        .with_access(AccessLevel::Public)
+        .with_header(FieldContract::required("stripe-signature", "String"))
+        .with_request_body(raw)
+        .with_response(200, Some(text()))
+        .with_response(400, Some(text())),
+        RouteContract::post(
+            "ReceivePlatformEvent",
+            "Receives a signed event from the ForkLaunch platform",
+            "/platform-events/:feature",
+        )
+        .with_access(AccessLevel::Public)
+        .with_param(FieldContract::required("feature", "String"))
+        .with_request_body(BodyContract::json("PlatformEvent"))
+        .with_response(200, Some(text()))
+        .with_response(401, Some(text()))
+        .with_response(404, Some(text())),
+    ]
 }

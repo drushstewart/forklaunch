@@ -616,6 +616,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -655,6 +656,7 @@ dependencies = [
  "forklaunch-blueprint-core",
  "hmac",
  "reqwest",
+ "serde",
  "serde_json",
  "sha2",
  "subtle",

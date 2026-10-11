@@ -113,7 +113,7 @@ async fn persistent_billing_http_mcp_and_provider_startup() {
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("billing_http_{suffix}");
     let password = uuid::Uuid::new_v4().to_string();
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}';GRANT USAGE ON SCHEMA fl_billing TO {role};GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role};GRANT INSERT ON fl_billing.sensitive_read_audit TO {role};")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}';GRANT USAGE ON SCHEMA fl_billing TO {role};GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role};GRANT INSERT ON fl_billing.sensitive_read_audit TO {role};GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role};GRANT SELECT,INSERT,DELETE ON fl_billing.platform_event_nonces TO {role};")).execute(&owner).await.unwrap();
     let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(8)
@@ -164,7 +164,10 @@ async fn persistent_billing_http_mcp_and_provider_startup() {
         )
         .unwrap();
         let router = billing_router(backend, auth, ServiceInfo::new("billing", "1.0.0"));
-        assert_eq!(router.registry().routes().len(), 33);
+        assert_eq!(
+            router.registry().routes().len(),
+            if stripe { 35 } else { 33 }
+        );
         let (base, stop, task) = serve(router.into_router_with_default_mcp().unwrap()).await;
         assert_eq!(
             client
@@ -234,7 +237,7 @@ async fn persistent_billing_http_mcp_and_provider_startup() {
                 .as_array()
                 .unwrap()
                 .len(),
-            33
+            if stripe { 35 } else { 33 }
         );
         let tool=rpc(&client,&base,"tools/call",json!({"name":"listPlans","arguments":{"query":{"ids":[id]},"headers":{"authorization":sign("GET","/plan",None)}}})).await;
         assert_ne!(tool["result"]["isError"], true);

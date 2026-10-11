@@ -26,21 +26,32 @@ const provider=http.createServer(async(request,response)=>{
 });
 await Promise.all([jwks,provider].map(server=>new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))));
 const children=[];
-function hmac(path,method='GET',body){const ts=new Date().toISOString(),nonce=randomUUID(),serialized=body===undefined?'undefined':`${body}\n`;return `HMAC keyId=default ts=${ts} nonce=${nonce} signature=${createHmac('sha256',secret).update(`${method}\n${path}\n${serialized}${ts}\n${nonce}`).digest('base64')}`;}
+function hmac(path,method='GET',body,key=secret,keyId='default',nonce=randomUUID(),timestamp){const ts=timestamp??new Date().toISOString(),serialized=body===undefined?'undefined':`${body}\n`;return `HMAC keyId=${keyId} ts=${ts} nonce=${nonce} signature=${createHmac('sha256',key).update(`${method}\n${path}\n${serialized}${ts}\n${nonce}`).digest('base64')}`;}
 function jwt(roles=['admin']){const header=Buffer.from(JSON.stringify({alg:'RS256',kid:jwk.kid,typ:'JWT'})).toString('base64url'),payload=Buffer.from(JSON.stringify({sub:'billing-admin',roles,iss:issuer,aud:audience,exp:Math.floor(Date.now()/1000)+300})).toString('base64url');return `Bearer ${header}.${payload}.${sign('RSA-SHA256',Buffer.from(`${header}.${payload}`),privateKey).toString('base64url')}`;}
 async function start(binary,tenant='a',extra={}){
  const db=new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);db.username=role;db.password='parity-test-only';
- const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_')&&!key.startsWith('MCP_'))),DATABASE_URL:db.toString(),TENANT_ID:`${role}-${tenant}`,ENCRYPTION_KEY:'billing-fixture-encryption-only',HOST:'127.0.0.1',SERVICE_PORT:'0',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience,STRIPE_SECRET_KEY:'sk_fixture',STRIPE_API_BASE:`http://127.0.0.1:${provider.address().port}`,...extra};
+ const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_')&&!key.startsWith('MCP_'))),DATABASE_URL:db.toString(),TENANT_ID:`${role}-${tenant}`,ENCRYPTION_KEY:'billing-fixture-encryption-only',HOST:'127.0.0.1',SERVICE_PORT:'0',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience,STRIPE_SECRET_KEY:'sk_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture',INSTANCE_HMAC_KEY:'platform-fixture-key',STRIPE_API_BASE:`http://127.0.0.1:${provider.address().port}`,...extra};
  const child=spawn(binary,[],{env,stdio:['ignore','pipe','pipe']});let output='',errors='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>errors+=chunk);const exit=new Promise(resolve=>child.once('close',resolve)),info={child,exit,errors:()=>errors};children.push(info);
  for(let i=0;i<300;i++){const base=output.match(/listening on (http:\/\/127\.0\.0\.1:\d+)/)?.[1];if(base)return{...info,base};assert.equal(child.exitCode,null,errors);await new Promise(resolve=>setTimeout(resolve,25));}throw Error(errors);
 }
 async function stop(info){if(info.child.exitCode===null)info.child.kill('SIGTERM');const timer=setTimeout(()=>info.child.kill('SIGKILL'),10000);try{assert.equal(await info.exit,0,info.errors());}finally{clearTimeout(timer);}}
 async function call(base,path,method='GET',body,status=200,auth){const raw=body===undefined?undefined:JSON.stringify(body),response=await fetch(base+path,{method,body:raw,headers:{authorization:auth??hmac(path.split('?')[0],method,raw),...(raw?{'content-type':'application/json'}:{})},signal:AbortSignal.timeout(10000)});assert.equal(response.status,status,await response.clone().text());return response.headers.get('content-type')?.includes('application/json')?response.json():response.text();}
+async function stripeEvent(base,event,{tamper=false,stale=false}={}){
+ const raw=JSON.stringify(event),ts=Math.floor(Date.now()/1000)-(stale?301:0);
+ const signature=`t=${ts},v1=${createHmac('sha256','whsec_fixture').update(`${ts}.${raw}`).digest('hex')}`;
+ const result=await fetch(base+'/webhook',{method:'POST',body:raw+(tamper?' ':''),headers:{'content-type':'application/json','stripe-signature':signature}});
+ assert.equal(result.status,tamper||stale?400:200,await result.clone().text());
+}
+async function platformEvent(base,event,nonce=randomUUID(),expected=200,keyId='platform',timestamp){
+ const raw=JSON.stringify(event),path='/platform-events/payments';
+ const result=await fetch(base+path,{method:'POST',body:raw,headers:{'content-type':'application/json',authorization:hmac(path,'POST',raw,'platform-fixture-key',keyId,nonce,timestamp)}});
+ assert.equal(result.status,expected,await result.clone().text());
+}
 try{
  const sdk=await import(pathToFileURL(sdkPath));
  for(const [binary,stripe,service]of [[baseBinary,false,'billing'],[stripeBinary,true,'stripe']]){
   const running=await start(binary),base=running.base,client=sdk.createForkLaunchSdk({serviceBaseUrls:{[service]:base}});
-  const tools=await probeMcp(base,['createPlan','getSubscription','createCheckoutSession','createPaymentLink','createBillingPortalSession']);assert.equal(tools.length,33);
+  const tools=await probeMcp(base,['createPlan','getSubscription','createCheckoutSession','createPaymentLink','createBillingPortalSession']);assert.equal(tools.length,stripe?35:33);
   assert.equal((await fetch(base+'/plan')).status,401);
   await call(base,'/compliance/export/user','GET',undefined,403,jwt(['admin']));
   await call(base,'/compliance/export/user','GET',undefined,404,jwt(['system']));
@@ -65,8 +76,25 @@ try{
   const rustBody=JSON.stringify({...planBody,externalId:randomUUID()});
   const rust=spawn('cargo',['test','-p',service+'-sdk','--test','runtime','--','--nocapture'],{env:{...process.env,BILLING_BASE_URL:base,BILLING_PLAN_ID:plan.id,BILLING_GET_HEADER:hmac('/plan/'+plan.id),BILLING_LIST_HEADER:hmac('/plan'),BILLING_CREATE_BODY:rustBody,BILLING_CREATE_HEADER:hmac('/plan','POST',rustBody),BILLING_PORTAL_ID:portal.id,BILLING_PORTAL_HEADER:jwt()},stdio:['ignore','pipe','pipe']});let rustOutput='';rust.stdout.on('data',chunk=>rustOutput+=chunk);rust.stderr.on('data',chunk=>rustOutput+=chunk);const rustTimer=setTimeout(()=>rust.kill('SIGKILL'),120000);try{assert.equal(await new Promise(resolve=>rust.once('close',resolve)),0,rustOutput);}finally{clearTimeout(rustTimer);}
   await call(base,`/billing-portal/${portal.id}`,'DELETE',undefined,200,jwt());
+  let replayEvent;
+  if(stripe){
+   const object={id:sub.externalId,customer:'must-not-reassign',items:{data:[{plan:{id:plan.externalId}}]},created:1700000000,status:'past_due'};
+   replayEvent={id:'evt-generated-update',type:'customer.subscription.updated',data:{object}};
+   await stripeEvent(base,replayEvent,{tamper:true});await stripeEvent(base,replayEvent,{stale:true});
+   await stripeEvent(base,replayEvent);let updated=await call(base,`/subscription/${sub.id}`);assert.equal(updated.active,false);assert.equal(updated.partyId,sub.partyId);assert.equal(updated.status,'past_due');
+   await stripeEvent(base,replayEvent);
+   const platform={id:'evt-platform-update',type:'customer.subscription.updated',feature:'payments',occurredAt:new Date().toISOString(),data:{...object,status:'active'}};
+   await platformEvent(base,platform,randomUUID(),401,'default');
+   await platformEvent(base,platform,randomUUID(),401,'platform',new Date(Date.now()-301000).toISOString());
+   const nonce=randomUUID();await platformEvent(base,platform,nonce);await platformEvent(base,platform,nonce,401);
+   updated=await call(base,`/subscription/${sub.id}`);assert.equal(updated.active,true);assert.equal(updated.partyId,sub.partyId);
+   assert.equal((await fetch(base+'/platform-events/unknown',{method:'POST',body:'{}',headers:{'content-type':'application/json'}})).status,404);
+   const mcpEvent={id:'evt-mcp-update',type:'unknown.event',data:{object:{}}},raw=JSON.stringify(mcpEvent),ts=Math.floor(Date.now()/1000);
+   const signed=`t=${ts},v1=${createHmac('sha256','whsec_fixture').update(`${ts}.${raw}`).digest('hex')}`;
+   const mcpResult=await mcpRpc(base,'tools/call',{name:'handlewebhookevent',arguments:{body:raw,headers:{'stripe-signature':signed}}});assert.equal(mcpResult.isError,false,JSON.stringify(mcpResult));
+  }
   const other=await start(binary,'b');await call(other.base,`/plan/${plan.id}`,'GET',undefined,404);await stop(other);
-  await stop(running);const reopened=await start(binary);await call(reopened.base,`/plan/${plan.id}`);await call(reopened.base,`/subscription/${sub.id}`);await stop(reopened);
+  await stop(running);const reopened=await start(binary);await call(reopened.base,`/plan/${plan.id}`);await call(reopened.base,`/subscription/${sub.id}`);if(stripe){await stripeEvent(reopened.base,replayEvent);assert.equal((await call(reopened.base,`/subscription/${sub.id}`)).active,true);const disabled=await start(binary,'a',{STRIPE_WEBHOOK_SECRET:undefined,INSTANCE_HMAC_KEY:undefined});assert.equal((await fetch(disabled.base+'/webhook',{method:'POST',body:'{}',headers:{'content-type':'application/json','stripe-signature':'invalid'}})).status,400);await stop(disabled);}await stop(reopened);
  }
  for(const config of [{MCP_ENABLED:'false'},{MCP_ENABLED:'true',MCP_PATH:'/tools'}]){const info=await start(baseBinary,'a',config);assert.equal((await fetch(info.base+'/health')).status,200);assert.equal((await fetch(info.base+'/mcp',{method:'POST'})).status,404);if(config.MCP_ENABLED==='true')await probeMcp(info.base,[],config.MCP_PATH);await stop(info);}
  assert.ok(providerCalls>20);

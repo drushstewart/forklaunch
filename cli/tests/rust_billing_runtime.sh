@@ -79,7 +79,7 @@ from pathlib import Path
 import json
 for name in ['billing','stripe']:
     routes=json.loads((Path('.forklaunch/contracts')/name/'contract.json').read_text())['routes']
-    assert len(routes)==33,(name,routes)
+    assert len(routes)==(35 if name=="stripe" else 33),(name,routes)
 PYTHON
 env DATABASE_URL="$FORKLAUNCH_TEST_POSTGRES_URL" cargo run -p billing -- --migrate
 mkdir -p crates/billing/examples
