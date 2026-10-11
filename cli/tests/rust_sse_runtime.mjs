@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
+import { once, getEventListeners } from 'node:events';
+import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { probeMcp } from './rust_mcp_probe.mjs';
 const server = spawn(process.argv[2], [], { env: { ...process.env, HOST: '127.0.0.1', SERVICE_HOST: '127.0.0.1', SERVICE_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -10,7 +11,8 @@ let errors = '';
 server.stderr.on('data', chunk => errors += chunk);
 function deadline(promise, ms = 3000) {
   let timeout;
-  return Promise.race([promise, new Promise((_, reject) => { timeout = setTimeout(() => reject(Error('SSE fixture deadline')), ms); })]).finally(() => clearTimeout(timeout));
+  const timeoutError = Error('SSE fixture deadline');
+  return Promise.race([promise, new Promise((_, reject) => { timeout = setTimeout(() => reject(timeoutError), ms); })]).finally(() => clearTimeout(timeout));
 }
 try {
   const baseUrl = await deadline(new Promise((resolve, reject) => {
@@ -19,7 +21,9 @@ try {
     server.once('exit', () => reject(Error(`SSE service startup failed: ${errors}`)));
   }), 15000);
   await probeMcp(baseUrl, ['watchEvents']);
-  const { createForkLaunchSdk } = await import(pathToFileURL(process.argv[4]));
+  const { createForkLaunchSdk: factory } = await import(pathToFileURL(process.argv[4]));
+  const fetcher = process.env.FORKLAUNCH_TEST_FETCH_MODULE ? createRequire(import.meta.url)(process.env.FORKLAUNCH_TEST_FETCH_MODULE) : undefined;
+  const createForkLaunchSdk = config => factory({ ...config, ...(fetcher ? { fetch: fetcher } : {}) });
   let hooks = 0;
   const config = { baseUrl, headers: { authorization: 'Bearer stream-secret' }, beforeRequest: meta => { hooks++; return meta; } };
   const sdk = createForkLaunchSdk(config);
@@ -39,6 +43,19 @@ try {
   assert.deepEqual((await deadline(slow.next())).value, { data: { label: '水 🦀' }, id: 'first' });
   await deadline(slow.return());
   assert.equal((await slow.next()).done, true);
+  const pendingStream = (await call(sdk, 'slow')).response[Symbol.asyncIterator]();
+  await pendingStream.next();
+  await pendingStream.next();
+  const pendingRead = pendingStream.next();
+  const pendingOutcome = pendingRead.then(value => ({ value }), error => ({ error }));
+  await new Promise(resolve => setTimeout(resolve, 25));
+  await deadline(pendingStream.return());
+  const outcome = await deadline(pendingOutcome);
+  assert.ok(outcome.error || outcome.value.done, 'Cancellation must terminate an outstanding read');
+  const completedSignal = new AbortController();
+  const completed = await call(sdk, 'finite', { signal: completedSignal.signal });
+  for await (const event of completed.response) assert.ok(event);
+  assert.equal(getEventListeners(completedSignal.signal, 'abort').length, 0, 'Completed streams release caller-signal listeners');
   const unstarted = (await call(sdk, 'slow')).response[Symbol.asyncIterator]();
   await deadline(unstarted.return());
   const thrown = (await call(sdk, 'slow')).response[Symbol.asyncIterator]();
@@ -81,6 +98,7 @@ try {
   server.kill('SIGTERM');
   const [code, signal] = await deadline(exited, 10000);
   assert.equal(code, 0, `${signal} ${errors}`);
+  console.log(`Transport: ${fetcher ? 'cross-fetch Node stream' : 'SDK default fetch'}`);
   console.log('PASS live generated TypeScript/Rust SSE clients: delivery before EOF, split Unicode, multiline/ID reset, auth before work, event limits, EOF, wrong media, transport failures, abort/early cancellation, resource release and graceful HTTP/MCP shutdown');
 } finally {
   if (server.exitCode === null && server.signalCode === null) { server.kill('SIGKILL'); await exited.catch(() => {}); }

@@ -4,6 +4,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CLI="${FORKLAUNCH_CLI:-${FORKLAUNCH_TEST_CLI:-$REPO_ROOT/cli/target/debug/forklaunch}}"
 TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}"
+CROSS_FETCH_PATH="${CROSS_FETCH_PATH:-$(dirname "$TSC_BIN")/../cross-fetch}"
+run_sse_clients() {
+    FORKLAUNCH_TEST_FETCH_MODULE= node "$SCRIPT_DIR/rust_sse_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/sse_roundtrip" "$PWD/sdks/typescript/dist/index.js"
+    FORKLAUNCH_TEST_FETCH_MODULE="$CROSS_FETCH_PATH" node "$SCRIPT_DIR/rust_sse_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/sse_roundtrip" "$PWD/sdks/typescript/dist/index.js"
+}
 mkdir -p output/rust-sse-runtime
 cd "$(mktemp -d output/rust-sse-runtime/run.XXXXXX)"
 "$CLI" init application streams-app --path app --language rust -D Streams -A ForkLaunch -L MIT
@@ -37,7 +42,7 @@ TOML
     cp "$SCRIPT_DIR/fixtures/rust_sse_sdk.rs" sdks/rust/streams-sdk/examples/sse_roundtrip.rs
     cargo build -p streams-sdk --example sse_roundtrip
     cargo clippy -p streams-sdk --all-targets -- -D warnings
-    node "$SCRIPT_DIR/rust_sse_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/sse_roundtrip" "$PWD/sdks/typescript/dist/index.js"
+    run_sse_clients
 done
 cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-rust --example stream_client -- "$PWD/sdks/rust/streams-sdk/src/lib.rs"
 python3 - "$SCRIPT_DIR/fixtures/rust_sse_sdk.rs" <<'PYTHON'
@@ -49,5 +54,11 @@ cargo build -p streams-sdk --example sse_roundtrip
 cargo clippy -p streams-sdk --all-targets -- -D warnings
 cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-typescript --example stream_client -- "$PWD/sdks/typescript/src/index.ts"
 "$TSC_BIN" --project sdks/typescript/tsconfig.json --noEmit false --outDir "$PWD/sdks/typescript/dist"
-node "$SCRIPT_DIR/rust_sse_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/sse_roundtrip" "$PWD/sdks/typescript/dist/index.js"
+run_sse_clients
+# Also exercise the generator's imported-fetch option without overriding config.fetch.
+mkdir -p sdks/typescript/node_modules
+ln -s "$CROSS_FETCH_PATH" sdks/typescript/node_modules/cross-fetch
+cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-typescript --example stream_client -- "$PWD/sdks/typescript/src/index.ts" --import-fetch
+"$TSC_BIN" --project sdks/typescript/tsconfig.json --noEmit false --outDir "$PWD/sdks/typescript/dist"
+FORKLAUNCH_TEST_FETCH_MODULE= node "$SCRIPT_DIR/rust_sse_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/sse_roundtrip" "$PWD/sdks/typescript/dist/index.js"
 echo 'PASS relocated generated SSE service, CLI/both native clients and both artifact formats'

@@ -16,7 +16,8 @@ fn main() -> anyhow::Result<()> {
         })));
     let source = generate_typescript_http_sdk_source(
         &SdkGenerationPlan::from_registry(SdkTarget::TypeScript, &registry),
-        &TypeScriptHttpSdkOptions::new("streams"),
+        &TypeScriptHttpSdkOptions::new("streams")
+            .with_fetch_import(std::env::args().any(|arg| arg == "--import-fetch")),
     )?;
     std::fs::write(std::env::args().nth(1).expect("output path"), source)?;
     Ok(())

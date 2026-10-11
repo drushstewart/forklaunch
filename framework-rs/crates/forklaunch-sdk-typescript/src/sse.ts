@@ -1,11 +1,54 @@
+interface ForkLaunchResponseReader {
+    read(): Promise<{ done: boolean; value?: Uint8Array }>;
+    cancel(): Promise<void>;
+    releaseLock(): void;
+}
+
+/** Web fetch uses ReadableStream; Node fetch adapters expose async iterable bytes. */
+function responseReader(response: Response): ForkLaunchResponseReader {
+    const body = response.body as unknown as {
+        getReader?: () => ReadableStreamDefaultReader<Uint8Array>;
+        [Symbol.asyncIterator]?: () => AsyncIterator<Uint8Array, unknown>;
+        destroy?: () => void;
+    } | null;
+    if (!body) throw new TypeError('No response body for event stream');
+    if (typeof body.getReader === 'function') return body.getReader();
+    const createIterator = body[Symbol.asyncIterator];
+    if (typeof createIterator !== 'function')
+        throw new TypeError('Response body must expose a readable byte stream');
+    const iterator = createIterator.call(body);
+    return {
+        async read() {
+            const result = await iterator.next();
+            if (result.done) return { done: true };
+            if (!(result.value instanceof Uint8Array))
+                throw new TypeError('Response stream yielded non-byte data');
+            return { done: false, value: result.value };
+        },
+        async cancel() {
+            // Destroy first to interrupt a pending read, including unstarted iterators.
+            body.destroy?.();
+            await iterator.return?.();
+        },
+        releaseLock() {}
+    };
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+    if (!response.body) return;
+    const reader = responseReader(response);
+    try { await reader.cancel(); }
+    finally { reader.releaseLock(); }
+}
+
 /** Pull-driven SSE decoding; iterator completion or cancellation releases the reader. */
-function sseEvents(response: Response, maxEventBytes = 1048576): AsyncGenerator<{
+function sseEvents(response: Response, maxEventBytes = 1048576, onClose: () => void = () => {}): AsyncGenerator<{
     data: unknown;
     id?: string;
 }> {
     if (!response.body)
         throw new TypeError('No response body for event stream');
-    const reader = response.body.getReader();
+    const reader = responseReader(response);
     const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
     let line: number[] = [];
     let data = '';
@@ -19,6 +62,7 @@ function sseEvents(response: Response, maxEventBytes = 1048576): AsyncGenerator<
             return;
         released = true;
         try {
+            onClose();
             await reader.cancel();
         }
         catch { /* Preserve the original read/parse error. */ }
@@ -37,6 +81,7 @@ function sseEvents(response: Response, maxEventBytes = 1048576): AsyncGenerator<
                 const { done, value } = await reader.read();
                 if (done)
                     break;
+                if (!value) throw new TypeError('Response stream yielded no byte data');
                 for (const byte of value) {
                     if (skipLf) {
                         skipLf = false;

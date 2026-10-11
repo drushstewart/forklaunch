@@ -120,32 +120,50 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
     // The encoder must select the boundary, including after hooks/default headers.
     requestHeaders.delete('content-type');
   }
-  const response = await fetcher(`${baseUrl}${path}${query}`, {
-    ...fetchInit,
-    method: resolved.method,
-    headers: requestHeaders,
-    body: body === undefined ? undefined : resolved.requestKind === 'multipart' ? encodeMultipart(body) : resolved.requestKind === 'binary' ? encodeBinary(body) : resolved.requestKind === 'text' ? String(body) : resolved.requestKind === 'urlEncoded' ? encodeForm(body) : JSON.stringify(body)
-  });
-  const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? (response.ok ? 'application/json' : 'text/plain');
-  const kind = resolved.responseKinds?.[response.status];
-  let parsedResponse: unknown;
-  if (kind === 'sse') {
-    if (contentType !== 'text/event-stream') { await response.body?.cancel(); throw new TypeError('Expected text/event-stream response'); }
-    parsedResponse = sseEvents(response, config.maxSseEventBytes);
-  } else if (kind === 'binary') {
-    parsedResponse = new Uint8Array(await response.arrayBuffer());
-  } else {
-    const text = await response.text();
-    parsedResponse = kind === 'empty' ? undefined : kind === 'text' ? text : text
-      ? kind === 'json' || contentType === 'application/json' || contentType.endsWith('+json') ? JSON.parse(text) : text
-      : undefined;
+  const controller = Object.values(resolved.responseKinds ?? {}).includes('sse') ? new AbortController() : undefined;
+  const callerSignal = fetchInit.signal;
+  const forwardAbort = () => controller?.abort(callerSignal?.reason);
+  if (controller && callerSignal) {
+    if (callerSignal.aborted) forwardAbort();
+    else callerSignal.addEventListener('abort', forwardAbort, { once: true });
   }
-  return {
-    code: response.status,
-    status: response.status,
-    contentType,
-    response: parsedResponse
-  } as ForkLaunchSdkResponse<Responses, never, ContentTypes>;
+  const releaseRequest = () => {
+    callerSignal?.removeEventListener('abort', forwardAbort);
+    controller?.abort();
+  };
+  let streamOwned = false;
+  try {
+    const response = await fetcher(`${baseUrl}${path}${query}`, {
+      ...fetchInit,
+      signal: controller?.signal ?? fetchInit.signal,
+      method: resolved.method,
+      headers: requestHeaders,
+      body: body === undefined ? undefined : resolved.requestKind === 'multipart' ? encodeMultipart(body) : resolved.requestKind === 'binary' ? encodeBinary(body) : resolved.requestKind === 'text' ? String(body) : resolved.requestKind === 'urlEncoded' ? encodeForm(body) : JSON.stringify(body)
+    });
+    const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? (response.ok ? 'application/json' : 'text/plain');
+    const kind = resolved.responseKinds?.[response.status];
+    let parsedResponse: unknown;
+    if (kind === 'sse') {
+      if (contentType !== 'text/event-stream') { try { await cancelResponseBody(response); } catch { /* Preserve the media error. */ } throw new TypeError('Expected text/event-stream response'); }
+      parsedResponse = sseEvents(response, config.maxSseEventBytes, releaseRequest);
+      streamOwned = true;
+    } else if (kind === 'binary') {
+      parsedResponse = new Uint8Array(await response.arrayBuffer());
+    } else {
+      const text = await response.text();
+      parsedResponse = kind === 'empty' ? undefined : kind === 'text' ? text : text
+        ? kind === 'json' || contentType === 'application/json' || contentType.endsWith('+json') ? JSON.parse(text) : text
+        : undefined;
+    }
+    return {
+      code: response.status,
+      status: response.status,
+      contentType,
+      response: parsedResponse
+    } as ForkLaunchSdkResponse<Responses, never, ContentTypes>;
+  } finally {
+    if (!streamOwned) releaseRequest();
+  }
 }
 
 export function createForkLaunchSdk(config: ForkLaunchSdkConfig = {}) {
