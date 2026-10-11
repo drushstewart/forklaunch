@@ -132,11 +132,13 @@ pub(crate) fn cleanup_deleted_native_service(
     edit.delete(state_path);
     edit.commit()
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 struct Ownership {
     original_cargo: String,
     last_cargo: String,
     cargo_modified: bool,
+    #[serde(default)]
+    dependency_overrides: BTreeMap<String, String>,
     original_module: Option<String>,
     last_module: Option<String>,
     module_modified: bool,
@@ -225,6 +227,7 @@ pub(super) fn apply(
             original_cargo: cargo_text.clone(),
             last_cargo: cargo_text.clone(),
             cargo_modified: false,
+            dependency_overrides: BTreeMap::new(),
             original_module,
             last_module: current_module.clone(),
             module_modified: false,
@@ -257,6 +260,7 @@ pub(super) fn apply(
             },
         }
     };
+    remember_dependency_edits(&mut state, &cargo, &cargo_text)?;
     state.cargo_modified |= cargo_text != state.last_cargo;
     state.module_modified |= current_module != state.last_module;
     state.env_modified |= current_env != state.last_env;
@@ -515,14 +519,48 @@ fn restore_dependencies(cargo: &mut DocumentMut, state: &Ownership) -> Result<()
     let before: DocumentMut = state.original_cargo.parse()?;
     let after: DocumentMut = state.last_cargo.parse()?;
     for name in ["forklaunch-blueprint-core", "forklaunch-billing-stripe"] {
-        if cargo["dependencies"].get(name).map(Item::to_string)
-            == after["dependencies"].get(name).map(Item::to_string)
+        let original = state
+            .dependency_overrides
+            .get(name)
+            .map(|source| source.parse::<DocumentMut>())
+            .transpose()?
+            .unwrap_or_else(|| before.clone());
+        if state.dependency_overrides.contains_key(name)
+            || cargo["dependencies"].get(name).map(Item::to_string)
+                == after["dependencies"].get(name).map(Item::to_string)
         {
-            if let Some(original) = before["dependencies"].get(name) {
+            if let Some(original) = original["dependencies"].get(name) {
                 cargo["dependencies"][name] = original.clone();
             } else if let Some(dependencies) = cargo["dependencies"].as_table_like_mut() {
                 dependencies.remove(name);
             }
+        }
+    }
+    Ok(())
+}
+
+fn remember_dependency_edits(
+    state: &mut Ownership,
+    cargo: &DocumentMut,
+    source: &str,
+) -> Result<()> {
+    if source == state.last_cargo {
+        return Ok(());
+    }
+    let last: DocumentMut = state.last_cargo.parse()?;
+    for name in ["forklaunch-blueprint-core", "forklaunch-billing-stripe"] {
+        let current = cargo
+            .get("dependencies")
+            .and_then(|deps| deps.get(name))
+            .map(Item::to_string);
+        let previous = last
+            .get("dependencies")
+            .and_then(|deps| deps.get(name))
+            .map(Item::to_string);
+        if current != previous {
+            state
+                .dependency_overrides
+                .insert(name.into(), source.into());
         }
     }
     Ok(())
@@ -584,6 +622,36 @@ fn render_module(features: &[String]) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stacked_updates_preserve_human_dependency_features_and_removals() {
+        let before = "[dependencies]\nuser = \"1\"\n";
+        let generated = "[dependencies]\nuser = \"1\"\nforklaunch-blueprint-core = { path = \"owned\", features = [\"instance-gateway\"] }\n";
+        for human in [
+            "[dependencies]\nuser = \"1\"\nforklaunch-blueprint-core = { path = \"custom\", features = [\"instance-gateway\", \"stripe-webhook\"] }\n",
+            before,
+        ] {
+            let mut state = Ownership {
+                original_cargo: before.into(),
+                last_cargo: generated.into(),
+                ..Default::default()
+            };
+            let mut cargo: DocumentMut = human.parse().unwrap();
+            remember_dependency_edits(&mut state, &cargo, human).unwrap();
+            // A later capability command can add a dependency back to compile
+            // its handlers; removal must recover the user's prior edit.
+            ensure_dependency(
+                &mut cargo,
+                "forklaunch-blueprint-core",
+                "owned",
+                Some("instance-gateway"),
+            )
+            .unwrap();
+            state.last_cargo = cargo.to_string();
+            restore_dependencies(&mut cargo, &state).unwrap();
+            assert_eq!(cargo.to_string(), human);
+        }
+    }
 
     #[test]
     fn deletion_reads_a_manifest_document_and_releases_only_the_last_gateway() {

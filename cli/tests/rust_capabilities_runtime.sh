@@ -101,11 +101,18 @@ cmp "$RUN_ROOT/pristine-lib.rs" crates/pristine/src/lib.rs
 cmp "$RUN_ROOT/pristine-main.rs" crates/pristine/src/main.rs
 "$FORKLAUNCH_CLI" infra add pristine email --path .
 rm .forklaunch/native-capabilities/pristine.json
+python3 - <<'PY'
+from pathlib import Path
+p=Path('crates/pristine/Cargo.toml')
+s=p.read_text();assert 'features = ["instance-gateway"]' in s
+p.write_text(s.replace('features = ["instance-gateway"]','features = ["instance-gateway", "stripe-webhook"]'))
+PY
 "$FORKLAUNCH_CLI" infra add pristine sms --path .
 "$FORKLAUNCH_CLI" infra remove pristine email --path .
 "$FORKLAUNCH_CLI" infra remove pristine sms --path .
 test ! -e crates/pristine/src/capabilities/mod.rs
 test ! -e .forklaunch/native-capabilities/pristine.json
+grep -q stripe-webhook crates/pristine/Cargo.toml
 cargo check -p pristine
 mkdir -p services/team
 mv crates/pristine services/team/pristine
