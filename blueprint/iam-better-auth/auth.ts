@@ -58,7 +58,7 @@ const plugins = [
     allowUserToCreateOrganization: true,
     creatorRole: 'owner',
     membershipLimit: 100,
-    invitationExpiresIn: 48 * 60 * 60 * 1000,
+    invitationExpiresIn: 48 * 60 * 60, // Better Auth expects seconds.
     teams: { enabled: true },
     dynamicAccessControl: { enabled: true },
     ac,

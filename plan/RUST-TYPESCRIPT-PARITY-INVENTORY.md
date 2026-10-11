@@ -230,3 +230,10 @@ with actual session/JWT handlers under owned app/fetch/storage boundaries.
 Untrusted destinations fail before token exchange; forged Host headers cannot
 redirect exchange requests; malicious query values remain JSON data. Native
 callback/helper implementation remains in the Better Auth module task.
+
+Better Auth invitation expiry is corrected from milliseconds to seconds,
+matching the intended 48-hour lifetime. A trusted operator-seeded dynamic
+invitation grant exercises the actual handler and checks its persisted expiry;
+the actual protocol fixture now passes 49 checks. Stored dynamic role grants
+augment configured static roles, so native organization behavior must support
+those grants as well as the default permission denials.

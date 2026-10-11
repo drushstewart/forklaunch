@@ -32,7 +32,7 @@ const orgOptions = config.plugins.find(
   (plugin) => plugin.id === 'organization',
 ).options;
 assert.equal(orgOptions.membershipLimit, 100);
-assert.equal(orgOptions.invitationExpiresIn, 48 * 60 * 60 * 1000);
+assert.equal(orgOptions.invitationExpiresIn, 48 * 60 * 60);
 assert.equal(orgOptions.teams.enabled, true);
 assert.equal(orgOptions.dynamicAccessControl.enabled, true);
 assert.deepEqual(
@@ -238,6 +238,30 @@ assert.deepEqual(
   ).body,
   { error: null, success: true },
 );
+// An operator-seeded dynamic grant augments the configured static owner role.
+// This exercises the real invitation handler without changing role policy.
+database.organizationRole.push({
+  id: 'fixture-inviter-role',
+  organizationId: organization.id,
+  role: 'owner',
+  permission: '{"invitation":["create"]}',
+});
+const invitationStarted = Date.now();
+const invitation = (
+  await expect(owner, '/organization/invite-member', {
+    email: 'invited@example.test',
+    role: 'viewer',
+    organizationId: organization.id,
+  })
+).body;
+assert.equal(invitation.status, 'pending');
+assert.equal(invitation.inviterId, user.id);
+assert.ok(
+  Math.abs(
+    Date.parse(invitation.expiresAt) - invitationStarted - 48 * 60 * 60 * 1000,
+  ) < 1000,
+);
+database.organizationRole.length = 0;
 const jwks = (await expect(owner, '/jwks')).body;
 const jwt = (await expect(owner, '/token')).body.token;
 const [header, payload, signature] = jwt.split('.');
