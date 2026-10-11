@@ -1,6 +1,7 @@
 //! Stripe `PaymentIntents` and direct Connect charges backed by the atomic
 //! ecommerce store. Client secrets are response-only and never persisted.
 #![forbid(unsafe_code)]
+pub mod tax;
 use forklaunch_blueprint_core::{
     BlueprintError, BlueprintResult,
     provider_http::{ProviderHttpClient, provider_status_error},

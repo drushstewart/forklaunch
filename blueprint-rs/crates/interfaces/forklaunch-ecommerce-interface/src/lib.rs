@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod contracts;
 pub mod events;
 pub mod module;
+pub mod pricing;
 use forklaunch_blueprint_core::BlueprintResult;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

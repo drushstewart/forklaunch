@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod events;
 #[cfg(feature = "postgres")]
 pub mod postgres;
+pub mod shipping;
 pub mod store;
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_ecommerce_interface::{
