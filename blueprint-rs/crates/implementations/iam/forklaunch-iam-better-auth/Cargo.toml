@@ -24,14 +24,16 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 ring = "0.17"
 zeroize = "1"
 serde_json = "1"
-tokio = { version = "1", default-features = false, features = ["sync"] }
+tokio = { version = "1", default-features = false, features = ["sync", "rt"] }
+serde = { version = "1", features = ["derive"] }
+regex = "1"
 forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"], optional = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros", "uuid"], optional = true }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]
 workspace = true

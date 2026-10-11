@@ -66,6 +66,7 @@ on:
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_iam_directory_parity.mjs'
+      - 'cli/tests/rust_better_auth_accounts.mjs'
       - 'cli/tests/rust_better_auth_sessions.mjs'
       - 'cli/tests/rust_better_auth_google.mjs'
       - 'cli/tests/rust_better_auth_keyring.mjs'
@@ -169,6 +170,7 @@ on:
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_iam_directory_parity.mjs'
+      - 'cli/tests/rust_better_auth_accounts.mjs'
       - 'cli/tests/rust_better_auth_sessions.mjs'
       - 'cli/tests/rust_better_auth_google.mjs'
       - 'cli/tests/rust_better_auth_keyring.mjs'
@@ -418,6 +420,10 @@ jobs:
       - run: node cli/tests/rust_billing_contracts_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_better_auth_accounts.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_sessions.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

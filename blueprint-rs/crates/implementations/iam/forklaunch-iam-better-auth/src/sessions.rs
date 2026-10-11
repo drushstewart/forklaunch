@@ -286,7 +286,7 @@ fn public_session(row: &Value) -> Value {
         ],
     )
 }
-fn public_user(row: &Value) -> Value {
+pub(crate) fn public_user(row: &Value) -> Value {
     select(
         row,
         &[

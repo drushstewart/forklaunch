@@ -4,6 +4,7 @@
 //! HTTP endpoints and persistent session management are implemented separately.
 #![forbid(unsafe_code)]
 
+pub mod accounts;
 pub mod cookies;
 pub mod credentials;
 pub mod jwt;

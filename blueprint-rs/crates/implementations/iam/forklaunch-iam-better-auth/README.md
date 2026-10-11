@@ -3,7 +3,7 @@
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
 cookies, Ed25519 JWT issuance and public JWKs. It does not yet expose the authentication HTTP API or
-credential/organization endpoints and is not selectable as a CLI module preset.
+organization endpoints and is not selectable as a CLI module preset.
 
 `credentials` uses N=16384, r=16, p=1, a 64-byte derived key, NFKC-normalized
 passwords and a random 16-byte salt encoded as lowercase hex text. The salt text
@@ -57,3 +57,14 @@ records, so this does not claim native sign-up/sign-in. Signed cookie extraction
 is exercised at the fixture boundary; production HTTP cookie headers/clearing,
 CSRF/Origin guards and the CLI preset remain to be integrated. Session queries
 currently use the explicitly bounded store scan; indexed lookup remains open.
+
+`accounts::CredentialService` provides atomic native email signup/signin. Scrypt
+runs in a shared bounded blocking pool outside tenant write locks; concurrent
+signup rechecks email uniqueness inside the write transaction, and signin
+rechecks the account after password verification to reject concurrent password
+changes. Thirty-nine actual-handler comparisons cover response/stored state,
+case normalization, callbacks and Unicode password limits; memory and live
+PostgreSQL exercise concurrent signup and persistent credential/session records.
+Credential DTOs are parsed inputs: HTTP media/body validation, CSRF/Origin and
+callback guards still belong to the pending HTTP adapter. Password/user/account
+updates and provider linking remain open.

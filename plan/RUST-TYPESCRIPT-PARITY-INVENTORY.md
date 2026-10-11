@@ -296,3 +296,12 @@ The fixture passes 63 checks and 48 native body/storage comparisons, with shared
 credential records seeded at the storage boundary. Memory and real encrypted
 PostgreSQL lifecycle tests also pass. Native signup/sign-in, production HTTP
 cookies/Origin/CSRF integration and indexed lookup remain open.
+
+Native email signup/signin now commits encrypted user/account/session records
+atomically. Thirty-nine comparisons execute actual configured email handlers and
+match response/storage behavior, callbackURL naming, case normalization and
+UTF-16 password limits. Memory/live PostgreSQL exercise concurrent signup, and a
+controlled password-change race proves stale verification cannot mint a session.
+Bounded blocking password work stays outside tenant write locks. HTTP validation,
+cookie/CSRF/Origin integration, credential/account updates and indexed queries
+remain open.
