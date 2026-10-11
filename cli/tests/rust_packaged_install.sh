@@ -31,6 +31,8 @@ CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" init module messaging --path "$RUN_ROOT/app" --language rust -m messaging-base
 "$CLI" init module texting --path "$RUN_ROOT/app" --language rust -m messaging-twilio
 "$CLI" init module ecommerce --path "$RUN_ROOT/app" --language rust -m ecommerce-stripe
+"$CLI" init module billing --path "$RUN_ROOT/app" --language rust -m billing-base
+"$CLI" init module payments --path "$RUN_ROOT/app" --language rust -m billing-stripe
 mv "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
 python3 - "$REPO_ROOT" <<'PYTHON'
@@ -51,7 +53,7 @@ PYTHON
 export CARGO_TARGET_DIR="$GENERATED_TARGET"
 cargo check --workspace
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
-cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-billing-base -p forklaunch-billing-stripe --features forklaunch-billing-base/postgres
+cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-billing-base -p forklaunch-billing-stripe -p forklaunch-billing-axum --features forklaunch-billing-base/postgres
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-cac-axum
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-messaging-axum
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base -p forklaunch-ecommerce-stripe -p forklaunch-ecommerce-paypal -p forklaunch-ecommerce-axum --all-features

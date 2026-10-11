@@ -596,6 +596,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "forklaunch-billing-axum"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "forklaunch-auth",
+ "forklaunch-axum",
+ "forklaunch-billing-base",
+ "forklaunch-billing-interface",
+ "forklaunch-billing-stripe",
+ "forklaunch-blueprint-core",
+ "forklaunch-core",
+ "form_urlencoded",
+ "jsonwebtoken",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "forklaunch-billing-base"
 version = "0.1.0"
 dependencies = [

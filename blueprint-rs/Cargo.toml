@@ -22,6 +22,8 @@ members = [
     "crates/implementations/iam/forklaunch-iam-axum",
     "crates/implementations/billing/forklaunch-billing-base",
     "crates/implementations/billing/forklaunch-billing-stripe",
+    "crates/implementations/billing/forklaunch-billing-axum",
+    "crates/implementations/billing/forklaunch-billing-axum",
     "crates/implementations/worker/forklaunch-worker-database",
     "crates/implementations/worker/forklaunch-worker-redis",
     "crates/implementations/worker/forklaunch-worker-kafka",

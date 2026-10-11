@@ -13,7 +13,7 @@ const ts=require(require.resolve('typescript',{paths:[path.dirname(await realpat
 const captured=[];const cache=new Map();
 const handlers=new Proxy({}, {get:(_,method)=>(_validator,_path,options,_handler)=>({method,options})});
 function router(prefix) {return new Proxy({}, {get:(_,method)=>(suffix,handler)=>{assert.equal(method,handler.method);captured.push({method:method.toUpperCase(),path:prefix+suffix,options:handler.options});return handler;}});}
-const schema={ROLES:{ADMIN:"admin"},handlers,forklaunchRouter:router,schemaValidator:{},unknown:'Unknown',string:'String',number:'Number',boolean:'Boolean',IdSchema:{id:'String'},IdsSchema:{ids:{optional:['String']}},array:value=>[value],optional:value=>({optional:value}),record:(key,value)=>({record:[key,value]}),enum_:value=>({enum:Object.values(value)})};
+const schema={PLATFORM_SYSTEM_ROLES:new Set(['system']),ROLES:{ADMIN:"admin"},handlers,forklaunchRouter:router,schemaValidator:{array:value=>[value],number:'Number',record:(key,value)=>({record:[key,value]}),unknown:'Unknown'},unknown:'Unknown',string:'String',number:'Number',boolean:'Boolean',IdSchema:{id:'String'},IdsSchema:{ids:{optional:['String']}},array:value=>[value],optional:value=>({optional:value}),record:(key,value)=>({record:[key,value]}),enum_:value=>({enum:Object.values(value)})};
 const tokens=new Proxy({}, {get:(_,key)=>key});const ci={resolve:()=>({}),scopedResolver:()=>()=>({})};
 function load(file) {
  if(cache.has(file))return cache.get(file);
@@ -40,7 +40,7 @@ let count=0,schemaCount=0;
 for(const stripe of [false,true]){
  captured.length=0;
  const variant=stripe?'stripe':'base';
- for(const family of families)load(path.join(root,`blueprint/billing-${variant}/api/routes/${family}.routes.ts`));
+ for(const family of [...families,'compliance'])load(path.join(root,`blueprint/billing-${variant}/api/routes/${family}.routes.ts`));
  const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-billing-interface','--example','module_contract',...(stripe?['--','--stripe']:[])],{cwd:root,encoding:'utf8',timeout:120000}));
  assert.equal(native.routes.length,captured.length);
  for(const route of captured){const expected=simpleTs(route),actual=native.routes.find(candidate=>candidate.operationName===expected.operation);assert.ok(actual,expected.operation);assert.deepEqual(simpleNative(actual),expected);assert.equal(actual.name,route.options.name);assert.equal(actual.auth.method,route.options.auth?.hmac?'hmac':'jwt');if(route.options.auth?.allowedRoles)assert.deepEqual(actual.rbac.allowedRoles,[...route.options.auth.allowedRoles]);count++;}

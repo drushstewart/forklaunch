@@ -763,3 +763,94 @@ pub fn registry(stripe: bool) -> ContractRegistry {
     );
     registry
 }
+
+/// Core runtime surface with native error responses and shared health metadata.
+#[must_use]
+pub fn module_registry(stripe: bool) -> ContractRegistry {
+    let mut result = ContractRegistry::for_service(ServiceContract::new("billing", "0.1.0"));
+    for source in registry(stripe).routes() {
+        let mut route = source.clone();
+        for status in [400, 404, 409, 500, 502] {
+            route = route.with_response(status, Some(text()));
+        }
+        result.register(route);
+    }
+    for route in compliance_contracts() {
+        result.register(route);
+    }
+    result.register(health_contract());
+    result
+}
+#[must_use]
+pub fn health_contract() -> RouteContract {
+    RouteContract::get("Get Health", "Service health", "/health")
+        .with_response(200, Some(BodyContract::json("Health")))
+}
+
+#[derive(JsonSchema)]
+#[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
+struct BillingExport {
+    user_id: String,
+    entities: std::collections::BTreeMap<String, Value>,
+}
+#[derive(JsonSchema)]
+#[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
+struct BillingErasure {
+    entities_affected: Vec<String>,
+    records_deleted: u64,
+}
+fn compliance_body<T: JsonSchema>(name: &str) -> BodyContract {
+    let mut settings = schemars::r#gen::SchemaSettings::draft07();
+    settings.inline_subschemas = true;
+    let mut body = BodyContract::json(name);
+    body.schema.json_schema = Some(
+        serde_json::to_string(&settings.into_generator().into_root_schema_for::<T>())
+            .expect("package schema serializes"),
+    );
+    body
+}
+/// Current application entities classify every billing property as non-PII.
+/// Export/erasure still require verified system-role JWTs and report empty data.
+/// # Panics
+/// Only package-owned schemas can fail serialization.
+#[must_use]
+pub fn compliance_contracts() -> Vec<RouteContract> {
+    [
+        (
+            RouteContract::get(
+                "ExportUserData",
+                "Exports classified billing PII",
+                "/compliance/export/:userId",
+            ),
+            compliance_body::<BillingExport>("BillingExport"),
+        ),
+        (
+            RouteContract::delete(
+                "EraseUserData",
+                "Erases classified billing PII",
+                "/compliance/erase/:userId",
+            ),
+            compliance_body::<BillingErasure>("BillingErasure"),
+        ),
+    ]
+    .into_iter()
+    .map(|(route, body)| {
+        route
+            .with_access(AccessLevel::Protected)
+            .with_auth(AuthConfig::jwt(
+                forklaunch_blueprint_core::contract::JwtAuthConfig::JwksUrl {
+                    url: "${JWKS_PUBLIC_KEY_URL}".into(),
+                },
+            ))
+            .with_rbac(forklaunch_blueprint_core::contract::RbacConfig {
+                allowed_roles: vec!["system".into()],
+                ..Default::default()
+            })
+            .with_param(FieldContract::required("userId", "String"))
+            .with_response(200, Some(body))
+            .with_response(404, Some(text()))
+    })
+    .collect()
+}

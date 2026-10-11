@@ -12,6 +12,8 @@ pub(super) enum BuiltinModule {
     MessagingBase,
     MessagingTwilio,
     EcommerceStripe,
+    BillingBase,
+    BillingStripe,
 }
 
 impl BuiltinModule {
@@ -22,6 +24,8 @@ impl BuiltinModule {
             "messaging-base" => Some(Self::MessagingBase),
             "messaging-twilio" => Some(Self::MessagingTwilio),
             "ecommerce-stripe" => Some(Self::EcommerceStripe),
+            "billing-base" => Some(Self::BillingBase),
+            "billing-stripe" => Some(Self::BillingStripe),
             _ => None,
         }
     }
@@ -32,6 +36,8 @@ impl BuiltinModule {
             Self::MessagingBase => "messaging-base",
             Self::MessagingTwilio => "messaging-twilio",
             Self::EcommerceStripe => "ecommerce-stripe",
+            Self::BillingBase => "billing-base",
+            Self::BillingStripe => "billing-stripe",
         }
     }
     pub(super) fn template(self) -> &'static str {
@@ -40,6 +46,7 @@ impl BuiltinModule {
             Self::Cac => "cac",
             Self::MessagingBase | Self::MessagingTwilio => "messaging",
             Self::EcommerceStripe => "ecommerce",
+            Self::BillingBase | Self::BillingStripe => "billing",
         }
     }
     fn description(self) -> &'static str {
@@ -49,6 +56,8 @@ impl BuiltinModule {
             Self::MessagingBase => "Persistent messaging hooks",
             Self::MessagingTwilio => "Persistent Twilio SMS messaging",
             Self::EcommerceStripe => "Persistent ecommerce with Stripe and optional PayPal",
+            Self::BillingBase => "Persistent billing services",
+            Self::BillingStripe => "Persistent billing with Stripe",
         }
     }
 }
@@ -59,13 +68,14 @@ struct RustModuleTemplate {
     description: String,
     crate_module: String,
     twilio: bool,
+    stripe: bool,
 }
 
 pub(crate) fn generate_rust_module(matches: &ArgMatches) -> Result<()> {
     let kind = option(matches, "module")
         .as_deref()
         .and_then(BuiltinModule::from_variant)
-        .context("Rust module generation currently supports --module iam-base, cac-base, messaging-base, messaging-twilio or ecommerce-stripe")?;
+        .context("Rust module generation currently supports --module iam-base, cac-base, messaging-base, messaging-twilio, ecommerce-stripe, billing-base or billing-stripe")?;
     if option(matches, "database").is_some_and(|database| database != "postgresql") {
         bail!("Rust modules currently support --database postgresql");
     }
@@ -118,6 +128,7 @@ pub(super) fn generate_module_at(
         description: escape_toml_string(kind.description()),
         crate_module: name.to_case(Case::Snake),
         twilio: kind == BuiltinModule::MessagingTwilio,
+        stripe: kind == BuiltinModule::BillingStripe,
     };
     let templates = [
         "Cargo.toml",
@@ -261,6 +272,9 @@ pub(super) fn ensure_module_compose(
     }
     if kind == BuiltinModule::EcommerceStripe {
         return ensure_ecommerce_compose(root, name, dryrun);
+    }
+    if matches!(kind, BuiltinModule::BillingBase | BuiltinModule::BillingStripe) {
+        return ensure_billing_compose(root, name, kind, dryrun);
     }
     if matches!(
         kind,
@@ -461,6 +475,65 @@ fn ensure_messaging_compose(
         ] {
             env.entry(key.to_owned())
                 .or_insert_with(|| format!("${{{key}:?Configure Twilio delivery}}"));
+        }
+    }
+    write(path, yaml_to_string(&compose)?)?;
+    Ok(())
+}
+
+fn ensure_billing_compose(
+    root: &Path,
+    name: &str,
+    kind: BuiltinModule,
+    dryrun: bool,
+) -> Result<()> {
+    if dryrun {
+        return Ok(());
+    }
+    let path = root.join("docker-compose.yaml");
+    if !read_or_create_rust_docker_compose(&path)?
+        .services
+        .contains_key(name)
+    {
+        ensure_rust_docker_compose_project(root, RustProjectKind::Service, name, false)?;
+    }
+    let mut compose = read_or_create_rust_docker_compose(&path)?;
+    let service = compose
+        .services
+        .get_mut(name)
+        .context("Expected billing Compose service")?;
+    let env = service.environment.get_or_insert_with(IndexMap::new);
+    for (key, value) in [
+        (
+            "DATABASE_URL",
+            "${BILLING_DATABASE_URL:?Configure a restricted PostgreSQL role}",
+        ),
+        (
+            "TENANT_ID",
+            "${BILLING_TENANT_ID:?Configure a trusted tenant}",
+        ),
+        (
+            "ENCRYPTION_KEY",
+            "${ENCRYPTION_KEY:?Configure a field encryption key}",
+        ),
+        (
+            "HMAC_SECRET_KEY",
+            "${BILLING_HMAC_SECRET_KEY:?Configure a service HMAC secret}",
+        ),
+        (
+            "JWKS_PUBLIC_KEY_URL",
+            "${BILLING_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}",
+        ),
+    ] {
+        env.entry(key.to_owned())
+            .or_insert_with(|| value.to_owned());
+    }
+    if kind == BuiltinModule::BillingStripe {
+        for key in [
+            "STRIPE_SECRET_KEY",
+        ] {
+            env.entry(key.to_owned())
+                .or_insert_with(|| format!("${{{key}:?Configure Stripe billing}}"));
         }
     }
     write(path, yaml_to_string(&compose)?)?;

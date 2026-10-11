@@ -1,0 +1,24 @@
+[package]
+name = "{{{name}}}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "{{{description}}}"
+
+[dependencies]
+serde_json = "1"
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+forklaunch-core = { path = "../../.forklaunch/framework-rs/crates/forklaunch-core", features = ["otlp", "postgres", "encryption"] }
+forklaunch-contract = { path = "../../.forklaunch/framework-rs/crates/forklaunch-contract" }
+forklaunch-openapi = { path = "../../.forklaunch/framework-rs/crates/forklaunch-openapi" }
+forklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth", features = ["remote-jwks"] }
+forklaunch-axum = { path = "../../.forklaunch/framework-rs/crates/forklaunch-axum", features = ["remote-jwks", "mcp"] }
+forklaunch-blueprint-core = { path = "../../.forklaunch/blueprint-rs/crates/forklaunch-blueprint-core", features = ["provider-http"] }
+forklaunch-billing-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/forklaunch-billing-interface" }
+forklaunch-billing-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/billing/forklaunch-billing-base", features = ["postgres"] }
+forklaunch-billing-stripe = { path = "../../.forklaunch/blueprint-rs/crates/implementations/billing/forklaunch-billing-stripe" }
+forklaunch-billing-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/billing/forklaunch-billing-axum" }
+jsonwebtoken = "9"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }

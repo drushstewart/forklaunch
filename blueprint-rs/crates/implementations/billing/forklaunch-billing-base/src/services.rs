@@ -100,6 +100,8 @@ pub struct BaseBillingService<S> {
     store: Arc<S>,
     cache_ttl: Duration,
     database_backup: bool,
+    user_party_type: String,
+    organization_party_type: String,
 }
 impl<S: BillingStore> BaseBillingService<S> {
     #[must_use]
@@ -108,7 +110,23 @@ impl<S: BillingStore> BaseBillingService<S> {
             store,
             cache_ttl: Duration::from_secs(600),
             database_backup: false,
+            user_party_type: "USER".into(),
+            organization_party_type: "ORGANIZATION".into(),
         }
+    }
+    /// Configures application party enum values. Defaults retain the generic TS
+    /// base service's uppercase values; generated modules use their lowercase enum.
+    /// # Errors
+    /// Rejects empty, control-containing or oversized enum values.
+    pub fn with_party_types(mut self, user: String, organization: String) -> BlueprintResult<Self> {
+        for value in [&user, &organization] {
+            if value.is_empty() || value.len() > 64 || value.chars().any(char::is_control) {
+                return Err(invalid());
+            }
+        }
+        self.user_party_type = user;
+        self.organization_party_type = organization;
+        Ok(self)
     }
     /// # Errors
     /// Rejects zero and unbounded cache TTLs.
@@ -333,10 +351,11 @@ impl<S: BillingStore> SubscriptionService for BaseBillingService<S> {
         self.get(BillingKind::Subscription, id, false).await
     }
     async fn get_user_subscription(&self, id: &str) -> BlueprintResult<SubscriptionDto> {
-        self.subscription_for_party(id, "USER").await
+        self.subscription_for_party(id, &self.user_party_type).await
     }
     async fn get_organization_subscription(&self, id: &str) -> BlueprintResult<SubscriptionDto> {
-        self.subscription_for_party(id, "ORGANIZATION").await
+        self.subscription_for_party(id, &self.organization_party_type)
+            .await
     }
     async fn find_subscription_id_by_external_id(
         &self,
