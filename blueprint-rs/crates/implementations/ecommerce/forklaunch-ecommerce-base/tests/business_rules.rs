@@ -2,6 +2,8 @@
 mod catalog;
 #[path = "support/events.rs"]
 mod events;
+#[path = "support/webhook.rs"]
+mod webhook;
 use forklaunch_ecommerce_base::{
     BaseEcommerceService,
     store::{EcommerceStore, Field, InMemoryEcommerceStore, Mutation, RecordKind, Selector},
@@ -335,6 +337,10 @@ async fn business_rules<S: EcommerceStore + 'static>(store: Arc<S>) {
 #[tokio::test]
 async fn memory_business_rules_and_concurrency() {
     business_rules(Arc::new(InMemoryEcommerceStore::default())).await;
+    webhook::ledger_rules(Arc::new(
+        forklaunch_ecommerce_base::webhook::InMemoryWebhookEventStore::default(),
+    ))
+    .await;
 }
 
 #[test]
@@ -382,6 +388,7 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     use forklaunch_blueprint_core::AuditContext;
     use forklaunch_core::persistence::{TenantContext, encryption::FieldEncryptor};
     use forklaunch_ecommerce_base::postgres::PostgresEcommerceStore;
+    use forklaunch_ecommerce_interface::webhook::{WebhookEventOutcome, WebhookEventStore};
     use sqlx::postgres::PgPoolOptions;
     let url = std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap();
     let owner = PgPoolOptions::new()
@@ -397,7 +404,7 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("ecom_{suffix}");
     let password = uuid::Uuid::new_v4().to_string();
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT USAGE ON SCHEMA fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_worker.jobs TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO {role}; GRANT USAGE ON SCHEMA fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_worker.jobs TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};")).execute(&owner).await.unwrap();
     let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
     let runtime = PgPoolOptions::new()
         .max_connections(8)
@@ -476,6 +483,33 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     .unwrap()
     .unwrap();
     drop(released);
+    webhook::ledger_rules(Arc::clone(&a)).await;
+    let event = forklaunch_ecommerce_interface::webhook::WebhookEvent {
+        provider: "stripe".to_owned(),
+        provider_event_id: "ledger-replay".to_owned(),
+        event_type: "payment_intent.succeeded".to_owned(),
+    };
+    assert_eq!(
+        b.begin_processing(event.clone()).await.unwrap(),
+        WebhookEventOutcome::New
+    );
+    let reopened = PostgresEcommerceStore::new(
+        runtime.clone(),
+        tenant_a.clone(),
+        Arc::clone(&keys),
+        audit.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        reopened.begin_processing(event).await.unwrap(),
+        WebhookEventOutcome::AlreadyProcessed
+    );
+    let (visible,): (i64,) = sqlx::query_as("SELECT count(*) FROM fl_ecommerce.webhook_events")
+        .fetch_one(&runtime)
+        .await
+        .unwrap();
+    assert_eq!(visible, 0);
     business_rules(Arc::clone(&a)).await;
     let service = BaseEcommerceService::new(Arc::clone(&a));
     let other = BaseEcommerceService::new(Arc::clone(&b));
@@ -600,7 +634,12 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         receipts, 0,
         "receipts enforce tenant RLS outside a bound transaction"
     );
-    for table in ["records", "pii_read_audit", "inventory_event_receipts"] {
+    for table in [
+        "records",
+        "pii_read_audit",
+        "inventory_event_receipts",
+        "webhook_events",
+    ] {
         sqlx::query(&format!(
             "DELETE FROM fl_ecommerce.{table} WHERE tenant_id=ANY($1)"
         ))

@@ -6,6 +6,7 @@ pub mod events;
 pub mod import;
 pub mod module;
 pub mod pricing;
+pub mod webhook;
 use forklaunch_blueprint_core::BlueprintResult;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -114,7 +114,7 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("ecom_http_{suffix}");
     let password = uuid::Uuid::new_v4().to_string();
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce,fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_worker.jobs TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce,fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_worker.jobs TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};")).execute(&owner).await.unwrap();
     let options: sqlx::postgres::PgConnectOptions = std::env::var("FORKLAUNCH_TEST_POSTGRES_URL")
         .unwrap()
         .parse()
@@ -621,7 +621,12 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
     task.await.unwrap();
     provider_stop.send(()).unwrap();
     provider_task.await.unwrap();
-    for table in ["records", "pii_read_audit", "inventory_event_receipts"] {
+    for table in [
+        "records",
+        "pii_read_audit",
+        "inventory_event_receipts",
+        "webhook_events",
+    ] {
         sqlx::query(&format!(
             "DELETE FROM fl_ecommerce.{table} WHERE tenant_id=ANY($1)"
         ))
