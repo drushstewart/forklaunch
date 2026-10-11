@@ -215,6 +215,12 @@ pub(crate) fn change(
             &relative.to_string_lossy(),
             Some(feature),
         )?;
+        ensure_native_dependency(
+            &mut cargo,
+            &dependency,
+            &relative.to_string_lossy(),
+            Some("encryption"),
+        )?;
         if source.is_none() {
             edit.write(source_path.clone(), generated.into());
         }

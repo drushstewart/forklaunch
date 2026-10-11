@@ -10,7 +10,7 @@ repository.workspace = true
 default = []
 otlp = ["dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-appender-tracing", "dep:tracing-subscriber", "dep:tokio"]
 postgres = ["dep:sqlx"]
-encryption = ["dep:aes-gcm", "dep:hkdf", "dep:hmac", "dep:sha2", "dep:base64", "dep:rand_core", "dep:zeroize"]
+encryption = ["dep:aes-gcm", "dep:hkdf", "dep:hmac", "dep:sha2", "dep:base64", "dep:rand_core", "dep:zeroize", "dep:serde", "dep:serde_json"]
 
 [dependencies]
 forklaunch-common = { path = "../forklaunch-common" }
@@ -33,6 +33,8 @@ sha2 = { version = "0.10", optional = true }
 base64 = { version = "0.22", optional = true }
 rand_core = { version = "0.6", features = ["getrandom"], optional = true }
 zeroize = { version = "1", optional = true }
+serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
 
 [dev-dependencies]
 serde_json = "1"

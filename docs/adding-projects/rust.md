@@ -40,6 +40,11 @@ Use `infra remove accounts redis` or `infra remove accounts s3` to undo owned se
 
 `forklaunch_infrastructure_redis::client::RedisQueue::connect` uses the same `LPUSH`/`RPOP` FIFO layout as TypeScript, including peeks in dequeue order. For a list written by the earlier native `RPUSH`/`LPOP` implementation, use `connect_with_layout(url, key, RedisQueueLayout::LegacyNative)` consistently for its producers and consumers. Drain an existing backlog using its original layout before switching it.
 
+Generated Redis and S3 factories also expose `encrypted_cache()` and async `encrypted_object_store()`. They load `ENCRYPTION_KEY`, the optional `ENCRYPTION_FORMAT` and previous-key settings through `FieldEncryptor::from_env()` only when called. Pass a validated `TenantContext` to each JSON operation to encrypt/authenticate it; omitting context writes ordinary JSON. Reads accept legacy plaintext JSON, but encrypted records require the correct tenant and key. JSON, key, authentication and backend errors propagate rather than becoming cache misses or plaintext writes. Cache batch writes serialize every entry before sending the batch. These wrappers retain false, zero and null records; object reads retain content type and tags. Raw byte/file APIs remain available through the original factories or `into_inner()`.
+
+The shared `forklaunch_core::persistence::json::JsonRecordCodec` uses TypeScript-compatible v2/v3 field-encryption envelopes and the configured key ring. JSON object member ordering may differ across languages; decrypted JSON values interoperate. This is application encryption for JSON records, separate from bucket-side encryption. Full cache TTL metadata, encrypted queue convenience APIs and every TypeScript object-store helper are tracked separately.
+
+
 ## Managed capabilities
 
 Managed capabilities can be added to a native service in either a Rust or mixed application:
@@ -396,7 +401,7 @@ Construction makes no network requests. `init_bucket(false)` checks access; `ini
 
 Defaults bound each object to 16 MiB, a listing to 1,000 objects and 64 MiB, and each operation to 30 seconds. Change these with `AwsS3Options`. `list_page(prefix, token, limit)` supports opaque continuation tokens and page sizes 1–1000 within the configured count bound. `list` follows pages and fails explicitly when its count or byte limit is exceeded. Concurrent listings are not snapshot isolated; objects removed during a page read are omitted. Deletion is idempotent, and its existence boolean is advisory under concurrent changes. Batch operations preserve input order and misses; failure leaves earlier writes/deletes committed.
 
-`put_encrypted_async` and `get_decrypted_async` apply an application-supplied `ObjectCodec` around this async boundary. Supply an authenticated encryption codec for production. Existing `StreamingUpload` and `download_chunks` helpers buffer data.
+`put_encrypted_async` and `get_decrypted_async` apply an application-supplied `ObjectCodec` around this async boundary. Use `JsonObjectStore` with `JsonRecordCodec` for the built-in authenticated JSON path. Existing `StreamingUpload` and `download_chunks` helpers buffer data.
 
 `download(key)` returns an owned `aws::transfer::StreamingDownload` with metadata, optional declared length, and `next_chunk()`. It reads transport-sized chunks without collecting the object, enforcing its byte bound and one deadline that includes caller idle time. A read error terminates the stream; later calls return `None`. Dropping the download cancels the remaining read. `put_stream` accepts an SDK `ByteStream` with an exact known length; `put_file` opens a retryable SDK file stream. Both return `UploadedObject` metadata, size, ETag and version ID without collecting the source. Keep file sources unchanged until completion so SDK retries read the same bytes. Unknown-length streams fail before storage access.
 

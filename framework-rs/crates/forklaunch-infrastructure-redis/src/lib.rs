@@ -3,6 +3,9 @@
 #[cfg(feature = "redis-client")]
 pub mod client;
 
+#[cfg(feature = "encryption")]
+pub mod json;
+
 use std::{
     collections::{BTreeMap, VecDeque},
     time::{Duration, Instant},

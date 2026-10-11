@@ -5,6 +5,9 @@ use std::{collections::BTreeMap, future::Future};
 #[cfg(feature = "aws-sdk")]
 pub mod aws;
 
+#[cfg(feature = "encryption")]
+pub mod json;
+
 use forklaunch_core::common::{FrameworkError, FrameworkResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

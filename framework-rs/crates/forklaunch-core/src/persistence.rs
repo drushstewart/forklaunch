@@ -3,6 +3,9 @@
 #[path = "field_encryptor.rs"]
 pub mod encryption;
 
+#[cfg(feature = "encryption")]
+pub mod json;
+
 use crate::common::{FrameworkError, FrameworkResult};
 
 /// Validated tenant identity bound to one request/unit of work.

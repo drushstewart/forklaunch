@@ -18,3 +18,13 @@ pub fn config() -> FrameworkResult<RedisTtlCacheConfig> {
 pub fn connect() -> FrameworkResult<RedisTtlCache> {
     RedisTtlCache::connect(config()?)
 }
+
+/// Explicit encrypted JSON factory; ENCRYPTION_KEY is only required when this is called.
+pub fn encrypted_cache()
+-> FrameworkResult<forklaunch_infrastructure_redis::json::JsonCache<RedisTtlCache>> {
+    let codec = forklaunch_core::persistence::json::JsonRecordCodec::from_env()?;
+    Ok(forklaunch_infrastructure_redis::json::JsonCache::new(
+        connect()?,
+        codec,
+    ))
+}

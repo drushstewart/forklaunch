@@ -1120,6 +1120,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "rand_core 0.6.4",
+ "serde",
  "serde_json",
  "sha2",
  "sqlx",
@@ -1145,6 +1146,7 @@ version = "0.1.0"
 dependencies = [
  "forklaunch-core",
  "redis",
+ "serde",
  "serde_json",
 ]
 
@@ -1165,6 +1167,7 @@ dependencies = [
  "hmac",
  "http-body 1.0.1",
  "reqwest",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",

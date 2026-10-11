@@ -1,5 +1,6 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use forklaunch_core::persistence::TenantContext;
 use forklaunch_infrastructure_redis::TtlCache;
 use forklaunch_infrastructure_s3::{AsyncObjectStore, ObjectMetadata};
 use storage::{redis_infrastructure, s3_infrastructure};
@@ -18,6 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("PASS native infrastructure factories reject missing settings without connecting");
         return Ok(());
     }
+    let configured = std::env::args().any(|arg| arg == "--configured");
     let id = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     assert_eq!(
         redis_infrastructure::config()?.default_ttl(),
@@ -49,6 +51,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|error| error.to_string())?
                 .is_none()
         );
+        if configured {
+            let tenant = TenantContext::new("tenant-fixture").map_err(|error| error.to_string())?;
+            let wrong = TenantContext::new("tenant-other").map_err(|error| error.to_string())?;
+            let mut encrypted =
+                redis_infrastructure::encrypted_cache().map_err(|error| error.to_string())?;
+            let value = vec!["private@example.test".to_owned(), "秘密🙂".to_owned()];
+            encrypted
+                .put_record(&cache_key, &value, None, Some(&tenant))
+                .map_err(|error| error.to_string())?;
+            assert_eq!(
+                encrypted
+                    .read_record::<Vec<String>>(&cache_key, Some(&tenant))
+                    .map_err(|error| error.to_string())?,
+                Some(value)
+            );
+            assert!(
+                encrypted
+                    .read_record::<Vec<String>>(&cache_key, Some(&wrong))
+                    .is_err()
+            );
+            assert!(
+                encrypted
+                    .read_record::<Vec<String>>(&cache_key, None)
+                    .is_err()
+            );
+            let bytes = cache
+                .get(&cache_key)
+                .map_err(|error| error.to_string())?
+                .unwrap();
+            assert!(bytes.starts_with(b"v2:"));
+            assert!(
+                !String::from_utf8(bytes)
+                    .unwrap()
+                    .contains("private@example.test")
+            );
+            encrypted
+                .delete_record(&cache_key)
+                .map_err(|error| error.to_string())?;
+        }
         Ok(())
     })
     .await?
@@ -72,6 +113,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(store.list(&key).await?.len(), 1);
     assert!(store.delete(&key).await?);
     assert!(store.get(&key).await?.is_none());
+    if configured {
+        let encrypted = s3_infrastructure::encrypted_object_store().await?;
+        let tenant = TenantContext::new("tenant-fixture")?;
+        let wrong = TenantContext::new("tenant-other")?;
+        let value = vec!["private@example.test".to_owned(), "秘密🙂".to_owned()];
+        encrypted
+            .put_object(&key, &value, metadata.clone(), Some(&tenant))
+            .await?;
+        assert_eq!(
+            encrypted
+                .get_object::<Vec<String>>(&key, Some(&tenant))
+                .await?,
+            Some((value, metadata.clone()))
+        );
+        assert!(
+            encrypted
+                .get_object::<Vec<String>>(&key, Some(&wrong))
+                .await
+                .is_err()
+        );
+        assert!(
+            encrypted
+                .get_object::<Vec<String>>(&key, None)
+                .await
+                .is_err()
+        );
+        let bytes = store.get(&key).await?.unwrap().body;
+        assert!(bytes.starts_with(b"v2:"));
+        assert!(
+            !String::from_utf8(bytes)
+                .unwrap()
+                .contains("private@example.test")
+        );
+        assert!(store.delete(&key).await?);
+    }
     println!(
         "PASS generated native Redis and S3 factories round-trip binary data through actual backends"
     );

@@ -44,3 +44,13 @@ pub async fn configured_object_store() -> FrameworkResult<AwsS3ObjectStore> {
         .into_store()
         .await
 }
+
+/// Explicit encrypted JSON factory using the AWS chain and ENCRYPTION_KEY.
+pub async fn encrypted_object_store()
+-> FrameworkResult<forklaunch_infrastructure_s3::json::JsonObjectStore<AwsS3ObjectStore>> {
+    let codec = forklaunch_core::persistence::json::JsonRecordCodec::from_env()?;
+    Ok(forklaunch_infrastructure_s3::json::JsonObjectStore::new(
+        configured_object_store().await?,
+        codec,
+    ))
+}
