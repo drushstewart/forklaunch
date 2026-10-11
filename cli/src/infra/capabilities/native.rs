@@ -492,14 +492,7 @@ pub(super) fn apply(
             lib.insert_str(end, REGISTRY);
         }
         if !main.contains(".with_managed_capabilities()") {
-            let marker = ".into_router_with_default_mcp()";
-            if main.matches(marker).count() != 1 {
-                bail!("Native capability wiring requires one generated HTTP/MCP router mount");
-            }
-            main = main.replace(
-                marker,
-                ".with_managed_capabilities().into_router_with_default_mcp()",
-            );
+            main = with_capability_router(&main)?;
         }
         let depth = edit
             .service_path
@@ -873,9 +866,38 @@ fn render_module(features: &[String]) -> Result<String> {
         .replace("__CLIENT_FACTORIES__", &factories.join("\n")))
 }
 
+fn with_capability_router(main: &str) -> Result<String> {
+    let markers = [".into_router_with_default_mcp()", ".serve_with_default_mcp("];
+    if markers.iter().map(|marker| main.matches(marker).count()).sum::<usize>() != 1 {
+        bail!("Native capability wiring requires one generated HTTP/MCP router mount");
+    }
+    let marker = markers.into_iter().find(|marker| main.contains(marker))
+        .context("Expected generated HTTP/MCP router mount")?;
+    Ok(main.replacen(marker, &format!(".with_managed_capabilities(){marker}"), 1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capabilities_bind_every_generated_listener_entrypoint_and_legacy_mount() {
+        for main in [
+            include_str!("../../templates/rust/project/service/src/main.rs"),
+            include_str!("../../templates/rust/iam/main.rs"),
+            include_str!("../../templates/rust/cac/main.rs"),
+            include_str!("../../templates/rust/messaging/main.rs"),
+            include_str!("../../templates/rust/billing/main.rs"),
+            include_str!("../../templates/rust/ecommerce/main.rs"),
+            "router.into_router_with_default_mcp()?;",
+        ] {
+            let wired = with_capability_router(main).unwrap();
+            assert_eq!(wired.matches(".with_managed_capabilities()").count(), 1);
+            assert_eq!(wired.replace(".with_managed_capabilities()", ""), main);
+        }
+        assert!(with_capability_router("router.into_router()").is_err());
+        assert!(with_capability_router("a.into_router_with_default_mcp(); b.serve_with_default_mcp(x,y)").is_err());
+    }
 
     #[test]
     fn stacked_updates_preserve_human_dependency_features_and_removals() {
