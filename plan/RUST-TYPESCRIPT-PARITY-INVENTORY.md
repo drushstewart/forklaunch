@@ -327,3 +327,9 @@ restricted-role encrypted PostgreSQL exercise HTTP/MCP startup, discovery/calls,
 authentication, CORS/CSRF and shutdown; secure-cookie extraction/clearing is tested.
 Raw auth endpoints remain outside the registered MCP contract surface. Credential
 HTTP, providers/orgs, custom callbacks and the generated Better Auth preset are open.
+
+Fresh packaged install `pUGSo8` validates the nine raw session/JWT routes from
+bundled sources, including live HTTP/MCP and secure-cookie tests. Portable
+services/workers, CLI/native SDKs, listener startup configurations and all five
+managed callbacks pass. Checkout CLI restored; credential HTTP additions and the
+remaining Better Auth preset are tracked separately.

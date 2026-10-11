@@ -1010,3 +1010,11 @@ Packaged live Axum HTTP/MCP integration, generated listener startup matrix and a
 five native managed callbacks pass. Portable services/workers, both SDK generators
 and strict generated consumers pass. Checkout CLI restored afterward. This does
 not claim a generated Better Auth preset or its raw API endpoints are complete.
+
+Better Auth HTTP archive checkpoint: packaged install `pUGSo8` at `ba1da0e00`
+passes relocated native auth tests, including live session/JWT HTTP and MCP plus
+secure cookies. Portable modules/workers, both SDK generators/strict consumers,
+the complete HTTP/MCP startup/listener matrix and five signed managed callbacks
+pass. Checkout CLI restored afterward. This snapshot includes the nine session/JWT
+routes; the subsequent credential HTTP work and complete Better Auth preset are
+separate gates.
