@@ -291,27 +291,118 @@ pub(super) fn ensure_module_compose(
 }
 
 fn ensure_ecommerce_compose(root: &Path, name: &str, dryrun: bool) -> Result<()> {
-    if dryrun { return Ok(()); }
+    if dryrun {
+        return Ok(());
+    }
     let path = root.join("docker-compose.yaml");
-    if !read_or_create_rust_docker_compose(&path)?.services.contains_key(name) {
+    if !read_or_create_rust_docker_compose(&path)?
+        .services
+        .contains_key(name)
+    {
         ensure_rust_docker_compose_project(root, RustProjectKind::Service, name, false)?;
     }
     let mut compose = read_or_create_rust_docker_compose(&path)?;
-    let service = compose.services.get_mut(name).context("Expected ecommerce Compose service")?;
+    let service = compose
+        .services
+        .get_mut(name)
+        .context("Expected ecommerce Compose service")?;
     let env = service.environment.get_or_insert_with(IndexMap::new);
     for (key, value) in [
-        ("DATABASE_URL", "${ECOMMERCE_DATABASE_URL:?Configure a restricted PostgreSQL role}"),
-        ("TENANT_ID", "${ECOMMERCE_TENANT_ID:?Configure a trusted tenant}"),
-        ("ENCRYPTION_KEY", "${ENCRYPTION_KEY:?Configure a field encryption key}"),
-        ("HMAC_SECRET_KEY", "${ECOMMERCE_HMAC_SECRET_KEY:?Configure a service HMAC secret}"),
-        ("JWKS_PUBLIC_KEY_URL", "${ECOMMERCE_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}"),
-        ("STRIPE_API_KEY", "${STRIPE_API_KEY:?Configure Stripe payment creation}"),
-        ("STRIPE_WEBHOOK_SECRET", "${STRIPE_WEBHOOK_SECRET:?Configure Stripe webhook verification}"),
+        (
+            "DATABASE_URL",
+            "${ECOMMERCE_DATABASE_URL:?Configure a restricted PostgreSQL role}",
+        ),
+        (
+            "TENANT_ID",
+            "${ECOMMERCE_TENANT_ID:?Configure a trusted tenant}",
+        ),
+        (
+            "ENCRYPTION_KEY",
+            "${ENCRYPTION_KEY:?Configure a field encryption key}",
+        ),
+        (
+            "HMAC_SECRET_KEY",
+            "${ECOMMERCE_HMAC_SECRET_KEY:?Configure a service HMAC secret}",
+        ),
+        (
+            "JWKS_PUBLIC_KEY_URL",
+            "${ECOMMERCE_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}",
+        ),
+        (
+            "STRIPE_API_KEY",
+            "${STRIPE_API_KEY:?Configure Stripe payment creation}",
+        ),
+        (
+            "STRIPE_WEBHOOK_SECRET",
+            "${STRIPE_WEBHOOK_SECRET:?Configure Stripe webhook verification}",
+        ),
     ] {
-        env.entry(key.to_owned()).or_insert_with(|| value.to_owned());
+        env.entry(key.to_owned())
+            .or_insert_with(|| value.to_owned());
+    }
+    let service = service.clone();
+    let worker_name = format!("{name}-inventory-worker");
+    if let Some(existing) = compose.services.get(&worker_name) {
+        anyhow::ensure!(
+            ecommerce_worker_owner(existing) == Some(name),
+            "Compose service {worker_name} already exists and is not this module's inventory worker"
+        );
+    } else {
+        let app_name = rust_app_name(root)?;
+        let mut worker =
+            rust_docker_service(&app_name, &worker_name, RustProjectKind::Worker, None);
+        worker.image = service.image.clone();
+        worker.build = service.build.clone();
+        worker.networks = service.networks.clone();
+        worker.command = Some(DockerCommand::Multiple(vec![
+            format!("./target/release/{name}"),
+            "--worker".to_owned(),
+        ]));
+        let mut worker_env = IndexMap::new();
+        for (key, value) in service.environment.as_ref().into_iter().flatten() {
+            if matches!(
+                key.as_str(),
+                "DATABASE_URL"
+                    | "TENANT_ID"
+                    | "ENCRYPTION_KEY"
+                    | "LEGACY_ENCRYPTION_KEYS"
+                    | "RUST_LOG"
+            ) || key.starts_with("OTEL_")
+            {
+                worker_env.insert(key.clone(), value.clone());
+            }
+        }
+        worker_env.insert("WORKER_HTTP_ADDR".to_owned(), "0.0.0.0:9090".to_owned());
+        worker.environment = Some(worker_env);
+        worker.healthcheck = Some(Healthcheck {
+            test: HealthTest::List(vec![
+                "CMD".to_owned(),
+                "curl".to_owned(),
+                "-fsS".to_owned(),
+                "http://localhost:9090/ready".to_owned(),
+            ]),
+            interval: "10s".to_owned(),
+            timeout: "5s".to_owned(),
+            retries: 3,
+            start_period: "10s".to_owned(),
+            additional_properties: Default::default(),
+        });
+        worker.additional_properties.insert(
+            ECOMMERCE_WORKER_OWNER.to_owned(),
+            serde_yml::Value::String(name.to_owned()),
+        );
+        compose.services.insert(worker_name, worker);
     }
     write(path, yaml_to_string(&compose)?)?;
     Ok(())
+}
+
+const ECOMMERCE_WORKER_OWNER: &str = "x-forklaunch-ecommerce-worker-for";
+pub(super) fn ecommerce_worker_owner(service: &DockerService) -> Option<&str> {
+    service
+        .additional_properties
+        .get(ECOMMERCE_WORKER_OWNER)?
+        .as_str()
 }
 
 fn ensure_messaging_compose(
@@ -430,6 +521,36 @@ pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
             "./target/release/{new}"
         )]));
         compose.services.insert(new.to_owned(), service);
+        let old_worker = format!("{old}-inventory-worker");
+        if compose
+            .services
+            .get(&old_worker)
+            .is_some_and(|worker| ecommerce_worker_owner(worker) == Some(old))
+        {
+            let new_worker = format!("{new}-inventory-worker");
+            anyhow::ensure!(
+                !compose.services.contains_key(&new_worker),
+                "Compose service {new_worker} already exists"
+            );
+            let mut worker = compose
+                .services
+                .shift_remove(&old_worker)
+                .context("Expected module inventory worker")?;
+            worker.hostname = Some(new_worker.clone());
+            worker.container_name = Some(format!("{}-{new_worker}-rust", rust_app_name(root)?));
+            if matches!(&worker.command, Some(DockerCommand::Multiple(args)) if args == &vec![format!("./target/release/{old}"), "--worker".to_owned()])
+            {
+                worker.command = Some(DockerCommand::Multiple(vec![
+                    format!("./target/release/{new}"),
+                    "--worker".to_owned(),
+                ]));
+            }
+            worker.additional_properties.insert(
+                ECOMMERCE_WORKER_OWNER.to_owned(),
+                serde_yml::Value::String(new.to_owned()),
+            );
+            compose.services.insert(new_worker, worker);
+        }
         write(path, yaml_to_string(&compose)?)?;
     }
     Ok(())

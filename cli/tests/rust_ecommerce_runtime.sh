@@ -34,10 +34,12 @@ run_cli init application shop-app --path "$RUN_ROOT/app" --language mixed --modu
 run_cli init module spare-shop --path "$RUN_ROOT/app" --language rust -m ecommerce-stripe
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
+python3 "$SCRIPT_DIR/fixtures/rust_ecommerce_compose.py" prepare
 printf '\npub const USER_SHOP_MARKER: &str = "preserved";\n' >> crates/spare-shop/src/lib.rs
 printf '\n[package.metadata.user]\nmarker = "preserved"\n' >> crates/spare-shop/Cargo.toml
 run_cli sync service spare-shop --path .
 run_cli init module spare-shop --path . --language rust -m ecommerce-stripe
+python3 "$SCRIPT_DIR/fixtures/rust_ecommerce_compose.py" preserved
 grep -q USER_SHOP_MARKER crates/spare-shop/src/lib.rs
 grep -q ECOMMERCE_DATABASE_URL docker-compose.yaml
 grep -q STRIPE_API_KEY docker-compose.yaml
@@ -77,6 +79,7 @@ TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import j
 node "$SCRIPT_DIR/rust_ecommerce_runtime.mjs" "$TARGET_DIR/debug/ecommerce" "$PWD/sdks/typescript/dist/index.js" "$TARGET_DIR/debug/examples/webhook_bridge"
 cargo run -p ecommerce --example seed -- --inspect
 run_cli change service --path crates/spare-shop -N renamed-shop --confirm
+python3 "$SCRIPT_DIR/fixtures/rust_ecommerce_compose.py" renamed
 grep -q USER_SHOP_MARKER crates/renamed-shop/src/lib.rs
 grep -q 'marker = "preserved"' crates/renamed-shop/Cargo.toml
 grep -q 'variant = "ecommerce-stripe"' .forklaunch/manifest.toml
@@ -84,6 +87,7 @@ run_cli sync service renamed-shop --path .
 run_cli sdk generate --path . --target all --from contract --check
 cargo check --workspace
 run_cli delete service renamed-shop --path . --continue
+python3 "$SCRIPT_DIR/fixtures/rust_ecommerce_compose.py" deleted
 test ! -d crates/renamed-shop
 test ! -d sdks/rust/renamed-shop-sdk
 echo 'PASS generated ecommerce mixed application, HTTP/MCP startup, providers, SDKs, inventory worker, persistence and lifecycle'
