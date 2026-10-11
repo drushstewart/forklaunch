@@ -8,7 +8,7 @@ repository.workspace = true
 
 [features]
 default = ["adapter"]
-mcp = ["adapter", "dep:forklaunch-mcp"]
+mcp = ["adapter", "dep:forklaunch-mcp", "tokio/sync", "tokio/time"]
 remote-jwks = ["adapter", "forklaunch-auth/remote-jwks", "dep:jsonwebtoken"]
 adapter = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes", "dep:form_urlencoded", "dep:http-body"]
 

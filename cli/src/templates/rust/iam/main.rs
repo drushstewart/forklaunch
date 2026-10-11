@@ -43,7 +43,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
     let router = forklaunch_iam_axum::session_iam_router_with_service_info(store, service_info());
-    axum::serve(listener, {{crate_module}}::routes::register_router(router).into_router_with_default_mcp()?).with_graceful_shutdown(shutdown()).await?;
+    {{crate_module}}::routes::register_router(router).serve_with_default_mcp(listener, shutdown()).await?;
     pool.close().await;
     Ok(())
 }

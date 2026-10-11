@@ -2,6 +2,8 @@
 
 #[cfg(feature = "adapter")]
 mod body_telemetry;
+#[cfg(feature = "mcp")]
+mod mcp_runtime;
 #[cfg(feature = "adapter")]
 pub mod router;
 #[cfg(feature = "adapter")]

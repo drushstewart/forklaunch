@@ -514,6 +514,19 @@ impl ForkLaunchRouter {
         self,
         options: forklaunch_mcp::server::McpServerOptions,
     ) -> Result<Router, String> {
+        let (http, transport) = self.into_routers_with_mcp(options)?;
+        Ok(http.merge(transport))
+    }
+
+    /// Builds separate HTTP and MCP-only routers; MCP still invokes the same
+    /// authenticated HTTP handlers internally.
+    /// # Errors
+    /// Rejects invalid MCP options, names and endpoint collisions.
+    #[cfg(feature = "mcp")]
+    pub fn into_routers_with_mcp(
+        self,
+        options: forklaunch_mcp::server::McpServerOptions,
+    ) -> Result<(Router, Router), String> {
         if (self.config.openapi_enabled && options.path == self.config.openapi_path)
             || (self.config.openapi_enabled
                 && self.config.docs_enabled
@@ -525,7 +538,9 @@ impl ForkLaunchRouter {
             return Err("MCP endpoint conflicts with documentation".into());
         }
         let registry = self.registry.clone();
-        forklaunch_mcp::server::mount_http(self.into_router(), &registry, options)
+        let http = self.into_router();
+        let transport = forklaunch_mcp::server::http_transport(http.clone(), &registry, options)?;
+        Ok((http, transport))
     }
 
     /// Enables `/mcp` on generated services. Server-owned environment variables
@@ -535,9 +550,19 @@ impl ForkLaunchRouter {
     /// Rejects invalid environment settings and MCP configuration.
     #[cfg(feature = "mcp")]
     pub fn into_router_with_default_mcp(self) -> Result<Router, String> {
+        match self.default_mcp_options()? {
+            Some(options) => self.into_router_with_mcp(options),
+            None => Ok(self.into_router()),
+        }
+    }
+
+    #[cfg(feature = "mcp")]
+    pub(super) fn default_mcp_options(
+        &self,
+    ) -> Result<Option<forklaunch_mcp::server::McpServerOptions>, String> {
         let enabled = std::env::var("MCP_ENABLED").unwrap_or_else(|_| "true".into());
         match enabled.as_str() {
-            "false" | "0" => return Ok(self.into_router()),
+            "false" | "0" => return Ok(None),
             "true" | "1" => {}
             _ => return Err("MCP_ENABLED must be true, false, 1 or 0".into()),
         }
@@ -567,7 +592,24 @@ impl ForkLaunchRouter {
                 }
             }
         }
-        self.into_router_with_mcp(options)
+        Ok(Some(options))
+    }
+
+    /// Serves HTTP and optional MCP with coordinated graceful shutdown. Use
+    /// `MCP_LISTENER=separate` (HTTP port + 2000), `MCP_PORT` or `MCP_HOST` for a
+    /// separate listener; the default keeps MCP on the HTTP listener.
+    /// # Errors
+    /// Returns invalid configuration, bind, server and bounded drain errors.
+    #[cfg(feature = "mcp")]
+    pub async fn serve_with_default_mcp<F>(
+        self,
+        listener: tokio::net::TcpListener,
+        shutdown: F,
+    ) -> std::io::Result<()>
+    where
+        F: std::future::Future<Output = ()> + Send,
+    {
+        crate::mcp_runtime::serve(self, listener, shutdown).await
     }
 
     /// Binds to `addr` and serves until shutdown.

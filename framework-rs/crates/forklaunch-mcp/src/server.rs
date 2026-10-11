@@ -99,6 +99,19 @@ pub fn mount_http(
     registry: &ContractRegistry,
     options: McpServerOptions,
 ) -> Result<Router, String> {
+    let transport = http_transport(router.clone(), registry, options)?;
+    Ok(router.merge(transport))
+}
+
+/// Creates an MCP-only router for a separate listener. Tool invocations still
+/// dispatch through the supplied HTTP router, with the same route guards.
+/// # Errors
+/// Rejects invalid configuration, duplicate tools and endpoint collisions.
+pub fn http_transport(
+    router: Router,
+    registry: &ContractRegistry,
+    options: McpServerOptions,
+) -> Result<Router, String> {
     if !options.path.starts_with('/')
         || options.path == "/"
         || options.path.ends_with('/')
@@ -167,7 +180,7 @@ pub fn mount_http(
         }
     }
     let handler = ContractServer {
-        router: router.clone(),
+        router,
         tools: Arc::new(tools),
         info: ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(options.name, options.version)),
@@ -199,7 +212,7 @@ pub fn mount_http(
                 }
             },
         ));
-    Ok(router.merge(transport))
+    Ok(transport)
 }
 impl ServerHandler for ContractServer {
     fn get_info(&self) -> ServerConfig {

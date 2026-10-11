@@ -493,9 +493,22 @@ Additional runtime tools bind through `McpServerOptions.manual_tools` using `for
 
 Live CLI fixtures start generated services and exercise HTTP health, MCP
 initialization, discovery and tool calls, including signed calls, rejected
-credentials and Origins, and graceful shutdown. HTTP and MCP share a listener
-in generated Rust services; TypeScript's default separate MCP port is tracked
-as a remaining configuration compatibility item.
+credentials and Origins, and graceful shutdown. Generated services use
+`serve_with_default_mcp(listener, shutdown)` to coordinate both surfaces.
+`MCP_LISTENER=shared` (the Rust default) keeps MCP on the HTTP listener.
+`MCP_LISTENER=separate` binds MCP on the HTTP port plus 2000, matching the
+TypeScript fallback. `MCP_PORT` overrides that port (`0` selects an ephemeral
+port); `MCP_HOST` accepts a hostname or IP and defaults to the HTTP listener's
+bound IP. Either override also selects separate mode when `MCP_LISTENER` is
+absent. Explicit shared mode rejects these listener overrides.
+
+Separate MCP listeners expose only the configured MCP endpoint; HTTP handlers
+remain on the HTTP listener and tools dispatch internally through their route
+guards. Both listeners bind before either starts serving. Failure to configure
+or bind MCP fails startup and releases HTTP as well. Shutdown drains both
+surfaces, bounded to 30 seconds. `into_routers_with_mcp(options)` exposes the
+HTTP and MCP-only routers for custom listener orchestration; the existing
+`into_router_with_default_mcp()` mounting helper configures one shared router.
 
 ### Query encoding
 

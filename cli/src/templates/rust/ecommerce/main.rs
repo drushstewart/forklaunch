@@ -165,13 +165,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         {{crate_module}}::SERVICE_NAME,
         listener.local_addr()?
     );
-    axum::serve(
-        listener,
-        {{crate_module}}::routes::register_router(ecommerce_router(backend, auth, service_info()))
-            .into_router_with_default_mcp()?,
-    )
-    .with_graceful_shutdown(shutdown())
-    .await?;
+    {{crate_module}}::routes::register_router(ecommerce_router(backend, auth, service_info()))
+        .serve_with_default_mcp(listener, shutdown()).await?;
     pool.close().await;
     Ok(())
 }
