@@ -66,7 +66,7 @@ fn remember_gateway_edits(
     Ok(())
 }
 
-fn merge_human_delta(
+pub(crate) fn merge_human_delta(
     baseline: &mut serde_json::Value,
     previous: &serde_json::Value,
     current: &serde_json::Value,
@@ -581,6 +581,35 @@ pub(super) fn apply(
             .map(|state| state.original.clone())
             .unwrap_or_else(|| state.original_mock.clone());
         edit.update_compose(|compose| {
+            let current_dependency = compose
+                .services
+                .get(&service)
+                .and_then(|target| target.depends_on.as_ref())
+                .and_then(|dependencies| dependencies.get(GATEWAY_MOCK_SERVICE))
+                .cloned();
+            let default_dependency = crate::core::docker::DependsOn::default();
+            let retained_dependency = match current_dependency {
+                Some(dependency)
+                    if state.original_gateway_dependency.is_some()
+                        || serde_json::to_value(&dependency)?
+                            != serde_json::to_value(default_dependency)? =>
+                {
+                    Some(dependency)
+                }
+                _ => None,
+            };
+            let removed_settings = compose
+                .services
+                .get(&service)
+                .and_then(|target| target.environment.as_ref())
+                .map(|env| {
+                    super::compose_gateway_env()
+                        .into_iter()
+                        .filter(|(key, value)| env.get(*key) == Some(value))
+                        .map(|(key, _)| key)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
             let previous = compose
                 .services
                 .get(GATEWAY_MOCK_SERVICE)
@@ -601,10 +630,12 @@ pub(super) fn apply(
                     {
                         env.shift_remove("FORKLAUNCH_LOCAL_GATEWAY_MOCK");
                     }
-                    for (key, value) in &state.original_service_env {
-                        env.entry(key.clone()).or_insert_with(|| value.clone());
+                    for key in removed_settings {
+                        if let Some(value) = state.original_service_env.get(key) {
+                            env.entry(key.into()).or_insert_with(|| value.clone());
+                        }
                     }
-                    if let Some(dependency) = &state.original_gateway_dependency {
+                    if let Some(dependency) = &retained_dependency {
                         target
                             .depends_on
                             .get_or_insert_with(Default::default)
@@ -717,7 +748,7 @@ pub(super) fn apply(
     edit.write(main_path, main);
     Ok(())
 }
-fn ensure_dependency(
+pub(crate) fn ensure_dependency(
     cargo: &mut DocumentMut,
     name: &str,
     path: &str,

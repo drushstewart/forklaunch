@@ -38,6 +38,9 @@ cd "$RUN_ROOT/relocated-app"
 for feature in email sms whatsapp voice payments; do
     "$CLI" infra add accounts "$feature" --path .
 done
+for resource in redis s3; do
+    "$CLI" infra add accounts "$resource" --path .
+done
 python3 - "$REPO_ROOT" <<'PYTHON'
 from pathlib import Path
 import sys

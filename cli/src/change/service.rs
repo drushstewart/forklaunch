@@ -1139,6 +1139,10 @@ impl CliCommand for ServiceCommand {
                 Some("worker") => Some(RustProjectKind::Worker),
                 _ => None,
             };
+            let infrastructure = crate::infra::native_local::requested(matches);
+            if to_kind.is_some() && infrastructure.is_some() {
+                anyhow::bail!("Change native service infrastructure before converting it to a worker");
+            }
             let changed_name = rust_project::change_rust_project(
                 &app_root_path,
                 &rust_project_name,
@@ -1149,6 +1153,14 @@ impl CliCommand for ServiceCommand {
                 to_kind,
                 matches.get_flag("dryrun"),
             )?;
+            if let Some(desired) = infrastructure {
+                let service = if matches.get_flag("dryrun") {
+                    rust_project_name.as_str()
+                } else {
+                    changed_name.as_str()
+                };
+                crate::infra::native_local::reconcile(matches, &app_root_path, service, &desired, true)?;
+            }
             if !matches.get_flag("dryrun") {
                 log_ok!(stdout, "{} changed successfully!", changed_name);
             }

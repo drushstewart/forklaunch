@@ -36,8 +36,12 @@ mod worker;
 pub(crate) use modules::generate_rust_module;
 
 pub(crate) fn ensure_native_capability_sources(root: &Path) -> Result<()> {
-    ensure_embedded_framework(root, false)?;
+    ensure_native_infrastructure_sources(root)?;
     modules::ensure_blueprint_sources(root, false)
+}
+
+pub(crate) fn ensure_native_infrastructure_sources(root: &Path) -> Result<()> {
+    ensure_embedded_framework(root, false)
 }
 
 pub(crate) const TYPESCRIPT_SDK_TSCONFIG: &str =
@@ -591,6 +595,7 @@ pub(crate) fn delete_rust_project(
     remove_cargo_member(app_root, &crate_path)?;
     cleanup_generated_outputs_for_deleted_rust_project(app_root, kind, name)?;
     remove_rust_docker_compose_project(app_root, name)?;
+    crate::infra::native_local::delete_ownership(app_root, name)?;
     remove_rust_package_scripts(app_root, name)?;
     ensure_rust_local_library_dependencies(app_root, false)?;
 
@@ -710,8 +715,19 @@ pub(crate) fn change_rust_project(
         .and_then(|resources| resources.get("capabilities"))
         .and_then(Value::as_array)
         .is_some_and(|features| !features.is_empty());
+    let managed_infrastructure = current_kind == RustProjectKind::Service
+        && current_project
+            .and_then(|project| project.get("resources"))
+            .is_some_and(|resources| {
+                ["cache", "object_store"]
+                    .iter()
+                    .any(|key| resources.get(*key).and_then(Value::as_str).is_some())
+            });
     if managed_capabilities && target_kind != RustProjectKind::Service {
         bail!("Remove managed capabilities before converting this native service to another project kind");
+    }
+    if managed_infrastructure && target_kind != RustProjectKind::Service {
+        bail!("Remove native infrastructure before converting this service to another project kind");
     }
     if persistent_module.is_some()
         && (!matches!(target_kind, RustProjectKind::Service)
@@ -843,9 +859,9 @@ pub(crate) fn change_rust_project(
         }
         return Ok(target_name.to_owned());
     }
-    if managed_capabilities && current_kind == target_kind {
-        // Keep the application's handlers and capability hooks when its name
-        // or metadata changes. The ordinary shape templates replace source.
+    if current_kind == RustProjectKind::Service && current_kind == target_kind {
+        // Metadata and infrastructure edits preserve existing service handlers,
+        // factories and custom configuration instead of replacing source.
         if current_name != target_name {
             modules::rename_sources(app_root, current_name, target_name)?;
             rename_native_service_defaults(&crate_dir, current_name, target_name)?;
@@ -878,6 +894,7 @@ pub(crate) fn change_rust_project(
 // names follow the renamed project. Other services' artifacts are left intact.
 fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> {
     crate::infra::capabilities::rename_native_ownership(root, old, new)?;
+    crate::infra::native_local::rename_ownership(root, old, new)?;
     for (kind, filename) in [
         ("contracts", "contract.json"),
         ("openapi", "openapi.json"),
@@ -1126,6 +1143,17 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     if !dryrun && let Some(backend) = backend {
         worker::mark(&app_root, &name, backend)?;
         worker::compose(&app_root, &name, backend)?;
+    }
+    if kind == RustProjectKind::Service
+        && let Some(desired) = crate::infra::native_local::requested(matches)
+    {
+        if dryrun {
+            for id in desired {
+                println!("Would configure {id} infrastructure for {name}");
+            }
+        } else {
+            crate::infra::native_local::reconcile(matches, &app_root, &name, &desired, false)?;
+        }
     }
 
     log_ok!(

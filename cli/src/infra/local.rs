@@ -128,6 +128,16 @@ fn change_infrastructure(matches: &ArgMatches, adding: bool) -> Result<()> {
         _ => {}
     }
 
+    if project
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.language.as_deref())
+        == Some("rust")
+        || crate::init::rust_project::is_rust_project(&app_root, &service)?
+    {
+        return super::native_local::change(matches, &app_root, &manifest, project, wanted, adding);
+    }
+
     let app_name = manifest.app_name.clone();
     let service_path = app_root.join(&manifest.modules_path).join(&service);
     let mut edit = CapabilityEdit::new(

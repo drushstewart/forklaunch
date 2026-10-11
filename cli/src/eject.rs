@@ -229,7 +229,10 @@ fn perform_string_replacements(
     for file in app_files {
         if file.file_name() != "package.json" {
             let file_path = file.path();
-            let relative_path_difference = get_relative_path(file_path, base_path);
+            let relative_path_difference = get_relative_path(
+                file_path.parent().context("Ejected source must have a parent directory")?,
+                base_path,
+            );
 
             let content = rendered_templates_cache
                 .get(file_path)?

@@ -33,7 +33,7 @@ fi
 # Argument rejection and dry runs must leave destinations untouched.
 run_cli init application dry-iam --path "$RUN_ROOT/dry-app" --language rust --modules iam-base -D 'Dry IAM' -A ForkLaunch -L MIT --dryrun
 test ! -e "$RUN_ROOT/dry-app"
-if run_cli init application invalid-app --path "$RUN_ROOT/invalid-app" --language rust --modules billing-base -D Invalid -A ForkLaunch -L MIT; then
+if run_cli init application invalid-app --path "$RUN_ROOT/invalid-app" --language rust --modules unsupported-module -D Invalid -A ForkLaunch -L MIT; then
     echo 'FAIL unsupported Rust modules must be rejected'; exit 1
 fi
 test ! -e "$RUN_ROOT/invalid-app"

@@ -15,6 +15,7 @@
 
 mod native;
 pub(crate) use native::{cleanup_deleted_native_service, rename_native_ownership};
+pub(crate) use native::{ensure_dependency as ensure_native_dependency, merge_human_delta};
 
 use std::{
     collections::BTreeMap,
@@ -389,7 +390,7 @@ impl CapabilityEdit {
         for (key, value) in pairs {
             let present = text
                 .lines()
-                .any(|l| l.trim_start().starts_with(&format!("{key}=")));
+                .any(|line| in_place::env_key(line) == Some(*key));
             if !present {
                 if !text.is_empty() && !text.ends_with('\n') {
                     text.push('\n');

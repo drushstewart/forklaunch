@@ -1960,7 +1960,7 @@ pub(crate) fn clean_up_unused_infrastructure_services(
 
 /// True when another compose service depends on `name` or addresses it by
 /// host (`redis://redis:6379`, `http://minio:9000`).
-fn service_still_referenced(docker_compose: &DockerCompose, name: &str) -> bool {
+pub(crate) fn service_still_referenced(docker_compose: &DockerCompose, name: &str) -> bool {
     if !docker_compose.services.contains_key(name) {
         return false;
     }

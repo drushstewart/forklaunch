@@ -23,6 +23,21 @@ The service serves `/health`, `/users`, `/openapi.json`, and a Scalar documentat
 
 Network requests use Axum and the same contract handlers as `local_router`. Path parameters, decoded URL queries, headers, binary bodies, body limits, CORS, and request IDs pass through the framework adapter.
 
+## Local cache and object storage
+
+```sh
+forklaunch infra add accounts redis --path .
+forklaunch infra add accounts s3 --path .
+# Also supported during initialization:
+forklaunch init service storage --language rust -d postgresql --infrastructure redis s3
+```
+
+The CLI creates editable factories in `src/infrastructure/redis.rs` and `src/infrastructure/s3.rs`, exports them as `redis_infrastructure` and `s3_infrastructure`, and wires Cargo dependencies, local settings, manifest resources and Compose backends. Redis uses `REDIS_URL` with a one-hour default TTL; its synchronous operations belong on a blocking executor. The S3 factory uses explicit `S3_URL`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` settings for local MinIO. Customize its injected AWS SDK client for production credential and transport policy. Construction never provisions a bucket.
+
+HTTP and MCP startup do not connect these factories automatically. Call `redis_infrastructure::connect()` or `s3_infrastructure::object_store()` where your application needs storage. These factories expose the raw adapters; application encryption/compliance policies must be supplied separately.
+
+Use `infra remove accounts redis` or `infra remove accounts s3` to undo owned settings. `change service --path crates/accounts --infrastructure redis` replaces the enabled local infrastructure list; an empty `--infrastructure` removes both. Custom factories and settings survive sync, rename and removal, and a shared backend remains while another service uses it. Restoration records are private local files; after a Git clone, removal retains settings and dependencies whose ownership is unknown.
+
 ## Managed capabilities
 
 Managed capabilities can be added to a native service in either a Rust or mixed application:

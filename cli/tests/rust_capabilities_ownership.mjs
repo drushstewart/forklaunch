@@ -48,6 +48,16 @@ assert.equal(edited.image,'human/edited:fixture');assert.equal(edited.environmen
 assert.equal(edited.environment.REMOVE_ME,undefined);
 assert.deepEqual(edited['x-user-settings'],{keep:'unchanged',change:'updated',added:'new'});
 assert.equal(edited.environment.NEW_SETTING,'preserved');assert.equal(edited.environment.MOCK_EVENTS_URL_EMAIL,'https://human.example/callback');
+// An adopted gateway dependency keeps its options; an explicitly deleted one stays absent.
+edit('add','alpha','email');
+let dependencyDocument=compose();
+dependencyDocument.services.alpha.depends_on['gateway-mock']={condition:'service_started',required:false,restart:true};
+writeFileSync(path.join(app,'docker-compose.yaml'),JSON.stringify(dependencyDocument));
+edit('remove','alpha','email');
+assert.deepEqual(compose().services.alpha.depends_on['gateway-mock'],{condition:'service_started',required:false,restart:true});
+edit('add','alpha','email');dependencyDocument=compose();delete dependencyDocument.services.alpha.depends_on['gateway-mock'];
+writeFileSync(path.join(app,'docker-compose.yaml'),JSON.stringify(dependencyDocument));
+edit('remove','alpha','email');assert.equal(compose().services.alpha.depends_on?.['gateway-mock'],undefined);
 // Deletion follows the same ownership lifetime, even if the first owner leaves first.
 edit('add','alpha','email');edit('add','beta','email');
 run('delete','service','alpha','--path',app,'--continue');assert.equal(target(),'http://beta:8001');
