@@ -121,7 +121,7 @@ try {
     path.join(temporary, 'src/native.ts'),
     await readFile(path.join(temporary, 'src/generated.ts.native')),
   );
-  for (const suffix of ['recursive', 'empty'])
+  for (const suffix of ['recursive', 'empty', 'draft6'])
     await writeFile(
       path.join(temporary, `src/${suffix}.ts`),
       await readFile(path.join(temporary, `src/generated.ts.${suffix}`)),
@@ -131,6 +131,10 @@ try {
     `
 import { ForkLaunchSocketClient } from './generated.js';
 import type { SocketIncoming as Tree } from './recursive.js';
+import type { SocketIncoming as DraftSix } from './draft6.js';
+export const draftSix: DraftSix = [1, 2];
+// @ts-expect-error Draft 6 arrays retain their numeric item type.
+export const invalidDraftSix: DraftSix = ['wrong'];
 export const tree: Tree = { value: 1, next: { value: 2 } };
 // @ts-expect-error Recursive nodes retain their field types.
 export const invalidTree: Tree = { value: 'wrong' };

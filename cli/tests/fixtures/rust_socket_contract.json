@@ -114,6 +114,32 @@
     },
     "empty": {
       "path": "/empty"
+    },
+    "draft6": {
+      "path": "/draft-six",
+      "clientMessages": {
+        "legacy_request": {
+          "shape": {
+            "$schema": "http://json-schema.org/draft-06/schema#",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "serverMessages": {
+        "legacy_values": {
+          "shape": {
+            "$schema": "http://json-schema.org/draft-06/schema#",
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "contains": {
+              "minimum": 2
+            }
+          }
+        }
+      }
     }
   }
 }

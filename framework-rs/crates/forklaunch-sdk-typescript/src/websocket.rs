@@ -40,6 +40,7 @@ pub fn generate_typescript_websocket_sdk_source(
             .schema
             .get("$schema")
             .and_then(serde_json::Value::as_str)
+            && !dialect.contains("/draft-06/")
             && !dialect.contains("/draft-07/")
             && !dialect.contains("/draft/2019-09/")
             && !dialect.contains("/draft/2020-12/")
@@ -54,7 +55,7 @@ pub fn generate_typescript_websocket_sdk_source(
         "SocketPong",
         "SocketClose",
     ];
-    let mut source = String::from(include_str!("websocket-runtime.ts"));
+    let mut source = runtime_source();
     for (alias, payload) in aliases.into_iter().zip(payloads) {
         if !names.insert(alias.into()) {
             bail!("Conflicting TypeScript socket payload name {alias}");
@@ -99,6 +100,17 @@ pub fn generate_typescript_websocket_sdk_source(
         options.client_name
     );
     Ok(source)
+}
+
+fn runtime_source() -> String {
+    let mut source = String::from(include_str!("websocket-runtime.ts"));
+    // Official Draft 6 meta-schema, embedded to keep both module formats self-contained.
+    let schema = forklaunch_common::json_string(include_str!("draft6-schema.json"));
+    let _ = writeln!(
+        source,
+        "const socketDraft6MetaSchema = JSON.parse({schema}) as Record<string, unknown>;"
+    );
+    source
 }
 
 fn client_names(client_name: &str) -> Result<BTreeSet<String>> {
@@ -194,6 +206,9 @@ mod tests {
             for (suffix, contract) in [
                 ("recursive", recursive),
                 ("empty", SocketContract::new("/empty")),
+                ("draft6", SocketContract::new("/draft-six")
+                    .with_server_message("values", SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-06/schema#","type":"array","items":{"type":"integer"},"contains":{"minimum":2}})))
+                    .with_client_message("request", SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-06/schema#","type":"string","minLength":1})))),
             ] {
                 let source = generate_typescript_websocket_sdk_source(
                     &SocketSdkPlan::from_contract(&contract).unwrap(),
@@ -214,26 +229,37 @@ mod tests {
         }
     }
     #[test]
-    fn rejects_legacy_dialects_before_generating_clients() {
-        for dialect in [
-            "http://json-schema.org/draft-04/schema#",
-            "http://json-schema.org/draft-06/schema#",
-        ] {
-            let contract = SocketContract::new("/legacy").with_server_message(
-                "legacy",
-                SocketSchemaEntry::new(json!({"$schema":dialect,"type":"string"})),
-            );
-            let plan = SocketSdkPlan::from_contract(&contract).unwrap();
-            let error = generate_typescript_websocket_sdk_source(
-                &plan,
-                &TypeScriptWebSocketSdkOptions::new("LegacyClient"),
-            )
-            .unwrap_err();
-            assert!(
-                error
-                    .to_string()
-                    .contains("Unsupported TypeScript WebSocket JSON Schema dialect")
-            );
-        }
+    fn rejects_unsupported_dialects_before_generating_clients() {
+        let contract = SocketContract::new("/legacy").with_server_message(
+            "legacy",
+            SocketSchemaEntry::new(
+                json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"string"}),
+            ),
+        );
+        let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+        let error = generate_typescript_websocket_sdk_source(
+            &plan,
+            &TypeScriptWebSocketSdkOptions::new("LegacyClient"),
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Unsupported TypeScript WebSocket JSON Schema dialect")
+        );
+    }
+    #[test]
+    fn generates_declared_draft_six_clients() {
+        let contract = SocketContract::new("/draft-six").with_server_message(
+            "values", SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-06/schema#","type":"array","items":{"type":"integer"},"contains":{"minimum":2}})),
+        );
+        let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+        let source = generate_typescript_websocket_sdk_source(
+            &plan,
+            &TypeScriptWebSocketSdkOptions::new("DraftSixClient"),
+        )
+        .unwrap();
+        assert!(source.contains("const socketDraft6MetaSchema = JSON.parse("));
+        assert!(source.contains("export type SocketIncoming = Array<number>"));
     }
 }

@@ -53,6 +53,10 @@ const validator = {
         validateFormats: true,
         ownProperties: true,
       });
+      if (schema.$schema?.includes('/draft-06/'))
+        engine.addMetaSchema(
+          external('ajv/dist/refs/json-schema-draft-06.json'),
+        );
       addFormats(engine);
       engine.removeKeyword('multipleOf');
       engine.addKeyword({
@@ -89,6 +93,28 @@ const validator = {
   },
 };
 const schemas = [
+  {
+    $schema: 'http://json-schema.org/draft-06/schema#',
+    type: 'number',
+    exclusiveMinimum: 0,
+    maximum: 10,
+    multipleOf: 0.1,
+  },
+  {
+    $schema: 'http://json-schema.org/draft-06/schema#',
+    type: 'array',
+    items: { type: 'integer' },
+    contains: { minimum: 2 },
+    minItems: 1,
+    maxItems: 3,
+  },
+  {
+    $schema: 'http://json-schema.org/draft-06/schema#',
+    type: 'object',
+    propertyNames: { pattern: '^[ab]$' },
+    dependencies: { a: ['b'] },
+    additionalProperties: { type: 'integer' },
+  },
   true,
   false,
   {

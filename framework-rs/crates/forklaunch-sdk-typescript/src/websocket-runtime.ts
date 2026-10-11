@@ -109,6 +109,8 @@ function socketValidator(schema: AnySchema): ValidateFunction {
             validateFormats: true,
             ownProperties: true,
           });
+  if (typeof dialect === 'string' && dialect.includes('/draft-06/'))
+    engine.addMetaSchema(socketDraft6MetaSchema);
   // CJS package declarations are exposed as a namespace under NodeNext ESM.
   const addFormats = addFormatsModule as unknown as FormatsPlugin;
   addFormats(engine);
@@ -152,7 +154,9 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     const object = node as Record<string, unknown>;
     if (typeof object.$schema === 'string') {
-      if (object.$schema.includes('/draft-07/'))
+      if (object.$schema.includes('/draft-06/'))
+        object.$schema = 'http://json-schema.org/draft-06/schema#';
+      else if (object.$schema.includes('/draft-07/'))
         object.$schema = 'http://json-schema.org/draft-07/schema#';
       else if (object.$schema.includes('/draft/2019-09/'))
         object.$schema = 'https://json-schema.org/draft/2019-09/schema';
