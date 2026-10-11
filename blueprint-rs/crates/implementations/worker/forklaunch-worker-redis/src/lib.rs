@@ -4,6 +4,8 @@
 pub mod leased;
 #[cfg(feature = "redis-client")]
 pub mod signals;
+#[cfg(feature = "redis-client")]
+pub mod tenant_isolation;
 
 use std::{collections::VecDeque, sync::Mutex};
 

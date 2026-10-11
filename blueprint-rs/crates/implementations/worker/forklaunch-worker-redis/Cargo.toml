@@ -31,3 +31,7 @@ forklaunch-worker-database = { path = "../forklaunch-worker-database", features 
 
 [lints]
 workspace = true
+
+[[example]]
+name = "tenant_scope_parity"
+required-features = ["redis-client"]

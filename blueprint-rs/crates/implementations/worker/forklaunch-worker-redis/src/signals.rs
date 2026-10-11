@@ -53,7 +53,29 @@ impl RedisSignalPublisher {
         queue: &str,
         options: &SignalOptions,
     ) -> BlueprintResult<Self> {
-        let channel = channel_name(namespace, tenant, queue, options)?;
+        Self::connect_scoped(
+            url,
+            namespace,
+            tenant,
+            queue,
+            options,
+            &crate::tenant_isolation::RedisKeyScope::from_env()?,
+        )
+        .await
+    }
+
+    /// Creates a publisher with an explicitly injected platform channel scope.
+    /// # Errors
+    /// Rejects invalid input and returns sanitized connection failures.
+    pub async fn connect_scoped(
+        url: &str,
+        namespace: &str,
+        tenant: &TenantContext,
+        queue: &str,
+        options: &SignalOptions,
+        scope: &crate::tenant_isolation::RedisKeyScope,
+    ) -> BlueprintResult<Self> {
+        let channel = scope.qualify(&channel_name(namespace, tenant, queue, options)?);
         let client = redis::Client::open(url).map_err(|_| storage_error())?;
         let timeout = options.operation_timeout;
         let config = ConnectionManagerConfig::new()
@@ -64,7 +86,7 @@ impl RedisSignalPublisher {
             tokio::time::timeout(timeout, ConnectionManager::new_with_config(client, config))
                 .await
                 .map_err(|_| storage_error())?
-                .map_err(|_| storage_error())?;
+                .map_err(|error| redis_error(&error))?;
         Ok(Self {
             connection,
             channel,
@@ -85,7 +107,7 @@ impl RedisSignalPublisher {
         )
         .await
         .map_err(|_| storage_error())?
-        .map_err(|_| storage_error())
+        .map_err(|error| redis_error(&error))
     }
 }
 /// A single bounded subscription. Overflow, malformed publications and disconnects
@@ -123,7 +145,29 @@ impl RedisSignalBus {
         queue: &str,
         options: SignalOptions,
     ) -> BlueprintResult<Self> {
-        let channel = channel_name(namespace, tenant, queue, &options)?;
+        Self::connect_scoped(
+            url,
+            namespace,
+            tenant,
+            queue,
+            options,
+            &crate::tenant_isolation::RedisKeyScope::from_env()?,
+        )
+        .await
+    }
+
+    /// Subscribes with an explicitly injected platform channel scope.
+    /// # Errors
+    /// Rejects invalid input and returns sanitized connection/subscription failures.
+    pub async fn connect_scoped(
+        url: &str,
+        namespace: &str,
+        tenant: &TenantContext,
+        queue: &str,
+        options: SignalOptions,
+        scope: &crate::tenant_isolation::RedisKeyScope,
+    ) -> BlueprintResult<Self> {
+        let channel = scope.qualify(&channel_name(namespace, tenant, queue, &options)?);
         let client = redis::Client::open(url).map_err(|_| storage_error())?;
         let timeout = options.operation_timeout;
         let setup = async {
@@ -133,15 +177,16 @@ impl RedisSignalBus {
                 .set_number_of_retries(2);
             let connection = ConnectionManager::new_with_config(client.clone(), config)
                 .await
-                .map_err(|_| storage_error())?;
+                .map_err(|error| redis_error(&error))?;
+            verify_subscription(&client, &channel).await?;
             let mut subscription = client
                 .get_async_pubsub()
                 .await
-                .map_err(|_| storage_error())?;
+                .map_err(|error| redis_error(&error))?;
             subscription
                 .subscribe(&channel)
                 .await
-                .map_err(|_| storage_error())?;
+                .map_err(|error| redis_error(&error))?;
             Ok::<_, BlueprintError>((connection, subscription))
         };
         let (connection, subscription) = tokio::time::timeout(timeout, setup)
@@ -282,6 +327,29 @@ fn channel_name(
 }
 fn signal_error(code: &str, message: &str) -> BlueprintError {
     BlueprintError::new(code, message)
+}
+fn redis_error(error: &redis::RedisError) -> BlueprintError {
+    crate::tenant_isolation::isolation_error(error).unwrap_or_else(storage_error)
+}
+
+// redis 0.32's PubSubSink::subscribe discards a RESP ServerError payload.
+// A short-lived command connection validates the real SUBSCRIBE acknowledgment
+// with the same credentials before the long-lived PubSub client is accepted.
+// This publishes no data and cannot change another worker's control state.
+async fn verify_subscription(client: &redis::Client, channel: &str) -> BlueprintResult<()> {
+    let mut connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|error| redis_error(&error))?;
+    let (kind, actual, count): (String, String, i64) = redis::cmd("SUBSCRIBE")
+        .arg(channel)
+        .query_async(&mut connection)
+        .await
+        .map_err(|error| redis_error(&error))?;
+    if kind != "subscribe" || actual != channel || count != 1 {
+        return Err(storage_error());
+    }
+    Ok(())
 }
 fn storage_error() -> BlueprintError {
     signal_error(

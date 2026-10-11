@@ -1,4 +1,5 @@
 //! Asynchronous Redis jobs with atomic claims and fenced delivery leases.
+use crate::tenant_isolation::{RedisKeyScope, isolation_error};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_core::persistence::TenantContext;
 use forklaunch_worker_interface::{
@@ -17,6 +18,9 @@ static SCRIPT: LazyLock<redis::Script> =
 
 fn storage_error(_: impl std::fmt::Display) -> BlueprintError {
     BlueprintError::new("worker_storage_error", "Worker storage operation failed")
+}
+fn redis_error(error: redis::RedisError) -> BlueprintError {
+    isolation_error(&error).unwrap_or_else(|| storage_error(error))
 }
 fn invalid_input() -> BlueprintError {
     BlueprintError::new("worker_invalid_input", "Invalid worker queue input")
@@ -94,6 +98,7 @@ pub struct RedisLeasedQueue {
     namespace: String,
     tenant: TenantContext,
     retry_policy: RetryPolicy,
+    key_scope: RedisKeyScope,
 }
 
 impl RedisLeasedQueue {
@@ -107,6 +112,26 @@ impl RedisLeasedQueue {
         tenant: TenantContext,
         retry_policy: RetryPolicy,
     ) -> BlueprintResult<Self> {
+        Self::connect_scoped(
+            url,
+            namespace,
+            tenant,
+            retry_policy,
+            RedisKeyScope::from_env()?,
+        )
+        .await
+    }
+
+    /// Connects using an explicitly injected application key scope.
+    /// # Errors
+    /// Rejects invalid queue configuration and returns sanitized connection failures.
+    pub async fn connect_scoped(
+        url: &str,
+        namespace: &str,
+        tenant: TenantContext,
+        retry_policy: RetryPolicy,
+        key_scope: RedisKeyScope,
+    ) -> BlueprintResult<Self> {
         if !valid_name(namespace)
             || retry_policy.max_attempts == 0
             || retry_policy.max_attempts > i32::MAX as u32
@@ -114,7 +139,7 @@ impl RedisLeasedQueue {
         {
             return Err(invalid_input());
         }
-        let client = redis::Client::open(url).map_err(storage_error)?;
+        let client = redis::Client::open(url).map_err(redis_error)?;
         let config = ConnectionManagerConfig::new()
             .set_connection_timeout(TIMEOUT)
             .set_response_timeout(TIMEOUT)
@@ -123,12 +148,13 @@ impl RedisLeasedQueue {
             tokio::time::timeout(TIMEOUT, ConnectionManager::new_with_config(client, config))
                 .await
                 .map_err(storage_error)?
-                .map_err(storage_error)?;
+                .map_err(redis_error)?;
         Ok(Self {
             connection,
             namespace: namespace.to_owned(),
             tenant,
             retry_policy,
+            key_scope,
         })
     }
 
@@ -140,6 +166,7 @@ impl RedisLeasedQueue {
             namespace: self.namespace.clone(),
             tenant,
             retry_policy: self.retry_policy,
+            key_scope: self.key_scope.clone(),
         }
     }
 
@@ -162,7 +189,7 @@ impl RedisLeasedQueue {
             "failed",
             "admin-index",
         ]
-        .map(|suffix| format!("{prefix}:{suffix}")))
+        .map(|suffix| self.key_scope.qualify(&format!("{prefix}:{suffix}"))))
     }
 
     async fn execute(
@@ -182,7 +209,7 @@ impl RedisLeasedQueue {
                 let response: String = invocation
                     .invoke_async(&mut connection)
                     .await
-                    .map_err(storage_error)?;
+                    .map_err(redis_error)?;
                 let response: Value = serde_json::from_str(&response).map_err(storage_error)?;
                 if let Some(error) = response.get("error").and_then(Value::as_str) {
                     if error == "indexing" {
