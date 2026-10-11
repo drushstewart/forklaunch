@@ -23,6 +23,7 @@ export type ForkLaunchSdkConfig = {
   baseUrl?: string;
   serviceBaseUrls?: Partial<Record<string, string>>;
   fetch?: typeof fetch;
+  maxSseEventBytes?: number;
   headers?: ForkLaunchHeaders;
   beforeRequest?: (request: ForkLaunchSdkRequestMeta) => ForkLaunchSdkRequestMeta | Promise<ForkLaunchSdkRequestMeta>;
 };
@@ -35,7 +36,7 @@ export type ForkLaunchSdkRequestMeta = {
   path: string;
   requestKind?: 'json' | 'text' | 'binary' | 'urlEncoded' | 'multipart';
   requestContentType?: string;
-  responseKinds?: Partial<Record<number, 'empty' | 'json' | 'text' | 'binary'>>;
+  responseKinds?: Partial<Record<number, 'empty' | 'json' | 'text' | 'binary' | 'sse'>>;
   input: {
     params?: Record<string, ForkLaunchPathValue>;
     query?: Record<string, ForkLaunchQueryValue>;
@@ -47,6 +48,8 @@ export type ForkLaunchSdkRequestMeta = {
 export type ForkLaunchErrorResponses = { 400: string; 401: string; 403: string; 404: string; 500: string };
 
 {{{form_stringify_source}}}
+
+{{{sse_source}}}
 
 {{#operation_types}}
 export type {{request_type}} = ForkLaunchSdkRequest<{{{request_params_type}}}, {{{request_query_type}}}, {{{request_body_type}}}, {{{request_headers_type}}}>;
@@ -116,7 +119,10 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
   const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? (response.ok ? 'application/json' : 'text/plain');
   const kind = resolved.responseKinds?.[response.status];
   let parsedResponse: unknown;
-  if (kind === 'binary') {
+  if (kind === 'sse') {
+    if (contentType !== 'text/event-stream') { await response.body?.cancel(); throw new TypeError('Expected text/event-stream response'); }
+    parsedResponse = sseEvents(response, config.maxSseEventBytes);
+  } else if (kind === 'binary') {
     parsedResponse = new Uint8Array(await response.arrayBuffer());
   } else {
     const text = await response.text();

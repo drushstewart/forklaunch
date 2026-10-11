@@ -131,3 +131,14 @@ fn native_sse_transport_conformance() {
     )
     .unwrap();
 }
+
+#[test]
+fn complete_events_preceding_overflow_are_delivered_before_the_terminal_failure() {
+    let mut decoder = SseDecoder::new(16).unwrap();
+    let events = decoder
+        .push(b"data: first\n\ndata: this event is too large\n\n")
+        .unwrap();
+    assert_eq!(events, [SseEvent::new("first")]);
+    assert_eq!(decoder.failure(), Some(SseError::EventTooLarge));
+    assert_eq!(decoder.push(b"data: later\n\n"), Err(SseError::Closed));
+}

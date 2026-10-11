@@ -3,6 +3,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::collections::BTreeMap;
 
+type SdkRequestHook = Arc<dyn Fn(&mut SdkRequest) + Send + Sync>;
+
 {{#has_serde}}use serde::{Deserialize, Serialize};{{/has_serde}}
 
 {{#has_multipart}}pub use reqwest::multipart::{Form as MultipartForm, Part as MultipartPart};{{/has_multipart}}
@@ -53,12 +55,18 @@ fn path_with_params(path: &str, params: &BTreeMap<String, String>) -> String {
 #[derive(Debug)]
 pub enum SdkError {
     Transport(reqwest::Error),
+    {{#has_sse}}Sse(sse::SseError),
+    Decode(serde_json::Error),
+    Stream(&'static str),{{/has_sse}}
 }
 
 impl fmt::Display for SdkError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Transport(error) => write!(formatter, "{error}"),
+            {{#has_sse}}Self::Sse(error) => write!(formatter, "{error}"),
+            Self::Decode(error) => write!(formatter, "{error}"),
+            Self::Stream(error) => formatter.write_str(error),{{/has_sse}}
         }
     }
 }
@@ -67,6 +75,9 @@ impl Error for SdkError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Transport(error) => Some(error),
+            {{#has_sse}}Self::Sse(error) => Some(error),
+            Self::Decode(error) => Some(error),
+            Self::Stream(_) => None,{{/has_sse}}
         }
     }
 }
@@ -76,6 +87,16 @@ impl From<reqwest::Error> for SdkError {
         Self::Transport(error)
     }
 }
+
+{{#has_sse}}
+impl From<sse::SseError> for SdkError {
+    fn from(error: sse::SseError) -> Self { Self::Sse(error) }
+}
+impl From<serde_json::Error> for SdkError {
+    fn from(error: serde_json::Error) -> Self { Self::Decode(error) }
+}
+{{{sse_source}}}
+{{/has_sse}}
 
 #[derive(Clone)]
 pub enum SdkAuth {
@@ -127,7 +148,7 @@ pub struct {{request_type}} {
     pub body: Option<{{#multipart_request}}MultipartForm{{/multipart_request}}{{^multipart_request}}{{#binary_request}}Vec<u8>{{/binary_request}}{{^binary_request}}String{{/binary_request}}{{/multipart_request}}>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug{{^streaming_response}}, Clone, PartialEq, Serialize, Deserialize{{/streaming_response}})]
 pub enum {{responses_type}} {
 {{#responses}}
     {{status_variant}}({{{rust_response_type}}}),
@@ -139,10 +160,11 @@ pub enum {{responses_type}} {
 #[derive(Clone)]
 pub struct {{client_name}} {
     base_url: String,
+    {{#has_sse}}max_sse_event_bytes: usize,{{/has_sse}}
     {{^has_operations}}_{{/has_operations}}http: reqwest::Client,
     default_headers: BTreeMap<String, String>,
     auth: Option<SdkAuth>,
-    request_hook: Option<Arc<dyn Fn(&mut SdkRequest) + Send + Sync>>,
+    request_hook: Option<SdkRequestHook>,
 }
 
 impl fmt::Debug for {{client_name}} {
@@ -167,12 +189,21 @@ impl {{client_name}} {
     pub fn with_http_client(base_url: impl Into<String>, http: reqwest::Client) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
+            {{#has_sse}}max_sse_event_bytes: 1048576,{{/has_sse}}
             {{^has_operations}}_http: {{/has_operations}}http,
             default_headers: BTreeMap::new(),
             auth: None,
             request_hook: None,
         }
     }
+
+    {{#has_sse}}
+    pub fn with_sse_event_limit(mut self, max_event_bytes: usize) -> Result<Self, SdkError> {
+        if max_event_bytes == 0 { return Err(sse::SseError::InvalidLimit.into()); }
+        self.max_sse_event_bytes = max_event_bytes;
+        Ok(self)
+    }
+    {{/has_sse}}
 
     #[must_use]
     pub fn with_default_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
@@ -309,6 +340,9 @@ impl {{client_name}} {
 {{#text_response}}
             {{status_code}} => Ok({{responses_type}}::{{status_variant}}(response.text().await?)),
 {{/text_response}}
+{{#streaming_response}}
+            {{status_code}} => Ok({{responses_type}}::{{status_variant}}(Box::new(SdkEventStream::from_response(response, self.max_sse_event_bytes)?))),
+{{/streaming_response}}
 {{#binary_response}}
             {{status_code}} => Ok({{responses_type}}::{{status_variant}}(response.bytes().await?.to_vec())),
 {{/binary_response}}

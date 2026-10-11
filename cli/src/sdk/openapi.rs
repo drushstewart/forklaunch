@@ -215,6 +215,8 @@ fn media_body(response: &Value, request: bool) -> Result<Value> {
         "json"
     } else if request && base_media_type == "multipart/form-data" {
         "multipart"
+    } else if !request && base_media_type == "text/event-stream" {
+        "serverSentEvent"
     } else if base_media_type == "text/event-stream" || base_media_type.starts_with("multipart/") {
         bail!("Streaming/multipart SDK response transport remains unsupported");
     } else if base_media_type.starts_with("text/") {

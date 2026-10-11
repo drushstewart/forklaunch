@@ -68,6 +68,9 @@ for workspace, namespace in [("framework-rs", "framework"), ("blueprint-rs", "bl
             if source.name == "Cargo.toml":
                 relative = relative.with_name("Cargo.toml.template")
             expected.add(str(Path("src/templates/rust") / namespace / relative))
+for source in (root / "cli/src/templates/sdk").rglob("*"):
+    if source.is_file():
+        expected.add(str(source.relative_to(root / "cli")))
 missing = expected - packaged
 assert not missing, f"Rust sources missing from CLI package: {sorted(missing)}"
 print(f"PASS: {len(expected)} embedded Rust source/template files included in Cargo package")

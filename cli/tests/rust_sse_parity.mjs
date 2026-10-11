@@ -26,6 +26,14 @@ async function load(file, imports = {}) {
   return exports;
 }
 try {
+  const template = (await readFile(path.join(root, 'cli/src/templates/sdk/typescript/index.ts'), 'utf8'))
+    .replace('{{{form_stringify_source}}}', await readFile(path.join(root, 'framework/common/src/safeStringify.ts'), 'utf8'))
+    .replace('{{{sse_source}}}', await readFile(path.join(root, 'cli/src/templates/sdk/typescript/sse.ts'), 'utf8'));
+  const runtime = template.slice(0, template.indexOf('{{#operation_types}}')) + template.slice(template.indexOf('function pathWithParams'), template.indexOf('export function createForkLaunchSdk')) + '\nexport { request };\n';
+  await writeFile(path.join(temporary, 'runtime.ts'), runtime);
+  await writeFile(path.join(temporary, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, target: 'ES2022', module: 'CommonJS', lib: ['ES2022', 'DOM'], types: [], outDir: 'compiled' }, include: ['runtime.ts'] }));
+  execFileSync(tsc, ['--project', path.join(temporary, 'tsconfig.json')], { encoding: 'utf8', timeout: 120000 });
+  const { request } = require(path.join(temporary, 'compiled/runtime.js'));
   const common = { ...(await load('framework/common/src/safeStringify.ts')), ...(await load('framework/common/src/safeParse.ts')), ...(await load('framework/common/src/openApiCompliantPath.ts')) };
   const { getSdkPath } = await load('framework/universal-sdk/src/core/resolvePath.ts', { './regex': { generateStringFromRegex() { throw Error('unexpected regex'); } } });
   const { UniversalSdk } = await load('framework/universal-sdk/src/universalSdk.ts', { '@forklaunch/common': common, ajv: { default: class {} }, 'ajv-formats': { default() {} }, './core/coerceSpecialTypes': { coerceSpecialTypes: value => value }, './core/mapContentType': { mapContentType: value => value }, './core/openApi': { refreshOpenApi() { throw Error('unexpected refresh'); } }, './core/resolvePath': { getSdkPath } });
@@ -49,6 +57,10 @@ try {
     const events = [];
     for await (const event of response.response) events.push(event);
     assert.deepEqual(JSON.parse(JSON.stringify(events)), native[index], `actual TypeScript SSE case ${index}`);
+    const generated = await request({ baseUrl: 'http://127.0.0.1:9000', fetch: fetcher }, { service: 'streams', router: 'events', operation: 'watchEvents', method: 'GET', path: '/events', responseKinds: { 200: 'sse' }, input: {} });
+    const actual = [];
+    for await (const event of generated.response) actual.push(event);
+    assert.deepEqual(actual, native[index], `generated TypeScript SSE case ${index}`);
   }
-  console.log(`PASS ${cases.length} actual TypeScript universal SDK/native SSE comparisons: chunked UTF-8, LF/CRLF, JSON/scalar/text data, IDs, resets, comments and empty streams`);
+  console.log(`PASS ${cases.length} actual TypeScript universal SDK/native codec/generated SDK SSE comparisons: chunked UTF-8, LF/CRLF, JSON/scalar/text data, IDs, resets, comments and empty streams`);
 } finally { await rm(temporary, { recursive: true, force: true }); }

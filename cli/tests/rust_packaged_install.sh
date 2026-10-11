@@ -21,6 +21,9 @@ with tarfile.open(archive) as package:
 PYTHON
 SOURCE_ROOT="$(find "$RUN_ROOT/source" -mindepth 1 -maxdepth 1 -type d)"
 test -f "$SOURCE_ROOT/src/templates/sdk/typescript/safeStringify.ts"
+test -f "$SOURCE_ROOT/src/templates/sdk/typescript/sse.ts"
+test -f "$SOURCE_ROOT/src/templates/sdk/rust/sse_client.rs"
+test -f "$SOURCE_ROOT/src/templates/sdk/rust/sse_decoder.rs"
 cargo install --path "$SOURCE_ROOT" --locked "${INSTALL_FLAGS[@]}" --root "$RUN_ROOT/installed" --target-dir "$INSTALL_TARGET"
 CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" init application archive-app --path "$RUN_ROOT/app" --language rust -D 'Packaged CLI' -A ForkLaunch -L MIT

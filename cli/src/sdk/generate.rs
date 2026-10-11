@@ -260,6 +260,7 @@ struct SdkResponseVariant {
     json_response: bool,
     text_response: bool,
     binary_response: bool,
+    streaming_response: bool,
     response_kind: String,
     content_type: String,
 }
@@ -270,6 +271,7 @@ enum ResponseDecoder {
     Json,
     Text,
     Binary,
+    Sse,
 }
 impl ResponseDecoder {
     fn as_str(self) -> &'static str {
@@ -278,6 +280,7 @@ impl ResponseDecoder {
             Self::Json => "json",
             Self::Text => "text",
             Self::Binary => "binary",
+            Self::Sse => "sse",
         }
     }
 }
@@ -302,6 +305,7 @@ impl SdkResponseContract {
 #[derive(Content)]
 struct TypeScriptSdkTemplate {
     form_stringify_source: String,
+    sse_source: String,
     operation_types: Vec<TypeScriptOperationTypeTemplate>,
     services: Vec<TypeScriptServiceTemplate>,
     aliases: Vec<TypeScriptAliasTemplate>,
@@ -359,6 +363,8 @@ struct TypeScriptAliasTemplate {
 struct RustSdkTemplate {
     has_operations: bool,
     has_multipart: bool,
+    has_sse: bool,
+    sse_source: String,
     has_serde: bool,
     client_name: String,
     models: Vec<RustModelTemplate>,
@@ -408,6 +414,7 @@ struct RustOperationTemplate {
     binary_request: bool,
     multipart_request: bool,
     multipart_field: String,
+    streaming_response: bool,
     request_content_type: String,
 }
 
@@ -738,7 +745,7 @@ fn build_sdk_operation(
     let fallback_schema = match decoder {
         ResponseDecoder::Empty => json!({"type":"null"}),
         ResponseDecoder::Text | ResponseDecoder::Binary => json!({"type":"string"}),
-        ResponseDecoder::Json => json!({}),
+        ResponseDecoder::Json | ResponseDecoder::Sse => json!({}),
     };
     let response_schema = if matches!(
         decoder,
@@ -750,7 +757,7 @@ fn build_sdk_operation(
     };
     let response_type = format!("{type_prefix}Response");
     let response_type_pascal = rust_type_name(&response_type);
-    let (rust_models, mut rust_aliases, rust_response_type) =
+    let (rust_models, mut rust_aliases, mut rust_response_type) =
         rust_types_from_schema(&response_type_pascal, response_schema);
     if decoder == ResponseDecoder::Binary {
         for alias in &mut rust_aliases {
@@ -758,6 +765,10 @@ fn build_sdk_operation(
                 alias.target_type = "Vec<u8>".into();
             }
         }
+    }
+
+    if decoder == ResponseDecoder::Sse {
+        rust_response_type = format!("Box<SdkEventStream<{rust_response_type}>>");
     }
 
     SdkOperation {
@@ -779,6 +790,9 @@ fn build_sdk_operation(
                 ResponseDecoder::Text => "string".into(),
                 ResponseDecoder::Binary => "Uint8Array".into(),
                 ResponseDecoder::Json => ts_type_from_schema(response_schema),
+                ResponseDecoder::Sse => {
+                    format!("AsyncIterable<{}>", ts_type_from_schema(response_schema))
+                }
             },
             status_code,
             status_variant: format!("Status{status_code}"),
@@ -786,6 +800,7 @@ fn build_sdk_operation(
             json_response: decoder == ResponseDecoder::Json,
             text_response: decoder == ResponseDecoder::Text,
             binary_response: decoder == ResponseDecoder::Binary,
+            streaming_response: decoder == ResponseDecoder::Sse,
             response_kind: decoder.as_str().into(),
             content_type: response.content_type.clone(),
             rust_response_type,
@@ -869,6 +884,9 @@ fn request_type_shapes_from_contract(route: &JsonValue) -> Result<RequestTypeSha
                 _ => "application/json",
             }),
     )?;
+    if content_type == "text/event-stream" {
+        bail!("SSE request bodies are unsupported");
+    }
     if content_type.starts_with("multipart/") != (kind == "multipart")
         || kind == "multipart" && content_type != "multipart/form-data"
     {
@@ -977,9 +995,6 @@ fn normalized_media_type(value: &str) -> Result<String> {
     {
         bail!("Invalid SDK body media type");
     }
-    if value == "text/event-stream" {
-        bail!("SSE SDK body transport remains unsupported");
-    }
     Ok(value)
 }
 
@@ -1008,6 +1023,7 @@ fn response_contracts(route: &JsonValue) -> Result<Vec<SdkResponseContract>> {
             None | Some("json") => ResponseDecoder::Json,
             Some("text") => ResponseDecoder::Text,
             Some("binary" | "file") => ResponseDecoder::Binary,
+            Some("serverSentEvent") => ResponseDecoder::Sse,
             Some(kind) => bail!("Unsupported SDK response body kind {kind}"),
         };
         let schema = body
@@ -1021,8 +1037,12 @@ fn response_contracts(route: &JsonValue) -> Result<Vec<SdkResponseContract>> {
                     ResponseDecoder::Empty | ResponseDecoder::Json => "application/json",
                     ResponseDecoder::Text => "text/plain",
                     ResponseDecoder::Binary => "application/octet-stream",
+                    ResponseDecoder::Sse => "text/event-stream",
                 }),
         )?;
+        if (content_type == "text/event-stream") != (decoder == ResponseDecoder::Sse) {
+            bail!("SSE SDK responses require the serverSentEvent body kind and text/event-stream");
+        }
         if content_type.starts_with("multipart/") {
             bail!("Multipart SDK response transport remains unsupported");
         }
@@ -1856,6 +1876,12 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
     render_sdk_template(
         "sdk/typescript/index.ts",
         &TypeScriptSdkTemplate {
+            sse_source: TEMPLATES_DIR
+                .get_file("sdk/typescript/sse.ts")
+                .context("Missing SSE SDK helper")?
+                .contents_utf8()
+                .context("Invalid SSE SDK helper")?
+                .to_owned(),
             form_stringify_source: TEMPLATES_DIR
                 .get_file("sdk/typescript/safeStringify.ts")
                 .context("Missing SDK form stringifier")?
@@ -1909,6 +1935,14 @@ fn rust_sdk_cargo_toml(package_name: &str, service_name: &str, multipart: bool) 
 
 fn rust_sdk(service: &SdkService) -> Result<String> {
     let has_multipart = service_has_multipart(service);
+    let has_sse = service.routers.iter().any(|router| {
+        router.operations.iter().any(|operation| {
+            operation
+                .responses
+                .iter()
+                .any(|response| response.streaming_response)
+        })
+    });
     let client_name = format!("{}Client", service.name.to_case(Case::Pascal));
     let mut operations = Vec::new();
     let mut models = BTreeMap::<String, RustModelTemplate>::new();
@@ -1970,6 +2004,10 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
                 path: escape_rust_string(&operation.path),
                 binary_request: operation.request_kind == "binary",
                 multipart_request: operation.request_kind == "multipart",
+                streaming_response: operation
+                    .responses
+                    .iter()
+                    .any(|response| response.streaming_response),
                 multipart_field: if has_multipart {
                     format!(
                         "multipart: {},",
@@ -1998,6 +2036,12 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
         &RustSdkTemplate {
             has_operations: !operations.is_empty(),
             has_multipart,
+            has_sse,
+            sse_source: if has_sse {
+                rust_sse_source()?
+            } else {
+                String::new()
+            },
             has_serde: !models.is_empty() || !operations.is_empty(),
             client_name,
             models: models.into_values().collect(),
@@ -2013,6 +2057,21 @@ fn escape_ts_string(input: &str) -> String {
 
 fn escape_rust_string(input: &str) -> String {
     input.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn rust_sse_source() -> Result<String> {
+    let decoder = TEMPLATES_DIR
+        .get_file("sdk/rust/sse_decoder.rs")
+        .context("Missing SSE decoder")?
+        .contents_utf8()
+        .context("Invalid SSE decoder")?;
+    let decoder = decoder.split("#[cfg(test)]").next().unwrap_or(decoder);
+    let client = TEMPLATES_DIR
+        .get_file("sdk/rust/sse_client.rs")
+        .context("Missing SSE client")?
+        .contents_utf8()
+        .context("Invalid SSE client")?;
+    Ok(format!("pub mod sse {{\n{decoder}\n}}\n{client}"))
 }
 
 fn render_sdk_template<T: Content>(template_path: &str, data: &T) -> Result<String> {
@@ -2077,6 +2136,8 @@ mod wire_name_tests {
             &RustSdkTemplate {
                 has_operations: false,
                 has_multipart: false,
+                has_sse: false,
+                sse_source: String::new(),
                 has_serde: !models.is_empty(),
                 client_name: "Client".into(),
                 models: models.into_values().collect(),
@@ -2271,6 +2332,23 @@ mod response_media_tests {
         assert!(source.contains("400: 'application/problem+json'"));
         assert!(source.contains("Omit<ForkLaunchErrorResponses"));
     }
+    #[test]
+    fn sse_responses_generate_owned_typed_streams_and_configurable_limits() {
+        let service = sdk_service_from_contract("events", &json!({"routes":[{"path":"/events","operationName":"listen","method":"GET","responses":[{"statusCode":200,"body":{"kind":"serverSentEvent","schema":{"jsonSchema":{"type":"object","required":["data"],"properties":{"data":{"type":"string"},"id":{"type":"string"}}}}}}]}]})).unwrap();
+        assert!(service.routers[0].operations[0].responses[0].streaming_response);
+        let source = rust_sdk(&service).unwrap();
+        assert!(source.contains("pub struct SdkEventStream<T>"));
+        assert!(
+            source.contains("SdkEventStream::from_response(response, self.max_sse_event_bytes)")
+        );
+        assert!(source.contains("pub fn with_sse_event_limit"));
+        assert!(source.contains("pub mod sse"));
+        let source = typescript_sdk(&[service]).unwrap();
+        assert!(source.contains("AsyncIterable<"));
+        assert!(source.contains("200: 'sse'"));
+        assert!(source.contains("iterator.return = async"));
+    }
+
     #[test]
     fn streaming_and_multipart_responses_fail_explicitly() {
         for body in [
@@ -2575,6 +2653,8 @@ mod union_model_tests {
             &RustSdkTemplate {
                 has_operations: false,
                 has_multipart: false,
+                has_sse: false,
+                sse_source: String::new(),
                 has_serde: !models.is_empty(),
                 client_name: "Client".into(),
                 models: models.into_values().collect(),

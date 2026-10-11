@@ -84,6 +84,7 @@ pub struct SseDecoder {
     frame_bytes: usize,
     max_event_bytes: usize,
     closed: bool,
+    failure: Option<SseError>,
 }
 impl SseDecoder {
     /// Creates a decoder with a positive per-event byte limit.
@@ -106,6 +107,7 @@ impl SseDecoder {
             frame_bytes: 0,
             max_event_bytes,
             closed: false,
+            failure: None,
         })
     }
 
@@ -114,11 +116,18 @@ impl SseDecoder {
         self.retry_ms
     }
 
+    /// Returns the terminal framing failure, including after a batch of valid events.
+    #[must_use]
+    pub const fn failure(&self) -> Option<SseError> {
+        self.failure
+    }
+
     /// Decodes complete events while retaining an incomplete frame.
     ///
     /// # Errors
     /// Returns `EventTooLarge` and closes the decoder on overflow, or `Closed`
-    /// after overflow or `finish`. No partial output is returned on failure.
+    /// after overflow or `finish`. If valid events precede overflow in the same
+    /// chunk, returns those events first; `failure()` reports the terminal error.
     pub fn push(&mut self, bytes: &[u8]) -> Result<Vec<SseEvent>, SseError> {
         if self.closed {
             return Err(SseError::Closed);
@@ -133,9 +142,14 @@ impl SseDecoder {
             }
             if self.frame_bytes >= self.max_event_bytes {
                 self.closed = true;
+                self.failure = Some(SseError::EventTooLarge);
                 self.line.clear();
                 self.data.clear();
-                return Err(SseError::EventTooLarge);
+                return if events.is_empty() {
+                    Err(SseError::EventTooLarge)
+                } else {
+                    Ok(events)
+                };
             }
             self.frame_bytes += 1;
             if byte == b'\r' || byte == b'\n' {

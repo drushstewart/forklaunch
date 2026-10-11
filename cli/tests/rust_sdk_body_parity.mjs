@@ -33,7 +33,8 @@ async function describe(request) {
 try {
   const stringifier = await readFile(path.join(root, 'framework/common/src/safeStringify.ts'), 'utf8');
   const template = (await readFile(path.join(root, 'cli/src/templates/sdk/typescript/index.ts'), 'utf8')).replace('{{{form_stringify_source}}}', stringifier);
-  const runtime = template.slice(0, template.indexOf('{{#operation_types}}')) + template.slice(template.indexOf('function pathWithParams'), template.indexOf('export function createForkLaunchSdk')) + '\nexport { request };\n';
+  const sseSource = await readFile(path.join(root, 'cli/src/templates/sdk/typescript/sse.ts'), 'utf8');
+  const runtime = template.slice(0, template.indexOf('{{#operation_types}}')).replace('{{{sse_source}}}', sseSource) + template.slice(template.indexOf('function pathWithParams'), template.indexOf('export function createForkLaunchSdk')) + '\nexport { request };\n';
   await writeFile(path.join(temporary, 'runtime.ts'), runtime);
   await writeFile(path.join(temporary, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, target: 'ES2022', module: 'CommonJS', lib: ['ES2022', 'DOM'], types: [], outDir: 'compiled' }, include: ['runtime.ts'] }));
   execFileSync(tsc, ['--project', path.join(temporary, 'tsconfig.json')], { encoding: 'utf8', timeout: 120000 });
