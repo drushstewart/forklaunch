@@ -180,28 +180,11 @@ fn embedded_schema(schema: &Value, location: &[&str]) -> FrameworkResult<Value> 
         }
         Ok(())
     })?;
-    let mut embedded: Value = serde_json::from_str(&relocate_schema_json_unscoped(
+    serde_json::from_str(&relocate_schema_json_unscoped(
         &normalized.to_string(),
         location,
     ))
-    .map_err(|_| invalid("schema relocation failed"))?;
-    walk_schema(&mut embedded, &normalized, &mut |object| {
-        if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
-            const FRAGMENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
-                .remove(b'/')
-                .remove(b'~')
-                .remove(b'-')
-                .remove(b'.')
-                .remove(b'_');
-            let encoded = format!(
-                "#{}",
-                percent_encoding::utf8_percent_encode(&reference[1..], FRAGMENT)
-            );
-            object.insert("$ref".into(), json!(encoded));
-        }
-        Ok(())
-    })?;
-    Ok(embedded)
+    .map_err(|_| invalid("schema relocation failed"))
 }
 // Visit schema positions only. Enum/const/default/examples may contain literal
 // objects with `$ref` properties, which must retain their application meaning.

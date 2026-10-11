@@ -74,7 +74,21 @@ fn relocate_with_resource_policy(
             && let Some(pointer) = local_pointer(&reference)
             && root.pointer(&pointer).is_some()
         {
-            object.insert("$ref".into(), Value::String(format!("{base}{pointer}")));
+            const FRAGMENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+                .remove(b'/')
+                .remove(b'~')
+                .remove(b'$')
+                .remove(b'-')
+                .remove(b'.')
+                .remove(b'_');
+            let rebased = format!("{}{pointer}", &base[1..]);
+            object.insert(
+                "$ref".into(),
+                Value::String(format!(
+                    "#{}",
+                    percent_encoding::utf8_percent_encode(&rebased, FRAGMENT)
+                )),
+            );
         }
     }
     value.to_string()
@@ -285,7 +299,7 @@ mod tests {
             serde_json::from_str(&relocate_schema_json(&schema.to_string(), &["payload"])).unwrap();
         assert_eq!(
             relocated["if"]["properties"]["value"]["$ref"],
-            "#/payload/definitions/Value%25"
+            "#/payload/definitions/Value%2525"
         );
         assert_eq!(
             relocated["if"]["properties"]["next"]["$ref"],
@@ -304,6 +318,33 @@ mod tests {
         .unwrap();
         assert_eq!(relocated["$ref"], "#/payload/const");
         assert_eq!(relocated["const"]["$ref"], "#/payload/definitions/Value");
+    }
+
+    #[test]
+    fn relocated_fragments_escape_uri_bytes_after_pointer_tokens() {
+        let schema = json!({"$ref":"#%2Fdefinitions%2FValue%2525","definitions":{"Value%25":{"type":"string"}},"const":{"$ref":"literal %25 水"}});
+        let relocated: Value = serde_json::from_str(&relocate_schema_json(
+            &schema.to_string(),
+            &["components", "schema/~ 水%"],
+        ))
+        .unwrap();
+        let reference = relocated["$ref"].as_str().unwrap();
+        assert_eq!(
+            reference,
+            "#/components/schema~1~0%20%E6%B0%B4%25/definitions/Value%2525"
+        );
+        let pointer = percent_encoding::percent_decode_str(&reference[1..])
+            .decode_utf8()
+            .unwrap();
+        let document = json!({"components":{"schema/~ 水%":relocated}});
+        assert_eq!(
+            document.pointer(&pointer),
+            Some(&schema["definitions"]["Value%25"])
+        );
+        assert_eq!(
+            document["components"]["schema/~ 水%"]["const"],
+            schema["const"]
+        );
     }
 
     #[test]

@@ -1350,6 +1350,7 @@ dependencies = [
  "convert_case",
  "forklaunch-contract",
  "forklaunch-ws",
+ "percent-encoding",
  "ramhorns",
  "serde_json",
 ]

@@ -283,14 +283,14 @@ const schemas = [
   { type: 'string', format: 'date' },
   { type: 'string', format: 'date-time' },
   {
-    $ref: '#/definitions/Node',
+    $ref: '#/definitions/Node%2525~1~0%20%E6%B0%B4',
     definitions: {
-      Node: {
+      'Node%25/~ 水': {
         type: 'object',
         required: ['value'],
         properties: {
           value: { type: 'integer' },
-          next: { $ref: '#/definitions/Node' },
+          next: { $ref: '#/definitions/Node%2525~1~0%20%E6%B0%B4' },
         },
         additionalProperties: false,
       },

@@ -228,7 +228,7 @@ fn media_body(response: &Value, request: bool) -> Result<Value> {
     Ok(json!({"kind":kind, "contentType":media_type, "schema":{"jsonSchema":schema}}))
 }
 
-use super::schema::{ExpansionBudget, clone_literal};
+use super::schema::{ExpansionBudget, clone_literal, document_pointer};
 
 fn resolve(
     value: &Value,
@@ -255,12 +255,11 @@ fn resolve(
                 let reference = reference
                     .as_str()
                     .context("OpenAPI $ref must be a string")?;
-                let pointer = reference
-                    .strip_prefix('#')
+                let pointer = document_pointer(reference)
                     .filter(|pointer| pointer.starts_with('/'))
-                    .context("Only document-local OpenAPI references are supported")?;
+                    .context("Only UTF-8 document-local OpenAPI references are supported")?;
                 let target = document
-                    .pointer(pointer)
+                    .pointer(&pointer)
                     .with_context(|| format!("Missing OpenAPI reference {reference}"))?;
                 let mut resolved = resolve(target, document, depth + 1, budget)?;
                 for (key, value) in object {
@@ -385,6 +384,35 @@ mod schema_reference_tests {
             schema
         );
     }
+    #[test]
+    fn encoded_openapi_reference_fragments_decode_once() {
+        let document = json!({"components":{"parameters":{"Search%25/~ 水":{"name":"q","in":"query","schema":{"type":"string"}}}}});
+        for reference in [
+            "#/components/parameters/Search%2525~1~0%20%E6%B0%B4",
+            "#%2Fcomponents%2Fparameters%2FSearch%2525~1~0%20%E6%B0%B4",
+        ] {
+            assert_eq!(
+                resolve(
+                    &json!({"$ref":reference}),
+                    &document,
+                    0,
+                    &mut ExpansionBudget::default()
+                )
+                .unwrap(),
+                document["components"]["parameters"]["Search%25/~ 水"]
+            );
+        }
+        assert!(
+            resolve(
+                &json!({"$ref":"#/%FF"}),
+                &document,
+                0,
+                &mut ExpansionBudget::default()
+            )
+            .is_err()
+        );
+    }
+
     #[test]
     fn expansion_budget_and_validation_siblings_are_rejected() {
         let document = json!({"schema":{"type":"string"}});

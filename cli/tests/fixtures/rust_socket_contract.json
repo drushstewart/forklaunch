@@ -90,16 +90,16 @@
       "serverMessages": {
         "tree": {
           "shape": {
-            "$ref": "#/$defs/Node",
+            "$ref": "#/$defs/Node~1~0%20%E6%B0%B4",
             "$defs": {
-              "Node": {
+              "Node/~ 水": {
                 "type": "object",
                 "properties": {
                   "value": {
                     "type": "integer"
                   },
                   "next": {
-                    "$ref": "#/$defs/Node"
+                    "$ref": "#/$defs/Node~1~0%20%E6%B0%B4"
                   }
                 },
                 "required": [

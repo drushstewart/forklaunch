@@ -66,6 +66,16 @@ impl std::io::Write for LiteralByteBudget {
     }
 }
 
+// URI fragments encode JSON pointer text; decode once before pointer token
+// unescaping. Canonical decoded paths also identify equivalent graph edges.
+pub(crate) fn document_pointer(reference: &str) -> Option<String> {
+    let fragment = reference.strip_prefix('#')?;
+    let pointer = percent_encoding::percent_decode_str(fragment)
+        .decode_utf8()
+        .ok()?;
+    (pointer.is_empty() || pointer.starts_with('/')).then(|| pointer.into_owned())
+}
+
 pub(crate) const REFERENCE: &str = "x-forklaunch-sdk-reference";
 pub(crate) const DEFINITIONS: &str = "x-forklaunch-sdk-definitions";
 
@@ -182,20 +192,18 @@ impl Graph<'_> {
                 .bytes
                 .checked_sub(reference.len() + object.keys().map(String::len).sum::<usize>())
                 .context("SDK schema graph exceeds 32 MiB")?;
-            let pointer = reference
-                .strip_prefix('#')
-                .filter(|pointer| pointer.is_empty() || pointer.starts_with('/'))
-                .context("Only document-local schema references are supported")?;
+            let pointer = document_pointer(reference)
+                .context("Only UTF-8 document-local schema references are supported")?;
             let target = self
                 .document
-                .pointer(pointer)
+                .pointer(&pointer)
                 .with_context(|| format!("Missing schema reference {reference}"))?;
-            let name = if let Some(name) = self.names.get(reference) {
+            let name = if let Some(name) = self.names.get(&pointer) {
                 name.clone()
             } else {
                 let name = format!("Ref{}", self.names.len() + 1);
                 // Reserve before visiting to terminate self and mutual recursion.
-                self.names.insert(reference.into(), name.clone());
+                self.names.insert(pointer, name.clone());
                 let resolved = self.visit(target, depth + 1)?;
                 self.definitions.insert(name.clone(), resolved);
                 name
@@ -620,6 +628,25 @@ mod tests {
         assert_eq!(value["properties"]["$ref"]["type"], "string");
         assert_eq!(value["properties"]["nested"][REFERENCE], "RootRef1");
         assert_eq!(value["const"], schema["const"]);
+    }
+
+    #[test]
+    fn encoded_schema_fragments_decode_once_and_equivalent_recursive_edges_share_models() {
+        let schema = json!({"type":"object","properties":{
+            "encoded":{"$ref":"#/$defs/Node%2525~1~0%20%E6%B0%B4"},
+            "equivalent":{"$ref":"#%2F$defs%2FNode%2525~1~0%20%E6%B0%B4"}
+        },"$defs":{"Node%25/~ 水":{"type":"object","properties":{"value":{"type":"string"},"next":{"$ref":"#/$defs/Node%2525~1~0%20%E6%B0%B4"}}}}});
+        let value = normalize(&schema, "Encoded").unwrap();
+        assert_eq!(value["properties"]["encoded"][REFERENCE], "EncodedRef1");
+        assert_eq!(value["properties"]["equivalent"][REFERENCE], "EncodedRef1");
+        assert_eq!(value[DEFINITIONS].as_object().unwrap().len(), 1);
+        assert_eq!(
+            value[DEFINITIONS]["EncodedRef1"]["properties"]["next"][REFERENCE],
+            "EncodedRef1"
+        );
+        for reference in ["#/%FF", "#missing", "https://example.invalid"] {
+            assert!(normalize(&json!({"$ref":reference}), "Invalid").is_err());
+        }
     }
 
     #[test]

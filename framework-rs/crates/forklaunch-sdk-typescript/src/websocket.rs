@@ -202,7 +202,7 @@ mod tests {
             .unwrap();
             std::fs::write(format!("{output}.native"), native).unwrap();
             let recursive = SocketContract::new("/tree")
-                .with_server_message("tree", SocketSchemaEntry::new(json!({"$ref":"#/$defs/Node", "$defs":{"Node":{"type":"object","required":["value"],"properties":{"value":{"type":"integer"},"next":{"$ref":"#/$defs/Node"}},"additionalProperties":false}}})))
+                .with_server_message("tree", SocketSchemaEntry::new(json!({"$ref":"#/$defs/Node%2525~1~0%20%E6%B0%B4", "$defs":{"Node%25/~ 水":{"type":"object","required":["value"],"properties":{"value":{"type":"integer"},"next":{"$ref":"#/$defs/Node%2525~1~0%20%E6%B0%B4"}},"additionalProperties":false}}})))
                 .with_server_message("text", SocketSchemaEntry::new(json!({"type":"string"})))
                 .with_client_message("accepted", SocketSchemaEntry::new(json!({"type":"boolean"})));
             for (suffix, contract) in [
