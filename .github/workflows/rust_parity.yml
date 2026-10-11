@@ -10,6 +10,7 @@ on:
       - 'blueprint/implementations/billing/**'
       - 'blueprint/implementations/iam/**'
       - 'blueprint/iam-base/**'
+      - 'blueprint/iam-better-auth/**'
       - 'blueprint/core/auth/rbac.ts'
       - 'blueprint/core/persistence/sql.base.properties.ts'
       - 'framework/core/src/services/complianceDataService.ts'
@@ -65,6 +66,9 @@ on:
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_iam_directory_parity.mjs'
+      - 'cli/tests/rust_better_auth_parity.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_reference.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_routes.json'
       - 'cli/tests/rust_billing_contracts_parity.mjs'
       - 'cli/tests/rust_actual_validator_fixture.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
@@ -103,6 +107,7 @@ on:
       - 'blueprint/implementations/billing/**'
       - 'blueprint/implementations/iam/**'
       - 'blueprint/iam-base/**'
+      - 'blueprint/iam-better-auth/**'
       - 'blueprint/core/auth/rbac.ts'
       - 'blueprint/core/persistence/sql.base.properties.ts'
       - 'framework/core/src/services/complianceDataService.ts'
@@ -158,6 +163,9 @@ on:
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_iam_directory_parity.mjs'
+      - 'cli/tests/rust_better_auth_parity.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_reference.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_routes.json'
       - 'cli/tests/rust_billing_contracts_parity.mjs'
       - 'cli/tests/rust_actual_validator_fixture.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
@@ -344,7 +352,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6
       - run: node cli/tests/rust_worker_tenant_scope_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -398,6 +406,10 @@ jobs:
       - run: node cli/tests/rust_billing_contracts_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_better_auth_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_iam_directory_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

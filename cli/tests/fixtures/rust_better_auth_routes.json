@@ -1,0 +1,494 @@
+[
+  {
+    "name": "accountInfo",
+    "path": "/account-info",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "callbackOAuth",
+    "path": "/callback/:id",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "name": "changeEmail",
+    "path": "/change-email",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "changePassword",
+    "path": "/change-password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "deleteUser",
+    "path": "/delete-user",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "deleteUserCallback",
+    "path": "/delete-user/callback",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "error",
+    "path": "/error",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "getAccessToken",
+    "path": "/get-access-token",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "getSession",
+    "path": "/get-session",
+    "methods": [
+      "GET",
+      "POST"
+    ]
+  },
+  {
+    "name": "getJwks",
+    "path": "/jwks",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "linkSocialAccount",
+    "path": "/link-social",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "listUserAccounts",
+    "path": "/list-accounts",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "listSessions",
+    "path": "/list-sessions",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "ok",
+    "path": "/ok",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "generateOpenAPISchema",
+    "path": "/open-api/generate-schema",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "acceptInvitation",
+    "path": "/organization/accept-invitation",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "addTeamMember",
+    "path": "/organization/add-team-member",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "cancelInvitation",
+    "path": "/organization/cancel-invitation",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "checkOrganizationSlug",
+    "path": "/organization/check-slug",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "createOrganization",
+    "path": "/organization/create",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "createOrgRole",
+    "path": "/organization/create-role",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "createTeam",
+    "path": "/organization/create-team",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "deleteOrganization",
+    "path": "/organization/delete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "deleteOrgRole",
+    "path": "/organization/delete-role",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "getActiveMember",
+    "path": "/organization/get-active-member",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "getActiveMemberRole",
+    "path": "/organization/get-active-member-role",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "getFullOrganization",
+    "path": "/organization/get-full-organization",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "getInvitation",
+    "path": "/organization/get-invitation",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "getOrganization",
+    "path": "/organization/get-organization",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "getOrgRole",
+    "path": "/organization/get-role",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "hasPermission",
+    "path": "/organization/has-permission",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "createInvitation",
+    "path": "/organization/invite-member",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "leaveOrganization",
+    "path": "/organization/leave",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "listOrganizations",
+    "path": "/organization/list",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "listInvitations",
+    "path": "/organization/list-invitations",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "listMembers",
+    "path": "/organization/list-members",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "listOrgRoles",
+    "path": "/organization/list-roles",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "listTeamMembers",
+    "path": "/organization/list-team-members",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "listOrganizationTeams",
+    "path": "/organization/list-teams",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "listUserInvitations",
+    "path": "/organization/list-user-invitations",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "listUserTeams",
+    "path": "/organization/list-user-teams",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "rejectInvitation",
+    "path": "/organization/reject-invitation",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "removeMember",
+    "path": "/organization/remove-member",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "removeTeam",
+    "path": "/organization/remove-team",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "removeTeamMember",
+    "path": "/organization/remove-team-member",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "setActiveOrganization",
+    "path": "/organization/set-active",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "setActiveTeam",
+    "path": "/organization/set-active-team",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "updateOrganization",
+    "path": "/organization/update",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "updateMemberRole",
+    "path": "/organization/update-member-role",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "updateOrgRole",
+    "path": "/organization/update-role",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "updateTeam",
+    "path": "/organization/update-team",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "openAPIReference",
+    "path": "/reference",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "refreshToken",
+    "path": "/refresh-token",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "requestPasswordReset",
+    "path": "/request-password-reset",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "resetPassword",
+    "path": "/reset-password",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "requestPasswordResetCallback",
+    "path": "/reset-password/:token",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "revokeOtherSessions",
+    "path": "/revoke-other-sessions",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "revokeSession",
+    "path": "/revoke-session",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "revokeSessions",
+    "path": "/revoke-sessions",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "sendVerificationEmail",
+    "path": "/send-verification-email",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "signInEmail",
+    "path": "/sign-in/email",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "signInSocial",
+    "path": "/sign-in/social",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "signOut",
+    "path": "/sign-out",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "signUpEmail",
+    "path": "/sign-up/email",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "getToken",
+    "path": "/token",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "unlinkAccount",
+    "path": "/unlink-account",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "updateSession",
+    "path": "/update-session",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "updateUser",
+    "path": "/update-user",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "name": "verifyEmail",
+    "path": "/verify-email",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "name": "verifyPassword",
+    "path": "/verify-password",
+    "methods": [
+      "POST"
+    ]
+  }
+]

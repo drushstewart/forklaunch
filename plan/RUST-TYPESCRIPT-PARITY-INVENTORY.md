@@ -209,3 +209,15 @@ All module/worker families compile, native and TypeScript SDK generation
 passes, and generated HTTP/MCP startup plus all five managed callbacks pass.
 Strict framework workspace linting/formatting, framework tests, 999 CLI tests
 and all 591 embedded Rust source/template assets also pass.
+
+The configured Better Auth 1.7.6 reference audit now captures 70 HTTP routes
+and four server-only helpers, with 48 actual protocol checks. It executes the
+repository config plus real plugins, discovery and surfacing services against
+an owned UUID/SQL adapter boundary. Signed/revoked cookies, password rotation,
+Origin/callback validation, EdDSA/JWKS claims, default organization teams and
+configured role denials are covered. Native Better Auth protocol, real ORM,
+Google callback/provider behavior and account PCI compliance remain open.
+Password reset/change-email/user-deletion/reference UI are disabled by actual
+configuration; Google discovery lists the provider even without credentials.
+Configured static access-control permissions do not create surfaced dynamic
+role records. The implementation plan now tracks these scopes separately.
