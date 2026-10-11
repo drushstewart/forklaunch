@@ -1,5 +1,5 @@
 //! Native capability edits retain application source and record dependency ownership.
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::Path};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,122 @@ const BEGIN: &str = "// BEGIN FORKLAUNCH MANAGED CAPABILITIES\n";
 const END: &str = "// END FORKLAUNCH MANAGED CAPABILITIES\n";
 const LIB_EXPORT: &str = "pub mod capabilities;\n";
 const REGISTRY: &str = "    capabilities::register_contracts(&mut registry);\n";
+
+pub(crate) fn rename_native_ownership(root: &Path, old: &str, new: &str) -> Result<()> {
+    let mut edit = CapabilityEdit::new(root, "", new, root, vec![], vec![]);
+    edit.native = true;
+    let previous = root.join(format!(".forklaunch/native-capabilities/{old}.json"));
+    if let Some(text) = edit.read(&previous)? {
+        let mut ownership: Ownership = serde_json::from_str(&text)?;
+        for source in [&mut ownership.original_cargo, &mut ownership.last_cargo] {
+            *source = crate::init::rust_project::renamed_rust_package_source(source, new);
+        }
+        if let Some(mock) = ownership.original_mock.as_mut() {
+            rename_callback_targets(mock, old, new);
+        }
+        edit.write(
+            root.join(format!(".forklaunch/native-capabilities/{new}.json")),
+            serde_json::to_string_pretty(&ownership)? + "\n",
+        );
+        edit.delete(previous);
+    }
+    if root.join("docker-compose.yaml").exists() {
+        edit.update_compose(|compose| {
+            if let Some(mock) = compose.services.get_mut(GATEWAY_MOCK_SERVICE) {
+                rename_callback_targets(mock, old, new);
+            }
+            Ok(())
+        })?;
+    }
+    edit.commit()
+}
+
+fn rename_callback_targets(mock: &mut DockerService, old: &str, new: &str) {
+    if let Some(env) = mock.environment.as_mut() {
+        for (key, value) in env {
+            if !key.starts_with("MOCK_EVENTS_URL_") {
+                continue;
+            }
+            for scheme in ["http", "https"] {
+                let prefix = format!("{scheme}://{old}:");
+                if let Some(suffix) = value.strip_prefix(&prefix) {
+                    *value = format!("{scheme}://{new}:{suffix}");
+                    break;
+                }
+                if value == &format!("{scheme}://{old}") {
+                    *value = format!("{scheme}://{new}");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+pub(crate) fn cleanup_deleted_native_service(
+    root: &Path,
+    name: &str,
+    features: &[String],
+) -> Result<()> {
+    let mut edit = CapabilityEdit::new(root, "", name, root, vec![], vec![]);
+    edit.native = true;
+    let state_path = root.join(format!(".forklaunch/native-capabilities/{name}.json"));
+    let original_mock = edit
+        .read(&state_path)?
+        .map(|text| serde_json::from_str::<Ownership>(&text))
+        .transpose()?
+        .and_then(|state| state.original_mock);
+    if !features.is_empty() && root.join("docker-compose.yaml").exists() {
+        let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(
+            root.join(".forklaunch/manifest.toml"),
+        )?)?;
+        let mut remaining = BTreeMap::<String, String>::new();
+        if let Some(projects) = manifest.get("projects").and_then(toml::Value::as_array) {
+            for project in projects {
+                if let (Some(service), Some(capabilities)) = (
+                    project.get("name").and_then(toml::Value::as_str),
+                    project
+                        .get("resources")
+                        .and_then(|resources| resources.get("capabilities"))
+                        .and_then(toml::Value::as_array),
+                ) {
+                    for feature in capabilities.iter().filter_map(toml::Value::as_str) {
+                        remaining
+                            .entry(feature.into())
+                            .or_insert_with(|| service.into());
+                    }
+                }
+            }
+        }
+        edit.update_compose(|compose| {
+            for feature in features {
+                release_gateway_mock(compose, name, feature, true, remaining.is_empty());
+            }
+            for (feature, service) in &remaining {
+                let port = compose
+                    .services
+                    .get(service)
+                    .and_then(|service| service.environment.as_ref())
+                    .and_then(|env| env.get("SERVICE_PORT").or_else(|| env.get("PORT")))
+                    .cloned()
+                    .unwrap_or_else(|| "8000".into());
+                if let Some(mock) = compose.services.get_mut(GATEWAY_MOCK_SERVICE) {
+                    mock.environment
+                        .get_or_insert_with(Default::default)
+                        .entry(format!("MOCK_EVENTS_URL_{}", feature.to_uppercase()))
+                        .or_insert_with(|| format!("http://{service}:{port}"));
+                }
+            }
+            if remaining.is_empty() && !compose.services.contains_key(GATEWAY_MOCK_SERVICE) {
+                if let Some(mock) = original_mock {
+                    compose.services.insert(GATEWAY_MOCK_SERVICE.into(), mock);
+                }
+            }
+            Ok(())
+        })?;
+    }
+    edit.delete(state_path);
+    edit.commit()
+}
 #[derive(Serialize, Deserialize)]
 struct Ownership {
     original_cargo: String,
@@ -83,9 +199,21 @@ pub(super) fn apply(
     let mut state = if let Some(text) = edit.read(&state_path)? {
         serde_json::from_str::<Ownership>(&text)?
     } else {
-        if !adding {
-            bail!("Native capability ownership record is missing");
+        let recovered = current_module
+            .as_deref()
+            .is_some_and(|source| source.contains(BEGIN));
+        if !adding && !recovered {
+            bail!("Native capability ownership record and generated section are missing");
         }
+        // Local restoration records are deliberately ignored by Git. A clone
+        // can still remove generated hooks, but retains dependencies/settings
+        // whose prior ownership cannot be established without that record.
+        let original_module = if recovered {
+            let kept = replace_owned_block(current_module.as_deref().unwrap_or_default(), "")?;
+            (!kept.trim().is_empty()).then_some(kept)
+        } else {
+            current_module.clone()
+        };
         let compose = edit
             .read(&edit.app_root.join("docker-compose.yaml"))?
             .map(|text| serde_yml::from_str::<DockerCompose>(&text))
@@ -97,16 +225,16 @@ pub(super) fn apply(
             original_cargo: cargo_text.clone(),
             last_cargo: cargo_text.clone(),
             cargo_modified: false,
-            original_module: current_module.clone(),
+            original_module,
             last_module: current_module.clone(),
             module_modified: false,
             original_env: current_env.clone(),
             last_env: current_env.clone(),
             env_modified: false,
-            lib_export_added: !lib.contains(LIB_EXPORT),
-            main_import_added: !main.contains(&import),
-            registry_added: !lib.contains(REGISTRY),
-            router_added: !main.contains(".with_managed_capabilities()"),
+            lib_export_added: recovered || !lib.contains(LIB_EXPORT),
+            main_import_added: recovered || !main.contains(&import),
+            registry_added: recovered || !lib.contains(REGISTRY),
+            router_added: recovered || !main.contains(".with_managed_capabilities()"),
             original_service_env: service
                 .and_then(|service| service.environment.as_ref())
                 .map(|env| {
@@ -119,7 +247,7 @@ pub(super) fn apply(
                 .and_then(|service| service.depends_on.as_ref())
                 .and_then(|depends| depends.get(GATEWAY_MOCK_SERVICE))
                 .cloned(),
-            original_mock: if edit.app_capabilities.len() == 1 {
+            original_mock: if !recovered && edit.app_capabilities.len() == 1 {
                 compose
                     .as_ref()
                     .and_then(|compose| compose.services.get(GATEWAY_MOCK_SERVICE))
@@ -451,4 +579,52 @@ fn render_module(features: &[String]) -> Result<String> {
         .replace("__HANDLER_ARMS__", &arms.join("\n"))
         .replace("__KNOWN_FEATURES__", &known.join(" | "))
         .replace("__CLIENT_FACTORIES__", &factories.join("\n")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deletion_reads_a_manifest_document_and_releases_only_the_last_gateway() {
+        for another_service in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(root.path().join(".forklaunch")).unwrap();
+            let manifest = if another_service {
+                "app_description = \"Document parsing regression\"\n[[projects]]\nname = \"other\"\n[projects.resources]\ncapabilities = [\"sms\"]\n"
+            } else {
+                "app_description = \"Document parsing regression\"\nprojects = []\n"
+            };
+            std::fs::write(root.path().join(".forklaunch/manifest.toml"), manifest).unwrap();
+            std::fs::write(root.path().join("docker-compose.yaml"), "volumes: {}\nnetworks: {}\nservices:\n  removed:\n    environment:\n      INSTANCE_ID: local-instance\n  other:\n    environment:\n      SERVICE_PORT: '8123'\n  gateway-mock:\n    image: node:22-alpine\n    environment:\n      MOCK_EVENTS_URL_EMAIL: http://removed:8000\n      MOCK_EVENTS_URL_SMS: http://other:8123\n").unwrap();
+            cleanup_deleted_native_service(root.path(), "removed", &["email".into()]).unwrap();
+            let compose: DockerCompose = serde_yml::from_str(
+                &std::fs::read_to_string(root.path().join("docker-compose.yaml")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                compose.services.contains_key(GATEWAY_MOCK_SERVICE),
+                another_service
+            );
+            if another_service {
+                let env = compose.services[GATEWAY_MOCK_SERVICE]
+                    .environment
+                    .as_ref()
+                    .unwrap();
+                assert!(!env.contains_key("MOCK_EVENTS_URL_EMAIL"));
+                assert_eq!(env["MOCK_EVENTS_URL_SMS"], "http://other:8123");
+            }
+        }
+    }
+
+    #[test]
+    fn renaming_callbacks_preserves_other_services_and_custom_origins() {
+        let mut mock: DockerService = serde_yml::from_str("image: node:22-alpine\nenvironment:\n  MOCK_EVENTS_URL_EMAIL: http://old:8123\n  MOCK_EVENTS_URL_SMS: https://old:8443/base\n  MOCK_EVENTS_URL_VOICE: https://old.example:8443\n  OTHER_URL: http://old:8123\n").unwrap();
+        rename_callback_targets(&mut mock, "old", "new");
+        let env = mock.environment.unwrap();
+        assert_eq!(env["MOCK_EVENTS_URL_EMAIL"], "http://new:8123");
+        assert_eq!(env["MOCK_EVENTS_URL_SMS"], "https://new:8443/base");
+        assert_eq!(env["MOCK_EVENTS_URL_VOICE"], "https://old.example:8443");
+        assert_eq!(env["OTHER_URL"], "http://old:8123");
+    }
 }

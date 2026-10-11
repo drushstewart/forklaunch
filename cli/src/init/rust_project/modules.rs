@@ -564,7 +564,8 @@ fn ensure_iam_compose(root: &Path, name: &str, dryrun: bool) -> Result<()> {
 }
 
 pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
-    let crate_dir = root.join("crates").join(new);
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let crate_dir = root.join(crate_path_for_project(&manifest, new).unwrap_or_else(||format!("crates/{new}")));
     for filename in ["src/lib.rs", "src/main.rs"] {
         let path = crate_dir.join(filename);
         if path.exists() {

@@ -483,7 +483,9 @@ pub(crate) fn is_rust_project(app_root: &Path, name: &str) -> Result<bool> {
 }
 
 pub(crate) fn sync_rust_project(app_root: &Path, kind: RustProjectKind, name: &str) -> Result<()> {
-    let crate_path = Path::new("crates").join(name);
+    let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
+    let crate_path = PathBuf::from(crate_path_for_project(&manifest, name)
+        .unwrap_or_else(|| format!("crates/{name}")));
     let crate_dir = app_root.join(&crate_path);
     if !crate_dir.join("Cargo.toml").exists() {
         delete_rust_project(app_root, kind, name)?;
@@ -577,8 +579,15 @@ pub(crate) fn delete_rust_project(
     let mut manifest = read_manifest_value(&manifest_path)?;
     let crate_path = crate_path_for_project(&manifest, name)
         .unwrap_or_else(|| Path::new("crates").join(name).to_string_lossy().to_string());
+    let capabilities = project_table(&manifest, name)
+        .and_then(|project| project.get("resources"))
+        .and_then(|resources| resources.get("capabilities"))
+        .and_then(Value::as_array)
+        .map(|features| features.iter().filter_map(Value::as_str).map(str::to_owned).collect::<Vec<_>>())
+        .unwrap_or_default();
     remove_project_from_manifest_value(&mut manifest, name, Some(kind))?;
     write_manifest_value(&manifest_path, &manifest)?;
+    crate::infra::capabilities::cleanup_deleted_native_service(app_root, name, &capabilities)?;
     remove_cargo_member(app_root, &crate_path)?;
     cleanup_generated_outputs_for_deleted_rust_project(app_root, kind, name)?;
     remove_rust_docker_compose_project(app_root, name)?;
@@ -649,10 +658,12 @@ pub(crate) fn change_rust_project(
             .to_string()
     });
     let target_name = new_name.unwrap_or(current_name);
-    let target_crate_path = Path::new("crates")
-        .join(target_name)
-        .to_string_lossy()
-        .to_string();
+    let target_crate_path = if target_name == current_name {
+        current_crate_path.clone()
+    } else {
+        Path::new(&current_crate_path).parent().unwrap_or_else(||Path::new("crates"))
+            .join(target_name).to_string_lossy().to_string()
+    };
     let current_kind = project_table(&manifest, current_name)
         .and_then(|project| project.get("type"))
         .and_then(Value::as_str)
@@ -694,6 +705,14 @@ pub(crate) fn change_rust_project(
         && !keep_persistent_worker
         && (current_kind != target_kind || worker_type.is_some() || database.is_some());
     let persistent_module = modules::module_kind(app_root, current_name)?;
+    let managed_capabilities = current_project
+        .and_then(|project| project.get("resources"))
+        .and_then(|resources| resources.get("capabilities"))
+        .and_then(Value::as_array)
+        .is_some_and(|features| !features.is_empty());
+    if managed_capabilities && target_kind != RustProjectKind::Service {
+        bail!("Remove managed capabilities before converting this native service to another project kind");
+    }
     if persistent_module.is_some()
         && (!matches!(target_kind, RustProjectKind::Service)
             || database.is_some_and(|database| database != "postgresql"))
@@ -824,10 +843,19 @@ pub(crate) fn change_rust_project(
         }
         return Ok(target_name.to_owned());
     }
-    match target_kind {
-        RustProjectKind::Service => ensure_service_shape(&crate_dir, target_name)?,
-        RustProjectKind::Worker => ensure_worker_shape(&crate_dir, target_name)?,
-        RustProjectKind::Library => ensure_library_shape(&crate_dir, target_name)?,
+    if managed_capabilities && current_kind == target_kind {
+        // Keep the application's handlers and capability hooks when its name
+        // or metadata changes. The ordinary shape templates replace source.
+        if current_name != target_name {
+            modules::rename_sources(app_root, current_name, target_name)?;
+            rename_native_service_defaults(&crate_dir, current_name, target_name)?;
+        }
+    } else {
+        match target_kind {
+            RustProjectKind::Service => ensure_service_shape(&crate_dir, target_name)?,
+            RustProjectKind::Worker => ensure_worker_shape(&crate_dir, target_name)?,
+            RustProjectKind::Library => ensure_library_shape(&crate_dir, target_name)?,
+        }
     }
     if current_name != target_name || current_kind != target_kind {
         remove_rust_docker_compose_project(app_root, current_name)?;
@@ -849,6 +877,7 @@ pub(crate) fn change_rust_project(
 // Generated artifacts retain their schemas while their service metadata and SDK
 // names follow the renamed project. Other services' artifacts are left intact.
 fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> {
+    crate::infra::capabilities::rename_native_ownership(root, old, new)?;
     for (kind, filename) in [
         ("contracts", "contract.json"),
         ("openapi", "openapi.json"),
@@ -2475,6 +2504,11 @@ fn update_package_name(cargo_path: &Path, name: &str) -> Result<()> {
     }
     let contents = read_to_string(cargo_path)
         .with_context(|| format!("Failed to read {}", cargo_path.display()))?;
+    write(cargo_path, renamed_rust_package_source(&contents, name))
+        .with_context(|| format!("Failed to update {}", cargo_path.display()))
+}
+
+pub(crate) fn renamed_rust_package_source(contents: &str, name: &str) -> String {
     let mut in_named_section = false;
     let mut updated = Vec::new();
     for line in contents.lines() {
@@ -2493,8 +2527,36 @@ fn update_package_name(cargo_path: &Path, name: &str) -> Result<()> {
             updated.push(line.to_string());
         }
     }
-    write(cargo_path, updated.join("\n") + "\n")
-        .with_context(|| format!("Failed to update {}", cargo_path.display()))
+    updated.join("\n") + "\n"
+}
+
+fn rename_native_service_defaults(crate_dir: &Path, old: &str, new: &str) -> Result<()> {
+    for relative in ["src/config/mod.rs", "tests/smoke.rs"] {
+        let path = crate_dir.join(relative);
+        if !path.exists() {
+            continue;
+        }
+        let namespace = regex::Regex::new(&format!(
+            r"\b{}::", regex::escape(&old.to_case(Case::Snake)),
+        ))?;
+        let source = namespace
+            .replace_all(&read_to_string(&path)?, format!("{}::", new.to_case(Case::Snake)))
+            .into_owned()
+            .replace(
+                &format!("unwrap_or_else(|_| \"{old}\".to_string())"),
+                &format!("unwrap_or_else(|_| \"{new}\".to_string())"),
+            )
+            .replace(
+                &format!("name: \"{old}\".to_string()"),
+                &format!("name: \"{new}\".to_string()"),
+            )
+            .replace(
+                &format!("\"{}\".replace('_', \"-\")", old.to_case(Case::Snake)),
+                &format!("\"{}\".replace('_', \"-\")", new.to_case(Case::Snake)),
+            );
+        write(path, source)?;
+    }
+    Ok(())
 }
 
 fn update_rust_root_cargo_metadata(

@@ -303,7 +303,8 @@ pub(super) fn compose(root: &Path, name: &str, backend: Backend) -> Result<()> {
 }
 
 pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
-    let directory = root.join("crates").join(new);
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let directory = root.join(crate_path_for_project(&manifest, new).unwrap_or_else(||format!("crates/{new}")));
     for relative in ["src/main.rs", "tests/smoke.rs"] {
         let path = directory.join(relative);
         if path.exists() {

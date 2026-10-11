@@ -53,6 +53,20 @@ cargo check --workspace
 TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 node "$SCRIPT_DIR/rust_capabilities_runtime.mjs" "$TARGET_DIR/debug/messages"
 rm crates/messages/examples/capabilities.rs
+printf '\n// Human main customization\n' >> crates/messages/src/main.rs
+printf '\n// Human main customization\n' >> "$RUN_ROOT/original-main.rs"
+printf '\npub const CONFIG_MARKER: &str = "preserved";\n' >> crates/messages/src/config/mod.rs
+"$FORKLAUNCH_CLI" sync service messages --path .
+"$FORKLAUNCH_CLI" change service --path crates/messages -N renamed-messages --confirm
+test ! -e .forklaunch/native-capabilities/messages.json
+test -e .forklaunch/native-capabilities/renamed-messages.json
+grep -q 'http://renamed-messages:8000' docker-compose.yaml
+grep -q 'Human main customization' crates/renamed-messages/src/main.rs
+grep -q CONFIG_MARKER crates/renamed-messages/src/config/mod.rs
+cargo test -p renamed-messages
+cargo build -p renamed-messages
+node "$SCRIPT_DIR/rust_capabilities_runtime.mjs" "$TARGET_DIR/debug/renamed-messages"
+"$FORKLAUNCH_CLI" change service --path crates/renamed-messages -N messages --confirm
 # Removal must preserve edits made between stacked capability commands.
 printf '\n[package.metadata.user]\nmarker = "preserved"\n' >> crates/messages/Cargo.toml
 printf '\npub const USER_MARKER: &str = "preserved";\n' >> crates/messages/src/lib.rs
@@ -85,4 +99,29 @@ for feature in payments sms; do "$FORKLAUNCH_CLI" infra remove pristine "$featur
 cmp "$RUN_ROOT/pristine-cargo.toml" crates/pristine/Cargo.toml
 cmp "$RUN_ROOT/pristine-lib.rs" crates/pristine/src/lib.rs
 cmp "$RUN_ROOT/pristine-main.rs" crates/pristine/src/main.rs
+"$FORKLAUNCH_CLI" infra add pristine email --path .
+rm .forklaunch/native-capabilities/pristine.json
+"$FORKLAUNCH_CLI" infra add pristine sms --path .
+"$FORKLAUNCH_CLI" infra remove pristine email --path .
+"$FORKLAUNCH_CLI" infra remove pristine sms --path .
+test ! -e crates/pristine/src/capabilities/mod.rs
+test ! -e .forklaunch/native-capabilities/pristine.json
+cargo check -p pristine
+mkdir -p services/team
+mv crates/pristine services/team/pristine
+python3 - <<'PY'
+from pathlib import Path
+for filename in ['Cargo.toml','.forklaunch/manifest.toml']:
+ p=Path(filename);p.write_text(p.read_text().replace('crates/pristine','services/team/pristine'))
+p=Path('services/team/pristine/Cargo.toml');p.write_text(p.read_text().replace('../../.forklaunch/','../../../.forklaunch/'))
+PY
+"$FORKLAUNCH_CLI" infra add pristine sms --path .
+"$FORKLAUNCH_CLI" sync service pristine --path .
+"$FORKLAUNCH_CLI" change service --path services/team/pristine -N relocated-pristine --confirm
+test -e services/team/relocated-pristine/src/capabilities/mod.rs
+test ! -d crates/relocated-pristine
+cargo test -p relocated-pristine
+"$FORKLAUNCH_CLI" delete service relocated-pristine --path . --continue
+test ! -e .forklaunch/native-capabilities/relocated-pristine.json
+if grep -q 'gateway-mock:' docker-compose.yaml; then echo 'FAIL deleted service retained the gateway mock'; exit 1; fi
 echo 'PASS native capability generation, relocation, HTTP/MCP startup, SDKs, dry run and source/configuration preservation'

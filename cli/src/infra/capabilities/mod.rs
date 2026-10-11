@@ -14,6 +14,7 @@
 //! capability's file only says what is particular to it.
 
 mod native;
+pub(crate) use native::{cleanup_deleted_native_service, rename_native_ownership};
 
 use std::{
     collections::BTreeMap,
