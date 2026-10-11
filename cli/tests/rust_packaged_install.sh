@@ -51,6 +51,7 @@ PYTHON
 export CARGO_TARGET_DIR="$GENERATED_TARGET"
 cargo check --workspace
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk
+cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-billing-base --features postgres
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-cac-axum
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-messaging-axum
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base -p forklaunch-ecommerce-stripe -p forklaunch-ecommerce-paypal -p forklaunch-ecommerce-axum --all-features

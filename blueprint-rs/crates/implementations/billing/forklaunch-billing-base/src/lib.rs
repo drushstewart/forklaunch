@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod services;
+
 use std::cell::RefCell;
 
 use forklaunch_billing_interface::{

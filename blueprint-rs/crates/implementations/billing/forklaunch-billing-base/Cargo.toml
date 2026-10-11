@@ -6,9 +6,23 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+postgres = ["dep:forklaunch-core", "dep:sqlx"]
+
 [dependencies]
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
 forklaunch-billing-interface = { path = "../../../interfaces/forklaunch-billing-interface" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"], optional = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [lints]
 workspace = true

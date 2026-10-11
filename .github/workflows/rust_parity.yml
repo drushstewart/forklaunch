@@ -7,7 +7,9 @@ on:
       - 'blueprint-rs/**'
       - 'blueprint/ecommerce-stripe/**'
       - 'blueprint/implementations/ecommerce/**'
+      - 'blueprint/implementations/billing/**'
       - 'blueprint/interfaces/ecommerce/**'
+      - 'blueprint/interfaces/billing/**'
       - 'framework/core/src/persistence/fieldEncryptor.ts'
       - 'cli/tests/rust_field_encryption_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
@@ -21,6 +23,7 @@ on:
       - 'cli/tests/rust_cac_provider_parity.mjs'
       - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
+      - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_ecommerce_catalog_parity.mjs'
       - 'cli/tests/rust_ecommerce_order_events_parity.mjs'
       - 'cli/tests/rust_ecommerce_contracts_parity.mjs'
@@ -41,7 +44,9 @@ on:
       - 'blueprint-rs/**'
       - 'blueprint/ecommerce-stripe/**'
       - 'blueprint/implementations/ecommerce/**'
+      - 'blueprint/implementations/billing/**'
       - 'blueprint/interfaces/ecommerce/**'
+      - 'blueprint/interfaces/billing/**'
       - 'framework/core/src/persistence/fieldEncryptor.ts'
       - 'cli/tests/rust_field_encryption_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
@@ -55,6 +60,7 @@ on:
       - 'cli/tests/rust_cac_provider_parity.mjs'
       - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
+      - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_ecommerce_catalog_parity.mjs'
       - 'cli/tests/rust_ecommerce_order_events_parity.mjs'
       - 'cli/tests/rust_ecommerce_contracts_parity.mjs'
@@ -181,6 +187,9 @@ jobs:
       - run: node cli/tests/rust_sms_provider_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_base_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_ecommerce_base_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -226,6 +235,7 @@ jobs:
       - run: cargo fmt --manifest-path blueprint-rs/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-base --all-features --test services -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test business_rules -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-axum --all-features --test http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-messaging-base --all-features --test postgres_sms -- --ignored

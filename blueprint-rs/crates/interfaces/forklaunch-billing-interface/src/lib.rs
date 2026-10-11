@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod services;
+
 use forklaunch_blueprint_core::{AuditContext, BlueprintResult, Page, PageRequest};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
