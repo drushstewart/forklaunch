@@ -53,7 +53,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .await?
     .map_err(std::io::Error::other)?;
-    let store = s3_infrastructure::object_store()?;
+    let store = if std::env::args().any(|arg| arg == "--configured") {
+        s3_infrastructure::configured_object_store().await?
+    } else {
+        s3_infrastructure::object_store()?
+    };
     // Bucket provisioning is explicit application/fixture work, never a factory side effect.
     store.init_bucket(true).await?;
     let metadata = ObjectMetadata::new()

@@ -20,6 +20,15 @@ S3_REGION=us-east-1 S3_BUCKET=forklaunch-native-infra-fixture \
 S3_ACCESS_KEY_ID="${FORKLAUNCH_TEST_S3_ACCESS_KEY:-parity-test-access}" \
 S3_SECRET_ACCESS_KEY="${FORKLAUNCH_TEST_S3_SECRET_KEY:-parity-test-secret-only}" \
 cargo run -p storage --example infrastructure
+# Deployed services can use the default AWS chain without static S3 credential settings.
+env -u S3_ACCESS_KEY_ID -u S3_SECRET_ACCESS_KEY -u S3_REGION \
+REDIS_URL="${FORKLAUNCH_TEST_REDIS_URL:-redis://127.0.0.1:32770/12}" \
+S3_URL="${FORKLAUNCH_TEST_S3_ENDPOINT:-http://127.0.0.1:32776}" \
+AWS_REGION=us-east-1 S3_BUCKET=forklaunch-native-infra-fixture S3_PREFIX=/generated/tenant/ \
+AWS_ACCESS_KEY_ID="${FORKLAUNCH_TEST_S3_ACCESS_KEY:-parity-test-access}" \
+AWS_SECRET_ACCESS_KEY="${FORKLAUNCH_TEST_S3_SECRET_KEY:-parity-test-secret-only}" \
+AWS_EC2_METADATA_DISABLED=true \
+cargo run -p storage --example infrastructure -- --configured
 TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 env -u REDIS_URL -u S3_URL -u S3_BUCKET -u S3_REGION -u S3_ACCESS_KEY_ID -u S3_SECRET_ACCESS_KEY node "$SCRIPT_DIR/rust_mcp_service_startup.mjs" "$TARGET_DIR/debug/storage"
 "$FORKLAUNCH_CLI" openapi export --path .

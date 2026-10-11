@@ -8,12 +8,13 @@ repository.workspace = true
 
 [features]
 default = []
-aws-sdk = ["dep:aws-sdk-s3", "dep:tokio", "dep:base64", "dep:chrono", "dep:hmac", "dep:sha2", "dep:serde_json", "dep:url", "dep:zeroize", "dep:aws-smithy-runtime-api", "dep:aws-smithy-types", "dep:aws-runtime"]
+aws-sdk = ["dep:aws-sdk-s3", "dep:aws-config", "dep:tokio", "dep:base64", "dep:chrono", "dep:hmac", "dep:sha2", "dep:serde_json", "dep:url", "dep:zeroize", "dep:aws-smithy-runtime-api", "dep:aws-smithy-types", "dep:aws-runtime"]
 
 [dependencies]
 forklaunch-core = { path = "../forklaunch-core" }
 
 aws-sdk-s3 = { version = "=1.124.0", default-features = false, features = ["rt-tokio", "rustls", "default-https-client", "behavior-version-latest"], optional = true }
+aws-config = { version = "=1.8.11", features = ["behavior-version-latest"], optional = true }
 tokio = { version = "1", features = ["time"], optional = true }
 
 aws-runtime = { version = "1", optional = true }
@@ -37,3 +38,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-uti
 
 [lints]
 workspace = true
+
+[[example]]
+name = "s3_environment_parity"
+required-features = ["aws-sdk"]

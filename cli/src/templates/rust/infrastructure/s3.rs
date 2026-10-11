@@ -2,7 +2,7 @@
 use forklaunch_core::common::{FrameworkError, FrameworkResult};
 use forklaunch_infrastructure_s3::{
     S3ObjectStoreConfig,
-    aws::{AwsS3ObjectStore, AwsS3Options, aws_sdk_s3},
+    aws::{AwsS3ObjectStore, aws_sdk_s3},
 };
 
 fn required(name: &str) -> FrameworkResult<String> {
@@ -34,6 +34,13 @@ pub fn object_store() -> FrameworkResult<AwsS3ObjectStore> {
     AwsS3ObjectStore::new(
         client,
         S3ObjectStoreConfig::new(bucket).with_region(region),
-        AwsS3Options::default(),
+        forklaunch_infrastructure_s3::aws::environment::S3Environment::from_env()?.options,
     )
+}
+
+/// Production/default-chain factory, also honoring local overrides, prefix and presign limits.
+pub async fn configured_object_store() -> FrameworkResult<AwsS3ObjectStore> {
+    forklaunch_infrastructure_s3::aws::environment::S3Environment::from_env()?
+        .into_store()
+        .await
 }

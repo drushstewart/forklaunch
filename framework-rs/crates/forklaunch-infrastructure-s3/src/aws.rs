@@ -3,6 +3,8 @@
 pub mod post;
 #[path = "aws_transfer.rs"]
 pub mod transfer;
+#[path = "aws_environment.rs"]
+pub mod environment;
 pub use post::{PresignUploadOptions, PresignedUpload};
 use std::{future::Future, time::Duration};
 

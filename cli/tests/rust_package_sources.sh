@@ -50,6 +50,11 @@ expected = {
     "src/templates/rust/redis-worker/README.md",
     "src/templates/rust/blueprint-workspace/Cargo.toml.template",
     "src/templates/rust/framework/Cargo.toml.template",
+    "src/templates/rust/infrastructure/redis.rs",
+    "src/templates/rust/infrastructure/s3.rs",
+    "src/templates/rust/capabilities/mod.rs",
+    "src/templates/rust/capabilities/handler.rs",
+    "src/templates/rust/capabilities/nonce_store.rs",
 }
 for workspace, namespace in [("framework-rs", "framework"), ("blueprint-rs", "blueprint-workspace")]:
     for source in (root / workspace / "crates").rglob("*"):
