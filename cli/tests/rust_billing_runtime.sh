@@ -38,6 +38,9 @@ run_cli init application bundled-app --path "$RUN_ROOT/bundled-app" --language r
 grep -q StripeBillingClient "$RUN_ROOT/bundled-app/crates/billing/src/main.rs"
 run_cli init application billing-app --path "$RUN_ROOT/app" --language mixed --modules billing-base -D Billing -A ForkLaunch -L MIT
 run_cli init module stripe --path "$RUN_ROOT/app" --language rust -m billing-stripe
+for feature in email sms whatsapp voice payments; do
+    run_cli infra add stripe "$feature" --path "$RUN_ROOT/app"
+done
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
 printf '\npub const USER_BILLING_MARKER: &str = "preserved";\n' >> crates/stripe/src/lib.rs

@@ -50,7 +50,7 @@ async function stripeEvent(base,event,{tamper=false,stale=false}={}){
  assert.equal(result.status,tamper||stale?400:200,await result.clone().text());
 }
 async function platformEvent(base,event,nonce=randomUUID(),expected=200,keyId='platform',timestamp){
- const raw=JSON.stringify(event),path='/platform-events/payments';
+ const raw=JSON.stringify(event),path=`/platform-events/${event.feature??'payments'}`;
  const result=await fetch(base+path,{method:'POST',body:raw,headers:{'content-type':'application/json',authorization:hmac(path,'POST',raw,'platform-fixture-key',keyId,nonce,timestamp)}});
  assert.equal(result.status,expected,await result.clone().text());
 }
@@ -94,6 +94,10 @@ try{
   await call(base,`/billing-portal/${portal.id}`,'DELETE',undefined,200,jwt());
   let replayEvent;
   if(stripe){
+   for(const feature of ['email','sms','whatsapp','voice']){
+    const event={id:`evt-generated-${feature}`,feature,type:`${feature}.fixture`,data:{}};
+    const nonce=randomUUID();await platformEvent(base,event,nonce);await platformEvent(base,event,nonce,401);
+   }
    const object={id:sub.externalId,customer:'must-not-reassign',items:{data:[{plan:{id:plan.externalId}}]},created:1700000000,status:'past_due'};
    replayEvent={id:'evt-generated-update',type:'customer.subscription.updated',data:{object}};
    await stripeEvent(base,replayEvent,{tamper:true});await stripeEvent(base,replayEvent,{stale:true});
