@@ -5,6 +5,9 @@ on:
     paths:
       - 'framework-rs/**'
       - 'blueprint-rs/**'
+      - 'blueprint/ecommerce-stripe/**'
+      - 'blueprint/implementations/ecommerce/**'
+      - 'blueprint/interfaces/ecommerce/**'
       - 'framework/core/src/persistence/fieldEncryptor.ts'
       - 'cli/tests/rust_field_encryption_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
@@ -26,6 +29,7 @@ on:
       - 'cli/tests/rust_ecommerce_pricing_parity.mjs'
       - 'cli/tests/rust_ecommerce_import_parity.mjs'
       - 'cli/tests/rust_ecommerce_webhook_ledger_parity.mjs'
+      - 'cli/tests/rust_ecommerce_stripe_webhook_parity.mjs'
       - 'cli/tests/rust_mcp_probe.mjs'
       - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
@@ -35,6 +39,9 @@ on:
     paths:
       - 'framework-rs/**'
       - 'blueprint-rs/**'
+      - 'blueprint/ecommerce-stripe/**'
+      - 'blueprint/implementations/ecommerce/**'
+      - 'blueprint/interfaces/ecommerce/**'
       - 'framework/core/src/persistence/fieldEncryptor.ts'
       - 'cli/tests/rust_field_encryption_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
@@ -56,6 +63,7 @@ on:
       - 'cli/tests/rust_ecommerce_pricing_parity.mjs'
       - 'cli/tests/rust_ecommerce_import_parity.mjs'
       - 'cli/tests/rust_ecommerce_webhook_ledger_parity.mjs'
+      - 'cli/tests/rust_ecommerce_stripe_webhook_parity.mjs'
       - 'cli/tests/rust_mcp_probe.mjs'
       - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
@@ -166,7 +174,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2
       - run: node cli/tests/rust_cac_provider_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -198,6 +206,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_ecommerce_webhook_ledger_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_ecommerce_stripe_webhook_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - name: Start isolated Kafka-compatible broker
