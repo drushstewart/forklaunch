@@ -1,10 +1,10 @@
 //! Async Amazon S3 adapter using an injected official AWS SDK client.
+#[path = "aws_environment.rs"]
+pub mod environment;
 #[path = "aws_post.rs"]
 pub mod post;
 #[path = "aws_transfer.rs"]
 pub mod transfer;
-#[path = "aws_environment.rs"]
-pub mod environment;
 pub use post::{PresignUploadOptions, PresignedUpload};
 use std::{future::Future, time::Duration};
 

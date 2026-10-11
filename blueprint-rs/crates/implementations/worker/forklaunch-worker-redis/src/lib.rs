@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "bullmq")]
+pub mod bullmq;
+
 #[cfg(feature = "redis-client")]
 pub mod leased;
 #[cfg(feature = "redis-client")]

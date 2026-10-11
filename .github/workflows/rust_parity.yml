@@ -12,6 +12,16 @@ on:
       - 'blueprint/interfaces/billing/**'
       - 'framework/core/src/persistence/fieldEncryptor.ts'
       - 'cli/tests/rust_field_encryption_parity.mjs'
+      - 'framework/infrastructure/redis/**'
+      - 'framework/infrastructure/S3/**'
+      - 'blueprint/implementations/worker/bullmq/**'
+      - 'cli/tests/fixtures/redis_resp.mjs'
+      - 'cli/tests/rust_redis_queue_parity.mjs'
+      - 'cli/tests/rust_json_cache_parity.mjs'
+      - 'cli/tests/rust_json_object_parity.mjs'
+      - 'cli/tests/rust_s3_environment_parity.mjs'
+      - 'cli/tests/rust_worker_tenant_scope_parity.mjs'
+      - 'cli/tests/rust_bullmq_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_query_transport_parity.mjs'
@@ -64,6 +74,16 @@ on:
       - 'blueprint/interfaces/billing/**'
       - 'framework/core/src/persistence/fieldEncryptor.ts'
       - 'cli/tests/rust_field_encryption_parity.mjs'
+      - 'framework/infrastructure/redis/**'
+      - 'framework/infrastructure/S3/**'
+      - 'blueprint/implementations/worker/bullmq/**'
+      - 'cli/tests/fixtures/redis_resp.mjs'
+      - 'cli/tests/rust_redis_queue_parity.mjs'
+      - 'cli/tests/rust_json_cache_parity.mjs'
+      - 'cli/tests/rust_json_object_parity.mjs'
+      - 'cli/tests/rust_s3_environment_parity.mjs'
+      - 'cli/tests/rust_worker_tenant_scope_parity.mjs'
+      - 'cli/tests/rust_bullmq_parity.mjs'
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_query_transport_parity.mjs'
@@ -153,6 +173,18 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @asyncapi/parser@3.6.3 ajv@8.20.0
+      - run: node cli/tests/rust_redis_queue_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_json_cache_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_json_object_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_s3_environment_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_otlp_runtime.mjs
       - run: node cli/tests/rust_asyncapi_parity.mjs
         env:
@@ -210,7 +242,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0
+      - run: node cli/tests/rust_worker_tenant_scope_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_bullmq_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          BULLMQ_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/bullmq
       - run: node cli/tests/rust_cac_provider_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
