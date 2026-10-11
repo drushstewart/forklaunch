@@ -86,7 +86,7 @@ jobs:
 
           - group: 7
             name: "Rust Backend Generation"
-            scripts: "init_rust_projects.sh rust_init_commands.sh rust_change_commands.sh rust_sync_commands.sh rust_delete_commands.sh rust_sdk_openapi_commands.sh rust_http_runtime.sh rust_sse_runtime.sh rust_recursive_sdk_runtime.sh rust_http_methods_runtime.sh rust_package_sources.sh rust_release_runtime.sh rust_generated_release_runtime.sh rust_iam_runtime.sh rust_cac_runtime.sh rust_messaging_runtime.sh rust_billing_runtime.sh rust_ecommerce_runtime.sh rust_ecommerce_container_runtime.sh rust_worker_runtime.sh rust_redis_worker_runtime.sh rust_bullmq_worker_runtime.sh rust_kafka_worker_runtime.sh rust_kafka_container_runtime.sh rust_generated_otlp_runtime.sh rust_container_runtime.sh"
+            scripts: "init_rust_projects.sh rust_init_commands.sh rust_change_commands.sh rust_sync_commands.sh rust_delete_commands.sh rust_sdk_openapi_commands.sh rust_http_runtime.sh rust_sse_runtime.sh rust_recursive_sdk_runtime.sh rust_sdk_presence_runtime.sh rust_http_methods_runtime.sh rust_package_sources.sh rust_release_runtime.sh rust_generated_release_runtime.sh rust_iam_runtime.sh rust_cac_runtime.sh rust_messaging_runtime.sh rust_billing_runtime.sh rust_ecommerce_runtime.sh rust_ecommerce_container_runtime.sh rust_worker_runtime.sh rust_redis_worker_runtime.sh rust_bullmq_worker_runtime.sh rust_kafka_worker_runtime.sh rust_kafka_container_runtime.sh rust_generated_otlp_runtime.sh rust_container_runtime.sh"
 
     name: ${{ matrix.name }}
 
@@ -103,7 +103,7 @@ jobs:
 
       - name: Install TypeScript compiler for SDK checks
         if: matrix.group == 7
-        run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@22 stripe@22.6.2 bullmq@6.3.10 ioredis@6.0.0
+        run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@22 stripe@22.6.2 bullmq@6.3.10 ioredis@6.0.0 zod@4.6.5 ts-deepmerge@8.0.0
 
       - name: Configure pinned BullMQ SDK fixture
         if: matrix.group == 7

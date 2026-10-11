@@ -164,7 +164,7 @@ async fn verify(base: &str) {
             panic!("Expected union")
         };
         use accounts_sdk::AccountsUnionGetUnionResponse as Union;
-        match (mode, value) {
+        match (mode, *value) {
             ("named", Union::Variant1(value)) => assert_eq!(value.name, "Rust"),
             ("counted", Union::Variant2(value)) => assert_eq!(value.count, 42),
             ("boolean", Union::Variant3(value)) => assert!(value),

@@ -363,6 +363,8 @@ struct TypeScriptAliasTemplate {
 
 #[derive(Content)]
 struct RustSdkTemplate {
+    has_optional_fields: bool,
+    has_required_fields: bool,
     has_operations: bool,
     has_multipart: bool,
     has_sse: bool,
@@ -394,6 +396,8 @@ struct RustUnionVariantTemplate {
 
 #[derive(Content, Debug, Clone, PartialEq, Eq)]
 struct RustModelFieldTemplate {
+    optional: bool,
+    required: bool,
     flatten: bool,
     wire_name_literal: String,
     field_name: String,
@@ -827,6 +831,10 @@ fn build_sdk_operation(
 
     if decoder == ResponseDecoder::Sse {
         rust_response_type = format!("Box<SdkEventStream<{rust_response_type}>>");
+    } else if decoder == ResponseDecoder::Json && !rust_models.is_empty() {
+        // Object and union payloads can grow arbitrarily large. Keep status
+        // enums small without changing the wire format.
+        rust_response_type = format!("Box<{rust_response_type}>");
     }
 
     SdkOperation {
@@ -1351,6 +1359,8 @@ fn rust_types_from_schema(
                     RustModelTemplate {
                         name: name.clone(),
                         fields: vec![RustModelFieldTemplate {
+                            optional: false,
+                            required: false,
                             flatten: false,
                             wire_name_literal: "\"value\"".into(),
                             field_name: "value".into(),
@@ -1645,6 +1655,8 @@ fn rust_model_from_schema(
                 field_type = format!("Option<{field_type}>");
             }
             fields.push(RustModelFieldTemplate {
+                optional: !required.contains(name.as_str()),
+                required: required.contains(name.as_str()),
                 flatten: false,
                 wire_name_literal: format!("{name:?}"),
                 field_name,
@@ -1666,6 +1678,8 @@ fn rust_model_from_schema(
             .map(|value| build_rust_type(&format!("{model_name}AdditionalValue"), value, models))
             .unwrap_or_else(|| "serde_json::Value".into());
         fields.push(RustModelFieldTemplate {
+            optional: false,
+            required: false,
             flatten: true,
             wire_name_literal: "\"\"".into(),
             field_name,
@@ -2203,6 +2217,14 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
     render_sdk_template(
         "sdk/rust/lib.rs",
         &RustSdkTemplate {
+            has_optional_fields: models
+                .values()
+                .flat_map(|model| &model.fields)
+                .any(|field| field.optional),
+            has_required_fields: models
+                .values()
+                .flat_map(|model| &model.fields)
+                .any(|field| field.required),
             has_operations: !operations.is_empty(),
             has_multipart,
             has_sse,
@@ -2303,6 +2325,14 @@ mod wire_name_tests {
         let source = render_sdk_template(
             "sdk/rust/lib.rs",
             &RustSdkTemplate {
+                has_optional_fields: models
+                    .values()
+                    .flat_map(|model| &model.fields)
+                    .any(|field| field.optional),
+                has_required_fields: models
+                    .values()
+                    .flat_map(|model| &model.fields)
+                    .any(|field| field.required),
                 has_operations: false,
                 has_multipart: false,
                 has_sse: false,
@@ -2436,7 +2466,7 @@ mod multiple_response_tests {
             operation.responses[1].rust_response_type
         );
         let source = rust_sdk(&service).unwrap();
-        assert!(source.contains("Status201(ExampleItemGetItemStatus201Response)"));
+        assert!(source.contains("Status201(Box<ExampleItemGetItemStatus201Response>)"));
         assert!(source.contains("pub created_at: Option<String>"));
         let source = typescript_sdk(&[service]).unwrap();
         assert!(source.contains("201: ExampleItemGetItemStatus201Response"));
@@ -2820,6 +2850,14 @@ mod union_model_tests {
         let source = render_sdk_template(
             "sdk/rust/lib.rs",
             &RustSdkTemplate {
+                has_optional_fields: models
+                    .values()
+                    .flat_map(|model| &model.fields)
+                    .any(|field| field.optional),
+                has_required_fields: models
+                    .values()
+                    .flat_map(|model| &model.fields)
+                    .any(|field| field.required),
                 has_operations: false,
                 has_multipart: false,
                 has_sse: false,

@@ -105,6 +105,21 @@ pub enum SdkAuth {
     HmacHeader { header_name: String, value: String },
 }
 
+{{#has_optional_fields}}
+fn deserialize_optional_field<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where D: serde::Deserializer<'de>, T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+{{/has_optional_fields}}
+{{#has_required_fields}}
+fn deserialize_required_field<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where D: serde::Deserializer<'de>, T: Deserialize<'de>,
+{
+    T::deserialize(deserializer)
+}
+{{/has_required_fields}}
+
 {{#models}}
 {{#union}}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -129,6 +144,7 @@ pub enum {{name}} {
 {{#deny_unknown_fields}}#[serde(deny_unknown_fields)]{{/deny_unknown_fields}}{{#transparent}}#[serde(transparent)]{{/transparent}}
 pub struct {{name}} {
 {{#fields}}
+    {{#optional}}#[serde(default, deserialize_with = "deserialize_optional_field", skip_serializing_if = "Option::is_none")]{{/optional}}{{#required}}#[serde(deserialize_with = "deserialize_required_field")]{{/required}}
     {{#flatten}}#[serde(flatten)]{{/flatten}}{{^flatten}}#[serde(rename = {{{wire_name_literal}}})]{{/flatten}}
     pub {{field_name}}: {{{field_type}}},
 {{/fields}}

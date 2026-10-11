@@ -364,7 +364,7 @@ function parseNull({
       ? { type: 'null' as SchemaObjectType }
       : {
           type: ['string', 'null'] as SchemaObjectType[],
-          enum: ['null']
+          enum: [null]
         },
     zodRef.description ? { description: zodRef.description } : {},
     ...schemas
