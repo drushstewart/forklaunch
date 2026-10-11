@@ -245,3 +245,10 @@ also covers parent nesting; namespace collisions with registered routes, docs
 and MCP are rejected. Live HTTP cookie checks, exact MCP tool discovery,
 authenticated invocation and shutdown pass, along with the full Axum suite and
 strict framework clippy. Better Auth handler/storage implementation remains open.
+
+The isolated native `forklaunch-iam-better-auth` crate now matches configured
+password hashes and signed session-cookie primitives. A bidirectional fixture
+runs 322 comparisons against actual Better Auth/Better Call, including Unicode
+normalization, cross-language password verification, secure cookie attributes,
+quoted/duplicate cookies, tampering and malformed URI data. CLI embeds the new
+crate; protocol endpoints, persistent sessions and preset selection remain open.

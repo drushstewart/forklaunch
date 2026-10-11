@@ -11,6 +11,7 @@ members = [
     "crates/interfaces/forklaunch-worker-interface",
     "crates/interfaces/forklaunch-monitoring-interface",
     "crates/implementations/iam/forklaunch-iam-base",
+    "crates/implementations/iam/forklaunch-iam-better-auth",
     "crates/implementations/cac/forklaunch-cac-base",
     "crates/implementations/messaging/forklaunch-messaging-base",
     "crates/implementations/ecommerce/forklaunch-ecommerce-base",
