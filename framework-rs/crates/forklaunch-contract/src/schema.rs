@@ -46,7 +46,12 @@ fn relocate_with_resource_policy(
     location: &[&str],
     preserve_resource_bases: bool,
 ) -> String {
-    let Ok(mut value) = serde_json::from_str::<Value>(schema) else {
+    let Ok(parsed) = serde_json::from_str::<Value>(schema) else {
+        return schema.into();
+    };
+    let Ok(mut value) =
+        super::schema_bundle::bundle_with_resource_policy(&parsed, preserve_resource_bases)
+    else {
         return schema.into();
     };
     let root = value.clone();
@@ -108,7 +113,7 @@ fn has_resource_id(root: &Value, schema: &serde_json::Map<String, Value>) -> boo
     })
 }
 
-fn local_pointer(reference: &str) -> Option<String> {
+pub(super) fn local_pointer(reference: &str) -> Option<String> {
     let fragment = reference.strip_prefix('#')?;
     let pointer = percent_encoding::percent_decode_str(fragment)
         .decode_utf8()
@@ -136,27 +141,32 @@ pub fn schema_locations(
     root: &Value,
     preserve_resource_bases: bool,
 ) -> FrameworkResult<Vec<String>> {
+    let graph = schema_graph(root, preserve_resource_bases)?;
+    reject_literal_targets(graph.reference_targets, &graph.literal_ranges)?;
+    Ok(graph.locations)
+}
+
+pub(super) struct SchemaGraph {
+    pub(super) locations: Vec<String>,
+    pub(super) literal_ranges: BTreeSet<String>,
+    pub(super) reference_targets: BTreeSet<String>,
+}
+
+pub(super) fn schema_graph(
+    root: &Value,
+    preserve_resource_bases: bool,
+) -> FrameworkResult<SchemaGraph> {
     let mut queue = VecDeque::from([(String::new(), 0)]);
     let mut seen = BTreeSet::from([String::new()]);
     let mut locations = Vec::new();
     let mut literal_ranges = BTreeSet::new();
     let mut reference_targets = BTreeSet::new();
+    let mut containers = BTreeSet::new();
     while let Some((location, depth)) = queue.pop_front() {
-        if depth > 64 {
-            return Err(FrameworkError::new(
-                "schema_traversal_limit",
-                "schema traversal exceeds 64 steps",
-            ));
-        }
         if preserve_resource_bases && has_resource_ancestor(root, &location) {
             continue;
         }
-        let node = root.pointer(&location).ok_or_else(|| {
-            FrameworkError::new(
-                "schema_traversal_invalid",
-                "queued schema location does not exist",
-            )
-        })?;
+        let node = schema_node(root, &location, depth)?;
         locations.push(location.clone());
         let Some(object) = node.as_object() else {
             continue;
@@ -187,6 +197,7 @@ pub fn schema_locations(
                 "properties" | "patternProperties" | "dependentSchemas" | "dependencies"
                 | "$defs" | "definitions" => {
                     if let Some(schemas) = child.as_object() {
+                        containers.insert(child_location.clone());
                         for (name, schema) in schemas {
                             if key == "dependencies" && schema.is_array() {
                                 continue;
@@ -231,8 +242,43 @@ pub fn schema_locations(
             }
         }
     }
-    reject_literal_targets(reference_targets, &literal_ranges)?;
-    Ok(locations)
+    reject_container_targets(&reference_targets, &containers)?;
+    Ok(SchemaGraph {
+        locations,
+        literal_ranges,
+        reference_targets,
+    })
+}
+
+fn schema_node<'a>(root: &'a Value, location: &str, depth: usize) -> FrameworkResult<&'a Value> {
+    if depth > 64 {
+        return Err(FrameworkError::new(
+            "schema_traversal_limit",
+            "schema traversal exceeds 64 steps",
+        ));
+    }
+    root.pointer(location).ok_or_else(|| {
+        FrameworkError::new(
+            "schema_traversal_invalid",
+            "queued schema location does not exist",
+        )
+    })
+}
+
+fn reject_container_targets(
+    reference_targets: &BTreeSet<String>,
+    containers: &BTreeSet<String>,
+) -> FrameworkResult<()> {
+    if reference_targets
+        .iter()
+        .any(|target| containers.contains(target))
+    {
+        return Err(FrameworkError::new(
+            "schema_container_reference_unsupported",
+            "schema references to schema dictionaries require context-aware bundling",
+        ));
+    }
+    Ok(())
 }
 
 fn reject_literal_targets(
@@ -370,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn literal_assertion_targets_require_bundling_instead_of_mutating_wire_data() {
+    fn literal_assertion_targets_are_bundled_instead_of_mutating_wire_data() {
         let schema = json!({"properties":{"item":{"$ref":"#/const"}},"const":{"$ref":"#/definitions/Value"},"definitions":{"Value":{"type":"string"}}});
         assert!(
             schema_locations(&schema, false)
@@ -378,9 +424,15 @@ mod tests {
                 .message()
                 .contains("literal")
         );
+        let relocated: Value =
+            serde_json::from_str(&relocate_schema_json(&schema.to_string(), &["payload"])).unwrap();
+        assert_eq!(relocated["const"], schema["const"]);
+        let reference =
+            local_pointer(relocated["properties"]["item"]["$ref"].as_str().unwrap()).unwrap();
+        let document = serde_json::json!({"payload":relocated});
         assert_eq!(
-            relocate_schema_json(&schema.to_string(), &["payload"]),
-            schema.to_string()
+            document.pointer(&reference).unwrap()["$ref"],
+            "#/payload/definitions/Value"
         );
     }
 

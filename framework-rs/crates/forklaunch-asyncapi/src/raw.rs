@@ -139,12 +139,14 @@ fn schema_format(schema: &Value) -> Option<String> {
         .map(|version| format!("application/schema+json;version={version}"))
 }
 fn embedded_schema(schema: &Value, location: &[&str]) -> FrameworkResult<Value> {
-    let mut normalized = schema.clone();
+    let bundled = forklaunch_contract::bundle_literal_schema_references_unscoped(schema)
+        .map_err(|error| invalid(error.message()))?;
+    let mut normalized = bundled.clone();
     let draft4 = schema
         .get("$schema")
         .and_then(Value::as_str)
         .is_some_and(|dialect| dialect.contains("/draft-04/"));
-    walk_schema(&mut normalized, schema, &mut |object| {
+    walk_schema(&mut normalized, &bundled, &mut |object| {
         if (draft4 && object.contains_key("id"))
             || object.get("$id").is_some_and(|id| id.as_str() != Some(""))
             || [
@@ -174,7 +176,7 @@ fn embedded_schema(schema: &Value, location: &[&str]) -> FrameworkResult<Value> 
             if !pointer.is_empty() && !pointer.starts_with('/') {
                 return Err(invalid("socket schema anchors are not supported"));
             }
-            if schema.pointer(&pointer).is_none() {
+            if bundled.pointer(&pointer).is_none() {
                 return Err(invalid("socket schema reference cannot be resolved"));
             }
         }
@@ -238,16 +240,38 @@ fn walk_schema(
 mod tests {
     use super::*;
     #[test]
-    fn references_into_literal_assertions_fail_without_changing_payload_constraints() {
-        let shape = json!({"properties":{"item":{"$ref":"#/const"}},"const":{"$ref":"#/definitions/Value"},"definitions":{"Value":{"type":"string"}}});
+    fn references_into_literal_assertions_bundle_without_changing_payload_constraints() {
+        let shape = json!({"type":"object","required":["item"],"properties":{"item":{"$ref":"#/definitions/Storage/const"}},"definitions":{"Storage":{"const":{"allOf":[{"$ref":"#/definitions/Value"}]}},"Value":{"type":"string","minLength":2}},"default":{"$ref":"literal default"}});
         let contract = SocketContract::new("/literal")
-            .with_client_message("request", SocketSchemaEntry::new(shape));
-        assert!(
-            generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Literal", "1"), &contract)
-                .unwrap_err()
-                .message()
-                .contains("literal")
+            .with_client_message("request", SocketSchemaEntry::new(shape.clone()));
+        let document: Value = serde_json::from_str(
+            &generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Literal", "1"), &contract)
+                .unwrap(),
+        )
+        .unwrap();
+        let payload = &document["channels"]["request"]["messages"]["request"]["payload"];
+        assert_eq!(
+            payload["definitions"]["Storage"],
+            shape["definitions"]["Storage"]
         );
+        assert_eq!(payload["default"], shape["default"]);
+        let reference = payload["properties"]["item"]["$ref"].as_str().unwrap();
+        let pointer = percent_encoding::percent_decode_str(&reference[1..])
+            .decode_utf8()
+            .unwrap();
+        let nested = document.pointer(&pointer).unwrap()["allOf"][0]["$ref"]
+            .as_str()
+            .unwrap();
+        let nested_pointer = percent_encoding::percent_decode_str(&nested[1..])
+            .decode_utf8()
+            .unwrap();
+        assert_eq!(
+            document.pointer(&nested_pointer),
+            Some(&shape["definitions"]["Value"])
+        );
+        if let Ok(output) = std::env::var("FORKLAUNCH_TEST_RAW_SOCKET_REFERENCES") {
+            std::fs::write(format!("{output}.literal.json"), document.to_string()).unwrap();
+        }
     }
     #[test]
     fn schemas_referenced_from_ignored_annotations_relocate_their_own_references() {

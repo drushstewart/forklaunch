@@ -3,10 +3,14 @@
 #[cfg(feature = "json-schema")]
 mod schema;
 #[cfg(feature = "json-schema")]
+mod schema_bundle;
+#[cfg(feature = "json-schema")]
 pub use schema::{
     is_legacy_schema_annotation, relocate_schema_json, relocate_schema_json_unscoped,
     schema_locations,
 };
+#[cfg(feature = "json-schema")]
+pub use schema_bundle::bundle_literal_schema_references_unscoped;
 
 use std::collections::BTreeMap;
 

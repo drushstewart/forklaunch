@@ -187,6 +187,68 @@
           }
         }
       }
+    },
+    "literal": {
+      "path": "/literal",
+      "clientMessages": {
+        "request": {
+          "shape": {
+            "type": "object",
+            "required": [
+              "item"
+            ],
+            "properties": {
+              "item": {
+                "$ref": "#/definitions/Storage/const"
+              }
+            },
+            "definitions": {
+              "Storage": {
+                "const": {
+                  "type": "string",
+                  "minLength": 2
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "channel": "literal-request",
+          "operation": "literal-request"
+        }
+      },
+      "serverMessages": {
+        "tree": {
+          "shape": {
+            "type": "object",
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "integer"
+              },
+              "next": {
+                "$ref": "#/default"
+              }
+            },
+            "default": {
+              "type": "object",
+              "required": [
+                "value"
+              ],
+              "properties": {
+                "value": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            },
+            "additionalProperties": false
+          },
+          "channel": "literal-tree",
+          "operation": "literal-tree"
+        }
+      }
     }
   }
 }

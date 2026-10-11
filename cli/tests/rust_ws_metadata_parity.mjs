@@ -42,7 +42,7 @@ async function parse(document){
  // Parser 3.6.3 decodes percent escapes in map keys and mishandles __proto__.
  // Validate those names with the official JSON Schema and independent pointer checks.
  const encoded=JSON.stringify(document);
- if(encoded.includes('percent%2F')||Object.hasOwn(document.channels??{},'__proto__')||encoded.includes('"const":{"$ref":"literal"}')||encoded.includes('"$ref":"literal annotation"')){parserLimitations++;return;}
+ if(encoded.includes('percent%2F')||Object.hasOwn(document.channels??{},'__proto__')||encoded.includes('"const":{"$ref":"literal"}')||encoded.includes('"$ref":"literal annotation"')||encoded.includes('"$ref":"literal default"')){parserLimitations++;return;}
  const result=await new Parser().parse(JSON.stringify(document));
  assert.deepEqual(result.diagnostics.filter(item=>item.severity===0),[],JSON.stringify(result.diagnostics));
  assert.ok(result.document);parsed++;
@@ -90,5 +90,16 @@ try{
  assert.equal(annotationPayload({item:{value:'ok'}}),true);
  assert.equal(annotationPayload({item:{value:'x'}}),false);
  assert.equal(annotationPayload({item:{value:42}}),false);
+ const literal=JSON.parse(await readFile(references+'.literal.json','utf8'));await parse(literal);
+ const literalStructural=structuredClone(literal);
+ delete literalStructural.channels.request.messages.request.payload.default;
+ delete literalStructural.channels.request.messages.request.payload.definitions.Storage;
+ await parse(literalStructural);
+ const literalEngine=new Ajv({strict:false});literalEngine.addSchema(literal,'literal');
+ const literalPayload=literalEngine.compile({$ref:'literal#/channels/request/messages/request/payload'});
+ assert.equal(literalPayload({item:'ok'}),true);
+ assert.equal(literalPayload({item:'x'}),false);
+ assert.equal(literalPayload({item:42}),false);
+ assert.deepEqual(literal.channels.request.messages.request.payload.definitions.Storage.const,{allOf:[{$ref:'#/definitions/Value'}]});
  console.log(`PASS ${cases.length} actual TypeScript/native raw socket metadata documents: channel fan-out, singular/plural precedence, directions, controls, escaped/special names, official AsyncAPI JSON Schema, ${parsed} parser documents (${parserLimitations} known parser limitations), recursive schema relocation and payload validation`);
 }finally{await rm(temporary,{recursive:true,force:true});}
