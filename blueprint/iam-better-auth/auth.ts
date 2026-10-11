@@ -140,6 +140,12 @@ export const betterAuthConfig = ({
         clientId: getEnvVar('GOOGLE_CLIENT_ID') ?? '',
         clientSecret: getEnvVar('GOOGLE_CLIENT_SECRET') ?? '',
         redirectURI: `${baseURL}${BETTER_AUTH_BASE_PATH}/callback/google`,
+        mapProfileToUser: (profile) => ({
+          firstName:
+            typeof profile.given_name === 'string' ? profile.given_name : '',
+          lastName:
+            typeof profile.family_name === 'string' ? profile.family_name : ''
+        }),
         enabled: !!(
           getEnvVar('GOOGLE_CLIENT_ID') && getEnvVar('GOOGLE_CLIENT_SECRET')
         )

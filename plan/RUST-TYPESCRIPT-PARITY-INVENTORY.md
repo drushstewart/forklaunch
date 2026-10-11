@@ -273,3 +273,10 @@ live PostgreSQL verify service reconstruction and concurrent callers; 27 actual
 Better Auth/JOSE comparisons verify selection ties, default 30-day public-key
 grace boundaries and expired-key replacement. Corrupted public/private key
 metadata fails closed. Session-authenticated HTTP integration remains open.
+
+The configured TypeScript Google provider now maps given/family name claims into
+required application user fields. The actual handler previously rejected valid
+verified Google sign-in with `400 MISSING_FIELD: firstName is required`. The new
+fixture executes real RS256/JWKS verification and auth handlers, owning only the
+Google certificates HTTP boundary, with account/session reuse and invalid token
+rejection. Native Google OAuth and real ORM conformance remain open.
