@@ -94,7 +94,7 @@ The generated Dockerfile builds workspace binaries, and Compose selects the serv
 
 ## Current boundaries
 
-Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. New PostgreSQL database workers use the durable queue and runner described below. New Redis workers also use the durable leased queue and runner. Other generated worker backends retain their demonstration batch. Billing, provider integrations, and durable Kafka workers remain unfinished. Full auth parity, streaming and multipart parity, cross-language conformance, crate publication, and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
+Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. New PostgreSQL database workers use the durable queue and runner described below. New Redis workers also use the durable leased queue and runner. Generated Kafka and BullMQ workers also use native durable backends. Billing, messaging, ecommerce and their provider modules have generated native HTTP/MCP runtimes described below. Full authentication coverage, provider crash reconciliation, SDK streaming/multipart helpers, broader conformance, crate publication and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
 
 ## Validate the port
 
@@ -290,7 +290,7 @@ Ctrl-C or SIGTERM stops new claims and drains the active job while renewing its 
 
 With runtime environment variables set, use `cargo run -p jobs -- --enqueue ID JSON` to submit a job and `--inspect ID` to read its state. Inspection omits payloads and lease tokens. Contract/OpenAPI export works without a database connection. Reinitialization, sync, and worker rename preserve the application handler and Cargo metadata; rename updates generated SDKs and contract artifacts.
 
-Existing demonstration workers are preserved when reinitialized. To upgrade explicitly, run `forklaunch change worker --path crates/jobs -t database -d postgresql --confirm`; backend conversion installs the runner while retaining an existing handler and unrelated Cargo metadata. Batch handlers and optional worker HTTP health/control endpoints are described below. Distributed signals and durable Kafka backends remain parity tasks. `cli/tests/rust_worker_runtime.sh` tests a relocated generated worker against PostgreSQL, including renewal, drain, retries, forced cancellation, process crashes, tenant isolation, source preservation, rename, and delete.
+Existing demonstration workers are preserved when reinitialized. To upgrade explicitly, run `forklaunch change worker --path crates/jobs -t database -d postgresql --confirm`; backend conversion installs the runner while retaining an existing handler and unrelated Cargo metadata. Batch handlers and optional worker HTTP health/control endpoints are described below. Optional scoped distributed signals and durable Kafka workers are described below. `cli/tests/rust_worker_runtime.sh` tests a relocated generated worker against PostgreSQL, including renewal, drain, retries, forced cancellation, process crashes, tenant isolation, source preservation, rename, and delete.
 
 ## Redis leased worker queue
 
@@ -311,9 +311,22 @@ REDIS_URL=redis://localhost:6379/ WORKER_NAMESPACE=my-app TENANT_ID=acme cargo r
 
 The worker bundles portable framework and blueprint sources, requires a trusted tenant and namespace, and runs continuously until Ctrl-C or SIGTERM. Implement idempotent application work in `crates/jobs/src/handler.rs`; the initial handler fails explicitly until implemented. Timing, retry settings, `--enqueue ID JSON`, and `--inspect ID` match the PostgreSQL worker. Redis requires no migration command. OpenAPI and contract export work without Redis credentials.
 
-Reinitialization and sync preserve application code. Rename updates imports, artifacts, SDK names, and Compose entries. Explicit backend changes support both Redis and PostgreSQL while preserving existing handlers and unrelated Cargo metadata. Upgrade an existing demonstration worker with `forklaunch change worker --path crates/jobs -t redis --confirm`. Existing documentation and example env files are preserved during conversion; configure the new backend's environment variables before starting it. `bullmq` remains a separate demonstration backend without BullMQ wire compatibility.
+Reinitialization and sync preserve application code. Rename updates imports, artifacts, SDK names, and Compose entries. Explicit backend changes support both Redis and PostgreSQL while preserving existing handlers and unrelated Cargo metadata. Upgrade an existing demonstration worker with `forklaunch change worker --path crates/jobs -t redis --confirm`. Existing documentation and example env files are preserved during conversion; configure the new backend's environment variables before starting it. `bullmq` selects the official BullMQ protocol adapter described below; it uses a separate storage protocol from native leased Redis queues.
 
 `cli/tests/rust_redis_worker_runtime.sh` validates a relocated generated worker against Redis, including process crashes, lease recovery, renewal, shutdown drain, retry exhaustion, tenant isolation, rename, backend conversion, and delete.
+
+## Generated BullMQ workers
+
+```sh
+forklaunch init worker jobs --language rust -t bullmq --path . -D "Jobs"
+REDIS_URL=redis://localhost:6379/ REDIS_KEY_PREFIX=my-app cargo run -p jobs
+```
+
+The optional `forklaunch-worker-redis/bullmq` feature uses the official BullMQ Rust client and exchanges jobs with the pinned TypeScript BullMQ protocol. Implement the preserved `handler::ApplicationHandler`; its default fails explicitly. Event IDs become job names, and protocol job IDs are auto-generated, so duplicate event IDs remain separate jobs. Handlers receive the full JSON event and current attempt count. Default retries are three attempts with exponential 5000 ms backoff; configure `WORKER_MAX_ATTEMPTS`, `WORKER_BACKOFF_TYPE`, `WORKER_BACKOFF_MS`, `WORKER_CONCURRENCY` (1–1024), operation/handler timeouts and `WORKER_DRAIN_MS` in `.env.example`.
+
+Use `--enqueue ID JSON`, `--peek LIMIT`, `--dead-letters LIMIT` and `--migrate` (connectivity check; BullMQ creates structures lazily). Peeks contain event payloads; failed-job inspection includes payloads and attempt counts. Completed/failed jobs remain retained by default. Library users can pass official queue/worker options for retention and advanced behavior; count-based retention is covered by actual TS/native fixtures. `BullMqConsumer::peek_events` works before starting, and `run_until_with_failure_handler` reports every failed attempt with its event, including removed jobs and graceful drain; diagnostic errors are redacted.
+
+Optional HTTP health/readiness and authenticated pause/resume/drain, scoped Pub/Sub controls and graceful active-job shutdown are supported. Init/reinit/sync/backend conversion/rename/delete preserve application handlers and registered nested crate paths. Conversion does not migrate a native leased Redis backlog into BullMQ. Actual TS/native fixtures validate both producer/consumer directions, FIFO batches, fixed/exponential retries, default/count-based retention, failure callbacks, waiting/active inspection and restricted Redis ACL rejection. Age-based retention, stalled jobs and complete advanced-option conformance remain tracked separately.
 
 ## Worker concurrency
 
@@ -486,8 +499,14 @@ explicitly allowed. Configure the public host when deploying behind a proxy.
 Native applications enable `forklaunch-axum`'s `mcp` feature and call
 `into_router_with_mcp(McpServerOptions)` to configure a transport authentication
 callback, request bounds and tool timeout. JSON/text/form bodies and binary
-response resources and typed additional tool execution are supported; multipart
-remains in the full-parity backlog.
+response resources, multipart text fields and typed additional tool execution
+are supported. Multipart tool bodies are objects of strings, matching the actual
+TypeScript generator; array/object/non-string parts fail before HTTP dispatch.
+Names are escaped and line breaks normalize to CRLF using FormData semantics.
+URL-encoded composite values become one JSON string per field. File/binary tools
+follow TypeScript MCP encoding: strings are UTF-8 bytes and other JSON values
+are JSON bytes. This differs from arbitrary-byte file upload parts. The native
+JSON encoder retains valid JSON quoting for scalar strings.
 
 Additional runtime tools bind through `McpServerOptions.manual_tools` using `forklaunch_mcp::server::ManualTool::typed`. A `FrameworkSchema` input supplies serde parsing, garde validation and schemars discovery metadata. Invalid input fails before the handler runs; handlers receive fresh request headers and must apply operation/tenant authorization. Transport authentication also remains active. Explicit public handler errors become MCP tool errors, with invocation timeouts and response bounds. Duplicate manual/contract tool names fail at startup. See [the framework example](../../framework-rs/README.md#additional-mcp-tools).
 

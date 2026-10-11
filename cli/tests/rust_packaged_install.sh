@@ -26,6 +26,7 @@ CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" init service accounts --path "$RUN_ROOT/app" --language rust -d postgresql -D Accounts
 "$CLI" init worker postgres-jobs --path "$RUN_ROOT/app" --language rust -t database -d postgresql -D Jobs
 "$CLI" init worker redis-jobs --path "$RUN_ROOT/app" --language rust -t redis -D Jobs
+"$CLI" init worker bullmq-jobs --path "$RUN_ROOT/app" --language rust -t bullmq -D Jobs
 "$CLI" init worker kafka-jobs --path "$RUN_ROOT/app" --language rust -t kafka -D Jobs
 "$CLI" init module coding --path "$RUN_ROOT/app" --language rust -m cac-base
 "$CLI" init module messaging --path "$RUN_ROOT/app" --language rust -m messaging-base
@@ -51,6 +52,11 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws.rs').is_file(), 'Packaged async S3 adapter missing'
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws_post.rs').is_file(), 'Packaged S3 POST signer missing'
         assert root.joinpath('crates/forklaunch-mcp/src/server.rs').is_file(), 'Packaged MCP runtime missing'
+        assert root.joinpath('crates/forklaunch-mcp/src/server/manual.rs').is_file(), 'Packaged manual MCP runtime missing'
+        assert root.joinpath('crates/forklaunch-mcp/src/server/multipart.rs').is_file(), 'Packaged multipart MCP runtime missing'
+        assert root.joinpath('crates/forklaunch-axum/src/mcp_runtime.rs').is_file(), 'Packaged separate MCP listeners missing'
+    else:
+        assert root.joinpath('crates/implementations/worker/forklaunch-worker-redis/src/bullmq.rs').is_file(), 'Packaged BullMQ adapter missing'
     for path in root.rglob('*'):
         assert not path.is_symlink(), f'Packaged source retained a symlink: {path}'
         if path.is_file():
@@ -71,13 +77,13 @@ TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" node "$REPO_ROO
 "$CLI" sdk generate --path . --target all --from contract --check
 cargo check --workspace
 # Empty application contracts must also work in consumers that deny warnings.
-for sdk in postgres-jobs-sdk redis-jobs-sdk kafka-jobs-sdk; do
+for sdk in postgres-jobs-sdk redis-jobs-sdk kafka-jobs-sdk bullmq-jobs-sdk; do
     cargo rustc -p "$sdk" --lib -- -D warnings
 done
 python3 - <<'PYTHON'
 from pathlib import Path
 import json
-for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs','coding','messaging','texting','ecommerce']:
+for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs','bullmq-jobs','coding','messaging','texting','ecommerce']:
     contract=json.loads((Path('.forklaunch/contracts')/name/'contract.json').read_text())
     assert contract['generator']=='framework-rs'
     spec=json.loads((Path('.forklaunch/openapi')/name/'openapi.json').read_text())

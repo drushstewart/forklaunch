@@ -28,6 +28,7 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tower::ServiceExt;
 
 mod manual;
+mod multipart;
 use manual::ManualHandler;
 pub use manual::{ManualTool, ManualToolError};
 
@@ -408,18 +409,19 @@ fn encode_body(
 ) -> Result<Vec<u8>, String> {
     let body = if let Some(contract) = &route.request.body {
         let body = args.get("body").ok_or("Missing body")?;
-        let mime = args.get("contentType").and_then(Value::as_str).unwrap_or(
-            contract
-                .content_type
-                .as_deref()
-                .unwrap_or("application/json"),
-        );
-        if mime
-            != contract
-                .content_type
-                .as_deref()
-                .unwrap_or("application/json")
-        {
+        let default_mime = match contract.kind {
+            BodyKind::Text => "text/plain",
+            BodyKind::Binary | BodyKind::File => "application/octet-stream",
+            BodyKind::Multipart => "multipart/form-data",
+            BodyKind::UrlEncoded => "application/x-www-form-urlencoded",
+            BodyKind::ServerSentEvent => "text/event-stream",
+            BodyKind::Json | BodyKind::Unknown => "application/json",
+        };
+        let mime = args
+            .get("contentType")
+            .and_then(Value::as_str)
+            .unwrap_or(contract.content_type.as_deref().unwrap_or(default_mime));
+        if mime != contract.content_type.as_deref().unwrap_or(default_mime) {
             return Err("Content type does not match route contract".into());
         }
         headers.insert(
@@ -433,21 +435,32 @@ fn encode_body(
             BodyKind::UrlEncoded => {
                 let mut encoded = form_urlencoded::Serializer::new(String::new());
                 for (name, value) in body.as_object().ok_or("Form body must be an object")? {
-                    let values = value
-                        .as_array()
-                        .map_or_else(|| vec![value], |v| v.iter().collect());
-                    for value in values {
-                        encoded.append_pair(name, &scalar(value)?);
-                    }
+                    let value = value
+                        .as_str()
+                        .map_or_else(|| value.to_string(), str::to_owned);
+                    encoded.append_pair(name, &value);
                 }
                 encoded.finish().into_bytes()
             }
+            BodyKind::Multipart => {
+                let (body, boundary) = multipart::encode(body)?;
+                headers.insert(
+                    "content-type",
+                    HeaderValue::try_from(format!("multipart/form-data; boundary={boundary}"))
+                        .map_err(|_| "Invalid multipart boundary")?,
+                );
+                body
+            }
+            BodyKind::Binary | BodyKind::File => body
+                .as_str()
+                .map_or_else(|| body.to_string(), str::to_owned)
+                .into_bytes(),
+            BodyKind::ServerSentEvent => return Err("SSE request bodies are not supported".into()),
             BodyKind::Text => body
                 .as_str()
                 .ok_or("Text body must be a string")?
                 .as_bytes()
                 .to_vec(),
-            _ => return Err("This body media type requires an explicit MCP adapter".into()),
         }
     } else {
         Vec::new()
@@ -519,3 +532,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "server/body_tests.rs"]
+mod body_tests;

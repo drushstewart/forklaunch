@@ -28,6 +28,7 @@ serde = { version = "1", optional = true }
 forklaunch-validation = { path = "../forklaunch-validation", optional = true }
 
 [dev-dependencies]
+axum = { version = "0.8", features = ["multipart"] }
 serde = { version = "1", features = ["derive"] }
 schemars = "0.8"
 garde = { version = "0.20", features = ["derive"] }
