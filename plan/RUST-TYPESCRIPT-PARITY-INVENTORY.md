@@ -252,3 +252,9 @@ runs 322 comparisons against actual Better Auth/Better Call, including Unicode
 normalization, cross-language password verification, secure cookie attributes,
 quoted/duplicate cookies, tampering and malformed URI data. CLI embeds the new
 crate; protocol endpoints, persistent sessions and preset selection remain open.
+
+Native Better Auth JWT/JWK primitives now match the actual configured Ed25519
+signing profile and 15-minute claims, with 26 cross-library comparisons against
+Better Auth/JOSE. Restoring private key bytes preserves IDs and signatures;
+public JWKs exclude secrets. Durable encrypted key storage, key lifecycle and
+the HTTP token endpoint remain open.

@@ -2,7 +2,7 @@
 
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
-cookies. It does not yet expose the authentication HTTP API or persistent
+cookies, Ed25519 JWT issuance and public JWKs. It does not yet expose the authentication HTTP API or persistent
 session/organization management and is not selectable as a CLI module preset.
 
 `credentials` uses N=16384, r=16, p=1, a 64-byte derived key, NFKC-normalized
@@ -19,3 +19,11 @@ and tenant membership. Signing a cookie does not authenticate a user.
 `cli/tests/rust_better_auth_crypto.mjs` compares both directions with the actual
 installed JavaScript libraries. The existing Better Auth protocol and callback
 fixtures cover the configured TypeScript service separately.
+
+`jwt::SigningKey` issues the configured EdDSA payload (subject, email, active
+organization, issuer/audience, issued time and 15-minute expiry). Public JWKs
+contain no private material. The PKCS#8 persistence representation must be
+wrapped in tenant-bound encryption by storage. Key restoration preserves IDs
+and signatures; database lifecycle/rotation is still pending. The JWT fixture
+compares native tokens/JWKS with actual configured Better Auth signing and JOSE
+verification, including expiry, issuer/audience and signature failures.

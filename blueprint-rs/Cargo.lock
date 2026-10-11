@@ -1254,11 +1254,13 @@ dependencies = [
  "hmac",
  "percent-encoding",
  "rand_core 0.6.4",
+ "ring",
  "scrypt",
  "serde_json",
  "sha2",
  "subtle",
  "unicode-normalization",
+ "zeroize",
 ]
 
 [[package]]

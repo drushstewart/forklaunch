@@ -6,3 +6,4 @@
 
 pub mod cookies;
 pub mod credentials;
+pub mod jwt;
