@@ -5,7 +5,7 @@ use forklaunch_axum::ForkLaunchRouter;
 use forklaunch_blueprint_core::{BlueprintResult, instance_gateway::InstanceGatewayClient,
     platform_events::{MemoryPlatformEventNonces, PlatformEventVerifier}};
 use forklaunch_contract::{BodyContract, ContractRegistry, FieldContract, RouteContract, BodyKind, SchemaRef};
-use axum::{body::to_bytes, extract::{Path, Request}, http::StatusCode, middleware::{self, Next}, response::IntoResponse};
+use axum::{RequestExt, body::to_bytes, extract::{Path, Request}, http::StatusCode, middleware::{self, Next}, response::IntoResponse};
 use std::sync::{Arc, OnceLock};
 
 fn instance_gateway() -> BlueprintResult<InstanceGatewayClient> {
@@ -58,8 +58,12 @@ impl ManagedCapabilitiesRouterExt for ForkLaunchRouter {
             route.layer(middleware::from_fn(move |request: Request, next: Next| {
                 let verifier = Arc::clone(&verifier);
                 async move {
+                    let mut request = request;
                     let path = request.uri().path().to_owned();
-                    let feature = path.rsplit('/').next().unwrap_or_default().to_owned();
+                    let feature = match request.extract_parts::<Path<String>>().await {
+                        Ok(Path(feature)) => feature,
+                        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid event feature").into_response(),
+                    };
                     let known = matches!(feature.as_str(), __KNOWN_FEATURES__);
                     let forward_payment = original && feature == "payments";
                     if request.method() != axum::http::Method::POST || (!known && !forward_payment) {

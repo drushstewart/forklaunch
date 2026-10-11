@@ -42,6 +42,9 @@ try{
   assert.equal(result.isError,true,'MCP cannot bypass callback authentication');
  }
  assert.equal((await post('unknown','{}')).status,404);
+ const encodedBody=JSON.stringify({id:'encoded-email',feature:'email',type:'email.delivered'});
+ assert.equal((await post('%65mail',encodedBody,signed('%65mail',encodedBody))).status,200,'Dispatch must use the decoded route parameter while signatures bind the actual URL');
+ assert.equal((await post('%65mail',encodedBody,signed('email',encodedBody))).status,401,'Encoded URLs must not bypass exact-path signature verification');
  const malformed='{invalid';assert.equal((await post('email',malformed,signed('email',malformed))).status,401);
  console.log('PASS all five generated native capability callbacks: actual TypeScript signatures, HTTP/MCP startup, forgery/staleness/replay rejection, event redelivery and unknown feature');
 }finally{
