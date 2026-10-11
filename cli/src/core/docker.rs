@@ -269,8 +269,9 @@ pub(crate) enum Restart {
     No,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub(crate) enum DependencyCondition {
+    #[default]
     #[serde(rename = "service_started")]
     ServiceStarted,
     #[serde(rename = "service_healthy")]
@@ -279,48 +280,284 @@ pub(crate) enum DependencyCondition {
     ServiceCompletedSuccessfully,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub(crate) struct DependsOn {
+    #[serde(default)]
     pub(crate) condition: DependencyCondition,
+    #[serde(flatten)]
+    pub(crate) additional_properties: HashMap<String,Value>,
 }
 
-#[derive(Debug, Serialize, Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct DockerService {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) hostname: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) container_name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) image: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) restart: Option<Restart>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) build: Option<DockerBuild>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "deserialize_environment"
-    )]
     pub(crate) environment: Option<IndexMap<String, String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) depends_on: Option<IndexMap<String, DependsOn>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) ports: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) networks: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) volumes: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) working_dir: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) entrypoint: Option<Command>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) command: Option<Command>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) healthcheck: Option<Healthcheck>,
 
-    #[serde(flatten)]
     pub(crate) additional_properties: HashMap<String, Value>,
+    pub(crate) structured_fields: HashMap<String, Value>,
+}
+
+impl Serialize for DockerService {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        let mut emitted = HashSet::new();
+        macro_rules! field {
+            ($name:ident) => {
+                if let Some(value) = &self.$name {
+                    map.serialize_entry(stringify!($name), value)?;
+                    emitted.insert(stringify!($name));
+                }
+            };
+        }
+        field!(hostname);
+        field!(container_name);
+        field!(image);
+        field!(restart);
+        field!(build);
+        field!(environment);
+        field!(depends_on);
+        for (name, values) in [
+            ("ports", &self.ports),
+            ("networks", &self.networks),
+            ("volumes", &self.volumes),
+        ] {
+            if let Some(values) = values {
+                let value = self
+                    .structured_value(name, values)
+                    .map_err(serde::ser::Error::custom)?;
+                map.serialize_entry(name, &value)?;
+                emitted.insert(name);
+            }
+        }
+        field!(working_dir);
+        field!(entrypoint);
+        field!(command);
+        field!(healthcheck);
+        for (key, value) in &self.additional_properties {
+            if !emitted.contains(key.as_str()) {
+                map.serialize_entry(key, value)?;
+            }
+        }
+        map.end()
+    }
+}
+
+impl DockerService {
+    pub(crate) fn renamed_structured_fields(&self, old: &str, new: &str) -> HashMap<String, Value> {
+        let mut fields = self.structured_fields.clone();
+        if let Some(Value::Mapping(networks)) = fields.get_mut("networks") {
+            *networks = networks
+                .clone()
+                .into_iter()
+                .map(|(key, value)| {
+                    let key = if let Value::String(key) = key {
+                        Value::String(key.replace(old, new))
+                    } else {
+                        key
+                    };
+                    (key, value)
+                })
+                .collect();
+        }
+        if let Some(Value::Sequence(volumes)) = fields.get_mut("volumes") {
+            for volume in volumes {
+                if let Value::Mapping(options) = volume {
+                    for key in ["source", "target"] {
+                        if let Some(Value::String(value)) =
+                            options.get_mut(Value::String(key.into()))
+                        {
+                            *value = value.replace(old, new);
+                        }
+                    }
+                }
+            }
+        }
+        fields
+    }
+
+    fn structured_value(
+        &self,
+        name: &str,
+        values: &[String],
+    ) -> std::result::Result<Value, String> {
+        match self.structured_fields.get(name) {
+            Some(Value::Mapping(original)) if name == "networks" => {
+                let mut mapping = serde_yml::Mapping::new();
+                for name in values {
+                    let key = Value::String(name.clone());
+                    mapping.insert(
+                        key.clone(),
+                        original.get(&key).cloned().unwrap_or(Value::Null),
+                    );
+                }
+                Ok(Value::Mapping(mapping))
+            }
+            Some(Value::Sequence(original)) => {
+                let canonical = original
+                    .iter()
+                    .map(|value| canonical_service_item(name, value))
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                let mut used = vec![false; original.len()];
+                let mut output = Vec::new();
+                for value in values {
+                    if let Some(index) = canonical
+                        .iter()
+                        .enumerate()
+                        .position(|(index, key)| !used[index] && key == value)
+                    {
+                        used[index] = true;
+                        output.push(original[index].clone());
+                    } else {
+                        output.push(Value::String(value.clone()));
+                    }
+                }
+                Ok(Value::Sequence(output))
+            }
+            _ => Ok(Value::Sequence(
+                values.iter().cloned().map(Value::String).collect(),
+            )),
+        }
+    }
+
+    fn parse_structured_field(
+        &mut self,
+        name: &str,
+        value: Value,
+    ) -> std::result::Result<Option<Vec<String>>, String> {
+        if value.is_null() {
+            return Ok(None);
+        }
+        if name == "networks" {
+            if let Value::Mapping(mapping) = &value {
+                let names = mapping
+                    .keys()
+                    .map(|key| {
+                        key.as_str()
+                            .map(str::to_owned)
+                            .ok_or_else(|| "Network names must be strings".into())
+                    })
+                    .collect::<std::result::Result<Vec<_>, String>>()?;
+                self.structured_fields.insert(name.into(), value);
+                return Ok(Some(names));
+            }
+        }
+        let Value::Sequence(sequence) = &value else {
+            return Err(format!("{name} must be a sequence or supported mapping"));
+        };
+        let names = sequence
+            .iter()
+            .map(|value| canonical_service_item(name, value))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if sequence.iter().any(Value::is_mapping) {
+            self.structured_fields.insert(name.into(), value);
+        }
+        Ok(Some(names))
+    }
+}
+
+/// Host bindings may include IPv4/IPv6 addresses, protocols and port ranges.
+pub(crate) fn compose_host_port(port: &str) -> Option<i32> {
+    let mut parts = port.split('/').next()?.rsplit(':');
+    let target = parts.next()?;
+    let published = parts.next().unwrap_or(target);
+    published.rsplit('-').next()?.parse().ok()
+}
+
+fn canonical_service_item(name: &str, value: &Value) -> std::result::Result<String, String> {
+    fn scalar(value: &Value) -> Option<String> {
+        match value {
+            Value::String(value) => Some(value.clone()),
+            Value::Number(value) => Some(value.to_string()),
+            _ => None,
+        }
+    }
+    if let Some(value) = scalar(value) {
+        return Ok(value);
+    }
+    let Value::Mapping(mapping) = value else {
+        return Err(format!("Invalid {name} entry"));
+    };
+    let get = |key: &str| mapping.get(Value::String(key.into())).and_then(scalar);
+    match name {
+        "ports" => {
+            let target =
+                get("target").ok_or_else(|| "A long port entry requires target".to_string())?;
+            let published = get("published");
+            let host = get("host_ip");
+            Ok(format!(
+                "{}{}{target}/{}",
+                host.map(|host| format!("{host}:")).unwrap_or_default(),
+                published.map(|port| format!("{port}:")).unwrap_or_default(),
+                get("protocol").unwrap_or_else(|| "tcp".into())
+            ))
+        }
+        "volumes" => {
+            let target =
+                get("target").ok_or_else(|| "A long volume entry requires target".to_string())?;
+            let read_only = mapping
+                .get(Value::String("read_only".into()))
+                .and_then(Value::as_bool)
+                == Some(true);
+            Ok(format!(
+                "{}{target}{}",
+                get("source")
+                    .map(|source| format!("{source}:"))
+                    .unwrap_or_default(),
+                if read_only { ":ro" } else { "" }
+            ))
+        }
+        _ => Err(format!("Invalid {name} entry")),
+    }
+}
+
+fn parse_service_dependencies(
+    value: Value,
+) -> std::result::Result<Option<IndexMap<String, DependsOn>>, String> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Sequence(names) => names
+            .into_iter()
+            .map(|name| {
+                name.as_str()
+                    .map(|name| (name.to_owned(), DependsOn::default()))
+                    .ok_or_else(|| "Dependency names must be strings".into())
+            })
+            .collect::<std::result::Result<IndexMap<_, _>, _>>()
+            .map(Some),
+        Value::Mapping(entries) => entries
+            .into_iter()
+            .map(|(name, value)| {
+                let name = name
+                    .as_str()
+                    .ok_or_else(|| "Dependency names must be strings".to_string())?
+                    .to_owned();
+                let dependency = if value.is_null() {
+                    DependsOn::default()
+                } else {
+                    from_value(value).map_err(|error| error.to_string())?
+                };
+                Ok((name, dependency))
+            })
+            .collect::<std::result::Result<IndexMap<_, _>, String>>()
+            .map(Some),
+        _ => Err("Dependencies must be a list or mapping".into()),
+    }
 }
 
 #[allow(dead_code)]
@@ -455,14 +692,13 @@ impl<'de> Deserialize<'de> for DockerService {
                                 parse_environment_value(value).map_err(serde::de::Error::custom)?;
                         }
                         "ports" => {
-                            service.ports = from_value(value).map_err(serde::de::Error::custom)?
+                            service.ports = service.parse_structured_field("ports",value).map_err(serde::de::Error::custom)?
                         }
                         "networks" => {
-                            service.networks =
-                                from_value(value).map_err(serde::de::Error::custom)?
+                            service.networks = service.parse_structured_field("networks",value).map_err(serde::de::Error::custom)?
                         }
                         "volumes" => {
-                            service.volumes = from_value(value).map_err(serde::de::Error::custom)?
+                            service.volumes = service.parse_structured_field("volumes",value).map_err(serde::de::Error::custom)?
                         }
                         // Lenient fields — store raw value on parse failure
                         "restart" => match from_value(value.clone()) {
@@ -477,7 +713,7 @@ impl<'de> Deserialize<'de> for DockerService {
                                 additional_properties.insert(key, value);
                             }
                         },
-                        "depends_on" => match from_value(value.clone()) {
+                        "depends_on" => match parse_service_dependencies(value.clone()) {
                             Ok(v) => service.depends_on = v,
                             Err(_) => {
                                 additional_properties.insert(key, value);
@@ -564,10 +800,12 @@ impl<'de> Deserialize<'de> for DockerVolume {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub(crate) struct DockerBuild {
     pub(crate) context: String,
     pub(crate) dockerfile: String,
+    #[serde(flatten)]
+    pub(crate) additional_properties: HashMap<String, Value>,
 }
 
 #[derive(Debug, Serialize, Default, Clone)]
@@ -702,6 +940,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                 "minio".to_string(),
                 DependsOn {
                     condition: DependencyCondition::ServiceHealthy,
+                    ..Default::default()
                 },
             )])),
             entrypoint: Some(Command::Simple(
@@ -735,6 +974,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                 "minio-init".to_string(),
                 DependsOn {
                     condition: DependencyCondition::ServiceCompletedSuccessfully,
+                    ..Default::default()
                 },
             )])),
             healthcheck: Some(Healthcheck {
@@ -777,6 +1017,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                 "minio-init".to_string(),
                 DependsOn {
                     condition: DependencyCondition::ServiceCompletedSuccessfully,
+                    ..Default::default()
                 },
             )])),
             healthcheck: Some(Healthcheck {
@@ -839,12 +1080,14 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                     "minio-init".to_string(),
                     DependsOn {
                         condition: DependencyCondition::ServiceCompletedSuccessfully,
+                        ..Default::default()
                     },
                 ),
                 (
                     "memcached".to_string(),
                     DependsOn {
                         condition: DependencyCondition::ServiceStarted,
+                        ..Default::default()
                     },
                 ),
             ])),
@@ -937,18 +1180,21 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                     "mimir".to_string(),
                     DependsOn {
                         condition: DependencyCondition::ServiceStarted,
+                        ..Default::default()
                     },
                 ),
                 (
                     "loki".to_string(),
                     DependsOn {
                         condition: DependencyCondition::ServiceStarted,
+                        ..Default::default()
                     },
                 ),
                 (
                     "tempo".to_string(),
                     DependsOn {
                         condition: DependencyCondition::ServiceStarted,
+                        ..Default::default()
                     },
                 ),
             ])),
@@ -1291,6 +1537,7 @@ pub(crate) fn add_kafka_to_docker_compose<'a>(
                 "kafka".to_string(),
                 DependsOn {
                     condition: DependencyCondition::ServiceHealthy,
+                    ..Default::default()
                 },
             )])),
             networks: Some(vec![format!("{}-network", app_name)]),
@@ -1467,6 +1714,7 @@ pub(crate) fn add_database_to_docker_compose(
                             "mongodb".to_string(),
                             DependsOn {
                                 condition: DependencyCondition::ServiceStarted,
+                                ..Default::default()
                             },
                         )])),
                         networks: Some(vec![format!("{}-network", app_name)]),
@@ -1767,11 +2015,9 @@ fn add_base_definition_to_docker_compose(
     for (_, value) in docker_compose.services.iter() {
         if let Some(ports) = &value.ports {
             for port in ports {
-                if let Some(port_num) = port.split(':').next() {
-                    if let Ok(num) = port_num.parse::<i32>() {
-                        if num >= 8000 && num < 9000 && num > port_number && num != 8889 {
-                            port_number = num;
-                        }
+                if let Some(num) = compose_host_port(port) {
+                    if num >= 8000 && num < 9000 && num > port_number && num != 8889 {
+                        port_number = num;
                     }
                 }
             }
@@ -1842,6 +2088,7 @@ fn create_base_service(
         build: Some(DockerBuild {
             context: context_path.to_string_lossy().to_string(),
             dockerfile: format!("./Dockerfile"),
+            ..Default::default()
         }),
         // Docker image repository names must be lowercase. The on-disk module dir
         // (and hostname/working_dir) keep the raw component_name, but the image tag
@@ -1863,6 +2110,7 @@ fn create_base_service(
                             service_name,
                             DependsOn {
                                 condition: DependencyCondition::ServiceStarted,
+                                ..Default::default()
                             },
                         )
                     })
@@ -2655,6 +2903,82 @@ mod tests {
         constants::Runtime,
         core::manifest::{ProjectEntry, ProjectType, application::ApplicationManifestData},
     };
+
+    const STRUCTURED_SERVICE: &str = r#"
+image: fixture/service
+build:
+  context: .
+  dockerfile: Dockerfile
+  args: { MODE: test }
+  secrets: [build-secret]
+networks:
+  demo-network:
+    aliases: [custom-alias]
+    ipv4_address: 172.30.0.8
+ports:
+  - name: control
+    target: 8080
+    published: "8000"
+    host_ip: 127.0.0.1
+    protocol: tcp
+    app_protocol: http
+    mode: host
+  - "9000:9000"
+volumes:
+  - type: bind
+    source: ./demo-data
+    target: /data
+    read_only: true
+    bind: { create_host_path: false, propagation: rprivate }
+depends_on:
+  database: { condition: service_healthy, required: false, restart: true }
+"#;
+
+    #[test]
+    fn structured_compose_fields_round_trip_without_losing_options() {
+        let mut service: DockerService=from_str(STRUCTURED_SERVICE).unwrap();
+        let before:Value=from_str(STRUCTURED_SERVICE).unwrap();
+        assert_eq!(serde_yml::to_value(&service).unwrap(),before);
+        service.environment.get_or_insert_with(Default::default).insert("ADDED".into(),"setting".into());
+        service.networks.as_mut().unwrap().push("other-network".into());
+        service.ports.as_mut().unwrap().push("9001:9001".into());
+        service.volumes.as_mut().unwrap().push("./extra:/extra:ro".into());
+        let after=serde_yml::to_value(service).unwrap();
+        assert_eq!(after["networks"]["demo-network"],before["networks"]["demo-network"]);
+        assert_eq!(after["ports"][0],before["ports"][0]);
+        assert_eq!(after["volumes"][0],before["volumes"][0]);
+        assert_eq!(after["depends_on"],before["depends_on"]);
+        assert_eq!(after["build"],before["build"]);
+    }
+
+    #[test]
+    fn app_rename_retains_network_and_mount_options() {
+        let mut service:DockerService=from_str(STRUCTURED_SERVICE).unwrap();
+        service.structured_fields=service.renamed_structured_fields("demo","renamed");
+        for field in [&mut service.networks,&mut service.volumes] {
+            for value in field.as_mut().unwrap() { *value=value.replace("demo","renamed"); }
+        }
+        let after=serde_yml::to_value(service).unwrap();
+        assert_eq!(after["networks"]["renamed-network"]["aliases"][0].as_str(),Some("custom-alias"));
+        assert_eq!(after["volumes"][0]["source"].as_str(),Some("./renamed-data"));
+        assert_eq!(after["volumes"][0]["bind"]["create_host_path"].as_bool(),Some(false));
+    }
+
+    #[test]
+    fn short_dependencies_can_gain_an_owned_dependency() {
+        let mut service:DockerService=from_str("image: fixture\ndepends_on: [database]\n").unwrap();
+        service.depends_on.as_mut().unwrap().insert("gateway-mock".into(),DependsOn::default());
+        let after=serde_yml::to_value(service).unwrap();
+        assert_eq!(after["depends_on"]["database"]["condition"].as_str(),Some("service_started"));
+        assert!(after["depends_on"].as_mapping().unwrap().contains_key(Value::String("gateway-mock".into())));
+    }
+
+    #[test]
+    fn host_port_allocation_handles_addresses_protocols_and_ranges() {
+        for (value,expected) in [("8000:8080",8000),("127.0.0.1:8001:8080/tcp",8001),("[::1]:8002:8080/udp",8002),("8003-8010:8080-8087",8010),("8080",8080)] {
+            assert_eq!(compose_host_port(value),Some(expected));
+        }
+    }
 
     #[test]
     fn test_add_iam_environment_variables_skips_gracefully_when_iam_project_has_no_variant() {

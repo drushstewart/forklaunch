@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {appendFileSync,mkdirSync,mkdtempSync,existsSync,writeFileSync,readFileSync} from 'node:fs';
+import {appendFileSync,mkdirSync,mkdtempSync,existsSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
@@ -13,21 +13,14 @@ for(const service of ['alpha','beta'])run('init','service',service,'--path',app,
 const compose=()=>JSON.parse(execFileSync('docker',['compose','config','--no-interpolate','--format','json'],{cwd:app,encoding:'utf8'}));
 const edit=(operation,service,feature)=>run('infra',operation,service,feature,'--path',app);
 const target=()=>compose().services['gateway-mock'].environment.MOCK_EVENTS_URL_EMAIL;
-// Change only the mock's source block; Compose's normalized JSON uses long
-// network/port forms that are outside this ownership fixture's input shape.
+// Use Compose's standard normalized long forms as real editor input.
 function writeMock(mock) {
- if(mock){
-  mock=structuredClone(mock);
-  if(mock.networks&&!Array.isArray(mock.networks))mock.networks=Object.keys(mock.networks);
-  if(mock.ports)mock.ports=mock.ports.map(port=>typeof port==='string'?port:`${port.host_ip?port.host_ip+':':''}${port.published?port.published+':':''}${port.target}/${port.protocol??'tcp'}`);
- }
- const file=path.join(app,'docker-compose.yaml'),source=readFileSync(file,'utf8');
- const block=/^  gateway-mock:[^\n]*\n(?: {4}.*(?:\n|$)|[ \t]*\n)*/m;
- assert.ok(block.test(source),'Gateway source block must exist');
- writeFileSync(file,source.replace(block,mock?`  gateway-mock: ${JSON.stringify(mock)}\n`:''));
+ const document=compose();
+ if(mock)document.services['gateway-mock']=mock;
+ else delete document.services['gateway-mock'];
+ writeFileSync(path.join(app,'docker-compose.yaml'),JSON.stringify(document));
 }
-
-appendFileSync(path.join(app,'docker-compose.yaml'),'\n  gateway-mock:\n    image: human/mock:fixture\n    environment:\n      USER_SETTING: preserved\n      REMOVE_ME: obsolete\n      MOCK_EVENTS_URL_EMAIL: https://human.example/callback\n    x-user-settings:\n      keep: unchanged\n      change: original\n      remove: obsolete\n');
+appendFileSync(path.join(app,'docker-compose.yaml'),'\n  gateway-mock:\n    image: human/mock:fixture\n    networks:\n      ownership-app-network:\n        aliases: [custom-mock]\n    ports:\n      - name: gateway-control\n        target: 8080\n        published: "18088"\n        host_ip: 127.0.0.1\n        protocol: tcp\n        app_protocol: http\n        mode: host\n    environment:\n      USER_SETTING: preserved\n      REMOVE_ME: obsolete\n      MOCK_EVENTS_URL_EMAIL: https://human.example/callback\n    x-user-settings:\n      keep: unchanged\n      change: original\n      remove: obsolete\n');
 const original=compose().services['gateway-mock'];
 edit('add','alpha','email');edit('add','beta','email');
 assert.equal(target(),'http://beta:8001');

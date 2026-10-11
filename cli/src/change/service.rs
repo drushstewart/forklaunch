@@ -194,6 +194,7 @@ fn change_database(
         database.to_string(),
         DependsOn {
             condition: DependencyCondition::ServiceStarted,
+            ..Default::default()
         },
     );
 

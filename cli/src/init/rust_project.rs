@@ -1755,6 +1755,7 @@ fn rust_docker_service(
         build: Some(DockerBuild {
             context: ".".to_string(),
             dockerfile: "./Dockerfile".to_string(),
+            ..Default::default()
         }),
         environment: Some(environment),
         ports: port.map(|port| vec![format!("{port}:{port}")]),
@@ -1785,7 +1786,7 @@ fn next_rust_docker_port(compose: &DockerCompose) -> i32 {
         .services
         .values()
         .flat_map(|service| service.ports.as_deref().unwrap_or_default())
-        .filter_map(|port| port.split(':').next()?.parse::<i32>().ok())
+        .filter_map(|port| crate::core::docker::compose_host_port(port))
         .filter(|port| (8000..9000).contains(port))
         .max()
         .unwrap_or(7999)

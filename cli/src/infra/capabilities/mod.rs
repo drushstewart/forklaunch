@@ -724,6 +724,7 @@ pub(crate) fn ensure_gateway_mock(
         .entry(GATEWAY_MOCK_SERVICE.to_string())
         .or_insert(DependsOn {
             condition: DependencyCondition::ServiceStarted,
+            ..Default::default()
         });
     Ok(())
 }

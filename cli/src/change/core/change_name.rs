@@ -219,10 +219,12 @@ pub(crate) fn change_name(
                                 .image
                                 .as_ref()
                                 .map(|image| image.replace(&existing_name, &name)),
+                            structured_fields: value.renamed_structured_fields(&existing_name, &name),
                             restart: value.restart.clone(),
                             build: value.build.as_ref().map(|build| DockerBuild {
                                 context: build.context.replace(&existing_name, &name),
                                 dockerfile: build.dockerfile.replace(&existing_name, &name),
+                                ..build.clone()
                             }),
                             environment: value.environment.as_ref().map(|environment| {
                                 environment
@@ -243,6 +245,7 @@ pub(crate) fn change_name(
                                             key.replace(&existing_name, &name),
                                             DependsOn {
                                                 condition: value.condition.clone(),
+                                                ..value.clone()
                                             },
                                         )
                                     })
