@@ -13,6 +13,8 @@
 //! listed in `CAPABILITIES`. The shared edits live on `CapabilityEdit`, so a
 //! capability's file only says what is particular to it.
 
+mod native;
+
 use std::{
     collections::BTreeMap,
     fs,
@@ -57,6 +59,9 @@ pub(crate) static CAPABILITIES: &[&Capability] = &[&email::EMAIL, &sms::SMS, &wh
 /// so remove takes back exactly what add wrote). `edit` carries the
 /// capabilities as they are after the change.
 pub(crate) fn apply(edit: &mut CapabilityEdit, capability: &Capability, adding: bool) -> Result<()> {
+    if edit.native {
+        return native::apply(edit, capability, adding);
+    }
     if adding {
         (capability.add)(edit)?;
         edit.ensure_gateway_wiring(capability.id)
@@ -89,6 +94,7 @@ pub(crate) const GATEWAY_MOCK_HOST_PORT: &str = "18088";
 /// Staged file edits for one `infra add|remove`, written together at the end
 /// (or printed with `--dryrun`).
 pub(crate) struct CapabilityEdit {
+    pub(crate) native: bool,
     pub(crate) app_root: PathBuf,
     pub(crate) app_name: String,
     pub(crate) service_name: String,
@@ -110,6 +116,7 @@ impl CapabilityEdit {
         app_capabilities: Vec<String>,
     ) -> Self {
         Self {
+            native: false,
             app_root: app_root.to_path_buf(),
             app_name: app_name.to_string(),
             service_name: service_name.to_string(),
@@ -160,7 +167,22 @@ impl CapabilityEdit {
                     if let Some(parent) = path.parent() {
                         fs::create_dir_all(parent)?;
                     }
-                    fs::write(&path, content).with_context(|| format!("writing {path:?}"))?;
+                    if self.native && path.parent() == Some(self.app_root.join(".forklaunch/native-capabilities").as_path())
+                        && path.extension().is_some_and(|extension| extension == "json")
+                    {
+                        use std::io::Write;
+                        let mut options = fs::OpenOptions::new();
+                        options.write(true).create(true).truncate(true);
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+                            options.mode(0o600);
+                            if path.exists() { fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?; }
+                        }
+                        options.open(&path)?.write_all(content.as_bytes())?;
+                    } else {
+                        fs::write(&path, content).with_context(|| format!("writing {path:?}"))?;
+                    }
                 }
                 None => {
                     if path.exists() {

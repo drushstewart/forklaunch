@@ -35,6 +35,11 @@ mod modules;
 mod worker;
 pub(crate) use modules::generate_rust_module;
 
+pub(crate) fn ensure_native_capability_sources(root: &Path) -> Result<()> {
+    ensure_embedded_framework(root, false)?;
+    modules::ensure_blueprint_sources(root, false)
+}
+
 pub(crate) const TYPESCRIPT_SDK_TSCONFIG: &str =
     include_str!("../templates/rust/application/typescript-sdk-tsconfig.json");
 

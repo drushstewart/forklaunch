@@ -35,6 +35,9 @@ CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" init module payments --path "$RUN_ROOT/app" --language rust -m billing-stripe
 mv "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
+for feature in email sms whatsapp voice payments; do
+    "$CLI" infra add accounts "$feature" --path .
+done
 python3 - "$REPO_ROOT" <<'PYTHON'
 from pathlib import Path
 import sys
@@ -59,6 +62,7 @@ cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-me
 cargo check --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base -p forklaunch-ecommerce-stripe -p forklaunch-ecommerce-paypal -p forklaunch-ecommerce-axum --all-features
 cargo build -p accounts
 node "$REPO_ROOT/cli/tests/rust_mcp_service_startup.mjs" "$CARGO_TARGET_DIR/debug/accounts"
+TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" node "$REPO_ROOT/cli/tests/rust_capabilities_runtime.mjs" "$CARGO_TARGET_DIR/debug/accounts"
 "$CLI" openapi export --path .
 "$CLI" sdk generate --path . --target all --from contract
 "$CLI" sdk generate --path . --target all --from contract --check

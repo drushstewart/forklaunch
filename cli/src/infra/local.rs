@@ -67,7 +67,7 @@ fn args(cmd: Command) -> Command {
     .arg(
         Arg::new("type")
             .required(true)
-            .help("What to add: object-store (s3) or cache (redis)"),
+            .help("What to add: object-store (s3), cache (redis), email, sms, whatsapp, voice or payments"),
     )
     .arg(
         Arg::new("base_path")
@@ -355,7 +355,35 @@ fn change_capability(
         })
         .collect();
 
-    let service_path = app_root.join(&manifest.modules_path).join(&service);
+    let native = project
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.language.as_deref())
+        == Some("rust")
+        || crate::init::rust_project::is_rust_project(&app_root, &service)?;
+    let service_path = if native {
+        let relative = project
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.crate_path.clone())
+            .unwrap_or_else(|| format!("crates/{service}"));
+        let relative = std::path::Path::new(&relative);
+        if relative.components().any(|component| {
+            matches!(component, std::path::Component::ParentDir
+                | std::path::Component::RootDir | std::path::Component::Prefix(_))
+        }) {
+            bail!("Native capability crate path must remain within the application");
+        }
+        let relative: PathBuf = relative.components()
+            .filter(|component| !matches!(component, std::path::Component::CurDir)).collect();
+        let path = app_root.join(relative);
+        if !path.canonicalize()?.starts_with(app_root.canonicalize()?) {
+            bail!("Native capability crate path must remain within the application");
+        }
+        path
+    } else {
+        app_root.join(&manifest.modules_path).join(&service)
+    };
     let mut edit = CapabilityEdit::new(
         &app_root,
         &manifest.app_name,
@@ -364,6 +392,7 @@ fn change_capability(
         service_capabilities.clone(),
         app_capabilities,
     );
+    edit.native = native;
     super::capabilities::apply(&mut edit, capability, adding)?;
 
     // The manifest: only the capability's entry in the service's
@@ -384,6 +413,9 @@ fn change_capability(
             );
         }
         return Ok(());
+    }
+    if native && adding {
+        crate::init::rust_project::ensure_native_capability_sources(&app_root)?;
     }
     edit.commit()?;
     println!(
