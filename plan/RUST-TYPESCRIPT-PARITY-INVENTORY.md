@@ -221,3 +221,12 @@ Password reset/change-email/user-deletion/reference UI are disabled by actual
 configuration; Google discovery lists the provider even without credentials.
 Configured static access-control permissions do not create surfaced dynamic
 role records. The implementation plan now tracks these scopes separately.
+
+The actual Better Auth custom callback helpers now enforce configured trusted
+callback origins, use the configured token-exchange authority, escape script
+JSON and clear the configured session-cookie name/secure flag under HTTPS.
+Forty checks execute the real server handlers and generated browser scripts
+with actual session/JWT handlers under owned app/fetch/storage boundaries.
+Untrusted destinations fail before token exchange; forged Host headers cannot
+redirect exchange requests; malicious query values remain JSON data. Native
+callback/helper implementation remains in the Better Auth module task.

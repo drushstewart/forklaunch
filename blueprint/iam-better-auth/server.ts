@@ -10,6 +10,10 @@ import { complianceRouter } from './api/routes/compliance.routes';
 import { BetterAuth } from './auth';
 import { ci, tokens } from './bootstrapper';
 import { iamSdkClient } from './sdk';
+import {
+  scriptJson,
+  trustedCallbackUrl
+} from './domain/utils/betterAuthRedirect.util';
 
 //! resolves the openTelemetryCollector from the configuration
 const openTelemetryCollector = ci.resolve(tokens.OtelCollector);
@@ -35,8 +39,15 @@ app.internal.get('/api/auth/test-callback', async (req, res) => {
     return;
   }
 
+  const auth = ci.resolve(tokens.BetterAuth) as BetterAuth;
+  const authContext = await auth.$context;
+  const callback = trustedCallbackUrl(callbackUrl, authContext);
+  if (!callback) {
+    res.status(400).send('Invalid callbackUrl');
+    return;
+  }
   const cookie = req.headers.cookie || '';
-  const origin = `${req.protocol}://${req.headers.host}`;
+  const origin = new URL(authContext.baseURL).origin;
 
   try {
     const [tokenRes, sessionRes] = await Promise.all([
@@ -60,13 +71,19 @@ app.internal.get('/api/auth/test-callback', async (req, res) => {
       sessionToken = data?.session?.token || '';
     }
 
+    const sessionCookie = authContext.authCookies.sessionToken;
+    const cookiePath = sessionCookie.attributes.path ?? '/';
+    const cookieDomain = sessionCookie.attributes.domain;
     res.setHeader(
       'Set-Cookie',
-      'better-auth.session_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax'
+      `${sessionCookie.name}=; Path=${cookiePath}; Max-Age=0; HttpOnly; SameSite=Lax` +
+        (sessionCookie.attributes.secure ? '; Secure' : '') +
+        (cookieDomain ? `; Domain=${cookieDomain}` : '')
     );
 
     const hash = new URLSearchParams({ token, sessionToken, email }).toString();
-    res.redirect(`${callbackUrl}#${hash}`);
+    callback.hash = hash;
+    res.redirect(callback.href);
   } catch (err) {
     res
       .status(500)
@@ -78,27 +95,34 @@ app.internal.get('/api/auth/test-callback', async (req, res) => {
 });
 
 //! serves a redirect page for OAuth popup flows (must be before the catch-all)
-app.internal.get('/api/auth/oauth-redirect', (req, res) => {
+app.internal.get('/api/auth/oauth-redirect', async (req, res) => {
   const provider = String(req.query.provider || '');
   const callbackURL = String(req.query.callbackURL || '');
+  const authContext = await (ci.resolve(tokens.BetterAuth) as BetterAuth)
+    .$context;
+  const callback = trustedCallbackUrl(callbackURL, authContext);
+  if (!callbackURL || !callback) {
+    res.status(400).send('Invalid callbackURL');
+    return;
+  }
   const organizationId = String(req.query.organizationId || '');
   const endpoint =
     req.query.endpoint === 'sso'
       ? '/api/auth/sign-in/sso'
       : '/api/auth/sign-in/social';
 
-  const origin = `${req.protocol}://${req.headers.host}`;
-  const intermediateCallbackURL = `${origin}/api/auth/test-callback?callbackUrl=${encodeURIComponent(callbackURL)}`;
+  const origin = new URL(authContext.baseURL).origin;
+  const intermediateCallbackURL = `${origin}/api/auth/test-callback?callbackUrl=${encodeURIComponent(callback.href)}`;
 
   const body =
     req.query.endpoint === 'sso'
       ? { organizationId, callbackURL: intermediateCallbackURL }
       : { provider, callbackURL: intermediateCallbackURL };
   res.type('html').send(`<!DOCTYPE html><html><body><p>Redirecting…</p><script>
-    fetch(${JSON.stringify(endpoint)}, {
+    fetch(${scriptJson(endpoint)}, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: ${JSON.stringify(JSON.stringify(body))},
+      body: ${scriptJson(JSON.stringify(body))},
       credentials: 'include',
     })
     .then(function(r) { return r.json(); })
