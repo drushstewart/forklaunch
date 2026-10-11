@@ -1,9 +1,10 @@
 // BEGIN FORKLAUNCH MANAGED CAPABILITIES
+pub mod nonce_store;
 __EVENT_MODULES__
 
 use forklaunch_axum::ForkLaunchRouter;
 use forklaunch_blueprint_core::{BlueprintResult, instance_gateway::InstanceGatewayClient,
-    platform_events::{MemoryPlatformEventNonces, PlatformEventVerifier}};
+    platform_events::PlatformEventVerifier};
 use forklaunch_contract::{BodyContract, ContractRegistry, FieldContract, RouteContract, BodyKind, SchemaRef};
 use axum::{RequestExt, body::to_bytes, extract::{Path, Request}, http::StatusCode, middleware::{self, Next}, response::IntoResponse};
 use std::sync::{Arc, OnceLock};
@@ -49,10 +50,9 @@ impl ManagedCapabilitiesRouterExt for ForkLaunchRouter {
                 (StatusCode::NOT_FOUND, format!("No handler for {feature} events"))
             })
         };
-        // One verifier covers all features. Applications running replicas can
-        // replace the memory store with a shared PlatformEventNonceStore.
+        // The preserved factory allows replicas to share atomic nonce storage.
         let verifier = Arc::new(std::env::var("INSTANCE_HMAC_KEY").ok().and_then(|key|
-            PlatformEventVerifier::new(key, Arc::new(MemoryPlatformEventNonces::default())).ok()));
+            PlatformEventVerifier::new(key, nonce_store::store()).ok()));
         router.map_route("/platform-events/:feature", move |route| {
             let verifier = Arc::clone(&verifier);
             route.layer(middleware::from_fn(move |request: Request, next: Next| {

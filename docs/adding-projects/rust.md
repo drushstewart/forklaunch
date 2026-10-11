@@ -23,6 +23,26 @@ The service serves `/health`, `/users`, `/openapi.json`, and a Scalar documentat
 
 Network requests use Axum and the same contract handlers as `local_router`. Path parameters, decoded URL queries, headers, binary bodies, body limits, CORS, and request IDs pass through the framework adapter.
 
+## Managed capabilities
+
+Managed capabilities can be added to a native service in either a Rust or mixed application:
+
+```sh
+forklaunch infra add accounts email --path .
+forklaunch infra add accounts sms --path .
+forklaunch infra add accounts whatsapp --path .
+forklaunch infra add accounts voice --path .
+forklaunch infra add accounts payments --path .
+```
+
+The CLI creates typed factories in `src/capabilities/mod.rs`, editable handlers in `src/capabilities/<feature>.rs`, and the signed `POST /platform-events/:feature` route. HTTP and MCP use the same callback authentication. An existing billing payment-event handler keeps its receipt processing and business effects. Handler stubs acknowledge verified events; implement the required business effects and deduplicate event IDs in those handlers.
+
+Client factories resolve trusted `PLATFORM_GATEWAY_URL`, `INSTANCE_ID`, and `INSTANCE_HMAC_KEY` settings and reuse a connection pool. SMS construction defers refusal when managed settings are missing; other factories return a configuration error. Compose receives the local gateway mock and a fixed-URL development opt-in. Production configuration should supply the managed gateway settings.
+
+`src/capabilities/nonce_store.rs` supplies one replay store shared by every feature in the service process. Its default is bounded process-local memory. For multiple replicas, return an implementation of `PlatformEventNonceStore` backed by shared atomic storage. Changes to this factory and event handlers survive capability additions, sync and rename.
+
+Use `forklaunch infra remove accounts email --path .` to remove a capability. Restoration records under `.forklaunch/native-capabilities` are ignored by Git and private on Unix because they can contain prior local settings. Removal after a Git clone still cleans generated hooks, while retaining dependency/settings entries whose earlier ownership is unknown. The local mock has one callback destination per feature; removing its active owner promotes another registered service.
+
 ## Export contracts and SDKs
 
 ```sh

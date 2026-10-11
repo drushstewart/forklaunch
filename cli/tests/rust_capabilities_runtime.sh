@@ -53,6 +53,11 @@ cargo check --workspace
 TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 node "$SCRIPT_DIR/rust_capabilities_runtime.mjs" "$TARGET_DIR/debug/messages"
 rm crates/messages/examples/capabilities.rs
+python3 - <<'PY'
+from pathlib import Path
+p=Path('crates/messages/src/capabilities/nonce_store.rs')
+p.write_text(p.read_text().replace('MemoryPlatformEventNonces::default()', 'MemoryPlatformEventNonces::new(2).expect("fixture capacity")'))
+PY
 printf '\n// Human main customization\n' >> crates/messages/src/main.rs
 printf '\n// Human main customization\n' >> "$RUN_ROOT/original-main.rs"
 printf '\npub const CONFIG_MARKER: &str = "preserved";\n' >> crates/messages/src/config/mod.rs
@@ -65,12 +70,13 @@ grep -q 'Human main customization' crates/renamed-messages/src/main.rs
 grep -q CONFIG_MARKER crates/renamed-messages/src/config/mod.rs
 cargo test -p renamed-messages
 cargo build -p renamed-messages
-node "$SCRIPT_DIR/rust_capabilities_runtime.mjs" "$TARGET_DIR/debug/renamed-messages"
+node "$SCRIPT_DIR/rust_capabilities_runtime.mjs" "$TARGET_DIR/debug/renamed-messages" --bounded-store
 "$FORKLAUNCH_CLI" change service --path crates/renamed-messages -N messages --confirm
 # Removal must preserve edits made between stacked capability commands.
 printf '\n[package.metadata.user]\nmarker = "preserved"\n' >> crates/messages/Cargo.toml
 printf '\npub const USER_MARKER: &str = "preserved";\n' >> crates/messages/src/lib.rs
 printf '\n// Human handler customization\n' >> crates/messages/src/capabilities/email.rs
+printf '\n// Human nonce store customization\n' >> crates/messages/src/capabilities/nonce_store.rs
 printf '\nCUSTOM_SETTING=preserved\n' >> crates/messages/.env.local
 "$FORKLAUNCH_CLI" infra remove messages voice --path .
 "$FORKLAUNCH_CLI" infra add messages voice --path .
@@ -81,6 +87,7 @@ test ! -e .forklaunch/native-capabilities/messages.json
 test ! -e crates/messages/src/capabilities/mod.rs
 test -e crates/messages/src/capabilities/email.rs
 grep -q 'Human handler customization' crates/messages/src/capabilities/email.rs
+grep -q 'Human nonce store customization' crates/messages/src/capabilities/nonce_store.rs
 grep -q 'CUSTOM_SETTING=preserved' crates/messages/.env.local
 grep -q USER_MARKER crates/messages/src/lib.rs
 grep -q 'marker = "preserved"' crates/messages/Cargo.toml
@@ -99,6 +106,7 @@ for feature in payments sms; do "$FORKLAUNCH_CLI" infra remove pristine "$featur
 cmp "$RUN_ROOT/pristine-cargo.toml" crates/pristine/Cargo.toml
 cmp "$RUN_ROOT/pristine-lib.rs" crates/pristine/src/lib.rs
 cmp "$RUN_ROOT/pristine-main.rs" crates/pristine/src/main.rs
+test ! -e crates/pristine/src/capabilities/nonce_store.rs
 "$FORKLAUNCH_CLI" infra add pristine email --path .
 rm .forklaunch/native-capabilities/pristine.json
 python3 - <<'PY'

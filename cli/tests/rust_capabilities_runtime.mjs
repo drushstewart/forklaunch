@@ -29,6 +29,13 @@ try{
  }
  const tools=await probeMcp(base);
  const tool=tools.find(tool=>tool.name.toLowerCase().includes('receiveplatformevent'));assert.ok(tool,JSON.stringify(tools));
+ if(process.argv.includes('--bounded-store')){
+  for(const [feature,status] of [['email',200],['sms',200],['voice',503]]){
+   const body=JSON.stringify({id:`bounded_${feature}`,feature,type:`${feature}.fixture`});
+   assert.equal((await post(feature,body,signed(feature,body))).status,status,'The preserved nonce factory must provide one bounded store across all features');
+  }
+  console.log('PASS customized nonce-store factory survives sync/rename and supplies shared bounded callback storage');
+ }else{
  for(const feature of ['email','sms','whatsapp','voice','payments']){
   const body=JSON.stringify({id:`event_${feature}`,feature,type:`${feature}.delivered`,data:{note:'Exact Unicode 💬 bytes'}});
   assert.equal((await post(feature,body)).status,401);
@@ -47,6 +54,7 @@ try{
  assert.equal((await post('%65mail',encodedBody,signed('email',encodedBody))).status,401,'Encoded URLs must not bypass exact-path signature verification');
  const malformed='{invalid';assert.equal((await post('email',malformed,signed('email',malformed))).status,401);
  console.log('PASS all five generated native capability callbacks: actual TypeScript signatures, HTTP/MCP startup, forgery/staleness/replay rejection, event redelivery and unknown feature');
+ }
 }finally{
  if(service.exitCode===null){const exit=once(service,'exit');service.kill('SIGTERM');await Promise.race([exit,new Promise((_,reject)=>setTimeout(()=>{service.kill('SIGKILL');reject(new Error(`Shutdown timed out: ${output}`));},10000).unref())]);}
 }

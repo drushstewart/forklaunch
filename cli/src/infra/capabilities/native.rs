@@ -12,6 +12,7 @@ use super::{
 use crate::core::docker::{DependsOn, DockerCompose, DockerService};
 const MODULE: &str = include_str!("../../templates/rust/capabilities/mod.rs");
 const HANDLER: &str = include_str!("../../templates/rust/capabilities/handler.rs");
+const NONCE_STORE: &str = include_str!("../../templates/rust/capabilities/nonce_store.rs");
 const BEGIN: &str = "// BEGIN FORKLAUNCH MANAGED CAPABILITIES\n";
 const END: &str = "// END FORKLAUNCH MANAGED CAPABILITIES\n";
 const LIB_EXPORT: &str = "pub mod capabilities;\n";
@@ -355,6 +356,10 @@ pub(super) fn apply(
         .join(format!("{}.json", edit.service_name));
     let cargo_path = edit.service_path.join("Cargo.toml");
     let module_path = edit.service_path.join("src/capabilities/mod.rs");
+    let nonce_store_path = edit.service_path.join("src/capabilities/nonce_store.rs");
+    if !edit.service_capabilities.is_empty() && edit.read(&nonce_store_path)?.is_none() {
+        edit.write(nonce_store_path.clone(),NONCE_STORE.into());
+    }
     let env_path = edit.service_path.join(".env.local");
     let lib_path = edit.service_path.join("src/lib.rs");
     let main_path = edit.service_path.join("src/main.rs");
@@ -628,6 +633,7 @@ pub(super) fn apply(
         }
     }
     if edit.service_capabilities.is_empty() {
+        if edit.read(&nonce_store_path)?.as_deref()==Some(NONCE_STORE) { edit.delete(nonce_store_path); }
         if !state.cargo_modified && cargo_text == state.last_cargo {
             edit.write(cargo_path, state.original_cargo.clone());
         } else {
