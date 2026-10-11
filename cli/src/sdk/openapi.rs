@@ -228,27 +228,7 @@ fn media_body(response: &Value, request: bool) -> Result<Value> {
     Ok(json!({"kind":kind, "contentType":media_type, "schema":{"jsonSchema":schema}}))
 }
 
-pub(super) struct ExpansionBudget {
-    pub(super) nodes: usize,
-    pub(super) bytes: usize,
-}
-impl Default for ExpansionBudget {
-    fn default() -> Self {
-        Self {
-            nodes: 100_000,
-            bytes: 32 * 1024 * 1024,
-        }
-    }
-}
-
-pub(super) fn clone_literal(value: &Value, budget: &mut ExpansionBudget) -> Result<Value> {
-    let size = serde_json::to_vec(value)?.len();
-    budget.bytes = budget
-        .bytes
-        .checked_sub(size)
-        .context("OpenAPI expanded references exceed 32 MiB")?;
-    Ok(value.clone())
-}
+use super::schema::{ExpansionBudget, clone_literal};
 
 fn resolve(
     value: &Value,

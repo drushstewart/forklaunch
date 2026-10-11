@@ -39,4 +39,13 @@ TOML
     cargo clippy -p streams-sdk --all-targets -- -D warnings
     node "$SCRIPT_DIR/rust_sse_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/sse_roundtrip" "$PWD/sdks/typescript/dist/index.js"
 done
-echo 'PASS relocated generated SSE service and both live SDKs through contract/OpenAPI artifacts'
+cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-rust --example stream_client -- "$PWD/sdks/rust/streams-sdk/src/lib.rs"
+python3 - "$SCRIPT_DIR/fixtures/rust_sse_sdk.rs" <<'PYTHON'
+from pathlib import Path
+import sys
+Path('sdks/rust/streams-sdk/examples/sse_roundtrip.rs').write_text(Path(sys.argv[1]).read_text().replace('StreamsEvents','Events'))
+PYTHON
+cargo build -p streams-sdk --example sse_roundtrip
+cargo clippy -p streams-sdk --all-targets -- -D warnings
+node "$SCRIPT_DIR/rust_sse_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/sse_roundtrip" "$PWD/sdks/typescript/dist/index.js"
+echo 'PASS relocated generated SSE service, CLI/native clients and both artifact formats'

@@ -9,6 +9,8 @@ use crate::{
 
 pub(crate) mod generate;
 pub(crate) mod mode;
+mod models;
+mod render;
 mod openapi;
 mod schema;
 pub(crate) mod watch;

@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod http;
+pub use http::generate_rust_http_sdk_source;
+
 use std::fmt::Write as _;
 
 use forklaunch_sdk_codegen::{BodyKind, SdkGenerationPlan, SdkOperation};

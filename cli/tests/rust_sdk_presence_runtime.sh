@@ -38,4 +38,15 @@ TOML
     cargo clippy -p presence-sdk --all-targets -- -D warnings
     node "$SCRIPT_DIR/rust_sdk_presence_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/presence_roundtrip" "$PWD/sdks/typescript/dist/presence_fixture.js" "$PWD/crates/presence/src/presence_cases.json"
 done
-echo 'PASS generated SDK field presence/null parity against actual TypeScript validator, Rust and TypeScript HTTP services and MCP'
+# Exercise the framework-native generator against the identical validator and servers.
+cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-rust --example presence_client -- \
+    "$PWD/crates/presence/src/presence_schema.json" "$PWD/sdks/rust/presence-sdk/src/lib.rs"
+python3 - "$SCRIPT_DIR/fixtures/rust_sdk_presence.rs" <<'PYTHON'
+from pathlib import Path
+import sys
+Path('sdks/rust/presence-sdk/examples/presence_roundtrip.rs').write_text(Path(sys.argv[1]).read_text().replace('PresencePresence','Presence'))
+PYTHON
+cargo build -p presence-sdk --example presence_roundtrip
+cargo clippy -p presence-sdk --all-targets -- -D warnings
+node "$SCRIPT_DIR/rust_sdk_presence_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/presence_roundtrip" "$PWD/sdks/typescript/dist/presence_fixture.js" "$PWD/crates/presence/src/presence_cases.json"
+echo 'PASS CLI and framework-native SDK field presence/null parity against actual TypeScript validator, Rust and TypeScript HTTP services and MCP'

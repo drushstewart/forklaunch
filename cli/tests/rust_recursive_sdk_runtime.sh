@@ -37,4 +37,17 @@ TOML
     cargo clippy -p trees-sdk --all-targets -- -D warnings
     node "$SCRIPT_DIR/rust_recursive_sdk_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/recursive_roundtrip" "$PWD/sdks/typescript/dist/recursive_fixture.js"
 done
-echo 'PASS relocated generated recursive SDKs through contract/OpenAPI artifacts and HTTP/MCP startup'
+cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-rust --example recursive_client -- \
+    "$PWD/.forklaunch/contracts/trees/contract.json" "$PWD/sdks/rust/trees-sdk/src/lib.rs"
+python3 - "$SCRIPT_DIR/fixtures/rust_recursive_sdk.rs" <<'PYTHON'
+from pathlib import Path
+import sys
+source=Path(sys.argv[1]).read_text()
+for prefix in ['Trees','Forests','Choices','Mutual']:
+    source=source.replace('Trees'+prefix,prefix)
+Path('sdks/rust/trees-sdk/examples/recursive_roundtrip.rs').write_text(source)
+PYTHON
+cargo build -p trees-sdk --example recursive_roundtrip
+cargo clippy -p trees-sdk --all-targets -- -D warnings
+node "$SCRIPT_DIR/rust_recursive_sdk_runtime.mjs" "$BINARY" "$(dirname "$BINARY")/examples/recursive_roundtrip" "$PWD/sdks/typescript/dist/recursive_fixture.js"
+echo 'PASS relocated generated CLI/native recursive SDKs, both artifact formats and HTTP/MCP startup'

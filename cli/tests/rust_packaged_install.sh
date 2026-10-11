@@ -114,4 +114,8 @@ rust=Path('sdks/rust/accounts-sdk/src/lib.rs').read_text()
 assert 'AccountsTreesReadTreeResponse' in ts and 'AccountsChoicesReadChoiceResponse' in ts
 assert 'pub children: Vec<AccountsSchema' in rust
 PYTHON
-echo 'PASS packaged CLI installation, portable service/worker generation, real compiler checks, and contract/SDK exports'
+# Invoke the native generator from portable sources shipped by the installed CLI.
+cargo run --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-sdk-rust --example recursive_client -- \
+    "$PWD/.forklaunch/contracts/accounts/contract.json" "$PWD/sdks/rust/accounts-sdk/src/lib.rs"
+cargo clippy -p accounts-sdk --all-targets -- -D warnings
+echo 'PASS packaged CLI installation, portable services/workers, CLI/native SDK generation and HTTP/MCP surfaces'
