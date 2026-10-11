@@ -25,16 +25,24 @@ pub struct MemoryDirectoryStore {
 pub struct MemoryDirectoryTransaction {
     guard: OwnedMutexGuard<State>,
     pending: State,
+    write: bool,
 }
 impl DirectoryStore for MemoryDirectoryStore {
     type Transaction<'a> = MemoryDirectoryTransaction;
-    async fn begin(&self, _write: bool) -> BlueprintResult<Self::Transaction<'_>> {
+    async fn begin(&self, write: bool) -> BlueprintResult<Self::Transaction<'_>> {
         let guard = self.state.clone().lock_owned().await;
         let pending = guard.clone();
-        Ok(MemoryDirectoryTransaction { guard, pending })
+        Ok(MemoryDirectoryTransaction {
+            guard,
+            pending,
+            write,
+        })
     }
 }
 impl MemoryDirectoryTransaction {
+    fn require_write(&self) -> BlueprintResult<()> {
+        if self.write { Ok(()) } else { Err(invalid()) }
+    }
     fn unique(&self, kind: DirectoryKind, value: &Value) -> BlueprintResult<()> {
         let id = record_id(value)?;
         for field in match kind {
@@ -88,6 +96,7 @@ impl DirectoryTransaction for MemoryDirectoryTransaction {
         Ok(rows.into_iter().map(|(_, value)| value).collect())
     }
     async fn insert(&mut self, kind: DirectoryKind, value: Value) -> BlueprintResult<()> {
+        self.require_write()?;
         let key = (kind, record_id(&value)?.to_owned());
         if self.pending.rows.contains_key(&key) {
             return Err(conflict());
@@ -104,6 +113,7 @@ impl DirectoryTransaction for MemoryDirectoryTransaction {
         Ok(())
     }
     async fn replace(&mut self, kind: DirectoryKind, value: Value) -> BlueprintResult<()> {
+        self.require_write()?;
         let key = (kind, record_id(&value)?.to_owned());
         let sequence = self.pending.rows.get(&key).ok_or_else(not_found)?.0;
         self.unique(kind, &value)?;
@@ -111,6 +121,7 @@ impl DirectoryTransaction for MemoryDirectoryTransaction {
         Ok(())
     }
     async fn delete(&mut self, kind: DirectoryKind, id: &str) -> BlueprintResult<()> {
+        self.require_write()?;
         self.pending.rows.remove(&(kind, id.to_owned()));
         for ((family, _), (_, value)) in &mut self.pending.rows {
             let field = match (kind, *family) {

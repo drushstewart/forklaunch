@@ -10,6 +10,42 @@ fn user(email: &str) -> CreateUserDto {
     serde_json::from_value(json!({"email":email,"password":"never-stored","firstName":"Private","lastName":"Member","roles":[]})).unwrap()
 }
 #[tokio::test]
+async fn read_transactions_reject_all_mutations_without_changing_rows() {
+    let store = MemoryDirectoryStore::default();
+    let original = json!({"id":"existing","slug":"read"});
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(DirectoryKind::Permission, original.clone())
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let mut tx = store.begin(false).await.unwrap();
+    for result in [
+        tx.insert(
+            DirectoryKind::Permission,
+            json!({"id":"new","slug":"write"}),
+        )
+        .await,
+        tx.replace(
+            DirectoryKind::Permission,
+            json!({"id":"existing","slug":"changed"}),
+        )
+        .await,
+        tx.delete(DirectoryKind::Permission, "existing").await,
+    ] {
+        assert_eq!(result.unwrap_err().code, "iam_directory_invalid");
+    }
+    tx.commit().await.unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    assert_eq!(
+        tx.list(DirectoryKind::Permission, None, None)
+            .await
+            .unwrap(),
+        vec![original]
+    );
+    tx.commit().await.unwrap();
+}
+#[tokio::test]
 async fn failed_batches_roll_back_writes_and_unique_claims() {
     let store = Arc::new(MemoryDirectoryStore::default());
     let service = BaseIamDirectory::new(store.clone());

@@ -1256,6 +1256,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "forklaunch-jsonschema-protocol"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "bytecount",
+ "data-encoding",
+ "email_address",
+ "fancy-regex",
+ "forklaunch-referencing-protocol",
+ "fraction",
+ "getrandom 0.3.4",
+ "idna",
+ "itoa",
+ "jsonschema-regex",
+ "jsonschema-value",
+ "num-cmp",
+ "num-traits",
+ "percent-encoding",
+ "regex",
+ "serde",
+ "serde_json",
+ "strum 0.28.0",
+ "unicode-general-category",
+ "uuid-simd",
+]
+
+[[package]]
 name = "forklaunch-mcp"
 version = "0.1.0"
 dependencies = [
@@ -1345,6 +1372,21 @@ version = "0.1.0"
 dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
+]
+
+[[package]]
+name = "forklaunch-referencing-protocol"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "fluent-uri",
+ "getrandom 0.3.4",
+ "hashbrown 0.17.1",
+ "itoa",
+ "micromap",
+ "parking_lot",
+ "percent-encoding",
+ "serde_json",
 ]
 
 [[package]]
@@ -1464,7 +1506,7 @@ version = "0.1.0"
 dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
- "jsonschema",
+ "forklaunch-jsonschema-protocol",
  "regex",
  "serde",
  "serde_json",
@@ -2039,35 +2081,6 @@ dependencies = [
  "cfg-if",
  "futures-util",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "jsonschema"
-version = "0.58.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f622c574a29fb3034a0a90645afee194dfedc75fc124228801b6e77041075bd1"
-dependencies = [
- "ahash",
- "bytecount",
- "data-encoding",
- "email_address",
- "fancy-regex",
- "fraction",
- "getrandom 0.3.4",
- "idna",
- "itoa",
- "jsonschema-regex",
- "jsonschema-value",
- "num-cmp",
- "num-traits",
- "percent-encoding",
- "referencing",
- "regex",
- "serde",
- "serde_json",
- "strum 0.28.0",
- "unicode-general-category",
- "uuid-simd",
 ]
 
 [[package]]
@@ -2955,23 +2968,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
-]
-
-[[package]]
-name = "referencing"
-version = "0.58.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "558f3855529c0a7e78a48e409fa653456e55f1b167eab4109c16a255b7727e3f"
-dependencies = [
- "ahash",
- "fluent-uri",
- "getrandom 0.3.4",
- "hashbrown 0.17.1",
- "itoa",
- "micromap",
- "parking_lot",
- "percent-encoding",
- "serde_json",
 ]
 
 [[package]]
