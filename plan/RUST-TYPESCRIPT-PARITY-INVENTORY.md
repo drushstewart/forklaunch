@@ -280,3 +280,12 @@ verified Google sign-in with `400 MISSING_FIELD: firstName is required`. The new
 fixture executes real RS256/JWKS verification and auth handlers, owning only the
 Google certificates HTTP boundary, with account/session reuse and invalid token
 rejection. Native Google OAuth and real ORM conformance remain open.
+
+Actual session lifecycle now has 60 additional checks: exact hourly refresh,
+creation-based freshness, explicit refresh suppression, scoped revocation,
+transient sessions, replay rejection and millisecond expiry boundaries. The
+configured get-session POST descriptor returns 405 without deferred refresh.
+Fresh archive `kSwMp4` passed relocated auth foundation tests, live HTTP/MCP,
+the complete generated startup/listener matrix, all five managed callbacks,
+portable services/workers and both SDK generators; checkout CLI was restored.
+Better Auth raw endpoints/preset and indexed auth lookups remain open.
