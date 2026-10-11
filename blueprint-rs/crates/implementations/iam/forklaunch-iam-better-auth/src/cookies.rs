@@ -85,6 +85,43 @@ pub struct SessionCookie {
 
 impl SessionCookie {
     #[must_use]
+    pub const fn dont_remember_name(self) -> &'static str {
+        if self.secure {
+            "__Secure-better-auth.dont_remember"
+        } else {
+            "better-auth.dont_remember"
+        }
+    }
+
+    #[must_use]
+    pub fn transient_flag(self, secret: &[u8]) -> String {
+        self.named_header(
+            self.dont_remember_name(),
+            &sign_cookie_value("true", secret),
+            None,
+        )
+    }
+
+    /// Clears all configured browser auth cookies. Each returned value must be
+    /// appended as a separate Set-Cookie header, never joined with commas.
+    #[must_use]
+    pub fn clear_all(self) -> Vec<String> {
+        let prefix = if self.secure {
+            "__Secure-better-auth."
+        } else {
+            "better-auth."
+        };
+        [
+            "session_token",
+            "session_data",
+            "oauth_state",
+            "dont_remember",
+        ]
+        .iter()
+        .map(|suffix| self.named_header(&format!("{prefix}{suffix}"), "", Some(0)))
+        .collect()
+    }
+    #[must_use]
     pub const fn name(self) -> &'static str {
         if self.secure {
             "__Secure-better-auth.session_token"
@@ -109,7 +146,11 @@ impl SessionCookie {
     }
 
     fn header(self, value: &str, max_age: Option<u32>) -> String {
-        let mut result = format!("{}={value}", self.name());
+        self.named_header(self.name(), value, max_age)
+    }
+
+    fn named_header(self, name: &str, value: &str, max_age: Option<u32>) -> String {
+        let mut result = format!("{name}={value}");
         if let Some(max_age) = max_age {
             write!(result, "; Max-Age={max_age}").expect("writing to a String cannot fail");
         }

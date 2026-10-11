@@ -62,12 +62,29 @@ impl OriginPolicy {
             if let Some(value) = body.get(field).filter(|value| truthy(value)) {
                 let value = value.as_str().ok_or_else(|| {
                     BlueprintError::new(
-                        "BAD_REQUEST",
-                        format!("Invalid {field}: expected a string"),
+                        "INVALID_CALLBACK_VALUE_TYPE",
+                        format!(
+                            "Invalid {}: expected a string",
+                            if field == "redirectTo" {
+                                "redirectURL"
+                            } else {
+                                field
+                            }
+                        ),
                     )
                 })?;
                 if !self.trusted(value, true) {
-                    return Err(BlueprintError::new(code, "Invalid callback URL"));
+                    return Err(BlueprintError::new(
+                        code,
+                        format!(
+                            "Invalid {}",
+                            if field == "redirectTo" {
+                                "redirectURL"
+                            } else {
+                                field
+                            }
+                        ),
+                    ));
                 }
             }
         }
@@ -88,7 +105,7 @@ impl OriginPolicy {
             if request.fetch_site == Some("cross-site") && request.fetch_mode == Some("navigate") {
                 return Err(BlueprintError::new(
                     "CROSS_SITE_NAVIGATION_LOGIN_BLOCKED",
-                    "Cross-site navigation login blocked",
+                    "Cross-site navigation login blocked. This request appears to be a CSRF attack.",
                 ));
             }
             return self.validate_origin(request, true);
@@ -124,7 +141,7 @@ impl OriginPolicy {
             ));
         }
         if !self.trusted(candidate, false) {
-            return Err(BlueprintError::new("INVALID_ORIGIN", "Invalid Origin"));
+            return Err(BlueprintError::new("INVALID_ORIGIN", "Invalid origin"));
         }
         Ok(())
     }

@@ -92,7 +92,7 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-ws/tests/transport.rs').is_file(), 'Packaged WebSocket transport tests missing'
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
     else:
-        for source in ['Cargo.toml', 'src/credentials.rs', 'src/cookies.rs', 'src/jwt.rs', 'src/keyring.rs', 'src/store/postgres.rs', 'migrations/0001_auth.sql']:
+        for source in ['Cargo.toml', 'src/credentials.rs', 'src/cookies.rs', 'src/jwt.rs', 'src/keyring.rs', 'src/sessions.rs', 'src/accounts.rs', 'src/accounts/password.rs', 'src/origins.rs', 'src/origins/policy.rs', 'src/http.rs', 'src/http/request.rs', 'src/http/tests.rs', 'examples/http_parity.rs', 'src/store/postgres.rs', 'migrations/0001_auth.sql']:
             assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged Better Auth foundation missing: {source}'
         assert root.joinpath('crates/implementations/worker/forklaunch-worker-redis/src/bullmq.rs').is_file(), 'Packaged BullMQ adapter missing'
         assert root.joinpath('crates/vendor/bullmq-official/src/worker.rs').is_file(), 'Packaged BullMQ outcome hook missing'

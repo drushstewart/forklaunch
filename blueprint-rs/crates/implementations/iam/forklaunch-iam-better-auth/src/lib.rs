@@ -13,3 +13,6 @@ pub mod sessions;
 pub mod store;
 
 pub mod origins;
+
+#[cfg(feature = "http")]
+pub mod http;

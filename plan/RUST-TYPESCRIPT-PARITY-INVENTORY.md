@@ -318,3 +318,12 @@ against the actual Better Auth matcher and configured HTTP handlers. Wildcard an
 custom schemes, relative redirects, encoded traversal/separators, Cookie header
 presence, null origins, Referer fallback and Fetch Metadata are covered. These
 policies still require wiring into the production raw HTTP adapter.
+
+Nine native raw session/JWT HTTP endpoints now integrate signed-cookie sessions,
+Origin/callback guards, credentialed CORS and public JWKS/token issuance. The
+get-session response emits a verifiable JWT header. A 161-comparison fixture checks
+actual HTTP bodies, errors, persisted state and JWT claims. Live memory and
+restricted-role encrypted PostgreSQL exercise HTTP/MCP startup, discovery/calls,
+authentication, CORS/CSRF and shutdown; secure-cookie extraction/clearing is tested.
+Raw auth endpoints remain outside the registered MCP contract surface. Credential
+HTTP, providers/orgs, custom callbacks and the generated Better Auth preset are open.

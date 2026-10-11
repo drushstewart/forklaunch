@@ -254,6 +254,25 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .unwrap();
     crate::sessions::tests::exercise_sessions(Arc::new(rotated.clone())).await;
     crate::accounts::tests::exercise_credentials(Arc::new(rotated.clone())).await;
+    let cleanup_tenants = vec![tenant.id().to_owned(), other.id().to_owned()];
+    #[cfg(feature = "http")]
+    let cleanup_tenants = {
+        // Raw storage fixtures intentionally contain incomplete session/JWKS
+        // records. Give the live auth service its own complete tenant graph.
+        let http_tenant = TenantContext::new(format!("{role}-http")).unwrap();
+        let http_store = PostgresAuthStore::new(
+            pool.clone(),
+            http_tenant.clone(),
+            key.clone(),
+            AuditContext::system("http-fixture"),
+        )
+        .await
+        .unwrap();
+        crate::http::tests::exercise_http(Arc::new(http_store)).await;
+        let mut tenants = cleanup_tenants;
+        tenants.push(http_tenant.id().to_owned());
+        tenants
+    };
     let mut tx = rotated.begin(true).await.unwrap();
     assert_eq!(
         tx.get(Model::Account, "account-1").await.unwrap().unwrap()["password"],
@@ -274,14 +293,11 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     assert!(tx.get(Model::Session, "session-1").await.is_err());
     tx.commit().await.unwrap();
     for table in ["fl_better_auth.records", "fl_better_auth.audit"] {
-        sqlx::query(&format!(
-            "DELETE FROM {table} WHERE tenant_id=$1 OR tenant_id=$2"
-        ))
-        .bind(tenant.id())
-        .bind(other.id())
-        .execute(&owner)
-        .await
-        .unwrap();
+        sqlx::query(&format!("DELETE FROM {table} WHERE tenant_id=ANY($1)"))
+            .bind(&cleanup_tenants)
+            .execute(&owner)
+            .await
+            .unwrap();
     }
     pool.close().await;
     sqlx::query(&format!("DROP OWNED BY {role}"))

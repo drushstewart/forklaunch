@@ -2,8 +2,9 @@
 
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
-cookies, Ed25519 JWT issuance and public JWKs. It does not yet expose the authentication HTTP API or
-organization endpoints and is not selectable as a CLI module preset.
+cookies, Ed25519 JWT issuance/public JWKs and nine raw session/JWT HTTP routes
+behind the `http` feature. Credential HTTP, provider and organization endpoints
+remain in progress, and it is not selectable as a CLI module preset.
 
 `credentials` uses N=16384, r=16, p=1, a 64-byte derived key, NFKC-normalized
 passwords and a random 16-byte salt encoded as lowercase hex text. The salt text
@@ -45,8 +46,8 @@ and publishes retired keys through the configured 30-day grace period. Both
 memory and real PostgreSQL tests cover concurrent initialization, process/service
 reconstruction, rotation, exact grace expiry and corrupt-public-key rejection.
 The actual-library lifecycle fixture checks stable insertion ties and expired
-key replacement as well. Token/JWKS HTTP endpoints remain to be integrated with
-persistent sessions.
+key replacement as well. The `http` feature integrates token/JWKS HTTP endpoints
+with persistent sessions.
 
 `sessions::SessionService` implements native authoritative session creation,
 one-hour refresh, creation-based freshness, scoped revocation, sign-out and
@@ -54,8 +55,8 @@ transient/expired-session cleanup. Memory and live PostgreSQL lifecycle tests
 pass. The actual configured HTTP fixture compares 48 native response bodies and
 stored states after session operations; credential endpoints seed identical
 records, so this does not claim native sign-up/sign-in. Signed cookie extraction
-is exercised at the fixture boundary; production HTTP cookie headers/clearing,
-CSRF/Origin guards and the CLI preset remain to be integrated. Session queries
+is exercised at the fixture boundary. The `http` feature integrates production
+session cookie headers/clearing and CSRF/Origin guards; the CLI preset remains open. Session queries
 currently use the explicitly bounded store scan; indexed lookup remains open.
 
 `accounts::CredentialService` provides atomic native email signup/signin. Scrypt
@@ -83,3 +84,30 @@ including encoded separators, traversal, forged origins and browser navigation.
 The adapter must apply this policy before mutations and separately validate any
 GET callback URLs; dynamic trusted-origin functions and disabled guards are not
 part of the configured module.
+
+`http::AuthHttp` exposes `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
+`/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token` and `/jwks`.
+It authenticates signed cookies against authoritative tenant-bound storage,
+refreshes sessions, emits verified JWT headers and publishes only public keys.
+Mutation guards reject forged/missing origins and unsafe callbacks. Revoke/logout
+JSON bodies and media errors are validated, and all browser auth cookies are
+cleared using separate Set-Cookie headers. Unlike a wildcard exposed-header policy,
+`cors_layer()` supports credentialed browsers and explicitly exposes `set-auth-jwt`.
+Install it on the **outer** framework router when mounting the raw namespace:
+
+```rust,ignore
+let auth = AuthHttp::new(store, public_url, secret, trusted_origins)?;
+let cors = auth.cors_layer();
+let service = ForkLaunchRouter::new(service_info)
+    .nest_internal("/api/auth", auth.router())
+    .with_config(RouterConfig { cors: Some(cors), ..RouterConfig::default() });
+```
+
+The raw namespace stays outside OpenAPI, SDK and MCP contracts. The fixture
+compares 161 actual HTTP body/storage/header/JWT outcomes, including transient
+sessions, refresh suppression, media/body errors and scoped revocation. Live TCP
+HTTP/MCP tests verify discovery/invocation, cookies, credentialed CORS, signatures,
+CSRF and graceful shutdown using memory and encrypted restricted-role PostgreSQL.
+HTTPS extraction requires the secure cookie prefix and clears secure attributes.
+Credential/provider/org handlers, custom callbacks and module generation remain
+open; these nine routes do not constitute the complete Better Auth preset.

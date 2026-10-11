@@ -8,9 +8,12 @@ repository.workspace = true
 
 [features]
 default = []
+http = ["dep:axum", "dep:tower-http"]
 postgres = ["dep:sqlx", "dep:forklaunch-core"]
 
 [dependencies]
+axum = { version = "0.8", optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
 base64 = "0.22"
 hex = "0.4"
@@ -34,7 +37,16 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["mcp"] }
+forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core" }
+forklaunch-contract = { path = "../../../../../framework-rs/crates/forklaunch-contract" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "http_parity"
+required-features = ["http"]

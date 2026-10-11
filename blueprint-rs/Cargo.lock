@@ -1248,15 +1248,19 @@ dependencies = [
 name = "forklaunch-iam-better-auth"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "base64 0.22.1",
  "chrono",
+ "forklaunch-axum",
  "forklaunch-blueprint-core",
+ "forklaunch-contract",
  "forklaunch-core",
  "hex",
  "hmac",
  "percent-encoding",
  "rand_core 0.6.4",
  "regex",
+ "reqwest",
  "ring",
  "scrypt",
  "serde",
@@ -1265,6 +1269,8 @@ dependencies = [
  "sqlx",
  "subtle",
  "tokio",
+ "tower",
+ "tower-http",
  "unicode-normalization",
  "url",
  "uuid",
