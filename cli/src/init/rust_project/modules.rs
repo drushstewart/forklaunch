@@ -530,7 +530,7 @@ fn ensure_billing_compose(
     }
     if kind == BuiltinModule::BillingStripe {
         for key in ["STRIPE_SECRET_KEY", "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET",
-            "PLATFORM_GATEWAY_URL", "INSTANCE_ID", "INSTANCE_HMAC_KEY"] {
+            "PLATFORM_GATEWAY_URL", "INSTANCE_ID", "INSTANCE_HMAC_KEY", "FORKLAUNCH_LOCAL_GATEWAY_MOCK"] {
             env.entry(key.to_owned())
                 .or_insert_with(|| format!("${{{key}:-}}"));
         }

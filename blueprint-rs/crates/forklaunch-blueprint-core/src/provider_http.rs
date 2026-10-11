@@ -35,13 +35,36 @@ impl ProviderHttpClient {
     /// # Errors
     /// Rejects remote plaintext, credentials, queries, fragments and invalid bounds.
     pub fn new(base: &str, timeout: Duration, max_response_bytes: usize) -> BlueprintResult<Self> {
+        Self::with_local_mock_policy(base, timeout, max_response_bytes, false)
+    }
+    /// Explicit development-only transport to the fixed Docker gateway mock.
+    /// Production callers should use `new`, which requires remote TLS.
+    /// # Errors
+    /// Rejects invalid timeout/response bounds or client construction failures.
+    pub fn local_gateway_mock(
+        timeout: Duration,
+        max_response_bytes: usize,
+    ) -> BlueprintResult<Self> {
+        Self::with_local_mock_policy(
+            "http://gateway-mock:8080",
+            timeout,
+            max_response_bytes,
+            true,
+        )
+    }
+    fn with_local_mock_policy(
+        base: &str,
+        timeout: Duration,
+        max_response_bytes: usize,
+        local_mock: bool,
+    ) -> BlueprintResult<Self> {
         let base = Url::parse(base).map_err(|_| config_error())?;
         let loopback = base.host_str().is_some_and(|h| {
             h == "localhost"
                 || h.parse::<std::net::IpAddr>()
                     .is_ok_and(|ip| ip.is_loopback())
         });
-        if !(base.scheme() == "https" || (base.scheme() == "http" && loopback))
+        if !(base.scheme() == "https" || (base.scheme() == "http" && (loopback || local_mock)))
             || base.host_str().is_none()
             || !base.username().is_empty()
             || base.password().is_some()
@@ -217,6 +240,22 @@ mod tests {
         ] {
             assert!(ProviderHttpClient::new(base, Duration::from_secs(15), 1024).is_err());
         }
+        assert!(
+            ProviderHttpClient::new("http://gateway-mock:8080", Duration::from_secs(15), 1024)
+                .is_err()
+        );
+        let local_mock =
+            ProviderHttpClient::local_gateway_mock(Duration::from_secs(15), 1024).unwrap();
+        assert_eq!(
+            local_mock
+                .request(Method::GET, &["instance-gateway", "models"])
+                .unwrap()
+                .build()
+                .unwrap()
+                .url()
+                .as_str(),
+            "http://gateway-mock:8080/instance-gateway/models"
+        );
         let client = ProviderHttpClient::new(
             "http://127.0.0.1:1234/prefix/",
             Duration::from_secs(15),

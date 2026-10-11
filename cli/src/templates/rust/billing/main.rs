@@ -62,8 +62,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let gateway = env::var("PLATFORM_GATEWAY_URL").ok().filter(|value|!value.is_empty());
     let instance_id = env::var("INSTANCE_ID").ok().filter(|value|!value.is_empty());
     let instance_key = env::var("INSTANCE_HMAC_KEY").ok().filter(|value|!value.is_empty());
-    let client = if let (Some(gateway),Some(instance_id),Some(key)) = (&gateway,&instance_id,&instance_key) {
-        StripeBillingClient::managed(gateway,instance_id.clone(),key.clone())?
+    let client = if gateway.is_some() && instance_id.is_some() && instance_key.is_some() {
+        StripeBillingClient::with_gateway(forklaunch_blueprint_core::instance_gateway::InstanceGatewayClient::from_env()?)
     } else {
         if gateway.is_some() || instance_id.is_some() { return Err("Managed Stripe requires PLATFORM_GATEWAY_URL, INSTANCE_ID and INSTANCE_HMAC_KEY together".into()); }
         let secret = env::var("STRIPE_API_KEY").ok().filter(|value|!value.is_empty()).or_else(||env::var("STRIPE_SECRET_KEY").ok().filter(|value|!value.is_empty())).ok_or(()).map_err(|_| "STRIPE_API_KEY or STRIPE_SECRET_KEY is required outside managed mode")?;

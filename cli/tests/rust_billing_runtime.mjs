@@ -119,6 +119,7 @@ try{
  const ignoredKeys=await start(stripeBinary,'a',{STRIPE_API_KEY:'must-ignore-local-api-key',STRIPE_SECRET_KEY:'must-ignore-local-secret-key',PLATFORM_GATEWAY_URL:`http://127.0.0.1:${provider.address().port}/managed/`,INSTANCE_ID:'instance_fixture'});
  await call(ignoredKeys.base,`/plan/${managedPlan.id}`);await stop(ignoredKeys);
  await assert.rejects(start(stripeBinary,'a',{PLATFORM_GATEWAY_URL:`http://127.0.0.1:${provider.address().port}/managed/`,INSTANCE_ID:undefined,INSTANCE_HMAC_KEY:undefined,STRIPE_SECRET_KEY:undefined}),/Managed Stripe requires/);
+ await assert.rejects(start(stripeBinary,'a',{PLATFORM_GATEWAY_URL:`http://127.0.0.1:${provider.address().port}/managed/`,INSTANCE_ID:'instance_fixture',FORKLAUNCH_LOCAL_GATEWAY_MOCK:'invalid'}),/Invalid instance gateway/);
 
  for(const config of [{MCP_ENABLED:'false'},{MCP_ENABLED:'true',MCP_PATH:'/tools'}]){const info=await start(baseBinary,'a',config);assert.equal((await fetch(info.base+'/health')).status,200);assert.equal((await fetch(info.base+'/mcp',{method:'POST'})).status,404);if(config.MCP_ENABLED==='true')await probeMcp(info.base,[],config.MCP_PATH);await stop(info);}
  assert.ok(providerCalls>20);

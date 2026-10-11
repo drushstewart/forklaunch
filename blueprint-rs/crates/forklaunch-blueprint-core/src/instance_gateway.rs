@@ -28,6 +28,55 @@ impl InstanceGatewayClient {
     /// # Errors
     /// Rejects invalid credentials, remote plaintext and unsafe gateway URLs.
     pub fn new(gateway_url: &str, instance_id: String, hmac_key: String) -> BlueprintResult<Self> {
+        let http = ProviderHttpClient::new(
+            gateway_url.trim_end_matches('/'),
+            Duration::from_secs(15),
+            1024 * 1024,
+        )?;
+        Self::with_http(instance_id, hmac_key, http)
+    }
+    /// Explicit development profile for the fixed `http://gateway-mock:8080`
+    /// Docker service. Other remote plaintext origins remain rejected.
+    /// # Errors
+    /// Rejects invalid instance credentials or transport configuration.
+    pub fn local_mock(instance_id: String, hmac_key: String) -> BlueprintResult<Self> {
+        Self::with_http(
+            instance_id,
+            hmac_key,
+            ProviderHttpClient::local_gateway_mock(Duration::from_secs(15), 1024 * 1024)?,
+        )
+    }
+    /// Resolves trusted managed settings, with an explicit local-mock opt-in.
+    /// `FORKLAUNCH_LOCAL_GATEWAY_MOCK=true` permits only the fixed Docker mock;
+    /// all other gateway URLs retain the normal TLS/loopback policy.
+    /// # Errors
+    /// Rejects missing settings, invalid credentials/URLs or invalid opt-in values.
+    pub fn from_env() -> BlueprintResult<Self> {
+        fn setting(name: &str) -> BlueprintResult<String> {
+            std::env::var(name)
+                .ok()
+                .filter(|value| !value.is_empty())
+                .ok_or_else(invalid)
+        }
+        let gateway_url = setting("PLATFORM_GATEWAY_URL")?;
+        let instance_id = setting("INSTANCE_ID")?;
+        let hmac_key = setting("INSTANCE_HMAC_KEY")?;
+        let local_mock = match std::env::var("FORKLAUNCH_LOCAL_GATEWAY_MOCK").as_deref() {
+            Ok("true" | "1") => true,
+            Ok("" | "false" | "0") | Err(std::env::VarError::NotPresent) => false,
+            _ => return Err(invalid()),
+        };
+        if local_mock && gateway_url.trim_end_matches('/') == "http://gateway-mock:8080" {
+            Self::local_mock(instance_id, hmac_key)
+        } else {
+            Self::new(&gateway_url, instance_id, hmac_key)
+        }
+    }
+    fn with_http(
+        instance_id: String,
+        hmac_key: String,
+        http: ProviderHttpClient,
+    ) -> BlueprintResult<Self> {
         if instance_id.is_empty()
             || instance_id.len() > 256
             || instance_id
@@ -39,11 +88,6 @@ impl InstanceGatewayClient {
         {
             return Err(invalid());
         }
-        let http = ProviderHttpClient::new(
-            gateway_url.trim_end_matches('/'),
-            Duration::from_secs(15),
-            1024 * 1024,
-        )?;
         let request = http
             .request(Method::GET, &["instance-gateway", "_"])?
             .build()

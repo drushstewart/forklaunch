@@ -98,14 +98,20 @@ impl StripeBillingClient {
         instance_id: String,
         hmac_key: String,
     ) -> BlueprintResult<Self> {
-        Ok(Self {
-            transport: BillingTransport::Managed(InstanceGatewayClient::new(
-                gateway_url,
-                instance_id,
-                hmac_key,
-            )?),
+        Ok(Self::with_gateway(InstanceGatewayClient::new(
+            gateway_url,
+            instance_id,
+            hmac_key,
+        )?))
+    }
+    /// Uses a previously validated gateway transport, including the explicit
+    /// local Docker mock profile. No vendor key is attached.
+    #[must_use]
+    pub fn with_gateway(gateway: InstanceGatewayClient) -> Self {
+        Self {
+            transport: BillingTransport::Managed(gateway),
             api_version: Arc::new(STRIPE_API_VERSION.to_owned()),
-        })
+        }
     }
     /// # Errors
     /// Rejects malformed server-owned version configuration.
