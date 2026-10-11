@@ -733,6 +733,7 @@ pub struct JobOptions {
     pub remove_on_fail: Option<RemoveOnFinish>,
 
     /// Maximum log entries to keep.
+    #[cfg_attr(feature = "forklaunch-job-options", serde(alias = "kl"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keep_logs: Option<u32>,
 

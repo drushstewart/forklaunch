@@ -57,6 +57,73 @@ try{
   await producer.queue.close();handles.pop();
  }
  for(const nativeProduces of [false,true]){
+  const queueName=`advanced-defaults-${nativeProduces}`,opts=options('fixed');
+  const defaults={jobId:'explicit-default-id',stackTraceLimit:1,keepLogs:2,attempts:99,backoff:{type:'fixed',delay:999},timestamp:1234567890000};
+  opts.queueOptions.defaultJobOptions=defaults;
+  const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+  if(nativeProduces){
+   const result=await native({mode:'produce',queue:queueName,events:[{id:'first',logRows:['one','two','three']},{id:'duplicate',logRows:['one','two','three']}],defaultJobOptions:defaults,backoff:'fixed'});
+   assert.equal(new Set(result.ids).size,2);assert.ok(result.ids.every(id=>id!=='explicit-default-id'));
+  }else{
+   await producer.enqueueJob({id:'first',logRows:['one','two','three']});await producer.enqueueBatchJobs([{id:'duplicate',logRows:['one','two','three']}]);
+  }
+  const jobs=await producer.queue.getJobs(['waiting']);assert.equal(jobs.length,2);
+  assert.ok(jobs.every(job=>job.id!=='explicit-default-id'));assert.deepEqual(jobs.map(job=>job.data.id).sort(),['duplicate','first']);
+  assert.equal(jobs[0].opts.stackTraceLimit,1);assert.equal(jobs[0].opts.keepLogs,2);
+  assert.equal(jobs[0].opts.timestamp,defaults.timestamp);assert.equal(jobs[0].timestamp,defaults.timestamp);
+  assert.equal(jobs[0].opts.attempts,3);assert.deepEqual(jobs[0].opts.backoff,{type:'fixed',delay:20});
+  if(nativeProduces){
+   let processed=0;const consumer=new BullMqWorkerConsumer(queueName,opts,async values=>{
+    const job=jobs.find(job=>job.data.id===values[0].id);for(const row of values[0].logRows)await job.log(row);processed++;
+   },()=>{});
+   handles.push(()=>consumer.close());await consumer.start();await waitFor(()=>processed===2);await consumer.close();handles.pop();
+  }else{const result=await native({mode:'consume',queue:queueName,expected:2});assert.equal(result.completed,2);}
+  for(const job of jobs){const logs=await producer.queue.getJobLogs(job.id);assert.deepEqual(logs.logs,['two','three']);assert.equal(logs.count,2);}
+  await producer.queue.close();handles.pop();
+ }
+ for(const nativeConsumes of [false,true]){
+  const queueName=`concurrency-${nativeConsumes}`,opts=options('fixed');opts.queueOptions.concurrency=2;
+  const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+  await producer.enqueueBatchJobs(Array.from({length:5},(_,index)=>({id:`parallel-${index}`,sleepMs:100})));
+  if(nativeConsumes){const result=await native({mode:'consume',queue:queueName,expected:5,concurrency:2});assert.equal(result.peakConcurrency,2);assert.equal(result.completed,5);}
+  else{
+   let active=0,peak=0,processed=0;const consumer=new BullMqWorkerConsumer(queueName,opts,async values=>{
+    active++;peak=Math.max(peak,active);await new Promise(resolve=>setTimeout(resolve,values[0].sleepMs));active--;processed++;
+   },()=>{});
+   handles.push(()=>consumer.close());await consumer.start();await waitFor(()=>processed===5);await consumer.close();handles.pop();assert.equal(peak,2);
+  }
+  await producer.queue.close();handles.pop();
+ }
+ for(const nativeProduces of [false,true]){
+  const queueName=`size-limit-${nativeProduces}`,opts=options('fixed');opts.queueOptions.defaultJobOptions={sizeLimit:1};
+  const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+  if(nativeProduces){
+   const result=await native({mode:'produceRejected',queue:queueName,event:{id:'too-large'},defaultJobOptions:{sizeLimit:1}});
+   assert.equal(result.error,'worker_storage_error');assert.equal(result.counts.waiting,0);
+  }else await assert.rejects(producer.enqueueJob({id:'too-large'}),/size/i);
+  assert.equal(await producer.queue.getWaitingCount(),0);
+  await producer.queue.close();handles.pop();
+ }
+ for(const nativeProduces of [false,true])for(const defaults of [{lifo:true},{priority:5},{delay:200}]){
+  const kind=Object.keys(defaults)[0],queueName=`ordering-${nativeProduces}-${kind}`,opts=options('fixed');
+  opts.queueOptions.defaultJobOptions=defaults;
+  const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+  const events=[{id:'one'},{id:'two'},{id:'three'}];
+  if(nativeProduces)await native({mode:'produce',queue:queueName,events,defaultJobOptions:defaults});
+  else{await producer.enqueueJob(events[0]);await producer.enqueueBatchJobs(events.slice(1));}
+  const stored=await producer.queue.getJobs(['waiting','prioritized','delayed']);assert.equal(stored.length,3);
+  for(const job of stored)assert.equal(job.opts[kind],defaults[kind]);
+  let observed;
+  if(nativeProduces){
+   observed=[];const consumer=new BullMqWorkerConsumer(queueName,opts,async values=>observed.push(values[0].id),()=>{});
+   handles.push(()=>consumer.close());await consumer.start();await waitFor(()=>observed.length===3);await consumer.close();handles.pop();
+  }else{
+   const result=await native({mode:'consume',queue:queueName,expected:3});observed=result.attempts.map(attempt=>attempt.event.id);
+  }
+  assert.deepEqual(observed,kind==='lifo'?['three','two','one']:['one','two','three']);
+  await producer.queue.close();handles.pop();
+ }
+ for(const nativeProduces of [false,true]){
   const queueName=`retention-${nativeProduces}`,events=[{id:'ok-1'},{id:'ok-2'},{id:'fail-1',failAttempts:10},{id:'fail-2',failAttempts:10}];
   const opts=options('fixed');opts.retries=1;opts.queueOptions.defaultJobOptions={removeOnComplete:1,removeOnFail:1};
   const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
@@ -161,7 +228,7 @@ try{
  const duplicate='duplicate-event-ids';const duplicates=await native({mode:'produce',queue:duplicate,events:[{id:'same',order:1},{id:'same',order:2}]});assert.equal(new Set(duplicates.ids).size,2);assert.equal(duplicates.events.length,2);
  await assert.rejects(redisTransport(url).command('GET','outside-bullmq-fixture'));await assert.rejects(redisTransport(url).command('FLUSHDB'));
  assert.deepEqual(await native({mode:'consumeDenied',queue:'denied'},{REDIS_KEY_PREFIX:'foreign-bullmq-prefix:'}),{error:'worker_tenant_isolation_error'});
- console.log('PASS actual TS/native BullMQ wire interoperability: both producer/consumer directions, batches, fixed/exponential backoff, per-attempt failure callbacks, terminal failures, default/count/age-based lazy retention, bidirectional stalled recovery and retained/removed preprocessor failure callbacks and start limits, removed-job/drain failure callbacks, duplicate event IDs, waiting/active inspection and restricted ACL/consumer fail-stop');
+ console.log('PASS actual TS/native BullMQ wire interoperability: both producer/consumer directions, batches, fixed/exponential backoff, per-attempt failure callbacks, terminal failures, metadata defaults, size limits, log retention, delay/priority/LIFO ordering, bounded concurrency, default/count/age-based lazy retention, bidirectional stalled recovery and retained/removed preprocessor failure callbacks and start limits, removed-job/drain failure callbacks, duplicate event IDs, waiting/active inspection and restricted ACL/consumer fail-stop');
 }finally{
  for(const close of handles.reverse())await close();
  let cursor='0';do{const [next,keys]=await transport.command('SCAN',cursor,'MATCH',`${prefix}:*`,'COUNT',1000);if(keys.length)await transport.command('DEL',...keys);cursor=String(next);}while(cursor!=='0');

@@ -585,6 +585,19 @@ impl Queue {
         }
 
         // Encode as msgpack map
+        #[cfg(feature = "forklaunch-job-options")]
+        for (key, value) in [
+            ("kl", opts.keep_logs.map(u64::from)),
+            ("stackTraceLimit", opts.stack_trace_limit.map(u64::from)),
+            ("timestamp", opts.timestamp),
+            ("sizeLimit", opts.size_limit.map(|value| value as u64)),
+        ] {
+            if let Some(value) = value {
+                let mut encoded = Vec::new();
+                write_uint(&mut encoded, value).unwrap();
+                entries.push((key, encoded));
+            }
+        }
         let mut buf = Vec::with_capacity(64);
         write_map_len(&mut buf, entries.len() as u32).unwrap();
         for (key, val) in &entries {

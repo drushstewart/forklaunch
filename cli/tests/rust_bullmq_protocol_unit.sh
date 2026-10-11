@@ -11,5 +11,5 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 export REDIS_URL="redis://$(docker port "$PROTOCOL_REDIS_CONTAINER" 6379/tcp)/"
-CARGO_INCREMENTAL=0 cargo test --manifest-path "$REPO_ROOT/blueprint-rs/crates/vendor/bullmq-official/Cargo.toml" --locked --lib --features forklaunch-outcome-data --target-dir "${CARGO_TARGET_DIR:-$REPO_ROOT/blueprint-rs/target}" -- --test-threads=1
+CARGO_INCREMENTAL=0 cargo test --manifest-path "$REPO_ROOT/blueprint-rs/crates/vendor/bullmq-official/Cargo.toml" --locked --lib --features forklaunch-outcome-data,forklaunch-job-options --target-dir "${CARGO_TARGET_DIR:-$REPO_ROOT/blueprint-rs/target}" -- --test-threads=1
 echo 'PASS pinned BullMQ protocol library tests against isolated Redis'

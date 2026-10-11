@@ -967,3 +967,5 @@ Native typed TypeScript HTTP SDK checkpoint: the same CLI model/runtime now hand
 
 
 - [x] Validate official BullMQ lazy age retention in both TS/native producer/consumer directions and abandoned-job recovery across languages, including maximum stalled/start attempts. Preserve original failure events even when preprocessor failures immediately remove their jobs, through a feature-gated outcome-data hook in a pinned vendored protocol crate. Keep existing failure notifications, Redis scripts and wire semantics; retain upstream MIT/provenance metadata and package the source in generated apps. Broader advanced worker options remain a separate gate.
+
+- [x] Carry supported BullMQ queue defaults through the producer, preserving actual TypeScript retry/backoff overrides and ignored default job IDs. Persist job metadata and read Node log-limit aliases through an optional protocol patch. Actual cross-language metadata, size rejection, log retention, delay/priority/LIFO order and concurrency checks pass alongside native tests, 66 isolated protocol tests, generated worker lifecycle and HTTP/MCP startup. Broader advanced options remain open.

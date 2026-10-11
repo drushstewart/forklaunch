@@ -1,9 +1,21 @@
 use forklaunch_worker_redis::bullmq::{BullMqConsumer, BullMqOptions, BullMqProducer, protocol};
 use serde_json::{Value, json};
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 fn options(input: &Value) -> Result<BullMqOptions, Box<dyn std::error::Error>> {
     let mut options = BullMqOptions::new(&std::env::var("FORKLAUNCH_TEST_REDIS_URL")?);
+    if let Some(defaults) = input.get("defaultJobOptions") {
+        options.queue.default_job_options = serde_json::from_value(defaults.clone())?;
+    }
+    if let Some(concurrency) = input["concurrency"].as_u64() {
+        options.worker.concurrency = usize::try_from(concurrency)?;
+    }
     options.queue.prefix = "caller-override".into();
     options.retries = u32::try_from(input["retries"].as_u64().unwrap_or(3))?;
     let interval = input["interval"].as_u64().unwrap_or(20);
@@ -87,6 +99,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             json!({"ids":ids,"events":producer.peek_events().await?})
         }
         "peek" => json!({"events":producer.peek_events().await?}),
+        "produceRejected" => {
+            let error = producer
+                .enqueue_job(input["event"].clone())
+                .await
+                .unwrap_err();
+            json!({"error":error.code,"counts":producer.inner().get_job_counts().await?})
+        }
         "abandon" => {
             let worker = BullMqConsumer::connect(
                 name,
@@ -118,12 +137,27 @@ async fn consume(
 ) -> Result<Value, Box<dyn std::error::Error>> {
     let failures = std::sync::Mutex::new(Vec::new());
     let attempts = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let active = Arc::new(AtomicUsize::new(0));
+    let high_water = Arc::new(AtomicUsize::new(0));
+    let observed_peak = high_water.clone();
     let captured = attempts.clone();
     let worker = BullMqConsumer::connect(
         name,
         move |job: protocol::Job, _token| {
             let captured = captured.clone();
+            let active = active.clone();
+            let high_water = high_water.clone();
             async move {
+                if let Some(rows) = job.data()["logRows"].as_array() {
+                    for row in rows {
+                        job.log(row.as_str().ok_or_else(|| {
+                            protocol::Error::ProcessingError("log_row_required".into())
+                        })?)
+                        .await?;
+                    }
+                }
+                let count = active.fetch_add(1, Ordering::SeqCst) + 1;
+                high_water.fetch_max(count, Ordering::SeqCst);
                 captured
                     .lock()
                     .await
@@ -131,6 +165,7 @@ async fn consume(
                 if let Some(delay) = job.data()["sleepMs"].as_u64() {
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                 }
+                active.fetch_sub(1, Ordering::SeqCst);
                 if u64::from(job.attempts_made()) < job.data()["failAttempts"].as_u64().unwrap_or(0)
                 {
                     return Err(protocol::Error::ProcessingError("fixture_failure".into()));
@@ -183,6 +218,6 @@ async fn consume(
         .await?;
     let counts = producer.inner().get_job_counts().await?;
     Ok(
-        json!({"peek":peek,"attempts":*attempts.lock().await,"failures":*failures.lock().unwrap(),"completed":counts.completed,"failed":counts.failed}),
+        json!({"peek":peek,"attempts":*attempts.lock().await,"failures":*failures.lock().unwrap(),"completed":counts.completed,"failed":counts.failed,"peakConcurrency":observed_peak.load(Ordering::SeqCst)}),
     )
 }

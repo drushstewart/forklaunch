@@ -51,7 +51,11 @@ impl BullMqOptions {
         Ok(self)
     }
     fn job_options(&self) -> JobOptions {
-        JobOptions::default()
+        let mut defaults = self.queue.default_job_options.clone();
+        // The TypeScript Queue overwrites a default jobId with the explicit
+        // add/addBulk jobId, which this wrapper leaves unset.
+        defaults.job_id = None;
+        defaults
             .attempts(self.retries)
             .backoff(self.backoff.clone())
     }
