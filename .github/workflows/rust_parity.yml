@@ -24,6 +24,8 @@ on:
       - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
+      - 'cli/tests/rust_billing_stripe_client_parity.mjs'
+      - 'cli/tests/rust_billing_stripe_services_parity.mjs'
       - 'cli/tests/rust_ecommerce_catalog_parity.mjs'
       - 'cli/tests/rust_ecommerce_order_events_parity.mjs'
       - 'cli/tests/rust_ecommerce_contracts_parity.mjs'
@@ -61,6 +63,8 @@ on:
       - 'cli/tests/rust_sms_provider_parity.mjs'
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
+      - 'cli/tests/rust_billing_stripe_client_parity.mjs'
+      - 'cli/tests/rust_billing_stripe_services_parity.mjs'
       - 'cli/tests/rust_ecommerce_catalog_parity.mjs'
       - 'cli/tests/rust_ecommerce_order_events_parity.mjs'
       - 'cli/tests/rust_ecommerce_contracts_parity.mjs'
@@ -185,6 +189,12 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_sms_provider_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_stripe_services_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_stripe_client_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_base_parity.mjs

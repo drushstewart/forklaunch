@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
 
+pub mod client;
+pub mod services;
+
 use forklaunch_billing_interface::{BillingService, CheckoutSession, Customer, Subscription};
-use forklaunch_blueprint_core::{AuditContext, BlueprintResult, Page, PageRequest};
+use forklaunch_blueprint_core::{AuditContext, BlueprintError, BlueprintResult, Page, PageRequest};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StripeBillingConfig {
@@ -56,48 +59,40 @@ impl StripeBillingAdapter {
     pub fn new(config: StripeBillingConfig) -> Self {
         Self { config }
     }
-
-    #[must_use]
-    pub fn checkout_url(&self, customer_id: &str, plan_id: &str) -> String {
-        format!(
-            "https://checkout.stripe.com/c/pay/{customer_id}/{plan_id}?success_url={}&cancel_url={}",
-            self.config.checkout_success_url, self.config.checkout_cancel_url
-        )
-    }
 }
 
+// The old synchronous reference interface cannot perform authenticated async
+// provider calls. Fail closed instead of returning fabricated checkout sessions.
 impl BillingService for StripeBillingAdapter {
     fn get_customer(&self, _id: &str) -> BlueprintResult<Option<Customer>> {
-        Ok(None)
+        Err(async_service_required())
     }
-
     fn list_customers(&self, _request: PageRequest) -> BlueprintResult<Page<Customer>> {
-        Ok(Page::new(Vec::new()))
+        Err(async_service_required())
     }
-
     fn list_subscriptions(&self, _customer_id: &str) -> BlueprintResult<Vec<Subscription>> {
-        Ok(Vec::new())
+        Err(async_service_required())
     }
-
     fn create_checkout_session(
         &self,
-        customer_id: &str,
-        plan_id: &str,
-        context: &AuditContext,
+        _customer_id: &str,
+        _plan_id: &str,
+        _context: &AuditContext,
     ) -> BlueprintResult<CheckoutSession> {
-        Ok(CheckoutSession {
-            id: format!("stripe_checkout_{}", context.correlation_id),
-            customer_id: customer_id.to_owned(),
-            url: self.checkout_url(customer_id, plan_id),
-        })
+        Err(async_service_required())
     }
+}
+fn async_service_required() -> BlueprintError {
+    BlueprintError::new(
+        "billing_async_service_required",
+        "Use services::StripeBillingService for authenticated provider operations",
+    )
 }
 
 /// Stripe webhook signature verification (the `t=...,v1=<hex>` HMAC-SHA256 scheme).
 pub mod webhook {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
-    use subtle::ConstantTimeEq;
 
     type HmacSha256 = Hmac<Sha256>;
 
@@ -113,33 +108,16 @@ pub mod webhook {
         to_hex(&mac.finalize().into_bytes())
     }
 
-    /// Verifies a Stripe `Stripe-Signature` header against the raw request body.
-    ///
-    /// Parses the `t` (timestamp) and one or more `v1` signatures, recomputes the
-    /// HMAC over `"{t}.{payload}"`, and compares in constant time.
+    pub use forklaunch_blueprint_core::stripe_webhook::StripeWebhookVerifier;
+
+    /// Verifies the exact raw body with Stripe's 300-second replay window.
     #[must_use]
     pub fn verify(secret: &[u8], payload: &str, signature_header: &str) -> bool {
-        let mut timestamp = None;
-        let mut signatures = Vec::new();
-        for part in signature_header.split(',') {
-            match part.split_once('=') {
-                Some(("t", value)) => timestamp = Some(value.trim()),
-                Some(("v1", value)) => signatures.push(value.trim()),
-                _ => {}
-            }
-        }
-
-        let Some(timestamp) = timestamp else {
+        let Ok(secret) = std::str::from_utf8(secret) else {
             return false;
         };
-        let expected = sign(secret, timestamp, payload);
-        signatures
-            .iter()
-            .any(|signature| constant_time_eq(signature.as_bytes(), expected.as_bytes()))
-    }
-
-    fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
-        left.len() == right.len() && bool::from(left.ct_eq(right))
+        StripeWebhookVerifier::new(secret.to_owned())
+            .is_ok_and(|verifier| verifier.verify(payload.as_bytes(), signature_header))
     }
 
     fn to_hex(bytes: &[u8]) -> String {
@@ -159,7 +137,11 @@ mod tests {
     fn stripe_webhook_signatures_verify_and_reject() {
         let secret = b"whsec_test";
         let payload = r#"{"id":"evt_1","type":"customer.subscription.updated"}"#;
-        let timestamp = "1700000000";
+        let timestamp = &std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string();
         let signature = webhook::sign(secret, timestamp, payload);
         let header = format!("t={timestamp},v1={signature}");
 
@@ -168,6 +150,20 @@ mod tests {
         assert!(!webhook::verify(secret, "{}", &header));
         // wrong secret fails
         assert!(!webhook::verify(b"whsec_other", payload, &header));
+        let expired = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - 301;
+        let expired = expired.to_string();
+        assert!(!webhook::verify(
+            secret,
+            payload,
+            &format!(
+                "t={expired},v1={}",
+                webhook::sign(secret, &expired, payload)
+            )
+        ));
         // missing timestamp fails
         assert!(!webhook::verify(
             secret,
@@ -177,14 +173,17 @@ mod tests {
     }
 
     #[test]
-    fn stripe_adapter_builds_checkout_sessions() {
+    fn legacy_adapter_cannot_fabricate_provider_results() {
         let adapter = StripeBillingAdapter::new(StripeBillingConfig::new("STRIPE_WEBHOOK_SECRET"));
-
-        let session = adapter
-            .create_checkout_session("customer_1", "pro", &AuditContext::system("corr_1"))
-            .expect("checkout should be created");
-
-        assert_eq!(session.id, "stripe_checkout_corr_1");
-        assert!(session.url.contains("customer_1/pro"));
+        assert!(adapter.get_customer("customer_1").is_err());
+        assert!(adapter.list_customers(PageRequest::first_page(10)).is_err());
+        assert!(adapter.list_subscriptions("customer_1").is_err());
+        assert_eq!(
+            adapter
+                .create_checkout_session("customer_1", "pro", &AuditContext::system("corr_1"))
+                .unwrap_err()
+                .code,
+            "billing_async_service_required"
+        );
     }
 }

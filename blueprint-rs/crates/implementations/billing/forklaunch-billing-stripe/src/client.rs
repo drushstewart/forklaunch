@@ -1,0 +1,340 @@
+//! Bounded Stripe billing transport. API version matches the repository's Stripe
+//! SDK 22.6.2; mutation retries are disabled to avoid duplicate provider effects.
+use forklaunch_blueprint_core::{
+    BlueprintError, BlueprintResult,
+    provider_http::{ProviderHttpClient, provider_status_error},
+};
+use reqwest::Method;
+use serde_json::Value;
+use std::{sync::Arc, time::Duration};
+use zeroize::Zeroizing;
+pub const STRIPE_API_VERSION: &str = "2026-08-26.dahlia";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StripeResource {
+    Plan,
+    Subscription,
+    CheckoutSession,
+    PaymentLink,
+    BillingPortal,
+}
+impl StripeResource {
+    const fn path(self) -> &'static [&'static str] {
+        match self {
+            Self::Plan => &["v1", "plans"],
+            Self::Subscription => &["v1", "subscriptions"],
+            Self::CheckoutSession => &["v1", "checkout", "sessions"],
+            Self::PaymentLink => &["v1", "payment_links"],
+            Self::BillingPortal => &["v1", "billing_portal", "sessions"],
+        }
+    }
+}
+#[derive(Clone)]
+pub struct StripeBillingClient {
+    http: ProviderHttpClient,
+    secret: Arc<Zeroizing<String>>,
+    api_version: Arc<String>,
+}
+impl std::fmt::Debug for StripeBillingClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StripeBillingClient")
+            .field("http", &self.http)
+            .field("api_version", &self.api_version)
+            .finish_non_exhaustive()
+    }
+}
+impl StripeBillingClient {
+    /// # Errors
+    /// Rejects missing credentials and invalid transport configuration.
+    pub fn new(secret: String) -> BlueprintResult<Self> {
+        Self::with_transport(
+            secret,
+            ProviderHttpClient::new(
+                "https://api.stripe.com",
+                Duration::from_secs(15),
+                1024 * 1024,
+            )?,
+        )
+    }
+    /// Uses a trusted HTTPS proxy or explicit loopback fixture.
+    /// # Errors
+    /// Rejects missing/control-containing credentials.
+    pub fn with_transport(secret: String, http: ProviderHttpClient) -> BlueprintResult<Self> {
+        if secret.is_empty() || secret.bytes().any(|byte| byte.is_ascii_control()) {
+            return Err(invalid_config());
+        }
+        Ok(Self {
+            http,
+            secret: Arc::new(Zeroizing::new(secret)),
+            api_version: Arc::new(STRIPE_API_VERSION.to_owned()),
+        })
+    }
+    /// # Errors
+    /// Rejects malformed server-owned version configuration.
+    pub fn with_api_version(mut self, version: String) -> BlueprintResult<Self> {
+        if version.is_empty()
+            || version.len() > 128
+            || !version
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b".-_".contains(&byte))
+        {
+            return Err(invalid_config());
+        }
+        self.api_version = Arc::new(version);
+        Ok(self)
+    }
+    /// # Errors
+    /// Returns sanitized transport/provider/response-shape errors.
+    pub async fn create(&self, resource: StripeResource, fields: &Value) -> BlueprintResult<Value> {
+        self.request(Method::POST, resource, None, None, fields)
+            .await
+    }
+    /// # Errors
+    /// Returns sanitized transport/provider/response-shape errors.
+    pub async fn retrieve(
+        &self,
+        resource: StripeResource,
+        id: &str,
+        fields: &Value,
+    ) -> BlueprintResult<Value> {
+        self.request(Method::GET, resource, Some(id), None, fields)
+            .await
+    }
+    /// # Errors
+    /// Returns sanitized transport/provider/response-shape errors.
+    pub async fn update(
+        &self,
+        resource: StripeResource,
+        id: &str,
+        fields: &Value,
+    ) -> BlueprintResult<Value> {
+        self.request(Method::POST, resource, Some(id), None, fields)
+            .await
+    }
+    /// # Errors
+    /// Returns sanitized transport/provider/response-shape errors.
+    pub async fn delete(&self, resource: StripeResource, id: &str) -> BlueprintResult<Value> {
+        self.request(
+            Method::DELETE,
+            resource,
+            Some(id),
+            None,
+            &serde_json::json!({}),
+        )
+        .await
+    }
+    /// # Errors
+    /// Returns sanitized errors; only declared lifecycle actions are accepted.
+    pub async fn action(
+        &self,
+        resource: StripeResource,
+        id: &str,
+        action: &str,
+        fields: &Value,
+    ) -> BlueprintResult<Value> {
+        if !matches!(
+            (resource, action),
+            (StripeResource::Subscription, "resume") | (StripeResource::CheckoutSession, "expire")
+        ) {
+            return Err(invalid_request());
+        }
+        self.request(Method::POST, resource, Some(id), Some(action), fields)
+            .await
+    }
+    /// Fetches one provider page, matching the TS billing wrappers' list calls.
+    /// # Errors
+    /// Returns sanitized transport/provider/response-shape errors.
+    pub async fn list(&self, resource: StripeResource, fields: &Value) -> BlueprintResult<Value> {
+        let response = self
+            .request(Method::GET, resource, None, None, fields)
+            .await?;
+        if !response["data"].is_array() {
+            return Err(invalid_response());
+        }
+        Ok(response)
+    }
+    async fn request(
+        &self,
+        method: Method,
+        resource: StripeResource,
+        id: Option<&str>,
+        action: Option<&str>,
+        fields: &Value,
+    ) -> BlueprintResult<Value> {
+        let mut segments = resource.path().to_vec();
+        if let Some(id) = id {
+            validate_id(id)?;
+            segments.push(id);
+        }
+        if let Some(action) = action {
+            segments.push(action);
+        }
+        let params = form_fields(fields)?;
+        let mut request = self
+            .http
+            .request(method.clone(), &segments)?
+            .bearer_auth(self.secret.as_str())
+            .header("stripe-version", self.api_version.as_str());
+        if method == Method::GET {
+            request = request.query(&params);
+        } else {
+            request = request.form(&params);
+        }
+        let response = self.http.execute_json(request).await?;
+        if !(200..300).contains(&response.status) {
+            return Err(provider_status_error("stripe", "billing", response.status));
+        }
+        if !response.body.is_object() {
+            return Err(invalid_response());
+        }
+        if id.is_some() || method != Method::GET {
+            let id = response.body["id"].as_str().ok_or_else(invalid_response)?;
+            validate_id(id).map_err(|_| invalid_response())?;
+        }
+        Ok(response.body)
+    }
+}
+fn form_fields(value: &Value) -> BlueprintResult<Vec<(String, String)>> {
+    let object = value.as_object().ok_or_else(invalid_request)?;
+    let mut fields = Vec::new();
+    let mut size = 0;
+    for (key, value) in object {
+        if key.contains(['[', ']']) {
+            return Err(invalid_request());
+        }
+        flatten(key, value, 0, &mut fields, &mut size)?;
+    }
+    Ok(fields)
+}
+fn flatten(
+    key: &str,
+    value: &Value,
+    depth: usize,
+    fields: &mut Vec<(String, String)>,
+    size: &mut usize,
+) -> BlueprintResult<()> {
+    if depth > 16
+        || key.is_empty()
+        || key.len() > 1024
+        || key.bytes().any(|byte| byte.is_ascii_control())
+    {
+        return Err(invalid_request());
+    }
+    match value {
+        Value::Object(object) => {
+            for (child, value) in object {
+                if child.contains(['[', ']']) {
+                    return Err(invalid_request());
+                }
+                flatten(&format!("{key}[{child}]"), value, depth + 1, fields, size)?;
+            }
+        }
+        Value::Array(values) => {
+            if values.is_empty() {
+                push_field(key, String::new(), fields, size)?;
+            } else {
+                for (index, value) in values.iter().enumerate() {
+                    flatten(&format!("{key}[{index}]"), value, depth + 1, fields, size)?;
+                }
+            }
+        }
+        Value::Null => push_field(key, String::new(), fields, size)?,
+        Value::String(value) => push_field(key, value.clone(), fields, size)?,
+        Value::Number(number)
+            if number.is_f64()
+                && number.as_f64().is_some_and(|value| {
+                    value.fract() == 0.0 && value.abs() <= 9_007_199_254_740_991.0
+                }) =>
+        {
+            push_field(
+                key,
+                format!("{:.0}", number.as_f64().ok_or_else(invalid_request)?),
+                fields,
+                size,
+            )?;
+        }
+        value => push_field(key, value.to_string(), fields, size)?,
+    }
+    Ok(())
+}
+fn push_field(
+    key: &str,
+    value: String,
+    fields: &mut Vec<(String, String)>,
+    size: &mut usize,
+) -> BlueprintResult<()> {
+    *size = size
+        .checked_add(key.len())
+        .and_then(|size| size.checked_add(value.len()))
+        .ok_or_else(invalid_request)?;
+    if fields.len() >= 1024 || *size > 1024 * 1024 {
+        return Err(invalid_request());
+    }
+    fields.push((key.to_owned(), value));
+    Ok(())
+}
+fn validate_id(id: &str) -> BlueprintResult<()> {
+    if id.is_empty() || id.len() > 1024 || id.chars().any(char::is_control) {
+        Err(invalid_request())
+    } else {
+        Ok(())
+    }
+}
+fn invalid_request() -> BlueprintError {
+    BlueprintError::new("billing_validation", "Invalid Stripe billing request")
+}
+fn invalid_config() -> BlueprintError {
+    BlueprintError::new(
+        "stripe_invalid_config",
+        "Invalid Stripe billing configuration",
+    )
+}
+fn invalid_response() -> BlueprintError {
+    BlueprintError::new("stripe_invalid_response", "Invalid Stripe billing response")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn form_bounds_and_numeric_encoding() {
+        let mut fields =
+            form_fields(&json!({"amount":1999.0,"metadata":{"a":null},"empty":[]})).unwrap();
+        fields.sort();
+        assert_eq!(
+            fields,
+            vec![
+                ("amount".into(), "1999".into()),
+                ("empty".into(), String::new()),
+                ("metadata[a]".into(), String::new())
+            ]
+        );
+        for invalid in [
+            json!([]),
+            json!({"items[0]":"injected"}),
+            json!({"metadata":{"a[b]":"injected"}}),
+            json!({"control\n":"value"}),
+            json!({"large":"x".repeat(1024*1024)}),
+        ] {
+            assert!(form_fields(&invalid).is_err());
+        }
+        let mut deep = json!("leaf");
+        for _ in 0..18 {
+            deep = json!({"nested":deep});
+        }
+        assert!(form_fields(&deep).is_err());
+        let many = Value::Object((0..1025).map(|i| (format!("field{i}"), json!(i))).collect());
+        assert!(form_fields(&many).is_err());
+        for id in ["", "bad\n"] {
+            assert!(validate_id(id).is_err());
+        }
+        assert!(StripeBillingClient::new(String::new()).is_err());
+        assert!(StripeBillingClient::new("bad\n".into()).is_err());
+        assert!(
+            StripeBillingClient::new("fixture".into())
+                .unwrap()
+                .with_api_version("bad\n".into())
+                .is_err()
+        );
+    }
+}

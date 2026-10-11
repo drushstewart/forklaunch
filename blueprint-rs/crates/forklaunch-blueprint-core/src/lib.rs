@@ -2,6 +2,8 @@
 
 #[cfg(feature = "provider-http")]
 pub mod provider_http;
+#[cfg(feature = "stripe-webhook")]
+pub mod stripe_webhook;
 
 use std::{collections::BTreeMap, error::Error, fmt};
 
