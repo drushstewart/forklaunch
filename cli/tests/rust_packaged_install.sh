@@ -91,6 +91,13 @@ cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-ws 
 FORKLAUNCH_TEST_FRAMEWORK_ROOT="$PWD/.forklaunch/framework-rs" node "$REPO_ROOT/cli/tests/rust_ws_sdk_runtime.mjs" --compile-only
 npm install --prefix "$RUN_ROOT/websocket-consumer" --no-save --package-lock=false --ignore-scripts ws@8.22.0 ajv@8.20.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5
 FORKLAUNCH_TEST_FRAMEWORK_ROOT="$PWD/.forklaunch/framework-rs" FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES="$RUN_ROOT/websocket-consumer" FORKLAUNCH_TEST_WS_SDK_DEPENDENCIES="$RUN_ROOT/websocket-consumer" node "$REPO_ROOT/cli/tests/rust_ws_typescript_sdk_runtime.mjs" --compile-only
+mkdir -p .forklaunch/socket-contracts/accounts
+cp "$REPO_ROOT/cli/tests/fixtures/rust_socket_contract.json" .forklaunch/socket-contracts/accounts/socket-contract.json
+"$CLI" sdk generate --path . --service accounts --target all --from socket-contract
+"$CLI" sdk generate --path . --service accounts --target all --from socket-contract --check
+cargo rustc -p accounts-websocket-sdk --lib -- -D warnings
+ln -s "$RUN_ROOT/websocket-consumer/node_modules" sdks/typescript-websocket/accounts/node_modules
+"${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript-websocket/accounts/tsconfig.json
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-asyncapi
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-axum --all-features --test websocket
 cargo check --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --features aws-sdk

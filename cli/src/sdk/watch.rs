@@ -52,7 +52,7 @@ impl CliCommand for WatchCommand {
                 Arg::new("from")
                     .long("from")
                     .default_value("contract")
-                    .value_parser(["openapi", "contract"])
+                    .value_parser(["openapi", "contract", "socket-contract"])
                     .help("Artifact source to watch"),
             )
             .arg(
@@ -137,9 +137,13 @@ fn artifact_fingerprint(
     source: &str,
     selected_service: Option<&str>,
 ) -> Result<BTreeMap<PathBuf, (u64, u128)>> {
+    if source == "socket-contract" {
+        return socket_artifact_fingerprint(app_root, selected_service);
+    }
     let root = match source {
         "contract" => app_root.join(".forklaunch").join("contracts"),
         "openapi" => app_root.join(".forklaunch").join("openapi"),
+        "socket-contract" => app_root.join(".forklaunch").join("socket-contracts"),
         _ => unreachable!("validated by clap"),
     };
     let mut fingerprint = BTreeMap::new();
@@ -168,6 +172,8 @@ fn collect_artifact_fingerprint(
                 && path.parent().is_some_and(|parent| {
                     parent.file_name().and_then(|name| name.to_str()) == Some("contracts")
                         || parent.file_name().and_then(|name| name.to_str()) == Some("openapi")
+                        || parent.file_name().and_then(|name| name.to_str())
+                            == Some("socket-contracts")
                 })
             {
                 continue;
@@ -187,4 +193,107 @@ fn collect_artifact_fingerprint(
     }
 
     Ok(())
+}
+
+fn socket_artifact_fingerprint(
+    app_root: &Path,
+    selected: Option<&str>,
+) -> Result<BTreeMap<PathBuf, (u64, u128)>> {
+    let root = app_root.canonicalize()?;
+    let manifest_path = root.join(".forklaunch/manifest.toml");
+    let manifest: toml::Value = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
+    let mut paths = vec![manifest_path];
+    for project in manifest
+        .get("projects")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if !matches!(
+            project.get("type").and_then(toml::Value::as_str),
+            Some("Service" | "Worker")
+        ) {
+            continue;
+        }
+        let Some(name) = project.get("name").and_then(toml::Value::as_str) else {
+            continue;
+        };
+        if selected.is_some_and(|selected| selected != name) {
+            continue;
+        }
+        let configured = project
+            .get("metadata")
+            .and_then(|metadata| metadata.get("socketContractArtifactPath"))
+            .and_then(toml::Value::as_str);
+        paths.push(root.join(configured.map_or_else(
+            || format!(".forklaunch/socket-contracts/{name}/socket-contract.json"),
+            str::to_owned,
+        )));
+    }
+    let mut fingerprint = BTreeMap::new();
+    for path in paths {
+        if !path.exists() {
+            continue;
+        }
+        let canonical = path.canonicalize()?;
+        anyhow::ensure!(
+            canonical.starts_with(&root),
+            "Socket artifact path must stay inside the application"
+        );
+        let metadata = fs::metadata(&canonical)?;
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map_or(0, |duration| duration.as_nanos());
+        fingerprint.insert(canonical, (metadata.len(), modified));
+    }
+    Ok(fingerprint)
+}
+
+#[cfg(test)]
+mod socket_tests {
+    use super::*;
+    #[test]
+    fn tracks_configured_socket_artifacts_and_service_selection() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::create_dir_all(root.join(".forklaunch")).unwrap();
+        fs::create_dir_all(root.join("custom")).unwrap();
+        fs::write(
+            root.join(".forklaunch/manifest.toml"),
+            r#"[[projects]]
+name = "chat"
+type = "Service"
+[projects.metadata]
+socketContractArtifactPath = "custom/chat.json"
+[[projects]]
+name = "other"
+type = "Service"
+[projects.metadata]
+socketContractArtifactPath = "custom/other.json"
+"#,
+        )
+        .unwrap();
+        fs::write(root.join("custom/chat.json"), "{}").unwrap();
+        fs::write(root.join("custom/other.json"), "{}").unwrap();
+        let initial = artifact_fingerprint(root, "socket-contract", Some("chat")).unwrap();
+        assert_eq!(initial.len(), 2);
+        fs::write(root.join("custom/other.json"), "changed other").unwrap();
+        assert_eq!(
+            initial,
+            artifact_fingerprint(root, "socket-contract", Some("chat")).unwrap()
+        );
+        fs::write(root.join("custom/chat.json"), "changed chat").unwrap();
+        assert_ne!(
+            initial,
+            artifact_fingerprint(root, "socket-contract", Some("chat")).unwrap()
+        );
+        assert_eq!(
+            artifact_fingerprint(root, "socket-contract", None)
+                .unwrap()
+                .len(),
+            3
+        );
+    }
 }

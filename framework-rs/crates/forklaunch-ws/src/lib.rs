@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod artifact;
+pub use artifact::SocketContractArtifact;
 pub mod codec;
 #[cfg(feature = "json-schema")]
 mod codec_schema;

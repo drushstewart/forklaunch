@@ -1,0 +1,119 @@
+{
+  "formatVersion": 1,
+  "title": "Realtime",
+  "version": "1.0.0",
+  "sockets": {
+    "chat": {
+      "path": "/chat",
+      "clientMessages": {
+        "request": {
+          "shape": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "serverMessages": {
+        "reply": {
+          "shape": {
+            "type": "object",
+            "properties": {
+              "accepted": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accepted"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "ping": {
+        "shape": {
+          "type": "object",
+          "properties": {
+            "ts": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "ts"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "pong": {
+        "shape": {
+          "type": "object",
+          "properties": {
+            "ts": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "ts"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "closeReason": {
+        "reason": {
+          "shape": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "tree": {
+      "path": "/tree",
+      "serverMessages": {
+        "tree": {
+          "shape": {
+            "$ref": "#/$defs/Node",
+            "$defs": {
+              "Node": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "integer"
+                  },
+                  "next": {
+                    "$ref": "#/$defs/Node"
+                  }
+                },
+                "required": [
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "empty": {
+      "path": "/empty"
+    }
+  }
+}

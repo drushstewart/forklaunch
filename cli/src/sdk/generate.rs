@@ -66,7 +66,7 @@ impl CliCommand for GenerateCommand {
                 Arg::new("from")
                     .long("from")
                     .default_value("openapi")
-                    .value_parser(["openapi", "contract"])
+                    .value_parser(["openapi", "contract", "socket-contract"])
                     .help("Artifact source for SDK generation"),
             )
             .arg(
@@ -147,6 +147,9 @@ pub(crate) fn generate_or_check_sdk_outputs(
     check: bool,
     stdout: &mut StandardStream,
 ) -> Result<()> {
+    if source == "socket-contract" {
+        return super::websocket::generate(app_root, target, selected_service, check, stdout);
+    }
     let manifest = read_manifest(app_root)?;
     let services = match source {
         "contract" => rust_sdk_services_from_contracts(app_root, &manifest, selected_service)?,

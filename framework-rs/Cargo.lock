@@ -1391,9 +1391,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "convert_case",
+ "forklaunch-asyncapi",
  "forklaunch-common",
  "forklaunch-contract",
  "forklaunch-sdk-codegen",
+ "forklaunch-sdk-rust",
  "forklaunch-ws",
  "ramhorns",
  "serde_json",

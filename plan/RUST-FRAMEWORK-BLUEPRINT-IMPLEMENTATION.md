@@ -453,7 +453,7 @@ Requirements:
 - [x] Support automatic JSON encoding and decoding. (`WebSocketEnvelope::to_json`/`from_json`)
 - [x] Add integration tests for server/client validation. (real native peers, bidirectional actual TypeScript peers, 168 Zod payload comparisons and 2,730 raw JSON Schema codec comparisons, frame/control byte limits, stalled handshake/write deadlines, cancellation and close handshakes)
 
-Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScript wrappers; the legacy tagged `WebSocketEnvelope` contract remains a separate protocol. `PayloadCodec::framework()` optionally applies serde/garde constraints. Invalid incoming native payloads close with 1008 before delivery; outgoing failures remain local. Control replies preserve exact bytes and validate the outgoing pong schema. Actual TypeScript tests also fixed the wrapper's automatic pong/close paths, which previously revalidated encoded Buffers as objects. Schema coercion follows Rust's documented stricter policy. Optional Axum `websocket::upgrade` now shares the native typed engine on existing HTTP/MCP listeners, with pre-upgrade authorization, subprotocol negotiation, bounded invalid/oversized input, and explicitly propagated connection shutdown tested together. Partial-write cancellation releases the socket. Raw socket schema metadata and checked AsyncAPI export are now implemented; generated Rust clients now share these codecs; generated TypeScript clients now use the checked raw-schema profile too; CLI artifact integration remains open.
+Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScript wrappers; the legacy tagged `WebSocketEnvelope` contract remains a separate protocol. `PayloadCodec::framework()` optionally applies serde/garde constraints. Invalid incoming native payloads close with 1008 before delivery; outgoing failures remain local. Control replies preserve exact bytes and validate the outgoing pong schema. Actual TypeScript tests also fixed the wrapper's automatic pong/close paths, which previously revalidated encoded Buffers as objects. Schema coercion follows Rust's documented stricter policy. Optional Axum `websocket::upgrade` now shares the native typed engine on existing HTTP/MCP listeners, with pre-upgrade authorization, subprotocol negotiation, bounded invalid/oversized input, and explicitly propagated connection shutdown tested together. Partial-write cancellation releases the socket. Raw socket schema metadata and checked AsyncAPI export are now implemented; generated Rust clients now share these codecs; generated TypeScript clients now use the checked raw-schema profile too; CLI `--from socket-contract` now generates both clients and checked AsyncAPI from versioned multi-socket artifacts, with service selection, drift checks, bounded native compilation and custom-path watch regeneration. Automatic service-registry exports and external AsyncAPI imports remain open.
 
 ### `forklaunch-asyncapi`
 
@@ -463,6 +463,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Support channel grouping.
 - [x] Support client-to-server and server-to-client operations.
 - [x] Add snapshot tests for AsyncAPI output.
+- [x] Integrate versioned multi-socket artifacts with CLI SDK generation/check/watch, portable bundled generators, both workspace/package formats, checked AsyncAPI aggregation and all-service validation before writes. (relocated strict consumers/live peers, parser, custom paths, containment and generated HTTP/MCP startup)
 - [x] Generate TypeScript WebSocket clients. (`generate_typescript_websocket_sdk_source`: Node ws/AJV raw JSON profile, strict ESM/CommonJS declarations and recursive/empty consumers, actual TS/native peers, bounded queues, write/close deadlines, cancellation and owned iterators)
 - [ ] Add declared Draft 4/6 support to generated TypeScript socket codecs; currently source generation rejects these dialects explicitly.
 - [ ] Carry explicit raw binary payload metadata through checked socket contracts and both generated clients.
@@ -697,7 +698,8 @@ Current CLI structure to build on:
 - [x] Standardize output paths under `.forklaunch/openapi/<service>/openapi.json`.
 - [x] Add fallback `.forklaunch/contracts/<service>/contract.json` artifacts for generated Rust projects.
 - [x] Replace fallback Rust contract artifacts with binary-exported `framework-rs` contract registry output for generated Rust service and worker crates.
-- [ ] Add `.forklaunch/asyncapi/<service>/asyncapi.json` for WebSocket/event projects.
+- [x] Add `.forklaunch/asyncapi/<service>/asyncapi.json` for raw WebSocket contract artifacts through `sdk generate --from socket-contract`, with custom project output paths.
+- [ ] Export socket artifacts automatically from generated service registries and support external AsyncAPI imports/event projects.
 - [x] Ensure release/deploy manifest generation reads TypeScript and Rust outputs uniformly.
 
 ### SDK Commands

@@ -15,6 +15,7 @@ mod render;
 mod openapi;
 mod schema;
 pub(crate) mod watch;
+mod websocket;
 
 #[derive(Debug)]
 pub(crate) struct SdkCommand {
