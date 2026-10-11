@@ -359,6 +359,41 @@ impl ForkLaunchRouter {
         self
     }
 
+    /// Decorates handlers at a registered router-relative path without changing
+    /// their contracts. The transform covers standard and extended methods,
+    /// survives nesting, and is used by HTTP and MCP dispatch alike. Use
+    /// `MethodRouter::layer` to include extended-method fallback handlers.
+    /// # Errors
+    /// Rejects an unregistered path.
+    pub fn map_route(
+        mut self,
+        path: &str,
+        mut transform: impl FnMut(MethodRouter) -> MethodRouter,
+    ) -> Result<Self, String> {
+        let path =
+            forklaunch_common::open_api_compliant_path(&join_base_path(&self.base_path, path));
+        if !self.routes.contains_key(&path) {
+            return Err("Cannot decorate an unregistered route".into());
+        }
+        let has_standard = self.registry.routes().iter().any(|route| {
+            route.openapi_path == path
+                && Method::from_bytes(route.method.as_str().as_bytes())
+                    .is_ok_and(|method| axum::routing::MethodFilter::try_from(method).is_ok())
+        });
+        if has_standard {
+            let Some(route) = self.routes.remove(&path) else {
+                return Err("Cannot decorate an unregistered route".into());
+            };
+            self.routes.insert(path.clone(), transform(route));
+        }
+        if let Some(methods) = self.extended_routes.get_mut(&path) {
+            for handler in methods.values_mut() {
+                *handler = transform(std::mem::take(handler));
+            }
+        }
+        Ok(self)
+    }
+
     /// Borrows the underlying contract registry (useful for SDK/OpenAPI export).
     #[must_use]
     pub const fn registry(&self) -> &ContractRegistry {
@@ -1126,6 +1161,77 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(created.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn decorating_handlers_preserves_contracts_nesting_and_extended_methods() {
+        assert!(
+            ForkLaunchRouter::anonymous()
+                .map_route("/missing", |route| route)
+                .is_err()
+        );
+        let mut child = ForkLaunchRouter::anonymous();
+        for method in [HttpMethod::Post, HttpMethod::Subscribe] {
+            child = child.route(
+                RouteContract::new(
+                    format!("Dispatch {}", method.as_str()),
+                    "Event dispatcher",
+                    method,
+                    "/events/:feature",
+                )
+                .with_param(FieldContract::required("feature", "String"))
+                .with_query(FieldContract::required("limit", "Integer"))
+                .with_response(200, None)
+                .with_response(404, None),
+                || async { (StatusCode::NOT_FOUND, "original") },
+            );
+        }
+        let before = child.registry().clone().into_artifact().to_json();
+        let child = child
+            .map_route("/events/:feature", |route| {
+                route.layer(middleware::from_fn(
+                    |request: axum::extract::Request, next: Next| async move {
+                        if request
+                            .headers()
+                            .get("x-dispatch")
+                            .is_some_and(|value| value == "new")
+                        {
+                            (StatusCode::OK, "decorated").into_response()
+                        } else {
+                            next.run(request).await
+                        }
+                    },
+                ))
+            })
+            .unwrap();
+        assert_eq!(child.registry().clone().into_artifact().to_json(), before);
+        let app = ForkLaunchRouter::new(ServiceInfo::new("events", "0.1.0"))
+            .nest("/api", child)
+            .into_router();
+        for method in ["POST", "SUBSCRIBE"] {
+            for (query, dispatch, expected, body) in [
+                ("?limit=1", "new", StatusCode::OK, Some("decorated")),
+                ("?limit=1", "old", StatusCode::NOT_FOUND, Some("original")),
+                ("", "new", StatusCode::BAD_REQUEST, None),
+            ] {
+                let response = app
+                    .clone()
+                    .oneshot(
+                        Request::builder()
+                            .method(method)
+                            .uri(format!("/api/events/email{query}"))
+                            .header("x-dispatch", dispatch)
+                            .body(AxumBody::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), expected);
+                if let Some(body) = body {
+                    assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), body);
+                }
+            }
+        }
     }
 
     #[tokio::test]

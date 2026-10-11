@@ -55,6 +55,27 @@ async fn live_http_and_mcp_initialize_discover_invoke_auth_validate_and_shutdown
         .post(RouteContract::post("Echo","Echo","/echo").with_request_body(BodyContract::json("Echo")).with_response(200,Some(BodyContract::json("Echo"))),|Json(body):Json<Value>|async move{Json(body)})
         .get(RouteContract::get("Hidden","Hidden","/hidden").with_options(RouteOptions{mcp:false,..RouteOptions::default()}),||async{"hidden"})
         .with_config(config);
+    let decorated = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let layer_count = Arc::clone(&decorated);
+    let service = service
+        .map_route("/echo", move |route| {
+            let layer_count = Arc::clone(&layer_count);
+            route.layer(axum::middleware::from_fn(
+                move |request: axum::extract::Request, next: axum::middleware::Next| {
+                    let layer_count = Arc::clone(&layer_count);
+                    async move {
+                        layer_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        let mut response = next.run(request).await;
+                        response.headers_mut().insert(
+                            "x-route-decorated",
+                            axum::http::HeaderValue::from_static("true"),
+                        );
+                        response
+                    }
+                },
+            ))
+        })
+        .unwrap();
     let mut options = McpServerOptions::new("startup-test", "1.2.3");
     options.authorize = Arc::new(Gate);
     let app = service.into_router_with_mcp(options).unwrap();
@@ -71,6 +92,14 @@ async fn live_http_and_mcp_initialize_discover_invoke_auth_validate_and_shutdown
     });
     let client = reqwest::Client::new();
     let url = format!("{base}/mcp");
+    let direct_echo = client
+        .post(format!("{base}/echo"))
+        .json(&json!({"direct":true}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(direct_echo.headers()["x-route-decorated"], "true");
+    assert_eq!(decorated.load(std::sync::atomic::Ordering::SeqCst), 1);
     assert_eq!(
         client
             .get(format!("{base}/health"))
@@ -172,6 +201,7 @@ async fn live_http_and_mcp_initialize_discover_invoke_auth_validate_and_shutdown
         echo["result"]["structuredContent"],
         json!({"text":"JSON 💬","list":[true,null,42]})
     );
+    assert_eq!(decorated.load(std::sync::atomic::Ordering::SeqCst), 2);
     let hidden = rpc(
         &client,
         &url,
