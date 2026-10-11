@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {actualValidator} from './rust_actual_validator_fixture.mjs';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {realpath} from 'node:fs/promises';
@@ -34,7 +35,8 @@ function load(file) {
  }});return exports;
 }
 
-const validator={string:{type:'string'},uuid:{type:'string',format:'uuid'},number:{type:'number'},boolean:{type:'boolean'},date:{type:'string',format:'date-time'},unknown:{},type:()=>({}),optional:value=>({...value,fixtureOptional:true}),array:value=>({type:'array',items:value}),enum_:value=>({type:'string',enum:Object.values(value)})};
+const validation=actualValidator(root),validator=validation.statics;
+const fieldShape=field=>Object.fromEntries(Object.entries(field).filter(([key,value])=>["type","format","enum","items"].includes(key)&&!(key==="format"&&value==="double")).map(([key,value])=>[key,key==="type"&&Array.isArray(value)&&value.length===1?value[0]:key==="items"?fieldShape(value):value]));
 const families=['plan','subscription','checkoutSession','paymentLink','billingPortal'];
 const {toPrettyCamelCase}=load(path.join(root,'framework/common/src/camelCase.ts'));
 const simpleNative=route=>({method:route.method,path:route.path,operation:route.operationName,access:route.access,params:route.request.params.map(field=>field.name).sort(),query:route.request.query.map(field=>field.name).sort(),body:route.request.body!=null,statuses:route.responses.map(response=>response.statusCode).sort()});
@@ -63,11 +65,12 @@ for(const stripe of [false,true]){
    const operation=toPrettyCamelCase((form==='Read'?'Get':form)+' '+(family==='billingPortal'?'Billing Portal Session':name.replace(/[A-Z]/g,letter=>' '+letter).trim()));
    const route=native.routes.find(route=>route.operationName===operation);assert.ok(route,operation);
    const actual=form==='Read'?route.responses[0].body.schema.jsonSchema:route.request.body.schema.jsonSchema;
-   assert.deepEqual(Object.keys(actual.properties).sort(),Object.keys(expected).sort(),variant+' '+sourceName+' properties');
-   assert.deepEqual([...(actual.required??[])].sort(),Object.entries(expected).filter(([,value])=>!value.fixtureOptional).map(([key])=>key).sort(),variant+' '+sourceName+' required');
-   for(const [key,field]of Object.entries(expected)){for(const attribute of ['type','format','enum'])if(field[attribute]!==undefined)assert.deepEqual(actual.properties[key][attribute],field[attribute],variant+' '+sourceName+' '+key+' '+attribute);if(field.items)assert.deepEqual(actual.properties[key].items,field.items,variant+' '+sourceName+' '+key+' items');}
+   expected=validation.validator.openapi(expected);
+   assert.deepEqual(Object.keys(actual.properties).sort(),Object.keys(expected.properties).sort(),variant+' '+sourceName+' properties');
+   assert.deepEqual([...(actual.required??[])].sort(),[...(expected.required??[])].sort(),variant+' '+sourceName+' required');
+   for(const [key,field]of Object.entries(expected.properties))assert.deepEqual(fieldShape(actual.properties[key]),JSON.parse(JSON.stringify(fieldShape(field))),variant+' '+sourceName+' '+key);
    schemaCount++;
   }
  }
 }
-console.log(`PASS ${count} actual TypeScript/Rust billing route contracts and ${schemaCount} configured DTO schemas: methods, paths, names, HMAC, params/query/body, response statuses, required fields and enums`);
+console.log(`PASS ${count} actual TypeScript/Rust billing route contracts and ${schemaCount} actual validator/OpenAPI DTO schemas: methods, paths, names, HMAC, params/query/body, response statuses, required fields and enums`);

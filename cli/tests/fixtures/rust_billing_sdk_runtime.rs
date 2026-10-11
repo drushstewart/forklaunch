@@ -13,5 +13,9 @@ async fn generated_rust_sdk_calls_persistent_billing_and_portal() {
     assert!(matches!(response,BillingPlanCreatePlanResponses::Status200(_)));
     let response=client.billing_portal_get_billing_portal_session(BillingBillingPortalGetBillingPortalSessionRequest {params:BTreeMap::from([("id".into(),std::env::var("BILLING_PORTAL_ID").unwrap())]),headers:headers("BILLING_PORTAL_HEADER"),..Default::default()}).await.unwrap();
     assert!(matches!(response,BillingBillingPortalGetBillingPortalSessionResponses::Status200(_)));
+    if let Ok(id)=std::env::var("BILLING_WEBHOOK_PORTAL_ID") {
+        let response=client.billing_portal_get_billing_portal_session(BillingBillingPortalGetBillingPortalSessionRequest {params:BTreeMap::from([("id".into(),id)]),headers:headers("BILLING_PORTAL_HEADER"),..Default::default()}).await.unwrap();
+        assert!(matches!(response,BillingBillingPortalGetBillingPortalSessionResponses::Status200(_)));
+    }
     let response=client.plan_get_plan(BillingPlanGetPlanRequest {params:BTreeMap::from([("id".into(),id)]),..Default::default()}).await.unwrap();assert!(matches!(response,BillingPlanGetPlanResponses::Error{status:401,..}));
 }

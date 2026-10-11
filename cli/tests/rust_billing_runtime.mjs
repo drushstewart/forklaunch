@@ -66,6 +66,11 @@ try{
   const providerFields=stripe?{stripeFields:{}}:{providerFields:{private:'private-provider-value'}};
   const planBody={name:'prod_fixture',price:1999,cadence:stripe?'month':'MONTHLY',currency:'USD',externalId:randomUUID(),billingProvider:stripe?'stripe':'none',active:true,...providerFields};
   await call(base,'/plan','POST',{...planBody,currency:'INVALID'},400);
+  const supplied=await call(base,'/plan','POST',{...planBody,externalId:randomUUID(),id:'must-not-be-a-local-id',undeclaredField:'must-be-stripped'});
+  assert.notEqual(supplied.id,'must-not-be-a-local-id');assert.equal(Object.hasOwn(supplied,'undeclaredField'),false);
+  if(stripe){const {stripeFields,...withoutProvider}=planBody;await call(base,'/plan','POST',withoutProvider);}
+  else await call(base,'/plan','POST',{...planBody,providerFields:'invalid-record'},400);
+
   const created=await client[service].plan.createPlan({body:planBody,headers:{authorization:hmac('/plan','POST',JSON.stringify(planBody))}});assert.equal(created.code,200);const plan=created.response;
   await call(base,`/plan/${plan.id}`);assert.equal((await call(base,'/plan')).length>=1,true);
   await call(base,'/plan','PUT',{id:plan.id,price:0});
@@ -79,9 +84,13 @@ try{
   for(const suffix of ['expire','success','failure']){const checkout=await call(base,'/checkout-session','POST',checkoutBody);await call(base,`/checkout-session/${checkout.id}`);await call(base,`/checkout-session/${checkout.id}/${suffix}`);await call(base,`/checkout-session/${checkout.id}`,'GET',undefined,404);}
   for(const suffix of ['expire','success','failure']){const link=await call(base,'/payment-link','POST',{amount:299,paymentMethods:checkoutBody.paymentMethods,currency:'USD',status:'PENDING',...providerFields});await call(base,`/payment-link/${link.id}`);await call(base,`/payment-link/${link.id}`,'PUT',{id:link.id,amount:0});await call(base,'/payment-link');await call(base,`/payment-link/${link.id}`+(suffix==='expire'?'':'/'+suffix),suffix==='expire'?'DELETE':'GET');await call(base,`/payment-link/${link.id}`,'GET',undefined,404);}
   await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},403,jwt(['viewer']));
-  const portal=await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},200,jwt());await call(base,`/billing-portal/${portal.id}`,'GET',undefined,200,jwt());const updated=await call(base,`/billing-portal/${portal.id}`,'PUT',{id:portal.id,...providerFields},200,jwt());assert.equal(updated.id,portal.id);
+  const portal=await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},200,jwt());await call(base,`/billing-portal/${portal.id}`,'GET',undefined,200,jwt());const updated=await call(base,`/billing-portal/${portal.id}`,'PUT',{id:portal.id,customerId:'must-not-reassign',...providerFields},200,jwt());assert.equal(updated.id,portal.id);assert.equal(updated.customerId,portal.customerId);
+  if(stripe){
+   await stripeEvent(base,{id:'evt-webhook-portal',type:'billing_portal.session.created',data:{object:{id:'bps_webhook',customer:'cus_fixture',created:1700000000,url:'https://provider.example/webhook-portal'}}});
+   const webhookPortal=await call(base,'/billing-portal/bps_webhook','GET',undefined,200,jwt());assert.equal(Object.hasOwn(webhookPortal,'stripeFields'),false);
+  }
   const rustBody=JSON.stringify({...planBody,externalId:randomUUID()});
-  const rust=spawn('cargo',['test','-p',service+'-sdk','--test','runtime','--','--nocapture'],{env:{...process.env,BILLING_BASE_URL:base,BILLING_PLAN_ID:plan.id,BILLING_GET_HEADER:hmac('/plan/'+plan.id),BILLING_LIST_HEADER:hmac('/plan'),BILLING_CREATE_BODY:rustBody,BILLING_CREATE_HEADER:hmac('/plan','POST',rustBody),BILLING_PORTAL_ID:portal.id,BILLING_PORTAL_HEADER:jwt()},stdio:['ignore','pipe','pipe']});let rustOutput='';rust.stdout.on('data',chunk=>rustOutput+=chunk);rust.stderr.on('data',chunk=>rustOutput+=chunk);const rustTimer=setTimeout(()=>rust.kill('SIGKILL'),120000);try{assert.equal(await new Promise(resolve=>rust.once('close',resolve)),0,rustOutput);}finally{clearTimeout(rustTimer);}
+  const rust=spawn('cargo',['test','-p',service+'-sdk','--test','runtime','--','--nocapture'],{env:{...process.env,BILLING_BASE_URL:base,BILLING_PLAN_ID:plan.id,BILLING_GET_HEADER:hmac('/plan/'+plan.id),BILLING_LIST_HEADER:hmac('/plan'),BILLING_CREATE_BODY:rustBody,BILLING_CREATE_HEADER:hmac('/plan','POST',rustBody),BILLING_PORTAL_ID:portal.id,BILLING_PORTAL_HEADER:jwt(),BILLING_WEBHOOK_PORTAL_ID:stripe?'bps_webhook':undefined},stdio:['ignore','pipe','pipe']});let rustOutput='';rust.stdout.on('data',chunk=>rustOutput+=chunk);rust.stderr.on('data',chunk=>rustOutput+=chunk);const rustTimer=setTimeout(()=>rust.kill('SIGKILL'),120000);try{assert.equal(await new Promise(resolve=>rust.once('close',resolve)),0,rustOutput);}finally{clearTimeout(rustTimer);}
   await call(base,`/billing-portal/${portal.id}`,'DELETE',undefined,200,jwt());
   let replayEvent;
   if(stripe){

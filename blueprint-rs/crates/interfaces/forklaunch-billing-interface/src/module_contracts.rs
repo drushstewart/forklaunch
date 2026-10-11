@@ -53,18 +53,9 @@ fn configure(schema: &mut Value, family: &str, form: Form, stripe: bool) {
             .as_object_mut()
             .expect("object schema")
             .remove("providerFields");
-        schema["properties"]["stripeFields"] = json!({});
-        if form != Form::Update {
-            let required = schema
-                .as_object_mut()
-                .expect("object schema")
-                .entry("required")
-                .or_insert_with(|| json!([]));
-            required
-                .as_array_mut()
-                .expect("required list")
-                .push(json!("stripeFields"));
-        }
+        // The actual validator's type<T>() is z.any(): OpenAPI describes an
+        // object and treats it as optional even when the TS member is required.
+        schema["properties"]["stripeFields"] = json!({"type":"object"});
         if family == "CheckoutSession" {
             if form != Form::Update {
                 schema["required"]
@@ -73,9 +64,12 @@ fn configure(schema: &mut Value, family: &str, form: Form, stripe: bool) {
                     .push(json!("uri"));
             }
             if form == Form::Read {
-                schema["properties"]["metadata"] = json!({});
+                schema["properties"]["metadata"] = json!({"type":"object"});
             }
         }
+    }
+    if !stripe && schema["properties"].get("providerFields").is_some() {
+        schema["properties"]["providerFields"] = json!({"type":"object"});
     }
     for field in [
         "cadence",

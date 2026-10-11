@@ -25,6 +25,8 @@ on:
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_billing_contracts_parity.mjs'
+      - 'cli/tests/rust_actual_validator_fixture.mjs'
+      - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
       - 'cli/tests/rust_billing_stripe_services_parity.mjs'
@@ -67,6 +69,8 @@ on:
       - 'cli/tests/rust_ecommerce_base_parity.mjs'
       - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_billing_contracts_parity.mjs'
+      - 'cli/tests/rust_actual_validator_fixture.mjs'
+      - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
       - 'cli/tests/rust_billing_stripe_services_parity.mjs'
@@ -190,7 +194,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0
       - run: node cli/tests/rust_cac_provider_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -207,6 +211,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_stripe_client_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_configured_mappers.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_contracts_parity.mjs

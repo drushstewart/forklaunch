@@ -84,13 +84,21 @@ impl BillingBackend {
         contract: &RouteContract,
         mut input: Value,
     ) -> BlueprintResult<BillingResponse> {
-        validate_input(contract, &input)?;
+        validate_input(contract, &mut input)?;
         if self.client.is_some()
             && let Some(fields) = input
                 .as_object_mut()
                 .and_then(|fields| fields.remove("stripeFields"))
         {
             input["providerFields"] = fields;
+        }
+        if self.client.is_some()
+            && matches!(
+                contract.operation_name.as_str(),
+                "createPlan" | "createSubscription"
+            )
+        {
+            input.as_object_mut().ok_or_else(invalid)?.remove("id");
         }
         let store = self.store.with_audit_context(AuditContext::actor(
             &session.principal.subject,
@@ -142,14 +150,14 @@ fn stripe_names(value: &mut Value) {
         object.insert("stripeFields".into(), fields);
     }
 }
-fn validate_input(contract: &RouteContract, input: &Value) -> BlueprintResult<()> {
+fn validate_input(contract: &RouteContract, input: &mut Value) -> BlueprintResult<()> {
     let Some(body) = &contract.request.body else {
         return Ok(());
     };
     let schema: Value =
         serde_json::from_str(body.schema.json_schema.as_deref().ok_or_else(invalid)?)
             .map_err(|_| invalid())?;
-    let object = input.as_object().ok_or_else(invalid)?;
+    let object = input.as_object_mut().ok_or_else(invalid)?;
     if let Some(required) = schema["required"].as_array() {
         for field in required {
             if !object.contains_key(field.as_str().ok_or_else(invalid)?) {
@@ -158,10 +166,15 @@ fn validate_input(contract: &RouteContract, input: &Value) -> BlueprintResult<()
         }
     }
     let properties = schema["properties"].as_object().ok_or_else(invalid)?;
+    // HTTP parsing in TS strips unknown object keys before mapper dispatch.
+    object.retain(|field, _| properties.contains_key(field));
     for (field, value) in object {
         let Some(schema) = properties.get(field) else {
             continue;
         };
+        if schema["type"] == "object" && !value.is_object() {
+            return Err(invalid());
+        }
         if schema.get("enum").is_some_and(|values| {
             values
                 .as_array()
