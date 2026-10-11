@@ -466,7 +466,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Generate TypeScript WebSocket clients. (`generate_typescript_websocket_sdk_source`: Node ws/AJV raw JSON profile, strict ESM/CommonJS declarations and recursive/empty consumers, actual TS/native peers, bounded queues, write/close deadlines, cancellation and owned iterators)
 - [ ] Add declared Draft 4/6 support to generated TypeScript socket codecs; currently source generation rejects these dialects explicitly.
 - [ ] Carry explicit raw binary payload metadata through checked socket contracts and both generated clients.
-- [ ] Exercise and harden actual TypeScript automatic control-reply failures and abnormal closes with required pong/close schemas.
+- [x] Exercise and harden actual TypeScript automatic control-reply failures and abnormal closes with required pong/close schemas. (one error and 1008 before typed delivery, five-second unresponsive-peer close bound, preserved manual validation and explicit autoPong=false; live CI fixture and 110 unit/integration tests)
 - [x] Generate Rust WebSocket clients. (`SocketSdkPlan`, `generate_rust_websocket_sdk_source`: typed directions/controls, recursive unions, retained upgrade responses, actual TypeScript server conformance, invalid peer rejection and warning-free recursive/empty consumer compilation)
 
 ## Phase 9 - Infrastructure Crates

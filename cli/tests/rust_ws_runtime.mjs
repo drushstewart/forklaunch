@@ -10,7 +10,7 @@ const {statics:v,validator,load}=actualValidator(root,(spec,file,load)=>spec==='
 const {ForklaunchWebSocket}=load(path.join(root,'framework/ws/src/webSocket.ts'));
 const {ForklaunchWebSocketServer}=load(path.join(root,'framework/ws/src/webSocketServer.ts'));
 const external=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES,'package.json'));
-const {WebSocket}=external('ws');
+const {WebSocket,WebSocketServer}=external('ws');
 const schemas={
  clientMessages:{request:{shape:v.schemify({message:v.string.min(1)})}},
  serverMessages:{reply:{shape:v.schemify({accepted:v.string})}},
@@ -33,6 +33,60 @@ function native(...args){
   const check=()=>{const match=output.match(/ws:\/\/[^\s]+/);if(match){child.stdout.off('data',check);resolve(match[0]);}};
   child.stdout.on('data',check);done.then(()=>{if(!output.includes('ws://'))reject(new Error('native server produced no URL'));},reject);check();
  })};
+}
+async function verifyProtocolFailures(){
+ const mismatched={...schemas,pong:{shape:v.schemify({ts:v.number.innerType().int().min(100)})}};
+ for(const kind of ['pong','close','stalled']){
+  const server=new ForklaunchWebSocketServer(validator,kind==='close'?schemas:mismatched,{host:'127.0.0.1',port:0});servers.add(server);
+  await once(server,'listening');
+  let typedPings=0,typedCloses=0;const errors=[];
+  const accepted=new Promise(resolve=>server.once('connection',socket=>{
+   sockets.add(socket);socket.on('error',error=>errors.push(error));
+   socket.on('ping',()=>typedPings++);socket.on('close',()=>typedCloses++);resolve(socket);
+  }));
+  const client=new WebSocket(`ws://127.0.0.1:${server.address().port}`);sockets.add(client);
+  await once(client,'open');const socket=await accepted;
+  const closed=new Promise(resolve=>WebSocket.prototype.on.call(socket,'close',resolve));
+  const remoteClosed=once(client,'close');
+  if(kind==='stalled')client._socket.pause();
+  const started=Date.now();
+  if(kind==='close')client.close(1000,'invalid typed reason');else client.ping(JSON.stringify({ts:1}));
+  await closed;
+  if(kind==='stalled'){
+   assert.ok(Date.now()-started>=4500,'unresponsive close peer released too early');
+   assert.ok(Date.now()-started<10000,'protocol failure close deadline was not bounded');
+   client._socket.resume();
+  }
+  const [code]=await remoteClosed;assert.equal(code,1008);
+  assert.equal(errors.length,1);assert.match(errors[0].message,/validation failed/);
+  assert.equal(typedPings,0);assert.equal(typedCloses,0);
+ }
+ for(const autoPong of [true,false]){
+  const server=new WebSocketServer({host:'127.0.0.1',port:0});servers.add(server);await once(server,'listening');
+  const accepted=once(server,'connection');
+  const client=new ForklaunchWebSocket(validator,mismatched,`ws://127.0.0.1:${server.address().port}`,undefined,{autoPong});sockets.add(client);
+  const errors=[];client.on('error',error=>errors.push(error));
+  await once(client,'open');const [socket]=await accepted;sockets.add(socket);
+  assert.throws(()=>client.pong(Buffer.from('invalid')));assert.throws(()=>client.close(1000,Buffer.from('invalid')));
+  assert.equal(client.readyState,WebSocket.OPEN);assert.equal(errors.length,0);
+  const closed=once(socket,'close');
+  if(autoPong){
+   let typedPings=0,typedCloses=0;client.on('ping',()=>typedPings++);client.on('close',()=>typedCloses++);
+   socket.ping(JSON.stringify({ts:1}));assert.equal((await closed)[0],1008);
+   assert.equal(errors.length,1);assert.equal(typedPings,0);assert.equal(typedCloses,0);
+  }else{
+   const ping=new Promise(resolve=>client.once('ping',resolve));socket.ping(JSON.stringify({ts:1}));
+   assert.equal((await ping).ts,1);assert.equal(errors.length,0);
+   client.close(1000,{reason:'done'});await closed;
+  }
+ }
+ const server=new WebSocketServer({host:'127.0.0.1',port:0});servers.add(server);await once(server,'listening');
+ const accepted=once(server,'connection');
+ const client=new ForklaunchWebSocket(validator,schemas,`ws://127.0.0.1:${server.address().port}`);sockets.add(client);
+ const failed=new Promise(resolve=>client.on('error',resolve));let closes=0;client.on('close',()=>closes++);
+ await once(client,'open');const [socket]=await accepted;sockets.add(socket);socket.terminate();
+ assert.match((await failed).message,/without a handshake/);assert.equal(closes,0);
+ console.log('PASS actual TypeScript automatic-control failures: one error, 1008 before typed delivery, bounded unresponsive-peer close, manual validation, disabled pong and abnormal close');
 }
 try{
  const server=native('server');const url=await server.url();
@@ -64,6 +118,7 @@ try{
  await once(tsServer,'listening');
  const peer=native('client',`ws://127.0.0.1:${tsServer.address().port}/chat`);
  await Promise.all([connection,peer.done]);
+ await verifyProtocolFailures();
  console.log('PASS actual TypeScript/native Rust WebSockets in both directions: upgrade authorization, typed Unicode messages, outgoing validation, automatic and explicit pong, typed close handshake');
 }finally{
  clearTimeout(deadline);
