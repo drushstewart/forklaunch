@@ -38,6 +38,8 @@ HTTP and MCP startup do not connect these factories automatically. Call `redis_i
 
 Use `infra remove accounts redis` or `infra remove accounts s3` to undo owned settings. `change service --path crates/accounts --infrastructure redis` replaces the enabled local infrastructure list; an empty `--infrastructure` removes both. Custom factories and settings survive sync, rename and removal, and a shared backend remains while another service uses it. Restoration records are private local files; after a Git clone, removal retains settings and dependencies whose ownership is unknown.
 
+`forklaunch_infrastructure_redis::client::RedisQueue::connect` uses the same `LPUSH`/`RPOP` FIFO layout as TypeScript, including peeks in dequeue order. For a list written by the earlier native `RPUSH`/`LPOP` implementation, use `connect_with_layout(url, key, RedisQueueLayout::LegacyNative)` consistently for its producers and consumers. Drain an existing backlog using its original layout before switching it.
+
 ## Managed capabilities
 
 Managed capabilities can be added to a native service in either a Rust or mixed application:

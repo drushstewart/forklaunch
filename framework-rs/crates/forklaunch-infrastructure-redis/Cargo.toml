@@ -15,5 +15,12 @@ forklaunch-core = { path = "../forklaunch-core" }
 
 redis = { version = "0.32", default-features = false, features = ["tls-rustls", "tls-rustls-webpki-roots"], optional = true }
 
+[dev-dependencies]
+serde_json = "1"
+
 [lints]
 workspace = true
+
+[[example]]
+name = "redis_queue_parity"
+required-features = ["redis-client"]

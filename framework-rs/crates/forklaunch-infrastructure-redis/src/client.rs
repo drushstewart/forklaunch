@@ -184,16 +184,56 @@ impl TtlCache for RedisTtlCache {
 pub struct RedisQueue {
     key: String,
     connection: Connection,
+    layout: RedisQueueLayout,
+}
+
+/// Select one layout consistently for every producer and consumer of a list.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RedisQueueLayout {
+    /// `LPUSH` / `RPOP`, matching the TypeScript Redis cache queue methods.
+    #[default]
+    TypeScript,
+    /// `RPUSH` / `LPOP`, for lists written by the earlier native implementation.
+    LegacyNative,
 }
 
 impl RedisQueue {
+    /// Connect with the TypeScript-compatible `LPUSH` / `RPOP` FIFO layout.
+    ///
     /// # Errors
     /// Returns an error for an empty key or connection failure.
     pub fn connect(url: &str, key: impl Into<String>) -> FrameworkResult<Self> {
+        Self::connect_with_layout(url, key, RedisQueueLayout::default())
+    }
+
+    /// Preserve an existing native backlog by explicitly selecting `LegacyNative`.
+    ///
+    /// # Errors
+    /// Returns an error for an empty key or connection failure.
+    pub fn connect_with_layout(
+        url: &str,
+        key: impl Into<String>,
+        layout: RedisQueueLayout,
+    ) -> FrameworkResult<Self> {
         Ok(Self {
             key: normalize_key(key)?,
             connection: connect(url)?,
+            layout,
         })
+    }
+
+    fn push_command(&self) -> &'static str {
+        match self.layout {
+            RedisQueueLayout::TypeScript => "LPUSH",
+            RedisQueueLayout::LegacyNative => "RPUSH",
+        }
+    }
+
+    fn pop_command(&self) -> &'static str {
+        match self.layout {
+            RedisQueueLayout::TypeScript => "RPOP",
+            RedisQueueLayout::LegacyNative => "LPOP",
+        }
     }
 
     fn query<T: FromRedisValue>(&mut self, command: &mut redis::Cmd) -> FrameworkResult<T> {
@@ -203,7 +243,11 @@ impl RedisQueue {
     /// # Errors
     /// Returns an error if Redis rejects the enqueue.
     pub fn enqueue(&mut self, value: &[u8]) -> FrameworkResult<()> {
-        let _: usize = self.query(redis::cmd("RPUSH").arg(self.key.clone()).arg(value))?;
+        let _: usize = self.query(
+            redis::cmd(self.push_command())
+                .arg(self.key.clone())
+                .arg(value),
+        )?;
         Ok(())
     }
     /// # Errors
@@ -212,13 +256,17 @@ impl RedisQueue {
         if values.is_empty() {
             return Ok(());
         }
-        let _: usize = self.query(redis::cmd("RPUSH").arg(self.key.clone()).arg(values))?;
+        let _: usize = self.query(
+            redis::cmd(self.push_command())
+                .arg(self.key.clone())
+                .arg(values),
+        )?;
         Ok(())
     }
     /// # Errors
     /// Returns an error if Redis rejects the dequeue.
     pub fn dequeue(&mut self) -> FrameworkResult<Option<Vec<u8>>> {
-        self.query(redis::cmd("LPOP").arg(self.key.clone()))
+        self.query(redis::cmd(self.pop_command()).arg(self.key.clone()))
     }
     /// # Errors
     /// Returns an error if Redis rejects the batch dequeue (requires Redis 6.2+).
@@ -226,14 +274,52 @@ impl RedisQueue {
         if max == 0 {
             return Ok(Vec::new());
         }
-        let values: Option<Vec<Vec<u8>>> =
-            self.query(redis::cmd("LPOP").arg(self.key.clone()).arg(max))?;
+        let values: Option<Vec<Vec<u8>>> = self.query(
+            redis::cmd(self.pop_command())
+                .arg(self.key.clone())
+                .arg(max),
+        )?;
         Ok(values.unwrap_or_default())
     }
     /// # Errors
     /// Returns an error if Redis rejects the peek.
     pub fn peek(&mut self) -> FrameworkResult<Option<Vec<u8>>> {
-        self.query(redis::cmd("LINDEX").arg(self.key.clone()).arg(0))
+        let index = if self.layout == RedisQueueLayout::TypeScript {
+            -1
+        } else {
+            0
+        };
+        self.query(redis::cmd("LINDEX").arg(self.key.clone()).arg(index))
+    }
+    /// Read the next items in dequeue order without removing them.
+    ///
+    /// # Errors
+    /// Returns an error for an unsupported count or when Redis rejects the range.
+    pub fn peek_batch(&mut self, max: usize) -> FrameworkResult<Vec<Vec<u8>>> {
+        if max == 0 {
+            return Ok(Vec::new());
+        }
+        let count = i64::try_from(max).map_err(|_| {
+            FrameworkError::new(
+                "redis_queue_invalid_count",
+                "Queue count exceeds the Redis integer range",
+            )
+        })?;
+        let (start, end) = if self.layout == RedisQueueLayout::TypeScript {
+            (-count, -1)
+        } else {
+            (0, count - 1)
+        };
+        let mut values: Vec<Vec<u8>> = self.query(
+            redis::cmd("LRANGE")
+                .arg(self.key.clone())
+                .arg(start)
+                .arg(end),
+        )?;
+        if self.layout == RedisQueueLayout::TypeScript {
+            values.reverse();
+        }
+        Ok(values)
     }
     /// # Errors
     /// Returns an error if Redis rejects the length query.
@@ -340,6 +426,11 @@ mod tests {
             .enqueue_batch(&[b"second".to_vec(), b"third".to_vec()])
             .unwrap();
         assert_eq!(consumer.peek().unwrap(), Some(vec![0, 255]));
+        assert_eq!(consumer.peek_batch(0).unwrap(), Vec::<Vec<u8>>::new());
+        assert_eq!(
+            consumer.peek_batch(2).unwrap(),
+            vec![vec![0, 255], b"second".to_vec()]
+        );
         assert_eq!(consumer.len().unwrap(), 3);
         assert_eq!(consumer.dequeue_batch(0).unwrap(), Vec::<Vec<u8>>::new());
         assert_eq!(consumer.dequeue().unwrap(), Some(vec![0, 255]));
