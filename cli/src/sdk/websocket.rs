@@ -246,7 +246,7 @@ fn stage_typescript(
             "name":format!("{name}-websocket-sdk"),"version":"0.1.0","private":true,"type":"module",
             "main":"./dist/index.js","types":"./dist/index.d.ts","exports":{".":{"types":"./dist/index.d.ts","import":"./dist/index.js"}},
             "scripts":{"build":"tsc --project tsconfig.json","typecheck":"tsc --project tsconfig.json --noEmit"},
-            "dependencies":{"ws":"^8.22.0","ajv":"^8.20.0","ajv-formats":"^3.0.1"},
+            "dependencies":{"ws":"^8.22.0","ajv":"^8.20.0","ajv-draft-04":"^1.0.0","ajv-formats":"^3.0.1"},
             "devDependencies":{"typescript":"^5.9.3","@types/ws":"^8.18.1","@types/node":"^22.0.0"}
         }))?,
     )?;

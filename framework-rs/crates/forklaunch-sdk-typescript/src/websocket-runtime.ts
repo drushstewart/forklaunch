@@ -3,6 +3,7 @@ import { WebSocket, type ClientOptions, type RawData } from 'ws';
 import { Ajv, type AnySchema, type ValidateFunction } from 'ajv';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { Ajv2019 } from 'ajv/dist/2019.js';
+import AjvDraft4Module from 'ajv-draft-04';
 import addFormatsModule, { type FormatsPlugin } from 'ajv-formats';
 import type { IncomingHttpHeaders } from 'node:http';
 
@@ -91,26 +92,49 @@ function socketMultipleOf(value: number, divisor: number): boolean {
 }
 function socketValidator(schema: AnySchema): ValidateFunction {
   const dialect = typeof schema === 'object' ? schema.$schema : undefined;
+  // CommonJS constructor declarations are exposed as a namespace in NodeNext.
+  const AjvDraft4 = AjvDraft4Module as unknown as typeof Ajv;
   const engine =
-    typeof dialect === 'string' && dialect.includes('2020-12')
-      ? new Ajv2020({
+    typeof dialect === 'string' && dialect.includes('/draft-04/')
+      ? new AjvDraft4({
           strict: false,
           validateFormats: true,
           ownProperties: true,
         })
-      : typeof dialect === 'string' && dialect.includes('2019-09')
-        ? new Ajv2019({
+      : typeof dialect === 'string' && dialect.includes('2020-12')
+        ? new Ajv2020({
             strict: false,
             validateFormats: true,
             ownProperties: true,
           })
-        : new Ajv({
-            strict: false,
-            validateFormats: true,
-            ownProperties: true,
-          });
+        : typeof dialect === 'string' && dialect.includes('2019-09')
+          ? new Ajv2019({
+              strict: false,
+              validateFormats: true,
+              ownProperties: true,
+            })
+          : new Ajv({
+              strict: false,
+              validateFormats: true,
+              ownProperties: true,
+            });
   if (typeof dialect === 'string' && dialect.includes('/draft-06/'))
     engine.addMetaSchema(socketDraft6MetaSchema);
+  if (typeof dialect === 'string' && dialect.includes('/draft-04/')) {
+    // The Draft 4 adapter also registers newer AJV applicator/const keywords.
+    // They are annotations in this dialect and must not narrow accepted values.
+    for (const keyword of [
+      'const',
+      'contains',
+      'propertyNames',
+      'if',
+      'then',
+      'else',
+    ])
+      engine.removeKeyword(keyword);
+  }
+  if (typeof dialect === 'string' && dialect.includes('/draft-06/'))
+    for (const keyword of ['if', 'then', 'else']) engine.removeKeyword(keyword);
   // CJS package declarations are exposed as a namespace under NodeNext ESM.
   const addFormats = addFormatsModule as unknown as FormatsPlugin;
   addFormats(engine);
@@ -154,7 +178,9 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     const object = node as Record<string, unknown>;
     if (typeof object.$schema === 'string') {
-      if (object.$schema.includes('/draft-06/'))
+      if (object.$schema.includes('/draft-04/'))
+        object.$schema = 'http://json-schema.org/draft-04/schema#';
+      else if (object.$schema.includes('/draft-06/'))
         object.$schema = 'http://json-schema.org/draft-06/schema#';
       else if (object.$schema.includes('/draft-07/'))
         object.$schema = 'http://json-schema.org/draft-07/schema#';

@@ -140,6 +140,31 @@
           }
         }
       }
+    },
+    "draft4": {
+      "path": "/draft-four",
+      "clientMessages": {
+        "draft_four_request": {
+          "shape": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "maximum": 10,
+            "exclusiveMaximum": true
+          }
+        }
+      },
+      "serverMessages": {
+        "draft_four_reply": {
+          "shape": {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "type": "string",
+            "const": "ignored",
+            "minLength": 1
+          }
+        }
+      }
     }
   }
 }

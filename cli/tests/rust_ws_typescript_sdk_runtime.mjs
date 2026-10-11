@@ -61,6 +61,7 @@ try {
     ['@types/node', external],
     ['ajv', sdkDependencies],
     ['ajv-formats', sdkDependencies],
+    ['ajv-draft-04', sdkDependencies],
   ]) {
     await symlink(
       path.dirname(resolver.resolve(`${name}/package.json`)),
@@ -121,7 +122,7 @@ try {
     path.join(temporary, 'src/native.ts'),
     await readFile(path.join(temporary, 'src/generated.ts.native')),
   );
-  for (const suffix of ['recursive', 'empty', 'draft6'])
+  for (const suffix of ['recursive', 'empty', 'draft6', 'draft4'])
     await writeFile(
       path.join(temporary, `src/${suffix}.ts`),
       await readFile(path.join(temporary, `src/generated.ts.${suffix}`)),
@@ -131,6 +132,10 @@ try {
     `
 import { ForkLaunchSocketClient } from './generated.js';
 import type { SocketIncoming as Tree } from './recursive.js';
+import type { SocketIncoming as DraftFour } from './draft4.js';
+export const draftFour: DraftFour = 'not the ignored const';
+// @ts-expect-error Draft 4 retains its declared string type.
+export const invalidDraftFour: DraftFour = 42;
 import type { SocketIncoming as DraftSix } from './draft6.js';
 export const draftSix: DraftSix = [1, 2];
 // @ts-expect-error Draft 6 arrays retain their numeric item type.

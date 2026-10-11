@@ -200,6 +200,29 @@ mod tests {
     }
 
     #[test]
+    fn draft_four_models_ignore_later_keywords_and_reject_legacy_resource_ids() {
+        let schema = json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"object","required":["value"],"properties":{"value":{"type":"string","const":"ignored"}},"const":{"literal":"annotation"}});
+        let contract = SocketContract::new("/legacy")
+            .with_server_message("legacy", SocketSchemaEntry::new(schema.clone()));
+        let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+        assert!(
+            plan.incoming
+                .models
+                .typescript_type
+                .contains("value: string")
+        );
+        assert_eq!(plan.incoming.schema, schema);
+        for schema in [
+            json!({"$schema":"http://json-schema.org/draft-04/schema#","id":"https://example.test/root","type":"string"}),
+            json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"object","properties":{"value":{"id":"nested","type":"string"}}}),
+        ] {
+            let contract = SocketContract::new("/legacy")
+                .with_server_message("legacy", SocketSchemaEntry::new(schema));
+            assert!(SocketSdkPlan::from_contract(&contract).is_err());
+        }
+    }
+
+    #[test]
     fn malformed_constraints_scopes_and_mixed_dialects_fail_before_generation() {
         for schema in [
             json!({"type":"string","minLength":-1}),

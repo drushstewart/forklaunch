@@ -18,6 +18,7 @@ const require = createRequire(import.meta.url),
   ),
   external = createRequire(parserPath);
 const Ajv = external('ajv'),
+  AjvDraft4 = external('ajv-draft-04'),
   Ajv2019 = external('ajv/dist/2019').default,
   Ajv2020 = external('ajv/dist/2020').default,
   addFormats = external('ajv-formats');
@@ -43,11 +44,13 @@ const validator = {
     let validate = cache.get(key);
     if (!validate) {
       const engine = new (
-        schema.$schema?.includes('2020-12')
-          ? Ajv2020
-          : schema.$schema?.includes('2019-09')
-            ? Ajv2019
-            : Ajv
+        schema.$schema?.includes('/draft-04/')
+          ? AjvDraft4
+          : schema.$schema?.includes('2020-12')
+            ? Ajv2020
+            : schema.$schema?.includes('2019-09')
+              ? Ajv2019
+              : Ajv
       )({
         strict: false,
         validateFormats: true,
@@ -57,6 +60,19 @@ const validator = {
         engine.addMetaSchema(
           external('ajv/dist/refs/json-schema-draft-06.json'),
         );
+      if (schema.$schema?.includes('/draft-04/'))
+        for (const keyword of [
+          'const',
+          'contains',
+          'propertyNames',
+          'if',
+          'then',
+          'else',
+        ])
+          engine.removeKeyword(keyword);
+      if (schema.$schema?.includes('/draft-06/'))
+        for (const keyword of ['if', 'then', 'else'])
+          engine.removeKeyword(keyword);
       addFormats(engine);
       engine.removeKeyword('multipleOf');
       engine.addKeyword({
@@ -93,6 +109,53 @@ const validator = {
   },
 };
 const schemas = [
+  {
+    $schema: 'http://json-schema.org/draft-06/schema#',
+    type: 'object',
+    properties: { value: { type: 'string' } },
+    if: { required: ['value'] },
+    then: { required: ['other'] },
+  },
+
+  {
+    $schema: 'http://json-schema.org/draft-04/schema#',
+    type: 'array',
+    items: { type: 'integer' },
+    contains: { minimum: 100 },
+  },
+  {
+    $schema: 'http://json-schema.org/draft-04/schema#',
+    type: 'object',
+    properties: { value: { type: 'string' } },
+    propertyNames: { pattern: '^a$' },
+    if: { required: ['value'] },
+    then: { required: ['other'] },
+  },
+
+  {
+    $schema: 'http://json-schema.org/draft-04/schema#',
+    type: 'number',
+    minimum: 0,
+    exclusiveMinimum: true,
+    maximum: 10,
+    exclusiveMaximum: true,
+    multipleOf: 0.1,
+  },
+  {
+    $schema: 'http://json-schema.org/draft-04/schema#',
+    type: 'string',
+    const: 'ignored',
+    minLength: 1,
+  },
+  {
+    $schema: 'http://json-schema.org/draft-04/schema#',
+    type: 'object',
+    required: ['value'],
+    properties: { value: { type: 'string', const: 'ignored' } },
+    dependencies: { value: ['other'] },
+  },
+  { $schema: 'http://json-schema.org/draft-04/schema#', type: 'integer' },
+
   {
     $schema: 'http://json-schema.org/draft-06/schema#',
     type: 'number',
@@ -295,7 +358,7 @@ for (const schema of schemas)
     });
   }
 for (const schema of schemas)
-  for (const text of ['raw text', '{broken', 'hello 水'])
+  for (const text of ['raw text', '{broken', 'hello 水', '1.0', '1e0', '-0.0'])
     cases.push({ schema, action: 'decode', bytes: [...Buffer.from(text)] });
 const temporary = await mkdtemp(path.join(tmpdir(), 'fl-ws-jsonschema-'));
 const generated = process.env.FORKLAUNCH_TEST_TS_WS_SDK_CODEC_MODULE
@@ -407,7 +470,7 @@ try {
     if (error) continue;
     if (input.action === 'decode')
       assert.deepEqual(
-        native[index].value,
+        JSON.parse(JSON.stringify(native[index].value)),
         JSON.parse(JSON.stringify(value)),
         `decoded value ${index}`,
       );

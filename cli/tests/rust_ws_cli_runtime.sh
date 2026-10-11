@@ -23,7 +23,7 @@ sdk=Path('sdks/typescript-websocket/realtime')
 root=Path(os.environ['FORKLAUNCH_TEST_WS_SDK_DEPENDENCIES'])/'node_modules'
 validator=Path(os.environ['FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES'])/'node_modules'
 (sdk/'node_modules/@types').mkdir(parents=True)
-for name,base in [('ws',validator),('ajv',root),('ajv-formats',root),('@types/ws',validator),('@types/node',validator)]:
+for name,base in [('ws',validator),('ajv',root),('ajv-formats',root),('ajv-draft-04',root),('@types/ws',validator),('@types/node',validator)]:
     (sdk/'node_modules'/name).symlink_to(base/name,target_is_directory=True)
 config=sdk/'tsconfig.json';value=json.loads(config.read_text());value['compilerOptions']['noUnusedLocals']=False
 config.write_text(json.dumps(value))

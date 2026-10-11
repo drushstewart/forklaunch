@@ -87,6 +87,29 @@ function payloadSchema(schema: unknown, depth = 0): unknown {
   return output;
 }
 
+function messagePayload(schema: unknown): MessageObject['payload'] {
+  const dialect =
+    schema && typeof schema === 'object' && '$schema' in schema
+      ? schema.$schema
+      : undefined;
+  const version =
+    typeof dialect === 'string'
+      ? ['draft-04', 'draft-06', '2019-09', '2020-12'].find((version) =>
+          dialect.includes(version)
+        )
+      : undefined;
+  // The default AsyncAPI Schema Object follows Draft 7. Preserve other dialects
+  // through a Multi Format Schema Object instead of changing their semantics.
+  return (
+    version
+      ? {
+          schemaFormat: `application/schema+json;version=${version}`,
+          schema: payloadSchema(schema)
+        }
+      : payloadSchema(schema)
+  ) as MessageObject['payload'];
+}
+
 export function generateAsyncApi<SV extends AnySchemaValidator>(
   eventSchemas: EventSchema<SV>,
   options?: {
@@ -151,7 +174,7 @@ export function generateAsyncApi<SV extends AnySchemaValidator>(
 
         const message: MessageObject = {
           name: messageName,
-          payload: payloadSchema(schema) as MessageObject['payload']
+          payload: messagePayload(schema)
         };
 
         messages[messageName] = message;

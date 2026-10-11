@@ -65,7 +65,8 @@ impl<T: Serialize + DeserializeOwned> PayloadCodec<T> {
     /// deserialization and original serialized values before wire encoding.
     /// Missing dialect declarations use Draft 7. Email uses AJV full-format
     /// semantics; UUID assertions also apply in Draft 7. Decimal multiples are
-    /// exact. No HTTP/file retrieval is enabled, including through unified features.
+    /// exact. Safe integral decimal/exponent forms also decode as typed integers.
+    /// No HTTP/file retrieval is enabled, including through unified features.
     ///
     /// # Errors
     /// Rejects invalid schemas, unresolved resources and schema/regex budget limits.
@@ -162,7 +163,7 @@ fn decode_serde<T: DeserializeOwned>(
     validate: Option<&JsonValidator>,
 ) -> Result<T, PayloadError> {
     let text = String::from_utf8_lossy(bytes);
-    let value = match serde_json::from_str(&text) {
+    let value: Value = match serde_json::from_str(&text) {
         Ok(value) => value,
         Err(error) if serde_json::from_str::<&serde_json::value::RawValue>(&text).is_ok() => {
             // RawValue checks JSON syntax iteratively, without numeric conversion
@@ -175,7 +176,14 @@ fn decode_serde<T: DeserializeOwned>(
         Err(_) => Value::String(text.into_owned()),
     };
     if let Some(validate) = validate {
-        validate(&value).map_err(PayloadError::Invalid)?;
+        let mut normalized = value.clone();
+        normalize_integer_numbers(&mut normalized);
+        validate(&normalized).map_err(PayloadError::Invalid)?;
+        // Preserve floating-point representation (including negative zero) when
+        // the target supports it; typed integers also accept safe integral forms.
+        return serde_json::from_value(value)
+            .or_else(|_| serde_json::from_value(normalized))
+            .map_err(|error| PayloadError::Invalid(error.to_string()));
     }
     serde_json::from_value(value).map_err(|error| PayloadError::Invalid(error.to_string()))
 }
@@ -195,9 +203,10 @@ fn encode_serde<T: Serialize>(
         return Err(PayloadError::Limit { max_bytes });
     }
     result.map_err(|error| PayloadError::Invalid(error.to_string()))?;
-    let serialized = serde_json::from_slice(&output.bytes)
+    let mut serialized = serde_json::from_slice(&output.bytes)
         .map_err(|error| PayloadError::Invalid(error.to_string()))?;
     if let Some(validate) = validate {
+        normalize_integer_numbers(&mut serialized);
         validate(&serialized).map_err(PayloadError::Invalid)?;
     }
     match serialized {
@@ -206,6 +215,30 @@ fn encode_serde<T: Serialize>(
             "null cannot be sent as a message".into(),
         )),
         _ => Ok(output.bytes),
+    }
+}
+
+// JavaScript JSON parsing does not retain an integer's decimal/exponent spelling.
+// Canonicalize only exactly representable safe integers before schema validation
+// and typed deserialization. Strings, fractions and larger numbers retain their
+// existing representation and range rules.
+#[allow(clippy::cast_possible_truncation)]
+fn normalize_integer_numbers(value: &mut Value) {
+    let mut pending = vec![value];
+    while let Some(value) = pending.pop() {
+        match value {
+            Value::Number(number) if number.is_f64() => {
+                if let Some(value) = number.as_f64()
+                    && value.fract() == 0.0
+                    && value.abs() <= 9_007_199_254_740_991.0
+                {
+                    *number = (value as i64).into();
+                }
+            }
+            Value::Array(values) => pending.extend(values.iter_mut()),
+            Value::Object(values) => pending.extend(values.values_mut()),
+            _ => {}
+        }
     }
 }
 struct LimitedBytes {

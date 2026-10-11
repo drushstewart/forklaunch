@@ -25,6 +25,12 @@ for(const name of ['default','room/~feed','hello 水 🦀','percent%2F','space n
 cases.push({path:'/chat',clientMessages:{request:{...entry,channel:'preferred',channels:['ignored'],operation:'preferred',operations:['ignored']}},serverMessages:{}});
 cases.push({path:'/chat',clientMessages:{request:{...entry,channel:'',channels:['fallback'],operations:['chosen','ignored']}},serverMessages:{},ping:{shape:{type:'string'}},pong:{shape:{type:'string'}},closeReason:{reason:{shape:{type:'string'}}}});
 cases.push({path:'/chat',clientMessages:{nested:{shape:{type:'object',properties:{any:true,never:false,list:{type:'array',items:false}},additionalProperties:false}}},serverMessages:{}});
+for(const [version,dialect,shape] of [
+ ['draft-04','http://json-schema.org/draft-04/schema#',{type:'number',minimum:0,exclusiveMinimum:true}],
+ ['draft-06','http://json-schema.org/draft-06/schema#',{type:'string',const:'value'}],
+ ['2019-09','https://json-schema.org/draft/2019-09/schema',{type:'array',items:{type:'integer'},minContains:2,contains:{minimum:0}}],
+ ['2020-12','https://json-schema.org/draft/2020-12/schema',{type:'array',prefixItems:[{type:'string'}],items:false}],
+])cases.push({path:'/dialects',clientMessages:{[version]:{shape:{$schema:dialect,...shape}}},serverMessages:{}});
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-metadata-'));
 async function parse(document){
  assert.equal(validateDocument(document),true,JSON.stringify(validateDocument.errors));

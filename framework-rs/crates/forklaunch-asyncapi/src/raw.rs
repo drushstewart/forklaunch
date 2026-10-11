@@ -103,10 +103,16 @@ fn append_message(
             "socket channel addresses must be nonempty and exclude query/fragment delimiters",
         ));
     }
-    let payload = embedded_schema(
-        &entry.shape,
-        &["channels", channel, "messages", name, "payload"],
-    )?;
+    let format = schema_format(&entry.shape);
+    let mut location = vec!["channels", channel, "messages", name, "payload"];
+    if format.is_some() {
+        location.push("schema");
+    }
+    let payload = embedded_schema(&entry.shape, &location)?;
+    let payload = match format {
+        Some(format) => json!({"schemaFormat":format,"schema":payload}),
+        None => payload,
+    };
     let message = json!({"name":name,"payload":payload});
     let channel = channels
         .entry(channel)
@@ -125,10 +131,22 @@ fn append_message(
     messages.insert(name.into(), message);
     Ok(())
 }
+fn schema_format(schema: &Value) -> Option<String> {
+    let dialect = schema.get("$schema")?.as_str()?;
+    ["draft-04", "draft-06", "2019-09", "2020-12"]
+        .into_iter()
+        .find(|version| dialect.contains(version))
+        .map(|version| format!("application/schema+json;version={version}"))
+}
 fn embedded_schema(schema: &Value, location: &[&str]) -> FrameworkResult<Value> {
     let mut normalized = schema.clone();
+    let draft4 = schema
+        .get("$schema")
+        .and_then(Value::as_str)
+        .is_some_and(|dialect| dialect.contains("/draft-04/"));
     walk_schema(&mut normalized, 0, &mut |object| {
-        if object.get("$id").is_some_and(|id| id.as_str() != Some(""))
+        if (draft4 && object.contains_key("id"))
+            || object.get("$id").is_some_and(|id| id.as_str() != Some(""))
             || [
                 "$anchor",
                 "$dynamicAnchor",
@@ -315,6 +333,36 @@ mod tests {
         assert_eq!(document["id"], "urn:forklaunch:chat");
         assert_eq!(document["defaultContentType"], "application/json");
     }
+    #[test]
+    fn declared_dialects_use_multi_format_schemas_and_rebase_inside_the_schema() {
+        let shape = json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"object","properties":{"value":{"$ref":"#/definitions/Positive"}},"definitions":{"Positive":{"type":"number","minimum":0,"exclusiveMinimum":true}}});
+        let contract = SocketContract::new("/legacy")
+            .with_client_message("legacy", SocketSchemaEntry::new(shape));
+        let document: Value = serde_json::from_str(
+            &generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Legacy", "1"), &contract)
+                .unwrap(),
+        )
+        .unwrap();
+        let payload = &document["channels"]["legacy"]["messages"]["legacy"]["payload"];
+        assert_eq!(
+            payload["schemaFormat"],
+            "application/schema+json;version=draft-04"
+        );
+        let reference = payload["schema"]["properties"]["value"]["$ref"]
+            .as_str()
+            .unwrap();
+        assert_eq!(
+            document
+                .pointer(reference.strip_prefix('#').unwrap())
+                .unwrap()["exclusiveMinimum"],
+            true
+        );
+        let scoped=SocketContract::new("/legacy").with_client_message("legacy",SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-04/schema#","id":"https://example.test/schema","type":"string"})));
+        assert!(
+            generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Legacy", "1"), &scoped).is_err()
+        );
+    }
+
     #[test]
     fn raw_socket_schema_pointers_relocate_without_changing_literal_values() {
         let shape = json!({"type":"object","properties":{"next":{"$ref":"#"},"item":{"$ref":"#/$defs/hello%20%E6%B0%B4"}},"$defs":{"hello 水":{"type":"string"}},"const":{"$ref":"literal"},"examples":[{"$ref":"literal"}]});

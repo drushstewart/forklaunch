@@ -18,7 +18,7 @@ impl TypeScriptWebSocketSdkOptions {
 }
 
 /// Generate a Node `ws` client with AJV validation, bounded queues and owned iterators.
-/// Consumers need ws 8.22, AJV 8, ajv-formats 3 and Node/ws TypeScript declarations.
+/// Consumers need ws 8.22, AJV 8, ajv-draft-04 1, ajv-formats 3 and Node/ws TypeScript declarations.
 /// Client class names must begin with an ASCII uppercase letter.
 ///
 /// # Errors
@@ -40,6 +40,7 @@ pub fn generate_typescript_websocket_sdk_source(
             .schema
             .get("$schema")
             .and_then(serde_json::Value::as_str)
+            && !dialect.contains("/draft-04/")
             && !dialect.contains("/draft-06/")
             && !dialect.contains("/draft-07/")
             && !dialect.contains("/draft/2019-09/")
@@ -206,6 +207,8 @@ mod tests {
             for (suffix, contract) in [
                 ("recursive", recursive),
                 ("empty", SocketContract::new("/empty")),
+                ("draft4", SocketContract::new("/draft-four")
+                    .with_server_message("legacy", SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"string","const":"ignored"})))),
                 ("draft6", SocketContract::new("/draft-six")
                     .with_server_message("values", SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-06/schema#","type":"array","items":{"type":"integer"},"contains":{"minimum":2}})))
                     .with_client_message("request", SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-06/schema#","type":"string","minLength":1})))),
@@ -229,24 +232,18 @@ mod tests {
         }
     }
     #[test]
-    fn rejects_unsupported_dialects_before_generating_clients() {
+    fn generates_declared_draft_four_clients_without_newer_literal_constraints() {
         let contract = SocketContract::new("/legacy").with_server_message(
-            "legacy",
-            SocketSchemaEntry::new(
-                json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"string"}),
-            ),
+            "legacy", SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"string","const":"ignored"})),
         );
         let plan = SocketSdkPlan::from_contract(&contract).unwrap();
-        let error = generate_typescript_websocket_sdk_source(
+        assert_eq!(plan.incoming.models.typescript_type, "string");
+        let source = generate_typescript_websocket_sdk_source(
             &plan,
             &TypeScriptWebSocketSdkOptions::new("LegacyClient"),
         )
-        .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("Unsupported TypeScript WebSocket JSON Schema dialect")
-        );
+        .unwrap();
+        assert!(source.contains("ajv-draft-04"));
     }
     #[test]
     fn generates_declared_draft_six_clients() {

@@ -125,6 +125,53 @@ mod tests {
         ));
     }
     #[test]
+    fn integer_spellings_follow_javascript_json_numbers_before_typed_deserialization() {
+        #[derive(Debug, Serialize, Deserialize, PartialEq)]
+        struct Integers {
+            value: i64,
+            nested: Vec<i64>,
+        }
+        for dialect in [
+            "http://json-schema.org/draft-04/schema#",
+            "http://json-schema.org/draft-07/schema#",
+        ] {
+            let schema = json!({"$schema":dialect,"type":"object","required":["value","nested"],"properties":{"value":{"type":"integer"},"nested":{"type":"array","items":{"type":"integer"}}}});
+            let codec = PayloadCodec::<Integers>::json_schema(&schema).unwrap();
+            assert_eq!(
+                codec
+                    .decode(br#"{"value":1.0,"nested":[1e0,-0.0]}"#)
+                    .unwrap(),
+                Integers {
+                    value: 1,
+                    nested: vec![1, 0]
+                }
+            );
+            assert!(codec.decode(br#"{"value":1.5,"nested":[]}"#).is_err());
+            assert!(codec.decode(br#"{"value":"1","nested":[]}"#).is_err());
+        }
+        let codec = PayloadCodec::<f64>::json_schema(
+            &json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"integer"}),
+        )
+        .unwrap();
+        assert_eq!(codec.encode(&1.0).unwrap(), b"1.0");
+        assert!(codec.encode(&1.5).is_err());
+        let value = PayloadCodec::<Value>::json_schema(
+            &json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"integer"}),
+        )
+        .unwrap();
+        assert!(
+            value
+                .decode(b"-0.0")
+                .unwrap()
+                .as_f64()
+                .unwrap()
+                .is_sign_negative()
+        );
+        // Generic serde codecs retain their explicitly stricter integer decoding.
+        assert!(PayloadCodec::<i64>::serde().decode(b"1.0").is_err());
+    }
+
+    #[test]
     fn invalid_schemas_and_external_retrieval_fail_without_reading_resources() {
         for schema in [
             json!({"type":"invalid"}),
