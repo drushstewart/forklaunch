@@ -22,6 +22,7 @@ use url::Url;
 use zeroize::Zeroizing;
 
 mod credential;
+mod rate;
 mod request;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -34,6 +35,7 @@ pub struct AuthHttp<S> {
     base_url: String,
     policy: Arc<OriginPolicy>,
     cookie: SessionCookie,
+    limiter: rate::RateLimiter,
     clock: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {
@@ -60,6 +62,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             base_url,
             policy: Arc::new(policy),
             cookie: SessionCookie { secure },
+            limiter: rate::RateLimiter::new(),
             clock: Arc::new(Utc::now),
         })
     }
@@ -67,6 +70,13 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     #[must_use]
     pub fn with_clock(mut self, clock: impl Fn() -> DateTime<Utc> + Send + Sync + 'static) -> Self {
         self.clock = Arc::new(clock);
+        self
+    }
+    /// Trusted operator override of the configured default (enabled when
+    /// `NODE_ENV` is production). This setting cannot be selected by a request.
+    #[must_use]
+    pub fn with_rate_limiting(mut self, enabled: bool) -> Self {
+        self.limiter.enabled = enabled;
         self
     }
     /// Credentialed browser policy for the outer `ForkLaunchRouter`. Install this
@@ -100,6 +110,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     /// Credential/session/JWT routes. Remaining user/account/provider/organization
     /// endpoints are added incrementally without permissive placeholders.
     pub fn router(self) -> Router {
+        let app = Arc::new(self);
         Router::new()
             .route("/sign-up/email", post(dispatch::<S>))
             .route("/sign-in/email", post(dispatch::<S>))
@@ -121,7 +132,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/revoke-other-sessions", post(dispatch::<S>))
             .route("/sign-out", post(dispatch::<S>))
             .method_not_allowed_fallback(not_found)
-            .with_state(Arc::new(self))
+            .fallback(not_found)
+            .layer(axum::middleware::from_fn_with_state(
+                app.clone(),
+                rate::guard::<S>,
+            ))
+            .with_state(app)
     }
     async fn session_response(
         &self,

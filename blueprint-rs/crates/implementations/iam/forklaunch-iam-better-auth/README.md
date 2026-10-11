@@ -120,6 +120,13 @@ including JSON/form media, validation order, duplicate query keys and unsupporte
 methods. Live memory and encrypted PostgreSQL exercise credential signup/signin
 and rotation through TCP alongside MCP startup and graceful shutdown.
 
-Production rate limiting, remaining user/account/provider/org routes, real TS ORM
+Production rate limiting matches 153 actual HTTP outcomes, including rolling idle
+windows, normalized IP/path buckets, special rules, retry headers and pre-parser/
+CSRF ordering. The process-global memory store has bounded expiry/insertion
+indexes. A live TCP burst admits exactly three of 32 concurrent signin requests
+and shuts down cleanly. Defaults enable limits in production; operators may use
+`with_rate_limiting` to override this configuration.
+
+Remaining user/account/provider/org routes, real TS ORM
 conformance, custom callbacks and module generation remain open; these thirteen
 routes do not constitute the complete Better Auth preset.

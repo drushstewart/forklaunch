@@ -239,6 +239,12 @@ fn body_fields(path: &str) -> (bool, &'static [(&'static str, &'static str, bool
 }
 
 pub(super) fn client_metadata(headers: &HeaderMap) -> (String, String) {
+    (
+        client_ip(headers),
+        value(headers, "user-agent").unwrap_or("").to_owned(),
+    )
+}
+pub(super) fn client_ip(headers: &HeaderMap) -> String {
     use std::net::IpAddr;
     let mut addresses = value(headers, "x-forwarded-for")
         .unwrap_or("")
@@ -251,7 +257,7 @@ pub(super) fn client_metadata(headers: &HeaderMap) -> (String, String) {
     } else {
         candidate.and_then(|ip| ip.parse::<IpAddr>().ok())
     };
-    let ip = ip.map_or_else(fallback_ip, |ip| match ip {
+    ip.map_or_else(fallback_ip, |ip| match ip {
         IpAddr::V4(ip) => ip.to_string(),
         IpAddr::V6(ip) => ip.to_ipv4_mapped().map_or_else(
             || {
@@ -263,8 +269,7 @@ pub(super) fn client_metadata(headers: &HeaderMap) -> (String, String) {
             },
             |ip| ip.to_string(),
         ),
-    });
-    (ip, value(headers, "user-agent").unwrap_or("").to_owned())
+    })
 }
 
 fn fallback_ip() -> String {

@@ -434,3 +434,69 @@ async fn exercise_http_credentials(client: &reqwest::Client, base: &str) {
         .unwrap();
     assert_eq!(revoked, Value::Null);
 }
+
+#[tokio::test]
+async fn live_production_rate_limit_is_atomic_and_shuts_down() {
+    let auth = AuthHttp::new(
+        Arc::new(MemoryAuthStore::default()),
+        "http://localhost:3000".into(),
+        b"rate-http-fixture-only-secret-32-characters".to_vec(),
+        vec![],
+    )
+    .unwrap()
+    .with_rate_limiting(true)
+    .with_clock(|| DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap());
+    let router = axum::Router::new().nest("/api/auth", auth.router());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router)
+            .with_graceful_shutdown(async {
+                let _ = stopped.await;
+            })
+            .await
+            .unwrap();
+    });
+    let client = reqwest::Client::new();
+    let barrier = Arc::new(tokio::sync::Barrier::new(32));
+    let mut requests = tokio::task::JoinSet::new();
+    for _ in 0..32 {
+        let client = client.clone();
+        let barrier = barrier.clone();
+        requests.spawn(async move {
+            barrier.wait().await;
+            client
+                .post(format!("http://{address}/api/auth/sign-in/email"))
+                .header("x-forwarded-for", "198.51.100.209")
+                .json(&json!({}))
+                .send()
+                .await
+                .unwrap()
+        });
+    }
+    let mut allowed = 0;
+    let mut limited = 0;
+    while let Some(response) = requests.join_next().await {
+        let response = response.unwrap();
+        match response.status() {
+            StatusCode::BAD_REQUEST => allowed += 1,
+            StatusCode::TOO_MANY_REQUESTS => {
+                limited += 1;
+                assert_eq!(response.headers()["x-retry-after"], "10");
+                assert_eq!(
+                    response.json::<Value>().await.unwrap(),
+                    json!({"message":"Too many requests. Please try again later."})
+                );
+            }
+            other => panic!("unexpected status {other}"),
+        }
+    }
+    assert_eq!((allowed, limited), (3, 29));
+    stop.send(()).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), server)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(tokio::net::TcpStream::connect(address).await.is_err());
+}

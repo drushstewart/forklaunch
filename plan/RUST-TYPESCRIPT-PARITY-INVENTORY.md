@@ -341,6 +341,10 @@ full errors. Transient replacement cookies inherit the browser flag, raw additio
 profile values preserve presence, private input fields stay ignored, and forwarded
 IP/agent metadata matches. Live memory/restricted-role PostgreSQL exercise these
 credential operations with MCP startup and shutdown. The 161 session/JWT HTTP
-comparisons remain green. Default production rate limiting, user/account/provider/
+comparisons remain green. Production rate limiting now matches 153 actual HTTP
+responses, including rolling idle windows, fallback/IPv6 buckets, normalized paths,
+special endpoint rules, retry headers and pre-parser/CSRF ordering. Bounded
+process-global memory indexes preserve insertion eviction; live TCP concurrency
+admits exactly three of 32 requests and shuts down cleanly. User/account/provider/
 organization routes, real TypeScript ORM conformance, callbacks and CLI generation
 remain open.
