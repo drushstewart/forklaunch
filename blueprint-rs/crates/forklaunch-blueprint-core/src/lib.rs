@@ -7,6 +7,8 @@ pub mod instance_gateway;
 #[cfg(feature = "instance-gateway")]
 pub mod payments_client;
 #[cfg(feature = "instance-gateway")]
+pub mod platform_events;
+#[cfg(feature = "instance-gateway")]
 pub mod sms_client;
 #[cfg(feature = "instance-gateway")]
 pub mod voice_client;
