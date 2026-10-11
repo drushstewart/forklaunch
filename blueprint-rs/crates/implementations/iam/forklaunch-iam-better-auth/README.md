@@ -24,7 +24,7 @@ fixtures cover the configured TypeScript service separately.
 organization, issuer/audience, issued time and 15-minute expiry). Public JWKs
 contain no private material. The PKCS#8 persistence representation must be
 wrapped in tenant-bound encryption by storage. Key restoration preserves IDs
-and signatures; database lifecycle/rotation is still pending. The JWT fixture
+and signatures; the keyring owns database lifecycle and rotation. The JWT fixture
 compares native tokens/JWKS with actual configured Better Auth signing and JOSE
 verification, including expiry, issuer/audience and signature failures.
 
@@ -38,3 +38,12 @@ table DML and sequence usage, without SUPERUSER/BYPASSRLS. Request-specific audi
 contexts require a nonempty correlation ID. Graph relationships and cascades
 belong to the auth service. Model scans currently fail above 4096 records;
 indexed queries/pagination remain necessary for larger deployments.
+
+`keyring::KeyRing` initializes keys atomically, selects the newest live key,
+restores private keys from storage, rotates keys through trusted operator calls,
+and publishes retired keys through the configured 30-day grace period. Both
+memory and real PostgreSQL tests cover concurrent initialization, process/service
+reconstruction, rotation, exact grace expiry and corrupt-public-key rejection.
+The actual-library lifecycle fixture checks stable insertion ties and expired
+key replacement as well. Token/JWKS HTTP endpoints remain to be integrated with
+persistent sessions.

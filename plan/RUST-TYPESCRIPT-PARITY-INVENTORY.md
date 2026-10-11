@@ -266,3 +266,10 @@ transactions, private key restoration, blind-index uniqueness across key
 rotation and record/model ciphertext binding. Its schema migration ledger is
 independent of other modules. Auth endpoint semantics, graph relationships and
 indexed/paginated queries beyond the 4096-row scan bound are still open.
+
+The subsequent keyring checkpoint completes encrypted signing-key persistence,
+atomic initialization, live-key selection and operator rotation. Memory and
+live PostgreSQL verify service reconstruction and concurrent callers; 27 actual
+Better Auth/JOSE comparisons verify selection ties, default 30-day public-key
+grace boundaries and expired-key replacement. Corrupted public/private key
+metadata fails closed. Session-authenticated HTTP integration remains open.

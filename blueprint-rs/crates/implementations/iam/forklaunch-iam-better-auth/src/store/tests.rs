@@ -201,6 +201,7 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    crate::keyring::tests::exercise_key_lifecycle(Arc::new(other_store.clone())).await;
     let encrypted: Vec<String> =
         sqlx::query_scalar("SELECT ciphertext FROM fl_better_auth.records WHERE tenant_id=$1")
             .bind(tenant.id())
