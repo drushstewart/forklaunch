@@ -16,6 +16,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct PostgresEcommerceStore {
     pool: PgPool,
+    coordination: PgPool,
     tenant: TenantContext,
     encryptor: Arc<FieldEncryptor>,
     audit: AuditContext,
@@ -67,11 +68,52 @@ impl PostgresEcommerceStore {
             ));
         }
         Ok(Self {
+            coordination: sqlx::postgres::PgPoolOptions::new()
+                .max_connections(8)
+                .connect_lazy_with((*pool.connect_options()).clone()),
             pool,
             tenant,
             encryptor,
             audit,
         })
+    }
+    /// Holds a tenant-scoped cross-process operation lock until commit or drop.
+    /// A separate bounded pool prevents locks waiting on application pool capacity.
+    /// # Errors
+    /// Returns sanitized storage errors or a conflict after a bounded lock wait.
+    pub async fn lock_operation(
+        &self,
+        namespace: &str,
+        key: &str,
+    ) -> BlueprintResult<Transaction<'_, Postgres>> {
+        let mut tx = begin_tenant_transaction(&self.coordination, &self.tenant)
+            .await
+            .map_err(storage_error)?;
+        sqlx::query("SET LOCAL lock_timeout='15s'")
+            .execute(&mut *tx)
+            .await
+            .map_err(storage_error)?;
+        let identity =
+            json!(["forklaunch-ecommerce", self.tenant.id(), namespace, key]).to_string();
+        if let Err(error) = sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+            .bind(identity)
+            .execute(&mut *tx)
+            .await
+        {
+            if error
+                .as_database_error()
+                .and_then(sqlx::error::DatabaseError::code)
+                .as_deref()
+                == Some("55P03")
+            {
+                return Err(BlueprintError::new(
+                    "ecommerce_conflict",
+                    "Operation is already in progress",
+                ));
+            }
+            return Err(storage_error(error));
+        }
+        Ok(tx)
     }
     /// Reuses server-owned tenant and key configuration with a verified actor.
     /// # Errors

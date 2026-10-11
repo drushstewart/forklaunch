@@ -441,6 +441,41 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         .await
         .unwrap(),
     );
+    // Operation locks are tenant/namespace scoped and release with transaction drop.
+    let held = a.lock_operation("fixture", "shared-cart").await.unwrap();
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            a.lock_operation("fixture", "shared-cart")
+        )
+        .await
+        .is_err()
+    );
+    let isolated = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        b.lock_operation("fixture", "shared-cart"),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let namespace = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        a.lock_operation("other-fixture", "shared-cart"),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    drop(isolated);
+    drop(namespace);
+    drop(held);
+    let released = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        a.lock_operation("fixture", "shared-cart"),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    drop(released);
     business_rules(Arc::clone(&a)).await;
     let service = BaseEcommerceService::new(Arc::clone(&a));
     let other = BaseEcommerceService::new(Arc::clone(&b));

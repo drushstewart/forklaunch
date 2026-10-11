@@ -5,22 +5,31 @@ import net from 'node:net';
 import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
+import {compareCheckout} from './fixtures/rust_ecommerce_checkout_reference.mjs';
 const [binary,sdkPath]=process.argv.slice(2);
 const role=process.env.FORKLAUNCH_TEST_ROLE,secret='ecommerce-generated-hmac-secret';
-const children=[];let stripeCalls=0,paypalCalls=0;
+const children=[];let stripeCalls=0,paypalCalls=0,providerFailure,checkoutTaxDelay=0;
 const provider=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   res.setHeader('content-type','application/json');
   if(req.url==='/v1/payment_intents'){
     stripeCalls++;assert.equal(req.headers.authorization,'Bearer sk_fixture');
-    const body=new URLSearchParams(raw);assert.equal(body.get('amount'),'200');assert.equal(body.get('currency'),'usd');
+    const body=new URLSearchParams(raw);assert.ok(Number(body.get('amount'))>0);assert.equal(body.get('currency'),'usd');
+    if(providerFailure==='payment'){providerFailure=undefined;res.writeHead(503);res.end('{}');return;}
     res.end(JSON.stringify({id:`pi_fixture_${stripeCalls}`,client_secret:'fixture-client-secret'}));
+  }else if(req.url.startsWith('/v1/payment_intents/')){
+    res.end(JSON.stringify({id:req.url.split('/').at(-1),client_secret:'fixture-client-secret'}));
+  }else if(req.url==='/v1/tax/calculations'){
+    if(checkoutTaxDelay)await new Promise(resolve=>setTimeout(resolve,checkoutTaxDelay));
+    assert.equal(req.headers.authorization,'Bearer sk_fixture');
+    if(providerFailure==='tax'){providerFailure=undefined;res.writeHead(503);res.end('{}');return;}
+    res.end(JSON.stringify({tax_amount_exclusive:14,tax_breakdown:[{amount:14,tax_rate_details:{state:'CA',country:'US'}}]}));
   }else if(req.url==='/v1/oauth2/token'){
     assert.equal(req.headers.authorization,`Basic ${Buffer.from('paypal-id:paypal-secret').toString('base64')}`);
     res.end(JSON.stringify({access_token:'fixture-access-token',token_type:'Bearer',expires_in:3600}));
   }else if(req.url==='/v2/checkout/orders'){
     paypalCalls++;assert.equal(req.headers.authorization,'Bearer fixture-access-token');
-    assert.equal(JSON.parse(raw).purchase_units[0].amount.value,'2.00');
+    assert.ok(Number(JSON.parse(raw).purchase_units[0].amount.value)>0);
     res.end(JSON.stringify({id:`paypal_fixture_${paypalCalls}`,status:'CREATED'}));
   }else{res.writeHead(404);res.end('{}');}
 });
@@ -55,7 +64,7 @@ async function value(response){assert.equal(response.status,200,await response.c
 async function eventually(check){for(let i=0;i<300;i++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,25));}throw new Error('Inventory worker did not apply the order event');}
 try{
   let service=await start();const other=await start({tenant:'b'});
-  for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment','importCatalog'])).length,29);
+  for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment','importCatalog','checkout'])).length,30);
   assert.equal((await fetch(service.base+'/product')).status,401);
   const denied=await mcpRpc(service.base,'tools/call',{name:'getProduct',arguments:{params:{id:'missing'}}});assert.equal(denied.isError,true);
   const sdk=await import(pathToFileURL(sdkPath));const client=sdk.createForkLaunchSdk({serviceBaseUrls:{ecommerce:service.base}});
@@ -88,8 +97,10 @@ try{
   const order={id:'order',items:[{variantId:'variant',quantity:2,unitPriceCents:100}],shippingAddress:{name:'Buyer',line1:'Private Street',city:'Oakland',state:'CA',postalCode:'94601',country:'US'},subtotalCents:200,discountCents:0,taxCents:0,taxBreakdown:[],shippingCents:0,giftCardCents:0,totalCents:200};
   await value(await call(service.base,'/order',{method:'POST',body:order}));
   for(const providerName of ['stripe','paypal']){
-    const payment=await value(await call(service.base,'/payment',{method:'POST',body:{orderId:'order',amountCents:200,currency:'usd',provider:providerName}}));
-    if(providerName==='stripe')assert.equal(payment.clientSecret,'fixture-client-secret');
+    const payment=await value(await call(service.base,'/payment',{method:'POST',body:{orderId:providerName==='stripe'?'order':'paypal-order',amountCents:200,currency:'usd',provider:providerName}}));
+    if(providerName==='stripe'){assert.equal(payment.clientSecret,'fixture-client-secret');
+      assert.equal((await call(service.base,'/payment',{method:'POST',body:{orderId:'order',amountCents:200,currency:'usd',provider:'paypal'}})).status,409);
+    }
     const read=await value(await call(service.base,`/payment/${payment.id}`));assert.ok(!('clientSecret'in read));
   }
   assert.equal(stripeCalls,1);assert.equal(paypalCalls,1);
@@ -112,6 +123,26 @@ try{
   assert.equal((await value(await call(service.base,'/order/order'))).status,'cancelled');
   assert.equal((await value(await call(service.base,'/inventory/variant'))).stock,8);
   await stop(worker);assert.match(worker.stdout(),/completed=2/);
+  await compareCheckout({base:service.base,call,providerBase,setProviderFailure(value){providerFailure=value;}});
+  const peer=await start();
+  const shippingAddress={name:'Buyer',line1:'Private Street',city:'Oakland',state:'CA',postalCode:'94601',country:'US'};
+  async function checkoutCart(id){await value(await call(service.base,'/cart',{method:'POST',body:{id}}));await value(await call(service.base,'/cart/items',{method:'POST',body:{cartId:id,variantId:'variant',quantity:2}}));return{cartId:id,shippingAddress};}
+  const raceBody=await checkoutCart('cross-process-race'),beforeRace=stripeCalls;checkoutTaxDelay=150;
+  const raced=await Promise.all([service,peer].map(instance=>call(instance.base,'/checkout',{method:'POST',body:raceBody}).then(value)));
+  assert.equal(raced[0].order.id,raced[1].order.id);assert.equal(raced[0].payment.id,raced[1].payment.id);assert.equal(stripeCalls-beforeRace,1);checkoutTaxDelay=0;
+  const parallelBodies=await Promise.all(Array.from({length:10},(_,index)=>checkoutCart(`parallel-checkout-${index}`)));
+  const parallel=await Promise.all(parallelBodies.map((body,index)=>call(index%2?peer.base:service.base,'/checkout',{method:'POST',body}).then(value)));
+  assert.equal(new Set(parallel.map(result=>result.order.id)).size,10);
+  const mcpCheckoutBody=await checkoutCart('mcp-checkout');
+  const mcpCheckout=await mcpRpc(service.base,'tools/call',{name:'checkout',arguments:{body:mcpCheckoutBody,headers:{authorization:hmac('/checkout','POST',JSON.stringify(mcpCheckoutBody))}}});
+  assert.equal(mcpCheckout.isError,false,JSON.stringify(mcpCheckout));assert.equal(JSON.parse(mcpCheckout.content[0].text).order.totalCents,813);
+  const liveSdk=sdk.createForkLaunchSdk({serviceBaseUrls:{ecommerce:service.base}});
+  const sdkCheckoutBody=await checkoutCart('sdk-checkout');
+  const sdkCheckout=await liveSdk.ecommerce.checkout.checkout({body:sdkCheckoutBody,headers:{authorization:hmac('/checkout','POST',JSON.stringify(sdkCheckoutBody))}});
+  assert.equal(sdkCheckout.code,200);assert.equal(sdkCheckout.response.order.totalCents,813);
+  await stop(peer);
+  console.log('PASS generated checkout cross-process race: one order/payment/provider call, and ten concurrent carts without application-pool starvation');
+
   await stop(service);await stop(other);
   console.log('PASS generated ecommerce HTTP/MCP, both SDKs, Stripe/PayPal, tenant isolation, encrypted orders, separate inventory worker and restart persistence');
 }finally{

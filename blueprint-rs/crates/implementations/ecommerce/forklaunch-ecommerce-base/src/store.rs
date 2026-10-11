@@ -67,6 +67,7 @@ pub enum Field {
     ProviderRef,
     CustomerId,
     CartId,
+    OrderId,
 }
 impl Field {
     #[must_use]
@@ -80,6 +81,7 @@ impl Field {
             Self::ProviderRef => "providerRef",
             Self::CustomerId => "customerId",
             Self::CartId => "cartId",
+            Self::OrderId => "orderId",
         }
     }
 }

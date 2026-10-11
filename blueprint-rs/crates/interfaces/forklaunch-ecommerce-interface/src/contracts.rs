@@ -280,6 +280,7 @@ pub fn registry() -> ContractRegistry {
 pub fn module_registry() -> ContractRegistry {
     let mut base = registry();
     base.register(import_contract());
+    base.register(checkout_contract());
     let mut registry = ContractRegistry::for_service(ServiceContract::new("ecommerce", "0.1.0"));
     for source in base.routes() {
         let mut route = source.clone();
@@ -320,4 +321,23 @@ pub fn import_contract() -> RouteContract {
             "CatalogImportResult",
         )),
     )
+}
+
+/// Unified cart pricing, order creation and provider payment initiation.
+/// # Panics
+/// Panics only if package-owned schemas fail to serialize.
+#[must_use]
+pub fn checkout_contract() -> RouteContract {
+    internal(RouteContract::post(
+        "Checkout",
+        "Convert a cart into an order and initiate payment",
+        "/checkout/",
+    ))
+    .with_request_body(json::<crate::module::Checkout>("Checkout"))
+    .with_response(
+        200,
+        Some(json::<crate::module::CheckoutResult>("CheckoutResult")),
+    )
+    .with_response(400, Some(text()))
+    .with_response(502, Some(text()))
 }

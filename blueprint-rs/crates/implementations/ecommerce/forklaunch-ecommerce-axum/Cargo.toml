@@ -15,6 +15,7 @@ forklaunch-ecommerce-paypal = { path = "../forklaunch-ecommerce-paypal" }
 forklaunch-worker-database = { path = "../../worker/forklaunch-worker-database", features = ["postgres"] }
 forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["remote-jwks", "mcp"] }
 forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core" }
+tokio = { version = "1", features = ["sync"] }
 axum = "0.8"
 serde = "1"
 serde_json = "1"

@@ -13,7 +13,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}")).execute(&pool).await?;
     } else if std::env::args().any(|arg| arg == "--inspect") {
         let audits: Vec<(String,)> = sqlx::query_as("SELECT actor_id FROM fl_ecommerce.pii_read_audit WHERE tenant_id=ANY($1)").bind(&tenants).fetch_all(&pool).await?;
-        assert!(audits.iter().any(|(actor,)| actor == "service:default"));
+        assert!(!audits.is_empty());
+        assert!(audits.iter().all(|(actor,)| actor == "service:default"));
         let rows: Vec<(serde_json::Value,)> = sqlx::query_as("SELECT data FROM fl_ecommerce.records WHERE tenant_id=ANY($1)").bind(&tenants).fetch_all(&pool).await?;
         assert!(!rows.is_empty());
         for (data,) in rows { let text = data.to_string(); assert!(!text.contains("Private Street")); assert!(!text.contains("fixture-client-secret")); }

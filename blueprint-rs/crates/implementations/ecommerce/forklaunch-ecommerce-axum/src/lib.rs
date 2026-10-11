@@ -1,5 +1,6 @@
 //! Tenant-bound ecommerce HTTP handlers shared with MCP dispatch.
 #![forbid(unsafe_code)]
+mod checkout;
 mod query;
 use axum::{
     Extension, Json,
@@ -7,6 +8,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use checkout::checkout;
 use forklaunch_axum::{
     ForkLaunchRouter, RouterConfig, module_auth::HmacJwksAuth, session::AuthenticatedSession,
 };
@@ -34,6 +36,7 @@ pub struct EcommerceBackend {
     paypal: Option<PaypalClient>,
     connect: Option<StripeConnect>,
     cart_cache: Option<Arc<dyn CartCache>>,
+    checkout_slots: tokio::sync::Semaphore,
 }
 impl EcommerceBackend {
     #[must_use]
@@ -49,6 +52,7 @@ impl EcommerceBackend {
             paypal: None,
             connect: None,
             cart_cache: None,
+            checkout_slots: tokio::sync::Semaphore::const_new(4),
         }
     }
     #[must_use]
@@ -85,7 +89,21 @@ impl EcommerceBackend {
         session: &AuthenticatedSession,
         input: CreateProviderPayment,
     ) -> BlueprintResult<CreatedPayment> {
+        let _guard = self
+            .store
+            .lock_operation("payment-order", &input.order_id)
+            .await?;
         let service = self.service(session)?;
+        if service
+            .pending_payment_for_order(&input.order_id)
+            .await?
+            .is_some()
+        {
+            return Err(BlueprintError::new(
+                "ecommerce_conflict",
+                "Order already has a pending provider payment",
+            ));
+        }
         let request = CreatePaymentDto {
             id: None,
             order_id: input.order_id,
@@ -126,7 +144,8 @@ fn failure(error: &BlueprintError) -> Response {
         "ecommerce_validation" | "ecommerce_illegal_transition" | "ecommerce_invalid_query" => {
             StatusCode::BAD_REQUEST
         }
-        "provider_request_failed"
+        "ecommerce_provider_unavailable"
+        | "provider_request_failed"
         | "provider_transport_error"
         | "stripe_invalid_response"
         | "paypal_invalid_response" => StatusCode::BAD_GATEWAY,
@@ -193,6 +212,7 @@ pub fn ecommerce_router(
     }
 
     ForkLaunchRouter::new(service)
+        .post(route("checkout"),handler!(checkout,input:CheckedJson<forklaunch_ecommerce_interface::module::Checkout>))
         .post(
             route("importCatalog"),
             handler!(import_catalog, input:CheckedJson<forklaunch_ecommerce_interface::import::CatalogImport>),

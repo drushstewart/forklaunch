@@ -22,7 +22,8 @@ function load(file) {
  vm.runInNewContext(compiled,{exports,require(spec){
   if(spec==='../../schema')return schema;
   if(spec==='../../bootstrapper')return {ci,tokens};
-  if(spec==='@mikro-orm/core')return {NotFoundError:class extends Error{}};
+  if(spec==='@mikro-orm/core')return {NotFoundError:class extends Error{},UniqueConstraintViolationException:class extends Error{}};
+  if(spec.includes('/domain/schemas/checkout.schema'))return {CheckoutResultSchema:{},ShippingAddressSchema:{}};
   if(spec.includes('/domain/schemas/catalogImport.schema'))return load(path.resolve(path.dirname(file),spec+'.ts'));
   if(spec==='node:crypto')return require(spec);
   if(spec==='@forklaunch/interfaces-ecommerce/types')return {OrderStatus:Object.fromEntries(['pending','paid','fulfilled','shipped','delivered','cancelled'].map(value=>[value.toUpperCase(),value]))};
@@ -34,7 +35,7 @@ function load(file) {
   throw Error('unexpected runtime import '+spec);
  }});return exports;
 }
-for(const name of ['product','variant','inventory','cart','order','payment','catalogImport'])load(path.join(root,`blueprint/ecommerce-stripe/api/routes/${name}.routes.ts`));
+for(const name of ['product','variant','inventory','cart','order','payment','catalogImport','checkout'])load(path.join(root,`blueprint/ecommerce-stripe/api/routes/${name}.routes.ts`));
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-ecommerce-interface','--example','module_contract'],{cwd:root,encoding:'utf8',timeout:120000}));
 assert.equal(native.routes.length,captured.length);
 const simpleNative=route=>({method:route.method,path:route.path,operation:route.operationName,access:route.access,params:route.request.params.map(field=>field.name).sort(),query:route.request.query.map(field=>field.name).sort(),body:route.request.body!==null&&route.request.body!==undefined,statuses:route.responses.map(response=>response.statusCode).sort()});

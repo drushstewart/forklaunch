@@ -47,3 +47,38 @@ impl std::fmt::Debug for CreatedPayment {
 pub struct OrderTransition {
     pub to: OrderStatus,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Checkout {
+    pub cart_id: String,
+    pub shipping_address: crate::ShippingAddressDto,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional"
+    )]
+    #[schemars(with = "PaymentProvider")]
+    pub provider: Option<PaymentProvider>,
+}
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutResult {
+    pub order: crate::OrderDto,
+    pub payment: PaymentDto,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional"
+    )]
+    #[schemars(with = "String")]
+    pub client_secret: Option<String>,
+}
+impl std::fmt::Debug for CheckoutResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CheckoutResult")
+            .field("order_id", &self.order.id)
+            .field("payment_id", &self.payment.id)
+            .finish_non_exhaustive()
+    }
+}
