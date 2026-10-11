@@ -6,10 +6,19 @@ use forklaunch_core::persistence::{
 use forklaunch_infrastructure_redis::{
     RedisTtlCacheConfig,
     client::{RedisQueue, RedisTtlCache},
-    json::{JsonCache, JsonQueue},
+    json::{JsonCache, JsonCacheRecord, JsonCacheWrite, JsonQueue},
 };
 use serde_json::{Value, json};
 use std::time::Duration;
+
+fn json_record(record: Option<JsonCacheRecord<Value>>) -> Value {
+    match record {
+        Some(record) => {
+            json!({"key":record.key,"value":record.value,"ttl":record.remaining_ttl.map(|ttl|ttl.as_millis())})
+        }
+        None => Value::Null,
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input: Value = serde_json::from_reader(std::io::stdin())?;
@@ -40,46 +49,111 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_array()
         .ok_or("Operations required")?
     {
-        let key = operation["key"].as_str().unwrap_or("");
-        let result = match operation["op"].as_str().ok_or("Operation required")? {
-            "put" => cache
-                .put_record(
-                    key,
-                    &operation["value"],
-                    operation["ttl"].as_u64().map(Duration::from_millis),
-                    tenant.as_ref(),
-                )
-                .map(|()| Value::Null),
-            "get" => cache
-                .read_record::<Value>(key, tenant.as_ref())
-                .map(|value| json!({"value":value,"found":value.is_some()})),
-            "getWithTtl" => cache.read_record_with_ttl::<Value>(key,tenant.as_ref()).map(|record|match record {
-                Some(record)=>json!({"key":record.key,"value":record.value,"ttl":record.remaining_ttl.map(|ttl|ttl.as_millis())}),
-                None=>Value::Null,
-            }),
-            "queuePut" => queue.as_mut().ok_or("Queue required")?.enqueue_record(&operation["value"],tenant.as_ref()).map(|()|Value::Null),
-            "queuePutBatch" => queue.as_mut().ok_or("Queue required")?.enqueue_batch_records(operation["values"].as_array().ok_or("Values required")?,tenant.as_ref()).map(|()|Value::Null),
-            "queueGet" => queue.as_mut().ok_or("Queue required")?.dequeue_record::<Value>(tenant.as_ref()).map(|value|json!({"value":value,"found":value.is_some()})),
-            "queueGetBatch" | "queuePeekBatch" => {
-                let max = usize::try_from(operation["count"].as_u64().ok_or("Count required")?)?;
-                let queue = queue.as_mut().ok_or("Queue required")?;
-                let values = if operation["op"]=="queueGetBatch" {queue.dequeue_batch_records::<Value>(max,tenant.as_ref())} else {queue.peek_records::<Value>(max,tenant.as_ref())};
-                values.map(|values|json!(values))
-            },
-            "queuePeek" => queue.as_mut().ok_or("Queue required")?.peek_record::<Value>(tenant.as_ref()).map(|value|json!({"value":value,"found":value.is_some()})),
-            "batch" => {
-                let keys: Vec<String> = serde_json::from_value(operation["keys"].clone())?;
-                cache
-                    .read_batch_records::<Value>(&keys, tenant.as_ref())
-                    .map(|values| json!(values))
-            }
-            _ => return Err("Unknown operation".into()),
-        };
-        output.push(match result {
-            Ok(value) => value,
-            Err(error) => json!({"error":error.code()}),
-        });
+        output.push(execute(operation, &mut cache, &mut queue, tenant.as_ref())?);
     }
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
+}
+
+fn execute(
+    operation: &Value,
+    cache: &mut JsonCache<RedisTtlCache>,
+    queue: &mut Option<JsonQueue>,
+    tenant: Option<&TenantContext>,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let key = operation["key"].as_str().unwrap_or("");
+    let result = match operation["op"].as_str().ok_or("Operation required")? {
+        "put" => cache
+            .put_record(
+                key,
+                &operation["value"],
+                operation["ttl"].as_u64().map(Duration::from_millis),
+                tenant,
+            )
+            .map(|()| Value::Null),
+        "get" => cache
+            .read_record::<Value>(key, tenant)
+            .map(|value| json!({"value":value,"found":value.is_some()})),
+        "getWithTtl" => cache
+            .read_record_with_ttl::<Value>(key, tenant)
+            .map(json_record),
+        "putRecords" => {
+            let records = operation["records"]
+                .as_array()
+                .ok_or("Records required")?
+                .iter()
+                .map(|record| {
+                    Ok(JsonCacheWrite {
+                        key: record["key"]
+                            .as_str()
+                            .ok_or("Record key required")?
+                            .to_owned(),
+                        value: record["value"].clone(),
+                        ttl: record["ttl"].as_u64().map(Duration::from_millis),
+                    })
+                })
+                .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+            cache.put_records(records, tenant).map(|()| Value::Null)
+        }
+        "readRecords" => {
+            let keys: Vec<String> = serde_json::from_value(operation["keys"].clone())?;
+            cache
+                .read_records::<Value>(&keys, tenant)
+                .map(|records| Value::Array(records.into_iter().map(json_record).collect()))
+        }
+        "prefix" => cache
+            .read_records_by_prefix::<Value>(key, tenant)
+            .map(|records| {
+                Value::Array(
+                    records
+                        .into_iter()
+                        .map(|record| json_record(Some(record)))
+                        .collect(),
+                )
+            }),
+        "queuePut" => queue
+            .as_mut()
+            .ok_or("Queue required")?
+            .enqueue_record(&operation["value"], tenant)
+            .map(|()| Value::Null),
+        "queuePutBatch" => queue
+            .as_mut()
+            .ok_or("Queue required")?
+            .enqueue_batch_records(
+                operation["values"].as_array().ok_or("Values required")?,
+                tenant,
+            )
+            .map(|()| Value::Null),
+        "queueGet" => queue
+            .as_mut()
+            .ok_or("Queue required")?
+            .dequeue_record::<Value>(tenant)
+            .map(|value| json!({"value":value,"found":value.is_some()})),
+        "queueGetBatch" | "queuePeekBatch" => {
+            let max = usize::try_from(operation["count"].as_u64().ok_or("Count required")?)?;
+            let queue = queue.as_mut().ok_or("Queue required")?;
+            let values = if operation["op"] == "queueGetBatch" {
+                queue.dequeue_batch_records::<Value>(max, tenant)
+            } else {
+                queue.peek_records::<Value>(max, tenant)
+            };
+            values.map(|values| json!(values))
+        }
+        "queuePeek" => queue
+            .as_mut()
+            .ok_or("Queue required")?
+            .peek_record::<Value>(tenant)
+            .map(|value| json!({"value":value,"found":value.is_some()})),
+        "batch" => {
+            let keys: Vec<String> = serde_json::from_value(operation["keys"].clone())?;
+            cache
+                .read_batch_records::<Value>(&keys, tenant)
+                .map(|values| json!(values))
+        }
+        _ => return Err("Unknown operation".into()),
+    };
+    Ok(match result {
+        Ok(value) => value,
+        Err(error) => json!({"error":error.code()}),
+    })
 }

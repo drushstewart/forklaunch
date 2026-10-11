@@ -54,6 +54,33 @@ pub struct RedisRecord {
     pub remaining_ttl: Option<Duration>,
 }
 
+pub struct RedisWriteRecord {
+    pub key: String,
+    pub value: Vec<u8>,
+    /// `None` selects the configured default TTL.
+    pub ttl: Option<Duration>,
+}
+
+fn live_record(value: Option<Vec<u8>>, ttl: i64) -> FrameworkResult<Option<RedisRecord>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if ttl == -2 {
+        return Ok(None);
+    }
+    let remaining_ttl = if ttl == -1 {
+        None
+    } else {
+        Some(Duration::from_millis(u64::try_from(ttl).map_err(|_| {
+            FrameworkError::new("redis_backend_error", "Invalid Redis expiration response")
+        })?))
+    };
+    Ok(Some(RedisRecord {
+        value,
+        remaining_ttl,
+    }))
+}
+
 impl RedisTtlCache {
     /// # Errors
     /// Returns an error for invalid configuration or connection failure.
@@ -77,23 +104,77 @@ impl RedisTtlCache {
             .arg(&key)
             .query(&mut self.connection)
             .map_err(backend_error)?;
-        let Some(value) = value else {
-            return Ok(None);
-        };
-        if ttl == -2 {
-            return Ok(None);
+        live_record(value, ttl)
+    }
+
+    /// Reads every value/expiry pair in one transaction, preserving key order and misses.
+    /// # Errors
+    /// Rejects invalid keys and backend failures.
+    pub fn get_batch_with_ttl(
+        &mut self,
+        keys: &[String],
+    ) -> FrameworkResult<Vec<Option<RedisRecord>>> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
         }
-        let remaining_ttl = if ttl == -1 {
-            None
-        } else {
-            Some(Duration::from_millis(u64::try_from(ttl).map_err(|_| {
-                FrameworkError::new("redis_backend_error", "Invalid Redis expiration response")
-            })?))
-        };
-        Ok(Some(RedisRecord {
-            value,
-            remaining_ttl,
-        }))
+        let keys = keys
+            .iter()
+            .map(|key| normalize_key(key.as_str()))
+            .collect::<FrameworkResult<Vec<_>>>()?;
+        let mut pipeline = redis::pipe();
+        pipeline.atomic();
+        for key in &keys {
+            pipeline.cmd("GET").arg(key).cmd("PTTL").arg(key);
+        }
+        let values: Vec<redis::Value> = pipeline
+            .query(&mut self.connection)
+            .map_err(backend_error)?;
+        if values.len() != keys.len().saturating_mul(2) {
+            return Err(FrameworkError::new(
+                "redis_backend_error",
+                "Invalid Redis batch response",
+            ));
+        }
+        values
+            .chunks_exact(2)
+            .map(|pair| {
+                live_record(
+                    Option::<Vec<u8>>::from_redis_value(&pair[0]).map_err(backend_error)?,
+                    i64::from_redis_value(&pair[1]).map_err(backend_error)?,
+                )
+            })
+            .collect()
+    }
+
+    /// Validates all keys/TTLs before sending one transaction with per-record expirations.
+    /// # Errors
+    /// Rejects invalid keys, non-positive/overflowing TTLs and backend failures.
+    pub fn put_batch_with_ttls(&mut self, entries: Vec<RedisWriteRecord>) -> FrameworkResult<()> {
+        let entries = entries
+            .into_iter()
+            .map(|entry| {
+                Ok((
+                    normalize_key(entry.key)?,
+                    entry.value,
+                    ttl_millis(entry.ttl.unwrap_or_else(|| self.config.default_ttl()))?,
+                ))
+            })
+            .collect::<FrameworkResult<Vec<_>>>()?;
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut pipeline = redis::pipe();
+        pipeline.atomic();
+        for (key, value, ttl) in entries {
+            pipeline
+                .cmd("SET")
+                .arg(key)
+                .arg(value)
+                .arg("PX")
+                .arg(ttl)
+                .ignore();
+        }
+        pipeline.query(&mut self.connection).map_err(backend_error)
     }
 
     /// Lists live keys with a literal prefix, using SCAN instead of blocking KEYS.

@@ -21,7 +21,7 @@ const client={
  lPush:(key,value)=>transport.command('LPUSH',key,value),
  rPop:key=>transport.command('RPOP',key),
  lRange:(key,start,end)=>transport.command('LRANGE',key,start,end),
- multi(){const commands=[];const multi={lPush(key,value){commands.push(['LPUSH',key,value]);return multi;},rPop(key){commands.push(['RPOP',key]);return multi;},get(key){commands.push(['GET',key]);return multi;},ttl(key){commands.push(['TTL',key]);return multi;},exec:()=>transport.transaction(commands)};return multi;},
+ multi(){const commands=[];const multi={set(key,value,options){commands.push(['SET',key,value,'PX',options.PX]);return multi;},lPush(key,value){commands.push(['LPUSH',key,value]);return multi;},rPop(key){commands.push(['RPOP',key]);return multi;},get(key){commands.push(['GET',key]);return multi;},ttl(key){commands.push(['TTL',key]);return multi;},exec:()=>transport.transaction(commands)};return multi;},
 };
 const exports={};
 vm.runInNewContext(compile(await readFile(path.join(root,'framework/infrastructure/redis/index.ts'),'utf8')),{exports,Buffer,require(name){
@@ -69,6 +69,25 @@ try{
   assert.equal(written,null);assert.equal(timedRecord.value,false);assert.ok(timedRecord.ttl>1000&&timedRecord.ttl<=1250);
   await transport.command('SET',persistent,JSON.stringify({persistent:true}));
   assert.deepEqual(await native([{op:'getWithTtl',key:persistent}],{format}),[{key:persistent,value:{persistent:true},ttl:null}]);
+
+  const first=key(),second=key(),absent=key();
+  await actual.putBatchRecords([{key:first,value:{batch:1},ttlMilliseconds:6000},{key:second,value:{batch:2},ttlMilliseconds:12000}],compliance);
+  const [tsRecords]=await native([{op:'readRecords',keys:[second,absent,first]}],{format});
+  assert.deepEqual(tsRecords.map(record=>record?.value??null),[{batch:2},null,{batch:1}]);
+  assert.ok(tsRecords[0].ttl>tsRecords[2].ttl);assert.ok(tsRecords[0].ttl<=12000&&tsRecords[2].ttl<=6000);
+  await native([{op:'putRecords',records:[{key:first,value:{native:1},ttl:6000},{key:second,value:{native:2},ttl:12000}]}],{format});
+  const tsRead=await actual.readBatchRecords([second,first],compliance);
+  assert.deepEqual(JSON.parse(JSON.stringify(tsRead.map(record=>record.value))),[{native:2},{native:1}]);
+  assert.ok(tsRead[0].ttlMilliseconds>tsRead[1].ttlMilliseconds);
+  const rejected=key();
+  assert.equal((await native([{op:'putRecords',records:[{key:rejected,value:1,ttl:6000},{key:key(),value:2,ttl:0}]}]))[0].error,'redis_cache_invalid_ttl');
+  assert.equal(await transport.command('GET',rejected),null);
+  assert.equal((await native([{op:'putRecords',records:[{key:rejected,value:1},{key:' ',value:2}]}]))[0].error,'redis_cache_invalid_key');
+  assert.equal(await transport.command('GET',rejected),null);
+  assert.deepEqual(await native([{op:'putRecords',records:[]},{op:'readRecords',keys:[]}]),[null,[]]);
+  const literal=key()+'[?]*';keys.push(literal);
+  await actual.putRecord({key:literal,value:{literal:true}},compliance);
+  const [matched]=await native([{op:'prefix',key:literal}],{format});assert.equal(matched.length,1);assert.equal(matched[0].key,literal);assert.deepEqual(matched[0].value,{literal:true});
   const rotated=key(),plain=key(),missing=key(),corrupt=key();
   const old=new exports.RedisTtlCache(60000,{}, {url},{},{encryptor:new FieldEncryptor(previous[0],{format})});
   await old.putRecord({key:rotated,value:{rotation:'old-key'}},compliance);
@@ -80,5 +99,5 @@ try{
   await new Promise(resolve=>setTimeout(resolve,10));
   assert.deepEqual(await native([{op:'get',key:expires}]),[{found:false,value:null}]);
  }
- console.log('PASS actual TypeScript/native encrypted Redis cache/queue JSON: millisecond/persistent TTL metadata, FIFO/batches/peeks, v2/v3 both directions, rotation, plaintext migration, falsy values, missing/expired keys and wrong-tenant/corruption rejection');
+ console.log('PASS actual TypeScript/native encrypted Redis cache/queue JSON: per-record batch/millisecond/persistent TTL metadata, literal prefix scans, prevalidated writes, FIFO/batches/peeks, v2/v3 both directions, rotation, plaintext migration, falsy values, missing/expired keys and wrong-tenant/corruption rejection');
 }finally{for(const key of keys)await transport.command('DEL',key);}

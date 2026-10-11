@@ -20,8 +20,76 @@ pub struct JsonCacheRecord<T> {
     pub remaining_ttl: Option<Duration>,
 }
 
+pub struct JsonCacheWrite<T> {
+    pub key: String,
+    pub value: T,
+    /// `None` selects the cache's configured default TTL.
+    pub ttl: Option<Duration>,
+}
+
 #[cfg(feature = "redis-client")]
 impl JsonCache<crate::client::RedisTtlCache> {
+    /// Serializes every value and validates every key/TTL before sending one transaction.
+    /// # Errors
+    /// Propagates JSON, encryption, validation and backend failures.
+    pub fn put_records<T: Serialize>(
+        &mut self,
+        records: Vec<JsonCacheWrite<T>>,
+        tenant: Option<&TenantContext>,
+    ) -> FrameworkResult<()> {
+        let records = records
+            .into_iter()
+            .map(|record| {
+                Ok(crate::client::RedisWriteRecord {
+                    key: record.key,
+                    value: self.codec.encode(&record.value, tenant)?,
+                    ttl: record.ttl,
+                })
+            })
+            .collect::<FrameworkResult<Vec<_>>>()?;
+        self.cache.put_batch_with_ttls(records)
+    }
+
+    /// Reads all value/expiry pairs in one Redis transaction, keeping order and misses.
+    /// # Errors
+    /// Propagates validation, backend, JSON and authentication failures.
+    pub fn read_records<T: DeserializeOwned>(
+        &mut self,
+        keys: &[String],
+        tenant: Option<&TenantContext>,
+    ) -> FrameworkResult<Vec<Option<JsonCacheRecord<T>>>> {
+        keys.iter()
+            .zip(self.cache.get_batch_with_ttl(keys)?)
+            .map(|(key, record)| {
+                record
+                    .map(|record| {
+                        Ok(JsonCacheRecord {
+                            key: key.clone(),
+                            value: self.codec.decode(&record.value, tenant)?,
+                            remaining_ttl: record.remaining_ttl,
+                        })
+                    })
+                    .transpose()
+            })
+            .collect()
+    }
+
+    /// Uses a literal prefix (SCAN), then reads matched records with expiry metadata.
+    /// Concurrent additions/deletions may change which keys the scan observes.
+    /// # Errors
+    /// Propagates backend, JSON and authentication failures.
+    pub fn read_records_by_prefix<T: DeserializeOwned>(
+        &mut self,
+        prefix: &str,
+        tenant: Option<&TenantContext>,
+    ) -> FrameworkResult<Vec<JsonCacheRecord<T>>> {
+        let keys = self.cache.list_keys_by_prefix(prefix)?;
+        Ok(self
+            .read_records(&keys, tenant)?
+            .into_iter()
+            .flatten()
+            .collect())
+    }
     /// Reads JSON with its Redis expiry without rounding seconds or replacing misses.
     /// # Errors
     /// Propagates backend, JSON and authentication failures.
