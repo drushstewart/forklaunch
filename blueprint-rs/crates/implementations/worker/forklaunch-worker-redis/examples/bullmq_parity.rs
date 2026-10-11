@@ -16,6 +16,14 @@ fn options(input: &Value) -> Result<BullMqOptions, Box<dyn std::error::Error>> {
     if let Some(concurrency) = input["concurrency"].as_u64() {
         options.worker.concurrency = usize::try_from(concurrency)?;
     }
+    if let Some(limiter) = input.get("limiter") {
+        options.worker.limiter = Some(protocol::options::RateLimiterOptions {
+            max: limiter["max"].as_u64().ok_or("Limiter max required")?,
+            duration: limiter["duration"]
+                .as_u64()
+                .ok_or("Limiter duration required")?,
+        });
+    }
     options.queue.prefix = "caller-override".into();
     options.retries = u32::try_from(input["retries"].as_u64().unwrap_or(3))?;
     let interval = input["interval"].as_u64().unwrap_or(20);
@@ -141,6 +149,7 @@ async fn consume(
     let high_water = Arc::new(AtomicUsize::new(0));
     let observed_peak = high_water.clone();
     let captured = attempts.clone();
+    let started = std::time::Instant::now();
     let worker = BullMqConsumer::connect(
         name,
         move |job: protocol::Job, _token| {
@@ -161,7 +170,7 @@ async fn consume(
                 captured
                     .lock()
                     .await
-                    .push(json!({"event":job.data(),"attempt":job.attempts_made()}));
+                    .push(json!({"event":job.data(),"attempt":job.attempts_made(),"startedAtMs":started.elapsed().as_millis()}));
                 if let Some(delay) = job.data()["sleepMs"].as_u64() {
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                 }
