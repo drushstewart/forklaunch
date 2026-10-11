@@ -28,7 +28,7 @@ def run(args=(), failure=None):
 
 def snapshot():
     paths = [Path('Cargo.toml'), Path('pnpm-workspace.yaml')]
-    for directory in ['sdks', '.forklaunch/asyncapi']:
+    for directory in ['sdks', '.forklaunch/asyncapi', '.forklaunch/socket-sdk-outputs']:
         paths += [p for p in Path(directory).rglob('*') if p.is_file()]
     return {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 
@@ -42,6 +42,34 @@ try:
     assert source.read_bytes() == content + b'\n// drift\n'
     run()
     assert snapshot() == baseline
+    # Removed sockets must not survive as stale generated source modules.
+    reduced = json.loads(original)
+    removed = [name for name in reduced['sockets'] if name != 'chat']
+    assert len(removed) >= 2
+    for name in removed:
+        del reduced['sockets'][name]
+    preserved = Path(f'sdks/typescript-websocket/realtime/src/socket_{removed[0]}.ts')
+    preserved.write_bytes(preserved.read_bytes() + b'\n// user-owned obsolete module\n')
+    manual = Path('sdks/rust/realtime-websocket-sdk/src/user.rs')
+    manual.write_text('// user-owned source\n')
+    artifact.write_text(json.dumps(reduced))
+    before = snapshot()
+    run(['--check'], failure='Stale generated socket SDK output')
+    assert snapshot() == before
+    run()
+    run(['--check'])
+    for name in removed:
+        assert not Path(f'sdks/rust/realtime-websocket-sdk/src/socket_{name}.rs').exists()
+        source = Path(f'sdks/typescript-websocket/realtime/src/socket_{name}.ts')
+        if source == preserved:
+            assert source.read_bytes().endswith(b'// user-owned obsolete module\n')
+        else:
+            assert not source.exists()
+    assert manual.read_text() == '// user-owned source\n'
+    manual.unlink()
+    artifact.write_bytes(original)
+    run()
+    assert snapshot() == baseline
     invalid = json.loads(original)
     invalid['sockets']['chat']['clientMessages']['request']['shape']['properties']['message']['maxLength'] = 'invalid'
     artifact.write_text(json.dumps(invalid))
@@ -52,6 +80,7 @@ try:
     # A later invalid service must prevent earlier staged changes from being written.
     valid = json.loads(original)
     valid['title'] = 'Staged title that must never be written'
+    del valid['sockets']['chat']
     artifact.write_text(json.dumps(valid))
     broken = Path('.forklaunch/socket-contracts/broken/socket-contract.json')
     broken.parent.mkdir(parents=True)
@@ -154,4 +183,4 @@ finally:
     manifest.write_text(original_manifest)
     artifact.write_bytes(original)
     run()
-print('PASS CLI socket drift checks, all-service staging, input/output containment, custom artifact/AsyncAPI paths and live watch recovery after invalid edits')
+print('PASS CLI socket drift checks, owned obsolete module pruning with preserved edits, all-service staging, input/output containment, custom artifact/AsyncAPI paths and live watch recovery after invalid edits')

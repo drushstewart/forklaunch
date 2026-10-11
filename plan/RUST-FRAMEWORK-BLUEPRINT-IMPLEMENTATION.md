@@ -705,7 +705,8 @@ Current CLI structure to build on:
 - [x] Add `.forklaunch/asyncapi/<service>/asyncapi.json` for raw WebSocket contract artifacts through `sdk generate --from socket-contract`, with custom project output paths.
 - [x] Export socket artifacts automatically from generated service registries, with checked module names, service title/version, custom contained output paths, unchanged-owned move/removal cleanup and preserved manual/edited artifacts. Relocated CLI and archive fixtures generate both SDKs from registered metadata and validate HTTP/MCP startup.
 - [ ] Support external AsyncAPI imports/event projects.
-- [ ] Prune owned SDK package/module outputs after registered socket/service removal, with workspace updates and preserved user files.
+- [x] Prune unchanged obsolete socket modules during regeneration, with per-package hashes, read-only drift checks, all-service staging, preserved edits/untracked files/compiler options and symlink containment.
+- [ ] Prune owned socket SDK packages after last-socket/service removal and update workspaces while preserving user-owned files.
 - [x] Ensure release/deploy manifest generation reads TypeScript and Rust outputs uniformly.
 
 ### SDK Commands

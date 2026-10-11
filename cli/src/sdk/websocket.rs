@@ -13,6 +13,8 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use termcolor::{StandardStream, WriteColor};
 
+mod ownership;
+
 pub(crate) fn generate(
     root: &Path,
     target: &str,
@@ -25,6 +27,7 @@ pub(crate) fn generate(
         toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
     let mut files = BTreeMap::new();
     let mut members = Vec::new();
+    let mut removals = BTreeMap::new();
     let mut count = 0;
     for project in manifest
         .get("projects")
@@ -89,10 +92,12 @@ pub(crate) fn generate(
         )?;
         if matches!(target, "typescript" | "all") {
             stage_typescript(&root, &mut files, name, &compiled)?;
+            ownership::stage_package(&root, &mut files, &mut removals, name, "typescript")?;
         }
         if matches!(target, "rust" | "all") {
             let member = format!("sdks/rust/{name}-websocket-sdk");
             stage_rust(&mut files, name, &member, &compiled)?;
+            ownership::stage_package(&root, &mut files, &mut removals, name, "rust")?;
             members.push(member);
         }
         count += 1;
@@ -104,7 +109,16 @@ pub(crate) fn generate(
     for relative in files.keys() {
         validate_destination(&root, relative)?;
     }
+    for relative in removals.keys() {
+        validate_destination(&root, relative)?;
+        if files.contains_key(relative) {
+            bail!("Conflicting socket output removal: {}", relative.display());
+        }
+    }
     if check {
+        if let Some(relative) = removals.keys().next() {
+            bail!("Stale generated socket SDK output: {}", relative.display());
+        }
         for (relative, content) in &files {
             if fs::read_to_string(root.join(relative)).ok().as_deref() != Some(content) {
                 bail!("Socket SDK output is out of date: {}", relative.display());
@@ -112,6 +126,7 @@ pub(crate) fn generate(
         }
         log_ok!(stdout, "Socket SDK and AsyncAPI outputs are up to date");
     } else {
+        ownership::remove_unchanged(&root, &removals)?;
         for (relative, content) in files {
             let destination = root.join(relative);
             fs::create_dir_all(destination.parent().context("Socket output parent")?)?;
