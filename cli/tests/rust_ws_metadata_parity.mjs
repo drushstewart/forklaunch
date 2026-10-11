@@ -42,7 +42,7 @@ async function parse(document){
  // Parser 3.6.3 decodes percent escapes in map keys and mishandles __proto__.
  // Validate those names with the official JSON Schema and independent pointer checks.
  const encoded=JSON.stringify(document);
- if(encoded.includes('percent%2F')||Object.hasOwn(document.channels??{},'__proto__')||encoded.includes('"const":{"$ref":"literal"}')){parserLimitations++;return;}
+ if(encoded.includes('percent%2F')||Object.hasOwn(document.channels??{},'__proto__')||encoded.includes('"const":{"$ref":"literal"}')||encoded.includes('"$ref":"literal annotation"')){parserLimitations++;return;}
  const result=await new Parser().parse(JSON.stringify(document));
  assert.deepEqual(result.diagnostics.filter(item=>item.severity===0),[],JSON.stringify(result.diagnostics));
  assert.ok(result.document);parsed++;
@@ -78,5 +78,17 @@ try{
  const pointer='/channels/room~1~0 水/messages/publish~1~0/payload/properties/item';
  const item=validator.compile({$ref:'raw#'+pointer});
  assert.equal(item('hello'),true);assert.equal(item(42),false);
+ const annotation=JSON.parse(await readFile(references+'.annotation.json','utf8'));await parse(annotation);
+ const annotationStructural=structuredClone(annotation);
+ delete annotationStructural.channels['room/~ 水'].messages['publish/~'].payload.schema.then;
+ await parse(annotationStructural);
+ const legacy=new Ajv({strict:false});
+ legacy.addMetaSchema(parserRequire('ajv/dist/refs/json-schema-draft-06.json'));
+ for(const keyword of ['if','then','else'])legacy.removeKeyword(keyword);
+ legacy.addSchema(annotation,'annotation');
+ const annotationPayload=legacy.compile({$ref:'annotation#/channels/room~1~0 水/messages/publish~1~0/payload/schema'});
+ assert.equal(annotationPayload({item:{value:'ok'}}),true);
+ assert.equal(annotationPayload({item:{value:'x'}}),false);
+ assert.equal(annotationPayload({item:{value:42}}),false);
  console.log(`PASS ${cases.length} actual TypeScript/native raw socket metadata documents: channel fan-out, singular/plural precedence, directions, controls, escaped/special names, official AsyncAPI JSON Schema, ${parsed} parser documents (${parserLimitations} known parser limitations), recursive schema relocation and payload validation`);
 }finally{await rm(temporary,{recursive:true,force:true});}

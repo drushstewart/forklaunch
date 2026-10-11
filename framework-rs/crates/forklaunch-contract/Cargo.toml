@@ -8,12 +8,13 @@ repository.workspace = true
 
 [features]
 default = []
-json-schema = ["dep:serde_json", "dep:serde"]
+json-schema = ["dep:serde_json", "dep:serde", "dep:percent-encoding"]
 
 [dependencies]
 forklaunch-common = { path = "../forklaunch-common" }
 serde_json = { version = "1", optional = true }
 serde = { version = "1", optional = true }
+percent-encoding = { version = "2.3", optional = true }
 
 [lints]
 workspace = true

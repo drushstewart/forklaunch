@@ -1,7 +1,7 @@
 //! Checked `AsyncAPI` for raw typed sockets and TypeScript channel enrichment.
 use super::{AsyncApiInfo, invalid, pointer_segment};
 use forklaunch_common::FrameworkResult;
-use forklaunch_contract::relocate_schema_json;
+use forklaunch_contract::relocate_schema_json_unscoped;
 use forklaunch_ws::{SocketContract, SocketSchemaEntry};
 use serde_json::{Map, Value, json};
 
@@ -144,7 +144,7 @@ fn embedded_schema(schema: &Value, location: &[&str]) -> FrameworkResult<Value> 
         .get("$schema")
         .and_then(Value::as_str)
         .is_some_and(|dialect| dialect.contains("/draft-04/"));
-    walk_schema(&mut normalized, 0, &mut |object| {
+    walk_schema(&mut normalized, schema, &mut |object| {
         if (draft4 && object.contains_key("id"))
             || object.get("$id").is_some_and(|id| id.as_str() != Some(""))
             || [
@@ -177,14 +177,15 @@ fn embedded_schema(schema: &Value, location: &[&str]) -> FrameworkResult<Value> 
             if schema.pointer(&pointer).is_none() {
                 return Err(invalid("socket schema reference cannot be resolved"));
             }
-            object.insert("$ref".into(), json!(format!("#{pointer}")));
         }
         Ok(())
     })?;
-    let mut embedded: Value =
-        serde_json::from_str(&relocate_schema_json(&normalized.to_string(), location))
-            .map_err(|_| invalid("schema relocation failed"))?;
-    walk_schema(&mut embedded, 0, &mut |object| {
+    let mut embedded: Value = serde_json::from_str(&relocate_schema_json_unscoped(
+        &normalized.to_string(),
+        location,
+    ))
+    .map_err(|_| invalid("schema relocation failed"))?;
+    walk_schema(&mut embedded, &normalized, &mut |object| {
         if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
             const FRAGMENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
                 .remove(b'/')
@@ -206,74 +207,45 @@ fn embedded_schema(schema: &Value, location: &[&str]) -> FrameworkResult<Value> 
 // objects with `$ref` properties, which must retain their application meaning.
 fn walk_schema(
     value: &mut Value,
-    depth: usize,
+    reference_root: &Value,
     visit: &mut impl FnMut(&mut Map<String, Value>) -> FrameworkResult<()>,
 ) -> FrameworkResult<()> {
-    let dialect = json!({"$schema": value.get("$schema")});
-    walk_schema_in(value, depth, &dialect, visit)
-}
-
-fn walk_schema_in(
-    value: &mut Value,
-    depth: usize,
-    dialect: &Value,
-    visit: &mut impl FnMut(&mut Map<String, Value>) -> FrameworkResult<()>,
-) -> FrameworkResult<()> {
-    if depth > 64 {
-        return Err(invalid("socket schema nesting exceeds 64 levels"));
-    }
-    if let Some(allowed) = value.as_bool() {
-        // AsyncAPI's default Schema Object requires object-form schemas.
-        *value = if allowed {
-            json!({})
-        } else {
-            json!({"not":{}})
-        };
-        return Ok(());
-    }
-    let object = value
-        .as_object_mut()
-        .ok_or_else(|| invalid("socket schema must be an object or boolean"))?;
-    visit(object)?;
-    for (keyword, child) in object {
-        if forklaunch_contract::is_legacy_schema_annotation(dialect, keyword) {
+    let locations = forklaunch_contract::schema_locations(reference_root, false)
+        .map_err(|error| invalid(error.message()))?;
+    for location in locations {
+        let node = value
+            .pointer_mut(&location)
+            .ok_or_else(|| invalid("schema location disappeared during relocation"))?;
+        if let Some(allowed) = node.as_bool() {
+            *node = if allowed {
+                json!({})
+            } else {
+                json!({"not":{}})
+            };
             continue;
         }
-        match keyword.as_str() {
-            "properties" | "patternProperties" | "dependentSchemas" | "$defs" | "definitions"
-            | "dependencies" => {
-                let schemas = child
-                    .as_object_mut()
-                    .ok_or_else(|| invalid("schema map must be an object"))?;
-                for schema in schemas.values_mut() {
-                    if keyword == "dependencies" && schema.is_array() {
-                        continue;
-                    }
-                    walk_schema_in(schema, depth + 1, dialect, visit)?;
-                }
+        let object = node
+            .as_object_mut()
+            .ok_or_else(|| invalid("socket schema must be an object or boolean"))?;
+        visit(object)?;
+        // The shared traversal identifies locations without imposing a schema
+        // vocabulary on literals. Keep this exporter's strict container checks.
+        for (keyword, child) in object {
+            if forklaunch_contract::is_legacy_schema_annotation(reference_root, keyword) {
+                continue;
             }
-            "additionalProperties" | "additionalItems" if child.is_boolean() => {}
-            "additionalProperties"
-            | "additionalItems"
-            | "unevaluatedProperties"
-            | "unevaluatedItems"
-            | "contentSchema"
-            | "contains"
-            | "not"
-            | "if"
-            | "then"
-            | "else"
-            | "propertyNames" => walk_schema_in(child, depth + 1, dialect, visit)?,
-            "items" if !child.is_array() => walk_schema_in(child, depth + 1, dialect, visit)?,
-            "items" | "allOf" | "anyOf" | "oneOf" | "prefixItems" => {
-                for schema in child
-                    .as_array_mut()
-                    .ok_or_else(|| invalid("schema alternatives must be an array"))?
+            match keyword.as_str() {
+                "properties" | "patternProperties" | "dependentSchemas" | "$defs"
+                | "definitions" | "dependencies"
+                    if !child.is_object() =>
                 {
-                    walk_schema_in(schema, depth + 1, dialect, visit)?;
+                    return Err(invalid("schema map must be an object"));
                 }
+                "allOf" | "anyOf" | "oneOf" | "prefixItems" if !child.is_array() => {
+                    return Err(invalid("schema alternatives must be an array"));
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
     Ok(())
@@ -282,6 +254,59 @@ fn walk_schema_in(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn references_into_literal_assertions_fail_without_changing_payload_constraints() {
+        let shape = json!({"properties":{"item":{"$ref":"#/const"}},"const":{"$ref":"#/definitions/Value"},"definitions":{"Value":{"type":"string"}}});
+        let contract = SocketContract::new("/literal")
+            .with_client_message("request", SocketSchemaEntry::new(shape));
+        assert!(
+            generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Literal", "1"), &contract)
+                .unwrap_err()
+                .message()
+                .contains("literal")
+        );
+    }
+    #[test]
+    fn schemas_referenced_from_ignored_annotations_relocate_their_own_references() {
+        for (name, target) in [
+            ("Value", "#/definitions/Value"),
+            ("Value%25", "#/definitions/Value%2525"),
+        ] {
+            let shape = json!({"$schema":"http://json-schema.org/draft-06/schema#","type":"object","properties":{"item":{"$ref":"#/if"}},"definitions":{name:{"type":"string","minLength":2}},"if":{"type":"object","required":["value"],"properties":{"value":{"$ref":target}}},"then":{"$ref":"literal annotation"}});
+            let contract = SocketContract::new("/legacy").with_client_message(
+                "request",
+                SocketSchemaEntry::new(shape.clone())
+                    .with_channel("room/~ 水")
+                    .with_operation("publish/~"),
+            );
+            let document: Value = serde_json::from_str(
+                &generate_raw_socket_asyncapi_json(
+                    &AsyncApiInfo::new("Referenced", "1"),
+                    &contract,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            let schema =
+                &document["channels"]["room/~ 水"]["messages"]["publish/~"]["payload"]["schema"];
+            let reference = schema["if"]["properties"]["value"]["$ref"]
+                .as_str()
+                .unwrap();
+            let pointer = percent_encoding::percent_decode_str(&reference[1..])
+                .decode_utf8()
+                .unwrap();
+            assert_eq!(
+                document.pointer(&pointer),
+                Some(&shape["definitions"][name])
+            );
+            assert_eq!(schema["then"], shape["then"]);
+            if name == "Value"
+                && let Ok(output) = std::env::var("FORKLAUNCH_TEST_RAW_SOCKET_REFERENCES")
+            {
+                std::fs::write(format!("{output}.annotation.json"), document.to_string()).unwrap();
+            }
+        }
+    }
     #[test]
     fn ignored_legacy_annotations_are_not_schema_resources_or_references() {
         for dialect in [

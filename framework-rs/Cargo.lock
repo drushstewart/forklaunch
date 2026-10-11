@@ -1250,6 +1250,7 @@ name = "forklaunch-contract"
 version = "0.1.0"
 dependencies = [
  "forklaunch-common",
+ "percent-encoding",
  "serde",
  "serde_json",
 ]
