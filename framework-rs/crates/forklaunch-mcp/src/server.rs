@@ -303,13 +303,12 @@ fn build_request(
         let query = query.as_object().ok_or("query must be an object")?;
         let mut encoded = form_urlencoded::Serializer::new(String::new());
         for (name, value) in query {
-            if let Some(values) = value.as_array() {
-                for value in values {
-                    encoded.append_pair(name, &scalar(value)?);
-                }
-            } else {
-                encoded.append_pair(name, &scalar(value)?);
-            }
+            // TypeScript safeStringify preserves strings and serializes JSON
+            // composites into one query value, including empty arrays.
+            let value = value
+                .as_str()
+                .map_or_else(|| value.to_string(), str::to_owned);
+            encoded.append_pair(name, &value);
         }
         let query = encoded.finish();
         if !query.is_empty() {
@@ -393,4 +392,45 @@ fn encode_body(
         Vec::new()
     };
     Ok(body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use forklaunch_contract::{FieldContract, RouteContract};
+    #[test]
+    fn native_query_transport_preserves_json_values_and_single_escaping() {
+        let route = RouteContract::get("Read Query", "Read query", "/query/:id")
+            .with_param(FieldContract::required("id", "String"));
+        let args = serde_json::json!({"params":{"id":"a/b + 水"},"query":{"ids":["a,b","水"],"empty":[],"filter":{"active":false}}});
+        let request = build_request(&route, args.as_object().unwrap(), None).unwrap();
+        let values: BTreeMap<_, _> =
+            form_urlencoded::parse(request.uri().query().unwrap().as_bytes())
+                .into_owned()
+                .collect();
+        assert_eq!(values["ids"], r#"["a,b","水"]"#);
+        assert_eq!(values["empty"], "[]");
+        assert_eq!(values["filter"], r#"{"active":false}"#);
+        assert_eq!(request.uri().path(), "/query/a%2Fb%20%2B%20%E6%B0%B4");
+        if let (Ok(input), Ok(output)) = (
+            std::env::var("FORKLAUNCH_TEST_QUERY_TRANSPORT_INPUT"),
+            std::env::var("FORKLAUNCH_TEST_QUERY_TRANSPORT_OUTPUT"),
+        ) {
+            let cases: Vec<Value> = serde_json::from_slice(&std::fs::read(input).unwrap()).unwrap();
+            let targets: Vec<_> = cases
+                .iter()
+                .map(|args| {
+                    build_request(&route, args.as_object().unwrap(), None)
+                        .unwrap()
+                        .uri()
+                        .to_string()
+                })
+                .collect();
+            std::fs::write(
+                std::path::Path::new(&output).join("mcp-targets.json"),
+                serde_json::to_vec(&targets).unwrap(),
+            )
+            .unwrap();
+        }
+    }
 }

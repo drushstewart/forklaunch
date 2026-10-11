@@ -45,7 +45,7 @@ pub fn generate_typescript_sdk_source(
 
     let _ = writeln!(
         source,
-        "export type SdkQueryValue = string | number | boolean | undefined;"
+        "export type SdkQueryValue = string | number | boolean | null | readonly SdkQueryValue[] | {{ readonly [key: string]: SdkQueryValue }} | undefined;"
     );
     let _ = writeln!(
         source,
@@ -150,7 +150,7 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
     );
     let _ = writeln!(
         source,
-        "    const query = options.query ? `?${{new URLSearchParams(Object.entries(options.query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}}` : '';"
+        "    const query = options.query ? `?${{new URLSearchParams(Object.entries(options.query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]))}}` : '';"
     );
     let _ = writeln!(
         source,
@@ -250,6 +250,23 @@ mod tests {
                 source,
             )
             .unwrap();
+        }
+    }
+
+    #[test]
+    fn native_query_transport_emits_composite_query_types_and_serialization() {
+        let mut registry = forklaunch_contract::ContractRegistry::new();
+        registry.register(
+            RouteContract::get("Read Query", "Read query", "/query/:id")
+                .with_param(FieldContract::required("id", "String")),
+        );
+        let plan = SdkGenerationPlan::from_registry(SdkTarget::TypeScript, &registry);
+        let source =
+            generate_typescript_sdk_source(&plan, &TypeScriptSdkOptions::new("QueryClient"));
+        assert!(source.contains("readonly SdkQueryValue[]"));
+        assert!(source.contains("JSON.stringify(value)"));
+        if let Ok(output) = std::env::var("FORKLAUNCH_TEST_QUERY_TRANSPORT_OUTPUT") {
+            std::fs::write(std::path::Path::new(&output).join("query-sdk.ts"), source).unwrap();
         }
     }
 

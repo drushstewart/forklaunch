@@ -283,7 +283,7 @@ export function generateMcpServer<
               url += queryString ? `?${queryString}` : '';
             }
 
-            const response = await fetch(encodeURI(url), {
+            const response = await fetch(url, {
               method: route.method.toUpperCase(),
               headers: {
                 ...headers,

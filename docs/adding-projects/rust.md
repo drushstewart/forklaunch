@@ -448,3 +448,7 @@ initialization, discovery and tool calls, including signed calls, rejected
 credentials and Origins, and graceful shutdown. HTTP and MCP share a listener
 in generated Rust services; TypeScript's default separate MCP port is tracked
 as a remaining configuration compatibility item.
+
+### Query encoding
+
+Generated TypeScript SDKs and MCP serialize array/object query values as one JSON string per field, matching the TypeScript transport. For example, `{ ids: ['a,b', '水'] }` sends one `ids` value containing `["a,b","水"]`; an empty array sends `[]`. Strings remain strings, and URL components are percent encoded once. The TypeScript universal SDK and MCP generator also preserve already encoded parameters without a second `encodeURI` pass. Rust SDK string query maps accept caller-serialized JSON values. `rust_query_transport_parity.mjs` compares 40 URL cases against the actual TypeScript transports, and live HTTP/MCP checks verify array values arrive intact.

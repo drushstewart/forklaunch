@@ -814,4 +814,6 @@ require literal Rust clones, but their public request/response behavior does.
 
 - [x] Validate actual service HTTP and MCP startup, initialization/discovery/tool invocation and authenticated dispatch for generated generic services, IAM, CAC, base/Twilio messaging and custom routers. Live fixtures cover all 27 HTTP methods, signed JSON/forms, bearer/session/JWT forwarding, tenant rejection, revocation, RBAC, Origin rejection, graceful shutdown and archive-installed enabled/disabled/custom-path startup. Reuse these checks for each additional generated module family.
 
+- [x] Align JSON query arrays/objects/null across native MCP and both generated TypeScript SDK surfaces. Forty actual TypeScript MCP-generator/universal-SDK comparisons cover empty arrays, Unicode/reserved characters and single percent encoding. Remove duplicate URL encoding in both TS transports; live native HTTP/MCP and generated SDK regressions pass. Rust SDK query maps continue to accept explicitly serialized string values.
+
 - [ ] Complete remaining MCP compatibility: additional manually bound tool execution, configurable separate listener/TypeScript port defaults, multipart calls and actual TypeScript generator conformance fixtures.

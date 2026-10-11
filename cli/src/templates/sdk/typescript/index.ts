@@ -1,4 +1,4 @@
-export type ForkLaunchQueryValue = string | number | boolean | undefined;
+export type ForkLaunchQueryValue = string | number | boolean | null | readonly ForkLaunchQueryValue[] | { readonly [key: string]: ForkLaunchQueryValue } | undefined;
 export type ForkLaunchPathValue = string | number | boolean;
 export type ForkLaunchHeaders = Record<string, string>;
 export type ForkLaunchSdkFetchInit = Omit<RequestInit, 'method' | 'body' | 'headers'>;
@@ -87,7 +87,7 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
   const fetcher = config.fetch ?? fetch;
   const resolved = config.beforeRequest ? await config.beforeRequest(meta) : meta;
   const { params, query: queryInput, body, headers, ...fetchInit } = resolved.input;
-  const query = queryInput ? `?${new URLSearchParams(Object.entries(queryInput).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}` : '';
+  const query = queryInput ? `?${new URLSearchParams(Object.entries(queryInput).filter(([, value]) => value !== undefined).map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value) : String(value)]))}` : '';
   const path = pathWithParams(resolved.path, params);
   const baseUrl = config.serviceBaseUrls?.[resolved.service] ?? config.baseUrl ?? '';
   const response = await fetcher(`${baseUrl}${path}${query}`, {

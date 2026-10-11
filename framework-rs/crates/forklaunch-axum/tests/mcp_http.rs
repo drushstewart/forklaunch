@@ -51,6 +51,7 @@ async fn live_http_and_mcp_initialize_discover_invoke_auth_validate_and_shutdown
     let service=ForkLaunchRouter::new(ServiceInfo::new("startup-test","1.2.3"))
         .get(RouteContract::get("Health","Health","/health").with_response(200,Some(BodyContract::json("Health"))),||async{Json(json!({"ok":true}))})
         .get(RouteContract::get("Read Item","Read item","/items/:id").with_param(FieldContract::required("id","String")).with_query(FieldContract::required("q","String")).with_access(AccessLevel::Authenticated).with_response(200,Some(BodyContract::json("Item"))),|Path(id):Path<String>,Query(query):Query<HashMap<String,String>>,headers:HeaderMap|async move {Json(json!({"id":id,"q":query["q"],"authorization":headers["authorization"].to_str().unwrap()}))})
+        .get(RouteContract::get("Read Query","Read composite query","/query").with_query(FieldContract::optional("ids","Vec<String>")).with_response(200,Some(BodyContract::json("Query"))),|Query(query):Query<HashMap<String,String>>|async move {Json(query)})
         .post(RouteContract::post("Echo","Echo","/echo").with_request_body(BodyContract::json("Echo")).with_response(200,Some(BodyContract::json("Echo"))),|Json(body):Json<Value>|async move{Json(body)})
         .get(RouteContract::get("Hidden","Hidden","/hidden").with_options(RouteOptions{mcp:false,..RouteOptions::default()}),||async{"hidden"})
         .with_config(config);
@@ -100,7 +101,7 @@ async fn live_http_and_mcp_initialize_discover_invoke_auth_validate_and_shutdown
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, vec!["echo", "health", "readItem"]);
+    assert_eq!(names, vec!["echo", "health", "readItem", "readQuery"]);
     let health = rpc(
         &client,
         &url,
@@ -121,6 +122,29 @@ async fn live_http_and_mcp_initialize_discover_invoke_auth_validate_and_shutdown
         result["result"]["structuredContent"],
         json!({"id":"space + 💬","q":"a+b & c","authorization":"route-secret"})
     );
+    for ids in [json!(["a,b", "水"]), json!([])] {
+        let result = rpc(
+            &client,
+            &url,
+            "tools/call",
+            json!({"name":"readQuery","arguments":{"query":{"ids":ids}}}),
+        )
+        .await;
+        assert_eq!(
+            result["result"]["structuredContent"]["ids"],
+            ids.to_string()
+        );
+        let direct = client
+            .get(format!("{base}/query"))
+            .query(&[("ids", ids.to_string())])
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+        assert_eq!(result["result"]["structuredContent"], direct);
+    }
     for args in [
         json!({"params":{"id":"x"},"query":{"q":"a"}}),
         json!({"params":{"id":"x"},"headers":{"authorization":"route-secret"}}),
