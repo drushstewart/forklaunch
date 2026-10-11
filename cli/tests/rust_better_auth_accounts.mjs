@@ -156,7 +156,8 @@ const signup = {
   password: 'test-only-password',
 };
 try {
-  await authenticate(owner, start, 'signup', signup);
+  const ownerGrant = await authenticate(owner, start, 'signup', signup);
+  let ownerToken = ownerGrant.body.token;
   await authenticate(
     reference.client(),
     start + 1000,
@@ -237,6 +238,164 @@ try {
   await authenticate(reference.client(), start + 11000, 'signin', {
     email: unicode.email,
     password: unicode.password,
+  });
+  async function passwordOperation(op, payload, offset, status = 200, code) {
+    const now = start + offset;
+    const actual = await atTime(now, () =>
+      owner.call(
+        op === 'change' ? '/change-password' : '/verify-password',
+        payload,
+      ),
+    );
+    assert.equal(actual.status, status, JSON.stringify(actual.body));
+    const result = await native({ op, payload, token: ownerToken, now });
+    if (status === 200) {
+      if (actual.body.token) {
+        const session = `login:${++login}`;
+        actualIds.set(actual.body.token, session);
+        nativeIds.set(result.body.token, session);
+        ownerToken = result.body.token;
+        assert.ok(
+          actual.headers
+            .getSetCookie()
+            .some(
+              (cookie) =>
+                cookie.startsWith('better-auth.session_token=') &&
+                cookie.includes('Max-Age=86400'),
+            ),
+        );
+        checks++;
+      }
+      assert.deepEqual(
+        normalize(result.body, nativeIds),
+        normalize(actual.body, actualIds),
+      );
+    } else {
+      assert.equal(actual.body.code, code);
+      assert.equal(result.error, code);
+    }
+    checks++;
+    await compareRecords(now);
+    return result;
+  }
+  await passwordOperation('verify', { password: signup.password }, 12000);
+  await passwordOperation(
+    'verify',
+    { password: 'incorrect' },
+    13000,
+    400,
+    'INVALID_PASSWORD',
+  );
+  await passwordOperation(
+    'verify',
+    { password: 'x'.repeat(129) },
+    14000,
+    400,
+    'PASSWORD_TOO_LONG',
+  );
+  await passwordOperation(
+    'change',
+    { currentPassword: signup.password, newPassword: 'short' },
+    15000,
+    400,
+    'PASSWORD_TOO_SHORT',
+  );
+  await passwordOperation(
+    'change',
+    { currentPassword: 'incorrect', newPassword: 'new-test-only-password' },
+    16000,
+    400,
+    'INVALID_PASSWORD',
+  );
+  await passwordOperation(
+    'change',
+    { currentPassword: signup.password, newPassword: 'x'.repeat(129) },
+    17000,
+    400,
+    'PASSWORD_TOO_LONG',
+  );
+  await passwordOperation(
+    'change',
+    { currentPassword: 'x'.repeat(129), newPassword: 'new-test-only-password' },
+    18000,
+    400,
+    'PASSWORD_TOO_LONG',
+  );
+  await passwordOperation(
+    'change',
+    { currentPassword: signup.password, newPassword: 'new-test-only-password' },
+    19000,
+  );
+  await passwordOperation(
+    'verify',
+    { password: signup.password },
+    20000,
+    400,
+    'INVALID_PASSWORD',
+  );
+  await passwordOperation(
+    'verify',
+    { password: 'new-test-only-password' },
+    21000,
+  );
+  await authenticate(
+    reference.client(),
+    start + 22000,
+    'signin',
+    { email: signup.email, password: signup.password },
+    401,
+    'INVALID_EMAIL_OR_PASSWORD',
+  );
+  await authenticate(reference.client(), start + 23000, 'signin', {
+    email: signup.email,
+    password: 'new-test-only-password',
+  });
+  const original = ownerToken;
+  const foreignSessions = reference.database.session
+    .filter((session) => session.userId !== reference.database.user[0].id)
+    .map((session) => session.id);
+  await passwordOperation(
+    'change',
+    {
+      currentPassword: 'new-test-only-password',
+      newPassword: 'third-test-only-password',
+      revokeOtherSessions: true,
+    },
+    24000,
+  );
+  assert.equal(
+    reference.database.session.filter(
+      (session) => session.userId === reference.database.user[0].id,
+    ).length,
+    1,
+  );
+  assert.deepEqual(
+    reference.database.session
+      .filter((session) => session.userId !== reference.database.user[0].id)
+      .map((session) => session.id),
+    foreignSessions,
+  );
+  assert.equal(
+    (await native({ op: 'get', token: original, now: start + 25000 })).body,
+    null,
+  );
+  checks += 3;
+  await passwordOperation(
+    'verify',
+    { password: 'third-test-only-password' },
+    26000,
+  );
+  await authenticate(
+    reference.client(),
+    start + 27000,
+    'signin',
+    { email: signup.email, password: 'new-test-only-password' },
+    401,
+    'INVALID_EMAIL_OR_PASSWORD',
+  );
+  await authenticate(reference.client(), start + 28000, 'signin', {
+    email: signup.email,
+    password: 'third-test-only-password',
   });
   console.log(
     `Better Auth native email credentials: ${checks} body/storage/protocol comparisons passed`,

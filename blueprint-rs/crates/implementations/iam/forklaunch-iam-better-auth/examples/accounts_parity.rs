@@ -2,7 +2,7 @@
 use chrono::{DateTime, Utc};
 use forklaunch_blueprint_core::BlueprintResult;
 use forklaunch_iam_better_auth::{
-    accounts::{CredentialService, SigninInput, SignupInput},
+    accounts::{ChangePasswordInput, CredentialService, SigninInput, SignupInput},
     sessions::SessionService,
     store::{AuthStore, AuthTransaction, Model, memory::MemoryAuthStore},
 };
@@ -36,6 +36,30 @@ async fn main() {
                         |grant| json!({"body":grant.signin_body(),"persistent":grant.persistent}),
                     )
                 }
+                "change" => {
+                    let payload: ChangePasswordInput =
+                        serde_json::from_value(input["payload"].clone()).unwrap();
+                    service
+                        .change_password(
+                            input["token"].as_str().unwrap(),
+                            payload,
+                            input["transient"].as_bool().unwrap_or(false),
+                            "",
+                            "",
+                            now,
+                        )
+                        .await
+                        .map(|change| json!({"body":change.body()}))
+                }
+                "verify" => service
+                    .verify_password(
+                        input["token"].as_str().unwrap(),
+                        input["payload"]["password"].as_str().unwrap().to_owned(),
+                        input["transient"].as_bool().unwrap_or(false),
+                        now,
+                    )
+                    .await
+                    .map(|body| json!({"body":body})),
                 "get" => sessions
                     .get(
                         input["token"].as_str().unwrap(),

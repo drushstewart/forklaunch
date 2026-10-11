@@ -97,6 +97,87 @@ pub(crate) async fn exercise_credentials<S: AuthStore>(store: Arc<S>) {
     assert_ne!(account["password"], "test-only-password");
     assert_eq!(account["password"].as_str().unwrap().len(), 161);
     tx.commit().await.unwrap();
+    exercise_password_change(store, grant, login, winner, now).await;
+}
+
+async fn exercise_password_change<S: AuthStore>(
+    store: Arc<S>,
+    grant: AuthGrant,
+    login: AuthGrant,
+    winner: AuthGrant,
+    now: DateTime<Utc>,
+) {
+    let service = CredentialService::new(store.clone());
+    let sessions = crate::sessions::SessionService::new(store);
+    let original = grant.session["token"].as_str().unwrap();
+    assert_eq!(
+        service
+            .verify_password(original, "wrong".into(), false, now)
+            .await
+            .unwrap_err()
+            .code,
+        "INVALID_PASSWORD"
+    );
+    let bad: ChangePasswordInput = serde_json::from_value(json!({"currentPassword":"wrong","newPassword":"replacement-password","revokeOtherSessions":true})).unwrap();
+    assert_eq!(
+        service
+            .change_password(original, bad, false, "", "", now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "INVALID_PASSWORD"
+    );
+    // Failed password changes cannot revoke existing sessions or alter hashes.
+    assert!(
+        sessions
+            .get(login.session["token"].as_str().unwrap(), false, false, now)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    service
+        .verify_password(original, "test-only-password".into(), false, now)
+        .await
+        .unwrap();
+    let payload: ChangePasswordInput = serde_json::from_value(json!({"currentPassword":"test-only-password","newPassword":"replacement-password","revokeOtherSessions":true})).unwrap();
+    let changed = service
+        .change_password(original, payload, false, "new-ip", "new-agent", now)
+        .await
+        .unwrap();
+    let replacement = changed.session.unwrap();
+    assert_eq!(replacement["ipAddress"], "new-ip");
+    assert_eq!(replacement["userAgent"], "new-agent");
+    assert!(
+        sessions
+            .get(original, false, false, now)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        sessions
+            .get(login.session["token"].as_str().unwrap(), false, false, now)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        sessions
+            .get(winner.session["token"].as_str().unwrap(), false, false, now)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    service
+        .verify_password(
+            replacement["token"].as_str().unwrap(),
+            "replacement-password".into(),
+            false,
+            now,
+        )
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

@@ -62,9 +62,14 @@ currently use the explicitly bounded store scan; indexed lookup remains open.
 runs in a shared bounded blocking pool outside tenant write locks; concurrent
 signup rechecks email uniqueness inside the write transaction, and signin
 rechecks the account after password verification to reject concurrent password
-changes. Thirty-nine actual-handler comparisons cover response/stored state,
+changes. Eighty-one actual-handler comparisons cover response/stored state,
 case normalization, callbacks and Unicode password limits; memory and live
 PostgreSQL exercise concurrent signup and persistent credential/session records.
 Credential DTOs are parsed inputs: HTTP media/body validation, CSRF/Origin and
-callback guards still belong to the pending HTTP adapter. Password/user/account
-updates and provider linking remain open.
+callback guards still belong to the pending HTTP adapter. Authenticated password
+verification/rotation rechecks authoritative credentials and session state after
+blocking work. Rotation optionally revokes all own sessions, including current,
+and issues a replacement persistent session. Actual handlers and memory/live
+PostgreSQL validate wrong/oversized passwords, retained sessions without revocation,
+replacement sessions and isolation of other users. User/account updates and
+provider linking remain open.

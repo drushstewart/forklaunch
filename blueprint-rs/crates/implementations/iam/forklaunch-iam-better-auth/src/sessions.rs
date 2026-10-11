@@ -233,7 +233,7 @@ async fn find_token<T: AuthTransaction>(tx: &mut T, token: &str) -> BlueprintRes
         .into_iter()
         .find(|row| row["token"].as_str() == Some(token)))
 }
-async fn load<T: AuthTransaction>(
+pub(crate) async fn load<T: AuthTransaction>(
     tx: &mut T,
     token: &str,
     skip_refresh: bool,

@@ -13,6 +13,9 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
 
+mod password;
+pub use password::{ChangePasswordInput, PasswordChange};
+
 #[cfg(test)]
 pub(crate) mod tests;
 

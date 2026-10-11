@@ -305,3 +305,10 @@ controlled password-change race proves stale verification cannot mint a session.
 Bounded blocking password work stays outside tenant write locks. HTTP validation,
 cookie/CSRF/Origin integration, credential/account updates and indexed queries
 remain open.
+
+Native credential comparisons now total 81, including actual authenticated
+password verification/change handlers. Wrong and oversized passwords preserve
+credentials/sessions; revocation replaces all own sessions with one new persistent
+session and preserves unrelated users. Memory and encrypted PostgreSQL tests cover
+the same lifecycle. Production raw HTTP validation/cookies/Origin/CSRF and the
+remaining user/account/provider/organization routes stay open.
