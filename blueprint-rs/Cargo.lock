@@ -735,6 +735,8 @@ dependencies = [
  "forklaunch-blueprint-core",
  "forklaunch-core",
  "forklaunch-ecommerce-interface",
+ "forklaunch-worker-database",
+ "forklaunch-worker-interface",
  "regex",
  "serde",
  "serde_json",

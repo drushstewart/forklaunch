@@ -1,6 +1,7 @@
 //! Ecommerce DTOs and asynchronous service interfaces shared with TypeScript.
 #![forbid(unsafe_code)]
 pub mod catalog;
+pub mod events;
 use forklaunch_blueprint_core::BlueprintResult;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

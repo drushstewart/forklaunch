@@ -2,6 +2,7 @@
 //! adapter is for development; `PostgreSQL` owns production tenant isolation.
 #![forbid(unsafe_code)]
 pub mod catalog;
+pub mod events;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod store;

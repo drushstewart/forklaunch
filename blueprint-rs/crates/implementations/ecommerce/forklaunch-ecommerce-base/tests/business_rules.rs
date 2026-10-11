@@ -1,5 +1,7 @@
 #[path = "support/catalog.rs"]
 mod catalog;
+#[path = "support/events.rs"]
+mod events;
 use forklaunch_ecommerce_base::{
     BaseEcommerceService,
     store::{EcommerceStore, Field, InMemoryEcommerceStore, Mutation, RecordKind, Selector},
@@ -327,7 +329,8 @@ async fn business_rules<S: EcommerceStore + 'static>(store: Arc<S>) {
         "p1",
         "base deletion does not cascade"
     );
-    catalog::catalog_rules(store).await;
+    catalog::catalog_rules(Arc::clone(&store)).await;
+    events::event_rules(store).await;
 }
 #[tokio::test]
 async fn memory_business_rules_and_concurrency() {
@@ -388,10 +391,13 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         .unwrap();
     PostgresEcommerceStore::migrate(&owner).await.unwrap();
     PostgresEcommerceStore::migrate(&owner).await.unwrap();
+    forklaunch_worker_database::postgres::PostgresWorkerQueue::migrate(&owner)
+        .await
+        .unwrap();
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("ecom_{suffix}");
     let password = uuid::Uuid::new_v4().to_string();
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role};")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT USAGE ON SCHEMA fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_worker.jobs TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};")).execute(&owner).await.unwrap();
     let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
     let runtime = PgPoolOptions::new()
         .max_connections(8)
@@ -540,7 +546,24 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         .unwrap(),
     ));
     assert!(wrong.get_order("order").await.is_err());
-    for table in ["records", "pii_read_audit"] {
+    events::event_rules(Arc::clone(&b)).await;
+    #[cfg(feature = "worker")]
+    events::lost_ack_redelivery(&owner, &runtime, tenant_a.clone(), Arc::clone(&a)).await;
+    sqlx::query("DELETE FROM fl_worker.jobs WHERE tenant_id=ANY($1)")
+        .bind(vec![tenant_a.id(), tenant_b.id()])
+        .execute(&owner)
+        .await
+        .unwrap();
+    let (receipts,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM fl_ecommerce.inventory_event_receipts")
+            .fetch_one(&runtime)
+            .await
+            .unwrap();
+    assert_eq!(
+        receipts, 0,
+        "receipts enforce tenant RLS outside a bound transaction"
+    );
+    for table in ["records", "pii_read_audit", "inventory_event_receipts"] {
         sqlx::query(&format!(
             "DELETE FROM fl_ecommerce.{table} WHERE tenant_id=ANY($1)"
         ))

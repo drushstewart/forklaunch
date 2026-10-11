@@ -8,6 +8,7 @@ use forklaunch_blueprint_core::{AuditContext, BlueprintError, BlueprintResult};
 use forklaunch_core::persistence::{
     TenantContext, begin_tenant_transaction, encryption::FieldEncryptor,
 };
+use forklaunch_ecommerce_interface::events::OrderEvent;
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
@@ -238,6 +239,35 @@ impl EcommerceStore for PostgresEcommerceStore {
             .collect::<BlueprintResult<_>>()?;
         tx.commit().await.map_err(storage_error)?;
         Ok(ProductPage { products, total })
+    }
+    async fn apply_order_event(&self, event: OrderEvent) -> BlueprintResult<bool> {
+        let deltas = crate::events::deltas(&event)?;
+        let fingerprint = crate::events::fingerprint(&event)?;
+        let mut tx = self.transaction().await?;
+        let inserted = sqlx::query("INSERT INTO fl_ecommerce.inventory_event_receipts(tenant_id,event_id,fingerprint) VALUES($1,$2,$3) ON CONFLICT DO NOTHING")
+            .bind(self.tenant.id()).bind(&event.id).bind(&fingerprint).execute(&mut *tx).await.map_err(storage_error)?.rows_affected();
+        if inserted == 0 {
+            let (previous,): (String,) = sqlx::query_as("SELECT fingerprint FROM fl_ecommerce.inventory_event_receipts WHERE tenant_id=$1 AND event_id=$2")
+                .bind(self.tenant.id()).bind(&event.id).fetch_one(&mut *tx).await.map_err(storage_error)?;
+            if previous != fingerprint {
+                return Err(crate::events::conflicting_event());
+            }
+            tx.commit().await.map_err(storage_error)?;
+            return Ok(false);
+        }
+        // Sorted variant keys give all concurrent events the same row lock order.
+        for (variant, delta) in deltas {
+            let row: Option<(String,sqlx::types::Json<Value>)> = sqlx::query_as("SELECT id,data FROM fl_ecommerce.records WHERE tenant_id=$1 AND kind='inventory' AND data->>'variantId'=$2 FOR UPDATE")
+                .bind(self.tenant.id()).bind(variant).fetch_optional(&mut *tx).await.map_err(storage_error)?;
+            let (id, data) = row.ok_or_else(|| not_found(RecordKind::Inventory))?;
+            let record = Record::from_data(RecordKind::Inventory, data.0)?;
+            let result = apply_mutation(record, Mutation::AdjustStock(delta))?;
+            sqlx::query("UPDATE fl_ecommerce.records SET data=$3 WHERE tenant_id=$1 AND kind='inventory' AND id=$2")
+                .bind(self.tenant.id()).bind(id).bind(sqlx::types::Json(result.record.data()?))
+                .execute(&mut *tx).await.map_err(storage_error)?;
+        }
+        tx.commit().await.map_err(storage_error)?;
+        Ok(true)
     }
     async fn mutate(
         &self,

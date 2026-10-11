@@ -8,9 +8,12 @@ repository.workspace = true
 
 [features]
 default = []
+worker = ["dep:forklaunch-worker-interface", "dep:forklaunch-worker-database"]
 postgres = ["dep:forklaunch-core", "dep:sqlx"]
 
 [dependencies]
+forklaunch-worker-interface = { path = "../../../interfaces/forklaunch-worker-interface", optional = true }
+forklaunch-worker-database = { path = "../../worker/forklaunch-worker-database", features = ["runtime"], optional = true }
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
 forklaunch-ecommerce-interface = { path = "../../../interfaces/forklaunch-ecommerce-interface" }
 uuid = { version = "1", features = ["v4"] }
@@ -24,6 +27,7 @@ forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core",
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros"], optional = true }
 
 [dev-dependencies]
+forklaunch-worker-database = { path = "../../worker/forklaunch-worker-database", features = ["runtime", "postgres"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 
 [lints]

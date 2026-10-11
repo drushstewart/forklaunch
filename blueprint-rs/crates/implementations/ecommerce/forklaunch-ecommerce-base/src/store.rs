@@ -2,7 +2,7 @@
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_ecommerce_interface::{
     CartDto, CartItemDto, InventoryDto, OrderDto, OrderStatus, PaymentDto, PaymentStatus,
-    ProductDto, UpdateProductDto, UpdateVariantDto, VariantDto,
+    ProductDto, UpdateProductDto, UpdateVariantDto, VariantDto, events::OrderEvent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -199,6 +199,14 @@ pub trait EcommerceStore: Send + Sync {
         limit: u32,
         offset: u64,
     ) -> impl Future<Output = BlueprintResult<ProductPage>> + Send;
+    /// Atomically applies all order-event inventory deltas and an idempotency
+    /// receipt. Reused IDs with different logical payloads must fail.
+    /// # Errors
+    /// Returns invalid-event, insufficient-stock, conflict or storage errors.
+    fn apply_order_event(
+        &self,
+        event: OrderEvent,
+    ) -> impl Future<Output = BlueprintResult<bool>> + Send;
     /// # Errors
     /// Returns missing-record, invalid transition, stock/quantity or storage failures.
     fn mutate(
@@ -357,6 +365,7 @@ pub(crate) fn apply_mutation(
 #[derive(Debug, Default)]
 pub struct InMemoryEcommerceStore {
     records: Mutex<BTreeMap<(RecordKind, String), Record>>,
+    applied_events: Mutex<BTreeMap<String, String>>,
 }
 fn unique(record: &Record) -> Vec<(Field, &str)> {
     match record {
@@ -512,6 +521,31 @@ impl EcommerceStore for InMemoryEcommerceStore {
             .cloned()
             .collect();
         Ok(ProductPage { products, total })
+    }
+    async fn apply_order_event(&self, event: OrderEvent) -> BlueprintResult<bool> {
+        let deltas = crate::events::deltas(&event)?;
+        let fingerprint = crate::events::fingerprint(&event)?;
+        let mut records = self.records.lock().map_err(storage_error)?;
+        let mut receipts = self.applied_events.lock().map_err(storage_error)?;
+        if let Some(previous) = receipts.get(&event.id) {
+            return if previous == &fingerprint {
+                Ok(false)
+            } else {
+                Err(crate::events::conflicting_event())
+            };
+        }
+        let mut updated = Vec::new();
+        for (variant, delta) in deltas {
+            let record = records.values().find(|record| matches!(record, Record::Inventory(value) if value.variant_id == variant))
+                .ok_or_else(|| not_found(RecordKind::Inventory))?;
+            let result = apply_mutation(record.clone(), Mutation::AdjustStock(delta))?;
+            updated.push(result.record);
+        }
+        for record in updated {
+            records.insert((record.kind(), record.id().to_owned()), record);
+        }
+        receipts.insert(event.id, fingerprint);
+        Ok(true)
     }
     async fn mutate(
         &self,
