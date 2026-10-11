@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod sse;
+
 use std::{
     collections::BTreeMap,
     fmt::{self, Write as _},
