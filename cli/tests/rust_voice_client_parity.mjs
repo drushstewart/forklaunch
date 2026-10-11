@@ -28,7 +28,7 @@ const actions=[
 let queue=[],serverError;const captured=[],nonces=new Set();
 const server=http.createServer(async(request,response)=>{
  try{
-  let raw='';for await(const chunk of request)raw+=chunk;
+  const chunks=[];for await(const chunk of request)chunks.push(chunk);const raw=Buffer.concat(chunks).toString('utf8');
   const action=queue.shift();assert.ok(action,'unexpected request');const method=action.method==='start'?'POST':action.method==='call'?'GET':'DELETE',route='/voice/calls'+(action.method==='start'?'':'/'+action.id);assert.equal(request.method,method);assert.equal(request.url,`/mount/instance-gateway${route}`);
   const match=/^HMAC keyId=(\S+) ts=(\S+) nonce=(\S+) signature=(\S+)$/.exec(request.headers.authorization??'');assert.ok(match);
   const [,keyId,timestamp,nonce,signature]=match;assert.equal(keyId,'instance_fixture');assert.ok(!nonces.has(nonce));nonces.add(nonce);assert.ok(Math.abs(Date.now()-new Date(timestamp).getTime())<5000);

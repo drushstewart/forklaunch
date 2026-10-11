@@ -116,7 +116,7 @@ impl InstanceGatewayClient {
         }
         let mut segments = vec!["instance-gateway"];
         segments.extend_from_slice(route);
-        self.http.request(method, &segments)
+        self.http.request_uri_components(method, &segments)
     }
     async fn execute(
         &self,

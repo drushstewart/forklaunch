@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "instance-gateway")]
+pub mod email_client;
+#[cfg(feature = "instance-gateway")]
 pub mod instance_gateway;
 #[cfg(feature = "instance-gateway")]
 pub mod payments_client;

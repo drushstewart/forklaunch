@@ -89,6 +89,43 @@ impl ProviderHttpClient {
         }
         Ok(self.client.request(method, url))
     }
+    /// Encodes dynamic path segments as JavaScript `encodeURIComponent` does.
+    /// # Errors
+    /// Rejects empty/dot segments and opaque endpoint URLs.
+    pub fn request_uri_components(
+        &self,
+        method: Method,
+        segments: &[&str],
+    ) -> BlueprintResult<RequestBuilder> {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        if segments
+            .iter()
+            .any(|segment| segment.is_empty() || matches!(*segment, "." | ".."))
+        {
+            return Err(config_error());
+        }
+        let mut url = self.base.clone();
+        let mut path = url.path().trim_end_matches('/').to_owned();
+        for segment in segments {
+            path.push('/');
+            for byte in segment.bytes() {
+                if byte.is_ascii_alphanumeric()
+                    || matches!(
+                        byte,
+                        b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+                    )
+                {
+                    path.push(char::from(byte));
+                } else {
+                    path.push('%');
+                    path.push(char::from(HEX[usize::from(byte >> 4)]));
+                    path.push(char::from(HEX[usize::from(byte & 15)]));
+                }
+            }
+        }
+        url.set_path(&path);
+        Ok(self.client.request(method, url))
+    }
     /// # Errors
     /// Rejects network failures, oversized bodies and malformed success JSON.
     /// Failure-status bodies are discarded to avoid exposing provider PII/secrets.

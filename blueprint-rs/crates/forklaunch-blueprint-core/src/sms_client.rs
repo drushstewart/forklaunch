@@ -78,7 +78,10 @@ pub fn sms_segments(body: &str) -> SmsSegments {
 /// Matches ECMAScript trim whitespace, including BOM and excluding U+0085.
 #[must_use]
 pub fn nonempty_text(body: &str) -> bool {
-    body.chars().any(|ch| !matches!(ch, '\u{9}'..='\u{d}'|'\u{20}'|'\u{a0}'|'\u{1680}'|'\u{2000}'..='\u{200a}'|'\u{2028}'|'\u{2029}'|'\u{202f}'|'\u{205f}'|'\u{3000}'|'\u{feff}'))
+    body.chars().any(|ch| !is_ecmascript_whitespace(ch))
+}
+pub(crate) fn is_ecmascript_whitespace(ch: char) -> bool {
+    matches!(ch, '\u{9}'..='\u{d}'|'\u{20}'|'\u{a0}'|'\u{1680}'|'\u{2000}'..='\u{200a}'|'\u{2028}'|'\u{2029}'|'\u{202f}'|'\u{205f}'|'\u{3000}'|'\u{feff}')
 }
 /// # Errors
 /// Rejects invalid phone numbers, whitespace-only text and overlong messages.
