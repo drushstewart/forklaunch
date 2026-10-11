@@ -371,9 +371,11 @@ fn encode_body(
             "content-type",
             HeaderValue::try_from(mime).map_err(|_| "Invalid content type")?,
         );
-        match mime.split(';').next().unwrap_or("") {
-            "application/json" => serde_json::to_vec(body).map_err(|_| "Invalid JSON body")?,
-            "application/x-www-form-urlencoded" => {
+        match contract.kind {
+            BodyKind::Json | BodyKind::Unknown => {
+                serde_json::to_vec(body).map_err(|_| "Invalid JSON body")?
+            }
+            BodyKind::UrlEncoded => {
                 let mut encoded = form_urlencoded::Serializer::new(String::new());
                 for (name, value) in body.as_object().ok_or("Form body must be an object")? {
                     let values = value
@@ -385,7 +387,11 @@ fn encode_body(
                 }
                 encoded.finish().into_bytes()
             }
-            "text/plain" => scalar(body)?.into_bytes(),
+            BodyKind::Text => body
+                .as_str()
+                .ok_or("Text body must be a string")?
+                .as_bytes()
+                .to_vec(),
             _ => return Err("This body media type requires an explicit MCP adapter".into()),
         }
     } else {
@@ -398,6 +404,30 @@ fn encode_body(
 mod tests {
     use super::*;
     use forklaunch_contract::{FieldContract, RouteContract};
+    #[test]
+    fn raw_text_json_media_type_preserves_signed_bytes() {
+        let raw = "{\n  \"id\": \"evt_💬\"\n}";
+        let mut route = RouteContract::post("Webhook", "Webhook", "/webhook");
+        route.request.body = Some(forklaunch_contract::BodyContract {
+            kind: BodyKind::Text,
+            schema: forklaunch_contract::SchemaRef::named("String"),
+            content_type: Some("application/json".into()),
+        });
+        let args = serde_json::json!({"body":raw});
+        let mut headers = HeaderMap::new();
+        assert_eq!(
+            encode_body(&route, args.as_object().unwrap(), &mut headers).unwrap(),
+            raw.as_bytes()
+        );
+        assert_eq!(headers["content-type"], "application/json");
+        let invalid = serde_json::json!({"body":{"id":"evt"}});
+        assert!(encode_body(&route, invalid.as_object().unwrap(), &mut headers).is_err());
+        route.request.body.as_mut().unwrap().kind = BodyKind::Json;
+        assert_eq!(
+            encode_body(&route, invalid.as_object().unwrap(), &mut headers).unwrap(),
+            br#"{"id":"evt"}"#
+        );
+    }
     #[test]
     fn native_query_transport_preserves_json_values_and_single_escaping() {
         let route = RouteContract::get("Read Query", "Read query", "/query/:id")
