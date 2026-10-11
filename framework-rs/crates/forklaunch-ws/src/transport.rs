@@ -1,7 +1,13 @@
 //! Typed client/server sockets with validated messages and bounded handshakes/writes.
-use std::{fmt, net::SocketAddr, time::Duration};
+use std::{
+    fmt,
+    net::SocketAddr,
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
+};
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use serde_json::Value;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -12,14 +18,18 @@ use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream,
     tungstenite::{
         self,
-        client::IntoClientRequest,
         handshake::server::{Callback, NoCallback},
-        protocol::{CloseFrame, Message, WebSocketConfig, frame::coding::CloseCode},
+        protocol::{CloseFrame, WebSocketConfig, frame::coding::CloseCode},
     },
 };
 
 use crate::codec::{DEFAULT_MAX_PAYLOAD_BYTES, PayloadCodec, PayloadError};
-pub use tokio_tungstenite::tungstenite::{handshake, http};
+pub use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+pub use tokio_tungstenite::tungstenite::handshake::client::Response as ClientHandshakeResponse;
+pub use tokio_tungstenite::tungstenite::protocol::{
+    CloseFrame as ProtocolCloseFrame, frame::coding::CloseCode as ProtocolCloseCode,
+};
+pub use tokio_tungstenite::tungstenite::{Message, handshake, http};
 
 #[derive(Debug)]
 pub enum SocketError {
@@ -42,7 +52,16 @@ impl fmt::Display for SocketError {
         }
     }
 }
-impl std::error::Error for SocketError {}
+impl std::error::Error for SocketError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Payload(error) => Some(error),
+            Self::Transport(error) => Some(error.as_ref()),
+            Self::Io(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 impl From<PayloadError> for SocketError {
     fn from(error: PayloadError) -> Self {
         Self::Payload(error)
@@ -75,7 +94,11 @@ impl Default for SocketOptions {
     }
 }
 impl SocketOptions {
-    fn config(self) -> Result<WebSocketConfig, SocketError> {
+    /// Bounded protocol configuration shared by native and HTTP upgrade adapters.
+    ///
+    /// # Errors
+    /// Rejects zero limits/timeouts and buffer-size overflow.
+    pub fn config(self) -> Result<WebSocketConfig, SocketError> {
         if self.max_message_bytes == 0
             || self.handshake_timeout.is_zero()
             || self.write_timeout.is_zero()
@@ -180,23 +203,55 @@ pub enum SocketEvent<I, P = Value, Q = Value, C = Value> {
     Close { code: u16, reason: C },
 }
 
-pub struct TypedWebSocket<S, I, O, P = Value, Q = Value, C = Value> {
-    socket: Option<WebSocketStream<S>>,
-    schemas: SocketSchemas<I, O, P, Q, C>,
-    options: SocketOptions,
-}
-impl<S: AsyncRead + AsyncWrite + Unpin, I, O, P, Q, C> TypedWebSocket<S, I, O, P, Q, C> {
-    /// Wrap an already-upgraded socket with bounded protocol configuration.
-    ///
+/// A frame transport whose implementation enforces the declared protocol bounds.
+/// Adapters must validate frame/message/write limits before application delivery.
+pub trait FrameTransport:
+    Stream<Item = Result<Message, SocketError>> + Sink<Message, Error = SocketError> + Unpin
+{
     /// # Errors
-    /// Rejects unbounded/preconfigured sockets whose limits exceed the supplied options.
-    pub fn from_socket(
-        socket: WebSocketStream<S>,
-        schemas: SocketSchemas<I, O, P, Q, C>,
-        options: SocketOptions,
-    ) -> Result<Self, SocketError> {
+    /// Rejects transport limits that exceed the application's configuration.
+    fn validate_limits(&self, options: SocketOptions) -> Result<(), SocketError>;
+}
+
+/// Native TCP/TLS transport. Construct through `TypedWebSocket::from_socket`.
+pub struct NativeTransport<S> {
+    socket: WebSocketStream<S>,
+}
+impl<S: AsyncRead + AsyncWrite + Unpin> Stream for NativeTransport<S> {
+    type Item = Result<Message, SocketError>;
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.socket)
+            .poll_next(cx)
+            .map(|message| message.map(|result| result.map_err(SocketError::from)))
+    }
+}
+impl<S: AsyncRead + AsyncWrite + Unpin> Sink<Message> for NativeTransport<S> {
+    type Error = SocketError;
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.socket)
+            .poll_ready(cx)
+            .map_err(SocketError::from)
+    }
+    fn start_send(mut self: Pin<&mut Self>, message: Message) -> Result<(), Self::Error> {
+        Pin::new(&mut self.socket)
+            .start_send(message)
+            .map_err(SocketError::from)
+    }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.socket)
+            .poll_flush(cx)
+            .map_err(SocketError::from)
+    }
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.socket)
+            .poll_close(cx)
+            .map_err(SocketError::from)
+    }
+}
+impl<S: AsyncRead + AsyncWrite + Unpin> FrameTransport for NativeTransport<S> {
+    fn validate_limits(&self, options: SocketOptions) -> Result<(), SocketError> {
         let expected = options.config()?;
-        let actual = socket.get_config();
+        let actual = self.socket.get_config();
         if actual
             .max_message_size
             .is_none_or(|limit| limit > options.max_message_bytes)
@@ -209,6 +264,46 @@ impl<S: AsyncRead + AsyncWrite + Unpin, I, O, P, Q, C> TypedWebSocket<S, I, O, P
                 "upgraded socket must have bounded message/frame/write limits",
             ));
         }
+        Ok(())
+    }
+}
+
+/// Typed messages and controls over a bounded frame transport.
+pub struct TypedSocket<T, I, O, P = Value, Q = Value, C = Value> {
+    socket: Option<T>,
+    schemas: SocketSchemas<I, O, P, Q, C>,
+    options: SocketOptions,
+}
+/// Typed native TCP/TLS connection, preserving the stream-oriented API.
+pub type TypedWebSocket<S, I, O, P = Value, Q = Value, C = Value> =
+    TypedSocket<NativeTransport<S>, I, O, P, Q, C>;
+impl<S: AsyncRead + AsyncWrite + Unpin, I, O, P, Q, C>
+    TypedSocket<NativeTransport<S>, I, O, P, Q, C>
+{
+    /// Wrap an already-upgraded native socket.
+    ///
+    /// # Errors
+    /// Rejects unbounded/preconfigured sockets whose limits exceed the supplied options.
+    pub fn from_socket(
+        socket: WebSocketStream<S>,
+        schemas: SocketSchemas<I, O, P, Q, C>,
+        options: SocketOptions,
+    ) -> Result<Self, SocketError> {
+        Self::from_transport(NativeTransport { socket }, schemas, options)
+    }
+}
+impl<T: FrameTransport, I, O, P, Q, C> TypedSocket<T, I, O, P, Q, C> {
+    /// Wrap an adapter after checking its configured protocol bounds.
+    ///
+    /// # Errors
+    /// Rejects invalid options or transport limits exceeding them.
+    pub fn from_transport(
+        socket: T,
+        schemas: SocketSchemas<I, O, P, Q, C>,
+        options: SocketOptions,
+    ) -> Result<Self, SocketError> {
+        options.config()?;
+        socket.validate_limits(options)?;
         Ok(Self {
             socket: Some(socket),
             schemas,
@@ -279,7 +374,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin, I, O, P, Q, C> TypedWebSocket<S, I, O, P
                 }
                 Some(Err(error)) => {
                     self.socket.take();
-                    return Err(error.into());
+                    return Err(error);
                 }
                 Some(Ok(message)) => message,
             };
@@ -339,32 +434,27 @@ impl<S: AsyncRead + AsyncWrite + Unpin, I, O, P, Q, C> TypedWebSocket<S, I, O, P
             }
             .into());
         }
-        let socket = self.socket.as_mut().ok_or(SocketError::Closed)?;
-        let result = timeout(self.options.write_timeout, socket.send(message)).await;
-        match result {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) => {
-                self.socket.take();
-                Err(error.into())
+        // Ownership stays in this future while writing: cancellation releases a
+        // partially written connection instead of retaining queued application data.
+        let mut socket = self.socket.take().ok_or(SocketError::Closed)?;
+        match timeout(self.options.write_timeout, socket.send(message)).await {
+            Ok(Ok(())) => {
+                self.socket = Some(socket);
+                Ok(())
             }
-            Err(_) => {
-                self.socket.take();
-                Err(SocketError::Timeout("write"))
-            }
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(SocketError::Timeout("write")),
         }
     }
     async fn flush(&mut self) -> Result<(), SocketError> {
-        let socket = self.socket.as_mut().ok_or(SocketError::Closed)?;
+        let mut socket = self.socket.take().ok_or(SocketError::Closed)?;
         match timeout(self.options.write_timeout, socket.flush()).await {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) => {
-                self.socket.take();
-                Err(error.into())
+            Ok(Ok(())) => {
+                self.socket = Some(socket);
+                Ok(())
             }
-            Err(_) => {
-                self.socket.take();
-                Err(SocketError::Timeout("flush"))
-            }
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(SocketError::Timeout("flush")),
         }
     }
     async fn reject(&mut self) {
@@ -398,14 +488,35 @@ pub async fn connect<R: IntoClientRequest + Unpin, I, O, P, Q, C>(
     schemas: SocketSchemas<I, O, P, Q, C>,
     options: SocketOptions,
 ) -> Result<TypedWebSocket<MaybeTlsStream<TcpStream>, I, O, P, Q, C>, SocketError> {
+    Ok(connect_with_response(request, schemas, options).await?.0)
+}
+
+/// Connect and retain the upgrade response, including negotiated subprotocols.
+///
+/// # Errors
+/// Returns the same configuration, handshake, timeout and transport errors as `connect`.
+pub async fn connect_with_response<R: IntoClientRequest + Unpin, I, O, P, Q, C>(
+    request: R,
+    schemas: SocketSchemas<I, O, P, Q, C>,
+    options: SocketOptions,
+) -> Result<
+    (
+        TypedWebSocket<MaybeTlsStream<TcpStream>, I, O, P, Q, C>,
+        ClientHandshakeResponse,
+    ),
+    SocketError,
+> {
     let config = options.config()?;
-    let (socket, _) = timeout(
+    let (socket, response) = timeout(
         options.handshake_timeout,
         tokio_tungstenite::connect_async_with_config(request, Some(config), false),
     )
     .await
     .map_err(|_| SocketError::Timeout("handshake"))??;
-    TypedWebSocket::from_socket(socket, schemas, options)
+    Ok((
+        TypedWebSocket::from_socket(socket, schemas, options)?,
+        response,
+    ))
 }
 
 /// Accept a stream after the application has authorized the connection.

@@ -445,13 +445,14 @@ Requirements:
 
 - [x] Implement typed WebSocket server wrapper. (`TypedWebSocketServer`, authenticated upgrade callback, application-owned listener; optional `transport` feature)
 - [x] Implement typed WebSocket client wrapper. (`transport::connect`, caller headers/subprotocols and TLS roots)
+- [x] Compose typed Axum WebSocket upgrades with HTTP/MCP on one listener; preserve subprotocol and failed-upgrade configuration, validate frame/message bounds, and verify application-owned shutdown.
 - [x] Validate incoming and outgoing messages. (`WebSocketContract::validate_incoming`/`validate_outgoing`)
 - [x] Support client messages, server messages, ping, pong, error messages, and close reason schemas. (`WsMessageKind` + error/close schemas)
 - [ ] Support channel and operation metadata.
 - [x] Support automatic JSON encoding and decoding. (`WebSocketEnvelope::to_json`/`from_json`)
 - [x] Add integration tests for server/client validation. (real native peers, bidirectional actual TypeScript peers, 166 payload comparisons, frame/control byte limits, stalled handshake/write deadlines, cancellation and close handshakes)
 
-Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScript wrappers; the legacy tagged `WebSocketEnvelope` contract remains a separate protocol. `PayloadCodec::framework()` optionally applies serde/garde constraints. Invalid incoming native payloads close with 1008 before delivery; outgoing failures remain local. Control replies preserve exact bytes and validate the outgoing pong schema. Actual TypeScript tests also fixed the wrapper's automatic pong/close paths, which previously revalidated encoded Buffers as objects. Schema coercion follows Rust's documented stricter policy. HTTP upgrade composition, generated clients and contract/channel metadata integration remain open.
+Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScript wrappers; the legacy tagged `WebSocketEnvelope` contract remains a separate protocol. `PayloadCodec::framework()` optionally applies serde/garde constraints. Invalid incoming native payloads close with 1008 before delivery; outgoing failures remain local. Control replies preserve exact bytes and validate the outgoing pong schema. Actual TypeScript tests also fixed the wrapper's automatic pong/close paths, which previously revalidated encoded Buffers as objects. Schema coercion follows Rust's documented stricter policy. Optional Axum `websocket::upgrade` now shares the native typed engine on existing HTTP/MCP listeners, with pre-upgrade authorization, subprotocol negotiation, bounded invalid/oversized input, and explicitly propagated connection shutdown tested together. Partial-write cancellation releases the socket. Generated clients and contract/channel metadata integration remain open.
 
 ### `forklaunch-asyncapi`
 

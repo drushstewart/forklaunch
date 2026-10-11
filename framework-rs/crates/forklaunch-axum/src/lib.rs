@@ -8,6 +8,8 @@ mod mcp_runtime;
 pub mod router;
 #[cfg(feature = "adapter")]
 pub mod session;
+#[cfg(feature = "websocket")]
+pub mod websocket;
 
 #[cfg(feature = "adapter")]
 pub use router::{DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter, RouterConfig};

@@ -384,3 +384,51 @@ async fn automatic_pong_must_satisfy_its_outgoing_schema() {
     );
     task.await.unwrap();
 }
+
+#[tokio::test]
+async fn cancelling_a_partial_write_releases_the_connection() {
+    use tokio_tungstenite::{
+        WebSocketStream,
+        tungstenite::protocol::{Role, WebSocketConfig},
+    };
+    let (writer, mut reader) = tokio::io::duplex(64);
+    let raw = WebSocketStream::from_raw_socket(
+        writer,
+        Role::Server,
+        Some(
+            WebSocketConfig::default()
+                .max_message_size(Some(1024))
+                .max_frame_size(Some(1024))
+                .write_buffer_size(0)
+                .max_write_buffer_size(1152),
+        ),
+    )
+    .await;
+    let mut socket = transport::TypedWebSocket::from_socket(
+        raw,
+        SocketSchemas::new(
+            PayloadCodec::<String>::serde(),
+            PayloadCodec::<String>::serde(),
+        ),
+        SocketOptions {
+            max_message_bytes: 1024,
+            ..SocketOptions::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        timeout(Duration::from_millis(30), socket.send(&"x".repeat(512)))
+            .await
+            .is_err()
+    );
+    assert!(socket.recv().await.unwrap().is_none());
+    assert!(matches!(
+        socket.send(&"later".into()).await,
+        Err(SocketError::Closed)
+    ));
+    let mut remaining = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut remaining)
+        .await
+        .unwrap();
+    assert!(remaining.len() <= 64);
+}

@@ -8,11 +8,14 @@ repository.workspace = true
 
 [features]
 default = ["adapter"]
+websocket = ["adapter", "axum/ws", "dep:forklaunch-ws", "dep:futures-util"]
 mcp = ["adapter", "dep:forklaunch-mcp", "tokio/sync", "tokio/time"]
 remote-jwks = ["adapter", "forklaunch-auth/remote-jwks", "dep:jsonwebtoken"]
 adapter = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes", "dep:form_urlencoded", "dep:http-body"]
 
 [dependencies]
+forklaunch-ws = { path = "../forklaunch-ws", features = ["transport"], optional = true }
+futures-util = { version = "0.3", features = ["sink"], optional = true }
 forklaunch-mcp = { path = "../forklaunch-mcp", features = ["rmcp-server"], optional = true }
 forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-contract = { path = "../forklaunch-contract" }
