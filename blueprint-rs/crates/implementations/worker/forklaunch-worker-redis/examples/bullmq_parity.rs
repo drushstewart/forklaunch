@@ -24,6 +24,31 @@ fn options(input: &Value) -> Result<BullMqOptions, Box<dyn std::error::Error>> {
                 count,
             )?));
     }
+    if let Some(age) = input["keepAgeSeconds"].as_u64() {
+        let retention = protocol::types::RemoveOnFinish::Options(protocol::types::KeepJobs {
+            age: Some(age),
+            count: input["keepCount"]
+                .as_u64()
+                .map(usize::try_from)
+                .transpose()?,
+            limit: input["keepLimit"]
+                .as_u64()
+                .map(usize::try_from)
+                .transpose()?,
+        });
+        options.queue.default_job_options = protocol::JobOptions::default()
+            .remove_on_complete(retention.clone())
+            .remove_on_fail(retention);
+    }
+    if let Some(interval) = input["stalledInterval"].as_u64() {
+        options.worker.stalled_interval = interval;
+        options.worker.lock_duration = input["lockDuration"].as_u64().unwrap_or(1000);
+        options.worker.max_stalled_count =
+            u32::try_from(input["maxStalledCount"].as_u64().unwrap_or(1))?;
+    }
+    if let Some(maximum) = input["maxStartedAttempts"].as_u64() {
+        options.worker.max_started_attempts = Some(u32::try_from(maximum)?);
+    }
     options.close_timeout = Duration::from_secs(5);
     Ok(options)
 }
@@ -62,6 +87,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             json!({"ids":ids,"events":producer.peek_events().await?})
         }
         "peek" => json!({"events":producer.peek_events().await?}),
+        "abandon" => {
+            let worker = BullMqConsumer::connect(
+                name,
+                |_: protocol::Job, _token| async { Ok(Value::Null) },
+                options(&input)?,
+            )
+            .await?;
+            let job = worker
+                .inner()
+                .get_next_job_nonblocking("fixture-abandoned-lock")
+                .await?
+                .ok_or("Waiting job required")?;
+            let output = json!({"id":job.id(),"event":job.data()});
+            worker.close().await?;
+            output
+        }
         "consume" => consume(name, &input, &producer).await?,
         _ => return Err("Unknown mode".into()),
     };

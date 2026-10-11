@@ -65,8 +65,8 @@ for workspace, namespace in [("framework-rs", "framework"), ("blueprint-rs", "bl
     for source in (root / workspace / "crates").rglob("*"):
         if source.is_file():
             relative = source.relative_to(root / workspace)
-            if source.name == "Cargo.toml":
-                relative = relative.with_name("Cargo.toml.template")
+            if source.name in {"Cargo.toml", "Cargo.lock"}:
+                relative = relative.with_name(source.name + ".template")
             expected.add(str(Path("src/templates/rust") / namespace / relative))
 for source in (root / "cli/src/templates/sdk").rglob("*"):
     if source.is_file():

@@ -1365,14 +1365,19 @@ fn ensure_embedded_framework(app_root: &Path, dryrun: bool) -> Result<()> {
 
 fn write_embedded_sources(dir: &Dir<'_>, root: &Path) -> Result<()> {
     for file in dir.files() {
-        // Cargo excludes directories containing Cargo.toml from published CLI sources.
-        // Restore manifest names when writing the embedded framework.
+        // Cargo excludes nested manifests and lockfiles from published CLI sources.
+        // Restore their names when writing the embedded workspaces.
         let mut path = root.join(file.path());
         if path
             .file_name()
             .is_some_and(|name| name == "Cargo.toml.template")
         {
             path.set_file_name("Cargo.toml");
+        } else if path
+            .file_name()
+            .is_some_and(|name| name == "Cargo.lock.template")
+        {
+            path.set_file_name("Cargo.lock");
         }
         if !path.exists() {
             create_dir_all(path.parent().context("embedded source has no parent")?)?;

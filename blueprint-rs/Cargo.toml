@@ -1,5 +1,6 @@
 [workspace]
 resolver = "3"
+exclude = ["crates/vendor/bullmq-official"]
 members = [
     "crates/forklaunch-blueprint-core",
     "crates/interfaces/forklaunch-iam-interface",

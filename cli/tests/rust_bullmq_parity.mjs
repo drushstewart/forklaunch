@@ -69,6 +69,80 @@ try{
   }
   await producer.queue.close();handles.pop();
  }
+ for(const nativeProduces of [false,true]){
+  const queueName=`age-retention-${nativeProduces}`,opts=options('fixed');opts.retries=1;
+  opts.queueOptions.defaultJobOptions={removeOnComplete:{age:1},removeOnFail:{age:1}};
+  const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+  async function finish(events){
+   let ids;
+   if(nativeProduces){
+    ids=(await native({mode:'produce',queue:queueName,events,retries:1,keepAgeSeconds:1})).ids;
+    for(const id of ids){const job=await producer.queue.getJob(id);assert.deepEqual(job.opts.removeOnComplete,{age:1});assert.deepEqual(job.opts.removeOnFail,{age:1});}
+    let attempts=0;const consumer=new BullMqWorkerConsumer(queueName,opts,async values=>{attempts++;if(values[0].failAttempts)throw Error('age_failure');},()=>{});
+    handles.push(()=>consumer.close());await consumer.start();await waitFor(()=>attempts===2);await consumer.close();handles.pop();
+   }else{
+    await producer.enqueueBatchJobs(events);ids=(await producer.queue.getJobs(['waiting'])).map(job=>job.id);
+    const result=await native({mode:'consume',queue:queueName,expected:999,expectedAttempts:2});assert.equal(result.failures.length,1);
+   }
+   await waitFor(async()=>await producer.queue.getCompletedCount()===1&&await producer.queue.getFailedCount()===1);
+   return ids;
+  }
+  const old=await finish([{id:'old-ok'},{id:'old-fail',failAttempts:10}]);
+  // Ages are seconds, and expiry is lazy until another job finishes.
+  await new Promise(resolve=>setTimeout(resolve,1100));
+  for(const id of old)assert.ok(await producer.queue.getJob(id));
+  const fresh=await finish([{id:'fresh-ok'},{id:'fresh-fail',failAttempts:10}]);
+  for(const id of old)assert.equal(await producer.queue.getJob(id),undefined);
+  for(const id of fresh)assert.ok(await producer.queue.getJob(id));
+  await producer.queue.close();handles.pop();
+ }
+ for(const nativeClaims of [false,true])for(const policy of [{maxStalledCount:1},{maxStalledCount:0},{maxStalledCount:1,maxStartedAttempts:1}]){
+  const {maxStalledCount,maxStartedAttempts}=policy,rejected=maxStalledCount===0||maxStartedAttempts!==undefined;
+  const queueName=`stalled-${nativeClaims}-${maxStalledCount}-${maxStartedAttempts??'none'}`,opts=options('fixed');
+  Object.assign(opts.queueOptions,{lockDuration:1000,stalledInterval:100,...policy});
+  const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+  await producer.enqueueJob({id:'abandoned'});
+  const [job]=await producer.queue.getJobs(['waiting']);
+  if(nativeClaims){
+   const claimed=await native({mode:'abandon',queue:queueName,stalledInterval:100,lockDuration:100,...policy});
+   assert.equal(claimed.id,job.id);assert.equal(claimed.event.id,'abandoned');
+  }else{
+   const worker=new bullmq.Worker(queueName,async()=>{}, {...opts.queueOptions,prefix,autorun:false,lockDuration:100});
+   try{assert.equal((await worker.getNextJob('fixture-abandoned-lock',{block:false})).id,job.id);}finally{await worker.close(true);}
+  }
+  assert.equal(await job.getState(),'active');
+  await new Promise(resolve=>setTimeout(resolve,150));
+  if(nativeClaims){
+   let processed=0;const failures=[];
+   const consumer=new BullMqWorkerConsumer(queueName,opts,async()=>{processed++;},values=>failures.push(...values));
+   handles.push(()=>consumer.close());await consumer.start();
+   await waitFor(async()=>await producer.queue.getCompletedCount()+await producer.queue.getFailedCount()===1);
+   await consumer.close();handles.pop();
+   assert.equal(processed,rejected?0:1);assert.equal(failures.length,rejected?1:0);
+   if(failures.length)assert.equal(failures[0].value.id,'abandoned');
+  }else{
+   const result=await native({mode:'consume',queue:queueName,expected:1,stalledInterval:100,...policy});
+   assert.equal(result.attempts.length,rejected?0:1);
+   assert.equal(result.failures.length,rejected?1:0);
+   if(result.failures.length)assert.equal(result.failures[0].event.id,'abandoned');
+  }
+  const failed=rejected;
+  assert.equal(await job.getState(),failed?'failed':'completed');
+  if(failed){const retained=await producer.queue.getJob(job.id);assert.match(retained.failedReason,maxStartedAttempts===undefined?/stalled more than allowable limit/:/started more than allowable limit/);}
+  await producer.queue.close();handles.pop();
+ }
+ {
+  const queueName='removed-preprocessor-failure',opts=options('fixed');
+  const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+  await producer.enqueueJob({id:'removed-before-processor'});
+  const worker=new bullmq.Worker(queueName,async()=>{}, {...opts.queueOptions,prefix,autorun:false,lockDuration:100});
+  try{assert.ok(await worker.getNextJob('fixture-abandoned-lock',{block:false}));}finally{await worker.close(true);}
+  await new Promise(resolve=>setTimeout(resolve,150));
+  const result=await native({mode:'consume',queue:queueName,expected:1,stalledInterval:100,maxStalledCount:0,removeOnFail:true});
+  assert.equal(result.attempts.length,0);assert.equal(result.failures.length,1);assert.equal(result.failures[0].event.id,'removed-before-processor');
+  assert.equal(await producer.queue.getFailedCount(),0);
+  await producer.queue.close();handles.pop();
+ }
  for(const shutdownAfterStart of [false,true]){
   const queueName=`removed-failure-${shutdownAfterStart}`,producer=new BullMqWorkerProducer(queueName,options('fixed'));handles.push(()=>producer.queue.close());
   await producer.enqueueJob({id:'removed',failAttempts:10,sleepMs:100});
@@ -87,7 +161,7 @@ try{
  const duplicate='duplicate-event-ids';const duplicates=await native({mode:'produce',queue:duplicate,events:[{id:'same',order:1},{id:'same',order:2}]});assert.equal(new Set(duplicates.ids).size,2);assert.equal(duplicates.events.length,2);
  await assert.rejects(redisTransport(url).command('GET','outside-bullmq-fixture'));await assert.rejects(redisTransport(url).command('FLUSHDB'));
  assert.deepEqual(await native({mode:'consumeDenied',queue:'denied'},{REDIS_KEY_PREFIX:'foreign-bullmq-prefix:'}),{error:'worker_tenant_isolation_error'});
- console.log('PASS actual TS/native BullMQ wire interoperability: both producer/consumer directions, batches, fixed/exponential backoff, per-attempt failure callbacks, terminal failures, default/count-based retention, removed-job/drain failure callbacks, duplicate event IDs, waiting/active inspection and restricted ACL/consumer fail-stop');
+ console.log('PASS actual TS/native BullMQ wire interoperability: both producer/consumer directions, batches, fixed/exponential backoff, per-attempt failure callbacks, terminal failures, default/count/age-based lazy retention, bidirectional stalled recovery and retained/removed preprocessor failure callbacks and start limits, removed-job/drain failure callbacks, duplicate event IDs, waiting/active inspection and restricted ACL/consumer fail-stop');
 }finally{
  for(const close of handles.reverse())await close();
  let cursor='0';do{const [next,keys]=await transport.command('SCAN',cursor,'MATCH',`${prefix}:*`,'COUNT',1000);if(keys.length)await transport.command('DEL',...keys);cursor=String(next);}while(cursor!=='0');

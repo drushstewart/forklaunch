@@ -964,3 +964,6 @@ Native typed TypeScript HTTP SDK checkpoint: the same CLI model/runtime now hand
 - [x] Adapt SSE response ownership/cancellation to cross-fetch's Node byte streams. Own an abort controller, forward/detach caller signals and abort upstream requests on cancellation; live tests cover both CLI artifact formats, native injection/imported fetch, pending reads, unstarted cancellation and exact server cleanup.
 
 - [x] Preserve Blob/FormData uploads across native and custom fetch adapters through shared body serialization in checked TypeScript and dependency-free native clients. Actual native/injected/imported cross-fetch tests cover file bytes, sliced views, repeated/empty multipart files, encoder-owned boundaries, URL-encoded composites, quoted media and status/business-error decoding.
+
+
+- [x] Validate official BullMQ lazy age retention in both TS/native producer/consumer directions and abandoned-job recovery across languages, including maximum stalled/start attempts. Preserve original failure events even when preprocessor failures immediately remove their jobs, through a feature-gated outcome-data hook in a pinned vendored protocol crate. Keep existing failure notifications, Redis scripts and wire semantics; retain upstream MIT/provenance metadata and package the source in generated apps. Broader advanced worker options remain a separate gate.

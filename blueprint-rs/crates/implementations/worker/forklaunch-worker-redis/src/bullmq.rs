@@ -6,9 +6,7 @@ use ::bullmq::{types::BackoffStrategy, worker::WorkerEvent};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::{
-    collections::{HashMap, VecDeque},
     future::{Future, IntoFuture},
-    sync::Arc,
     time::Duration,
 };
 
@@ -144,7 +142,6 @@ pub struct BullMqConsumer {
     queue: Queue,
     timeout: Duration,
     worker: Worker,
-    events: Arc<tokio::sync::Mutex<HashMap<String, VecDeque<Value>>>>,
     close_timeout: Duration,
 }
 impl BullMqConsumer {
@@ -162,28 +159,9 @@ impl BullMqConsumer {
             Queue::with_options(name, options.queue),
         )
         .await?;
-        let events = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let captured = events.clone();
-        let processor = processor.into_processor();
         let worker = bounded(
             options.operation_timeout,
-            Worker::with_options(
-                name,
-                move |job: protocol::Job, token| {
-                    let events = captured.clone();
-                    let processor = processor.clone();
-                    async move {
-                        events
-                            .lock()
-                            .await
-                            .entry(job.id().to_owned())
-                            .or_insert_with(VecDeque::new)
-                            .push_back(job.data().clone());
-                        processor(job, token).await
-                    }
-                },
-                options.worker,
-            ),
+            Worker::with_options(name, processor, options.worker),
         )
         .await;
         let worker = match worker {
@@ -197,7 +175,6 @@ impl BullMqConsumer {
             queue,
             timeout: options.operation_timeout,
             worker,
-            events,
             close_timeout: options.close_timeout,
         })
     }
@@ -214,6 +191,8 @@ impl BullMqConsumer {
     /// Reports every failed processing attempt, including retries, with its original
     /// event even when `remove_on_fail` deletes the persisted job. Error details are
     /// redacted; observers can enqueue diagnostics for asynchronous handling.
+    /// The pinned outcome-data hook also preserves preprocessor failure events
+    /// when stalled/start limits or deferred failures remove their job.
     /// # Errors
     /// Returns sanitized startup, storage and bounded shutdown errors.
     pub async fn run_until_with_failure_handler<F, H>(
@@ -236,7 +215,7 @@ impl BullMqConsumer {
                 event=self.worker.next_event()=>match event {
                     Some(WorkerEvent::Error(error))=>break Err(message_error(&error)),
                     Some(WorkerEvent::Closed)|None=>break Ok(()),
-                    Some(event)=>self.report_event(event, &failure_handler).await,
+                    Some(event)=>Self::report_event(event, &failure_handler),
                 },
                 ()=&mut shutdown=>break Ok(()),
             }
@@ -247,36 +226,19 @@ impl BullMqConsumer {
             tokio::select! {
                 biased;
                 event = self.worker.next_event() => match event {
-                    Some(event) => self.report_event(event, &failure_handler).await,
+                    Some(event) => Self::report_event(event, &failure_handler),
                     None => break closing.await,
                 },
                 result = &mut closing => break result,
             }
         };
-        // close drains processors and reports their outcomes before releasing values.
-        self.events.lock().await.clear();
         result.and(closed)
     }
 
-    async fn report_event<H: Fn(Value, BlueprintError)>(
-        &self,
-        event: WorkerEvent,
-        failure_handler: &H,
-    ) {
-        let (job_id, failed) = match event {
-            WorkerEvent::Completed { job_id, .. } => (job_id, false),
-            WorkerEvent::Failed { job_id, .. } => (job_id, true),
-            _ => return,
-        };
-        let mut events = self.events.lock().await;
-        let event = events.get_mut(&job_id).and_then(VecDeque::pop_front);
-        if events.get(&job_id).is_some_and(VecDeque::is_empty) {
-            events.remove(&job_id);
-        }
-        drop(events);
-        if failed && let Some(event) = event {
+    fn report_event<H: Fn(Value, BlueprintError)>(event: WorkerEvent, failure_handler: &H) {
+        if let WorkerEvent::FailedWithData { data, .. } = event {
             failure_handler(
-                event,
+                data,
                 BlueprintError::new("worker_job_failed", "BullMQ processing attempt failed"),
             );
         }

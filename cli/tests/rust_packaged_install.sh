@@ -89,6 +89,10 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
     else:
         assert root.joinpath('crates/implementations/worker/forklaunch-worker-redis/src/bullmq.rs').is_file(), 'Packaged BullMQ adapter missing'
+        assert root.joinpath('crates/vendor/bullmq-official/src/worker.rs').is_file(), 'Packaged BullMQ outcome hook missing'
+        assert root.joinpath('crates/vendor/bullmq-official/LICENSE').is_file(), 'Packaged BullMQ license missing'
+        assert root.joinpath('crates/vendor/bullmq-official/Cargo.lock').is_file(), 'Packaged BullMQ protocol test lock missing'
+        assert root.joinpath('crates/vendor/bullmq-official/FORKLAUNCH_PATCH.md').is_file(), 'Packaged BullMQ provenance missing'
     for path in root.rglob('*'):
         assert not path.is_symlink(), f'Packaged source retained a symlink: {path}'
         if path.is_file():

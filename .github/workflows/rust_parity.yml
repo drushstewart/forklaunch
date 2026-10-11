@@ -22,6 +22,7 @@ on:
       - 'cli/tests/rust_s3_environment_parity.mjs'
       - 'cli/tests/rust_worker_tenant_scope_parity.mjs'
       - 'cli/tests/rust_bullmq_parity.mjs'
+      - 'cli/tests/rust_bullmq_protocol_unit.sh'
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_sdk_body_parity.mjs'
@@ -107,6 +108,7 @@ on:
       - 'cli/tests/rust_s3_environment_parity.mjs'
       - 'cli/tests/rust_worker_tenant_scope_parity.mjs'
       - 'cli/tests/rust_bullmq_parity.mjs'
+      - 'cli/tests/rust_bullmq_protocol_unit.sh'
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_sdk_body_parity.mjs'
@@ -329,6 +331,7 @@ jobs:
       - run: node cli/tests/rust_worker_tenant_scope_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: bash cli/tests/rust_bullmq_protocol_unit.sh
       - run: node cli/tests/rust_bullmq_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

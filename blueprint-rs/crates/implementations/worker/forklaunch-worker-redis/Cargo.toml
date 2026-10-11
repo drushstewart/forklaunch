@@ -14,7 +14,7 @@ redis-client = ["dep:redis", "dep:serde", "dep:serde_json", "dep:tokio", "dep:uu
 [dependencies]
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
 forklaunch-worker-interface = { path = "../../../interfaces/forklaunch-worker-interface" }
-bullmq = { package = "bullmq-official", version = "=1.3.5", optional = true }
+bullmq = { package = "forklaunch-bullmq-protocol", version = "=0.1.0", path = "../../../vendor/bullmq-official", features = ["forklaunch-outcome-data"], optional = true }
 
 forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", optional = true }
 redis = { version = "0.32", default-features = false, features = ["tokio-rustls-comp", "tls-rustls-webpki-roots", "connection-manager", "script"], optional = true }

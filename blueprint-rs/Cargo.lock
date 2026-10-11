@@ -300,30 +300,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c"
 
 [[package]]
-name = "bullmq-official"
-version = "1.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80692af1923c98cb2fddb0111b88090d2e1395be5e748bca3a18dfb63326cad8"
-dependencies = [
- "async-trait",
- "chrono",
- "chrono-tz",
- "croner",
- "futures",
- "redis 1.7.1",
- "rmp",
- "rmp-serde",
- "serde",
- "serde_json",
- "sha1 0.11.0",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1038,6 +1014,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "forklaunch-bullmq-protocol"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "chrono-tz",
+ "croner",
+ "futures",
+ "redis 1.7.1",
+ "rmp",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "sha1 0.11.0",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "forklaunch-cac-axum"
 version = "0.1.0"
 dependencies = [
@@ -1439,8 +1437,8 @@ name = "forklaunch-worker-redis"
 version = "0.1.0"
 dependencies = [
  "axum",
- "bullmq-official",
  "forklaunch-blueprint-core",
+ "forklaunch-bullmq-protocol",
  "forklaunch-core",
  "forklaunch-worker-database",
  "forklaunch-worker-interface",
