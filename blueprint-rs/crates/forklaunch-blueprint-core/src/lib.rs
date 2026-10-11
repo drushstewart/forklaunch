@@ -2,6 +2,8 @@
 
 #[cfg(feature = "instance-gateway")]
 pub mod instance_gateway;
+#[cfg(feature = "instance-gateway")]
+pub mod payments_client;
 
 #[cfg(feature = "provider-http")]
 pub mod provider_http;

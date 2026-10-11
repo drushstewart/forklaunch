@@ -14,6 +14,8 @@ pub struct ProviderHttpClient {
 pub struct ProviderResponse {
     pub status: u16,
     pub body: Value,
+    /// Positive finite Retry-After seconds; date-form headers are not interpreted.
+    pub retry_after_seconds: Option<f64>,
 }
 impl ProviderResponse {
     #[must_use]
@@ -93,10 +95,17 @@ impl ProviderHttpClient {
     pub async fn execute_json(&self, request: RequestBuilder) -> BlueprintResult<ProviderResponse> {
         let mut response = request.send().await.map_err(|_| transport_error())?;
         let status = response.status().as_u16();
+        let retry_after_seconds = response
+            .headers()
+            .get("retry-after")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value > 0.0);
         if !response.status().is_success() {
             return Ok(ProviderResponse {
                 status,
                 body: Value::Null,
+                retry_after_seconds,
             });
         }
         if response
@@ -113,7 +122,11 @@ impl ProviderHttpClient {
             bytes.extend_from_slice(&chunk);
         }
         let body = serde_json::from_slice(&bytes).map_err(|_| transport_error())?;
-        Ok(ProviderResponse { status, body })
+        Ok(ProviderResponse {
+            status,
+            body,
+            retry_after_seconds,
+        })
     }
 }
 fn config_error() -> BlueprintError {
