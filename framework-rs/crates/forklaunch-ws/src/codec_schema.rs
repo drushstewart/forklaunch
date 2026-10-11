@@ -26,6 +26,8 @@ pub(crate) fn compile(schema: &Value) -> Result<Arc<JsonValidator>, PayloadError
     if schema.get("$schema").is_none() {
         options = options.with_draft(jsonschema::Draft::Draft7);
     }
+    // The isolated validator dependency opts into AJV fragment-token decoding
+    // and older-draft $ref sibling constraints without rewriting schema data.
     let validator = options
         .build(schema)
         .map_err(|error| PayloadError::Invalid(format!("invalid socket schema: {error}")))?;
@@ -93,6 +95,43 @@ mod tests {
     use crate::codec::PayloadCodec;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
+    #[test]
+    fn ajv_reference_tokens_and_sibling_constraints_preserve_schema_literals() {
+        for dialect in [
+            "http://json-schema.org/draft-04/schema#",
+            "http://json-schema.org/draft-06/schema#",
+            "http://json-schema.org/draft-07/schema#",
+            "https://json-schema.org/draft/2019-09/schema",
+            "https://json-schema.org/draft/2020-12/schema",
+        ] {
+            let schema = json!({
+                "$schema": dialect,
+                "$ref": "#/definitions/Foo%2FBar",
+                "definitions": {
+                    "Foo/Bar": {"type": "string"},
+                    "Foo": {"Bar": {"type": "number"}}
+                },
+                "minLength": 3,
+                "maxLength": 8,
+                "default": {"$ref": "literal %2F data"}
+            });
+            let original = schema.clone();
+            let codec = PayloadCodec::<Value>::json_schema(&schema).unwrap();
+            assert!(codec.encode(&json!("hello")).is_ok(), "{dialect}");
+            for invalid in [json!("hi"), json!("too many characters"), json!(42)] {
+                assert!(codec.encode(&invalid).is_err(), "{dialect}: {invalid}");
+            }
+            assert_eq!(schema, original);
+        }
+        let schema = json!({
+            "$ref": "#/default/ref%2Fpath",
+            "default": {"ref/path": {"type": "object"}},
+            "const": {"$ref": "literal"}
+        });
+        let codec = PayloadCodec::<Value>::json_schema(&schema).unwrap();
+        assert!(codec.encode(&json!({"$ref": "literal"})).is_ok());
+        assert!(codec.encode(&json!({})).is_err());
+    }
     #[test]
     fn schema_validation_precedes_deserialization_and_preserves_original_outgoing_strings() {
         #[derive(Serialize, Deserialize)]

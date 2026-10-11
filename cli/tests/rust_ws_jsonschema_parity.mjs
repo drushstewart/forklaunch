@@ -109,6 +109,120 @@ const validator = {
   },
 };
 const schemas = [
+  ...[undefined, 'draft-04', 'draft-06', '2019-09', '2020-12'].flatMap(
+    (draft) => {
+      const dialect = draft
+        ? {
+            $schema: draft.startsWith('draft-')
+              ? `http://json-schema.org/${draft}/schema#`
+              : `https://json-schema.org/draft/${draft}/schema`,
+          }
+        : {};
+      return [
+        // AJV splits the raw fragment before percent-decoding each token.
+        // Include conflicting nested targets to detect accidental RFC decoding.
+        {
+          ...dialect,
+          $ref: '#/definitions/Foo%2FBar',
+          definitions: {
+            'Foo/Bar': { type: 'string' },
+            Foo: { Bar: { type: 'number' } },
+          },
+        },
+        {
+          ...dialect,
+          $ref: '#/definitions%2FValue',
+          definitions: { Value: { type: 'string' } },
+        },
+        {
+          ...dialect,
+          $ref: '#/definitions%2fValue',
+          'definitions/Value': { type: 'number' },
+          definitions: { Value: { type: 'string' } },
+        },
+        ...['Foo%252FBar', 'Foo%7E1Bar', '%E6%B0%B4%2F%7E0'].map(
+          ($ref, index) => ({
+            ...dialect,
+            $ref: `#/definitions/${$ref}`,
+            definitions: {
+              [['Foo%2FBar', 'Foo/Bar', '水/~'][index]]: {
+                type: 'string',
+              },
+            },
+          }),
+        ),
+        {
+          ...dialect,
+          $ref: '#/definitions/Node%2FThing',
+          definitions: {
+            'Node/Thing': {
+              type: 'object',
+              required: ['value'],
+              properties: {
+                value: { type: 'integer' },
+                next: { $ref: '#/definitions/Node%2FThing' },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        {
+          ...dialect,
+          allOf: [{ $ref: '#/default/ref%2Fpath' }],
+          default: { 'ref/path': { type: 'object' } },
+          const: { $ref: 'literal' },
+        },
+        {
+          ...dialect,
+          $ref: '#/definitions/Foo%2FBar',
+          definitions: { 'Foo/Bar': { type: 'string' } },
+          minLength: 3,
+          maxLength: 8,
+        },
+        {
+          ...dialect,
+          $ref: '#/default/ref%2Fpath',
+          default: { 'ref/path': { type: 'object' } },
+          const: { $ref: 'literal' },
+        },
+        {
+          ...dialect,
+          $ref: '#/default/%30',
+          default: [{ type: 'string' }],
+        },
+        ...['%FF', '%GG', '%'].map((token) => ({
+          ...dialect,
+          $ref: `#/definitions/${token}`,
+          definitions: { [token]: { type: 'string' } },
+        })),
+        {
+          ...dialect,
+          [draft === 'draft-04' ? 'id' : '$id']: 'https://example.test/root',
+          $ref: 'inner#/definitions/Foo%2FBar',
+          definitions: {
+            Resource: {
+              [draft === 'draft-04' ? 'id' : '$id']: 'inner',
+              definitions: { 'Foo/Bar': { type: 'string' } },
+            },
+          },
+        },
+        {
+          ...dialect,
+          [draft === 'draft-04' ? 'id' : '$id']: 'https://example.test/root',
+          $ref: '#/definitions/Resource%2FValue/properties/self',
+          definitions: {
+            'Resource/Value': {
+              [draft === 'draft-04' ? 'id' : '$id']: 'inner',
+              properties: {
+                self: { $ref: '#/definitions/Leaf%2FValue' },
+              },
+              definitions: { 'Leaf/Value': { type: 'integer' } },
+            },
+          },
+        },
+      ];
+    },
+  ),
   ...['#%2Fdefinitions/Value', '#%2fdefinitions/Value'].map(($ref) => ({
     $ref,
     definitions: { Value: { type: 'string' } },

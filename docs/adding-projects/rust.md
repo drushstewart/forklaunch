@@ -557,3 +557,13 @@ Generated TypeScript SDKs and MCP serialize array/object query values as one JSO
 CLI contract/OpenAPI SDK generation supports `serverSentEvent` responses with `text/event-stream`. TypeScript returns an `AsyncIterable` of typed `{ data, id? }` events; Rust returns an owned `Box<SdkEventStream<T>>` with `next().await` and `close()`. Neither buffers the entire response. Both preserve UTF-8 chunk boundaries, multiline data and IDs, discard incomplete EOF frames and close on transport/size failures. Set TypeScript `maxSseEventBytes` or Rust `with_sse_event_limit(bytes)` to change the default 1 MiB event bound. Iterator return/throw, abort, Rust close/drop and decoder failures release the connection. Frames use JSON decoding with a text fallback, matching the TypeScript universal SDK's normal data handling; Rust deserializes each envelope into its generated model. Response event names/retry metadata remain available in the lower-level codec. SSE requests remain unsupported. `rust_sse_runtime.sh` validates a relocated generated HTTP/MCP service and both clients through both contract formats, including delivery before EOF, standard framing, auth before work, cancellation/resource release and graceful shutdown.
 
 Checked Rust SDK schema imports and WebSocket AsyncAPI payloads require literal `/` JSON-pointer separators. Escape a slash inside a property/definition name with `~1`; percent-encoded Unicode, spaces and literal percent names remain supported. Encoded separators fail validation before SDK/artifact writes. This restriction applies to schema references; OpenAPI reference objects retain general document-local URI fragment decoding.
+
+Raw socket JSON Schema codecs use an isolated validator dependency with AJV
+compatibility for URI fragments: percent decoding happens once within each
+pointer token, so `#/definitions/Foo%2FBar` selects the literal `Foo/Bar` key.
+Drafts 4–7 also apply constraints beside `$ref`, matching the TypeScript AJV
+configuration. Schema literals and annotations remain unchanged; external
+resource retrieval stays disabled. The checked SDK/export/import profile
+continues rejecting encoded pointer separators before generation. Vendor
+licenses, pinned archive checksums and the small compatibility patch are
+included in generated framework sources.

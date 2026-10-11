@@ -1,0 +1,25 @@
+# Upstream provenance
+
+Vendored from `referencing 0.58.6`, MIT licensed, published source archive
+`https://crates.io/api/v1/crates/referencing/0.58.6/download`.
+
+Archive SHA-256: `558f3855529c0a7e78a48e409fa653456e55f1b167eab4109c16a255b7727e3f`.
+Upstream Git commit: `55ac1664384793c5d3b20745d3f9c169dfe2c06f`.
+Repository: https://github.com/Stranger6667/jsonschema
+
+The package is renamed to `forklaunch-referencing-protocol` to scope compatibility
+to ForkLaunch socket codecs without patching consumers' registry dependencies.
+`Cargo.toml.upstream` preserves the original manifest. Unused standalone test
+and benchmark targets are omitted; library unit tests remain available.
+
+The optional `forklaunch-ajv-pointer-decoding` feature preserves literal slash
+characters inside percent-encoded pointer tokens, matching AJV 8.20.0. Default
+resolution retains the upstream RFC fragment behavior. Internal JSON pointers
+are unchanged. The jsonschema dependency and pointer feature forward to the isolated
+referencing package. Its separate optional `forklaunch-ajv-ref-siblings` feature
+applies adjacent validation constraints in Drafts 4–7, matching AJV; upstream
+behavior remains the default. No schema documents or literal data are rewritten.
+
+Run standalone Cargo checks from the repository root with
+`CARGO_TARGET_DIR=framework-rs/target` so build artifacts stay outside vendored
+source and template directories.

@@ -184,3 +184,28 @@ Reject percent-encoded JSON-pointer separators at active schema locations before
 The checked pointer-profile checkpoint also passes a fresh archive-installed CLI: portable framework/blueprint and all worker/module families compile after relocation, both SDK artifact formats and native generators pass, and HTTP/MCP listener startup plus all five managed callbacks pass. This archive also contains the BullMQ job-default/log-retention compatibility patch.
 
 BullMQ rate limits with concurrent workers and per-completion age-cleanup limits now pass actual TS/native conformance. Tests measure processing start times and retained job identities/counts, with strict worker all-target clippy and formatting passing. No runtime patch was required for these options.
+
+Raw native socket codecs now match AJV's per-token URI-fragment decoding,
+including interior encoded slashes, once-decoded percent names, Unicode,
+annotation targets, recursive references and embedded resource scopes. The
+isolated, renamed jsonschema/referencing dependencies preserve upstream RFC
+behavior by default and opt socket codecs into AJV pointer and older-draft
+`$ref` sibling validation without rewriting any schema data. All five dialects
+pass 12,960 actual TypeScript-helper/AJV and generated TypeScript codec comparisons. Resolver library tests
+pass in both modes (150 each); 1,992 upstream validator library tests pass,
+with one test requiring an absent upstream Git-submodule fixture explicitly
+filtered and documented in provenance. Checked SDK/export/import profiles
+continue rejecting encoded separators. Broader parity remains open.
+
+Fresh generated IAM, CAC, base/Twilio messaging, base/Stripe billing and
+ecommerce runtime suites all pass after the schema compatibility update:
+HTTP/MCP startup and authenticated calls, both SDKs, persistence, tenant/RBAC
+checks and init/rename/sync/delete. IAM also exercises all 33 configured routes
+and the retained credential/session routes.
+
+The fresh archive-installed CLI passes portable relocation with both isolated
+validator source trees, licenses, provenance, locks and bundled meta-schemas.
+All module/worker families compile, native and TypeScript SDK generation
+passes, and generated HTTP/MCP startup plus all five managed callbacks pass.
+Strict framework workspace linting/formatting, framework tests, 999 CLI tests
+and all 591 embedded Rust source/template assets also pass.
