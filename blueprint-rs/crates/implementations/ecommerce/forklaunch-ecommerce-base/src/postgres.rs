@@ -83,6 +83,79 @@ impl PostgresEcommerceStore {
             ..self.clone()
         })
     }
+    /// Commits an order transition and its durable inventory event together.
+    /// The queue must belong to the same trusted tenant; owner migrations for
+    /// both ecommerce and database workers must have run before serving traffic.
+    /// # Errors
+    /// Returns missing-order, illegal-transition, queue/tenant or storage failures.
+    #[cfg(feature = "worker")]
+    pub async fn transition_order_with_event(
+        &self,
+        request: forklaunch_ecommerce_interface::TransitionOrderDto,
+        queue: &forklaunch_worker_database::postgres::PostgresWorkerQueue,
+        queue_name: &str,
+    ) -> BlueprintResult<forklaunch_ecommerce_interface::OrderDto> {
+        use forklaunch_worker_interface::Job;
+        let mut tx = self.transaction().await?;
+        let row: Option<sqlx::types::Json<Value>> = sqlx::query_scalar("SELECT data FROM fl_ecommerce.records WHERE tenant_id=$1 AND kind='order' AND id=$2 FOR UPDATE")
+            .bind(self.tenant.id()).bind(&request.id).fetch_optional(&mut *tx).await.map_err(storage_error)?;
+        let data = row.ok_or_else(|| not_found(RecordKind::Order))?;
+        let record = self
+            .decode(
+                &mut tx,
+                RecordKind::Order,
+                &request.id,
+                data.0,
+                "transition",
+            )
+            .await?;
+        let Record::Order(before) = &record else {
+            return Err(storage_error("wrong kind"));
+        };
+        let from_status = before.status;
+        let result = apply_mutation(
+            record,
+            Mutation::TransitionOrder {
+                expected: from_status,
+                to: request.to,
+            },
+        )?;
+        let Record::Order(order) = &result.record else {
+            return Err(storage_error("wrong kind"));
+        };
+        let event = OrderEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            order_id: order.id.clone(),
+            from_status,
+            to_status: order.status,
+            items: order.items.clone(),
+            processed: false,
+            retry_count: 0,
+        };
+        let data = self.encode(&result.record)?;
+        sqlx::query(
+            "UPDATE fl_ecommerce.records SET data=$3 WHERE tenant_id=$1 AND kind='order' AND id=$2",
+        )
+        .bind(self.tenant.id())
+        .bind(&order.id)
+        .bind(sqlx::types::Json(data))
+        .execute(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+        queue
+            .enqueue_in_transaction(
+                &mut tx,
+                Job::new(
+                    &event.id,
+                    queue_name,
+                    serde_json::to_string(&event).map_err(storage_error)?,
+                ),
+            )
+            .await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(order.clone())
+    }
+
     async fn transaction(&self) -> BlueprintResult<Transaction<'_, Postgres>> {
         begin_tenant_transaction(&self.pool, &self.tenant)
             .await

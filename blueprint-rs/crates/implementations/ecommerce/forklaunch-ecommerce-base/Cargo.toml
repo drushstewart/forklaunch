@@ -9,7 +9,7 @@ repository.workspace = true
 [features]
 default = []
 worker = ["dep:forklaunch-worker-interface", "dep:forklaunch-worker-database"]
-postgres = ["dep:forklaunch-core", "dep:sqlx"]
+postgres = ["dep:forklaunch-core", "dep:sqlx", "forklaunch-worker-database?/postgres"]
 
 [dependencies]
 forklaunch-worker-interface = { path = "../../../interfaces/forklaunch-worker-interface", optional = true }

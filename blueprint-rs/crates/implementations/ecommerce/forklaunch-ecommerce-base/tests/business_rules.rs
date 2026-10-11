@@ -549,6 +549,8 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     events::event_rules(Arc::clone(&b)).await;
     #[cfg(feature = "worker")]
     events::lost_ack_redelivery(&owner, &runtime, tenant_a.clone(), Arc::clone(&a)).await;
+    #[cfg(feature = "worker")]
+    events::atomic_transitions(&owner, &runtime, tenant_a.clone(), Arc::clone(&a), &role).await;
     sqlx::query("DELETE FROM fl_worker.jobs WHERE tenant_id=ANY($1)")
         .bind(vec![tenant_a.id(), tenant_b.id()])
         .execute(&owner)

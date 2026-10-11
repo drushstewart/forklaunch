@@ -158,6 +158,44 @@ impl PostgresWorkerQueue {
         }
     }
 
+    /// Adds a job to an application transaction without committing it. The
+    /// transaction must already be bound to this queue's trusted tenant. This
+    /// lets a business-state change and its work item commit or roll back together.
+    /// # Errors
+    /// Rejects invalid jobs, missing/mismatched tenant binding and storage errors.
+    pub async fn enqueue_in_transaction(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        job: Job,
+    ) -> BlueprintResult<JobReceipt> {
+        let payload = payload(&job)?;
+        let (tenant,): (Option<String>,) =
+            sqlx::query_as("SELECT current_setting('forklaunch.tenant_id',true)")
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(storage_error)?;
+        if tenant.as_deref() != Some(self.tenant.id()) {
+            return Err(invalid_input());
+        }
+        self.insert_job(tx, job, payload).await
+    }
+    async fn insert_job(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        job: Job,
+        payload: serde_json::Value,
+    ) -> BlueprintResult<JobReceipt> {
+        sqlx::query("INSERT INTO fl_worker.jobs (tenant_id,queue,id,payload,max_attempts,backoff_ms) VALUES ($1,$2,$3,$4,$5,$6)")
+            .bind(self.tenant.id()).bind(&job.queue).bind(&job.id).bind(Json(payload))
+            .bind(i32::try_from(self.retry_policy.max_attempts).map_err(|_| invalid_input())?)
+            .bind(i64::try_from(self.retry_policy.backoff_seconds * 1000).map_err(|_| invalid_input())?)
+            .execute(&mut **tx).await.map_err(storage_error)?;
+        Ok(JobReceipt {
+            id: job.id,
+            queue: job.queue,
+        })
+    }
+
     async fn transaction(&self) -> BlueprintResult<Transaction<'_, Postgres>> {
         begin_tenant_transaction(&self.pool, &self.tenant)
             .await
@@ -182,15 +220,7 @@ impl AsyncWorkerQueue for PostgresWorkerQueue {
         let mut tx = self.transaction().await?;
         let mut receipts = Vec::with_capacity(jobs.len());
         for (job, payload) in jobs.into_iter().zip(payloads) {
-            sqlx::query("INSERT INTO fl_worker.jobs (tenant_id,queue,id,payload,max_attempts,backoff_ms) VALUES ($1,$2,$3,$4,$5,$6)")
-                .bind(self.tenant.id()).bind(&job.queue).bind(&job.id).bind(Json(payload))
-                .bind(i32::try_from(self.retry_policy.max_attempts).map_err(|_| invalid_input())?)
-                .bind(i64::try_from(self.retry_policy.backoff_seconds * 1000).map_err(|_| invalid_input())?)
-                .execute(&mut *tx).await.map_err(storage_error)?;
-            receipts.push(JobReceipt {
-                id: job.id,
-                queue: job.queue,
-            });
+            receipts.push(self.insert_job(&mut tx, job, payload).await?);
         }
         tx.commit().await.map_err(storage_error)?;
         Ok(receipts)
