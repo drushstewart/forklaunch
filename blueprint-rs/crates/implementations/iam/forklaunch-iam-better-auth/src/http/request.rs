@@ -27,7 +27,8 @@ pub(super) async fn parse_body(
     let mime = value(headers, "content-type").unwrap_or("");
     let normalized = mime.to_lowercase();
     let base = normalized.split(';').next().unwrap_or("").trim();
-    let form = matches!(path, "/sign-in/email" | "/sign-up/email");
+    let form =
+        matches!(path, "/sign-in/email" | "/sign-up/email") || path.starts_with("/callback/");
     let allowed = if form {
         "application/x-www-form-urlencoded, application/json"
     } else {

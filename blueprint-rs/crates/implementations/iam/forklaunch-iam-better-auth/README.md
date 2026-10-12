@@ -2,7 +2,7 @@
 
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
-cookies, asymmetric JWT issuance/public JWKs and sixty-one raw authentication HTTP
+cookies, asymmetric JWT issuance/public JWKs and sixty-two raw authentication HTTP
 routes behind the `http` feature. Configured organization, team, membership,
 invitation and dynamic-role APIs are implemented. Provider/OpenAPI, full ORM and
 callback parity remain in progress, and it is not selectable as a CLI module preset.
@@ -448,3 +448,18 @@ disabled by default. Direct sign-in persists `accessToken` and `idToken`; its
 request `refreshToken` and `expiresAt` are intentionally ignored by the configured
 TypeScript handler. Certificate endpoint overrides are trusted operator settings
 and require HTTPS or loopback HTTP.
+
+Google authorization-code callbacks now pass 226 actual HTTP/storage/wire
+comparisons, including S256 verifier binding, trusted fixed token endpoints,
+refused redirects, one-time state/cookie correlation, exact ten-minute expiry,
+provider errors, POST normalization, success/new-user/error redirects and stored
+access/refresh/ID tokens. Token-response normalization covers numeric coercion,
+invalid dates and scope forms. Explicit callback linking preserves account
+ownership, verified-email policy and merged scopes; malformed provider tokens
+match the upstream empty-500/cookie-header boundary. Native memory tests cover
+identity races, link conflict rejection and token/scope preservation. The same
+checks pass encrypted restricted PostgreSQL with tenant isolation. Strict default and
+all-feature/all-target clippy, all 21 native auth tests, rebuilt CLI and 725
+embedded sources pass. The `/link-social` initiation route, access/refresh-token
+and account-info routes, OpenAPI/error/update-session routes, full ORM/application
+hooks and CLI preset remain open. The implemented raw-route count is 62 of 70.

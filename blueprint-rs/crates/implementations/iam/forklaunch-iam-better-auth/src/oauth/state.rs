@@ -175,6 +175,10 @@ impl<S: AuthStore> StateService<S> {
             clear_cookie: self.cookie.named_header(self.name(), "", Some(0)),
         })
     }
+    #[cfg(feature = "http")]
+    pub(crate) fn clear_cookie(&self) -> String {
+        self.cookie.named_header(self.name(), "", Some(0))
+    }
     fn name(&self) -> &'static str {
         if self.cookie.secure {
             "__Secure-better-auth.state"

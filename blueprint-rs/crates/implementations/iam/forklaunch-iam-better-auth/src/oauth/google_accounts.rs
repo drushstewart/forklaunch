@@ -24,6 +24,61 @@ impl<S: AuthStore> GoogleAccounts<S> {
     pub fn new(store: Arc<S>) -> Self {
         Self { store }
     }
+    /// Links a trusted provider profile to the server-owned identity saved in OAuth state.
+    /// # Errors
+    /// Rejects unverified provider email, mismatching email or another account owner.
+    pub async fn link_verified(
+        &self,
+        profile: &Value,
+        tokens: &Value,
+        link: &Value,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<()> {
+        if !crate::keyring::verify::truthy(&profile["email_verified"]) {
+            return Err(error("unable_to_link_account", "Unable to link account"));
+        }
+        if profile["email"].as_str().map(str::to_lowercase)
+            != link["email"].as_str().map(str::to_lowercase)
+        {
+            return Err(error("email_does_not_match", "Email does not match"));
+        }
+        let subject = account_subject(profile)?;
+        let user_id = text(link, "userId")?;
+        let mut tx = self.store.begin(true).await?;
+        if tx.get(Model::User, user_id).await?.is_none() {
+            return Err(error("unable_to_link_account", "Unable to link account"));
+        }
+        let existing = tx
+            .list(Model::Account)
+            .await?
+            .into_iter()
+            .find(|row| row["providerId"] == "google" && row["accountId"] == subject);
+        let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+        if let Some(mut account) = existing {
+            if account["userId"] != user_id {
+                return Err(error(
+                    "account_already_linked_to_different_user",
+                    "Account already linked to different user",
+                ));
+            }
+            copy_tokens(&mut account, tokens);
+            let scope = merged_scope(&account, tokens);
+            if !scope.is_empty() {
+                account["scope"] = json!(scope);
+            }
+            account["updatedAt"] = json!(timestamp);
+            tx.replace(Model::Account, account).await?;
+        } else {
+            let mut account = json!({"id":uuid::Uuid::new_v4().to_string(),"userId":user_id,
+                "accountId":subject,"providerId":"google","createdAt":timestamp,"updatedAt":timestamp});
+            copy_tokens(&mut account, tokens);
+            if let Some(scope) = tokens.get("scope") {
+                account["scope"] = scope.clone();
+            }
+            tx.insert(Model::Account, account).await?;
+        }
+        tx.commit().await
+    }
     /// Resolves a verified Google profile and persists user/account/session atomically.
     /// The caller must verify the ID token or obtain it from Google's trusted token
     /// endpoint first. Request JSON is never a trusted profile.
@@ -45,17 +100,10 @@ impl<S: AuthStore> GoogleAccounts<S> {
             .and_then(Value::as_str)
             .ok_or_else(internal)?
             .to_lowercase();
-        let subject = crate::ecmascript::string(profile.get("sub"))
-            .ok_or_else(|| error("FAILED_TO_GET_USER_INFO", "Failed to get user info"))?;
-        if subject.trim().is_empty()
-            || matches!(subject.as_str(), "null" | "undefined")
-            || profile["sub"].is_number() && !profile["sub"].as_f64().is_some_and(f64::is_finite)
-        {
-            return Err(error("FAILED_TO_GET_USER_INFO", "Failed to get user info"));
-        }
+        let subject = account_subject(profile)?;
         let verified = profile
             .get("email_verified")
-            .filter(|value| crate::keyring::verify::truthy(value))
+            .filter(|value| !value.is_null())
             .cloned()
             .unwrap_or(json!(false));
         let mut tx = self.store.begin(true).await?;
@@ -170,4 +218,42 @@ fn new_user(profile: &Value, email: &str, verified: &Value, timestamp: &str) -> 
     }
 
     row
+}
+
+pub(crate) fn account_subject(profile: &Value) -> BlueprintResult<String> {
+    let subject = crate::ecmascript::string(profile.get("sub"))
+        .ok_or_else(|| error("FAILED_TO_GET_USER_INFO", "Failed to get user info"))?;
+    if subject
+        .trim_matches(|c: char| c == '\u{feff}' || c.is_whitespace() && c != '\u{85}')
+        .is_empty()
+        || matches!(subject.as_str(), "null" | "undefined")
+        || profile["sub"].is_number() && !profile["sub"].as_f64().is_some_and(f64::is_finite)
+    {
+        return Err(error("FAILED_TO_GET_USER_INFO", "Failed to get user info"));
+    }
+
+    Ok(subject)
+}
+
+fn merged_scope(account: &Value, tokens: &Value) -> String {
+    let mut incoming = Vec::new();
+    if let Some(scopes) = tokens["scopes"].as_array() {
+        incoming.extend(scopes.iter().filter_map(Value::as_str));
+    } else if let Some(scope) = tokens["scope"].as_str() {
+        incoming.extend(scope.split(','));
+    }
+    let mut merged = Vec::new();
+    for scope in account["scope"]
+        .as_str()
+        .into_iter()
+        .flat_map(|scope| scope.split(','))
+        .chain(incoming)
+    {
+        let scope =
+            scope.trim_matches(|c: char| c == '\u{feff}' || c.is_whitespace() && c != '\u{85}');
+        if !scope.is_empty() && !merged.contains(&scope) {
+            merged.push(scope);
+        }
+    }
+    merged.join(",")
 }

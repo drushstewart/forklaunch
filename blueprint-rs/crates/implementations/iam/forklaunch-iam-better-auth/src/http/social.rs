@@ -22,10 +22,13 @@ pub(super) async fn sign_in<S: AuthStore + 'static>(
         .ok_or_else(|| BlueprintError::new("PROVIDER_NOT_FOUND", "Provider not found"))?;
     if let Some(id_token) = payload.get("idToken") {
         let token = id_token["token"].as_str().ok_or_else(internal)?;
-        let profile = provider
+        let mut profile = provider
             .verify(token, id_token["nonce"].as_str(), now)
             .await
             .ok_or_else(|| BlueprintError::new("INVALID_TOKEN", "Invalid token"))?;
+        if !crate::keyring::verify::truthy(&profile["email_verified"]) {
+            profile["email_verified"] = json!(false);
+        }
         // Configured direct sign-in intentionally persists accessToken/idToken only;
         // refreshToken and expiresAt in the request are not copied by the TS handler.
         let mut tokens = json!({"idToken":token});
@@ -48,11 +51,7 @@ pub(super) async fn sign_in<S: AuthStore + 'static>(
             json!({"redirect":false,"token":grant.auth.session["token"],"user":grant.auth.user}),
         );
     }
-    let mut base = url::Url::parse(&app.base_url).map_err(|_| internal())?;
-    if base.path().trim_matches('/').is_empty() {
-        base.set_path("/api/auth");
-    }
-    let auth_base = base.to_string().trim_end_matches('/').to_owned();
+    let auth_base = super::social_callback::auth_base(app)?;
     let mut data = payload.get("additionalData").cloned().unwrap_or(json!({}));
     // Reserved server state overrides caller additionalData, including absent fields.
     for field in [

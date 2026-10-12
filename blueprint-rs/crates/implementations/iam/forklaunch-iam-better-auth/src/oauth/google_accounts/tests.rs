@@ -79,6 +79,7 @@ pub(crate) async fn exercise<S: AuthStore>(store: Arc<S>) {
         .unwrap();
     assert!(!linked.registered);
     assert_eq!(linked.auth.user["id"], local["id"]);
+    exercise_link(&service, &store, &profile, &link, &local, &tokens, now).await;
     link["sub"] = json!("native-orphan-subject");
     assert_eq!(
         service
@@ -94,4 +95,79 @@ pub(crate) async fn exercise<S: AuthStore>(store: Arc<S>) {
 #[tokio::test]
 async fn google_identity_ownership_linking_tokens_and_concurrent_signup() {
     exercise(Arc::new(MemoryAuthStore::default())).await;
+}
+
+async fn exercise_link<S: AuthStore>(
+    service: &GoogleAccounts<S>,
+    store: &Arc<S>,
+    profile: &Value,
+    link: &Value,
+    local: &Value,
+    tokens: &Value,
+    now: DateTime<Utc>,
+) {
+    let owner = json!({"userId":local["id"],"email":local["email"]});
+    let mut explicit = link.clone();
+    explicit["sub"] = json!("native-explicit-subject");
+    service
+        .link_verified(
+            &explicit,
+            &json!({"accessToken":"first-explicit-access","scope":"email,profile"}),
+            &owner,
+            now,
+        )
+        .await
+        .unwrap();
+    service
+        .link_verified(
+            &explicit,
+            &json!({"refreshToken":"private-google-refresh-token","scope":" calendar ,email"}),
+            &owner,
+            now,
+        )
+        .await
+        .unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    let account = tx
+        .list(Model::Account)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row["accountId"] == explicit["sub"])
+        .unwrap();
+    assert_eq!(account["scope"], "email,profile,calendar");
+    assert_eq!(account["accessToken"], "first-explicit-access");
+    assert_eq!(account["refreshToken"], "private-google-refresh-token");
+    tx.commit().await.unwrap();
+    explicit["sub"] = profile["sub"].clone();
+    assert_eq!(
+        service
+            .link_verified(&explicit, tokens, &owner, now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "account_already_linked_to_different_user"
+    );
+    explicit["email_verified"] = json!(false);
+    assert_eq!(
+        service
+            .link_verified(&explicit, tokens, &owner, now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "unable_to_link_account"
+    );
+    explicit["email_verified"] = json!(true);
+    explicit["email"] = json!("mismatch@fixture.test");
+    assert_eq!(
+        service
+            .link_verified(&explicit, tokens, &owner, now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "email_does_not_match"
+    );
 }

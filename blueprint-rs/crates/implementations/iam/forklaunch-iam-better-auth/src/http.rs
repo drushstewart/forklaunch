@@ -28,6 +28,7 @@ mod organization;
 mod rate;
 mod request;
 mod social;
+mod social_callback;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -127,6 +128,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/sign-up/email", post(dispatch::<S>))
             .route("/sign-in/email", post(dispatch::<S>))
             .route("/sign-in/social", post(dispatch::<S>))
+            .route(
+                "/callback/{provider}",
+                get(social_callback::dispatch::<S>)
+                    .post(social_callback::dispatch::<S>)
+                    .head(not_found),
+            )
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))

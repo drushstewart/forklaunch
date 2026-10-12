@@ -37,15 +37,19 @@ async fn main() {
         DateTime::<Utc>::from_timestamp_millis(server_clock.load(Ordering::SeqCst)).unwrap()
     });
     let router = if let Ok(endpoint) = std::env::var("FORKLAUNCH_GOOGLE_CERTIFICATES_URL") {
-        router.with_google(
-            forklaunch_iam_better_auth::oauth::google_client::GoogleClient::new(
-                "fixture-google-id".into(),
-                "fixture-google-secret".into(),
-            )
-            .unwrap()
-            .with_certificate_endpoint(&endpoint)
-            .unwrap(),
+        let provider = forklaunch_iam_better_auth::oauth::google_client::GoogleClient::new(
+            "fixture-google-id".into(),
+            "fixture-google-secret".into(),
         )
+        .unwrap()
+        .with_certificate_endpoint(&endpoint)
+        .unwrap();
+        let provider = if let Ok(endpoint) = std::env::var("FORKLAUNCH_GOOGLE_TOKEN_URL") {
+            provider.with_token_endpoint(&endpoint).unwrap()
+        } else {
+            provider
+        };
+        router.with_google(provider)
     } else {
         router
     };
