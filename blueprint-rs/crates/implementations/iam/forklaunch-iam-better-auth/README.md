@@ -463,3 +463,14 @@ all-feature/all-target clippy, all 21 native auth tests, rebuilt CLI and 725
 embedded sources pass. The `/link-social` initiation route, access/refresh-token
 and account-info routes, OpenAPI/error/update-session routes, full ORM/application
 hooks and CLI preset remain open. The implemented raw-route count is 62 of 70.
+
+A fresh relocated archive installation (`VwxVQI`, snapshot `f1a966960`) passes
+all portable services and four worker backends, CLI/native SDK generation and
+all 21 portable auth tests. The complete generated HTTP/MCP startup matrix
+passes shared/separate listeners, enabled/disabled/custom endpoints, explicit
+and ephemeral ports, TypeScript +2000 fallback, atomic startup rejection and
+graceful shutdown. MCP initialization/discovery/health invocation/Origin
+rejection and all five actual-TypeScript-signed capability callbacks pass. This
+snapshot contains 62 raw auth routes and Google code callbacks; later linking
+initiation work is validated separately. The checkout CLI was restored after
+the archive install.
