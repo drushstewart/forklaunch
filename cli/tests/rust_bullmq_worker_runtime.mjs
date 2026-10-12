@@ -21,7 +21,7 @@ try{
  if(mode==='stub'){
   const {id}=JSON.parse(await command(['--enqueue','unimplemented','{}']));const worker=await start();
   await wait(async()=>await (await queue.getJob(id)).getState()==='failed');
-  assert.equal((await queue.getJob(id)).failedReason,'worker_handler_not_implemented');await stop(worker);
+  const failedJob=await queue.getJob(id);assert.equal(failedJob.failedReason,'worker_handler_not_implemented');assert.deepEqual(failedJob.stacktrace,['worker_handler_not_implemented','worker_handler_not_implemented']);await stop(worker);
   console.log('PASS generated BullMQ default handler fails explicitly and exhausts retries');
  }else{
   const port=await freePort(),token='fixture-bullmq-control-token-32-characters',base=`http://127.0.0.1:${port}`;
@@ -34,7 +34,7 @@ try{
   const {id}=JSON.parse(await command(['--enqueue','paused','{}']));await sleep(150);assert.equal(await (await queue.getJob(id)).getState(),'waiting');
   assert.ok(JSON.parse(await command(['--peek','10'])).some(event=>event.id==='paused'));
   assert.equal((await control('resume')).status,202);await wait(async()=>await (await queue.getJob(id)).getState()==='completed');
-  const {id:failed}=JSON.parse(await command(['--enqueue','failed','{"fail":true}']));await wait(async()=>await (await queue.getJob(failed)).getState()==='failed');assert.equal((await queue.getJob(failed)).attemptsMade,2);
+  const {id:failed}=JSON.parse(await command(['--enqueue','failed','{"fail":true}']));await wait(async()=>await (await queue.getJob(failed)).getState()==='failed');assert.equal((await queue.getJob(failed)).attemptsMade,2);assert.equal((await queue.getJob(failed)).failedReason,'test_handler_failure');assert.deepEqual((await queue.getJob(failed)).stacktrace,['test_handler_failure','test_handler_failure']);
   assert.ok(JSON.parse(await command(['--dead-letters','10'])).some(job=>job.id===failed&&job.attempts===2));
   assert.deepEqual(JSON.parse(await command(['--dead-letters','0'])),[]);
   const {id:slow}=JSON.parse(await command(['--enqueue','slow','{"sleep_ms":500}']));await wait(async()=>await (await queue.getJob(slow)).getState()==='active');

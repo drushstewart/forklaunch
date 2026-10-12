@@ -32,6 +32,15 @@ The shared runner supports `control::WorkerControl` for process-local pause/resu
 
 The official BullMQ adapter also supports [lazy age retention](https://docs.bullmq.io/guide/queues/auto-removal-of-jobs) and [stalled-job recovery](https://docs.bullmq.io/guide/jobs/stalled), tested against actual TypeScript producers/consumers under Redis ACLs. Configure upstream queue/job retention policies through `BullMqOptions.queue`; age values are seconds. Worker options select lock/stall intervals and maximum stalls/starts. Failure observers receive original processing and preprocessor events even after automatic removal. A feature-gated patch to the pinned official worker emits outcome data before its existing failure notification; both notifications use the same original snapshot and Redis wire semantics. The vendored dependency retains upstream source/license provenance and documents the outcome hook and option compatibility patch in `crates/vendor/bullmq-official/FORKLAUNCH_PATCH.md`.
 
+BullMQ queue defaults also support simple deduplication, TTL throttling and
+replacement of delayed jobs (`deduplication` with `ttl`, `extend`, `replace` and
+job `delay`). Actual TypeScript/native producers share the same deduplication
+keys in both directions, including release after completion and TTL expiry.
+Configure these through `BullMqOptions.queue.default_job_options`. Failed
+attempts retain their reason and diagnostic history through immediate/delayed
+retries and terminal failure; `stack_trace_limit` controls the newest retained
+entries (zero clears history). Native entries contain Rust error diagnostics.
+
 Worker handlers can override `JobHandler::process_batch` to return failures per job. `RunnerConfig::batch_size` and generated `WORKER_BATCH_SIZE` default to one, preserving single handlers. Concurrent batch sizes are bounded to 1000 total deliveries; all leases renew and batch cancellation preserves expiry recovery. See the [batch handler documentation](../docs/adding-projects/rust.md#worker-batch-handlers).
 
 ## Messaging

@@ -1702,15 +1702,33 @@ impl Worker {
                     &ctx.prefix_bytes,
                     delay as u64,
                     &ctx.opts,
+                    error,
+                    job_opts,
                 )
                 .await
             } else {
-                Self::retry_job_immediately(&ctx.conn, &ctx.keys, job_id, token, &ctx.prefix_bytes)
-                    .await
+                Self::retry_job_immediately(
+                    &ctx.conn,
+                    &ctx.keys,
+                    job_id,
+                    token,
+                    &ctx.prefix_bytes,
+                    error,
+                    job_opts,
+                )
+                .await
             }
         } else {
-            Self::retry_job_immediately(&ctx.conn, &ctx.keys, job_id, token, &ctx.prefix_bytes)
-                .await
+            Self::retry_job_immediately(
+                &ctx.conn,
+                &ctx.keys,
+                job_id,
+                token,
+                &ctx.prefix_bytes,
+                error,
+                job_opts,
+            )
+            .await
         };
 
         if let Err(retry_err) = retry_result {
@@ -1858,6 +1876,46 @@ impl Worker {
         Self::parse_move_to_active_result(&result)
     }
 
+    /// Encode diagnostics for the existing lock-checked transition scripts. Rust
+    /// processor errors supply diagnostic strings rather than JavaScript stacks.
+    async fn failure_fields(
+        conn: &RedisConnection,
+        keys: &QueueKeys,
+        job_id: &str,
+        reason: &str,
+        job_opts: &JobOptions,
+    ) -> Result<Vec<u8>, Error> {
+        #[cfg(feature = "forklaunch-job-options")]
+        {
+            let previous: Option<String> = redis::cmd("HGET")
+                .arg(keys.job_key(job_id))
+                .arg("stacktrace")
+                .query_async(&mut conn.managed_conn())
+                .await?;
+            let mut traces: Vec<String> = previous
+                .as_deref()
+                .and_then(|value| serde_json::from_str(value).ok())
+                .unwrap_or_default();
+            traces.push(reason.to_owned());
+            if let Some(limit) = job_opts.stack_trace_limit {
+                let excess = traces.len().saturating_sub(limit as usize);
+                traces.drain(..excess);
+            }
+            let traces = serde_json::to_string(&traces)?;
+            let mut fields = Vec::new();
+            rmp::encode::write_array_len(&mut fields, 4).unwrap();
+            for value in ["failedReason", reason, "stacktrace", &traces] {
+                rmp::encode::write_str(&mut fields, value).unwrap();
+            }
+            Ok(fields)
+        }
+        #[cfg(not(feature = "forklaunch-job-options"))]
+        {
+            let _ = (conn, keys, job_id, reason, job_opts);
+            Ok(Vec::new())
+        }
+    }
+
     /// Fast version of move_to_completed/failed using pre-computed base keys.
     ///
     /// When `fetch_next` is `true`, the `moveToFinished` script also fetches and
@@ -1927,7 +1985,11 @@ impl Worker {
         let job_id_bytes = job_id.as_bytes();
         let now_bytes = now.to_string().into_bytes();
         let opts_packed = pack_move_to_finished_opts(token, opts, job_opts, attempts, target);
-        let fields_to_update: Vec<u8> = Vec::new();
+        let fields_to_update = if target == "failed" {
+            Self::failure_fields(conn, keys, job_id, field_value_str, job_opts).await?
+        } else {
+            Vec::new()
+        };
         let fetch_next_flag: &[u8] = if fetch_next { b"1" } else { b"0" };
         let args: Vec<&[u8]> = vec![
             job_id_bytes,
@@ -1967,6 +2029,8 @@ impl Worker {
         job_id: &str,
         token: &str,
         prefix: &[u8],
+        error: &Error,
+        job_opts: &JobOptions,
     ) -> Result<(), Error> {
         let script = conn
             .scripts()
@@ -2008,7 +2072,8 @@ impl Worker {
         let prefix_str = std::str::from_utf8(prefix).unwrap_or("");
         let now_str = now.to_string();
         let push_cmd = b"LPUSH";
-        let fields_to_update: Vec<u8> = Vec::new();
+        let fields_to_update =
+            Self::failure_fields(conn, keys, job_id, &error.to_string(), job_opts).await?;
 
         let args: Vec<&[u8]> = vec![
             prefix_str.as_bytes(), // ARGV[1] key prefix
@@ -2037,6 +2102,8 @@ impl Worker {
         prefix: &[u8],
         delay: u64,
         opts: &WorkerOptions,
+        error: &Error,
+        job_opts: &JobOptions,
     ) -> Result<(), Error> {
         let script = conn
             .scripts()
@@ -2079,7 +2146,8 @@ impl Worker {
         let now_str = now.to_string();
         let delay_str = delay.to_string();
         let skip_attempt = b"0"; // Don't skip attempt increment
-        let fields_to_update: Vec<u8> = Vec::new();
+        let fields_to_update =
+            Self::failure_fields(conn, keys, job_id, &error.to_string(), job_opts).await?;
         let fetch_next = b"0"; // Don't fetch next
 
         // Pack opts for fetchNextJob (even though we're not fetching, script expects it)

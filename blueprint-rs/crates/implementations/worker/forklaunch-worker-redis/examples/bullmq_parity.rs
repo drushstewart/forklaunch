@@ -177,7 +177,12 @@ async fn consume(
                 active.fetch_sub(1, Ordering::SeqCst);
                 if u64::from(job.attempts_made()) < job.data()["failAttempts"].as_u64().unwrap_or(0)
                 {
-                    return Err(protocol::Error::ProcessingError("fixture_failure".into()));
+                    let reason = if job.data()["failureHistory"] == true {
+                        format!("fixture_failure_{}", job.attempts_made() + 1)
+                    } else {
+                        "fixture_failure".into()
+                    };
+                    return Err(protocol::Error::ProcessingError(reason));
                 }
                 Ok(json!({"native":true,"id":job.data()["id"]}))
             }

@@ -7,3 +7,15 @@ The optional `forklaunch-outcome-data` feature emits `WorkerEvent::FailedWithDat
 The crate manifest retains the published dependency pins, uses the ForkLaunch package name `forklaunch-bullmq-protocol` and version `0.1.0` so future releases do not require modifying an existing upstream registry package, adds this feature and an isolated workspace, and includes this patch note and LICENSE in source packages. The Rust library name remains `bullmq`; the adapter re-exports it as `protocol`. Keep this patch small and replace the vendored dependency when an upstream outcome-data API can provide the same guarantee.
 
 The optional `forklaunch-job-options` feature preserves `keepLogs` (wire key `kl`), `stackTraceLimit`, `timestamp` and `sizeLimit` in single/bulk job option maps, and accepts the Node wire alias `kl` when reading job options. These fields previously disappeared from the upstream encoder. The ForkLaunch producer carries queue defaults into explicit job options while overriding attempts/backoff and leaving `jobId` unset, matching the actual TypeScript wrapper. This is a separate compatibility patch in `queue.rs` and `options.rs`; retry/retention Lua scripts remain unchanged.
+
+The same `forklaunch-job-options` feature persists `failedReason` and the JSON
+`stacktrace` array on immediate retries, delayed retries and terminal failures.
+It reads existing history and passes the updated fields to the existing
+lock-checked transition scripts; there is no standalone write that can recreate
+an automatically removed job. `stackTraceLimit: 0` clears history, positive
+limits keep the newest entries, and an absent limit retains all entries. Rust
+processor errors contribute their diagnostic strings, rather than synthetic
+JavaScript call stacks. Existing TypeScript history entries are preserved.
+The actual TypeScript/native worker fixture compares final history and reasons
+for recovered and terminal jobs across both retry paths and all limit forms.
+Lua scripts and behavior with this feature disabled remain unchanged.
