@@ -168,14 +168,25 @@ pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintRes
             "boolean" => value.is_some_and(Value::is_boolean),
             _ => value.is_some_and(Value::is_string),
         };
-        if valid && path == "/sign-up/email" {
-            if *field == "email"
+        if valid
+            && matches!(
+                path,
+                "/sign-up/email"
+                    | "/request-password-reset"
+                    | "/send-verification-email"
+                    | "/change-email"
+            )
+        {
+            if matches!(*field, "email" | "newEmail")
                 && crate::accounts::validate_email(value.and_then(Value::as_str).unwrap_or(""))
                     .is_err()
             {
-                errors.push("[body.email] Invalid email address".into());
+                errors.push(format!("[body.{field}] Invalid email address"));
             }
-            if *field == "password" && value.and_then(Value::as_str) == Some("") {
+            if *field == "password"
+                && matches!(path, "/sign-in/email" | "/sign-up/email")
+                && value.and_then(Value::as_str) == Some("")
+            {
                 errors.push(
                     "[body.password] Too small: expected string to have >=1 characters".into(),
                 );
@@ -226,6 +237,29 @@ fn body_fields(path: &str) -> (bool, &'static [(&'static str, &'static str, bool
                 ("password", "string", true),
                 ("callbackURL", "string", false),
                 ("rememberMe", "boolean", false),
+            ],
+        ),
+        "/request-password-reset" => (
+            false,
+            &[("email", "string", true), ("redirectTo", "string", false)],
+        ),
+        "/send-verification-email" => (
+            false,
+            &[("email", "string", true), ("callbackURL", "string", false)],
+        ),
+        "/change-email" => (
+            false,
+            &[
+                ("newEmail", "string", true),
+                ("callbackURL", "string", false),
+            ],
+        ),
+        "/delete-user" => (
+            false,
+            &[
+                ("callbackURL", "string", false),
+                ("password", "string", false),
+                ("token", "string", false),
             ],
         ),
         "/verify-password" => (false, &[("password", "string", true)]),

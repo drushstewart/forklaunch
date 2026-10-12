@@ -356,3 +356,10 @@ ECMAScript scope trimming and scoped errors. Atomic concurrency preserves one
 remaining account, and revoked sessions cannot update profiles. Live memory and
 restricted-role PostgreSQL verify profile HTTP operations beside MCP. Remaining
 user/account/provider/org routes, real ORM conformance and CLI preset stay open.
+
+Twenty raw native auth routes include the four configured-disabled reset-email,
+verification-email, change-email and delete-user endpoints. Their 128 actual HTTP
+response/cookie/storage comparisons preserve schema/Origin/session ordering and
+empty deletion 404 bodies. Live memory/restricted-role PostgreSQL validate these
+responses beside MCP. Token-based reset/verification, remaining user/account/
+provider/org operations, real ORM and CLI preset remain open.

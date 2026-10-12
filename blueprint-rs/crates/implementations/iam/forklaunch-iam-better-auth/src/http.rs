@@ -117,6 +117,10 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))
+            .route("/request-password-reset", post(dispatch::<S>))
+            .route("/send-verification-email", post(dispatch::<S>))
+            .route("/change-email", post(dispatch::<S>))
+            .route("/delete-user", post(dispatch::<S>))
             .route("/verify-password", post(dispatch::<S>))
             .route("/change-password", post(dispatch::<S>))
             .route(
@@ -225,6 +229,9 @@ async fn handle<S: AuthStore + 'static>(
         request::guard(app, &parts, &payload, &query, true)?;
         return credential::login(app, path, payload, &parts.headers, pending, now).await;
     }
+    if let Some(error) = credential::configured_public(path) {
+        return Err(error);
+    }
     if path == "/jwks" {
         return KeyRing::new(app.store.clone(), &app.base_url)
             .jwks(now)
@@ -260,7 +267,7 @@ async fn handle<S: AuthStore + 'static>(
     let view = view.ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))?;
     match path {
         "/verify-password" | "/change-password" | "/list-accounts" | "/unlink-account"
-        | "/update-user" => {
+        | "/update-user" | "/change-email" | "/delete-user" => {
             credential::authenticated(
                 app,
                 path,
@@ -312,6 +319,9 @@ fn clear(cookie: SessionCookie, headers: &mut HeaderMap) -> BlueprintResult<()> 
     Ok(())
 }
 fn failure(error: &BlueprintError) -> Response {
+    if error.code == "HTTP_NOT_FOUND" {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     let status = match error.code.as_str() {
         "UNAUTHORIZED" | "INVALID_EMAIL_OR_PASSWORD" => StatusCode::UNAUTHORIZED,
         "SESSION_NOT_FRESH"

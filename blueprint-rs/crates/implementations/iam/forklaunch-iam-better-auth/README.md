@@ -88,7 +88,9 @@ part of the configured module.
 
 `http::AuthHttp` exposes `/sign-up/email`, `/sign-in/email`, `/verify-password`,
 `/change-password`, `/update-user`, `/list-accounts`, `/unlink-account`, `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
-`/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token` and `/jwks`.
+`/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token`, `/jwks`,
+`/request-password-reset`, `/send-verification-email`, `/change-email` and
+`/delete-user`.
 It authenticates signed cookies against authoritative tenant-bound storage,
 refreshes sessions, emits verified JWT headers and publishes only public keys.
 Mutation guards reject forged/missing origins and unsafe callbacks. Revoke/logout
@@ -135,6 +137,13 @@ Concurrent unlinking preserves at least one account; revoked sessions cannot
 update profiles. Live memory/encrypted PostgreSQL verify profile HTTP operations
 alongside MCP.
 
+The four configured-disabled email/reset/deletion routes match 128 actual HTTP
+response, cookie and storage comparisons. Schema and Origin checks retain their
+order, public email operations return configured-disabled errors, and authenticated
+email changes/deletion require authoritative sessions. Disabled deletion returns
+the actual empty HTTP 404 response. These routes perform no email or deletion
+work; callbacks/enable flags are absent from the configured TypeScript module.
+
 Remaining user/account/provider/org routes, real TS ORM
-conformance, custom callbacks and module generation remain open; these sixteen
+conformance, custom callbacks and module generation remain open; these twenty
 routes do not constitute the complete Better Auth preset.

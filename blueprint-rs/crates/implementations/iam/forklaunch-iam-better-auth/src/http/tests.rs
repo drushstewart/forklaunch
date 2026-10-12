@@ -203,6 +203,34 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
     assert_eq!(stored["privateSecret"], "never-public");
     tx.commit().await.unwrap();
 
+    for (path, body, status) in [
+        (
+            "request-password-reset",
+            json!({"email":"disabled@fixture.test"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            "send-verification-email",
+            json!({"email":"disabled@fixture.test"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            "change-email",
+            json!({"newEmail":"changed@fixture.test"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        ("delete-user", json!({}), StatusCode::NOT_FOUND),
+    ] {
+        let response = client
+            .post(format!("{base}/api/auth/{path}"))
+            .header("cookie", &signed)
+            .header("origin", "http://localhost:3000")
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
+    }
     let docs: Value = client
         .get(format!("{base}/openapi.json"))
         .send()

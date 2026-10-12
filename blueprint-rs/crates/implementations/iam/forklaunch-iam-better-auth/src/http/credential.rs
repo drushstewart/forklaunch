@@ -80,6 +80,13 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
     let service = CredentialService::new(app.store.clone());
     let (token, transient) = session;
     match path {
+        "/change-email" => {
+            return Err(BlueprintError::new(
+                "CHANGE_EMAIL_DISABLED",
+                "Change email is disabled",
+            ));
+        }
+        "/delete-user" => return Err(BlueprintError::new("HTTP_NOT_FOUND", "Not Found")),
         "/list-accounts" => return service.list_accounts(token, now).await,
         "/unlink-account" => {
             return service
@@ -132,4 +139,19 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
         }
     }
     Ok(changed.body())
+}
+
+// These features have no configured callbacks/enabled flags in the TS module.
+pub(super) fn configured_public(path: &str) -> Option<BlueprintError> {
+    match path {
+        "/request-password-reset" => Some(BlueprintError::new(
+            "RESET_PASSWORD_DISABLED",
+            "Reset password isn't enabled",
+        )),
+        "/send-verification-email" => Some(BlueprintError::new(
+            "VERIFICATION_EMAIL_NOT_ENABLED",
+            "Verification email isn't enabled",
+        )),
+        _ => None,
+    }
 }
