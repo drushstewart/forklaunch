@@ -1,4 +1,6 @@
 //! Executes production auth HTTP handlers against an owned fixture store/clock.
+#[path = "http_parity/fault_store.rs"]
+mod fault_store;
 #[path = "../src/ecmascript/json.rs"]
 mod literal_json;
 use axum::{
@@ -22,6 +24,7 @@ use std::{
 use tower::ServiceExt;
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() {
     let store = Arc::new(MemoryAuthStore::default());
     let clock = Arc::new(AtomicI64::new(0));
@@ -60,6 +63,62 @@ async fn main() {
         let result = match input["op"].as_str().unwrap() {
             "seed" | "replace-seed" => seed(&store, &input).await,
             "records" => records(&store, &input).await,
+            "seed-keys" => {
+                let mut tx = store.begin(true).await.unwrap();
+                for row in input["keys"].as_array().unwrap() {
+                    tx.insert(Model::Jwks, row.clone()).await.unwrap();
+                }
+                tx.commit().await.unwrap();
+                json!({"ok":true})
+            }
+            "compliance-export" | "compliance-erase" => {
+                if let Some(model) = input["failComplianceModel"].as_str() {
+                    let model = match model {
+                        "Account" => Model::Account,
+                        "Jwks" => Model::Jwks,
+                        _ => panic!("invalid fixture model"),
+                    };
+                    compliance_operation(
+                        Arc::new(fault_store::FaultStore {
+                            store: store.clone(),
+                            read: Some(model),
+                            delete: None,
+                        }),
+                        &input,
+                    )
+                    .await
+                } else {
+                    compliance_operation(store.clone(), &input).await
+                }
+            }
+            "retention-cutoff" => {
+                let now =
+                    DateTime::<Utc>::from_timestamp_millis(input["now"].as_i64().unwrap()).unwrap();
+                json!(
+                    forklaunch_iam_better_auth::retention::account_cutoff(now)
+                        .unwrap()
+                        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+                )
+            }
+            "retention" => {
+                let now =
+                    DateTime::<Utc>::from_timestamp_millis(input["now"].as_i64().unwrap()).unwrap();
+                let options = forklaunch_iam_better_auth::retention::RetentionOptions {
+                    dry_run: input["dryRun"].as_bool().unwrap_or(false),
+                    batch_size: input["batchSize"]
+                        .as_u64()
+                        .map_or(1000, |value| usize::try_from(value).unwrap()),
+                    entities: input
+                        .get("entities")
+                        .map(|value| serde_json::from_value(value.clone()).unwrap()),
+                };
+                serde_json::to_value(
+                    forklaunch_iam_better_auth::retention::RetentionService::new(store.clone())
+                        .enforce(now, &options)
+                        .await,
+                )
+                .unwrap()
+            }
             "surface" => {
                 let service =
                     forklaunch_iam_better_auth::surfacing::SurfacingService::new(store.clone());
@@ -199,4 +258,28 @@ async fn records(store: &MemoryAuthStore, input: &Value) -> Value {
     }
     tx.commit().await.unwrap();
     result
+}
+
+async fn compliance_operation<S: AuthStore>(store: Arc<S>, input: &Value) -> Value {
+    let mut service = forklaunch_iam_better_auth::compliance::ComplianceService::new(store);
+    if let Some(label) = input["tenantLabel"].as_str() {
+        service = service.with_tenant_label(label.to_owned());
+    }
+    if input["op"] == "compliance-export" {
+        serde_json::to_value(
+            service
+                .export(input["userId"].as_str().unwrap())
+                .await
+                .unwrap(),
+        )
+        .unwrap()
+    } else {
+        serde_json::to_value(
+            service
+                .erase(input["userId"].as_str().unwrap())
+                .await
+                .unwrap(),
+        )
+        .unwrap()
+    }
 }

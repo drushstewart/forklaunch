@@ -201,6 +201,17 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    crate::retention::tests::exercise(Arc::new(other_store.clone())).await;
+    crate::compliance::tests::exercise(Arc::new(other_store.clone())).await;
+    crate::compliance::tests::exercise_failures(Arc::new(other_store.clone())).await;
+    assert!(
+        crate::compliance::ComplianceService::new(Arc::new(store.clone()))
+            .export("compliance-other")
+            .await
+            .unwrap()
+            .entities
+            .is_empty()
+    );
     crate::surfacing::tests::exercise(Arc::new(other_store.clone())).await;
     let isolated_surfacing = crate::surfacing::SurfacingService::new(Arc::new(store.clone()));
     assert_eq!(
@@ -237,6 +248,9 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
             "updated-private-access",
             "native-updated-access",
             "opaque-not-expanded",
+            "native-compliance-foreign-private",
+            "native-retention-exact-private",
+            "native-retention-marked-private",
             "native-rotated-refresh",
         ] {
             assert!(!ciphertext.contains(secret));

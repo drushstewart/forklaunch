@@ -14,6 +14,8 @@ on:
       - 'blueprint/core/auth/rbac.ts'
       - 'blueprint/core/persistence/sql.base.properties.ts'
       - 'framework/core/src/services/complianceDataService.ts'
+      - 'framework/core/src/services/retentionService.ts'
+      - 'framework/core/src/persistence/**'
       - 'blueprint/interfaces/iam/**'
       - 'blueprint/interfaces/ecommerce/**'
       - 'blueprint/interfaces/billing/**'
@@ -102,6 +104,8 @@ on:
       - 'cli/tests/rust_better_auth_public.mjs'
       - 'cli/tests/rust_better_auth_surfacing.mjs'
       - 'cli/tests/rust_better_auth_orm.mjs'
+      - 'cli/tests/rust_better_auth_compliance.mjs'
+      - 'cli/tests/rust_better_auth_retention.mjs'
       - 'cli/tests/fixtures/rust_better_auth_orm.mjs'
       - 'cli/tests/fixtures/rust_better_auth_bridge.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
@@ -159,6 +163,8 @@ on:
       - 'blueprint/core/auth/rbac.ts'
       - 'blueprint/core/persistence/sql.base.properties.ts'
       - 'framework/core/src/services/complianceDataService.ts'
+      - 'framework/core/src/services/retentionService.ts'
+      - 'framework/core/src/persistence/**'
       - 'blueprint/interfaces/iam/**'
       - 'blueprint/interfaces/ecommerce/**'
       - 'blueprint/interfaces/billing/**'
@@ -247,6 +253,8 @@ on:
       - 'cli/tests/rust_better_auth_public.mjs'
       - 'cli/tests/rust_better_auth_surfacing.mjs'
       - 'cli/tests/rust_better_auth_orm.mjs'
+      - 'cli/tests/rust_better_auth_compliance.mjs'
+      - 'cli/tests/rust_better_auth_retention.mjs'
       - 'cli/tests/fixtures/rust_better_auth_orm.mjs'
       - 'cli/tests/fixtures/rust_better_auth_bridge.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
@@ -584,6 +592,8 @@ jobs:
       - run: node cli/tests/rust_better_auth_public.mjs
       - run: node cli/tests/rust_better_auth_surfacing.mjs
       - run: node cli/tests/rust_better_auth_orm.mjs
+      - run: node cli/tests/rust_better_auth_compliance.mjs
+      - run: node cli/tests/rust_better_auth_retention.mjs
       - run: NODE_ENV=production node cli/tests/rust_better_auth_public.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

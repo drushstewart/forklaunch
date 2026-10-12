@@ -542,3 +542,21 @@ adapter signature. Existing 161 HTTP, 157 token, 27 public and 37 surfacing
 comparisons pass. CI now installs the pinned real ORM/adapter and supplies shared
 fixture environment settings. This is initial real-ORM conformance; complete
 storage/hook coverage, compliance/retention and CLI preset remain open.
+
+Native Better Auth compliance now preserves classified export fields as opaque
+objects with explicit audited plaintext access. Fourteen comparisons against
+the real encrypted ORM cover Account/Jwks selection, other subjects, erasure,
+remaining user/session records and partial per-entity read failures. Native
+memory/restricted PostgreSQL also verify atomic rollback on write failure,
+report labels, tenant isolation and ciphertext protection. Erasure rechecks
+ownership before deleting a previously selected account.
+
+Seven-calendar-year Account retention passes 41 actual TypeScript comparisons:
+UTC, Los Angeles, Lord Howe and Apia cutoff behavior, leap days, repeated hours,
+half-hour gaps, skipped days, exact age boundaries, dry runs, entity filters,
+batches, repeat runs, preserved metadata and persisted anonymization timestamps.
+The implementation validates timezone round-trips and selects the earliest
+valid UTC instant. All 26 native auth tests, restricted encrypted PostgreSQL,
+strict all-feature clippy, rebuilt CLI and 739 embedded assets pass. Application
+HTTP/MCP wiring, custom callback helpers, full ORM/hook coverage and CLI preset
+integration remain open.

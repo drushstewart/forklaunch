@@ -5,17 +5,19 @@
 #![forbid(unsafe_code)]
 
 pub mod accounts;
+pub mod compliance;
 pub mod cookies;
 pub mod credentials;
 pub mod jwt;
 pub mod keyring;
+pub mod retention;
 pub mod sessions;
 pub mod store;
 pub mod surfacing;
 
+pub mod oauth;
 pub mod organizations;
 pub mod origins;
-pub mod oauth;
 
 #[cfg(feature = "http")]
 pub mod http;
