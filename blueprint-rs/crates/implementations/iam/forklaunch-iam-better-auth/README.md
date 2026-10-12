@@ -286,3 +286,15 @@ Memory/restricted PostgreSQL verify concurrent removals preserve the last team,
 invitation cleanup and live HTTP mutations beside JWT/MCP lifecycle. Adding and
 removing team members, invitations, dynamic roles, providers, server JWT helpers,
 real ORM/callback and generated preset gates remain open.
+
+Forty-eight native raw auth routes include team-member addition/removal. All 164
+actual HTTP/storage/cookie comparisons pass, covering scoped member permissions,
+required/coerced user IDs (including ECMAScript number formatting and failed
+object coercion), keyed duplicate reuse, legacy duplicate removal, counter
+reconciliation/release and retained active-team references. Organization addition
+shares the same membership helper; its 40 actual API/storage comparisons remain
+green. Memory/restricted PostgreSQL verify concurrent additions reuse one row and
+seat, concurrent removal has one winner and sessions retain active-team values.
+Live HTTP runs the new routes beside JWT/MCP lifecycle. Invitation/dynamic-role
+management, providers, server JWT helpers, real ORM/callback, raw JSON numeric
+edge cases and generated preset gates remain open.

@@ -14,8 +14,25 @@ pub(super) fn validate(path: &str, body: Option<&Value>) -> BlueprintResult<()> 
         "/organization/remove-team" => &[("teamId", true), ("organizationId", false)],
         _ => &[("teamId", true)],
     };
+    let membership = matches!(
+        path,
+        "/organization/add-team-member" | "/organization/remove-team-member"
+    );
     for (field, required) in fields {
         string(&mut errors, body, field, *required, "body");
+    }
+    if membership {
+        if body.get("userId").is_none() {
+            errors.push(
+                "[body.userId] Invalid input: expected nonoptional, received undefined".into(),
+            );
+        } else if crate::ecmascript::string(body.get("userId")).is_none() {
+            errors.push(format!(
+                "[body.userId] Invalid input: expected string, received {}",
+                received(body.get("userId"))
+            ));
+        }
+        string(&mut errors, body, "organizationId", false, "body");
     }
     if path == "/organization/update-team" {
         if let Some(data) = body.get("data").filter(|value| value.is_object()) {

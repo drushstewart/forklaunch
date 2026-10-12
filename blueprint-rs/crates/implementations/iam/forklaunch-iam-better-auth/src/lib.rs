@@ -17,3 +17,5 @@ pub mod origins;
 
 #[cfg(feature = "http")]
 pub mod http;
+
+mod ecmascript;

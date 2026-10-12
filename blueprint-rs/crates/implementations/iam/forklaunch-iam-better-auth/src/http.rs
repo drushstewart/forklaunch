@@ -147,6 +147,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/organization/create-team", post(dispatch::<S>))
             .route("/organization/update-team", post(dispatch::<S>))
             .route("/organization/remove-team", post(dispatch::<S>))
+            .route("/organization/add-team-member", post(dispatch::<S>))
+            .route("/organization/remove-team-member", post(dispatch::<S>))
             .route("/organization/leave", post(dispatch::<S>))
             .route("/organization/update-member-role", post(dispatch::<S>))
             .route("/organization/remove-member", post(dispatch::<S>))
@@ -442,9 +444,11 @@ fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
     }
     if error.code == "USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION" {
         let status = match path {
-            "/organization/update" | "/organization/delete" | "/organization/list-user-teams" => {
-                StatusCode::BAD_REQUEST
-            }
+            "/organization/update"
+            | "/organization/delete"
+            | "/organization/list-user-teams"
+            | "/organization/add-team-member"
+            | "/organization/remove-team-member" => StatusCode::BAD_REQUEST,
             "/organization/has-permission" => StatusCode::UNAUTHORIZED,
             _ => StatusCode::FORBIDDEN,
         };
@@ -487,6 +491,8 @@ fn failure(error: &BlueprintError) -> Response {
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_TEAMS_IN_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_TEAM"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_TEAM"
+        | "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_TEAM_MEMBER"
+        | "YOU_ARE_NOT_ALLOWED_TO_REMOVE_A_TEAM_MEMBER"
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER"
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION"

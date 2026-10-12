@@ -4,7 +4,6 @@ use super::{
     OrganizationService, Utc, Value, find_member, json, missing, no_active, text,
 };
 use serde::{Deserialize, Serialize};
-mod team;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -100,7 +99,7 @@ impl<S: AuthStore> OrganizationService<S> {
         let member = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":id,"userId":user["id"],"role":input.role.joined(),"createdAt":super::super::timestamp(now)});
         tx.insert(Model::Member, member.clone()).await?;
         if let Some(team) = team {
-            team::add(&mut tx, team, text(&user, "id")?, now).await?;
+            super::super::teams::add_team_member(&mut tx, team, text(&user, "id")?, now).await?;
         }
         tx.commit().await?;
         Ok(member)

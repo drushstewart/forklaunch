@@ -4,7 +4,9 @@ use super::{AuthStore, BlueprintResult, DateTime, HashMap, OrganizationService, 
 pub(super) fn is_route(path: &str) -> bool {
     matches!(
         path,
-        "/organization/create-team"
+        "/organization/add-team-member"
+            | "/organization/remove-team-member"
+            | "/organization/create-team"
             | "/organization/update-team"
             | "/organization/remove-team"
             | "/organization/list-teams"
@@ -22,8 +24,33 @@ pub(super) async fn handle<S: AuthStore>(
     now: DateTime<Utc>,
 ) -> BlueprintResult<Option<Value>> {
     let (token, transient) = session;
+    let coerced = if matches!(
+        path,
+        "/organization/add-team-member" | "/organization/remove-team-member"
+    ) {
+        let mut body = body.clone();
+        body["userId"] = serde_json::json!(
+            crate::ecmascript::string(body.get("userId")).ok_or_else(|| validation(format!(
+                "[body.userId] Invalid input: expected string, received {}",
+                received(body.get("userId"))
+            )))?
+        );
+        Some(body)
+    } else {
+        None
+    };
+    let body = coerced.as_ref().unwrap_or(body);
+
     let query = serde_json::json!(query);
     Ok(Some(match path {
+        "/organization/add-team-member" => {
+            service.add_team_member(token, transient, body, now).await?
+        }
+        "/organization/remove-team-member" => {
+            service
+                .remove_team_member(token, transient, body, now)
+                .await?
+        }
         "/organization/create-team" => service.create_team(token, transient, body, now).await?,
         "/organization/update-team" => service.update_team(token, transient, body, now).await?,
         "/organization/remove-team" => service.remove_team(token, transient, body, now).await?,
@@ -44,7 +71,11 @@ pub(super) async fn handle<S: AuthStore>(
 pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
     if matches!(
         path,
-        "/organization/create-team" | "/organization/update-team" | "/organization/remove-team"
+        "/organization/create-team"
+            | "/organization/update-team"
+            | "/organization/remove-team"
+            | "/organization/add-team-member"
+            | "/organization/remove-team-member"
     ) {
         return mutation_validation::validate(path, body);
     }

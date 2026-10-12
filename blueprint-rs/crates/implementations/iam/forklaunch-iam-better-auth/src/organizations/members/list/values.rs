@@ -16,6 +16,9 @@ pub(super) fn string(value: Option<&Value>) -> String {
             .collect::<Vec<_>>()
             .join(","),
         Some(Value::Object(_)) => "[object Object]".into(),
+        Some(value @ Value::Number(_)) => {
+            crate::ecmascript::string(Some(value)).unwrap_or_default()
+        }
         Some(value) => value.to_string(),
     }
 }
