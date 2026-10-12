@@ -27,6 +27,7 @@ mod email;
 mod organization;
 mod rate;
 mod request;
+mod social;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -34,6 +35,7 @@ pub(crate) mod tests;
 /// signing secrets, clocks or JWT issuer/audience through headers/body fields.
 pub struct AuthHttp<S> {
     store: Arc<S>,
+    google: Option<crate::oauth::google_client::GoogleClient>,
     secret: Zeroizing<Vec<u8>>,
     base_url: String,
     policy: Arc<OriginPolicy>,
@@ -61,6 +63,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         let secure = Url::parse(&base_url).is_ok_and(|url| url.scheme() == "https");
         Ok(Self {
             store,
+            google: None,
             secret,
             base_url,
             policy: Arc::new(policy),
@@ -68,6 +71,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             limiter: rate::RateLimiter::new(),
             clock: Arc::new(Utc::now),
         })
+    }
+    /// Installs a trusted configured Google provider. Requests cannot override credentials.
+    #[must_use]
+    pub fn with_google(mut self, provider: crate::oauth::google_client::GoogleClient) -> Self {
+        self.google = Some(provider);
+        self
     }
     /// Injects trusted server time for deterministic integration fixtures.
     #[must_use]
@@ -117,6 +126,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Router::new()
             .route("/sign-up/email", post(dispatch::<S>))
             .route("/sign-in/email", post(dispatch::<S>))
+            .route("/sign-in/social", post(dispatch::<S>))
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))
@@ -246,6 +256,9 @@ async fn handle<S: AuthStore + 'static>(
         }
     }
     let now = (app.clock)();
+    if path == "/sign-in/social" {
+        return social::sign_in(app, &payload, &parts.headers, pending, now).await;
+    }
     if matches!(path, "/sign-up/email" | "/sign-in/email") {
         request::guard(app, &parts, &payload, &query, true)?;
         return credential::login(app, path, payload, &parts.headers, pending, now).await;
@@ -456,7 +469,12 @@ fn failure(error: &BlueprintError) -> Response {
         return StatusCode::NOT_FOUND.into_response();
     }
     let status = match error.code.as_str() {
+        "PROVIDER_NOT_FOUND" => StatusCode::NOT_FOUND,
         "UNAUTHORIZED"
+        | "INVALID_TOKEN"
+        | "USER_EMAIL_NOT_FOUND"
+        | "FAILED_TO_GET_USER_INFO"
+        | "OAUTH_LINK_ERROR"
         | "INVALID_EMAIL_OR_PASSWORD"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER" => StatusCode::UNAUTHORIZED,
         "YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION"

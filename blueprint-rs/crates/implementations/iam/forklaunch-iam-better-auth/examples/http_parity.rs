@@ -35,8 +35,21 @@ async fn main() {
     .unwrap()
     .with_clock(move || {
         DateTime::<Utc>::from_timestamp_millis(server_clock.load(Ordering::SeqCst)).unwrap()
-    })
-    .router();
+    });
+    let router = if let Ok(endpoint) = std::env::var("FORKLAUNCH_GOOGLE_CERTIFICATES_URL") {
+        router.with_google(
+            forklaunch_iam_better_auth::oauth::google_client::GoogleClient::new(
+                "fixture-google-id".into(),
+                "fixture-google-secret".into(),
+            )
+            .unwrap()
+            .with_certificate_endpoint(&endpoint)
+            .unwrap(),
+        )
+    } else {
+        router
+    };
+    let router = router.router();
     for line in io::stdin().lock().lines() {
         let input: Value = literal_json::parse(&line.unwrap()).unwrap();
         clock.store(input["now"].as_i64().unwrap(), Ordering::SeqCst);

@@ -132,6 +132,9 @@ pub(super) fn session_credentials<S: AuthStore>(
 }
 
 pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintResult<()> {
+    if path == "/sign-in/social" {
+        return super::social::validate(payload);
+    }
     if path.starts_with("/organization/") {
         return super::organization::validate_body(path, payload);
     }
@@ -210,7 +213,7 @@ pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintRes
         Err(BlueprintError::new("VALIDATION_ERROR", errors.join("; ")))
     }
 }
-fn received(value: Option<&Value>) -> &'static str {
+pub(super) fn received(value: Option<&Value>) -> &'static str {
     match value {
         None => "undefined",
         Some(Value::Null) => "null",

@@ -203,6 +203,25 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     tx.commit().await.unwrap();
     crate::keyring::tests::exercise_key_lifecycle(Arc::new(other_store.clone())).await;
     crate::oauth::state::tests::exercise(Arc::new(other_store.clone())).await;
+    crate::oauth::google_accounts::tests::exercise(Arc::new(other_store.clone())).await;
+    let google_ciphertexts: Vec<String> =
+        sqlx::query_scalar("SELECT ciphertext FROM fl_better_auth.records WHERE tenant_id=$1")
+            .bind(other.id())
+            .fetch_all(&owner)
+            .await
+            .unwrap();
+    assert!(!google_ciphertexts.is_empty());
+    for ciphertext in google_ciphertexts {
+        for secret in [
+            "native-google@fixture.test",
+            "private-google-id-token",
+            "private-google-refresh-token",
+            "updated-private-access",
+        ] {
+            assert!(!ciphertext.contains(secret));
+        }
+    }
+
     let encrypted: Vec<String> =
         sqlx::query_scalar("SELECT ciphertext FROM fl_better_auth.records WHERE tenant_id=$1")
             .bind(tenant.id())

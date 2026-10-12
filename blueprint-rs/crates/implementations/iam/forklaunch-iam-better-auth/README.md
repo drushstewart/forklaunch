@@ -2,7 +2,7 @@
 
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
-cookies, asymmetric JWT issuance/public JWKs and sixty raw authentication HTTP
+cookies, asymmetric JWT issuance/public JWKs and sixty-one raw authentication HTTP
 routes behind the `http` feature. Configured organization, team, membership,
 invitation and dynamic-role APIs are implemented. Provider/OpenAPI, full ORM and
 callback parity remain in progress, and it is not selectable as a CLI module preset.
@@ -429,3 +429,22 @@ nonce, numeric claim boundaries and duplicate key selection. The verifier takes
 trusted supplied certificate keys; HTTP certificate fetching and persistent
 user/account/session integration remain open. Strict all-feature/all-target
 clippy, rebuilt CLI and all 719 embedded Rust sources pass; CI runs the fixture.
+
+Configured `/sign-in/social` now supports Google authorization URL/state issuance
+and direct verified ID-token sign-in with persistent user/account/session
+resolution. All 165 actual HTTP/storage comparisons pass, including nested body
+validation, missing provider/claims, forged/expired tokens, duplicate-key order,
+profile preservation, token replacement and safe verified-email linking. Google
+certificate transport has fixed trusted endpoints, no redirects, timeouts and a
+one-MiB response bound. The centralized direct sign-in verifier imports all
+selected keys and uses the first, matching the configured TypeScript path.
+Concurrent signup, orphan rejection, encrypted tokens and tenant isolation pass
+memory/restricted PostgreSQL checks. Authorization-code callbacks and the
+remaining account/token HTTP lifecycle remain open.
+
+Install Google with `AuthHttp::with_google(GoogleClient::new(client_id,
+client_secret)?)`; credentials come from trusted server configuration. Google is
+disabled by default. Direct sign-in persists `accessToken` and `idToken`; its
+request `refreshToken` and `expiresAt` are intentionally ignored by the configured
+TypeScript handler. Certificate endpoint overrides are trusted operator settings
+and require HTTPS or loopback HTTP.

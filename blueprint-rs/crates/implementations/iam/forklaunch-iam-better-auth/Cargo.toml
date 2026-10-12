@@ -8,10 +8,11 @@ repository.workspace = true
 
 [features]
 default = []
-http = ["dep:axum", "dep:tower-http"]
+http = ["dep:axum", "dep:tower-http", "dep:reqwest"]
 postgres = ["dep:sqlx", "dep:forklaunch-core"]
 
 [dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 axum = { version = "0.8", optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }

@@ -14,6 +14,30 @@ pub fn verify_google_id_token(
     jwks: &Value,
     now: DateTime<Utc>,
 ) -> Option<Value> {
+    verify(token, client_id, nonce, jwks, now, false)
+}
+
+/// Configured direct sign-in uses the centralized provider verifier, which
+/// imports all selected keys but verifies only the first selected key.
+#[must_use]
+pub fn verify_google_sign_in_token(
+    token: &str,
+    client_id: &str,
+    nonce: Option<&str>,
+    jwks: &Value,
+    now: DateTime<Utc>,
+) -> Option<Value> {
+    verify(token, client_id, nonce, jwks, now, true)
+}
+
+fn verify(
+    token: &str,
+    client_id: &str,
+    nonce: Option<&str>,
+    jwks: &Value,
+    now: DateTime<Utc>,
+    first_only: bool,
+) -> Option<Value> {
     let (header, payload, signature, content) = compact(token)?;
     if header["alg"] != "RS256" {
         return None;
@@ -32,7 +56,12 @@ pub fn verify_google_id_token(
     if selected.is_empty() || selected.iter().any(|key| !importable(key)) {
         return None;
     }
-    if !selected
+    let candidates = if first_only {
+        &selected[..1]
+    } else {
+        &selected
+    };
+    if !candidates
         .iter()
         .any(|key| verify_signature(key, "RS256", &header, content.as_bytes(), &signature))
     {
