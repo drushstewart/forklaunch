@@ -66,7 +66,7 @@ pub(super) async fn authorization<S: AuthStore + 'static>(
         .as_ref()
         .filter(|_| payload["provider"] == "google")
         .ok_or_else(|| BlueprintError::new("PROVIDER_NOT_FOUND", "Provider not found"))?;
-    let auth_base = super::social_callback::auth_base(app)?;
+    let auth_base = super::social_callback::auth_base(app);
     let mut data = payload.get("additionalData").cloned().unwrap_or(json!({}));
     // Reserved server state overrides caller additionalData, including absent fields.
     for field in [
@@ -83,11 +83,15 @@ pub(super) async fn authorization<S: AuthStore + 'static>(
     if let Some(link) = link {
         data["link"] = link;
     }
+    let default_callback = url::Url::parse(&app.base_url)
+        .map_err(|_| internal())?
+        .origin()
+        .ascii_serialization();
     data["callbackURL"] = json!(
         payload["callbackURL"]
             .as_str()
             .filter(|value| !value.is_empty())
-            .unwrap_or(&app.base_url)
+            .unwrap_or(&default_callback)
     );
     for (source, target) in [
         ("errorCallbackURL", "errorURL"),

@@ -151,6 +151,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     #[must_use]
     pub fn application_router(self, auth: HmacJwksAuth, info: ServiceInfo) -> ForkLaunchRouter {
         let config = self.application_config(auth);
+        let base_path = self.auth_base_path();
         let store = self.store.clone();
         let clock = self.clock.clone();
         let contracts = registry(&info.name, &info.version);
@@ -244,7 +245,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                     }
                 },
             )
-            .nest_internal("/api/auth", self.router_with_redirects())
+            .nest_internal(base_path, self.router_with_redirects())
             .with_config(config)
     }
     fn application_config(&self, auth: HmacJwksAuth) -> RouterConfig {
@@ -282,7 +283,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .docs_sources
             .push(forklaunch_axum::ScalarSource::inline(
                 "BetterAuth",
-                super::public::openapi_schema(&self.base_url),
+                super::public::openapi_schema(&self.auth_base_url()),
             ));
         config
     }

@@ -37,6 +37,10 @@ async fn main() {
         vec![],
     )
     .unwrap()
+    .with_base_path(
+        std::env::var("FORKLAUNCH_AUTH_BASE_PATH").unwrap_or_else(|_| "/api/auth".into()),
+    )
+    .unwrap()
     .with_clock(move || {
         DateTime::<Utc>::from_timestamp_millis(server_clock.load(Ordering::SeqCst)).unwrap()
     });

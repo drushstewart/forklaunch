@@ -1,3 +1,4 @@
+import { resolveBetterAuthBaseUrl } from './domain/utils/betterAuthBaseUrl.util';
 import { betterAuthMikroOrmAdapter } from './domain/utils/betterAuthAdapter.util';
 import { logBetterAuthApiError } from './domain/utils/betterAuthErrorLogging.util';
 import { PERMISSIONS, ROLES } from '@forklaunch/blueprint-core';
@@ -139,7 +140,7 @@ export const betterAuthConfig = ({
       google: {
         clientId: getEnvVar('GOOGLE_CLIENT_ID') ?? '',
         clientSecret: getEnvVar('GOOGLE_CLIENT_SECRET') ?? '',
-        redirectURI: `${baseURL}${BETTER_AUTH_BASE_PATH}/callback/google`,
+        redirectURI: `${resolveBetterAuthBaseUrl(baseURL, BETTER_AUTH_BASE_PATH)}/callback/google`,
         mapProfileToUser: (profile) => ({
           firstName:
             typeof profile.given_name === 'string' ? profile.given_name : '',

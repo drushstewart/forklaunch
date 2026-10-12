@@ -44,6 +44,7 @@ pub struct AuthHttp<S> {
     google: Option<crate::oauth::google_client::GoogleClient>,
     secret: Zeroizing<Vec<u8>>,
     base_url: String,
+    base_path: String,
     production: bool,
     policy: Arc<OriginPolicy>,
     cookie: SessionCookie,
@@ -68,17 +69,88 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         }
         let policy = OriginPolicy::new(&base_url, trusted)?;
         let secure = Url::parse(&base_url).is_ok_and(|url| url.scheme() == "https");
-        Ok(Self {
+        Self {
             store,
             google: None,
             secret,
             base_url,
+            base_path: "/api/auth".into(),
             production: std::env::var("NODE_ENV").is_ok_and(|value| value == "production"),
             policy: Arc::new(policy),
             cookie: SessionCookie { secure },
             limiter: rate::RateLimiter::new(),
             clock: Arc::new(Utc::now),
-        })
+        }
+        .with_base_path("/api/auth")
+    }
+    /// Sets a trusted non-root authentication namespace. A path already present
+    /// in `base_url` takes precedence, matching Better Auth's URL resolution.
+    /// # Errors
+    /// Rejects root, parameterized, encoded or otherwise invalid namespaces.
+    pub fn with_base_path(mut self, path: impl Into<String>) -> BlueprintResult<Self> {
+        let path = path.into();
+        let path = if path.starts_with('/') {
+            path
+        } else {
+            format!("/{path}")
+        };
+        self.base_path = path;
+        let effective = self.auth_base_path();
+        if effective.is_empty()
+            || effective.chars().any(|character| {
+                character.is_control()
+                    || character.is_whitespace()
+                    || matches!(character, '{' | '}' | ':' | '*' | '?' | '#' | '%' | '\\')
+            })
+            || self.base_path.chars().any(|character| {
+                character.is_control()
+                    || character.is_whitespace()
+                    || matches!(character, '?' | '#' | '\\')
+            })
+            || self
+                .base_path
+                .split('/')
+                .any(|part| matches!(part, "." | ".."))
+        {
+            return Err(BlueprintError::new(
+                "better_auth_invalid_config",
+                "Authentication base path must be a fixed non-root namespace",
+            ));
+        }
+        Ok(self)
+    }
+    /// Configured absolute authentication URL, including its namespace.
+    /// # Panics
+    /// Only invalid internal configuration can panic; construction validates it.
+    #[must_use]
+    pub fn auth_base_url(&self) -> String {
+        let parsed = Url::parse(&self.base_url).expect("validated auth base URL");
+        if parsed.path().trim_matches('/').is_empty() {
+            format!("{}{}", self.base_url.trim_end_matches('/'), self.base_path)
+        } else {
+            self.base_url.clone()
+        }
+    }
+    /// Canonical configured origin used by Better Auth's default JWT claims.
+    /// # Panics
+    /// Only invalid internal configuration can panic; construction validates it.
+    #[must_use]
+    pub fn auth_origin(&self) -> String {
+        Url::parse(&self.base_url)
+            .expect("validated auth base URL")
+            .origin()
+            .ascii_serialization()
+    }
+    /// Effective mount path, without a trailing slash.
+    /// # Panics
+    /// Only invalid internal configuration can panic; construction validates it.
+    #[must_use]
+    pub fn auth_base_path(&self) -> String {
+        Url::parse(&self.auth_base_url())
+            .expect("validated auth base URL")
+            .path()
+            .trim_end_matches('/')
+            .to_owned()
     }
     /// Installs a trusted configured Google provider. Requests cannot override credentials.
     #[must_use]
@@ -215,7 +287,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(view.map_or(Value::Null, |view| view.body()))
     }
     async fn jwt(&self, view: &SessionView, now: DateTime<Utc>) -> BlueprintResult<String> {
-        KeyRing::new(self.store.clone(), &self.base_url)
+        KeyRing::new(self.store.clone(), self.auth_origin())
             .issue(
                 text(&view.user, "id")?,
                 text(&view.user, "email")?,
@@ -291,7 +363,7 @@ async fn handle<S: AuthStore + 'static>(
         return result;
     }
     if path == "/jwks" {
-        return KeyRing::new(app.store.clone(), &app.base_url)
+        return KeyRing::new(app.store.clone(), app.auth_origin())
             .jwks(now)
             .await;
     }

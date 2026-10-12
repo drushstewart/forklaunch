@@ -18,6 +18,8 @@ mod accept;
 
 pub(super) struct Settings {
     base: String,
+    auth_base: String,
+    auth_path: String,
     policy: Arc<OriginPolicy>,
     cookie: SessionCookie,
 }
@@ -27,9 +29,11 @@ struct Redirects {
     raw: Router,
 }
 impl Settings {
-    pub(super) fn new<S: AuthStore>(auth: &AuthHttp<S>) -> Self {
+    pub(super) fn new<S: AuthStore + 'static>(auth: &AuthHttp<S>) -> Self {
         Self {
             base: auth.base_url.clone(),
+            auth_base: auth.auth_base_url().trim_end_matches('/').to_owned(),
+            auth_path: auth.auth_base_path(),
             policy: auth.policy.clone(),
             cookie: auth.cookie,
         }
@@ -56,13 +60,6 @@ impl Settings {
             && callback.password().is_none()
             && self.policy.trusted(callback.as_str(), false))
         .then_some(callback)
-    }
-    fn origin(&self) -> String {
-        // The constructor validates a concrete HTTP(S) base origin.
-        Url::parse(&self.base)
-            .expect("validated auth base")
-            .origin()
-            .ascii_serialization()
     }
 }
 fn query(request: &Request) -> HashMap<String, Value> {
@@ -95,13 +92,13 @@ async fn oauth(State(state): State<Redirects>, request: Request) -> Response {
     };
     let sso = query.get("endpoint").and_then(Value::as_str) == Some("sso");
     let endpoint = if sso {
-        "/api/auth/sign-in/sso"
+        format!("{}/sign-in/sso", state.settings.auth_path)
     } else {
-        "/api/auth/sign-in/social"
+        format!("{}/sign-in/social", state.settings.auth_path)
     };
     let intermediate = format!(
-        "{}/api/auth/test-callback?callbackUrl={}",
-        state.settings.origin(),
+        "{}/test-callback?callbackUrl={}",
+        state.settings.auth_base,
         encode_component(callback.as_str())
     );
     let body = if sso {

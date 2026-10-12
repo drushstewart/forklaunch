@@ -46,7 +46,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let auth_secret = env::var("BETTER_AUTH_SECRET").map_err(|_| "BETTER_AUTH_SECRET is required")?;
     let trusted = env::var("CORS_ORIGINS").unwrap_or_default().split(',')
         .map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned).collect();
-    let mut application = AuthHttp::new(store, base_url.clone(), auth_secret.into_bytes(), trusted)?;
+    let mut application = AuthHttp::new(store, base_url.clone(), auth_secret.into_bytes(), trusted)?
+        .with_base_path(env::var("BETTER_AUTH_BASE_PATH").unwrap_or_else(|_| "/api/auth".into()))?;
     let google_id = env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
     let google_secret = env::var("GOOGLE_CLIENT_SECRET").unwrap_or_default();
     if !google_id.is_empty() || !google_secret.is_empty() {
@@ -54,15 +55,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let secret = env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?;
     let jwks = RemoteJwks::new(RemoteJwksConfig::new(
-        env::var("JWKS_PUBLIC_KEY_URL").unwrap_or_else(|_| format!("{}/api/auth/jwks", base_url.trim_end_matches('/'))),
+        env::var("JWKS_PUBLIC_KEY_URL").unwrap_or_else(|_| format!("{}/jwks", application.auth_base_url().trim_end_matches('/'))),
     ))?;
     let mut validation = Validation::new(Algorithm::RS256);
     validation.algorithms = vec![Algorithm::RS256, Algorithm::RS384, Algorithm::RS512,
         Algorithm::PS256, Algorithm::PS384, Algorithm::PS512, Algorithm::ES256, Algorithm::ES384, Algorithm::EdDSA];
     validation.validate_nbf = true;
     validation.leeway = 0;
-    validation.set_issuer(&[base_url.as_str()]);
-    validation.set_audience(&[base_url.as_str()]);
+    let issuer = application.auth_origin();
+    validation.set_issuer(&[issuer.as_str()]);
+    validation.set_audience(&[issuer.as_str()]);
     if let Ok(issuer) = env::var("JWT_ISSUER") { validation.set_issuer(&[issuer]); }
     if let Ok(audience) = env::var("JWT_AUDIENCE") { validation.validate_aud = true; validation.set_audience(&[audience]); }
     let auth = HmacJwksAuth::new(secret.into_bytes(), jwks, validation)?;

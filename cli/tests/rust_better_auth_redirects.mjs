@@ -31,11 +31,25 @@ globalThis.Date = class extends RealDate {
 };
 let checks = 0;
 try {
-  for (const baseURL of [
-    'http://localhost:3000',
-    'https://auth.example.test'
+  for (const { baseURL, basePath } of [
+    { baseURL: 'http://localhost:3000', basePath: '/api/auth' },
+    { baseURL: 'https://auth.example.test', basePath: '/api/auth' },
+    { baseURL: 'http://localhost:3000', basePath: '/identity/login' },
+    { baseURL: 'https://auth.example.test', basePath: 'identity/login' },
+    { baseURL: 'https://auth.example.test/custom/auth', basePath: '/ignored' },
+    { baseURL: 'http://localhost:3000/custom/auth/', basePath: '/ignored' },
+    { baseURL: 'https://auth.example.test/', basePath: '/login/' }
   ]) {
-    const reference = await betterAuthReference(root, { baseURL });
+    const reference = await betterAuthReference(root, {
+      baseURL,
+      basePath,
+      google: true
+    });
+    const authContext = await reference.auth.$context;
+    const effectivePath = new URL(authContext.baseURL).pathname.replace(
+      /\/+$/,
+      ''
+    );
     const loaded = await betterAuthServer(root, reference);
     const app = express();
     for (const [route, handler] of loaded.routes)
@@ -50,10 +64,12 @@ try {
       env: {
         FORKLAUNCH_AUTH_POPUP_HELPERS: 'true',
         FORKLAUNCH_AUTH_BASE_URL: baseURL,
+        FORKLAUNCH_AUTH_BASE_PATH: basePath,
+        FORKLAUNCH_GOOGLE_CERTIFICATES_URL: 'http://127.0.0.1:1/certs',
         NODE_ENV: 'development'
       }
     });
-    const native = (input) => bridge.native({ now, ...input });
+    const native = (input) => bridge.native({ now, headers: {}, ...input });
     async function compare(
       route,
       search,
@@ -62,7 +78,7 @@ try {
       signed = false
     ) {
       const expected = await fetch(
-        `http://127.0.0.1:${server.address().port}/api/auth/${route}${search}`,
+        `http://127.0.0.1:${server.address().port}${effectivePath}/${route}${search}`,
         {
           method,
           headers,
@@ -143,6 +159,64 @@ try {
       return actual;
     }
     try {
+      const schema = await native({
+        op: 'request',
+        method: 'GET',
+        path: '/open-api/generate-schema'
+      });
+      assert.equal(schema.status, 200);
+      assert.deepEqual(
+        schema.body,
+        JSON.parse(
+          JSON.stringify(await reference.auth.api.generateOpenAPISchema())
+        )
+      );
+      checks++;
+      const expected = await reference
+        .client()
+        .call('/sign-in/social', { provider: 'google', disableRedirect: true });
+      const actual = await native({
+        op: 'request',
+        method: 'POST',
+        path: '/sign-in/social',
+        headers: {
+          origin: new URL(baseURL).origin,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ provider: 'google', disableRedirect: true })
+      });
+      assert.equal(expected.status, 200);
+      assert.equal(actual.status, 200);
+      const nativeURL = new URL(actual.body.url),
+        referenceURL = new URL(expected.body.url);
+      for (const key of ['state', 'code_challenge']) {
+        assert.ok(nativeURL.searchParams.get(key));
+        assert.ok(referenceURL.searchParams.get(key));
+        nativeURL.searchParams.delete(key);
+        referenceURL.searchParams.delete(key);
+      }
+      assert.equal(nativeURL.href, referenceURL.href);
+      assert.equal(
+        nativeURL.searchParams.get('redirect_uri'),
+        `${authContext.baseURL}/callback/google`
+      );
+      checks++;
+      const reset = await reference
+        .client()
+        .call('/reset-password/missing?callbackURL=', undefined, {
+          method: 'GET'
+        });
+      const nativeReset = await native({
+        op: 'request',
+        method: 'GET',
+        path: '/reset-password/missing?callbackURL='
+      });
+      assert.equal(nativeReset.status, reset.status);
+      assert.equal(
+        nativeReset.headers.location?.[0] ?? null,
+        reset.headers.get('location')
+      );
+      checks++;
       for (const route of ['test-callback', 'oauth-redirect']) {
         const key = route === 'test-callback' ? 'callbackUrl' : 'callbackURL';
         await compare(route, '');
@@ -285,5 +359,5 @@ try {
   globalThis.Date = RealDate;
 }
 console.log(
-  `PASS ${checks} actual Express/TS popup helper wire comparisons: origins, token/session exchange, secure cookie clearing, script escaping, duplicate queries, Accept negotiation and HEAD`
+  `PASS ${checks} actual Express/TS base-path, OpenAPI, Google/reset callback and popup helper wire comparisons: origins, token/session exchange, secure cookie clearing, script escaping, duplicate queries, Accept negotiation and HEAD`
 );

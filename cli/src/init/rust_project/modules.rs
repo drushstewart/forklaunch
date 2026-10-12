@@ -581,6 +581,7 @@ fn ensure_iam_compose(root: &Path, name: &str, kind: BuiltinModule, dryrun: bool
     if kind == BuiltinModule::IamBetterAuth {
         for (key, value) in [
             ("BETTER_AUTH_URL", "${IAM_BETTER_AUTH_URL:?Configure the public authentication origin}"),
+            ("BETTER_AUTH_BASE_PATH", "${IAM_BETTER_AUTH_BASE_PATH:-/api/auth}"),
             ("BETTER_AUTH_SECRET", "${IAM_BETTER_AUTH_SECRET:?Configure a 32-byte authentication secret}"),
             ("CORS_ORIGINS", "${CORS_ORIGINS:-}"),
             ("GOOGLE_CLIENT_ID", "${GOOGLE_CLIENT_ID:-}"),

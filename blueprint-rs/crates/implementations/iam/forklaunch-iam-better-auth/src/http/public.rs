@@ -147,7 +147,7 @@ pub(super) async fn reference() -> Response {
 pub(super) async fn schema<S: AuthStore + 'static>(
     State(app): State<Arc<AuthHttp<S>>>,
 ) -> Response {
-    let schema = openapi_schema(&app.base_url);
+    let schema = openapi_schema(&app.auth_base_url());
     (
         [(header::CONTENT_TYPE, "application/json")],
         crate::ecmascript::stringify(&schema),
@@ -156,9 +156,9 @@ pub(super) async fn schema<S: AuthStore + 'static>(
 }
 
 /// Fixed preset schema shared by the raw endpoint and the application's docs.
-pub(super) fn openapi_schema(base_url: &str) -> Value {
+pub(super) fn openapi_schema(auth_base_url: &str) -> Value {
     let mut schema: Value = serde_json::from_str(include_str!("assets/openapi.json"))
         .expect("embedded configured auth contract is valid JSON");
-    schema["servers"] = json!([{ "url": format!("{}/api/auth", base_url.trim_end_matches('/')) }]);
+    schema["servers"] = json!([{ "url": auth_base_url }]);
     schema
 }

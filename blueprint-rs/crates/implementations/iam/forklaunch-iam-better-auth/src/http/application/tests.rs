@@ -11,6 +11,64 @@ use forklaunch_auth::{
 const SECRET: &[u8] = b"application-http-test-secret-32-characters";
 const USER: &str = "11000000-0000-4000-8000-000000000001";
 
+#[test]
+fn trusted_auth_namespaces_reject_unsafe_mounts_and_mcp_collisions() {
+    for path in [
+        "",
+        "/",
+        "/auth/{id}",
+        "/auth/*",
+        "/auth?x=1",
+        "/auth#fragment",
+        "/auth%2Fadmin",
+        "/auth\\admin",
+        "/auth/../admin",
+        "/auth\nadmin",
+    ] {
+        let app = AuthHttp::new(
+            Arc::new(MemoryAuthStore::default()),
+            "https://auth.example.test".into(),
+            SECRET.to_vec(),
+            vec![],
+        )
+        .unwrap();
+        assert!(app.with_base_path(path).is_err(), "{path:?}");
+    }
+    let app = AuthHttp::new(
+        Arc::new(MemoryAuthStore::default()),
+        "https://auth.example.test/custom/auth".into(),
+        SECRET.to_vec(),
+        vec![],
+    )
+    .unwrap()
+    .with_base_path("/ignored")
+    .unwrap();
+    assert_eq!(app.auth_base_url(), "https://auth.example.test/custom/auth");
+    assert_eq!(app.auth_base_path(), "/custom/auth");
+    assert_eq!(app.auth_origin(), "https://auth.example.test");
+    let app = AuthHttp::new(
+        Arc::new(MemoryAuthStore::default()),
+        "https://auth.example.test".into(),
+        SECRET.to_vec(),
+        vec![],
+    )
+    .unwrap()
+    .with_base_path("/mcp")
+    .unwrap();
+    let validation = Validation::new(Algorithm::EdDSA);
+    let auth = HmacJwksAuth::new(
+        SECRET.to_vec(),
+        RemoteJwks::new(RemoteJwksConfig::new("https://auth.example.test/mcp/jwks")).unwrap(),
+        validation,
+    )
+    .unwrap();
+    assert!(
+        app.application_router(auth, ServiceInfo::new("collision", "1"))
+            .into_router_with_default_mcp()
+            .is_err()
+    );
+}
+
 fn signed(path: &str) -> String {
     generate_hmac_auth_header(
         SECRET,
@@ -39,6 +97,22 @@ async fn rpc(client: &reqwest::Client, base: &str, method: &str, params: Value) 
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
+    for (base_path, url_path) in [
+        ("/api/auth", ""),
+        ("/identity/login", ""),
+        ("/ignored", "/custom/auth"),
+    ] {
+        application_surfaces(base_path, url_path).await;
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+async fn application_surfaces(base_path: &str, url_path: &str) {
+    let auth_path = if url_path.is_empty() {
+        base_path
+    } else {
+        url_path
+    };
     let now = Utc::now();
     let store = Arc::new(MemoryAuthStore::default());
     let mut tx = store.begin(true).await.unwrap();
@@ -74,15 +148,22 @@ async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
     validation.set_audience(&[base.as_str()]);
     let policy = HmacJwksAuth::new(
         SECRET.to_vec(),
-        RemoteJwks::new(RemoteJwksConfig::new(format!("{base}/api/auth/jwks"))).unwrap(),
+        RemoteJwks::new(RemoteJwksConfig::new(format!("{base}{auth_path}/jwks"))).unwrap(),
         validation,
     )
     .unwrap();
-    let app = AuthHttp::new(store.clone(), base.clone(), SECRET.to_vec(), vec![])
-        .unwrap()
-        .application_router(policy, ServiceInfo::new("better-auth-application", "1.0"))
-        .into_router_with_default_mcp()
-        .unwrap();
+    let app = AuthHttp::new(
+        store.clone(),
+        format!("{base}{url_path}"),
+        SECRET.to_vec(),
+        vec![],
+    )
+    .unwrap()
+    .with_base_path(base_path)
+    .unwrap()
+    .application_router(policy, ServiceInfo::new("better-auth-application", "1.0"))
+    .into_router_with_default_mcp()
+    .unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let server = tokio::spawn(async move {
         axum::serve(listener, app)
@@ -105,7 +186,9 @@ async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
         .build()
         .unwrap();
     let popup = browser
-        .get(format!("{base}/api/auth/test-callback?callbackUrl=%2Fdone"))
+        .get(format!(
+            "{base}{auth_path}/test-callback?callbackUrl=%2Fdone"
+        ))
         .send()
         .await
         .unwrap();
@@ -120,7 +203,7 @@ async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
     );
     let page = client
         .get(format!(
-            "{base}/api/auth/oauth-redirect?callbackURL=%2Fdone&provider=google"
+            "{base}{auth_path}/oauth-redirect?callbackURL=%2Fdone&provider=google"
         ))
         .send()
         .await
@@ -299,7 +382,7 @@ async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
     );
     assert_eq!(
         client
-            .get(format!("{base}/api/auth/ok"))
+            .get(format!("{base}{auth_path}/ok"))
             .send()
             .await
             .unwrap()
@@ -333,7 +416,7 @@ async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
         json!({"title":"API Reference","url":"/openapi.json"})
     );
     let raw_schema = client
-        .get(format!("{base}/api/auth/open-api/generate-schema"))
+        .get(format!("{base}{auth_path}/open-api/generate-schema"))
         .send()
         .await
         .unwrap()

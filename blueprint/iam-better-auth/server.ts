@@ -28,11 +28,17 @@ const app = forklaunchExpress(
   await ci.resolve(tokens.ExpressApplicationOptions)
 );
 
+//! Use the resolved URL: Better Auth lets a base URL path override basePath.
+const resolvedAuth = ci.resolve(tokens.BetterAuth) as BetterAuth;
+const resolvedAuthContext = await resolvedAuth.$context;
+const authBaseURL = resolvedAuthContext.baseURL.replace(/\/+$/, '');
+const authBasePath = new URL(authBaseURL).pathname.replace(/\/+$/, '');
+
 //! Cookie-less test-auth callback: extracts tokens from the session cookie set by
 //! better-auth during OAuth/magic-link, clears the cookie, and passes tokens via
 //! URL hash to the final callback page. This prevents the test flow from overwriting
 //! the main app's session cookie.
-app.internal.get('/api/auth/test-callback', async (req, res) => {
+app.internal.get(`${authBasePath}/test-callback`, async (req, res) => {
   const callbackUrl = String(req.query.callbackUrl || '');
   if (!callbackUrl) {
     res.status(400).send('Missing callbackUrl');
@@ -47,12 +53,11 @@ app.internal.get('/api/auth/test-callback', async (req, res) => {
     return;
   }
   const cookie = req.headers.cookie || '';
-  const origin = new URL(authContext.baseURL).origin;
 
   try {
     const [tokenRes, sessionRes] = await Promise.all([
-      fetch(`${origin}/api/auth/token`, { headers: { cookie } }),
-      fetch(`${origin}/api/auth/get-session`, { headers: { cookie } })
+      fetch(`${authBaseURL}/token`, { headers: { cookie } }),
+      fetch(`${authBaseURL}/get-session`, { headers: { cookie } })
     ]);
 
     let token = '',
@@ -95,7 +100,7 @@ app.internal.get('/api/auth/test-callback', async (req, res) => {
 });
 
 //! serves a redirect page for OAuth popup flows (must be before the catch-all)
-app.internal.get('/api/auth/oauth-redirect', async (req, res) => {
+app.internal.get(`${authBasePath}/oauth-redirect`, async (req, res) => {
   const provider = String(req.query.provider || '');
   const callbackURL = String(req.query.callbackURL || '');
   const authContext = await (ci.resolve(tokens.BetterAuth) as BetterAuth)
@@ -108,11 +113,10 @@ app.internal.get('/api/auth/oauth-redirect', async (req, res) => {
   const organizationId = String(req.query.organizationId || '');
   const endpoint =
     req.query.endpoint === 'sso'
-      ? '/api/auth/sign-in/sso'
-      : '/api/auth/sign-in/social';
+      ? `${authBasePath}/sign-in/sso`
+      : `${authBasePath}/sign-in/social`;
 
-  const origin = new URL(authContext.baseURL).origin;
-  const intermediateCallbackURL = `${origin}/api/auth/test-callback?callbackUrl=${encodeURIComponent(callback.href)}`;
+  const intermediateCallbackURL = `${authBaseURL}/test-callback?callbackUrl=${encodeURIComponent(callback.href)}`;
 
   const body =
     req.query.endpoint === 'sso'
@@ -136,7 +140,7 @@ app.internal.get('/api/auth/oauth-redirect', async (req, res) => {
 
 //! registers the betterAuth middleware
 app.internal.all(
-  '/api/auth/{*any}',
+  `${authBasePath}/{*any}`,
   betterAuthTelemetryHookMiddleware,
   enrichBetterAuthApi(ci.resolve(tokens.BetterAuth) as BetterAuth)
 );

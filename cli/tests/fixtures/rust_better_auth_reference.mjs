@@ -106,7 +106,7 @@ export async function betterAuthReference(root, options = {}) {
   const config = load(
     path.join(root, 'blueprint/iam-better-auth/auth.ts'),
   ).betterAuthConfig({
-    BETTER_AUTH_BASE_PATH: '/api/auth',
+    BETTER_AUTH_BASE_PATH: options.basePath ?? '/api/auth',
     CORS_ORIGINS: [baseURL],
     orm: options.orm ?? {},
     openTelemetryCollector: {
@@ -179,10 +179,10 @@ export async function betterAuthReference(root, options = {}) {
       cookies,
       async call(endpoint, body, request = {}) {
         const response = await auth.handler(
-          new Request(`${baseURL}/api/auth${endpoint}`, {
+          new Request(`${(await auth.$context).baseURL.replace(/\/+$/, '')}${endpoint}`, {
             method: request.method ?? (body === undefined ? 'GET' : 'POST'),
             headers: {
-              origin: baseURL,
+              origin: new URL(baseURL).origin,
               'content-type': 'application/json',
               cookie: [...cookies]
                 .map(([name, value]) => `${name}=${value}`)

@@ -7,7 +7,8 @@ The `application-http` feature adds the five configured HTTP/MCP application
 contracts. CLI generation accepts `--module iam-better-auth` for native Rust.
 The application feature includes the two custom internal popup helpers.
 Scalar docs include both application contracts and the complete BetterAuth API.
-Complete ORM/hooks and broader nondefault options remain parity work. The sections below retain
+Fixed non-root auth namespaces are configurable. Root/dynamic/encoded namespaces,
+complete ORM/hooks and broader nondefault options remain parity work. The sections below retain
 validation history; the latest entries describe current coverage.
 
 Generate a native application with this preset:
@@ -646,3 +647,24 @@ MCP discovery. All 27 auth tests, 38 framework tests, strict all-feature/all-tar
 clippy for both crates, generated HTTP/MCP/SDK/restart/rename/delete checks and
 751 packaged sources pass. Nondefault base paths, complete ORM/hooks/client
 integration and broader custom options remain open.
+
+### Configurable non-root authentication namespaces
+
+`AuthHttp::with_base_path` and generated `BETTER_AUTH_BASE_PATH` configure a fixed
+non-root namespace; a path already present in `BETTER_AUTH_URL` takes precedence.
+Raw routes, both popup helpers, Google/reset callbacks, docs and the generated
+default JWKS URL use that resolution. JWT issuer/audience use the canonical
+origin, matching Better Auth's normalized options. Unsafe namespaces and MCP
+collisions fail before service startup. The actual TS server helpers now use
+resolved auth URLs, and its configured Google callback no longer concatenates
+an ignored base path or omits a slash for relative base-path settings.
+
+All 343 actual Express/TS/schema/provider comparisons pass across seven
+HTTP/HTTPS/default/custom/trailing-slash/URL-override configurations. The full
+application HTTP/MCP authentication/compliance test runs under three namespaces.
+A fresh generated PostgreSQL service passes custom-path separate MCP, URL-path
+override on persisted-session restart, disabled MCP, default self-JWKS without
+an override, SDKs and rename/delete. All 28 native tests, 1,016 CLI tests, strict
+clippy, 161 raw HTTP regressions, 40 existing callbacks, 12 Scalar comparisons
+and 751 packaged sources pass. Root/dynamic/encoded namespaces, full ORM/hooks/
+client integration and broader custom options remain open.

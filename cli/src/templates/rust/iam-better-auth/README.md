@@ -2,7 +2,9 @@
 
 Native Better Auth with encrypted tenant-bound PostgreSQL, cookie sessions,
 credentials, Google OAuth, organizations, teams, roles and permissions. The 70
-configured raw auth routes live under `/api/auth`. Five application contracts
+configured raw auth routes default to `/api/auth`. Set `BETTER_AUTH_BASE_PATH`
+to a fixed non-root namespace; a path already present in `BETTER_AUTH_URL` takes
+precedence. Five application contracts
 provide public discovery, HMAC role/permission surfacing and system-role JWT
 compliance export/erasure through HTTP and MCP.
 
@@ -18,7 +20,8 @@ on its `records`, `unique_claims` and `audit` tables, and USAGE on
 SUPERUSER nor BYPASSRLS. Export the settings in `.env.example` before running
 `cargo run -p {{{name}}}`. Set `BETTER_AUTH_URL` to the public origin; configure
 Google credentials as a pair when enabling Google. JWKS verification defaults
-to this service's `/api/auth/jwks`, with issuer and audience equal to the base URL.
+to this service's effective auth namespace plus `/jwks`, with JWT issuer and
+audience equal to the canonical configured origin.
 
 `GET /discovery/auth-methods`, `/openapi.json` and `/docs` are public. Scalar docs
 include the application API and the complete BetterAuth API as separate sources.
@@ -33,11 +36,11 @@ HTTP and MCP share the listener by default. Set `MCP_ENABLED=false` to disable
 MCP, or use `MCP_LISTENER=separate` and `MCP_PORT` for another listener. Set
 `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.
 
-The internal `/api/auth/test-callback` exchanges a signed session cookie for
+The internal `<auth-base-path>/test-callback` exchanges a signed session cookie for
 JWT/session/email fragment values and clears only the configured session cookie.
-`/api/auth/oauth-redirect` emits the script-safe OAuth/SSO popup page. Both validate
+`<auth-base-path>/oauth-redirect` emits the script-safe OAuth/SSO popup page. Both validate
 callback destinations against the configured trusted origins.
 
-This scaffold serves one trusted configured tenant. Nondefault auth base paths,
-complete ORM/hooks and broader custom
+This scaffold serves one trusted configured tenant. Root, parameterized and
+percent-encoded auth namespaces, complete ORM/hooks and broader custom
 Better Auth options remain parity work.

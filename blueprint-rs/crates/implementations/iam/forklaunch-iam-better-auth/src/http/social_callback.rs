@@ -53,7 +53,7 @@ async fn handle<S: AuthStore + 'static>(
 ) -> BlueprintResult<String> {
     let (parts, body) = request.into_parts();
     let query = super::request::parse_query(parts.uri.query().unwrap_or(""));
-    let base = auth_base(app)?;
+    let base = auth_base(app);
     let default_error = format!("{base}/error");
     if parts.method == Method::POST {
         let payload =
@@ -232,12 +232,8 @@ fn validate(value: Option<&Value>, prefix: &str) -> BlueprintResult<()> {
 fn string<'a>(query: &'a HashMap<String, Value>, field: &str) -> &'a str {
     query.get(field).and_then(Value::as_str).unwrap_or("")
 }
-pub(super) fn auth_base<S>(app: &AuthHttp<S>) -> BlueprintResult<String> {
-    let mut base = url::Url::parse(&app.base_url).map_err(|_| internal())?;
-    if base.path().trim_matches('/').is_empty() {
-        base.set_path("/api/auth");
-    }
-    Ok(base.to_string().trim_end_matches('/').to_owned())
+pub(super) fn auth_base<S: AuthStore + 'static>(app: &AuthHttp<S>) -> String {
+    app.auth_base_url()
 }
 fn with_error(destination: &str, code: &str, description: Option<&str>) -> BlueprintResult<String> {
     let relative = destination.starts_with('/');

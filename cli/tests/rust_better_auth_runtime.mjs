@@ -30,11 +30,18 @@ const inherited = Object.fromEntries(
         'JWT_AUDIENCE',
         'JWKS_PUBLIC_KEY_URL',
         'GOOGLE_CLIENT_ID',
-        'GOOGLE_CLIENT_SECRET'
+        'GOOGLE_CLIENT_SECRET',
+        'BETTER_AUTH_BASE_PATH'
       ].includes(key)
   )
 );
 async function start(tenant, overrides = {}) {
+  const configuredURL = overrides.BETTER_AUTH_URL ?? origin;
+  const configuredPath = overrides.BETTER_AUTH_BASE_PATH ?? '/api/auth';
+  const base = new URL(configuredURL);
+  const authPath =
+    base.pathname.replace(/\/+$/, '') ||
+    `/${configuredPath.replace(/^\/+|\/+$/g, '')}`;
   const child = spawn(binary, [], {
     env: {
       ...inherited,
@@ -44,6 +51,7 @@ async function start(tenant, overrides = {}) {
       HMAC_SECRET_KEY: secret,
       JWKS_PUBLIC_KEY_URL: `http://127.0.0.1:${jwksServer.address().port}/jwks`,
       BETTER_AUTH_URL: origin,
+      BETTER_AUTH_BASE_PATH: '/api/auth',
       BETTER_AUTH_SECRET: 'generated-auth-cookie-fixture-secret-32-characters',
       HOST: '127.0.0.1',
       SERVICE_PORT: '0',
@@ -89,6 +97,7 @@ async function start(tenant, overrides = {}) {
           return {
             ...process,
             base,
+            authPath,
             mcp:
               stdout.match(/^MCP listening on (http:\/\/[^\s]+)/m)?.[1] ?? base
           };
@@ -142,6 +151,7 @@ async function call(base, path, options = {}, status = 200) {
 try {
   const first = await start('a');
   const second = await start('b', {
+    BETTER_AUTH_BASE_PATH: '/identity/login',
     MCP_LISTENER: 'separate',
     MCP_PORT: '0',
     MCP_PATH: '/tools'
@@ -162,14 +172,14 @@ try {
     assert.deepEqual(config.sources[1], {
       title: 'BetterAuth',
       content: await (
-        await call(service.base, '/api/auth/open-api/generate-schema')
+        await call(service.base, `${service.authPath}/open-api/generate-schema`)
       ).json()
     });
     assert.equal(config.sources.length, 2);
     assert.ok(config.sources[1].content.paths['/get-session']);
     assert.equal(
       config.sources[1].content.servers[0].url,
-      `${origin}/api/auth`
+      `${origin}${service.authPath}`
     );
     const application = await (
       await call(service.base, config.sources[0].url)
@@ -272,7 +282,9 @@ try {
   );
   assert.equal(
     await (
-      await call(second.base, '/api/auth/get-session', { headers: { cookie } })
+      await call(second.base, `${second.authPath}/get-session`, {
+        headers: { cookie }
+      })
     ).json(),
     null
   );
@@ -317,11 +329,31 @@ try {
     );
   }
   await stop(first);
-  const restarted = await start('a', { MCP_ENABLED: 'false' });
+  const restarted = await start('a', {
+    MCP_ENABLED: 'false',
+    BETTER_AUTH_URL: `${origin}/custom/auth`,
+    BETTER_AUTH_BASE_PATH: '/ignored'
+  });
+  assert.equal(restarted.authPath, '/custom/auth');
+  await call(second.base, '/api/auth/ok', {}, 404);
+  await call(restarted.base, '/api/auth/ok', {}, 404);
+  await call(restarted.base, '/ignored/ok', {}, 404);
+  const restartSchema = await (
+    await call(restarted.base, `${restarted.authPath}/open-api/generate-schema`)
+  ).json();
+  assert.equal(restartSchema.servers[0].url, `${origin}/custom/auth`);
+  const restartPage = await (
+    await call(
+      restarted.base,
+      `${restarted.authPath}/oauth-redirect?callbackURL=%2Fpopup&provider=google`
+    )
+  ).text();
+  assert.match(restartPage, /\/custom\/auth\/sign-in\/social/);
+  assert.match(restartPage, /\/custom\/auth\/test-callback/);
   assert.equal(
     (
       await (
-        await call(restarted.base, '/api/auth/get-session', {
+        await call(restarted.base, `${restarted.authPath}/get-session`, {
           headers: { cookie }
         })
       ).json()
@@ -339,9 +371,41 @@ try {
     404
   );
   await stop(restarted);
+  const ownOrigin = restarted.base;
+  const ownJwks = await start('a', {
+    MCP_ENABLED: 'false',
+    SERVICE_PORT: new URL(ownOrigin).port,
+    BETTER_AUTH_URL: `${ownOrigin}/default/keys`,
+    BETTER_AUTH_BASE_PATH: '/ignored',
+    JWKS_PUBLIC_KEY_URL: undefined
+  });
+  const ownSession = await call(
+    ownJwks.base,
+    `${ownJwks.authPath}/get-session`,
+    { headers: { cookie } }
+  );
+  assert.equal((await ownSession.json()).user.id, identity.user.id);
+  const ownToken = ownSession.headers.get('set-auth-jwt');
+  const ownClaims = JSON.parse(
+    Buffer.from(ownToken.split('.')[1], 'base64url')
+  );
+  assert.equal(ownClaims.iss, ownOrigin);
+  assert.equal(ownClaims.aud, ownOrigin);
+  await call(
+    ownJwks.base,
+    '/compliance/export/unknown',
+    { headers: { authorization: `Bearer ${ownToken}` } },
+    403
+  );
+  assert.deepEqual(
+    await (await call(ownJwks.base, `${ownJwks.authPath}/jwks`)).json(),
+    jwks
+  );
+  await call(ownJwks.base, '/ignored/jwks', {}, 404);
+  await stop(ownJwks);
   await stop(second);
   console.log(
-    'PASS generated Better Auth HTTP/MCP shared/separate/disabled listeners, SDK discovery, encrypted tenant sessions, independent JWT verification, HMAC tools, role denial, restart and shutdown'
+    'PASS generated Better Auth HTTP/MCP shared/separate/disabled listeners, SDK discovery, custom auth paths and URL overrides, encrypted tenant sessions, independent JWT verification, default self-JWKS, HMAC tools, role denial, restart and shutdown'
   );
 } finally {
   for (const process of processes)
