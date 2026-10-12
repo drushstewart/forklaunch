@@ -524,7 +524,9 @@ fn export_rust_service_artifacts(
 
     let cargo = resolve_command("cargo");
     let mut child = ProcessCommand::new(&cargo)
-        .args(["run", "-p", service_name, "--quiet"])
+        .args(["run", "--manifest-path"])
+        .arg(crate_path.join("Cargo.toml"))
+        .arg("--quiet")
         .current_dir(app_root)
         .env("FORKLAUNCH_MODE", "contract")
         .env("FORKLAUNCH_OPENAPI_OUTPUT", openapi_output)
@@ -956,5 +958,69 @@ mod socket_export_tests {
             );
         }
         assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+    }
+}
+
+#[cfg(test)]
+mod native_package_tests {
+    use super::*;
+
+    #[test]
+    fn exports_registered_crate_with_different_package_and_default_binary_names() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let crate_path = root.join("custom/native api");
+        fs::create_dir_all(crate_path.join("src")).unwrap();
+        fs::create_dir_all(root.join(".forklaunch")).unwrap();
+        fs::write(
+            crate_path.join("Cargo.toml"),
+            r#"[package]
+name = "custom-native-package"
+version = "0.0.0"
+edition = "2024"
+default-run = "custom-server"
+[[bin]]
+name = "custom-server"
+path = "src/main.rs"
+[[bin]]
+name = "admin-tool"
+path = "src/admin.rs"
+[workspace]
+"#,
+        )
+        .unwrap();
+        fs::write(crate_path.join("src/main.rs"), r#"fn main() {
+    assert_eq!(std::env::var("FORKLAUNCH_MODE").unwrap(), "contract");
+    std::fs::write(std::env::var("FORKLAUNCH_OPENAPI_OUTPUT").unwrap(), "{\"openapi\":\"3.1.0\"}").unwrap();
+    std::fs::write(std::env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap(), "{\"generator\":\"framework-rs\",\"routes\":[]}").unwrap();
+}"#).unwrap();
+        fs::write(
+            crate_path.join("src/admin.rs"),
+            "fn main() { panic!(\"wrong binary\"); }",
+        )
+        .unwrap();
+        fs::write(
+            root.join(".forklaunch/manifest.toml"),
+            r#"[[projects]]
+name = "registered-service"
+type = "Service"
+[projects.metadata]
+language = "rust"
+cratePath = "custom/native api"
+contractArtifactPath = "custom/contracts/native.json"
+openapiPath = "custom/specs/native.json"
+"#,
+        )
+        .unwrap();
+        let output = root.join("exported");
+        assert_eq!(
+            export_all_rust_services(root, &output).unwrap(),
+            ["registered-service"]
+        );
+        assert_eq!(
+            fs::read(root.join("custom/specs/native.json")).unwrap(),
+            fs::read(output.join("registered-service/openapi.json")).unwrap()
+        );
+        assert!(root.join("custom/contracts/native.json").is_file());
     }
 }

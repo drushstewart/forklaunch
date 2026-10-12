@@ -1356,3 +1356,14 @@ other account/session/member scans and general indexed pagination remain open.
   dev`, including custom artifact paths and mixed-runtime restart handling. Existing
   live HTTP/MCP development validation remains recorded above; this checkpoint
   changes generation/watch behavior and does not claim a new startup validation.
+
+### Native export package selection (2026-10-12)
+
+- [x] Native contract export now invokes Cargo using the registered crate's manifest,
+  honoring custom crate paths, package names and Cargo `default-run` selection rather
+  than assuming that the service registration name is also the package name.
+- Validation: 1,064 CLI tests pass. The new regression compiles and executes a real
+  dependency-free Cargo package in a path containing spaces, with a different package
+  name, two binaries and a default binary; it verifies custom contract and OpenAPI
+  outputs and the requested export copy. The CLI rebuild passes with both this
+  change and the SDK regeneration stability changes.
