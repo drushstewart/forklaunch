@@ -73,4 +73,13 @@ pub(super) async fn exercise<S: AuthStore>(
     let mut tx = store.begin(false).await.unwrap();
     assert!(tx.get(Model::OrganizationRole, id).await.unwrap().is_none());
     tx.commit().await.unwrap();
+    for route in ["sign-jwt", "verify-jwt"] {
+        let response = client
+            .post(format!("{base}/api/auth/{route}"))
+            .json(&json!({}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
 }

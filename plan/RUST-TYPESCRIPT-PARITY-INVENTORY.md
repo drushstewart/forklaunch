@@ -615,3 +615,15 @@ services/all four worker backends, CLI/native SDK targets and all five capabilit
 callbacks. This archive includes sixty raw auth routes and the two completed
 server-only helpers, including the configured invitation/dynamic-role lifecycle.
 Remaining provider/helper/ORM/callback/shared-parser/full-preset gates stay open.
+
+The configured server-only verifyJWT helper now supports persisted Ed25519 keys
+with EdDSA/Ed25519 token aliases and issuer overrides. All 159 actual API and 144
+key-store comparisons pass: optional claims, numeric/expiry boundaries, audience/
+subject truthiness, critical headers, compact encoding, JWK metadata/import rules,
+retired keys and first-100 key selection. Invalid tokens/storage/key metadata
+return null without minting keys or reading private material. Memory/restricted
+PostgreSQL verify restart/retirement and corrupt-private-key independence; live
+HTTP confirms signing/verifying helper paths remain absent beside JWT/MCP. Three
+of four configured server helpers now have native implementations. Signing,
+additional-algorithm provisioning/interop, providers, real ORM/callback, shared
+parser and full-preset generation remain open.

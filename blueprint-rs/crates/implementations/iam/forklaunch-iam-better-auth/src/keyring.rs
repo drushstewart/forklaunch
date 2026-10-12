@@ -15,6 +15,7 @@ use zeroize::Zeroizing;
 
 #[cfg(test)]
 pub(crate) mod tests;
+mod verify;
 
 /// All private key records pass through the store's encrypted persistence.
 /// Production uses `PostgresAuthStore`; memory stores are reference/test backends.
