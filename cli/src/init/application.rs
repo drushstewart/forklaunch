@@ -972,6 +972,13 @@ impl CliCommand for ApplicationCommand {
 
         for template_dir in template_dirs {
             let mut service_data = ServiceManifestData {
+                language: data.language.clone(),
+                application_language: data.application_language.clone(),
+                sdk_targets: data.sdk_targets.clone(),
+                cargo_workspace: data.cargo_workspace.clone(),
+                contract_artifact_path: data.contract_artifact_path.clone(),
+                openapi_path: data.openapi_path.clone(),
+                asyncapi_path: data.asyncapi_path.clone(),
                 id: data.id.clone(),
                 cli_version: data.cli_version.clone(),
                 app_name: data.app_name.clone(),

@@ -1076,3 +1076,17 @@ success/error responses, JSON requests and request hooks. Generated Rust SDK Cli
 and native HTTP/MCP listener/startup/shutdown checks pass. This establishes the
 shared HTTP client surface; mixed TypeScript scaffolding and dev/lifecycle
 orchestration remain separate work.
+
+
+Correct mixed project lifecycle dispatch and manifest preservation. Real CLI
+regression reproduced TypeScript service registration loss during native sync;
+service/worker/library sync/delete now dispatch by project metadata, and native
+sync refuses non-native cleanup. Router deletion follows the owning service's
+language and supports the generated async startup function. All root language,
+SDK, workspace and artifact fields survive TypeScript project-view roundtrips,
+as does the configured application name. A generated TypeScript-first mixed
+fixture passes both languages' sync/delete, TypeScript rename roundtrips and
+router removal with byte-preserving rejection of unsupported server edits. The
+cleanup hook is fixture-owned to avoid modifying shared package-manager caches.
+All 1,025 CLI tests and native sync/delete regressions pass. Automatic mixed
+scaffolding, application-wide orchestration and deployment remain separate gates.

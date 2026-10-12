@@ -104,7 +104,7 @@ if run_cli sync service missing-service --path rust-sync > missing-service.log 2
     echo "[FAIL] Missing Rust service sync should fail"
     exit 1
 fi
-grep -q 'Could not find Rust project missing-service in manifest' missing-service.log
+grep -q 'Service directory not found: .*missing-service' missing-service.log
 
 rm -rf rust-sync/crates/products
 run_cli sync all --path rust-sync --confirm

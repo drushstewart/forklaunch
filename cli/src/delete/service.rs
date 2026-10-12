@@ -74,18 +74,20 @@ impl CliCommand for ServiceCommand {
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
 
-        if rust_project::is_rust_app_root(&app_root_path)? {
-            let service_name = prompt_with_validation(
-                &mut line_editor,
-                &mut stdout,
-                "name",
-                matches,
-                "service name",
-                None,
-                |input: &str| rust_project::is_rust_project(&app_root_path, input).unwrap_or(false),
-                |_| "Service not found".to_string(),
-            )?;
+        let project_names =
+            rust_project::registered_project_names(&app_root_path, RustProjectKind::Service)?;
+        let service_name = prompt_with_validation(
+            &mut line_editor,
+            &mut stdout,
+            "name",
+            matches,
+            "service name",
+            None,
+            |input: &str| project_names.contains(input),
+            |_| "Service not found".to_string(),
+        )?;
 
+        if rust_project::is_rust_project(&app_root_path, &service_name)? {
             if !matches.get_flag("continue") {
                 let continue_delete = prompt_for_confirmation(
                     &mut line_editor,
@@ -112,22 +114,6 @@ impl CliCommand for ServiceCommand {
         )
         .with_context(|| ERROR_FAILED_TO_PARSE_MANIFEST)?;
 
-        let service_name = prompt_with_validation(
-            &mut line_editor,
-            &mut stdout,
-            "name",
-            matches,
-            "service name",
-            None,
-            |input: &str| {
-                existing_manifest_data
-                    .projects
-                    .iter()
-                    .any(|project| project.name == input && project.r#type == ProjectType::Service)
-            },
-            |_| "Service not found".to_string(),
-        )?;
-
         let service_base_path = prompt_base_path(
             &app_root_path,
             &ManifestData::Application(&existing_manifest_data),
@@ -140,11 +126,7 @@ impl CliCommand for ServiceCommand {
 
         let mut manifest_data = existing_manifest_data.initialize(
             InitializableManifestConfigMetadata::Application(ApplicationInitializationMetadata {
-                app_name: app_root_path
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string(),
+                app_name: existing_manifest_data.app_name.clone(),
                 database: match existing_manifest_data
                     .projects
                     .iter()

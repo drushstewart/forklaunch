@@ -281,6 +281,47 @@ macro_rules! internal_config_struct {
                 $(#[$field_meta])*
                 $field_vis $field: $ty
             ),*,
+            // Shared by application and project views so TypeScript lifecycle
+            // edits preserve mixed-language workspace and artifact metadata.
+            #[serde(skip_serializing_if = "Option::is_none")]
+            $vis language: Option<String>,
+            #[serde(
+                rename = "applicationLanguage",
+                alias = "application_language",
+                skip_serializing_if = "Option::is_none"
+            )]
+            $vis application_language: Option<String>,
+            #[serde(
+                default,
+                rename = "sdkTargets",
+                alias = "sdk_targets",
+                skip_serializing_if = "Vec::is_empty"
+            )]
+            $vis sdk_targets: Vec<String>,
+            #[serde(
+                rename = "cargoWorkspace",
+                alias = "cargo_workspace",
+                skip_serializing_if = "Option::is_none"
+            )]
+            $vis cargo_workspace: Option<String>,
+            #[serde(
+                rename = "contractArtifactPath",
+                alias = "contract_artifact_path",
+                skip_serializing_if = "Option::is_none"
+            )]
+            $vis contract_artifact_path: Option<String>,
+            #[serde(
+                rename = "openapiPath",
+                alias = "openapi_path",
+                skip_serializing_if = "Option::is_none"
+            )]
+            $vis openapi_path: Option<String>,
+            #[serde(
+                rename = "asyncapiPath",
+                alias = "asyncapi_path",
+                skip_serializing_if = "Option::is_none"
+            )]
+            $vis asyncapi_path: Option<String>,
             $vis id: String,
             $vis cli_version: String,
             $vis app_name: String,
@@ -390,6 +431,13 @@ macro_rules! config_struct {
             impl From<[<Shadow $name>]> for $name {
                 fn from(shadow: [<Shadow $name>]) -> Self {
                     Self {
+                        language: shadow.language.clone(),
+                        application_language: shadow.application_language.clone(),
+                        sdk_targets: shadow.sdk_targets.clone(),
+                        cargo_workspace: shadow.cargo_workspace.clone(),
+                        contract_artifact_path: shadow.contract_artifact_path.clone(),
+                        openapi_path: shadow.openapi_path.clone(),
+                        asyncapi_path: shadow.asyncapi_path.clone(),
                         id: shadow.id.clone(),
                         cli_version: shadow.cli_version.clone(),
                         app_name: shadow.app_name.clone(),

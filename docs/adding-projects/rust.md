@@ -144,6 +144,12 @@ CLI SDKs preserve guarded recursive schemas from contract and OpenAPI artifacts,
 
 `forklaunch_sdk_rust::generate_rust_http_sdk_source(&plan, &options)` generates a transport-capable reqwest client directly from `SdkGenerationPlan`. The plan retains request/field JSON schemas and response body kind, MIME and JSON schemas from the registry. Native clients share the CLI model compiler, Serde presence rules, client/auth/hooks template and bounded SSE implementation, including typed business-error status variants and separate empty versus JSON-null responses. Their generated crates need reqwest features `json` and `query` (plus `multipart` when used), serde with `derive`, and serde_json. The existing `generate_rust_sdk_source` remains a dependency-free request builder for custom transports. Presence, recursive-model and SSE runtime scripts now also compile and invoke native clients against the same HTTP/MCP services.
 
+Mixed applications select per-project sync and deletion from the project's
+language. TypeScript service, worker, library and router commands retain the
+application's native workspace, language, SDK targets and artifact settings.
+TypeScript rename and deletion continue to update their own source/package files.
+Application-wide mixed sync and automatic mixed scaffolding remain tracked work.
+
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape. Lifecycle SDK refresh preserves each available service contract independently; a missing artifact falls back only for that service, while malformed artifacts fail explicitly. Generated service fallback methods keep their exported names (`getHealth`, `listUsers`). Deletion refreshes existing Rust SDK crates as well as an existing TypeScript client, including Rust-only applications.
 
 ## Portable source and containers

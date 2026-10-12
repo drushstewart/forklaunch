@@ -279,7 +279,7 @@ impl CliCommand for WorkerSyncCommand {
             };
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
-        if rust_project::is_rust_app_root(&app_root_path)? {
+        if rust_project::is_rust_project(&app_root_path, worker_name)? {
             let mut stdout = StandardStream::stdout(ColorChoice::Always);
             rust_project::sync_rust_project(&app_root_path, RustProjectKind::Worker, worker_name)?;
             log_ok!(stdout, "Worker '{}' synced successfully", worker_name);

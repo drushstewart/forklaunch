@@ -486,7 +486,30 @@ pub(crate) fn is_rust_project(app_root: &Path, name: &str) -> Result<bool> {
         }))
 }
 
+pub(crate) fn registered_project_names(
+    app_root: &Path,
+    kind: RustProjectKind,
+) -> Result<HashSet<String>> {
+    let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
+    Ok(manifest
+        .get("projects")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|project| project.get("type").and_then(Value::as_str) == Some(kind.manifest_type()))
+        .filter_map(|project| {
+            project
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .collect())
+}
+
 pub(crate) fn sync_rust_project(app_root: &Path, kind: RustProjectKind, name: &str) -> Result<()> {
+    if !is_rust_project(app_root, name)? {
+        bail!("Project {name} is not a Rust project; refusing native sync cleanup");
+    }
     let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
     let crate_path = PathBuf::from(crate_path_for_project(&manifest, name)
         .unwrap_or_else(|| format!("crates/{name}")));
@@ -2978,6 +3001,38 @@ fn escape_rust_string(value: &str) -> String {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    #[test]
+    fn native_sync_cannot_remove_a_typescript_registration() {
+        let root = tempfile::tempdir().unwrap();
+        create_dir_all(root.path().join(".forklaunch")).unwrap();
+        let path = root.path().join(".forklaunch/manifest.toml");
+        let source = r#"language = "mixed"
+[[projects]]
+name = "typescript-api"
+type = "Service"
+[projects.metadata]
+language = "typescript"
+[[projects]]
+name = "native-jobs"
+type = "Worker"
+[projects.metadata]
+language = "rust"
+"#;
+        write(&path, source).unwrap();
+        let error =
+            sync_rust_project(root.path(), RustProjectKind::Service, "typescript-api").unwrap_err();
+        assert!(error.to_string().contains("refusing native sync cleanup"));
+        assert_eq!(read_to_string(&path).unwrap(), source);
+        assert_eq!(
+            registered_project_names(root.path(), RustProjectKind::Service).unwrap(),
+            HashSet::from(["typescript-api".into()])
+        );
+        assert_eq!(
+            registered_project_names(root.path(), RustProjectKind::Worker).unwrap(),
+            HashSet::from(["native-jobs".into()])
+        );
+    }
 
     #[test]
     fn cargo_members_support_compact_arrays_and_preserve_unrelated_metadata() {

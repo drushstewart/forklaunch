@@ -85,9 +85,11 @@ impl CliCommand for RouterCommand {
         let (app_root_path, project_name) = find_app_root_path(matches, RequiredLocation::Project)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
 
-        if rust_project::is_rust_app_root(&app_root_path)? {
-            let project_name =
-                project_name.context("Project path is required for Rust router deletion")?;
+        let selected_project = project_name
+            .as_deref()
+            .context("Project path is required for router deletion")?;
+        if rust_project::is_rust_project(&app_root_path, selected_project)? {
+            let project_name = selected_project;
             let router_name = prompt_with_validation(
                 &mut line_editor,
                 &mut stdout,
@@ -226,12 +228,6 @@ impl CliCommand for RouterCommand {
                 .join("__test__")
                 .join(format!("{}.test.ts", camel_case_name)),
         ];
-
-        for path in file_paths {
-            if exists(path.clone())? {
-                remove_file(path)?;
-            }
-        }
 
         let allocator = Allocator::default();
         let entities_path = router_base_path
@@ -384,6 +380,13 @@ impl CliCommand for RouterCommand {
             false,
             &mut stdout,
         )?;
+
+        // Validate every rewrite before removing router-owned source files.
+        for path in file_paths {
+            if exists(path.clone())? {
+                remove_file(path)?;
+            }
+        }
 
         log_ok!(stdout, "{} deleted successfully!", router_name);
 

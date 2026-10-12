@@ -197,6 +197,13 @@ impl CliCommand for ModuleCommand {
                 .unwrap_or_else(|| crate::core::manifest::service::generate_random_secret(32));
 
         let mut service_data = ServiceManifestData {
+            language: manifest_data.language.clone(),
+            application_language: manifest_data.application_language.clone(),
+            sdk_targets: manifest_data.sdk_targets.clone(),
+            cargo_workspace: manifest_data.cargo_workspace.clone(),
+            contract_artifact_path: manifest_data.contract_artifact_path.clone(),
+            openapi_path: manifest_data.openapi_path.clone(),
+            asyncapi_path: manifest_data.asyncapi_path.clone(),
             id: manifest_data.id.clone(),
             cli_version: manifest_data.cli_version.clone(),
             app_name: name.clone(),

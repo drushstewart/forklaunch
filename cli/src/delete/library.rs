@@ -20,7 +20,7 @@ use crate::{
         command::command,
         manifest::{
             ApplicationInitializationMetadata, InitializableManifestConfig,
-            InitializableManifestConfigMetadata, ManifestData, ProjectType,
+            InitializableManifestConfigMetadata, ManifestData,
             application::ApplicationManifestData, remove_project_definition_from_manifest,
         },
         package_json::remove_project_definition_to_package_json,
@@ -69,18 +69,20 @@ impl CliCommand for LibraryCommand {
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
 
-        if rust_project::is_rust_app_root(&app_root_path)? {
-            let library_name = prompt_with_validation(
-                &mut line_editor,
-                &mut stdout,
-                "name",
-                matches,
-                "library name",
-                None,
-                |input: &str| rust_project::is_rust_project(&app_root_path, input).unwrap_or(false),
-                |_| "Library not found".to_string(),
-            )?;
+        let project_names =
+            rust_project::registered_project_names(&app_root_path, RustProjectKind::Library)?;
+        let library_name = prompt_with_validation(
+            &mut line_editor,
+            &mut stdout,
+            "name",
+            matches,
+            "library name",
+            None,
+            |input: &str| project_names.contains(input),
+            |_| "Library not found".to_string(),
+        )?;
 
+        if rust_project::is_rust_project(&app_root_path, &library_name)? {
             if !matches.get_flag("continue") {
                 let continue_delete = prompt_for_confirmation(
                     &mut line_editor,
@@ -105,22 +107,6 @@ impl CliCommand for LibraryCommand {
             &read_to_string(&manifest_path).with_context(|| ERROR_FAILED_TO_READ_MANIFEST)?,
         )
         .with_context(|| ERROR_FAILED_TO_PARSE_MANIFEST)?;
-
-        let library_name = prompt_with_validation(
-            &mut line_editor,
-            &mut stdout,
-            "name",
-            matches,
-            "library name",
-            None,
-            |input: &str| {
-                existing_manifest_data
-                    .projects
-                    .iter()
-                    .any(|project| project.name == input && project.r#type == ProjectType::Library)
-            },
-            |_| "Library not found".to_string(),
-        )?;
 
         let library_base_path = prompt_base_path(
             &app_root_path,

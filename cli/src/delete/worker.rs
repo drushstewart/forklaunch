@@ -74,18 +74,20 @@ impl CliCommand for WorkerCommand {
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
 
-        if rust_project::is_rust_app_root(&app_root_path)? {
-            let worker_name = prompt_with_validation(
-                &mut line_editor,
-                &mut stdout,
-                "name",
-                matches,
-                "worker name",
-                None,
-                |input: &str| rust_project::is_rust_project(&app_root_path, input).unwrap_or(false),
-                |_| "Worker not found".to_string(),
-            )?;
+        let project_names =
+            rust_project::registered_project_names(&app_root_path, RustProjectKind::Worker)?;
+        let worker_name = prompt_with_validation(
+            &mut line_editor,
+            &mut stdout,
+            "name",
+            matches,
+            "worker name",
+            None,
+            |input: &str| project_names.contains(input),
+            |_| "Worker not found".to_string(),
+        )?;
 
+        if rust_project::is_rust_project(&app_root_path, &worker_name)? {
             if !matches.get_flag("continue") {
                 let continue_delete = prompt_for_confirmation(
                     &mut line_editor,
@@ -111,22 +113,6 @@ impl CliCommand for WorkerCommand {
             &read_to_string(&manifest_path).with_context(|| ERROR_FAILED_TO_READ_MANIFEST)?,
         )
         .with_context(|| ERROR_FAILED_TO_PARSE_MANIFEST)?;
-
-        let worker_name = prompt_with_validation(
-            &mut line_editor,
-            &mut stdout,
-            "name",
-            matches,
-            "worker name",
-            None,
-            |input: &str| {
-                existing_manifest_data
-                    .projects
-                    .iter()
-                    .any(|project| project.name == input && project.r#type == ProjectType::Worker)
-            },
-            |_| "Worker not found".to_string(),
-        )?;
 
         let worker_base_path = prompt_base_path(
             &app_root_path,

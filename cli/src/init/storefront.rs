@@ -256,6 +256,13 @@ impl CliCommand for StorefrontCommand {
 
         let mut storefront_manifest_data: LibraryManifestData = LibraryManifestData {
             // Common fields from ApplicationManifestData
+            language: manifest_data.language.clone(),
+            application_language: manifest_data.application_language.clone(),
+            sdk_targets: manifest_data.sdk_targets.clone(),
+            cargo_workspace: manifest_data.cargo_workspace.clone(),
+            contract_artifact_path: manifest_data.contract_artifact_path.clone(),
+            openapi_path: manifest_data.openapi_path.clone(),
+            asyncapi_path: manifest_data.asyncapi_path.clone(),
             id: manifest_data.id.clone(),
             app_name: manifest_data.app_name.clone(),
             modules_path: manifest_data.modules_path.clone(),

@@ -27,7 +27,8 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Keep generated Rust SDKs for empty worker HTTP contracts free of unused Serde imports, path helpers and client-field warnings; compile packaged PostgreSQL/Redis worker SDKs with warnings denied.
 - [x] Verify all 752 current embedded Rust source/template files are present in the CLI Cargo package, including documentation examples; `.template` manifests and source symlinks preserve complete generated workspaces.
 - [x] Generate one shared HTTP SDK from native contracts and TypeScript OpenAPI, preserve imported clients through lifecycle refresh, and watch both languages/custom paths. All 1,023 CLI tests, strict generated Rust/TypeScript consumers, live clients against both servers, relocation, loss/recovery and native HTTP/MCP startup pass.
-- [ ] Finish mixed-app scaffolding, per-project lifecycle dispatch and development orchestration (phases 13–15).
+- [x] Dispatch per-project sync/delete by project language; preserve mixed manifest fields through TypeScript init/change/delete and async router removal. Actual Rust/TypeScript service, worker and library sync/rename/delete, preservation on unsupported router edits, all 1,025 CLI tests and native sync/delete regressions pass.
+- [ ] Finish mixed-app scaffolding, application-wide sync and development orchestration (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
 - [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive installation is checked; no crate has been published during this port.
@@ -380,7 +381,7 @@ Requirements:
 - [x] The generated SDK exports the same service/module shape that live TypeScript SDK mode would expose.
 - [x] The generated SDK uses network calls under the hood for Rust services.
 - [ ] The generated SDK may use direct live imports for TypeScript services in live mode.
-- [ ] Mixed apps can import one SDK surface even when some services are TypeScript and others are Rust.
+- [x] Mixed apps import one generated HTTP SDK surface for TypeScript and Rust services, validated by strict consumers and live calls in both client languages.
 - [x] A Rust contract change requires regenerating the TypeScript SDK.
 - [x] Regeneration should be deterministic so changed contracts produce reviewable diffs.
 - [x] Generated TypeScript SDKs must fail TypeScript compilation when downstream code uses removed routes, renamed fields, changed request bodies, or changed response shapes.
@@ -1191,3 +1192,20 @@ both live SDK targets against native and tsx HTTP services. Native HTTP/MCP disc
 health invocation, listener modes, startup rejection and graceful shutdown pass.
 The TypeScript server/export hook is fixture-owned; mixed TypeScript scaffolding,
 project lifecycle routing and dev orchestration remain open.
+
+
+Mixed lifecycle checkpoint (2026-10-12): the previous app-wide Rust dispatch
+removed a TypeScript service registration during `sync service` and reported
+success. Service/worker/library sync and deletion now resolve the selected
+project's language, router deletion resolves its owning project, and native sync
+rejects non-native projects before cleanup. Application language, SDK targets,
+Cargo workspace and artifact paths now belong to the shared manifest model, so
+TypeScript project views and generated module conversions retain them. Service
+deletion also preserves the configured application name. TypeScript router
+removal handles generated async startup functions, tolerates unrelated zero-arg
+calls and validates rewrites before removing source files. The actual generated
+mixed fixture verifies all three project kinds, rename roundtrips, router failure
+preservation and every shared metadata field. All 1,025 CLI tests and existing
+native sync/delete runtime regressions pass. The fixture supplies a Cargo workspace
+for its TypeScript-first app; automatic hybrid scaffolding and app-wide sync are
+still open.
