@@ -10,8 +10,11 @@ repository.workspace = true
 default = []
 http = ["dep:axum", "dep:tower-http", "dep:reqwest"]
 postgres = ["dep:sqlx", "dep:forklaunch-core"]
+application-http = ["http", "dep:forklaunch-axum", "dep:forklaunch-auth", "dep:forklaunch-core"]
 
 [dependencies]
+forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["mcp", "remote-jwks"], optional = true }
+forklaunch-auth = { path = "../../../../../framework-rs/crates/forklaunch-auth", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 axum = { version = "0.8", optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
@@ -56,3 +59,7 @@ workspace = true
 [[example]]
 name = "http_parity"
 required-features = ["http"]
+
+[[example]]
+name = "application_contract"
+required-features = ["application-http"]

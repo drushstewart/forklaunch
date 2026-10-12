@@ -1312,6 +1312,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "chrono",
+ "forklaunch-auth",
  "forklaunch-axum",
  "forklaunch-blueprint-core",
  "forklaunch-contract",

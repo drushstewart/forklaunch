@@ -22,6 +22,8 @@ use url::Url;
 use zeroize::Zeroizing;
 
 mod account_tokens;
+#[cfg(feature = "application-http")]
+pub mod application;
 mod callback;
 mod credential;
 mod email;

@@ -560,3 +560,16 @@ valid UTC instant. All 26 native auth tests, restricted encrypted PostgreSQL,
 strict all-feature clippy, rebuilt CLI and 739 embedded assets pass. Application
 HTTP/MCP wiring, custom callback helpers, full ORM/hook coverage and CLI preset
 integration remain open.
+
+The optional `application-http` feature now combines the five configured
+application contracts with the raw `/api/auth` namespace. Discovery is public;
+role/permission surfacing verifies request HMAC; compliance export/erasure
+verifies JWKS JWTs and resolves the `system` role from current trusted storage.
+Role claims in tokens do not bypass revocation. All five actual TS controller
+contracts and nine response schemas match, including string IDs and opaque
+permission strings. A live TCP test verifies HTTP and MCP initialization,
+discovery, signed tools, missing/invalid credentials, role revocation, classified
+export protection, erasure/replay, raw-route separation and graceful shutdown.
+All 27 native tests, strict all-feature clippy and 742 packaged assets pass.
+The native CLI preset, custom callback helpers and remaining full ORM/hooks
+coverage are still open; this does not declare full parity.
