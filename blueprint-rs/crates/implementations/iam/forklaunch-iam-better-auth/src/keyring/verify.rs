@@ -80,7 +80,7 @@ impl<S: AuthStore> KeyRing<S> {
         Ok(Some(payload))
     }
 }
-fn verify_signature(
+pub(crate) fn verify_signature(
     jwk: &Value,
     algorithm: &str,
     header: &Value,
@@ -158,7 +158,7 @@ fn verify_signature(
         .is_ok()
 }
 
-fn compact(token: &str) -> Option<(Value, Value, Vec<u8>, &str)> {
+pub(crate) fn compact(token: &str) -> Option<(Value, Value, Vec<u8>, &str)> {
     let parts: Vec<_> = token.split('.').collect();
     if parts.len() != 3 {
         return None;
@@ -224,7 +224,7 @@ fn decode(value: &str) -> Option<Vec<u8>> {
 }
 // Node's WebCrypto JWK import uses its forgiving base64 decoder, independently
 // of JOSE's compact-token decoder. Keep the two boundaries distinct.
-fn decode_jwk(value: &str) -> Option<Vec<u8>> {
+pub(crate) fn decode_jwk(value: &str) -> Option<Vec<u8>> {
     let mut encoded: String = value
         .split('=')
         .next()?
@@ -274,7 +274,7 @@ fn claims(payload: &Value, issuer: &str, audience: &str, now: f64) -> bool {
     }
     true
 }
-fn truthy(value: &Value) -> bool {
+pub(crate) fn truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(value) => *value,

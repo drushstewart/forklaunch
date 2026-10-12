@@ -699,3 +699,10 @@ overwrite behavior, Unicode/query encoding and JavaScript numeric-key ordering.
 Strict all-feature clippy, rebuilt CLI and 717 embedded sources pass; CI runs the
 fixture. HTTP social-login/ID-token user-account-session integration, callback
 code exchange and token lifecycle remain open. No raw route is added yet.
+
+Google ID-token verification primitives now pass 147 comparisons against the
+actual provider, including RS256 signature/JWK import behavior, issuer/audience,
+nonce, numeric claim boundaries and duplicate key selection. The verifier takes
+trusted supplied certificate keys; HTTP certificate fetching and persistent
+user/account/session integration remain open. Strict all-feature/all-target
+clippy, rebuilt CLI and all 719 embedded Rust sources pass; CI runs the fixture.
