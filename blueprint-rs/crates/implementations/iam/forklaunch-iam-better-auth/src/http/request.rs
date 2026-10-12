@@ -133,6 +133,9 @@ pub(super) fn session_credentials<S: AuthStore>(
 }
 
 pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintResult<()> {
+    if matches!(path, "/get-access-token" | "/refresh-token") {
+        return super::account_tokens::validate(payload, "body");
+    }
     if path == "/link-social" {
         return super::social_link::validate(payload);
     }

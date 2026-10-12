@@ -98,6 +98,7 @@ on:
       - 'cli/tests/rust_better_auth_google_verify.mjs'
       - 'cli/tests/rust_better_auth_google_http.mjs'
       - 'cli/tests/rust_better_auth_google_callback.mjs'
+      - 'cli/tests/rust_better_auth_google_tokens.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
       - 'cli/tests/rust_better_auth_email_tokens.mjs'
       - 'cli/tests/rust_better_auth_email_verification.mjs'
@@ -237,6 +238,7 @@ on:
       - 'cli/tests/rust_better_auth_google_verify.mjs'
       - 'cli/tests/rust_better_auth_google_http.mjs'
       - 'cli/tests/rust_better_auth_google_callback.mjs'
+      - 'cli/tests/rust_better_auth_google_tokens.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
       - 'cli/tests/rust_better_auth_email_tokens.mjs'
       - 'cli/tests/rust_better_auth_email_verification.mjs'
@@ -564,6 +566,7 @@ jobs:
       - run: node cli/tests/rust_better_auth_google_verify.mjs
       - run: node cli/tests/rust_better_auth_google_http.mjs
       - run: node cli/tests/rust_better_auth_google_callback.mjs
+      - run: node cli/tests/rust_better_auth_google_tokens.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

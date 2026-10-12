@@ -488,3 +488,13 @@ policy: protected organization/team fields cannot be set, and there are no
 configured editable session fields. The implemented route count is 64/70.
 Access-token refresh, account-info, OpenAPI/error routes, full ORM/application
 hooks and CLI preset remain open.
+
+Google `/get-access-token`, `/refresh-token` and `/account-info` now pass 157
+actual response/storage/wire comparisons. Account selection uses local owned
+account IDs; automatic refresh observes the five-second boundary and preserves
+stored scopes and omitted provider fields. Live provider tests verify token
+rotation and reject an account unlinked during an in-flight refresh. All 22
+native tests, encrypted restricted PostgreSQL, strict all-feature clippy, the
+161 HTTP and 289 social regressions, rebuilt CLI and 728 packaged assets pass.
+The implemented raw-route count is 67/70. Error/OpenAPI/reference routes,
+full ORM/application hooks and the native CLI auth preset remain open.

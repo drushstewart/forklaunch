@@ -72,6 +72,31 @@ impl GoogleClient {
                 .append_pair("client_secret", &self.client_secret);
             form.finish()
         });
+        self.token_request(body, now).await
+    }
+    /// Refreshes tokens at the trusted Google token endpoint.
+    /// # Errors
+    /// Returns a sanitized failure without exposing credentials/provider tokens.
+    pub async fn refresh_token(
+        &self,
+        refresh_token: &str,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Value> {
+        let body = Zeroizing::new({
+            let mut form = url::form_urlencoded::Serializer::new(String::new());
+            form.append_pair("grant_type", "refresh_token")
+                .append_pair("refresh_token", refresh_token)
+                .append_pair("client_id", &self.client_id)
+                .append_pair("client_secret", &self.client_secret);
+            form.finish()
+        });
+        self.token_request(body, now).await
+    }
+    async fn token_request(
+        &self,
+        body: Zeroizing<String>,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Value> {
         let response = self
             .client
             .post(self.token_endpoint.clone())

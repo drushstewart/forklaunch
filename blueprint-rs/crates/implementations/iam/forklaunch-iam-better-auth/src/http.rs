@@ -21,6 +21,7 @@ use std::sync::Arc;
 use url::Url;
 use zeroize::Zeroizing;
 
+mod account_tokens;
 mod callback;
 mod credential;
 mod email;
@@ -137,6 +138,9 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                     .head(not_found),
             )
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
+            .route("/account-info", get(dispatch::<S>).head(not_found))
+            .route("/get-access-token", post(dispatch::<S>))
+            .route("/refresh-token", post(dispatch::<S>))
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))
             .route("/update-session", post(dispatch::<S>))
@@ -224,7 +228,12 @@ async fn dispatch<S: AuthStore + 'static>(
             crate::ecmascript::stringify(&body),
         )
             .into_response(),
-        Err(error) => failure_for_path(&error, &path),
+        Err(error) => {
+            if error.code == "HTTP_INTERNAL_EMPTY" {
+                pending.clear();
+            }
+            failure_for_path(&error, &path)
+        }
     };
     for (name, value) in &pending {
         response.headers_mut().append(name, value.clone());
@@ -253,18 +262,12 @@ async fn handle<S: AuthStore + 'static>(
     }
     request::validate_body(path, payload.as_ref())?;
     organization::validate_query(path, &query)?;
+    if path == "/account-info" {
+        account_tokens::validate(Some(&json!(query)), "query")?;
+    }
     let mut payload = payload.unwrap_or(Value::Null);
     organization::strip_record_keys(path, &mut payload);
-    if path == "/get-session" {
-        pending.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-        pending.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
-        if mutation {
-            return Err(BlueprintError::new(
-                "METHOD_NOT_ALLOWED_DEFER_SESSION_REQUIRED",
-                "POST method requires deferSessionRefresh to be enabled in session config",
-            ));
-        }
-    }
+    session_headers(path, mutation, pending)?;
     let now = (app.clock)();
     if path == "/sign-in/social" {
         return social::sign_in(app, &payload, &parts.headers, pending, now).await;
@@ -298,13 +301,7 @@ async fn handle<S: AuthStore + 'static>(
             now,
         )
         .await?;
-    if let Some(view) = &view {
-        if view.refreshed {
-            set_cookie(pending, &app.cookie.serialize(&token, &app.secret, true))?;
-        }
-    } else if !token.is_empty() {
-        clear(app.cookie, pending)?;
-    }
+    refresh_cookie_headers(app, view.as_ref(), &token, pending)?;
     if path == "/get-session" {
         return app.session_response(view, pending, now).await;
     }
@@ -324,6 +321,17 @@ async fn handle<S: AuthStore + 'static>(
         .await;
     }
     let view = required_view(view, path, &payload)?;
+    if matches!(
+        path,
+        "/account-info" | "/get-access-token" | "/refresh-token"
+    ) {
+        let selection = if path == "/account-info" {
+            json!(query)
+        } else {
+            payload
+        };
+        return account_tokens::handle(app, path, &selection, text(&view.user, "id")?, now).await;
+    }
     session_operation(
         app,
         path,
@@ -424,6 +432,12 @@ fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
             .into_response();
     }
     if error.code == "UNAUTHORIZED" {
+        if matches!(
+            path,
+            "/account-info" | "/get-access-token" | "/refresh-token"
+        ) {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
         if path == "/organization/get-invitation" {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -586,4 +600,36 @@ fn required_view(
         ));
     }
     view.ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))
+}
+
+fn session_headers(path: &str, mutation: bool, pending: &mut HeaderMap) -> BlueprintResult<()> {
+    if path == "/get-session" {
+        pending.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        pending.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+        if mutation {
+            return Err(BlueprintError::new(
+                "METHOD_NOT_ALLOWED_DEFER_SESSION_REQUIRED",
+                "POST method requires deferSessionRefresh to be enabled in session config",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn refresh_cookie_headers<S>(
+    app: &AuthHttp<S>,
+    view: Option<&SessionView>,
+    token: &str,
+    pending: &mut HeaderMap,
+) -> BlueprintResult<()> {
+    if let Some(view) = view {
+        if view.refreshed {
+            set_cookie(pending, &app.cookie.serialize(token, &app.secret, true))?;
+        }
+    } else if !token.is_empty() {
+        clear(app.cookie, pending)?;
+    }
+
+    Ok(())
 }
