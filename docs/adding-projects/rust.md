@@ -366,8 +366,11 @@ in one owned watcher. `sdk generate/watch --from all` provides the same combined
 artifact selection outside development. TypeScript socket artifacts still need
 their existing explicit export workflow.
 
-The socket development integration is awaiting its validation gate; see the parity
-inventory for current test evidence.
+Node and Bun mixed-service fixtures validate HTTP/MCP before and after source edits,
+shared-library contract/SDK refresh and owned watcher shutdown. The Bun fixture also
+checks native socket artifact/SDK creation, edits, removal and restoration. Separate
+TypeScript-only replays validate shared-library reloads; Bun covers `--no-build` image
+reuse with Compose watching. See the parity inventory for the retained evidence.
 
 Native reloads require [Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
 Use `--no-watch` to start without Compose reloads, `--no-build` to reuse images,

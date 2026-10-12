@@ -33,7 +33,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Add TypeScript workspaces to Rust-first applications with staged initialization, both package trees and native source preservation.
 - [x] Compile and exercise mixed compliance clients with both IAM variants, typed native adapters and explicit coverage for legacy services.
 - [x] Include existing TypeScript modules and generated HTTP SDKs in root PNPM/Bun workspaces; validate combined builds and both languages’ HTTP/MCP startup.
-- [ ] Finish unified mixed development orchestration (phases 13–15).
+- [x] Finish unified mixed development orchestration (phases 13–15). Node/Bun mixed and TypeScript-only fixtures pass source reloads, contracts, SDK refresh, HTTP/MCP and owned watcher shutdown; Bun also covers socket lifecycle and watched image reuse.
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
 - [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive installation is checked; no crate has been published during this port.
@@ -771,7 +771,7 @@ Current CLI structure to build on:
 
 - [x] Generate `cargo run -p <service>` scripts or `just`/`make` tasks for Rust services.
 - [x] Add mixed dev orchestration for TypeScript and Rust services. Node/Bun fixtures validate HTTP/MCP, source reloads and supervised shutdown.
-- [ ] Integrate source-triggered contract export and SDK refresh into mixed development.
+- [x] Integrate source-triggered contract export and SDK refresh into mixed development. Native/TypeScript/shared-library edits, combined HTTP/socket SDKs, socket removal/restore and standalone/owned watchers pass Node/Bun runtime fixtures.
 - [x] Add Docker Compose service entries for Rust services.
 - [x] Add health check defaults for Rust services.
 - [x] Add Rust test commands to app-level scripts.
@@ -1561,3 +1561,31 @@ rules, and forbid pulling replacement build-backed images. Custom rebuild rules
 fail explicitly. All 1,075 CLI tests and the rebuild pass. Real TypeScript-only
 Bun replay with image reuse is still pending; the earlier Node replay passed.
 No additional development checklist gate is closed at this checkpoint.
+
+### Development validation gate completed (2026-10-12)
+
+The corrected Bun TypeScript-only replay exits successfully on retained
+`rust-mixed-dev/run.3r582t9d/app`, using watched `--no-build` image reuse. It checks
+a shared-library-only change, regenerated SDK content, the actual Compose restart,
+HTTP/MCP calls and owned watcher shutdown. Its containers, volumes, network and
+image are removed. The image rebuild was only needed because the preceding failed
+replay had already performed cleanup. An independent live Compose probe also proves
+source-triggered restart with an image-only plan; its owned resources are removed.
+
+Together with the complete Bun mixed loop and Node `run.xb4uz99y` mixed loop plus
+separate successful TypeScript-only replay, this closes unified mixed development
+and source-triggered contract/SDK refresh. The aggregate old Bun command remains
+recorded as failed at its first replay attempt; its main loop and corrected standalone
+replay are the successful evidence, not a claimed fresh aggregate exit.
+
+Evidence logs: `/private/tmp/fl-dev-typescript-runtime-bun-sockets-ports.log` (main
+loop), `/private/tmp/fl-dev-bun-typescript-replay-final.log` (corrected replay),
+`/private/tmp/fl-dev-node-typescript-replay-final.log`, and
+`/private/tmp/fl-compose-restart-image-only-final.log`. All 1,075 CLI tests pass.
+The earlier CLI package inventory passes all 764 embedded sources/templates.
+
+Current checklist: **617/682 (90.5%), 65 unchecked**. This is an unweighted task
+count, not a claim of universal feature coverage. Fourteen entries were resolved
+from the 79-open checkpoint, including explicitly documented stale checklist
+reconciliation. Production deployment/publication, broader authentication and
+persistence, schema/protocol coverage, documentation and release gates remain.

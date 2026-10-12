@@ -16,7 +16,7 @@ proof that TypeScript and Rust producers/consumers can exchange jobs.
 | --- | --- | --- |
 | [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Native builds and mixed Node/Bun Compose orchestration pass live HTTP/MCP, source reload and shutdown fixtures; automatic contract/SDK refresh remains. |
 | [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Shared names, paths, errors and JSON helpers; audit all utility exports individually. |
-| [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption, explicit compliance metadata derives and an optional MCP HTTP server exist; SQL entity/compliance/retention services and full auth/streaming conformance remain. |
+| [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-core-macros, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption, explicit compliance metadata derives and an optional MCP HTTP server exist; SQL entity/compliance/retention services and full auth/streaming conformance remain. |
 | [`@forklaunch/e2e-tests`](../framework/e2e-tests/package.json) (generated/private) | Rust wire/runtime suites | Actual TypeScript framework service conformance remains beyond the plain Node wire fixtures. |
 | [`@forklaunch/express`](../framework/express/package.json) | forklaunch-axum | Equivalent HTTP behavior is the target; multipart/SSE and full validation/auth/error fixtures remain. |
 | [`@forklaunch/hyper-express`](../framework/hyper-express/package.json) | forklaunch-axum | All 27 exported HTTP methods dispatch through shared validation/auth and nested contracts; both SDK artifact sources and actual compiled TypeScript router token forwarding are covered. Runtime-specific adapter internals need no clone. |
@@ -1591,3 +1591,31 @@ rules, and forbid pulling replacement build-backed images. Custom rebuild rules
 fail explicitly. All 1,075 CLI tests and the rebuild pass. Real TypeScript-only
 Bun replay with image reuse is still pending; the earlier Node replay passed.
 No additional development checklist gate is closed at this checkpoint.
+
+### Development validation gate completed (2026-10-12)
+
+The corrected Bun TypeScript-only replay exits successfully on retained
+`rust-mixed-dev/run.3r582t9d/app`, using watched `--no-build` image reuse. It checks
+a shared-library-only change, regenerated SDK content, the actual Compose restart,
+HTTP/MCP calls and owned watcher shutdown. Its containers, volumes, network and
+image are removed. The image rebuild was only needed because the preceding failed
+replay had already performed cleanup. An independent live Compose probe also proves
+source-triggered restart with an image-only plan; its owned resources are removed.
+
+Together with the complete Bun mixed loop and Node `run.xb4uz99y` mixed loop plus
+separate successful TypeScript-only replay, this closes unified mixed development
+and source-triggered contract/SDK refresh. The aggregate old Bun command remains
+recorded as failed at its first replay attempt; its main loop and corrected standalone
+replay are the successful evidence, not a claimed fresh aggregate exit.
+
+Evidence logs: `/private/tmp/fl-dev-typescript-runtime-bun-sockets-ports.log` (main
+loop), `/private/tmp/fl-dev-bun-typescript-replay-final.log` (corrected replay),
+`/private/tmp/fl-dev-node-typescript-replay-final.log`, and
+`/private/tmp/fl-compose-restart-image-only-final.log`. All 1,075 CLI tests pass.
+The earlier CLI package inventory passes all 764 embedded sources/templates.
+
+Current checklist: **617/682 (90.5%), 65 unchecked**. This is an unweighted task
+count, not a claim of universal feature coverage. Fourteen entries were resolved
+from the 79-open checkpoint, including explicitly documented stale checklist
+reconciliation. Production deployment/publication, broader authentication and
+persistence, schema/protocol coverage, documentation and release gates remain.

@@ -51,17 +51,28 @@ def http():
     with urllib.request.urlopen(endpoint(port) + '/legacy-api', timeout=2) as response:
         return json.load(response)['message']
 
+def started_at():
+    containers = ids()
+    for container in json.loads(subprocess.check_output(['docker', 'inspect', *containers])) if containers else []:
+        if container['Config']['Labels']['com.docker.compose.service'] == 'legacy-api' and container['State']['Running']:
+            return container['State']['StartedAt']
+    raise KeyError('No running service')
+
 try:
     process = subprocess.Popen([str(binary), 'dev', 'legacy-api', '--path', str(app), '--project-name', project,
         '--compose-file', str(app / 'dev.fixture.yaml'), '--no-deps', '--sdk-target', 'typescript',
         *(['--no-build'] if '--reuse-image' in sys.argv[2:] else [])],
         cwd=app, env=env, stdout=log, stderr=subprocess.STDOUT)
     message = wait(http, seconds=1200)
+    before_edit = started_at()
     shared = app / 'modules/core/development.schema.ts'
     assert 'sharedLibraryMarker' in shared.read_text()
     shared.write_text(shared.read_text().replace('sharedLibraryMarker', 'sharedLibraryReplayMarker'))
     sdk = app / 'sdks/typescript/src/index.ts'
     wait(lambda: 'sharedLibraryReplayMarker' in sdk.read_text(), seconds=120)
+    # Bun can hot-reload before Compose completes its own restart. Require that
+    # restart before capturing ephemeral host ports for the final HTTP/MCP probe.
+    wait(lambda: started_at() != before_edit)
     assert wait(http) == message
     subprocess.run(['node', str(repo / 'cli/tests/rust_mixed_dev_probe.mjs'), '-', endpoint(port), endpoint(port + 2000) + '/mcp', message], check=True, timeout=90)
     process.send_signal(signal.SIGTERM)
