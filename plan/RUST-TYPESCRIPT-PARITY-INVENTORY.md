@@ -944,3 +944,15 @@ persisted sessions, SDKs and rename/delete. All 28 native/40 framework tests,
 strict all-feature/all-target clippy for both crates and 751 packaged sources
 pass. Dynamic/encoded namespaces and broader ORM/hooks/client/options work
 remain separate gates.
+
+### Archive-installed root/docs snapshot
+
+Fresh Cargo archive installation `EklWnG` validates committed snapshot `f20252656`.
+All portable services and four worker backends compile, both SDK targets pass,
+and all 28 packaged auth tests pass. The complete generated HTTP/MCP matrix
+covers enabled/disabled/custom endpoints, shared/separate listeners,
+explicit/ephemeral ports, TypeScript's +2000 fallback, atomic startup rejection
+and graceful shutdown. All five actual-TypeScript-signed native capability
+callbacks pass forgery/staleness/replay/redelivery checks. The checkout CLI was
+rebuilt after the archive run. This confirms source portability and service
+startup; broader parity and published registry installation remain open.
