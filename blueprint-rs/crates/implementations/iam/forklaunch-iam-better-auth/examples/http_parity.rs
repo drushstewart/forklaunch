@@ -60,6 +60,14 @@ async fn main() {
         let result = match input["op"].as_str().unwrap() {
             "seed" | "replace-seed" => seed(&store, &input).await,
             "records" => records(&store, &input).await,
+            "surface" => {
+                let service =
+                    forklaunch_iam_better_auth::surfacing::SurfacingService::new(store.clone());
+                let now =
+                    DateTime::<Utc>::from_timestamp_millis(input["now"].as_i64().unwrap()).unwrap();
+                let user = input["userId"].as_str().unwrap();
+                json!({"role": service.surface_role(user, now).await.unwrap(), "permissions": service.surface_permissions(user, now).await.unwrap()})
+            }
             "set" => set_password(store.clone(), &input).await,
             "addMember" => add_member(store.clone(), &input).await,
             "request" => {

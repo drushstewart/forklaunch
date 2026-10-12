@@ -789,3 +789,12 @@ TypeScript +2000 fallback, atomic startup rejection and graceful shutdown pass.
 All five actual-TypeScript-signed managed capability callbacks pass. The
 checkout CLI was restored after the archive installation. Later application
 surfacing changes are validated separately from this snapshot.
+
+Native application `SurfacingService` now matches 37 actual TypeScript result
+comparisons. It selects the newest unexpired organization-bearing session,
+retains exact member role strings, and returns stored permission strings
+without parsing, splitting or unioning them. Expiry boundaries, duplicate
+ordering, other users/organizations and missing/falsy scopes are covered. The
+shared memory/restricted PostgreSQL check passes with ciphertext inspection
+and tenant isolation; strict clippy and 734 packaged assets pass. HTTP/MCP
+application-route wiring, compliance/retention and CLI preset remain open.

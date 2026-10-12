@@ -11,6 +11,7 @@ pub mod jwt;
 pub mod keyring;
 pub mod sessions;
 pub mod store;
+pub mod surfacing;
 
 pub mod organizations;
 pub mod origins;

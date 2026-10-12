@@ -201,6 +201,22 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    crate::surfacing::tests::exercise(Arc::new(other_store.clone())).await;
+    let isolated_surfacing = crate::surfacing::SurfacingService::new(Arc::new(store.clone()));
+    assert_eq!(
+        isolated_surfacing
+            .surface_role("surface-owner", chrono::Utc::now())
+            .await
+            .unwrap(),
+        Value::Null
+    );
+    assert!(
+        isolated_surfacing
+            .surface_permissions("surface-owner", chrono::Utc::now())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     crate::keyring::tests::exercise_key_lifecycle(Arc::new(other_store.clone())).await;
     crate::oauth::state::tests::exercise(Arc::new(other_store.clone())).await;
     crate::oauth::google_accounts::tests::exercise(Arc::new(other_store.clone())).await;
@@ -220,6 +236,7 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
             "private-google-refresh-token",
             "updated-private-access",
             "native-updated-access",
+            "opaque-not-expanded",
             "native-rotated-refresh",
         ] {
             assert!(!ciphertext.contains(secret));
