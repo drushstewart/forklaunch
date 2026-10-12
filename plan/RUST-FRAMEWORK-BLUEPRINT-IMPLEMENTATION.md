@@ -29,7 +29,8 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Generate one shared HTTP SDK from native contracts and TypeScript OpenAPI, preserve imported clients through lifecycle refresh, and watch both languages/custom paths. All 1,023 CLI tests, strict generated Rust/TypeScript consumers, live clients against both servers, relocation, loss/recovery and native HTTP/MCP startup pass.
 - [x] Dispatch per-project sync/delete by project language; preserve mixed manifest fields through TypeScript init/change/delete and async router removal. Actual Rust/TypeScript service, worker and library sync/rename/delete, preservation on unsupported router edits, all 1,025 CLI tests and native sync/delete regressions pass.
 - [x] Attach native services/workers/libraries/modules directly to existing Node/Bun applications. Preserve TypeScript source/tooling and Cargo settings, generate a separate native Dockerfile, and validate relocation, both runtime variants, HTTP/MCP startup and the mixed native container.
-- [ ] Finish Rust-first TypeScript scaffolding, application-wide mixed sync and development orchestration (phases 13–15).
+- [x] Complete application-wide mixed sync, custom native member/dependency cleanup and SDK target selection (2026-10-12 runtime and CLI validation).
+- [ ] Finish Rust-first TypeScript scaffolding and development orchestration (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
 - [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive installation is checked; no crate has been published during this port.
@@ -1229,3 +1230,21 @@ and tool invocation, Origin rejection and graceful shutdown. All 1,030 CLI tests
 attachment and container fixture; the user guide now documents the migration.
 Rust-first TypeScript scaffolding, custom workspace locations, application-wide
 sync and development orchestration remain separate work.
+
+
+Application-wide mixed sync checkpoint (2026-10-12): `sync all --confirm` now
+runs native discovery and TypeScript discovery together for Node/Bun applications,
+retains native registrations during TypeScript orphan cleanup, restores registered
+custom Cargo paths even without a crates directory, and refreshes both language
+exports before generating the configured SDK targets. Native-only applications
+with `sdkTargets = ["rust"]` do not acquire a TypeScript SDK workspace. Required
+prompt values use checked argument lookup instead of panicking on synthetic
+matches; confirmation accepts detected descriptions/types. Per-project sync
+errors propagate rather than reporting successful completion. Removing a native
+library at a custom path removes only dependencies matching its registration,
+preserving unrelated dependencies and user path overrides. The generated mixed
+fixture passes TypeScript discovery, custom-path restoration/removal, both SDK
+checks, workspace compilation and the full HTTP/MCP listener/startup/shutdown
+matrix; the Rust-only target fixture passes. All 1,032 CLI tests pass. CI includes
+`rust_mixed_sync.sh`. Rust-first TypeScript scaffolding, development orchestration
+and the wider deployment/runtime parity gaps remain open.

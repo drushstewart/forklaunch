@@ -1105,3 +1105,21 @@ HTTP health/OpenAPI, MCP initialization/discovery/tool invocation and SIGTERM.
 All 1,030 CLI tests, 752 packaged assets and the mixed lifecycle regression pass.
 CI and the migration guide include this workflow. Rust-first TypeScript setup,
 application-wide mixed sync/dev orchestration and deployment remain open.
+
+
+Application-wide mixed sync checkpoint (2026-10-12): `sync all --confirm` now
+runs native discovery and TypeScript discovery together for Node/Bun applications,
+retains native registrations during TypeScript orphan cleanup, restores registered
+custom Cargo paths even without a crates directory, and refreshes both language
+exports before generating the configured SDK targets. Native-only applications
+with `sdkTargets = ["rust"]` do not acquire a TypeScript SDK workspace. Required
+prompt values use checked argument lookup instead of panicking on synthetic
+matches; confirmation accepts detected descriptions/types. Per-project sync
+errors propagate rather than reporting successful completion. Removing a native
+library at a custom path removes only dependencies matching its registration,
+preserving unrelated dependencies and user path overrides. The generated mixed
+fixture passes TypeScript discovery, custom-path restoration/removal, both SDK
+checks, workspace compilation and the full HTTP/MCP listener/startup/shutdown
+matrix; the Rust-only target fixture passes. All 1,032 CLI tests pass. CI includes
+`rust_mixed_sync.sh`. Rust-first TypeScript scaffolding, development orchestration
+and the wider deployment/runtime parity gaps remain open.

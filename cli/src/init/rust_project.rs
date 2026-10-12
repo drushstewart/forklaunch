@@ -569,27 +569,39 @@ pub(crate) fn add_rust_workspace_member(app_root: &Path, member: &str) -> Result
 }
 
 pub(crate) fn sync_all_rust_projects(app_root: &Path, stdout: &mut StandardStream) -> Result<()> {
-    let crates_dir = app_root.join("crates");
-    if !crates_dir.exists() {
-        log_warn!(
-            stdout,
-            "Rust crates directory does not exist: {}",
-            crates_dir.display()
-        );
-        return Ok(());
-    }
-
-    for entry in std::fs::read_dir(&crates_dir)? {
-        let entry = entry?;
-        let crate_dir = entry.path();
-        if !crate_dir.is_dir() || !crate_dir.join("Cargo.toml").exists() {
-            continue;
+    let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
+    let mut names = std::collections::BTreeSet::new();
+    for project in manifest
+        .get("projects")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if project
+            .get("metadata")
+            .and_then(|metadata| metadata.get("language"))
+            .and_then(Value::as_str)
+            == Some("rust")
+            && let Some(name) = project.get("name").and_then(Value::as_str)
+        {
+            names.insert(name.to_owned());
         }
-        let Some(name) = crate_dir.file_name().and_then(|part| part.to_str()) else {
-            continue;
-        };
-        let kind = detect_rust_project_kind(app_root, name)?;
-        sync_rust_project(app_root, kind, name)?;
+    }
+    let crates_dir = app_root.join("crates");
+    if crates_dir.exists() {
+        for entry in std::fs::read_dir(&crates_dir)? {
+            let entry = entry?;
+            if entry.path().join("Cargo.toml").is_file()
+                && let Some(name) = entry.file_name().to_str()
+                && is_rust_project(app_root, name)?
+            {
+                names.insert(name.to_owned());
+            }
+        }
+    }
+    for name in names {
+        let kind = detect_rust_project_kind(app_root, &name)?;
+        sync_rust_project(app_root, kind, &name)?;
         log_ok!(stdout, "Rust {} '{}' synced", kind.label(), name);
     }
 
@@ -621,6 +633,9 @@ pub(crate) fn delete_rust_project(
     remove_rust_docker_compose_project(app_root, name)?;
     crate::infra::native_local::delete_ownership(app_root, name)?;
     remove_rust_package_scripts(app_root, name)?;
+    if kind == RustProjectKind::Library {
+        remove_registered_library_dependency(app_root, &manifest, name, &crate_path)?;
+    }
     ensure_rust_local_library_dependencies(app_root, false)?;
 
     let crate_dir = app_root.join(&crate_path);
@@ -2384,6 +2399,47 @@ fn update_rust_project_local_library_dependencies(
         .with_context(|| format!("Failed to update {}", cargo_path.display()))
 }
 
+// Custom library paths are not necessarily under crates/. Remove only the
+// dependency that still points to the deleted registration, preserving overrides.
+fn remove_registered_library_dependency(
+    app_root: &Path,
+    manifest: &Value,
+    name: &str,
+    crate_path: &str,
+) -> Result<()> {
+    let removed_path = normalize_path(app_root.join(crate_path));
+    for project in rust_workspace_projects(manifest)
+        .into_iter()
+        .filter(|project| {
+            matches!(
+                project.kind,
+                RustProjectKind::Service | RustProjectKind::Worker
+            )
+        })
+    {
+        let project_dir = app_root.join(&project.crate_path);
+        let cargo_path = project_dir.join("Cargo.toml");
+        if !cargo_path.is_file() {
+            continue;
+        }
+        let content = read_to_string(&cargo_path)?;
+        let mut cargo: Value = toml::from_str(&content)?;
+        let Some(dependencies) = cargo.get_mut("dependencies").and_then(Value::as_table_mut) else {
+            continue;
+        };
+        let matches_registration = dependencies
+            .get(name)
+            .and_then(dependency_path)
+            .is_some_and(|path| normalize_path(project_dir.join(path)) == removed_path);
+        if matches_registration {
+            dependencies.remove(name);
+            write(&cargo_path, toml::to_string_pretty(&cargo)?)
+                .with_context(|| format!("Failed to update {}", cargo_path.display()))?;
+        }
+    }
+    Ok(())
+}
+
 fn dependency_path(dependency: &Value) -> Option<&str> {
     dependency
         .as_table()
@@ -3007,6 +3063,125 @@ fn escape_rust_string(value: &str) -> String {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    #[test]
+    fn removing_custom_library_dependency_preserves_user_overrides() {
+        let root = tempfile::tempdir().unwrap();
+        let manifest: Value = toml::from_str(
+            r#"
+[[projects]]
+name = "api"
+type = "Service"
+[projects.metadata]
+language = "rust"
+cratePath = "crates/api"
+[[projects]]
+name = "jobs"
+type = "Worker"
+[projects.metadata]
+language = "rust"
+cratePath = "crates/jobs"
+"#,
+        )
+        .unwrap();
+        for name in ["api", "jobs"] {
+            create_dir_all(root.path().join(format!("crates/{name}"))).unwrap();
+        }
+        let api = root.path().join("crates/api/Cargo.toml");
+        let jobs = root.path().join("crates/jobs/Cargo.toml");
+        write(
+            &api,
+            r#"[dependencies]
+models = { path = "../../shared/models" }
+manual = { path = "../../shared/manual" }
+"#,
+        )
+        .unwrap();
+        let override_source = r#"# User override
+[dependencies]
+models = { path = "../../vendor/models" }
+"#;
+        write(&jobs, override_source).unwrap();
+        remove_registered_library_dependency(root.path(), &manifest, "models", "shared/models")
+            .unwrap();
+        let cargo: Value = toml::from_str(&read_to_string(api).unwrap()).unwrap();
+        assert!(cargo["dependencies"].get("models").is_none());
+        assert_eq!(
+            cargo["dependencies"]["manual"]["path"].as_str(),
+            Some("../../shared/manual")
+        );
+        assert_eq!(read_to_string(jobs).unwrap(), override_source);
+    }
+
+    #[test]
+    fn native_sync_all_restores_custom_members_without_a_crates_directory() {
+        let root = tempfile::tempdir().unwrap();
+        create_dir_all(root.path().join(".forklaunch")).unwrap();
+        create_dir_all(root.path().join("shared/native-models/src")).unwrap();
+        create_dir_all(root.path().join("modules/typescript-models")).unwrap();
+        write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = []\n",
+        )
+        .unwrap();
+        write(
+            root.path().join("shared/native-models/Cargo.toml"),
+            "[package]\nname = \"native-models\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .unwrap();
+        write(
+            root.path().join("shared/native-models/src/lib.rs"),
+            "pub const USER_OWNED: bool = true;\n",
+        )
+        .unwrap();
+        write(
+            root.path().join("modules/typescript-models/index.ts"),
+            "export const userOwned = true;\n",
+        )
+        .unwrap();
+        write(
+            root.path().join(".forklaunch/manifest.toml"),
+            r#"language = "mixed"
+app_name = "mixed"
+runtime = "node"
+[[projects]]
+name = "native-models"
+type = "Library"
+[projects.metadata]
+language = "rust"
+cratePath = "shared/native-models"
+[[projects]]
+name = "typescript-models"
+type = "Library"
+[projects.metadata]
+language = "typescript"
+"#,
+        )
+        .unwrap();
+        sync_all_rust_projects(root.path(), &mut StandardStream::stdout(ColorChoice::Never))
+            .unwrap();
+        let cargo: Value =
+            toml::from_str(&read_to_string(root.path().join("Cargo.toml")).unwrap()).unwrap();
+        assert_eq!(
+            cargo["workspace"]["members"][0].as_str(),
+            Some("shared/native-models")
+        );
+        assert!(!root.path().join("crates").exists());
+        assert_eq!(
+            read_to_string(root.path().join("shared/native-models/src/lib.rs")).unwrap(),
+            "pub const USER_OWNED: bool = true;\n"
+        );
+        assert_eq!(
+            read_to_string(root.path().join("modules/typescript-models/index.ts")).unwrap(),
+            "export const userOwned = true;\n"
+        );
+        assert_eq!(
+            registered_project_names(root.path(), RustProjectKind::Library)
+                .unwrap()
+                .len(),
+            2
+        );
+    }
 
     #[test]
     fn native_sync_cannot_remove_a_typescript_registration() {

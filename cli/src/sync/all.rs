@@ -59,10 +59,18 @@ pub fn sync_all_projects(
     prompts_map: &HashMap<String, HashMap<String, String>>,
     stdout: &mut StandardStream,
 ) -> Result<bool> {
-    if manifest_data.runtime == "tokio" {
+    if rust_project::is_rust_app_root(app_root_path)? {
         rust_project::sync_all_rust_projects(app_root_path, stdout)?;
-        regenerate_rust_typescript_sdk_after_sync(app_root_path, stdout)?;
-        return Ok(false);
+        // Native sync persists its own changes. Refresh callers (including
+        // release preparation) before they stage TypeScript manifest edits.
+        let updated: ApplicationManifestData = toml_from_str(&fs::read_to_string(
+            app_root_path.join(".forklaunch/manifest.toml"),
+        )?)?;
+        manifest_data.projects = updated.projects;
+        if manifest_data.runtime == "tokio" {
+            regenerate_native_app_sdks_after_sync(app_root_path, manifest_data, stdout)?;
+            return Ok(false);
+        }
     }
 
     let modules_path = app_root_path.join(&manifest_data.modules_path);
@@ -96,7 +104,8 @@ pub fn sync_all_projects(
 
     let mut orphaned_projects = vec![];
     for project in &manifest_data.projects {
-        if !DIRS_TO_IGNORE.contains(&project.name.as_str())
+        if project.metadata.as_ref().and_then(|metadata| metadata.language.as_deref()) != Some("rust")
+            && !DIRS_TO_IGNORE.contains(&project.name.as_str())
             && !existing_folders.contains(&project.name)
         {
             orphaned_projects.push(project.name.clone());
@@ -165,6 +174,7 @@ pub fn sync_all_projects(
         }
     }
 
+    let mut confirmed_prompts = prompts_map.clone();
     for entry in fs::read_dir(&modules_path)? {
         let entry = entry?;
         let project_path = entry.path();
@@ -179,9 +189,19 @@ pub fn sync_all_projects(
 
         let project_name = project_name.to_string_lossy().to_string();
 
-        if DIRS_TO_IGNORE.contains(&project_name.as_str()) {
+        if DIRS_TO_IGNORE.contains(&project_name.as_str())
+            || rust_project::is_rust_project(app_root_path, &project_name)?
+        {
             continue;
         }
+
+        if confirm_all {
+            let answers = confirmed_prompts.entry(project_name.clone()).or_default();
+            for key in ["override_description", "override_worker_type"] {
+                answers.entry(key.to_owned()).or_insert_with(|| "n".to_owned());
+            }
+        }
+        let prompts_map = if confirm_all { &confirmed_prompts } else { prompts_map };
 
         writeln!(stdout)?;
         log_info!(stdout, "Processing: {}", project_name);
@@ -304,8 +324,8 @@ pub fn sync_all_projects(
                             changes_made = true;
                         }
                     }
-                    Err(e) => {
-                        log_error!(stdout, "{}", e);
+                    Err(error) => {
+                        return Err(error).with_context(|| format!("Failed to sync project {project_name}"));
                     }
                 }
             }
@@ -333,8 +353,8 @@ pub fn sync_all_projects(
                             changes_made = true;
                         }
                     }
-                    Err(e) => {
-                        log_error!(stdout, "{}", e);
+                    Err(error) => {
+                        return Err(error).with_context(|| format!("Failed to sync project {project_name}"));
                     }
                 }
             }
@@ -362,8 +382,8 @@ pub fn sync_all_projects(
                             changes_made = true;
                         }
                     }
-                    Err(e) => {
-                        log_error!(stdout, "{}", e);
+                    Err(error) => {
+                        return Err(error).with_context(|| format!("Failed to sync project {project_name}"));
                     }
                 }
             }
@@ -379,32 +399,41 @@ pub fn sync_all_projects(
     Ok(changes_made)
 }
 
-fn regenerate_rust_typescript_sdk_after_sync(
+fn regenerate_native_app_sdks_after_sync(
     app_root_path: &Path,
+    manifest: &ApplicationManifestData,
     stdout: &mut StandardStream,
 ) -> Result<()> {
-    let output_dir = app_root_path.join(".forklaunch").join("openapi");
-    let exported_services = openapi_export::export_all_rust_services(app_root_path, &output_dir)
-        .with_context(
-            || "Rust sync completed, but contract/OpenAPI export failed before SDK regeneration",
+    let output_dir = app_root_path.join(".forklaunch/openapi");
+    let exported_services =
+        openapi_export::export_all_services(app_root_path, manifest, &output_dir).context(
+            "Project sync completed, but contract/OpenAPI export failed before SDK regeneration",
         )?;
-
     if exported_services.is_empty() {
-        log_info!(
-            stdout,
-            "No Rust services or workers found for TypeScript SDK regeneration"
-        );
+        log_info!(stdout, "No HTTP services or workers found for SDK regeneration");
         return Ok(());
     }
-
+    let targets = &manifest.sdk_targets;
+    let rust = targets.is_empty()
+        || targets
+            .iter()
+            .any(|target| matches!(target.as_str(), "rust" | "all"));
+    let typescript = targets.is_empty()
+        || targets
+            .iter()
+            .any(|target| matches!(target.as_str(), "typescript" | "ts" | "all"));
+    let target = match (rust, typescript) {
+        (true, true) => "all",
+        (true, false) => "rust",
+        _ => "typescript",
+    };
     log_info!(
         stdout,
-        "Regenerating TypeScript SDK from Rust contracts for {} project(s)",
+        "Regenerating {target} SDKs from {} service artifact(s)",
         exported_services.len()
     );
-    generate_or_check_sdk_outputs(app_root_path, "typescript", "contract", None, false, stdout)
-        .with_context(|| "Failed to regenerate TypeScript SDK from Rust contract artifacts")?;
-    Ok(())
+    generate_or_check_sdk_outputs(app_root_path, target, "contract", None, false, stdout)
+        .context("Failed to regenerate SDKs from service artifacts")
 }
 
 #[derive(Debug)]
@@ -455,14 +484,6 @@ impl CliCommand for SyncAllCommand {
             };
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
-        if rust_project::is_rust_app_root(&app_root_path)? {
-            rust_project::sync_all_rust_projects(&app_root_path, &mut stdout)?;
-            regenerate_rust_typescript_sdk_after_sync(&app_root_path, &mut stdout)?;
-            writeln!(stdout)?;
-            log_header!(stdout, Color::Green, "Sync all completed");
-            return Ok(());
-        }
-
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
 
         let mut rendered_templates_cache = RenderedTemplatesCache::new();
@@ -483,6 +504,12 @@ impl CliCommand for SyncAllCommand {
             &prompts_map,
             &mut stdout,
         )?;
+
+        if manifest_data.runtime == "tokio" {
+            writeln!(stdout)?;
+            log_header!(stdout, Color::Green, "Sync all completed");
+            return Ok(());
+        }
 
         let modules_path = app_root_path.join(&manifest_data.modules_path);
         generate_env_templates(
@@ -518,6 +545,9 @@ impl CliCommand for SyncAllCommand {
             .collect();
 
         write_rendered_templates(&rendered_templates, false, &mut stdout)?;
+        if rust_project::is_rust_app_root(&app_root_path)? {
+            regenerate_native_app_sdks_after_sync(&app_root_path, &manifest_data, &mut stdout)?;
+        }
 
         writeln!(stdout)?;
         log_header!(stdout, Color::Green, "Sync all completed");

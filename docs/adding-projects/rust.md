@@ -187,7 +187,13 @@ Mixed applications select per-project sync and deletion from the project's
 language. TypeScript service, worker, library and router commands retain the
 application's native workspace, language, SDK targets and artifact settings.
 TypeScript rename and deletion continue to update their own source/package files.
-Application-wide mixed sync and Rust-first TypeScript scaffolding remain tracked work.
+`forklaunch sync all --confirm` discovers TypeScript projects alongside native
+projects, restores registered native Cargo members at custom paths, and removes
+missing native registrations and their generated library dependencies. It exports
+both languages and refreshes the configured `sdkTargets`; a Rust-only target does
+not create a TypeScript SDK workspace. Unrecognized directories are skipped with
+a warning, and project sync failures stop the command. Rust-first TypeScript
+scaffolding and unified development orchestration remain tracked work.
 
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape. Lifecycle SDK refresh preserves each available service contract independently; a missing artifact falls back only for that service, while malformed artifacts fail explicitly. Generated service fallback methods keep their exported names (`getHealth`, `listUsers`). Deletion refreshes existing Rust SDK crates as well as an existing TypeScript client, including Rust-only applications.
 
