@@ -239,6 +239,10 @@ fn body_fields(path: &str) -> (bool, &'static [(&'static str, &'static str, bool
                 ("rememberMe", "boolean", false),
             ],
         ),
+        "/reset-password" => (
+            false,
+            &[("newPassword", "string", true), ("token", "string", false)],
+        ),
         "/request-password-reset" => (
             false,
             &[("email", "string", true), ("redirectTo", "string", false)],

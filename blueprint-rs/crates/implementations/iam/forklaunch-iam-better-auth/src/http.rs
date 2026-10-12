@@ -117,6 +117,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))
+            .route("/reset-password", post(dispatch::<S>))
             .route("/request-password-reset", post(dispatch::<S>))
             .route("/send-verification-email", post(dispatch::<S>))
             .route("/change-email", post(dispatch::<S>))
@@ -229,8 +230,8 @@ async fn handle<S: AuthStore + 'static>(
         request::guard(app, &parts, &payload, &query, true)?;
         return credential::login(app, path, payload, &parts.headers, pending, now).await;
     }
-    if let Some(error) = credential::configured_public(path) {
-        return Err(error);
+    if let Some(result) = credential::public(app, path, &payload, &query, now).await {
+        return result;
     }
     if path == "/jwks" {
         return KeyRing::new(app.store.clone(), &app.base_url)

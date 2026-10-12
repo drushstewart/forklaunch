@@ -44,8 +44,9 @@ async fn main() {
                     ("users", Model::User),
                     ("sessions", Model::Session),
                     ("accounts", Model::Account),
+                    ("verifications", Model::Verification),
                 ] {
-                    for row in input[field].as_array().unwrap() {
+                    for row in input[field].as_array().into_iter().flatten() {
                         tx.insert(model, row.clone()).await.unwrap();
                     }
                 }
@@ -57,8 +58,17 @@ async fn main() {
                 let users = tx.list(Model::User).await.unwrap();
                 let accounts = tx.list(Model::Account).await.unwrap();
                 let sessions = tx.list(Model::Session).await.unwrap();
+                let verifications = if input["withVerifications"].as_bool() == Some(true) {
+                    Some(tx.list(Model::Verification).await.unwrap())
+                } else {
+                    None
+                };
                 tx.commit().await.unwrap();
-                json!({"users":users,"accounts":accounts,"sessions":sessions})
+                let mut records = json!({"users":users,"accounts":accounts,"sessions":sessions});
+                if let Some(verifications) = verifications {
+                    records["verifications"] = json!(verifications);
+                }
+                records
             }
             "request" => {
                 let mut request = Request::builder()

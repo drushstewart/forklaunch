@@ -142,7 +142,7 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
 }
 
 // These features have no configured callbacks/enabled flags in the TS module.
-pub(super) fn configured_public(path: &str) -> Option<BlueprintError> {
+fn configured_public(path: &str) -> Option<BlueprintError> {
     match path {
         "/request-password-reset" => Some(BlueprintError::new(
             "RESET_PASSWORD_DISABLED",
@@ -154,4 +154,41 @@ pub(super) fn configured_public(path: &str) -> Option<BlueprintError> {
         )),
         _ => None,
     }
+}
+
+async fn reset<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    payload: &Value,
+    query: &std::collections::HashMap<String, Value>,
+    now: DateTime<Utc>,
+) -> BlueprintResult<Value> {
+    if let Some(token) = query.get("token")
+        && !token.is_string()
+    {
+        return Err(BlueprintError::new(
+            "VALIDATION_ERROR",
+            "[query.token] Invalid input: expected string, received array",
+        ));
+    }
+    let token = payload["token"]
+        .as_str()
+        .filter(|token| !token.is_empty())
+        .or_else(|| query.get("token").and_then(Value::as_str))
+        .unwrap_or("");
+    CredentialService::new(app.store.clone())
+        .reset_password(token, super::text(payload, "newPassword")?.to_owned(), now)
+        .await
+}
+
+pub(super) async fn public<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    path: &str,
+    payload: &Value,
+    query: &std::collections::HashMap<String, Value>,
+    now: DateTime<Utc>,
+) -> Option<BlueprintResult<Value>> {
+    if path == "/reset-password" {
+        return Some(reset(app, payload, query, now).await);
+    }
+    configured_public(path).map(Err)
 }

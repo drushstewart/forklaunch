@@ -89,7 +89,7 @@ part of the configured module.
 `http::AuthHttp` exposes `/sign-up/email`, `/sign-in/email`, `/verify-password`,
 `/change-password`, `/update-user`, `/list-accounts`, `/unlink-account`, `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
 `/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token`, `/jwks`,
-`/request-password-reset`, `/send-verification-email`, `/change-email` and
+`/request-password-reset`, `/reset-password`, `/send-verification-email`, `/change-email` and
 `/delete-user`.
 It authenticates signed cookies against authoritative tenant-bound storage,
 refreshes sessions, emits verified JWT headers and publishes only public keys.
@@ -144,6 +144,14 @@ email changes/deletion require authoritative sessions. Disabled deletion returns
 the actual empty HTTP 404 response. These routes perform no email or deletion
 work; callbacks/enable flags are absent from the configured TypeScript module.
 
+Token-based password reset matches 44 actual HTTP/storage comparisons. Body
+and query tokens, UTF-16 password limits, newest duplicate selection, duplicate
+invalidation, expired/missing-user consumption and exact expiry boundaries match.
+Reset creates a missing credential account and retains existing sessions. Hash
+work runs outside write locks; atomic consumption permits one concurrent winner.
+Live memory/encrypted PostgreSQL exercise reset and subsequent password checks
+through HTTP beside MCP. Reset-email delivery remains configured disabled.
+
 Remaining user/account/provider/org routes, real TS ORM
-conformance, custom callbacks and module generation remain open; these twenty
+conformance, custom callbacks and module generation remain open; these twenty-one
 routes do not constitute the complete Better Auth preset.

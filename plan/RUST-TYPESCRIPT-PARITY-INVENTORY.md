@@ -363,3 +363,17 @@ response/cookie/storage comparisons preserve schema/Origin/session ordering and
 empty deletion 404 bodies. Live memory/restricted-role PostgreSQL validate these
 responses beside MCP. Token-based reset/verification, remaining user/account/
 provider/org operations, real ORM and CLI preset remain open.
+
+Fresh archive `ac1c0T` passes the twenty-route auth checkpoint at `54901dd98`: relocated
+auth HTTP/MCP tests, portable modules/workers, both CLI/native SDK languages,
+listener startup configurations and all five managed callbacks. Checkout CLI
+restored. Subsequent token-reset work is newer than this snapshot.
+
+Twenty-one native raw auth routes include single-use token password reset. Its
+44 actual HTTP/storage comparisons cover body/query token precedence, validation,
+UTF-16 password limits, duplicate selection/invalidation, expiry, missing users,
+missing credential creation and session retention. Atomic consumption allows one
+concurrent winner and hashing runs outside tenant locks. Live memory and
+restricted-role PostgreSQL exercise reset and subsequent verification via HTTP
+beside MCP. Email verification/callback routes, remaining user/account/provider/
+org operations, real ORM conformance and CLI preset remain open.

@@ -231,6 +231,26 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
             .unwrap();
         assert_eq!(response.status(), status);
     }
+
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::Verification, json!({"id":"http-reset","identifier":"reset-password:http-token","value":"http-owner","createdAt":now.to_rfc3339(),"expiresAt":(now + chrono::Duration::minutes(1)).to_rfc3339()})).await.unwrap();
+    tx.commit().await.unwrap();
+    let reset = client
+        .post(format!("{base}/api/auth/reset-password"))
+        .json(&json!({"token":"http-token", "newPassword":"http-reset-password"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(reset.status(), StatusCode::OK);
+    let verified = client
+        .post(format!("{base}/api/auth/verify-password"))
+        .header("cookie", &signed)
+        .header("origin", "http://localhost:3000")
+        .json(&json!({"password":"http-reset-password"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(verified.status(), StatusCode::OK);
     let docs: Value = client
         .get(format!("{base}/openapi.json"))
         .send()

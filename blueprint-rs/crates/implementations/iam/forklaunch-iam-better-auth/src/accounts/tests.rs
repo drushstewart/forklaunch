@@ -97,7 +97,8 @@ pub(crate) async fn exercise_credentials<S: AuthStore>(store: Arc<S>) {
     assert_ne!(account["password"], "test-only-password");
     assert_eq!(account["password"].as_str().unwrap().len(), 161);
     tx.commit().await.unwrap();
-    exercise_password_change(store, grant, login, winner, now).await;
+    exercise_password_change(store.clone(), grant, login, winner, now).await;
+    super::reset::tests::exercise_reset(store).await;
 }
 
 async fn exercise_password_change<S: AuthStore>(

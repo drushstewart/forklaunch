@@ -1,0 +1,187 @@
+//! Single-use password reset tokens over authoritative encrypted records.
+use super::{CredentialService, credentials, storage_error, text, validate_length};
+use crate::store::{AuthStore, AuthTransaction, Model};
+use chrono::{DateTime, SecondsFormat, Utc};
+use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
+use serde_json::{Value, json};
+use zeroize::Zeroizing;
+
+impl<S: AuthStore> CredentialService<S> {
+    /// Consumes the newest verification and invalidates duplicates before hashing.
+    /// Token consumption persists even for expired tokens or missing users, matching
+    /// the configured handler. Successful resets retain existing sessions.
+    /// # Errors
+    /// Returns token/password/user errors or sanitized storage failures.
+    pub async fn reset_password(
+        &self,
+        token: &str,
+        password: String,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Value> {
+        if token.is_empty() {
+            return Err(invalid_token());
+        }
+        validate_length(&password, true)?;
+        let identifier = format!("reset-password:{token}");
+        let mut tx = self.store.begin(true).await?;
+        let mut latest: Option<(DateTime<Utc>, Value)> = None;
+        for row in tx.list(Model::Verification).await? {
+            if row["identifier"].as_str() != Some(&identifier) {
+                continue;
+            }
+            let created = time(&row, "createdAt")?;
+            if latest.as_ref().is_none_or(|(best, _)| created > *best) {
+                latest = Some((created, row.clone()));
+            }
+            tx.delete(Model::Verification, text(&row, "id")?).await?;
+        }
+        tx.commit().await?;
+        let (_, row) = latest.ok_or_else(invalid_token)?;
+        if time(&row, "expiresAt")? < now {
+            return Err(invalid_token());
+        }
+        let user_id = text(&row, "value")?.to_owned();
+        let mut tx = self.store.begin(false).await?;
+        let exists = tx.get(Model::User, &user_id).await?.is_some();
+        tx.commit().await?;
+        if !exists {
+            return Err(user_not_found());
+        }
+        let password = Zeroizing::new(password);
+        let hash = self
+            .run_crypto(move || credentials::hash_password(&password))
+            .await?;
+        let mut tx = self.store.begin(true).await?;
+        if tx.get(Model::User, &user_id).await?.is_none() {
+            return Err(user_not_found());
+        }
+        let mut account = tx
+            .list(Model::Account)
+            .await?
+            .into_iter()
+            .find(|row| row["userId"] == user_id && row["providerId"] == "credential");
+        let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+        if let Some(row) = account.as_mut() {
+            row["password"] = json!(hash);
+            row["updatedAt"] = json!(timestamp);
+            tx.replace(Model::Account, row.clone()).await?;
+        } else {
+            tx.insert(Model::Account, json!({"id":uuid::Uuid::new_v4().to_string(),"userId":user_id,"accountId":user_id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
+        }
+        tx.commit().await?;
+        Ok(json!({"status":true}))
+    }
+}
+fn time(row: &Value, field: &str) -> BlueprintResult<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(text(row, field)?)
+        .map(|time| time.with_timezone(&Utc))
+        .map_err(|_| storage_error())
+}
+fn invalid_token() -> BlueprintError {
+    BlueprintError::new("INVALID_TOKEN", "Invalid token")
+}
+fn user_not_found() -> BlueprintError {
+    BlueprintError::new("USER_NOT_FOUND", "User not found")
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::sessions::SessionService;
+    use std::sync::Arc;
+
+    pub(crate) async fn exercise_reset<S: AuthStore>(store: Arc<S>) {
+        let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+        let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+        let mut tx = store.begin(true).await.unwrap();
+        tx.insert(Model::User, json!({"id":"reset-native-owner","email":"reset-native@fixture.test","name":"Reset Owner"})).await.unwrap();
+        for (id, identifier, expires) in [
+            (
+                "single-reset",
+                "reset-password:single",
+                now + chrono::Duration::minutes(1),
+            ),
+            (
+                "expired-reset",
+                "reset-password:expired",
+                now - chrono::Duration::milliseconds(1),
+            ),
+            (
+                "unrelated-reset",
+                "other:retained",
+                now + chrono::Duration::minutes(1),
+            ),
+        ] {
+            tx.insert(Model::Verification, json!({"id":id,"identifier":identifier,"value":"reset-native-owner","createdAt":timestamp,"updatedAt":timestamp,"expiresAt":expires.to_rfc3339_opts(SecondsFormat::Millis,true)})).await.unwrap();
+        }
+        tx.commit().await.unwrap();
+        let sessions = SessionService::new(store.clone());
+        let session = sessions
+            .create("reset-native-owner", "", "", now)
+            .await
+            .unwrap();
+        let service = CredentialService::new(store.clone());
+        let (left, right) = tokio::join!(
+            service.reset_password("single", "left-reset-password".into(), now),
+            service.reset_password("single", "right-reset-password".into(), now),
+        );
+        assert_ne!(left.is_ok(), right.is_ok());
+        let password = if left.is_ok() {
+            "left-reset-password"
+        } else {
+            "right-reset-password"
+        };
+        assert_eq!(
+            left.err().or_else(|| right.err()).unwrap().code,
+            "INVALID_TOKEN"
+        );
+        let mut tx = store.begin(false).await.unwrap();
+        let account = tx
+            .list(Model::Account)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|row| row["userId"] == "reset-native-owner")
+            .unwrap();
+        assert!(credentials::verify_password(
+            password,
+            account["password"].as_str().unwrap()
+        ));
+        assert!(
+            tx.get(Model::Verification, "single-reset")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            tx.get(Model::Verification, "unrelated-reset")
+                .await
+                .unwrap()
+                .is_some()
+        );
+        tx.commit().await.unwrap();
+        assert!(
+            sessions
+                .get(session["token"].as_str().unwrap(), false, false, now)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            service
+                .reset_password("expired", "valid-password".into(), now)
+                .await
+                .unwrap_err()
+                .code,
+            "INVALID_TOKEN"
+        );
+        let mut tx = store.begin(false).await.unwrap();
+        assert!(
+            tx.get(Model::Verification, "expired-reset")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        tx.commit().await.unwrap();
+    }
+}

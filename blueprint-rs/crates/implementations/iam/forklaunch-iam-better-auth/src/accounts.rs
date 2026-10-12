@@ -15,6 +15,7 @@ use zeroize::Zeroizing;
 
 mod password;
 mod profile;
+mod reset;
 pub use password::{ChangePasswordInput, PasswordChange};
 
 #[cfg(test)]
