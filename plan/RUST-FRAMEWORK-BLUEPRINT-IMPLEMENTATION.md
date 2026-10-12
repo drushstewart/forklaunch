@@ -1048,3 +1048,12 @@ auth routes and the server-only password helper, before organization additions.
 - [x] Port active member/role reads, role updates, removal and organization departure with exact configured owner safeguards, creator bypass ordering, scoped grants and team/session cleanup. All 146 actual HTTP/storage/cookie comparisons pass. Memory and restricted PostgreSQL validate a concurrent departure leaves one owner and preserves team counters; live HTTP membership operations run beside JWT/MCP lifecycle. Member listing/addition, team/invitation/dynamic-role management and generated preset gates remain open.
 
 - [x] Add trusted server-only member creation with explicit-org/session-fallback behavior, exact role joining, duplicate/user/team/error ordering, configured membership limit and keyed team/counter effects. All 40 actual API/storage comparisons pass. Memory and restricted PostgreSQL verify duplicate and last-slot races; live HTTP rejects a public add-member route. Member listing, team/invitation/dynamic-role management and remaining helper/preset gates stay open.
+
+Fresh archive `PHoCdV` at `a030eb345` passes relocated native auth tests (14 passed,
+one explicit-PostgreSQL test ignored), auth HTTP/JWT/MCP and the complete generated
+HTTP/MCP listener/startup matrix. Portable services/workers, both SDK generators
+and five signed capability callbacks pass. This snapshot includes 38 raw routes
+and server-only member/password helpers, before member listing. Checkout CLI is
+rebuilt from the subsequent listing sources.
+
+- [x] Port scoped member listing with schema/error ordering, public-user joins, filtered totals, stable en-US ICU sorting and ECMAScript Number/slice pagination. All 340 actual HTTP/storage/cookie comparisons pass, including unknown fields, malformed filter operators and orphan users. Memory/restricted PostgreSQL and live HTTP/JWT/MCP cover the new route. Real ORM collation/query conformance and remaining team/invitation/dynamic-role/preset gates stay open.

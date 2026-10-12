@@ -7,6 +7,7 @@ use super::{
 };
 mod add;
 mod leave;
+mod list;
 mod read;
 mod remove;
 mod role;

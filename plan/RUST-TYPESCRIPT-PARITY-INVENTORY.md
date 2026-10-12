@@ -474,3 +474,14 @@ the configured adapter. Memory/restricted PostgreSQL verify concurrent duplicate
 and last-slot admission; live HTTP rejects public add-member access. Raw auth
 route count remains 38. Member listing and the remaining team/invitation/dynamic
 role, provider, real ORM, callback, JWT-helper and CLI preset gates remain open.
+
+Thirty-nine native raw auth routes include scoped member listing. All 340 actual
+HTTP/storage/cookie comparisons pass across schema ordering, active/ID/slug scope,
+filtered totals, public-user projection, missing-user failures, stable date and
+Unicode sorting, all filter operators and ECMAScript Number/slice pagination.
+Unicode sorting uses ICU's en-US collation, matching the fixture's Node locale;
+real ORM collation and query behavior remain a separate open conformance gate.
+Memory/restricted PostgreSQL cover filtering, Unicode pages and orphan failures;
+live HTTP listing runs beside session/JWT and MCP lifecycle. Team/invitation/
+dynamic-role management, provider flows, remaining server JWT helpers, real ORM,
+callbacks and generated preset remain open.

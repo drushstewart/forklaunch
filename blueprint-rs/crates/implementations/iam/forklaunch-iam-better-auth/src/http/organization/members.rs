@@ -3,6 +3,7 @@ use super::validation::{received, validation};
 use super::{
     AuthStore, BlueprintResult, DateTime, HashMap, OrganizationService, Utc, Value, internal,
 };
+mod listing;
 pub(super) fn is_route(path: &str) -> bool {
     matches!(
         path,
@@ -11,6 +12,7 @@ pub(super) fn is_route(path: &str) -> bool {
             | "/organization/leave"
             | "/organization/update-member-role"
             | "/organization/remove-member"
+            | "/organization/list-members"
     )
 }
 pub(super) async fn handle<S: AuthStore>(
@@ -23,6 +25,11 @@ pub(super) async fn handle<S: AuthStore>(
 ) -> BlueprintResult<Option<Value>> {
     let (token, transient) = session;
     Ok(Some(match path {
+        "/organization/list-members" => {
+            service
+                .list_members(token, transient, &serde_json::json!(query), now)
+                .await?
+        }
         "/organization/get-active-member" => service.active_member(token, transient, now).await?,
         "/organization/get-active-member-role" => {
             service
@@ -51,7 +58,9 @@ pub(super) async fn handle<S: AuthStore>(
 pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
     if matches!(
         path,
-        "/organization/get-active-member" | "/organization/get-active-member-role"
+        "/organization/get-active-member"
+            | "/organization/get-active-member-role"
+            | "/organization/list-members"
     ) {
         return Ok(());
     }
@@ -95,6 +104,9 @@ pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult
     }
 }
 pub(super) fn validate_query(path: &str, query: &HashMap<String, Value>) -> BlueprintResult<()> {
+    if path == "/organization/list-members" {
+        return listing::validate(query);
+    }
     if path != "/organization/get-active-member-role" {
         return Ok(());
     }

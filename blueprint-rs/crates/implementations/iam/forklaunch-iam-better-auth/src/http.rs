@@ -127,6 +127,10 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 "/organization/get-active-member-role",
                 get(dispatch::<S>).head(not_found),
             )
+            .route(
+                "/organization/list-members",
+                get(dispatch::<S>).head(not_found),
+            )
             .route("/organization/leave", post(dispatch::<S>))
             .route("/organization/update-member-role", post(dispatch::<S>))
             .route("/organization/remove-member", post(dispatch::<S>))

@@ -118,5 +118,20 @@ async fn reads(client: &reqwest::Client, base: &str, cookie: &str) -> Value {
         .await
         .unwrap();
     assert_eq!(role, json!({"role":"owner"}));
+    let page: Value = client
+        .get(format!(
+            "{base}/api/auth/organization/list-members?sortBy=role&limit=1"
+        ))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(page["total"], 1);
+    assert_eq!(page["members"][0]["id"], member["id"]);
+    assert_eq!(page["members"][0]["user"]["id"], "http-owner");
+    assert!(page["members"][0]["user"].get("privateSecret").is_none());
     member
 }
