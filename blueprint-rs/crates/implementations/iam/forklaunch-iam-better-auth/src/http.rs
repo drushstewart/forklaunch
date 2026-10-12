@@ -26,6 +26,7 @@ mod callback;
 mod credential;
 mod email;
 mod organization;
+mod public;
 mod rate;
 mod request;
 mod social;
@@ -41,6 +42,7 @@ pub struct AuthHttp<S> {
     google: Option<crate::oauth::google_client::GoogleClient>,
     secret: Zeroizing<Vec<u8>>,
     base_url: String,
+    production: bool,
     policy: Arc<OriginPolicy>,
     cookie: SessionCookie,
     limiter: rate::RateLimiter,
@@ -69,6 +71,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             google: None,
             secret,
             base_url,
+            production: std::env::var("NODE_ENV").is_ok_and(|value| value == "production"),
             policy: Arc::new(policy),
             cookie: SessionCookie { secure },
             limiter: rate::RateLimiter::new(),
@@ -137,6 +140,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                     .post(social_callback::dispatch::<S>)
                     .head(not_found),
             )
+            .route("/error", get(public::error::<S>).head(not_found))
+            .route(
+                "/open-api/generate-schema",
+                get(public::schema::<S>).head(not_found),
+            )
+            .route("/reference", get(public::reference).head(not_found))
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
             .route("/account-info", get(dispatch::<S>).head(not_found))
             .route("/get-access-token", post(dispatch::<S>))

@@ -498,3 +498,14 @@ native tests, encrypted restricted PostgreSQL, strict all-feature clippy, the
 161 HTTP and 289 social regressions, rebuilt CLI and 728 packaged assets pass.
 The implemented raw-route count is 67/70. Error/OpenAPI/reference routes,
 full ORM/application hooks and the native CLI auth preset remain open.
+
+Configured `/error`, `/open-api/generate-schema` and disabled `/reference` now
+complete all 70 raw routes. The default error HTML is adapted under the upstream
+MIT license and matches full rendered responses, URLSearchParams first-value
+selection, preserved entities and production redirects. The OpenAPI response
+uses the fixed preset's declarative contract with the trusted server URL; it is
+compared in full with the actual configured TypeScript generator. Custom plugin
+schemas/options are outside this fixed preset. All 27 development and 27
+production public-response comparisons, 22 native tests and strict all-feature
+clippy pass. Full ORM/application hooks, application surfacing/compliance,
+retention and native CLI preset integration remain open.
