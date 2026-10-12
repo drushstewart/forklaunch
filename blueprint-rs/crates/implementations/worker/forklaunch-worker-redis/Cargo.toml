@@ -41,3 +41,7 @@ required-features = ["redis-client"]
 [[example]]
 name = "bullmq_parity"
 required-features = ["bullmq"]
+
+[[example]]
+name = "bullmq_scheduler_parity"
+required-features = ["bullmq"]

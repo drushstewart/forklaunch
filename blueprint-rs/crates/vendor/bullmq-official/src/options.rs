@@ -467,7 +467,8 @@ pub struct WorkerOptions {
     /// Maximum number of times a job may *start* processing (regardless of
     /// completion/failure) before it is moved to `failed` with an
     /// unrecoverable error. Each pickup increments the job's `attemptsStarted`
-    /// counter. `None` disables the check. Mirrors Node.js `maxStartedAttempts`.
+    /// counter. `None` disables the check. With `forklaunch-job-options`, zero
+    /// also disables the check, matching Node.js `maxStartedAttempts`.
     pub max_started_attempts: Option<u32>,
     /// Skip the stalled-job check for this worker. Other workers may still
     /// perform stalled checks. Mirrors Node.js `skipStalledCheck`.

@@ -1103,6 +1103,30 @@ impl Worker {
             });
         }
 
+        // Node schedules on fetch, before user processing (including preprocessor
+        // rejection). This preserves cadence during slow jobs and makes the queued
+        // next iteration visible to scheduler removal while this job is active.
+        #[cfg(feature = "forklaunch-job-options")]
+        if let Some(ref scheduler_id) = repeat_job_key {
+            if let Err(e) = Self::update_job_scheduler(
+                ctx,
+                scheduler_id,
+                &job_id,
+                &job_name,
+                &job_data,
+                &job_opts,
+            )
+            .await
+            {
+                error!(job_id = %job_id, scheduler_id = %scheduler_id, error = %e,
+                    "failed to schedule next iteration before processing");
+                let _ = ctx.event_tx.send(WorkerEvent::Error(format!(
+                    "Failed to add repeatable job for next iteration: {}",
+                    e
+                )));
+            }
+        }
+
         let _ = ctx.event_tx.send(WorkerEvent::Active {
             job_id: job_id.clone(),
         });
@@ -1112,7 +1136,10 @@ impl Worker {
         // failParentOnFailure) takes precedence, otherwise the job is rejected
         // when it has started more times than `max_started_attempts` allows.
         let unrecoverable_reason = job.deferred_failure().map(|s| s.to_string()).or_else(|| {
-            match ctx.opts.max_started_attempts {
+            let limit = ctx.opts.max_started_attempts;
+            #[cfg(feature = "forklaunch-job-options")]
+            let limit = limit.filter(|maximum| *maximum > 0);
+            match limit {
                 Some(max) if max < job.attempts_started() => {
                     Some("job started more than allowable limit".to_string())
                 }
@@ -1169,6 +1196,7 @@ impl Worker {
                 .await;
 
                 // Schedule the next iteration if this is a repeatable job
+                #[cfg(not(feature = "forklaunch-job-options"))]
                 if let Some(ref scheduler_id) = repeat_job_key {
                     if let Err(e) = Self::update_job_scheduler(
                         ctx,
@@ -1217,6 +1245,7 @@ impl Worker {
                 .await;
 
                 // Schedule the next iteration even when job fails
+                #[cfg(not(feature = "forklaunch-job-options"))]
                 if let Some(ref scheduler_id) = repeat_job_key {
                     if let Err(e) = Self::update_job_scheduler(
                         ctx,

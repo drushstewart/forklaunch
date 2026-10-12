@@ -19,3 +19,15 @@ JavaScript call stacks. Existing TypeScript history entries are preserved.
 The actual TypeScript/native worker fixture compares final history and reasons
 for recovered and terminal jobs across both retry paths and all limit forms.
 Lua scripts and behavior with this feature disabled remain unchanged.
+
+With `forklaunch-job-options`, repeat schedulers advance immediately after a job
+is fetched and before user processing or preprocessor rejection, matching the
+actual Node worker. The former outcome-time calls remain only when the feature
+is disabled. This preserves scheduling cadence for slow processors, exposes the
+queued iteration during active work and lets scheduler removal cancel it without
+resurrection at completion. Zero `maxStartedAttempts` also disables that guard,
+matching the Node worker's truthiness check; positive limits still apply.
+Twelve actual-library scenarios cover interval/cron schedules in both directions,
+three-iteration limits, completed/failed runs, inspection/removal, cancellation
+during active work, preprocessor rejection and the zero-limit boundary. The
+fixtures reproduced both timing and zero-limit mismatches before their fixes.
