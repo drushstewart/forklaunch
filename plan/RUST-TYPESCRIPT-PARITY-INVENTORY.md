@@ -1090,3 +1090,18 @@ router removal with byte-preserving rejection of unsupported server edits. The
 cleanup hook is fixture-owned to avoid modifying shared package-manager caches.
 All 1,025 CLI tests and native sync/delete regressions pass. Automatic mixed
 scaffolding, application-wide orchestration and deployment remain separate gates.
+
+
+Support native backend attachment to existing TypeScript applications. Rust
+service/worker/library/module init creates a root Cargo workspace and mixed
+metadata for Node/Bun apps, preserves existing TypeScript files and Cargo
+configuration, and supplies a separate native Dockerfile/ignore file. Dry-run,
+configuration rejection, metadata aliases, output containment and customized
+native-file preservation are tested. Actual Node/Bun scaffolds accept and compile
+relocated native service/Redis-worker/library/CAC projects without TypeScript
+source changes, and both native services pass the HTTP/MCP listener/startup/
+shutdown matrix. The separate mixed native image builds all binaries and passes
+HTTP health/OpenAPI, MCP initialization/discovery/tool invocation and SIGTERM.
+All 1,030 CLI tests, 752 packaged assets and the mixed lifecycle regression pass.
+CI and the migration guide include this workflow. Rust-first TypeScript setup,
+application-wide mixed sync/dev orchestration and deployment remain open.

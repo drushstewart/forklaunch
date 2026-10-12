@@ -100,9 +100,6 @@ pub(crate) fn generate_rust_module(matches: &ArgMatches) -> Result<()> {
             .map(PathBuf::from)
             .unwrap_or(std::env::current_dir()?),
     )?;
-    if !is_rust_app_root(&root)? {
-        bail!("Rust modules require a Rust or mixed application");
-    }
     let dryrun = matches.get_flag("dryrun");
     generate_module_at(&root, &name, matches, dryrun, kind)
 }
@@ -134,6 +131,9 @@ pub(super) fn generate_module_at(
             "An existing crate occupies the module destination: {}",
             crate_dir.display()
         );
+    }
+    if manifest_path.exists() {
+        mixed::ensure_workspace(root, dryrun)?;
     }
     let data = RustModuleTemplate {
         name: escape_toml_string(name),

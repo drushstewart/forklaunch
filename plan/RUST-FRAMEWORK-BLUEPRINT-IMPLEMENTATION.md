@@ -28,7 +28,8 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Verify all 752 current embedded Rust source/template files are present in the CLI Cargo package, including documentation examples; `.template` manifests and source symlinks preserve complete generated workspaces.
 - [x] Generate one shared HTTP SDK from native contracts and TypeScript OpenAPI, preserve imported clients through lifecycle refresh, and watch both languages/custom paths. All 1,023 CLI tests, strict generated Rust/TypeScript consumers, live clients against both servers, relocation, loss/recovery and native HTTP/MCP startup pass.
 - [x] Dispatch per-project sync/delete by project language; preserve mixed manifest fields through TypeScript init/change/delete and async router removal. Actual Rust/TypeScript service, worker and library sync/rename/delete, preservation on unsupported router edits, all 1,025 CLI tests and native sync/delete regressions pass.
-- [ ] Finish mixed-app scaffolding, application-wide sync and development orchestration (phases 13–15).
+- [x] Attach native services/workers/libraries/modules directly to existing Node/Bun applications. Preserve TypeScript source/tooling and Cargo settings, generate a separate native Dockerfile, and validate relocation, both runtime variants, HTTP/MCP startup and the mixed native container.
+- [ ] Finish Rust-first TypeScript scaffolding, application-wide mixed sync and development orchestration (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
 - [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive installation is checked; no crate has been published during this port.
@@ -799,7 +800,7 @@ Current CLI structure to build on:
 - [ ] Add full docs for `framework-rs`.
 - [ ] Add full docs for `blueprint-rs`.
 - [ ] Add examples for Rust services, Rust workers, and mixed TypeScript/Rust apps.
-- [ ] Add migration guide for TypeScript users adopting Rust services.
+- [x] Add a migration guide for TypeScript users adopting native services/workers/libraries/modules, with workspace requirements, preserved settings, shared SDKs and separate Docker builds.
 - [ ] Add crate publishing pipeline.
 - [ ] Add version compatibility matrix between TypeScript and Rust packages.
 - [ ] Add performance benchmarks for HTTP, validation, SDK calls, Redis, S3, and WebSockets.
@@ -1209,3 +1210,22 @@ preservation and every shared metadata field. All 1,025 CLI tests and existing
 native sync/delete runtime regressions pass. The fixture supplies a Cargo workspace
 for its TypeScript-first app; automatic hybrid scaffolding and app-wide sync are
 still open.
+
+
+TypeScript-first native attachment checkpoint (2026-10-12): native init now
+creates the root Cargo workspace for existing Node/Bun applications and marks
+them mixed while preserving TypeScript runtime/tooling/source and existing Cargo
+members/comments/settings. Missing inherited package settings use application
+defaults; incompatible workspace editions, conflicting aliases and escaping
+output paths reject before writes. Dry-run is read-only. Native services and
+modules use `Dockerfile.rust` plus a dedicated ignore file, preserving the existing
+TypeScript image; native workers inherit the same build selection. Actual Node
+and Bun applications each accept service/Redis-worker/library/CAC generation,
+retain their TypeScript trees byte-for-byte, survive relocation and compile every
+native crate. Both native services pass the full HTTP/MCP listener matrix. The
+mixed native image builds all binaries and passes health/OpenAPI, MCP discovery
+and tool invocation, Origin rejection and graceful shutdown. All 1,030 CLI tests,
+752 source-package checks and the mixed lifecycle regression pass. CI runs the
+attachment and container fixture; the user guide now documents the migration.
+Rust-first TypeScript scaffolding, custom workspace locations, application-wide
+sync and development orchestration remain separate work.

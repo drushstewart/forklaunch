@@ -23,6 +23,45 @@ The service serves `/health`, `/users`, `/openapi.json`, and a Scalar documentat
 
 Network requests use Axum and the same contract handlers as `local_router`. Path parameters, decoded URL queries, headers, binary bodies, body limits, CORS, and request IDs pass through the framework adapter.
 
+## Add Rust to an existing TypeScript application
+
+Run native initialization from the application root containing `.forklaunch`:
+
+```sh
+forklaunch init service inventory --language rust -D "Inventory API"
+forklaunch init worker inventory-jobs --language rust -t redis -D "Inventory jobs"
+forklaunch init library inventory-models --language rust -D "Inventory models"
+cargo check --workspace
+cargo run -p inventory
+```
+
+The first native project creates a Cargo workspace and marks the application as
+mixed. Node/Bun runtime settings, TypeScript modules, package workspaces and
+existing source files are preserved. Native module initialization works too, for
+example `forklaunch init module catalog --language rust -m cac-base`.
+`--dryrun` leaves the application untouched.
+
+An existing Cargo workspace retains its members, comments and configuration;
+missing inherited package settings are filled from the application. Generated
+native crates require `workspace.package.edition = "2024"` and a root
+`Cargo.toml`. Incompatible configuration is reported before attachment writes.
+Commit the new Cargo files and bundled `.forklaunch/framework-rs` and, when
+present, `.forklaunch/blueprint-rs` sources with the application.
+
+Native Compose services use a separate `Dockerfile.rust` and
+`Dockerfile.rust.dockerignore`. Existing TypeScript Dockerfiles remain in place.
+Use `docker compose build inventory` and `docker compose up inventory` to build
+and start the native service. Its HTTP and MCP settings are the same as in a
+Rust-first application. Node and Bun migration fixtures compile relocated native
+services, workers, libraries and CAC modules; native HTTP/MCP startup and the
+separate native container build are validated.
+
+Install the TypeScript application's dependencies before exporting all services,
+then run `forklaunch openapi export` and `forklaunch sdk generate --target all
+--from contract` to build the shared HTTP SDK described below. Adding TypeScript
+scaffolding to a Rust-first app and application-wide mixed orchestration remain
+tracked work.
+
 ## Native Better Auth
 
 ```sh
@@ -148,7 +187,7 @@ Mixed applications select per-project sync and deletion from the project's
 language. TypeScript service, worker, library and router commands retain the
 application's native workspace, language, SDK targets and artifact settings.
 TypeScript rename and deletion continue to update their own source/package files.
-Application-wide mixed sync and automatic mixed scaffolding remain tracked work.
+Application-wide mixed sync and Rust-first TypeScript scaffolding remain tracked work.
 
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape. Lifecycle SDK refresh preserves each available service contract independently; a missing artifact falls back only for that service, while malformed artifacts fail explicitly. Generated service fallback methods keep their exported names (`getHealth`, `listUsers`). Deletion refreshes existing Rust SDK crates as well as an existing TypeScript client, including Rust-only applications.
 

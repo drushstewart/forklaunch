@@ -31,6 +31,7 @@ static FRAMEWORK_CRATES: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/framework/crates");
 const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.toml.template");
 
+mod mixed;
 mod modules;
 mod worker;
 pub(crate) use modules::generate_rust_module;
@@ -1155,6 +1156,7 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
             "An existing crate occupies the destination for {name}; sync it before initialization"
         );
     }
+    mixed::ensure_workspace(&app_root, dryrun)?;
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     ensure_embedded_framework(&app_root, dryrun)?;
     let requested_backend = worker::Backend::from_options(
@@ -1762,10 +1764,14 @@ fn ensure_rust_docker_compose_project(
     } else {
         None
     };
-    compose
-        .services
-        .entry(name.to_string())
-        .or_insert_with(|| rust_docker_service(&app_name, name, kind, port));
+    let dockerfile = mixed::dockerfile(app_root)?;
+    compose.services.entry(name.to_string()).or_insert_with(|| {
+        let mut service = rust_docker_service(&app_name, name, kind, port);
+        if let Some(build) = &mut service.build {
+            build.dockerfile = dockerfile.to_owned();
+        }
+        service
+    });
 
     write(&compose_path, yaml_to_string(&compose)?)
         .with_context(|| format!("Failed to update {}", compose_path.display()))

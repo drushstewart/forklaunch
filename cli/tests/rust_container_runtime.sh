@@ -24,6 +24,9 @@ else
     APP_ROOT="$RUN_ROOT/relocated-app"
 fi
 
+NATIVE_SERVICE="${FORKLAUNCH_RUST_CONTAINER_SERVICE:-accounts}"
+NATIVE_DOCKERFILE="${FORKLAUNCH_RUST_CONTAINER_DOCKERFILE:-Dockerfile}"
+
 CONTAINER="forklaunch-rust-runtime-$$"
 IMAGE="forklaunch-rust-runtime:smoke-$$"
 cleanup() {
@@ -32,12 +35,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker build --progress=plain -t "$IMAGE" "$APP_ROOT"
+docker build --progress=plain -f "$APP_ROOT/$NATIVE_DOCKERFILE" -t "$IMAGE" "$APP_ROOT"
 docker run --detach --name "$CONTAINER" --publish 127.0.0.1::8000 \
     --env HOST=0.0.0.0 --env SERVICE_PORT=8000 \
     --health-cmd 'curl --fail --silent http://127.0.0.1:8000/health >/dev/null' \
     --health-interval 1s --health-timeout 3s --health-retries 30 \
-    "$IMAGE" /app/target/release/accounts
+    "$IMAGE" "/app/target/release/$NATIVE_SERVICE"
 
 healthy=false
 for _ in $(seq 1 60); do
@@ -54,6 +57,11 @@ fi
 ADDRESS="$(docker port "$CONTAINER" 8000/tcp)"
 curl --fail --silent --max-time 10 "http://$ADDRESS/health" | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ok"'
 curl --fail --silent --max-time 10 "http://$ADDRESS/openapi.json" | python3 -c 'import json,sys; assert "/health" in json.load(sys.stdin)["paths"]'
+node --input-type=module - "$SCRIPT_DIR/rust_mcp_probe.mjs" "http://$ADDRESS" <<'JS'
+import {pathToFileURL} from 'node:url';
+const {probeMcp}=await import(pathToFileURL(process.argv[2]));
+await probeMcp(process.argv[3]);
+JS
 docker stop --time 10 "$CONTAINER" >/dev/null
 test "$(docker inspect --format '{{.State.ExitCode}}' "$CONTAINER")" = 0
-echo 'PASS relocated Rust container build, health check, OpenAPI, and SIGTERM shutdown'
+echo 'PASS relocated Rust container build, health/OpenAPI/MCP, and SIGTERM shutdown'
