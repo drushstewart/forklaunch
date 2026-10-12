@@ -39,38 +39,8 @@ async fn main() {
         let input: Value = serde_json::from_str(&line.unwrap()).unwrap();
         clock.store(input["now"].as_i64().unwrap(), Ordering::SeqCst);
         let result = match input["op"].as_str().unwrap() {
-            "seed" => {
-                let mut tx = store.begin(true).await.unwrap();
-                for (field, model) in [
-                    ("users", Model::User),
-                    ("sessions", Model::Session),
-                    ("accounts", Model::Account),
-                    ("verifications", Model::Verification),
-                ] {
-                    for row in input[field].as_array().into_iter().flatten() {
-                        tx.insert(model, row.clone()).await.unwrap();
-                    }
-                }
-                tx.commit().await.unwrap();
-                json!({"ok":true})
-            }
-            "records" => {
-                let mut tx = store.begin(false).await.unwrap();
-                let users = tx.list(Model::User).await.unwrap();
-                let accounts = tx.list(Model::Account).await.unwrap();
-                let sessions = tx.list(Model::Session).await.unwrap();
-                let verifications = if input["withVerifications"].as_bool() == Some(true) {
-                    Some(tx.list(Model::Verification).await.unwrap())
-                } else {
-                    None
-                };
-                tx.commit().await.unwrap();
-                let mut records = json!({"users":users,"accounts":accounts,"sessions":sessions});
-                if let Some(verifications) = verifications {
-                    records["verifications"] = json!(verifications);
-                }
-                records
-            }
+            "seed" => seed(&store, &input).await,
+            "records" => records(&store, &input).await,
             "set" => set_password(store.clone(), &input).await,
             "request" => {
                 let mut request = Request::builder()
@@ -131,4 +101,49 @@ async fn set_password(store: Arc<MemoryAuthStore>, input: &Value) -> Value {
         Ok(body) => json!({"body":body}),
         Err(error) => json!({"error":{"code":error.code,"message":error.message}}),
     }
+}
+
+const MODELS: &[(&str, Model)] = &[
+    ("users", Model::User),
+    ("sessions", Model::Session),
+    ("accounts", Model::Account),
+    ("verifications", Model::Verification),
+    ("organizations", Model::Organization),
+    ("members", Model::Member),
+    ("teams", Model::Team),
+    ("teamMembers", Model::TeamMember),
+    ("invitations", Model::Invitation),
+    ("organizationRoles", Model::OrganizationRole),
+];
+async fn seed(store: &MemoryAuthStore, input: &Value) -> Value {
+    let mut tx = store.begin(true).await.unwrap();
+    for (field, model) in MODELS {
+        for row in input[field].as_array().into_iter().flatten() {
+            tx.insert(*model, row.clone()).await.unwrap();
+        }
+    }
+    tx.commit().await.unwrap();
+    json!({"ok":true})
+}
+async fn records(store: &MemoryAuthStore, input: &Value) -> Value {
+    let mut tx = store.begin(false).await.unwrap();
+    let mut result = json!({});
+    for (field, model) in MODELS {
+        if matches!(*model, Model::User | Model::Session | Model::Account)
+            || *model == Model::Verification && input["withVerifications"] == true
+            || matches!(
+                *model,
+                Model::Organization
+                    | Model::Member
+                    | Model::Team
+                    | Model::TeamMember
+                    | Model::Invitation
+                    | Model::OrganizationRole
+            ) && input["withOrganizations"] == true
+        {
+            result[field] = json!(tx.list(*model).await.unwrap());
+        }
+    }
+    tx.commit().await.unwrap();
+    result
 }

@@ -418,3 +418,22 @@ Memory and restricted PostgreSQL exercise concurrent initial assignment, legacy
 row preservation and empty credentials. A deterministic memory-store race revokes
 the session after derivation and proves no password is written. No public route is
 added for this server-only API; the native raw HTTP count remains twenty-four.
+
+Fresh archive `oLl8Px` at `953969c17` passes relocated auth tests (13 passed,
+one explicit-PostgreSQL test ignored), live auth HTTP/MCP, all generated listener
+startup configurations and five managed callbacks. Portable services/workers and
+both SDK generators pass; checkout CLI restored. This snapshot includes 24 raw
+auth routes and the server-only password helper, before organization additions.
+
+Twenty-nine native raw auth routes include organization creation, slug checks,
+listing, full organization graphs and active selection. All 134 actual configured
+HTTP/storage/cookie comparisons pass. Creation atomically adds the owner, default
+team and keyed team membership; it updates active organization/team unless told
+to preserve the current selection. Metadata remains serialized in storage/list
+responses and parsed in creation responses, matching the configured adapter.
+Selection/full reads enforce membership and persist rejection-driven clearing
+without clearing the active team. Password/session HTTP regression remains green.
+Live memory and restricted PostgreSQL verify organization HTTP, session/JWT
+organization claims, cookies and MCP discovery/invocation/shutdown. Organization
+updates/deletion, remaining member/team/invitation/dynamic-role APIs, provider
+flows, real ORM conformance, custom callbacks and CLI preset remain open.

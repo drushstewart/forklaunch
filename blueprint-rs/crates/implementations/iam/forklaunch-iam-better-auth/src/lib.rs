@@ -12,6 +12,7 @@ pub mod keyring;
 pub mod sessions;
 pub mod store;
 
+pub mod organizations;
 pub mod origins;
 
 #[cfg(feature = "http")]

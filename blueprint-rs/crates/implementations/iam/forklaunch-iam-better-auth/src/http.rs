@@ -24,6 +24,7 @@ use zeroize::Zeroizing;
 mod callback;
 mod credential;
 mod email;
+mod organization;
 mod rate;
 mod request;
 #[cfg(test)]
@@ -117,6 +118,14 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/sign-up/email", post(dispatch::<S>))
             .route("/sign-in/email", post(dispatch::<S>))
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
+            .route("/organization/create", post(dispatch::<S>))
+            .route("/organization/check-slug", post(dispatch::<S>))
+            .route("/organization/set-active", post(dispatch::<S>))
+            .route("/organization/list", get(dispatch::<S>).head(not_found))
+            .route(
+                "/organization/get-full-organization",
+                get(dispatch::<S>).head(not_found),
+            )
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))
             .route("/reset-password", post(dispatch::<S>))
@@ -225,6 +234,7 @@ async fn handle<S: AuthStore + 'static>(
         )?;
     }
     request::validate_body(path, payload.as_ref())?;
+    organization::validate_query(path, &query)?;
     let payload = payload.unwrap_or(Value::Null);
     if path == "/get-session" {
         pending.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -276,7 +286,48 @@ async fn handle<S: AuthStore + 'static>(
     if path == "/get-session" {
         return app.session_response(view, pending, now).await;
     }
-    let view = view.ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))?;
+    let view = view.ok_or_else(|| {
+        if path == "/organization/create" {
+            BlueprintError::new("HTTP_UNAUTHORIZED_EMPTY", "Unauthorized")
+        } else {
+            BlueprintError::new("UNAUTHORIZED", "Unauthorized")
+        }
+    })?;
+    if path.starts_with("/organization/") {
+        return organization::handle(
+            app,
+            path,
+            &payload,
+            &query,
+            (&token, transient),
+            pending,
+            now,
+        )
+        .await;
+    }
+    session_operation(
+        app,
+        path,
+        payload,
+        (&token, transient, view),
+        &parts.headers,
+        pending,
+        now,
+    )
+    .await
+}
+
+async fn session_operation<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    path: &str,
+    payload: Value,
+    session: (&str, bool, SessionView),
+    headers: &HeaderMap,
+    pending: &mut HeaderMap,
+    now: DateTime<Utc>,
+) -> BlueprintResult<Value> {
+    let (token, transient, view) = session;
+    let sessions = SessionService::new(app.store.clone());
     match path {
         "/verify-password" | "/change-password" | "/list-accounts" | "/unlink-account"
         | "/update-user" | "/change-email" | "/delete-user" => {
@@ -284,27 +335,27 @@ async fn handle<S: AuthStore + 'static>(
                 app,
                 path,
                 payload,
-                (&token, transient),
-                &parts.headers,
+                (token, transient),
+                headers,
                 pending,
                 now,
             )
             .await
         }
         "/token" => Ok(json!({"token":app.jwt(&view, now).await?})),
-        "/list-sessions" => sessions.list(&token, transient, now).await,
+        "/list-sessions" => sessions.list(token, transient, now).await,
         "/revoke-session" => {
             sessions
                 .revoke_one(
-                    &token,
+                    token,
                     payload["token"].as_str().unwrap_or(""),
                     transient,
                     now,
                 )
                 .await
         }
-        "/revoke-sessions" => sessions.revoke_all(&token, transient, now).await,
-        "/revoke-other-sessions" => sessions.revoke_others(&token, transient, now).await,
+        "/revoke-sessions" => sessions.revoke_all(token, transient, now).await,
+        "/revoke-other-sessions" => sessions.revoke_others(token, transient, now).await,
         _ => Err(internal()),
     }
 }
@@ -331,12 +382,16 @@ fn clear(cookie: SessionCookie, headers: &mut HeaderMap) -> BlueprintResult<()> 
     Ok(())
 }
 fn failure(error: &BlueprintError) -> Response {
+    if error.code == "HTTP_UNAUTHORIZED_EMPTY" {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
     if error.code == "HTTP_NOT_FOUND" {
         return StatusCode::NOT_FOUND.into_response();
     }
     let status = match error.code.as_str() {
         "UNAUTHORIZED" | "INVALID_EMAIL_OR_PASSWORD" => StatusCode::UNAUTHORIZED,
-        "SESSION_NOT_FRESH"
+        "USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION"
+        | "SESSION_NOT_FRESH"
         | "MISSING_OR_NULL_ORIGIN"
         | "INVALID_ORIGIN"
         | "INVALID_CALLBACK_URL"

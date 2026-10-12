@@ -254,6 +254,7 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .unwrap();
     crate::sessions::tests::exercise_sessions(Arc::new(rotated.clone())).await;
     crate::accounts::tests::exercise_credentials(Arc::new(rotated.clone())).await;
+    crate::organizations::tests::exercise_organizations(Arc::new(rotated.clone())).await;
     let cleanup_tenants = vec![tenant.id().to_owned(), other.id().to_owned()];
     #[cfg(feature = "http")]
     let cleanup_tenants = {

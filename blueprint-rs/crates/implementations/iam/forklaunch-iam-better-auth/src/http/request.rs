@@ -130,6 +130,9 @@ pub(super) fn session_credentials<S: AuthStore>(
 }
 
 pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintResult<()> {
+    if path.starts_with("/organization/") {
+        return super::organization::validate_body(path, payload);
+    }
     let (optional, fields) = body_fields(path);
     if path == "/update-user" {
         if !payload.is_some_and(Value::is_object) {

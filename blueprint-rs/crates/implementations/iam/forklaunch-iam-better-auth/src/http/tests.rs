@@ -285,6 +285,7 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
         .unwrap();
     assert_eq!(verified.status(), StatusCode::OK);
     exercise_http_email(&client, &base, &store, secret, now).await;
+    exercise_http_organizations(&client, &base, &signed).await;
     let docs: Value = client
         .get(format!("{base}/openapi.json"))
         .send()
@@ -693,4 +694,121 @@ async fn exercise_http_email<S: AuthStore>(
         "retained"
     );
     tx.commit().await.unwrap();
+}
+
+async fn exercise_http_organizations(client: &reqwest::Client, base: &str, cookie: &str) {
+    let post = |path: &str, body: Value| {
+        client
+            .post(format!("{base}/api/auth/organization/{path}"))
+            .header("cookie", cookie)
+            .header("origin", "http://localhost:3000")
+            .json(&body)
+    };
+    let created = post(
+        "create",
+        json!({"name":"HTTP Organization","slug":"http-org","metadata":{"source":"live-http"}}),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(created.status(), StatusCode::OK);
+    let organization: Value = created.json().await.unwrap();
+    assert_eq!(organization["members"][0]["userId"], "http-owner");
+    assert_eq!(organization["members"][0]["role"], "owner");
+    let id = organization["id"].as_str().unwrap();
+    let graph: Value = client
+        .get(format!(
+            "{base}/api/auth/organization/get-full-organization"
+        ))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(graph["id"], id);
+    assert_eq!(graph["teams"][0]["memberCount"], 1);
+    assert!(graph["members"][0]["user"].get("privateSecret").is_none());
+    let list: Value = client
+        .get(format!("{base}/api/auth/organization/list"))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(list[0]["id"], id);
+    exercise_http_organization_jwt(client, base, cookie, id, &graph).await;
+    assert_eq!(
+        post("check-slug", json!({"slug":"http-org"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    let cleared = post("set-active", json!({"organizationId":null}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cleared.status(), StatusCode::OK);
+    assert!(cleared.headers().get("set-cookie").is_some());
+    let selected = post("set-active", json!({"organizationSlug":"http-org"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(selected.status(), StatusCode::OK);
+    assert!(selected.headers().get("set-cookie").is_some());
+    assert_eq!(
+        post("set-active", json!({"organizationId":"unknown"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let view: Value = client
+        .get(format!("{base}/api/auth/get-session"))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(view["session"]["activeOrganizationId"].is_null());
+    assert_eq!(view["session"]["activeTeamId"], graph["teams"][0]["id"]);
+}
+
+async fn exercise_http_organization_jwt(
+    client: &reqwest::Client,
+    base: &str,
+    cookie: &str,
+    id: &str,
+    graph: &Value,
+) {
+    let selected = client
+        .get(format!("{base}/api/auth/get-session"))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap();
+    let jwt = selected.headers()["set-auth-jwt"]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let view: Value = selected.json().await.unwrap();
+    assert_eq!(view["session"]["activeOrganizationId"], id);
+    assert_eq!(view["session"]["activeTeamId"], graph["teams"][0]["id"]);
+    let jwks: Value = client
+        .get(format!("{base}/api/auth/jwks"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(verify_jwt(&jwt, &jwks)["activeOrganizationId"], id);
 }

@@ -1034,3 +1034,11 @@ managed callbacks. Checkout CLI restored. Token-reset additions are validated
 separately and are newer than this archive snapshot.
 
 - [x] Match the configured server-only initial-password helper against 36 actual Better Auth API/storage outcomes, with strict credential identity, empty/missing passwords, session refresh/expiry and validation ordering. Verify one concurrent assignment wins in memory/restricted PostgreSQL and deterministic revocation during derivation prevents a write. Keep this helper server-only; remaining provider/org/JWT helper and CLI preset gates remain open.
+
+Fresh archive `oLl8Px` at `953969c17` passes relocated auth tests (13 passed,
+one explicit-PostgreSQL test ignored), live auth HTTP/MCP, all generated listener
+startup configurations and five managed callbacks. Portable services/workers and
+both SDK generators pass; checkout CLI restored. This snapshot includes 24 raw
+auth routes and the server-only password helper, before organization additions.
+
+- [x] Port organization creation, slug checks, listing, full graphs and active selection with actual configured default team/owner/keyed membership and session side effects. All 134 actual HTTP/storage/cookie comparisons pass; memory and restricted PostgreSQL check concurrent slug creation and HTTP/JWT organization claims beside MCP. Remaining organization/member/team/invitation/dynamic-role operations are still tracked by the open organization endpoint gate.

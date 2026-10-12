@@ -90,7 +90,9 @@ part of the configured module.
 `/change-password`, `/update-user`, `/list-accounts`, `/unlink-account`, `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
 `/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token`, `/jwks`,
 `/request-password-reset`, `/reset-password`, `/send-verification-email`, `/change-email` and
-`/delete-user`, `/reset-password/:token`, `/delete-user/callback` and `/verify-email`.
+`/delete-user`, `/reset-password/:token`, `/delete-user/callback`, `/verify-email`,
+`/organization/create`, `/organization/check-slug`, `/organization/list`,
+`/organization/get-full-organization` and `/organization/set-active`.
 It authenticates signed cookies against authoritative tenant-bound storage,
 refreshes sessions, emits verified JWT headers and publishes only public keys.
 Mutation guards reject forged/missing origins and unsafe callbacks. Revoke/logout
@@ -196,3 +198,16 @@ Memory and restricted PostgreSQL exercise concurrent initial assignment, legacy
 row preservation and empty credentials. A deterministic memory-store race revokes
 the session after derivation and proves no password is written. No public route is
 added for this server-only API; the native raw HTTP count remains twenty-four.
+
+Twenty-nine native raw auth routes include organization creation, slug checks,
+listing, full organization graphs and active selection. All 134 actual configured
+HTTP/storage/cookie comparisons pass. Creation atomically adds the owner, default
+team and keyed team membership; it updates active organization/team unless told
+to preserve the current selection. Metadata remains serialized in storage/list
+responses and parsed in creation responses, matching the configured adapter.
+Selection/full reads enforce membership and persist rejection-driven clearing
+without clearing the active team. Password/session HTTP regression remains green.
+Live memory and restricted PostgreSQL verify organization HTTP, session/JWT
+organization claims, cookies and MCP discovery/invocation/shutdown. Organization
+updates/deletion, remaining member/team/invitation/dynamic-role APIs, provider
+flows, real ORM conformance, custom callbacks and CLI preset remain open.
