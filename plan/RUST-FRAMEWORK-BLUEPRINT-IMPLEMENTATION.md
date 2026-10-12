@@ -1117,3 +1117,12 @@ Remaining provider/helper/ORM/callback/shared-parser/full-preset gates stay open
 - [x] Add ES512/P-521 PKCS8 generation/restoration, public JWK coordinates, randomized SHA-512 signing and strict signature verification. All 159 actual signing API/176 key-state and 240 actual verification API/201 key-store comparisons pass. Shared memory/restricted PostgreSQL profile lifecycle covers P-521 concurrency, restart/session reuse, rotation and retired verification. Strict default/all-feature clippy, rebuilt CLI and 709 embedded sources pass. RSA, typed options and remaining provider/ORM/callback/full-preset work remain open.
 
 - [x] Add RS256/384/512 and PS256/384/512 persistent key profiles, native ring signatures and public-key verification with matching hash/algorithm/PSS salt enforcement. Actual comparisons pass 189 signing API/216 key-state and 393 verification API/309 key-store operations, including 2048/3072-bit provisioning and invalid modulus options. Memory/restricted PostgreSQL cover atomic initialization, restart/reuse, rotation and retired verification; live HTTP/JWT/MCP and 27 prior keyring comparisons pass. Move prime generation off async executor threads and prefer the default EdDSA key during session issuance. Five final keyring tests, strict all-feature clippy, rebuilt CLI and 711 embedded sources pass. RSA provisioning above 4096 bits, typed options/custom adapters, providers/ORM/shared-parser/full-preset remain open.
+
+Fresh archive `n6okrp` at `74213970a` passes 18 portable auth tests (one explicit
+PostgreSQL test ignored), including live HTTP/JWT/MCP and all asymmetric signing
+profiles. The complete generated HTTP/MCP startup/listener matrix, portable
+services/all four worker backends, CLI/native SDK targets and all five signed
+capability callbacks pass. This snapshot includes sixty raw auth routes, four
+configured server helper entrypoints and Ed25519/ECDSA/RSA/PSS provisioning.
+Larger RSA/typed options, Google OAuth, ORM/callback/shared-parser and full-preset
+gates remain open.

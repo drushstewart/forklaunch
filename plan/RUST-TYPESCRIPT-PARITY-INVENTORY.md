@@ -675,3 +675,12 @@ strict all-feature clippy, rebuilt CLI and 711 embedded sources pass; live HTTP/
 JWT/MCP and 27 prior keyring comparisons pass. RSA provisioning supports 2048–4096
 bits; larger keys and typed options/custom adapters/provider/ORM/full-preset gates
 remain open.
+
+Fresh archive `n6okrp` at `74213970a` passes 18 portable auth tests (one explicit
+PostgreSQL test ignored), including live HTTP/JWT/MCP and all asymmetric signing
+profiles. The complete generated HTTP/MCP startup/listener matrix, portable
+services/all four worker backends, CLI/native SDK targets and all five signed
+capability callbacks pass. This snapshot includes sixty raw auth routes, four
+configured server helper entrypoints and Ed25519/ECDSA/RSA/PSS provisioning.
+Larger RSA/typed options, Google OAuth, ORM/callback/shared-parser and full-preset
+gates remain open.
