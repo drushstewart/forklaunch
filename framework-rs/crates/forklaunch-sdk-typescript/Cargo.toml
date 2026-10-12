@@ -15,6 +15,7 @@ forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-sdk-codegen = { path = "../forklaunch-sdk-codegen" }
 
 [dev-dependencies]
+forklaunch-openapi = { path = "../forklaunch-openapi" }
 forklaunch-sdk-rust = { path = "../forklaunch-sdk-rust" }
 forklaunch-asyncapi = { path = "../forklaunch-asyncapi", features = ["import"] }
 forklaunch-ws = { path = "../forklaunch-ws" }

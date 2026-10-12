@@ -113,3 +113,25 @@ The input defaults to `.forklaunch/asyncapi/<service>/asyncapi.json`; project me
 The native API is `forklaunch_asyncapi::import_server_websocket_asyncapi` with the `import` feature. Server `receive` operations become client outgoing messages, and server `send` operations become client incoming messages. Channels need unique absolute paths, explicit operation message subsets, JSON media and ws/wss servers; GET bindings without upgrade parameter schemas are supported. An offline, licensed official specification schema validates the input before bounded local-reference extraction. Draft 7 payload constraints are preserved, multiple messages retain `oneOf`, and undeclared directions reject payloads. Channel message schemas must have provably disjoint root types or required string discriminators. Root JSON strings, Multi Format payloads, external/resource-scoped references, headers/traits/replies/security, parameterized paths and other protocols currently fail checked import. Broader event projects and profiles remain open. The relocated `rust_asyncapi_import_runtime.sh` fixture compiles both SDKs, runs live peers, exercises watch recovery and rename, and validates generated HTTP/MCP listener startup and shutdown.
 
 Checked SDK schemas, raw socket AsyncAPI exports and imported AsyncAPI payloads require literal `/` JSON-pointer separators; use `~1` for a slash within a name. Percent-encoded names, escaped tokens and literal percent names remain supported. Encoded separators fail before artifact writes, matching the checked validator profile. Generic OpenAPI reference-object resolution and resource-preserving relocation retain URI decoding independently. Native raw JSON Schema codecs and actual AJV still differ for encoded interior separators outside this checked profile; broader resolver parity remains tracked.
+
+See the [Rust/TypeScript compatibility baseline](../docs/adding-projects/rust-compatibility.md) for source package versions, artifact formats and implementation choices.
+
+## Reviewing generated output changes
+
+The TypeScript SDK crate's `snapshots::openapi_and_both_http_sdks_match_reviewed_snapshots`
+test compares a shared catalog contract against committed OpenAPI, Rust HTTP SDK
+and TypeScript HTTP SDK output. It covers path/query/header parameters, optional
+nullable fields, typed success/error responses, response headers and empty 204s.
+The normal workspace test job runs this check in CI. These are native output
+regressions; the cross-language conformance fixtures remain separate.
+
+For an intentional generator change, run from this workspace:
+
+```bash
+FORKLAUNCH_UPDATE_SNAPSHOTS=1 cargo test -p forklaunch-sdk-typescript snapshots
+cargo test -p forklaunch-sdk-typescript snapshots
+```
+
+Review the source and snapshot diffs together before committing. CI refuses the
+update flag. OpenAPI is compared as sorted, pretty-printed JSON; SDK source is
+compared with trailing line whitespace normalized. No timestamps or absolute build paths are included.

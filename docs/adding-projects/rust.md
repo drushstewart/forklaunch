@@ -860,3 +860,5 @@ clients. Repeated HTTP and WebSocket SDK generation preserves timestamps on unch
 outputs and workspace files. Source changes require contract export before
 SDK watch can regenerate the clients; `dev --export-contracts` performs this step
 for native and TypeScript services on startup and reload.
+
+See the [Rust/TypeScript compatibility baseline](rust-compatibility.md) for source package versions, artifact formats and implementation choices.

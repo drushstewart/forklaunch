@@ -457,3 +457,6 @@ mod tests {
         assert!(source.contains("JSON.stringify(options.body)"));
     }
 }
+
+#[cfg(test)]
+mod snapshots;

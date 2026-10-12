@@ -1,0 +1,553 @@
+use std::error::Error;
+use std::fmt;
+use std::sync::Arc;
+use std::collections::BTreeMap;
+
+type SdkRequestHook = Arc<dyn Fn(&mut SdkRequest) + Send + Sync>;
+
+use serde::{Deserialize, Serialize};
+
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SdkRequest {
+    pub method: &'static str,
+    pub url: String,
+    pub query: BTreeMap<String, String>,
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<String>,
+    pub body_bytes: Option<Vec<u8>>,
+
+    pub content_type: &'static str,
+}
+
+
+fn encode_path_segment(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 15)]));
+        }
+    }
+    encoded
+}
+
+fn path_with_params(path: &str, params: &BTreeMap<String, String>) -> String {
+    path.split('/')
+        .map(|segment| {
+            let name = segment.strip_prefix(':').or_else(|| {
+                segment.strip_prefix('{').and_then(|name| name.strip_suffix('}'))
+            });
+            name.and_then(|name| params.get(name))
+                .map_or_else(|| segment.to_owned(), |value| encode_path_segment(value))
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+
+
+#[derive(Debug)]
+pub enum SdkError {
+    Transport(reqwest::Error),
+
+}
+
+impl fmt::Display for SdkError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Transport(error) => write!(formatter, "{error}"),
+
+        }
+    }
+}
+
+impl Error for SdkError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Transport(error) => Some(error),
+
+        }
+    }
+}
+
+impl From<reqwest::Error> for SdkError {
+    fn from(error: reqwest::Error) -> Self {
+        Self::Transport(error)
+    }
+}
+
+
+
+#[derive(Clone)]
+pub enum SdkAuth {
+    Bearer(String),
+    Basic { username: String, password: String },
+    HmacHeader { header_name: String, value: String },
+}
+
+
+fn deserialize_optional_field<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where D: serde::Deserializer<'de>, T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+
+fn deserialize_required_field<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where D: serde::Deserializer<'de>, T: Deserialize<'de>,
+{
+    T::deserialize(deserializer)
+}
+
+
+
+
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateItemResponse {
+
+    #[serde(deserialize_with = "deserialize_required_field")]
+    #[serde(rename = "id")]
+    pub id: String,
+
+    #[serde(deserialize_with = "deserialize_required_field")]
+    #[serde(rename = "name")]
+    pub name: String,
+
+    #[serde(default, deserialize_with = "deserialize_optional_field", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "note")]
+    pub note: Option<Option<String>>,
+
+    #[serde(default, deserialize_with = "deserialize_optional_field", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "tags")]
+    pub tags: Option<Vec<String>>,
+
+}
+
+
+
+
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetItemResponse {
+
+    #[serde(deserialize_with = "deserialize_required_field")]
+    #[serde(rename = "id")]
+    pub id: String,
+
+    #[serde(deserialize_with = "deserialize_required_field")]
+    #[serde(rename = "name")]
+    pub name: String,
+
+    #[serde(default, deserialize_with = "deserialize_optional_field", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "note")]
+    pub note: Option<Option<String>>,
+
+    #[serde(default, deserialize_with = "deserialize_optional_field", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "tags")]
+    pub tags: Option<Vec<String>>,
+
+}
+
+
+
+
+pub type DeleteItemResponse = ();
+
+
+pub type GetItemStatus404Response = String;
+
+
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GetItemRequest {
+    pub params: BTreeMap<String, String>,
+    pub query: BTreeMap<String, String>,
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GetItemResponses {
+
+    Status200(Box<GetItemResponse>),
+
+    Status404(GetItemStatus404Response),
+
+    Error { status: u16, message: String },
+}
+
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateItemRequest {
+    pub params: BTreeMap<String, String>,
+    pub query: BTreeMap<String, String>,
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CreateItemResponses {
+
+    Status201(Box<CreateItemResponse>),
+
+    Error { status: u16, message: String },
+}
+
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteItemRequest {
+    pub params: BTreeMap<String, String>,
+    pub query: BTreeMap<String, String>,
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum DeleteItemResponses {
+
+    Status204(DeleteItemResponse),
+
+    Error { status: u16, message: String },
+}
+
+
+#[derive(Clone)]
+pub struct ForkLaunchClient {
+    base_url: String,
+
+    http: reqwest::Client,
+    default_headers: BTreeMap<String, String>,
+    auth: Option<SdkAuth>,
+    request_hook: Option<SdkRequestHook>,
+}
+
+impl fmt::Debug for ForkLaunchClient {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ForkLaunchClient")
+            .field("base_url", &self.base_url)
+            .field("default_headers", &self.default_headers)
+            .field("has_auth", &self.auth.is_some())
+            .field("has_request_hook", &self.request_hook.is_some())
+            .finish()
+    }
+}
+
+impl ForkLaunchClient {
+    #[must_use]
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self::with_http_client(base_url, reqwest::Client::new())
+    }
+
+    #[must_use]
+    pub fn with_http_client(base_url: impl Into<String>, http: reqwest::Client) -> Self {
+        Self {
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+
+            http,
+            default_headers: BTreeMap::new(),
+            auth: None,
+            request_hook: None,
+        }
+    }
+
+
+
+    #[must_use]
+    pub fn with_default_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.default_headers.insert(name.into(), value.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_bearer_token(mut self, token: impl Into<String>) -> Self {
+        self.auth = Some(SdkAuth::Bearer(token.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_jwt(self, token: impl Into<String>) -> Self {
+        self.with_bearer_token(token)
+    }
+
+    #[must_use]
+    pub fn with_basic_auth(mut self, username: impl Into<String>, password: impl Into<String>) -> Self {
+        self.auth = Some(SdkAuth::Basic {
+            username: username.into(),
+            password: password.into(),
+        });
+        self
+    }
+
+    #[must_use]
+    pub fn with_hmac_authorization(mut self, value: impl Into<String>) -> Self {
+        self.auth = Some(SdkAuth::HmacHeader {
+            header_name: "authorization".to_string(),
+            value: value.into(),
+        });
+        self
+    }
+
+    #[must_use]
+    pub fn with_auth_hook<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(&mut SdkRequest) + Send + Sync + 'static,
+    {
+        self.request_hook = Some(Arc::new(hook));
+        self
+    }
+
+
+    #[must_use]
+    pub fn get_item_request(&self, input: GetItemRequest) -> SdkRequest {
+        let path = path_with_params("/items/:id", &input.params);
+        SdkRequest {
+            method: "GET",
+            url: format!("{}{}", self.base_url, path),
+            query: input.query,
+            headers: input.headers,
+            body: input.body,
+            body_bytes: None,
+
+            content_type: "application/json",
+        }
+    }
+
+    pub async fn get_item(&self, input: GetItemRequest) -> Result<GetItemResponses, SdkError> {
+        let mut request = self.get_item_request(input);
+        let mut headers = self.default_headers.clone();
+        headers.extend(request.headers);
+        request.headers = headers;
+        if let Some(hook) = &self.request_hook {
+            hook(&mut request);
+        }
+        let method = request
+            .method
+            .parse::<reqwest::Method>()
+            .expect("generated SDK HTTP method is valid");
+        let mut builder = self.http.request(method, &request.url);
+
+        if !request.query.is_empty() {
+            builder = builder.query(&request.query);
+        }
+        for (name, value) in request.headers {
+
+            builder = builder.header(name, value);
+        }
+        if let Some(auth) = &self.auth {
+            builder = match auth {
+                SdkAuth::Bearer(token) => builder.bearer_auth(token),
+                SdkAuth::Basic { username, password } => {
+                    builder.basic_auth(username.as_str(), Some(password.as_str()))
+                }
+                SdkAuth::HmacHeader { header_name, value } => {
+                    builder.header(header_name.as_str(), value.as_str())
+                }
+            };
+        }
+        if let Some(body) = request.body {
+            builder = builder
+                .header(reqwest::header::CONTENT_TYPE, request.content_type)
+                .body(body);
+        }
+
+        if let Some(body) = request.body_bytes {
+            builder = builder.header(reqwest::header::CONTENT_TYPE, request.content_type).body(body);
+        }
+        let response = builder.send().await?;
+        let status = response.status().as_u16();
+        match status {
+
+
+
+            200 => Ok(GetItemResponses::Status200(
+                response.json::<Box<GetItemResponse>>().await?,
+            )),
+
+
+
+
+
+
+
+
+            404 => Ok(GetItemResponses::Status404(response.text().await?)),
+
+
+
+
+            _ => Ok(GetItemResponses::Error {
+                status,
+                message: response.text().await?,
+            }),
+        }
+    }
+
+
+    #[must_use]
+    pub fn create_item_request(&self, input: CreateItemRequest) -> SdkRequest {
+        let path = path_with_params("/items", &input.params);
+        SdkRequest {
+            method: "POST",
+            url: format!("{}{}", self.base_url, path),
+            query: input.query,
+            headers: input.headers,
+            body: input.body,
+            body_bytes: None,
+
+            content_type: "application/json",
+        }
+    }
+
+    pub async fn create_item(&self, input: CreateItemRequest) -> Result<CreateItemResponses, SdkError> {
+        let mut request = self.create_item_request(input);
+        let mut headers = self.default_headers.clone();
+        headers.extend(request.headers);
+        request.headers = headers;
+        if let Some(hook) = &self.request_hook {
+            hook(&mut request);
+        }
+        let method = request
+            .method
+            .parse::<reqwest::Method>()
+            .expect("generated SDK HTTP method is valid");
+        let mut builder = self.http.request(method, &request.url);
+
+        if !request.query.is_empty() {
+            builder = builder.query(&request.query);
+        }
+        for (name, value) in request.headers {
+
+            builder = builder.header(name, value);
+        }
+        if let Some(auth) = &self.auth {
+            builder = match auth {
+                SdkAuth::Bearer(token) => builder.bearer_auth(token),
+                SdkAuth::Basic { username, password } => {
+                    builder.basic_auth(username.as_str(), Some(password.as_str()))
+                }
+                SdkAuth::HmacHeader { header_name, value } => {
+                    builder.header(header_name.as_str(), value.as_str())
+                }
+            };
+        }
+        if let Some(body) = request.body {
+            builder = builder
+                .header(reqwest::header::CONTENT_TYPE, request.content_type)
+                .body(body);
+        }
+
+        if let Some(body) = request.body_bytes {
+            builder = builder.header(reqwest::header::CONTENT_TYPE, request.content_type).body(body);
+        }
+        let response = builder.send().await?;
+        let status = response.status().as_u16();
+        match status {
+
+
+
+            201 => Ok(CreateItemResponses::Status201(
+                response.json::<Box<CreateItemResponse>>().await?,
+            )),
+
+
+
+
+
+            _ => Ok(CreateItemResponses::Error {
+                status,
+                message: response.text().await?,
+            }),
+        }
+    }
+
+
+    #[must_use]
+    pub fn delete_item_request(&self, input: DeleteItemRequest) -> SdkRequest {
+        let path = path_with_params("/items/:id", &input.params);
+        SdkRequest {
+            method: "DELETE",
+            url: format!("{}{}", self.base_url, path),
+            query: input.query,
+            headers: input.headers,
+            body: input.body,
+            body_bytes: None,
+
+            content_type: "application/json",
+        }
+    }
+
+    pub async fn delete_item(&self, input: DeleteItemRequest) -> Result<DeleteItemResponses, SdkError> {
+        let mut request = self.delete_item_request(input);
+        let mut headers = self.default_headers.clone();
+        headers.extend(request.headers);
+        request.headers = headers;
+        if let Some(hook) = &self.request_hook {
+            hook(&mut request);
+        }
+        let method = request
+            .method
+            .parse::<reqwest::Method>()
+            .expect("generated SDK HTTP method is valid");
+        let mut builder = self.http.request(method, &request.url);
+
+        if !request.query.is_empty() {
+            builder = builder.query(&request.query);
+        }
+        for (name, value) in request.headers {
+
+            builder = builder.header(name, value);
+        }
+        if let Some(auth) = &self.auth {
+            builder = match auth {
+                SdkAuth::Bearer(token) => builder.bearer_auth(token),
+                SdkAuth::Basic { username, password } => {
+                    builder.basic_auth(username.as_str(), Some(password.as_str()))
+                }
+                SdkAuth::HmacHeader { header_name, value } => {
+                    builder.header(header_name.as_str(), value.as_str())
+                }
+            };
+        }
+        if let Some(body) = request.body {
+            builder = builder
+                .header(reqwest::header::CONTENT_TYPE, request.content_type)
+                .body(body);
+        }
+
+        if let Some(body) = request.body_bytes {
+            builder = builder.header(reqwest::header::CONTENT_TYPE, request.content_type).body(body);
+        }
+        let response = builder.send().await?;
+        let status = response.status().as_u16();
+        match status {
+
+
+            204 => {
+                let _ = response.bytes().await?;
+                Ok(DeleteItemResponses::Status204(()))
+            },
+
+
+
+
+
+
+            _ => Ok(DeleteItemResponses::Error {
+                status,
+                message: response.text().await?,
+            }),
+        }
+    }
+
+
+}

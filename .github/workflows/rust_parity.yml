@@ -351,7 +351,8 @@ jobs:
           exit 1
       - run: cargo fmt --manifest-path framework-rs/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path framework-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
-      - run: cargo test --manifest-path framework-rs/Cargo.toml --workspace --all-features
+      - name: Framework tests and reviewed OpenAPI / SDK snapshots
+        run: cargo test --manifest-path framework-rs/Cargo.toml --workspace --all-features
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib --features forklaunch-ajv-pointer-decoding
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/jsonschema/Cargo.toml --locked --lib --no-default-features --features idna -- --skip validator::tests::validate_ref

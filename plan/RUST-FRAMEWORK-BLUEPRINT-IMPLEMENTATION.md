@@ -138,7 +138,7 @@ blueprint-rs/
 - Serialization: `serde`, `serde_json`.
 - JSON Schema: `schemars`.
 - Validation: `garde`.
-- OpenAPI: custom ForkLaunch registry with `aide` or `utoipa` as emitters where useful.
+- OpenAPI: custom ForkLaunch registry and native emitter; optional adapters must preserve the canonical registry.
 - Telemetry: `tracing`, `tracing-subscriber`, `opentelemetry`, `opentelemetry-otlp`, `tracing-opentelemetry`.
 - Auth: `jsonwebtoken`, `reqwest`, `moka`, `hmac`, `sha2`, `base64`, `subtle`.
 - Secrets and encryption: `secrecy`, `zeroize`, `aes-gcm` or `chacha20poly1305`.
@@ -146,7 +146,7 @@ blueprint-rs/
 - WebSockets: Axum WebSocket extractor plus `tokio-tungstenite`.
 - Redis: `redis`.
 - S3/object storage: `aws-sdk-s3`, with optional `object_store` adapter later.
-- Persistence: `sqlx` first; optional `sea-orm` adapter for CRUD-heavy blueprints.
+- Persistence: optional `sqlx` integrations behind domain store traits; SeaORM adapters are application-owned.
 - Config: `config`, `dotenvy`.
 - Testing: `testcontainers`, `rstest`, `wiremock`, `insta`, `proptest`.
 - Proc macros: `syn`, `quote`, `proc-macro2`, `darling`.
@@ -804,10 +804,10 @@ Current CLI structure to build on:
 
 - [ ] Add full docs for `framework-rs`.
 - [ ] Add full docs for `blueprint-rs`.
-- [ ] Add examples for Rust services, Rust workers, and mixed TypeScript/Rust apps.
+- [x] Add examples for Rust services, Rust workers, and mixed TypeScript/Rust apps. ([Runnable generation guide](../docs/adding-projects/rust.md): service startup, database/Redis/BullMQ/Kafka workers, both mixed-app directions and HTTP/MCP probes. Existing generated/runtime fixtures validate these examples; remaining broad documentation coverage stays open.)
 - [x] Add a migration guide for TypeScript users adopting native services/workers/libraries/modules, with workspace requirements, preserved settings, shared SDKs and separate Docker builds.
 - [ ] Add crate publishing pipeline.
-- [ ] Add version compatibility matrix between TypeScript and Rust packages.
+- [x] Add version compatibility matrix between TypeScript and Rust packages. ([44-package source baseline and artifact boundaries](../docs/adding-projects/rust-compatibility.md); no unpublished registry or full-runtime compatibility claims.)
 - [ ] Add performance benchmarks for HTTP, validation, SDK calls, Redis, S3, and WebSockets.
 - [ ] Add security review for auth, HMAC, JWT, encryption, secrets, and generated SDKs.
 
@@ -820,16 +820,16 @@ The first useful milestone is not full parity. It is:
 - [x] A generated TypeScript SDK package derived from the Rust service contract.
 - [x] A generated Rust SDK crate derived from the same Rust service contract.
 - [x] A minimal `blueprint-rs` IAM interface crate proving the blueprint style.
-- [ ] CI snapshot tests for the generated OpenAPI and SDK output.
+- [x] CI snapshot tests for the generated OpenAPI and SDK output. (`forklaunch-sdk-typescript::snapshots` commits normalized OpenAPI and both typed HTTP SDKs for a shared catalog contract; the workspace CI test job runs them. Actual TypeScript-to-Rust output equivalence remains a separate gate.)
 
 ## Open Decisions
 
-- [ ] Choose `aide` versus `utoipa` as the preferred OpenAPI helper, or keep both as optional emitters.
-- [ ] Decide how much TypeScript-style coercion Rust should preserve.
+- [x] Choose the native ForkLaunch registry emitter as canonical; neither `aide` nor `utoipa` is required. Optional adapters must preserve the registry and pass conformance fixtures. ([Decision](../docs/adding-projects/rust-compatibility.md#implementation-choices))
+- [x] Preserve explicit path/query coercion and safe integral socket JSON normalization; retain declared JSON body types and reject loose string/boolean coercions. This reconciles the implemented phase-2 policy. ([Decision](../docs/adding-projects/rust-compatibility.md#implementation-choices))
 - [x] Generate Rust SDKs from both OpenAPI and the richer ForkLaunch contract artifact; verify equivalent live HTTP behavior from both formats.
 - [x] Generate TypeScript SDKs through both the CLI and framework-native API using shared model compilation, templates and fetch/SSE runtimes.
 - [x] Support configured Better Auth behavior directly in the isolated native `forklaunch-iam-better-auth` crate, with encrypted tenant storage and a raw HTTP namespace alongside generic IAM/session integration. Remaining behavior and CLI-generation gates are tracked below.
-- [ ] Decide whether persistence helpers should standardize on `sqlx` only or expose optional SeaORM adapters.
+- [x] Standardize built-in PostgreSQL persistence on optional `sqlx` behind domain store traits; SeaORM remains an application adapter, not a required parity dependency. ([Decision](../docs/adding-projects/rust-compatibility.md#implementation-choices))
 
 ## Additional TypeScript Module Coverage Required For Full Parity
 

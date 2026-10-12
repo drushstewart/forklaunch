@@ -1437,13 +1437,45 @@ keeps unchanged timestamps. `dev --sdk-source http|websocket|all` selects the SD
 surfaces, while `sdk generate/watch --from all` processes HTTP and sockets
 sequentially to preserve shared workspace metadata. One owned watcher handles both.
 
-This follow-up is not yet validated: the queued focused tests and a superseded
-CLI rebuild were stopped after prolonged shared-machine contention; an offline
-`cargo check --tests` is running first. Required follow-up includes combined SDK output
-and workspace checks, socket export/remove/restore integration, HTTP/MCP startup,
-and full regression/package checks. No additional parity checkbox is closed here.
+Compiler checking, all 1,074 CLI tests, CLI rebuild, 756-source packaging and
+combined Node/Bun SDK workspace builds now pass, including real HTTP/MCP startup.
+The socket export/remove/restore Compose integration remains under validation.
+No development parity checkbox is closed until that final gate passes.
 
-Local cleanup limitation: Docker could not stop the owned builder container
-`buildx_buildkit_forklaunch-parity-ts-dev-202610120` (no exit event). Its builder
-name is `forklaunch-parity-ts-dev-20261012`; retry owned-builder removal after the
-daemon recovers. No shared daemon restart or global cache cleanup was performed.
+The earlier Docker cleanup failure has cleared: the owned builder and container
+`forklaunch-parity-ts-dev-20261012` are absent after daemon recovery. No shared
+daemon restart or global cache cleanup was performed.
+
+### Smaller-task completion and regression checks (2026-10-12)
+
+The compatibility guide records all 44 source package versions, native 0.1.0
+counterparts, supported artifact profiles and upgrade boundaries. It explicitly
+avoids registry-release and universal runtime-compatibility claims. Three bounded
+architecture decisions are now recorded: the native registry OpenAPI emitter is
+canonical; explicit transport coercion retains the existing stricter JSON policy;
+built-in PostgreSQL persistence uses optional SQLx behind domain store traits.
+The service/worker/mixed examples checklist now references the existing runnable
+guide and previously validated generated runtime fixtures.
+
+The native SDK crate now commits reviewed catalog OpenAPI, Rust HTTP SDK and
+TypeScript HTTP SDK snapshots. They include path/query/header fields, optional
+nullable fields, typed success/error responses, response headers and empty 204s.
+Eight SDK crate tests and strict all-target clippy pass; CI's existing framework
+workspace job runs the snapshot test. Snapshot updates require an explicit local
+flag and are refused in CI. Full cross-language snapshot equivalence stays open.
+
+The socket development code passes all 1,074 CLI tests, CLI rebuild and the
+756-source packaging inventory (before the new snapshot sources). Combined
+`--from all` generation/check, preserved application package policy and real
+Node/Bun workspace builds pass in `rust-socket-workspace/run.i4az_z7b`, followed by
+both languages' actual HTTP/MCP startup, discovery and invocation checks. A first
+fixture attempt omitted its required HTTP artifact; the corrected fixture supplies
+both surfaces explicitly. Automatic dev socket export/removal/restoration is now
+covered by the pending Bun Compose run; it is not yet claimed as a live pass.
+
+Cleanup removed seven obsolete failed mixed-dev applications while retaining their
+logs, three old generated Cargo caches (about 23 GiB), and old test-only target and
+node_modules trees across eight fixture families. Source worktrees and retained
+fixture sources/logs remain. The previously stuck owned Docker builder is now
+absent. Fresh Node and Bun dev checks own distinct projects and clean their Docker
+resources on exit.

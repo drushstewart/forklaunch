@@ -1,0 +1,165 @@
+{
+  "components": {
+    "schemas": {
+      "Item": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "String": {
+        "type": "string"
+      },
+      "bool": {
+        "type": "boolean"
+      }
+    }
+  },
+  "info": {
+    "title": "catalog",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/items": {
+      "post": {
+        "operationId": "createItem",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Item"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            },
+            "description": "Response"
+          }
+        },
+        "summary": "Create an item",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/items/{id}": {
+      "delete": {
+        "operationId": "deleteItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/String"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "summary": "Delete an item",
+        "tags": [
+          "catalog"
+        ]
+      },
+      "get": {
+        "operationId": "getItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/String"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeDetails",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/bool"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/String"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            },
+            "description": "Response",
+            "headers": {
+              "etag": {
+                "schema": {
+                  "$ref": "#/components/schemas/String"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/String"
+                }
+              }
+            },
+            "description": "Response"
+          }
+        },
+        "summary": "Retrieve an item",
+        "tags": [
+          "catalog"
+        ]
+      }
+    }
+  }
+}

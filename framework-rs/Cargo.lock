@@ -1439,6 +1439,7 @@ dependencies = [
  "forklaunch-asyncapi",
  "forklaunch-common",
  "forklaunch-contract",
+ "forklaunch-openapi",
  "forklaunch-sdk-codegen",
  "forklaunch-sdk-rust",
  "forklaunch-ws",
