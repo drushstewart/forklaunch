@@ -1546,3 +1546,17 @@ ports while waiting for startup (Docker may change them after a restart). A fres
 run at `rust-mixed-dev/run.b25r_8kn` is validating socket export/change/removal/restore
 plus the shared-library loop. The superseded attempts are retained as logs only.
 No additional development checklist item is closed while these checks remain open.
+
+The Node TypeScript-only replay now passes on the retained `run.xb4uz99y`
+application: a shared-library-only edit updates the SDK, actual HTTP/MCP calls pass,
+and the owned watcher exits on shutdown. Bun `run.b25r_8kn` completed socket
+creation/change/removal/restoration and TypeScript/shared-library SDK refresh,
+but its final probe retained a native host port from before a later restart.
+That probe failed and the run is not counted as a full pass. The fixture now
+refreshes native readiness/port again immediately before the final probe; fresh
+Bun run `run.3r582t9d` includes this correction and the image-reuse replay path.
+
+Billing snapshot review also replaced unresolved dependency-injection placeholders
+and JSON-erased role Sets with explicit auth methods and role arrays. Both baseline
+update and normal comparison pass all 66 route/28 schema cases again. The
+compatibility guide now carries the documentation site's standard frontmatter.

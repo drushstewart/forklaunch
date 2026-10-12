@@ -4,11 +4,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "POST",
@@ -24,11 +21,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -46,11 +40,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -68,11 +59,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "PUT",
@@ -88,11 +76,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "DELETE",
@@ -110,11 +95,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "POST",
@@ -130,11 +112,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -152,11 +131,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -174,11 +150,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -196,11 +169,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -218,11 +188,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -240,11 +207,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -262,11 +226,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "PUT",
@@ -284,11 +245,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "DELETE",
@@ -306,11 +264,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "POST",
@@ -326,11 +281,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -348,11 +300,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -370,11 +319,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -392,11 +338,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -414,11 +357,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "POST",
@@ -434,11 +374,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -456,11 +393,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -478,11 +412,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -500,11 +431,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -522,11 +450,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "PUT",
@@ -544,11 +469,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "DELETE",
@@ -566,10 +488,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "admin"
+          ],
+          "method": "jwt"
         },
         "body": true,
         "method": "POST",
@@ -585,10 +507,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "admin"
+          ],
+          "method": "jwt"
         },
         "body": false,
         "method": "GET",
@@ -606,10 +528,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "admin"
+          ],
+          "method": "jwt"
         },
         "body": true,
         "method": "PUT",
@@ -627,10 +549,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "admin"
+          ],
+          "method": "jwt"
         },
         "body": false,
         "method": "DELETE",
@@ -648,10 +570,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "system"
+          ],
+          "method": "jwt"
         },
         "body": false,
         "method": "DELETE",
@@ -670,10 +592,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "system"
+          ],
+          "method": "jwt"
         },
         "body": false,
         "method": "GET",
@@ -2111,11 +2033,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "POST",
@@ -2131,11 +2050,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2153,11 +2069,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2175,11 +2088,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "PUT",
@@ -2195,11 +2105,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "DELETE",
@@ -2217,11 +2124,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "POST",
@@ -2237,11 +2141,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2259,11 +2160,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2281,11 +2179,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2303,11 +2198,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2325,11 +2217,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2347,11 +2236,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2369,11 +2255,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "PUT",
@@ -2391,11 +2274,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "DELETE",
@@ -2413,11 +2293,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "POST",
@@ -2433,11 +2310,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2455,11 +2329,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2477,11 +2348,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2499,11 +2367,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2521,11 +2386,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "POST",
@@ -2541,11 +2403,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2563,11 +2422,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2585,11 +2441,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2607,11 +2460,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "GET",
@@ -2629,11 +2479,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": true,
         "method": "PUT",
@@ -2651,11 +2498,8 @@
       {
         "access": "internal",
         "auth": {
-          "hmac": {
-            "secretKeys": {
-              "default": {}
-            }
-          }
+          "allowedRoles": [],
+          "method": "hmac"
         },
         "body": false,
         "method": "DELETE",
@@ -2673,10 +2517,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "admin"
+          ],
+          "method": "jwt"
         },
         "body": true,
         "method": "POST",
@@ -2692,10 +2536,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "admin"
+          ],
+          "method": "jwt"
         },
         "body": false,
         "method": "GET",
@@ -2713,10 +2557,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "admin"
+          ],
+          "method": "jwt"
         },
         "body": true,
         "method": "PUT",
@@ -2734,10 +2578,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "admin"
+          ],
+          "method": "jwt"
         },
         "body": false,
         "method": "DELETE",
@@ -2755,10 +2599,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "system"
+          ],
+          "method": "jwt"
         },
         "body": false,
         "method": "DELETE",
@@ -2777,10 +2621,10 @@
       {
         "access": "protected",
         "auth": {
-          "allowedRoles": {},
-          "jwt": {
-            "jwksPublicKeyUrl": {}
-          }
+          "allowedRoles": [
+            "system"
+          ],
+          "method": "jwt"
         },
         "body": false,
         "method": "GET",

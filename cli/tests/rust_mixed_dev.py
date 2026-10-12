@@ -194,6 +194,7 @@ try:
     shared.write_text("import { optional, string } from './registrations';\nexport const sharedDevelopmentSchema = optional({ sharedLibraryMarker: optional(string) });\n")
     wait_sdk('sharedLibraryMarker', timeout=120)
     typescript = wait_json(lambda: endpoint('legacy-api', ts_port) + '/legacy-api', 'message', 'LegacyApiReloaded', timeout=60).removesuffix('/legacy-api')
+    native = wait_json(lambda: endpoint('native-api', native_port) + '/health', 'status', 'native-reloaded', timeout=180).removesuffix('/health')
     mcp = endpoint('legacy-api', ts_port + 2000) + '/mcp'
     subprocess.run(['node', str(repo / 'cli/tests/rust_mixed_dev_probe.mjs'), native, typescript, mcp, 'LegacyApiReloaded'], check=True, timeout=90)
     process.send_signal(signal.SIGTERM)

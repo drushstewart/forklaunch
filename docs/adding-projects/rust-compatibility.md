@@ -1,3 +1,9 @@
+---
+title: Rust and TypeScript Compatibility
+category: Guides
+description: Source version baselines, contract formats, implementation choices, and snapshot checks for the Rust port.
+---
+
 # Rust and TypeScript compatibility baseline
 
 This matrix records the package versions in the source checkout used for the Rust
