@@ -3,6 +3,7 @@ pub mod compliance;
 #[cfg(feature = "encryption")]
 #[path = "field_encryptor.rs"]
 pub mod encryption;
+pub mod retention;
 
 #[cfg(feature = "encryption")]
 pub mod json;

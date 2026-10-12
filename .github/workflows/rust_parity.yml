@@ -28,6 +28,7 @@ on:
       - 'cli/tests/fixtures/redis_resp.mjs'
       - 'cli/tests/rust_redis_queue_parity.mjs'
       - 'cli/tests/rust_json_cache_parity.mjs'
+      - 'cli/tests/rust_retention_hooks_parity.mjs'
       - 'cli/tests/rust_json_object_parity.mjs'
       - 'cli/tests/rust_s3_environment_parity.mjs'
       - 'cli/tests/rust_worker_tenant_scope_parity.mjs'
@@ -187,6 +188,7 @@ on:
       - 'cli/tests/fixtures/redis_resp.mjs'
       - 'cli/tests/rust_redis_queue_parity.mjs'
       - 'cli/tests/rust_json_cache_parity.mjs'
+      - 'cli/tests/rust_retention_hooks_parity.mjs'
       - 'cli/tests/rust_json_object_parity.mjs'
       - 'cli/tests/rust_s3_environment_parity.mjs'
       - 'cli/tests/rust_worker_tenant_scope_parity.mjs'
@@ -372,6 +374,9 @@ jobs:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @asyncapi/parser@3.6.3 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5 cross-fetch@4.1.0 zod@4.6.5 ts-deepmerge@8.0.0 ws@8.22.0
       - run: node cli/tests/rust_redis_queue_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_retention_hooks_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_json_cache_parity.mjs

@@ -524,7 +524,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Implement field encryption helpers. (TypeScript-compatible v1–v4 envelopes, tenant derivation, key rotation, blind indexes; actual TypeScript interoperability tests)
 - [x] Implement tenant context helpers. (validated identity and transaction-local database context)
 - [x] Implement RLS setup helpers for Postgres. (safe DDL identifiers, FORCE RLS, read/write policies)
-- [ ] Implement retention policy enforcement hooks.
+- [x] Implement retention policy enforcement hooks. (Explicit tenant-scoped async store boundary, dry runs, bounded batches, metadata-driven anonymization and incomplete-pass reporting; concrete database adapters and general calendar cutoff parsing remain within production persistence work.)
 - [x] Add compliance metadata derives where appropriate. (`ComplianceMetadata` on named structs; explicit classification/storage-name/nullability, generic and renamed-dependency support; no implicit encryption or database writes.)
 
 ## Phase 10 - `blueprint-rs` Workspace Scaffold
@@ -1589,3 +1589,31 @@ count, not a claim of universal feature coverage. Fourteen entries were resolved
 from the 79-open checkpoint, including explicitly documented stale checklist
 reconciliation. Production deployment/publication, broader authentication and
 persistence, schema/protocol coverage, documentation and release gates remain.
+
+### Generic retention enforcement hooks (2026-10-12)
+
+Core persistence now exposes a typed async store boundary and bounded retention
+runner. Policies use explicit compliance metadata and an application-resolved
+exclusive cutoff. Calls require tenant identities; duplicate scopes, future
+cutoffs and invalid batch bounds fail before store access. Dry runs count without
+mutation. Delete and nullable classified-field anonymization preserve prior
+committed counts on a failed batch and continue other tenant/entity passes. A
+batch cap prevents a broken adapter from looping forever; remaining work is
+reported as incomplete enforcement. Counter overflow is an error.
+
+Six native regression tests cover tenant fences, cutoff boundaries, already
+anonymized rows, field selection, dry runs, oldest-first deletion, committed-count
+reporting, entity filters, empty anonymization field lists and faulty adapters.
+The actual TypeScript RetentionService comparison passes 24 combinations of
+action, dry-run, batch size and tenant selection. Strict core all-target clippy
+passes; CI includes the comparison. Generic database adapters, full calendar/TZ
+cutoff handling and directory/ecommerce compliance integration remain open.
+
+Separately, user-authorized cleanup removed 19 clean inactive committed worktrees
+and pruned stale registrations. Branch references remain intact; ignored lockfiles
+and restoration metadata are backed up under
+`~/.codex/workspace-archives/forklaunch-2026-10-12`. Dirty and active workspaces were
+preserved. Free disk rose from approximately 74 GiB to 99 GiB.
+
+Validation also passes core all-feature tests, the CLI rebuild and all 767 required
+embedded package sources. Checklist: **618/682 (90.6%), 64 open**.

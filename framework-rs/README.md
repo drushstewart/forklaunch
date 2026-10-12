@@ -28,6 +28,20 @@ and enforce tenant boundaries. Rust `Option`, serde renames and encryption
 configuration do not implicitly change these declarations. The derive supports
 generics and `#[compliance(crate_path = "renamed_core")]` for renamed dependencies.
 
+The `persistence::retention` module provides bounded async enforcement hooks for
+application-owned stores. Build a `RetentionPolicy::for_entity::<T>` from explicit
+compliance metadata and an already resolved exclusive cutoff. `enforce` requires
+validated tenant identities, supports dry-run counts and entity selection, and
+reports failed/incomplete passes without losing earlier committed counts. Stores
+must implement atomic tenant-scoped batches, oldest-first selection and storage
+metadata validation; anonymization clears only classified nullable fields and
+records its timestamp even when no field qualifies. Batch sizes and pass lengths
+are bounded. Duplicate scopes, future cutoffs and counter overflow fail explicitly.
+Calendar-duration parsing, timezone selection and concrete database adapters remain
+application responsibilities. The [in-memory conformance adapter](crates/forklaunch-core/examples/retention_hooks.rs)
+illustrates the hook boundary; 24 cases compare it with the actual TypeScript
+retention service. This does not claim generic SQL/ORM retention parity.
+
 ## Commands
 
 ```bash

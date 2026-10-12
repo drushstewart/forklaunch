@@ -16,7 +16,7 @@ proof that TypeScript and Rust producers/consumers can exchange jobs.
 | --- | --- | --- |
 | [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Native builds and mixed Node/Bun Compose orchestration pass live HTTP/MCP, source reload and shutdown fixtures; automatic contract/SDK refresh remains. |
 | [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Shared names, paths, errors and JSON helpers; audit all utility exports individually. |
-| [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-core-macros, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption, explicit compliance metadata derives and an optional MCP HTTP server exist; SQL entity/compliance/retention services and full auth/streaming conformance remain. |
+| [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-core-macros, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption, explicit compliance metadata derives and an optional MCP HTTP server exist; Bounded tenant-scoped retention hooks exist; generic SQL entity/compliance/retention adapters and full auth/streaming conformance remain. |
 | [`@forklaunch/e2e-tests`](../framework/e2e-tests/package.json) (generated/private) | Rust wire/runtime suites | Actual TypeScript framework service conformance remains beyond the plain Node wire fixtures. |
 | [`@forklaunch/express`](../framework/express/package.json) | forklaunch-axum | Equivalent HTTP behavior is the target; multipart/SSE and full validation/auth/error fixtures remain. |
 | [`@forklaunch/hyper-express`](../framework/hyper-express/package.json) | forklaunch-axum | All 27 exported HTTP methods dispatch through shared validation/auth and nested contracts; both SDK artifact sources and actual compiled TypeScript router token forwarding are covered. Runtime-specific adapter internals need no clone. |
@@ -1619,3 +1619,31 @@ count, not a claim of universal feature coverage. Fourteen entries were resolved
 from the 79-open checkpoint, including explicitly documented stale checklist
 reconciliation. Production deployment/publication, broader authentication and
 persistence, schema/protocol coverage, documentation and release gates remain.
+
+### Generic retention enforcement hooks (2026-10-12)
+
+Core persistence now exposes a typed async store boundary and bounded retention
+runner. Policies use explicit compliance metadata and an application-resolved
+exclusive cutoff. Calls require tenant identities; duplicate scopes, future
+cutoffs and invalid batch bounds fail before store access. Dry runs count without
+mutation. Delete and nullable classified-field anonymization preserve prior
+committed counts on a failed batch and continue other tenant/entity passes. A
+batch cap prevents a broken adapter from looping forever; remaining work is
+reported as incomplete enforcement. Counter overflow is an error.
+
+Six native regression tests cover tenant fences, cutoff boundaries, already
+anonymized rows, field selection, dry runs, oldest-first deletion, committed-count
+reporting, entity filters, empty anonymization field lists and faulty adapters.
+The actual TypeScript RetentionService comparison passes 24 combinations of
+action, dry-run, batch size and tenant selection. Strict core all-target clippy
+passes; CI includes the comparison. Generic database adapters, full calendar/TZ
+cutoff handling and directory/ecommerce compliance integration remain open.
+
+Separately, user-authorized cleanup removed 19 clean inactive committed worktrees
+and pruned stale registrations. Branch references remain intact; ignored lockfiles
+and restoration metadata are backed up under
+`~/.codex/workspace-archives/forklaunch-2026-10-12`. Dirty and active workspaces were
+preserved. Free disk rose from approximately 74 GiB to 99 GiB.
+
+Validation also passes core all-feature tests, the CLI rebuild and all 767 required
+embedded package sources. Checklist: **618/682 (90.6%), 64 open**.
