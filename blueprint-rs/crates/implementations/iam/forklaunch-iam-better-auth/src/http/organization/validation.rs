@@ -1,6 +1,9 @@
 //! Configured Zod schema ordering for organization inputs.
 use super::{BlueprintError, BlueprintResult, HashMap, Value, internal};
 pub(crate) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
+    if super::members::is_route(path) {
+        return super::members::validate_body(path, body);
+    }
     if matches!(
         path,
         "/organization/update" | "/organization/has-permission"
@@ -73,6 +76,7 @@ pub(crate) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult
     }
 }
 pub(crate) fn validate_query(path: &str, query: &HashMap<String, Value>) -> BlueprintResult<()> {
+    super::members::validate_query(path, query)?;
     if !matches!(
         path,
         "/organization/get-full-organization" | "/organization/get-organization"

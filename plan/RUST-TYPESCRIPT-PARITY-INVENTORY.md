@@ -452,3 +452,14 @@ Memory/restricted PostgreSQL cover granted mutations, atomic concurrent deletion
 and HTTP storage persistence beside JWT/MCP startup/lifecycle. Remaining member,
 team, invitation, dynamic-role management, provider, real ORM, callback and CLI
 preset gates remain open.
+
+Thirty-eight native raw auth routes include active member/role reads, role updates,
+member removal and organization departure. All 146 actual HTTP/storage/cookie
+comparisons pass, including creator bypass boundaries, dynamic grants, duplicate
+roles, Unicode trimming, error ordering and email-versus-ID user projections.
+Departure/removal delete team memberships and release stored counters atomically;
+only the actor's matching active organization clears, retaining active team.
+Memory and restricted PostgreSQL exercise competing owners leaving, ensuring one
+owner survives, and live HTTP member operations alongside JWT/MCP lifecycle.
+Member listing, server-only addition, team/invitation/dynamic-role management,
+provider flows, real ORM conformance, callbacks and CLI preset remain open.

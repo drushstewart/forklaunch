@@ -119,6 +119,17 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/sign-in/email", post(dispatch::<S>))
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
             .route("/organization/create", post(dispatch::<S>))
+            .route(
+                "/organization/get-active-member",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route(
+                "/organization/get-active-member-role",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route("/organization/leave", post(dispatch::<S>))
+            .route("/organization/update-member-role", post(dispatch::<S>))
+            .route("/organization/remove-member", post(dispatch::<S>))
             .route("/organization/update", post(dispatch::<S>))
             .route("/organization/delete", post(dispatch::<S>))
             .route("/organization/has-permission", post(dispatch::<S>))
@@ -431,8 +442,12 @@ fn failure(error: &BlueprintError) -> Response {
         return StatusCode::NOT_FOUND.into_response();
     }
     let status = match error.code.as_str() {
-        "UNAUTHORIZED" | "INVALID_EMAIL_OR_PASSWORD" => StatusCode::UNAUTHORIZED,
-        "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION"
+        "UNAUTHORIZED"
+        | "INVALID_EMAIL_OR_PASSWORD"
+        | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER" => StatusCode::UNAUTHORIZED,
+        "YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION"
+        | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER"
+        | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION"
         | "USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION"
         | "SESSION_NOT_FRESH"

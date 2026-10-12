@@ -163,7 +163,7 @@ impl<S: AuthStore> OrganizationService<S> {
         Ok(organization)
     }
 }
-async fn find_member<T: AuthTransaction>(
+pub(super) async fn find_member<T: AuthTransaction>(
     tx: &mut T,
     user: &str,
     organization: &str,

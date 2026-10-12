@@ -1,4 +1,5 @@
 use super::*;
+mod members;
 mod permissions;
 
 pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
@@ -88,7 +89,8 @@ pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
             .code,
         "UNAUTHORIZED"
     );
-    permissions::exercise_permissions(store).await;
+    permissions::exercise_permissions(store.clone()).await;
+    members::exercise_members(store).await;
 }
 
 async fn exercise_selection<S: AuthStore>(

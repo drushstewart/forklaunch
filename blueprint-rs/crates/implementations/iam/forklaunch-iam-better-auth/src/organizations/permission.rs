@@ -10,6 +10,15 @@ pub(super) async fn allowed<T: AuthTransaction>(
     roles: &str,
     requested: Option<&Value>,
 ) -> BlueprintResult<bool> {
+    allowed_with_creator(tx, organization, roles, requested, false).await
+}
+pub(super) async fn allowed_with_creator<T: AuthTransaction>(
+    tx: &mut T,
+    organization: &str,
+    roles: &str,
+    requested: Option<&Value>,
+    creator_all: bool,
+) -> BlueprintResult<bool> {
     let mut grants: BTreeMap<String, Statements> = BTreeMap::new();
     for role in ["owner", "admin", "editor", "system", "viewer"] {
         let mut actions = vec!["platform:read".to_owned()];
@@ -40,12 +49,15 @@ pub(super) async fn allowed<T: AuthTransaction>(
             }
         }
     }
-    let Some(requested) = requested
-        .and_then(Value::as_object)
-        .filter(|object| !object.is_empty())
-    else {
+    let Some(requested) = requested.and_then(Value::as_object) else {
         return Ok(false);
     };
+    if creator_all && roles.split(',').any(|role| role == "owner") {
+        return Ok(true);
+    }
+    if requested.is_empty() {
+        return Ok(false);
+    }
     Ok(roles.split(',').any(|role| {
         grants.get(role).is_some_and(|statements| {
             requested.iter().all(|(resource, actions)| {
