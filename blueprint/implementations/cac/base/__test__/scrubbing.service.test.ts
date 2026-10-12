@@ -151,4 +151,72 @@ describe('ScrubbingService', () => {
       true
     );
   });
+
+  it('flags required_fields when a claim has no charge lines', () => {
+    const result = scrubbing.scrub([], ['J06.9']);
+
+    expect(result.clean).toBe(false);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        category: 'required_fields',
+        carcCode: 'CO-16',
+        message: 'Claim has no charge lines'
+      })
+    );
+  });
+
+  it('treats blank diagnosis codes as missing', () => {
+    const onlyBlank = scrubbing.scrub(
+      [{ procedureCode: 'PROC-999', units: 1 }],
+      [' ']
+    );
+    expect(onlyBlank.clean).toBe(false);
+    expect(onlyBlank.findings).toContainEqual(
+      expect.objectContaining({ message: 'Claim has no diagnosis codes' })
+    );
+
+    const oneBlank = scrubbing.scrub(
+      [{ procedureCode: 'PROC-002', units: 1 }],
+      ['Z00.00', '']
+    );
+    expect(oneBlank.findings).toContainEqual(
+      expect.objectContaining({
+        category: 'required_fields',
+        message: 'Diagnosis code 2 is blank'
+      })
+    );
+  });
+
+  it('applies the MUE cap to a code summed over its lines', () => {
+    const result = scrubbing.scrub(
+      [
+        { procedureCode: 'PROC-004', units: 1 },
+        { procedureCode: 'PROC-004', units: 1 }
+      ],
+      ['J06.9']
+    );
+
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        category: 'ncci_mue',
+        message: 'PROC-004 billed at 2 units, exceeds the mock unit cap of 1'
+      })
+    );
+  });
+
+  it('does not take inherited object keys for rule entries', () => {
+    const result = scrubbing.scrub(
+      [
+        { procedureCode: 'toString', units: 1 },
+        { procedureCode: 'constructor', units: 5 }
+      ],
+      ['J06.9']
+    );
+
+    expect(
+      result.findings.filter(
+        (f) => f.category === 'lcd_ncd' || f.category === 'ncci_mue'
+      )
+    ).toEqual([]);
+  });
 });

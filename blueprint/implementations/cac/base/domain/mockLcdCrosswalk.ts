@@ -40,7 +40,10 @@ export function isMedicallyNecessary(
   procedureCode: string,
   diagnosisCodes: ReadonlyArray<string>
 ): boolean {
-  const justifyingDiagnoses = MOCK_LCD_CROSSWALK[procedureCode];
+  // own entries only: "toString" is not a procedure code
+  const justifyingDiagnoses = Object.hasOwn(MOCK_LCD_CROSSWALK, procedureCode)
+    ? MOCK_LCD_CROSSWALK[procedureCode]
+    : undefined;
   if (!justifyingDiagnoses) {
     // No mock crosswalk entry for this procedure — nothing to check against,
     // so it isn't flagged as medically unnecessary by this mock data.
