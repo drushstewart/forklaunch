@@ -1148,3 +1148,5 @@ gates remain open.
 - [x] Revalidate archive-installed all-70-raw-route snapshot `4f0540ba6` (`IqcM1T`): 22 portable auth tests, all services/four workers, CLI/native SDKs, complete generated HTTP/MCP startup/listener/shutdown matrix and all five actual-TypeScript-signed callbacks pass. Checkout CLI restored.
 
 - [x] Port configured application role/permission surfacing service: 37 actual TS result comparisons, shared memory/restricted PostgreSQL expiry/scope/raw-permission checks, ciphertext inspection and tenant isolation pass; strict clippy, restored CLI and 734 packaged assets pass. HTTP/MCP application routing and CLI preset remain open.
+
+- [x] Add real MikroORM 7.2.3/adapter 0.5.9/PostgreSQL conformance and repair the TS compliant-field adapter boundary. All 24 auth/encryption/audit/tenant/transaction/restart/native-interop checks pass; strict isolated adapter typing, 161 HTTP/157 token/27 public/37 surfacing regressions and 734 packaged assets pass. Complete ORM/hooks/compliance/retention and CLI preset remain open.

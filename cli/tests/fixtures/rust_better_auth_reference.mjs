@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { actualValidator } from '../rust_actual_validator_fixture.mjs';
 
 export async function betterAuthReference(root, options = {}) {
-  const dependencies = process.env.FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES;
+  const dependencies = options.dependencies ?? process.env.FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES;
   if (!dependencies)
     throw new Error(
       'Set FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES to the Better Auth 1.7.6 fixture directory',
@@ -48,6 +48,7 @@ export async function betterAuthReference(root, options = {}) {
     transaction: (callback) =>
       adapter.transaction((transaction) => callback(wrap(transaction))),
   });
+  const realAdapter = options.orm ? await importDependency('@forklaunch/better-auth-mikro-orm-fork/lib/adapter.js') : null;
   const baseURL = options.baseURL ?? 'http://localhost:3000';
   const environment = {
     BETTER_AUTH_URL: baseURL,
@@ -61,6 +62,11 @@ export async function betterAuthReference(root, options = {}) {
   let auth;
   let actual;
   actual = actualValidator(root, (specifier, _file, load) => {
+    if (specifier === '@forklaunch/core/persistence')
+      // The memory adapter owns plain records. ORM fixtures supply real types.
+      return options.persistence ?? { isCompliantField: () => false };
+    if (specifier === '@forklaunch/better-auth-mikro-orm-fork' && realAdapter)
+      return realAdapter;
     if (specifier === '@forklaunch/better-auth-mikro-orm-fork')
       return {
         mikroOrmAdapter: () => (config) =>
@@ -88,7 +94,7 @@ export async function betterAuthReference(root, options = {}) {
     if (specifier.includes('/persistence/entities/')) {
       const name = path.basename(specifier, '.entity');
       const capitalized = name[0].toUpperCase() + name.slice(1);
-      return { [capitalized]: name };
+      return { [capitalized]: options.entities?.[capitalized] ?? name };
     }
     if (specifier === 'better-auth') return authModule;
     if (specifier === 'better-auth/plugins') return plugins;
@@ -102,7 +108,7 @@ export async function betterAuthReference(root, options = {}) {
   ).betterAuthConfig({
     BETTER_AUTH_BASE_PATH: '/api/auth',
     CORS_ORIGINS: [baseURL],
-    orm: {},
+    orm: options.orm ?? {},
     openTelemetryCollector: {
       info() {},
       warn() {},
@@ -166,7 +172,7 @@ export async function betterAuthReference(root, options = {}) {
       'blueprint/iam-better-auth/domain/services/surfacing.service.ts',
     ),
   );
-  const surfacing = new SurfacingService(em);
+  const surfacing = new SurfacingService(options.orm ? options.orm.em.fork() : em);
   function client() {
     const cookies = new Map();
     return {

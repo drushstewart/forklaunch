@@ -101,6 +101,9 @@ on:
       - 'cli/tests/rust_better_auth_google_tokens.mjs'
       - 'cli/tests/rust_better_auth_public.mjs'
       - 'cli/tests/rust_better_auth_surfacing.mjs'
+      - 'cli/tests/rust_better_auth_orm.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_orm.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_bridge.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
       - 'cli/tests/rust_better_auth_email_tokens.mjs'
       - 'cli/tests/rust_better_auth_email_verification.mjs'
@@ -243,6 +246,9 @@ on:
       - 'cli/tests/rust_better_auth_google_tokens.mjs'
       - 'cli/tests/rust_better_auth_public.mjs'
       - 'cli/tests/rust_better_auth_surfacing.mjs'
+      - 'cli/tests/rust_better_auth_orm.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_orm.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_bridge.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
       - 'cli/tests/rust_better_auth_email_tokens.mjs'
       - 'cli/tests/rust_better_auth_email_verification.mjs'
@@ -429,6 +435,10 @@ jobs:
           --health-retries 10
     env:
       FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
+      TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      FORKLAUNCH_TEST_ORM_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       FORKLAUNCH_TEST_POSTGRES_URL: postgres://postgres:parity-test-only@127.0.0.1:5432/parity
       FORKLAUNCH_TEST_KAFKA_BROKERS: 127.0.0.1:9092
     steps:
@@ -442,7 +452,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.9
       - run: node cli/tests/rust_worker_tenant_scope_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -573,6 +583,7 @@ jobs:
       - run: node cli/tests/rust_better_auth_google_tokens.mjs
       - run: node cli/tests/rust_better_auth_public.mjs
       - run: node cli/tests/rust_better_auth_surfacing.mjs
+      - run: node cli/tests/rust_better_auth_orm.mjs
       - run: NODE_ENV=production node cli/tests/rust_better_auth_public.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

@@ -1,4 +1,4 @@
-import { mikroOrmAdapter } from '@forklaunch/better-auth-mikro-orm-fork';
+import { betterAuthMikroOrmAdapter } from './domain/utils/betterAuthAdapter.util';
 import { logBetterAuthApiError } from './domain/utils/betterAuthErrorLogging.util';
 import { PERMISSIONS, ROLES } from '@forklaunch/blueprint-core';
 import { Metrics } from '@forklaunch/blueprint-monitoring';
@@ -151,7 +151,7 @@ export const betterAuthConfig = ({
         )
       }
     },
-    database: mikroOrmAdapter(orm, {
+    database: betterAuthMikroOrmAdapter(orm, {
       options: {
         advanced: {
           database: {

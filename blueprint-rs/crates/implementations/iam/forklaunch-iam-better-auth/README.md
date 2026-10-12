@@ -528,3 +528,17 @@ ordering, other users/organizations and missing/falsy scopes are covered. The
 shared memory/restricted PostgreSQL check passes with ciphertext inspection
 and tenant isolation; strict clippy and 734 packaged assets pass. HTTP/MCP
 application-route wiring, compliance/retention and CLI preset remain open.
+
+Real MikroORM 7.2.3 / PostgreSQL conformance exposed a TypeScript adapter
+integration defect: compliant password/private-JWK objects reached Better Auth
+without explicit plaintext access, causing sign-in and session-JWT 500s. The
+configured adapter now reveals classified results only inside Better Auth's
+trusted request context, including transaction adapters, preserving audit reads
+and leaving ORM entity fields wrapped. All 24 real-ORM checks pass: encrypted
+columns, audited access, missing/wrong tenant rejection, rollback, restart and
+native consumption of actual ORM passwords/sessions/accounts with JWT checks.
+The adapter utility passes a strict isolated type check against the installed
+adapter signature. Existing 161 HTTP, 157 token, 27 public and 37 surfacing
+comparisons pass. CI now installs the pinned real ORM/adapter and supplies shared
+fixture environment settings. This is initial real-ORM conformance; complete
+storage/hook coverage, compliance/retention and CLI preset remain open.
