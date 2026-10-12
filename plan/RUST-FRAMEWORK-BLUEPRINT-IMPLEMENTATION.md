@@ -1430,3 +1430,19 @@ read-only previews, binary asset preservation, old-capture mixed migration, sync
 rename and deletion. CI includes rust_storefront_lifecycle.sh. Static captures
 remain outside API/SDK generation; frontend hosting and native relay are separate
 tasks. Existing live mixed HTTP/MCP checks remain the service-runtime evidence.
+
+
+Archive installation checkpoint (2026-10-12): a fresh 2,004-file CLI archive
+installs with --locked outside the checkout, generates and relocates the full
+service/worker/module fixture, compiles both SDK families, and passes actual
+HTTP/MCP startup, listener settings, capability callbacks and graceful shutdown.
+The archive explicitly contains the mixed dev command and HTTP/socket/Bun
+workspace planners. Strict ESM/CommonJS socket consumers, recursive native/CLI
+HTTP SDK consumers, all four worker backends and bundled auth/transport tests
+pass. This run validates the mixed-dev/release checkpoint through 76103f22f; the
+subsequent storefront lifecycle has its separate CLI/runtime evidence above.
+
+The fixture now installs its own TypeScript 5.9.3 consumer compiler. Its previous
+checkout compiler had advanced to 7.0.2 and rejected an inferred fixture rootDir;
+the source layout is now explicit and the archive test uses a reproducible
+compiler. This does not establish general TypeScript 7 support.

@@ -84,6 +84,7 @@ try {
         esModuleInterop: true,
         types: ['node'],
         skipLibCheck: false,
+        rootDir: 'src',
         outDir: 'compiled',
       },
       include: ['src/*.ts'],

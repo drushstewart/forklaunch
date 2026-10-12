@@ -20,12 +20,17 @@ with tarfile.open(archive) as package:
     package.extractall(Path(sys.argv[2])/'source',filter='data')
 PYTHON
 SOURCE_ROOT="$(find "$RUN_ROOT/source" -mindepth 1 -maxdepth 1 -type d)"
+test -f "$SOURCE_ROOT/src/dev.rs"
+test -f "$SOURCE_ROOT/src/sdk/workspace.rs"
+test -f "$SOURCE_ROOT/src/sdk/workspace/bun.rs"
 test -f "$SOURCE_ROOT/src/templates/sdk/typescript/safeStringify.ts"
 test -f "$SOURCE_ROOT/src/templates/sdk/typescript/sse.ts"
 test -f "$SOURCE_ROOT/src/templates/sdk/rust/sse_client.rs"
 test -f "$SOURCE_ROOT/src/templates/sdk/rust/sse_decoder.rs"
 cargo install --path "$SOURCE_ROOT" --locked "${INSTALL_FLAGS[@]}" --root "$RUN_ROOT/installed" --target-dir "$INSTALL_TARGET"
 CLI="$RUN_ROOT/installed/bin/forklaunch"
+"$CLI" dev --help > "$RUN_ROOT/dev-help.txt"
+rg -q -- "--compose-file" "$RUN_ROOT/dev-help.txt"
 "$CLI" init application archive-app --path "$RUN_ROOT/app" --language rust -D 'Packaged CLI' -A ForkLaunch -L MIT
 "$CLI" init service accounts --path "$RUN_ROOT/app" --language rust -d postgresql -D Accounts
 "$CLI" init worker postgres-jobs --path "$RUN_ROOT/app" --language rust -t database -d postgresql -D Jobs
@@ -109,7 +114,8 @@ export CARGO_TARGET_DIR="$GENERATED_TARGET"
 cargo check --workspace
 cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-ws --all-features
 FORKLAUNCH_TEST_FRAMEWORK_ROOT="$PWD/.forklaunch/framework-rs" node "$REPO_ROOT/cli/tests/rust_ws_sdk_runtime.mjs" --compile-only
-npm install --prefix "$RUN_ROOT/websocket-consumer" --no-save --package-lock=false --ignore-scripts ws@8.22.0 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5
+npm install --prefix "$RUN_ROOT/websocket-consumer" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 ws@8.22.0 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5
+export TSC_BIN="${TSC_BIN:-$RUN_ROOT/websocket-consumer/node_modules/.bin/tsc}"
 FORKLAUNCH_TEST_FRAMEWORK_ROOT="$PWD/.forklaunch/framework-rs" FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES="$RUN_ROOT/websocket-consumer" FORKLAUNCH_TEST_WS_SDK_DEPENDENCIES="$RUN_ROOT/websocket-consumer" node "$REPO_ROOT/cli/tests/rust_ws_typescript_sdk_runtime.mjs" --compile-only
 "$CLI" openapi export --path .
 python3 - <<'PYTHON'
