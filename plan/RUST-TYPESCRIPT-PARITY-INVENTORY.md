@@ -684,3 +684,11 @@ capability callbacks pass. This snapshot includes sixty raw auth routes, four
 configured server helper entrypoints and Ed25519/ECDSA/RSA/PSS provisioning.
 Larger RSA/typed options, Google OAuth, ORM/callback/shared-parser and full-preset
 gates remain open.
+
+Database OAuth state primitives now pass 66 actual state/cookie and 66 storage
+comparisons, using real Better Auth endpoint context, Better Call and the memory
+adapter. Native random state/PKCE, signed cookies, expiry/cleanup, malformed and
+legacy data, link coercion and atomic consumption pass memory/restricted
+PostgreSQL checks. Strict all-feature clippy, rebuilt CLI and 715 embedded sources
+pass. Google HTTP authorization/callback and token/account lifecycle remain open;
+this foundation adds no raw routes.

@@ -1126,3 +1126,5 @@ capability callbacks pass. This snapshot includes sixty raw auth routes, four
 configured server helper entrypoints and Ed25519/ECDSA/RSA/PSS provisioning.
 Larger RSA/typed options, Google OAuth, ORM/callback/shared-parser and full-preset
 gates remain open.
+
+- [x] Add configured database OAuth state primitives with random 32-character correlation and 128-character PKCE verifier, signed five-minute state cookies, ten-minute persisted expiry, secure names and atomic one-time consumption. All 66 actual TypeScript state/cookie and 66 storage comparisons pass through real endpoint context/Better Call/memory adapter, including global cleanup, malformed/legacy state and link coercion. Memory/restricted PostgreSQL verify races, retained state on failed correlation and exact expiry boundaries. Strict all-feature clippy, rebuilt CLI and 715 embedded sources pass. Google authorization/callback HTTP wiring and provider token/account lifecycle remain open; raw-route count stays sixty.

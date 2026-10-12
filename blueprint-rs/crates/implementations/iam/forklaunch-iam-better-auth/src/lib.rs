@@ -14,6 +14,7 @@ pub mod store;
 
 pub mod organizations;
 pub mod origins;
+pub mod oauth;
 
 #[cfg(feature = "http")]
 pub mod http;

@@ -149,7 +149,7 @@ impl SessionCookie {
         self.named_header(self.name(), value, max_age)
     }
 
-    fn named_header(self, name: &str, value: &str, max_age: Option<u32>) -> String {
+    pub(crate) fn named_header(self, name: &str, value: &str, max_age: Option<u32>) -> String {
         let mut result = format!("{name}={value}");
         if let Some(max_age) = max_age {
             write!(result, "; Max-Age={max_age}").expect("writing to a String cannot fail");

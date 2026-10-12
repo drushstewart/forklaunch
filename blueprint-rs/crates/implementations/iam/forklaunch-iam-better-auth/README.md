@@ -407,3 +407,11 @@ private material. Actual comparisons cover 189 signing calls/216 key states and
 393 verification calls/309 key-store operations with independent JOSE signature
 verification. Larger RSA keys, typed date/function options, custom signing/key
 adapters, provider/ORM/shared-parser and full-preset parity remain open.
+
+Database OAuth state primitives now pass 66 actual state/cookie and 66 storage
+comparisons, using real Better Auth endpoint context, Better Call and the memory
+adapter. Native random state/PKCE, signed cookies, expiry/cleanup, malformed and
+legacy data, link coercion and atomic consumption pass memory/restricted
+PostgreSQL checks. Strict all-feature clippy, rebuilt CLI and 715 embedded sources
+pass. Google HTTP authorization/callback and token/account lifecycle remain open;
+this foundation adds no raw routes.
