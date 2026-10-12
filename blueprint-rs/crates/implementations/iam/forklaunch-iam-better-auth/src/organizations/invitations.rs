@@ -1,4 +1,5 @@
 //! Configured invitation visibility and adapter joins.
+mod mutation;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
     OrganizationService, SessionService, Utc, Value, json, member, missing, text,

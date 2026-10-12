@@ -25,7 +25,7 @@ pub(super) async fn handle<S: AuthStore + 'static>(
 ) -> BlueprintResult<Value> {
     let service = OrganizationService::new(app.store.clone());
     let (token, transient) = session;
-    if let Some(body) = invitations::handle(&service, path, query, session, now).await? {
+    if let Some(body) = invitations::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);
     }
     if let Some(body) = members::handle(&service, path, payload, query, session, now).await? {
@@ -131,6 +131,8 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
         routing::{get, post},
     };
     Router::new()
+        .route("/organization/reject-invitation", post(dispatch::<S>))
+        .route("/organization/cancel-invitation", post(dispatch::<S>))
         .route(
             "/organization/get-invitation",
             get(dispatch::<S>).head(not_found),

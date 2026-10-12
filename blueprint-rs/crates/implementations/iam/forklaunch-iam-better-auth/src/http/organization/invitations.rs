@@ -6,6 +6,8 @@ pub(in crate::http) fn is_route(path: &str) -> bool {
         "/organization/get-invitation"
             | "/organization/list-invitations"
             | "/organization/list-user-invitations"
+            | "/organization/reject-invitation"
+            | "/organization/cancel-invitation"
     )
 }
 pub(super) fn validate_query(path: &str, query: &HashMap<String, Value>) -> BlueprintResult<()> {
@@ -27,12 +29,33 @@ pub(super) fn validate_query(path: &str, query: &HashMap<String, Value>) -> Blue
 pub(super) async fn handle<S: AuthStore>(
     service: &OrganizationService<S>,
     path: &str,
+    body: &Value,
     query: &HashMap<String, Value>,
     session: (&str, bool),
     now: DateTime<Utc>,
 ) -> BlueprintResult<Option<Value>> {
     let (token, transient) = session;
     Ok(Some(match path {
+        "/organization/reject-invitation" => {
+            service
+                .reject_invitation(
+                    token,
+                    transient,
+                    body["invitationId"].as_str().unwrap_or(""),
+                    now,
+                )
+                .await?
+        }
+        "/organization/cancel-invitation" => {
+            service
+                .cancel_invitation(
+                    token,
+                    transient,
+                    body["invitationId"].as_str().unwrap_or(""),
+                    now,
+                )
+                .await?
+        }
         "/organization/get-invitation" => {
             service
                 .get_invitation(token, transient, query["id"].as_str().unwrap_or(""), now)
@@ -65,4 +88,27 @@ pub(super) async fn handle<S: AuthStore>(
         }
         _ => return Ok(None),
     }))
+}
+
+pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
+    if !matches!(
+        path,
+        "/organization/reject-invitation" | "/organization/cancel-invitation"
+    ) {
+        return Ok(());
+    }
+    if !body.is_some_and(Value::is_object) {
+        return Err(validation(format!(
+            "[body] Invalid input: expected object, received {}",
+            received(body)
+        )));
+    }
+    let id = body.and_then(|body| body.get("invitationId"));
+    if !id.is_some_and(Value::is_string) {
+        return Err(validation(format!(
+            "[body.invitationId] Invalid input: expected string, received {}",
+            received(id)
+        )));
+    }
+    Ok(())
 }

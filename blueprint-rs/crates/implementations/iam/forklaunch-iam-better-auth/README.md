@@ -318,3 +318,10 @@ recipient visibility, exact expiry boundaries, inviter joins and missing records
 fallbacks. Native memory/restricted PostgreSQL and live HTTP cover reads beside
 JWT/MCP. Invitation lifecycle mutations and remaining dynamic-role/provider/
 helper/ORM/callback/preset gates stay open.
+
+Fifty-three raw routes include invitation rejection/cancellation, with 318 actual
+HTTP/storage/cookie comparisons passing. Verified recipients may reject expired
+pending invitations; scoped invitation:cancel can replace any status repeatedly.
+Neither operation changes membership or session selections. Memory/restricted
+PostgreSQL cover concurrent cancellation; live HTTP runs both routes beside JWT/
+MCP. Invitation creation/acceptance and remaining full-preset gates stay open.

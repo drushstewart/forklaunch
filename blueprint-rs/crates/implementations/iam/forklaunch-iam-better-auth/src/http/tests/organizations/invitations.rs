@@ -1,4 +1,5 @@
 use super::*;
+mod mutations;
 pub(super) async fn exercise<S: AuthStore>(
     client: &reqwest::Client,
     base: &str,
@@ -68,4 +69,5 @@ pub(super) async fn exercise<S: AuthStore>(
         "pending"
     );
     tx.commit().await.unwrap();
+    mutations::exercise(client, base, cookie, store, org).await;
 }

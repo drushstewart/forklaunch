@@ -1079,3 +1079,5 @@ callbacks pass. This snapshot contains 48 raw routes and both completed
 server-only helpers. Checkout CLI rebuilt afterward (16.84 seconds).
 
 - [x] Port invitation lookup, organization lists and received-user lists with configured verified-email/error ordering, recipient scope, expiry boundaries, joined inviter details and adapter limit-before-status filtering. All 258 actual HTTP/storage/cookie comparisons pass, including HEAD/POST/OPTIONS fallback behavior. Memory/restricted PostgreSQL and live HTTP/JWT/MCP cover all three read routes. Invitation mutations, dynamic roles and remaining helper/provider/preset gates stay open.
+
+- [x] Port invitation rejection/cancellation with verified-recipient and scoped permission ordering, exact error messages, expiry/status distinctions and retained membership/session state. All 318 actual HTTP/storage/cookie comparisons and 258 invitation-read regressions pass. Memory/restricted PostgreSQL cover repeated/concurrent cancellation; live HTTP runs both routes beside JWT/MCP. Invitation creation/acceptance and remaining dynamic-role/provider/helper/preset gates stay open.
