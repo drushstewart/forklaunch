@@ -350,3 +350,13 @@ case-sensitive name/ID selectors and union validation, first-100 listing, later
 lookup and malformed later JSON. Permission responses contain parsed JSON while
 storage strings remain intact, including literal serde keys. Memory/restricted
 PostgreSQL and live HTTP/JWT/MCP cover both routes; role mutations remain open.
+
+Fifty-eight raw routes include dynamic role creation. All 212 actual HTTP/storage/
+cookie comparisons pass, including nullish scope, lowercase names without
+trimming, the configured predefined-name guard, permission/resource ordering,
+duplicate names beyond 100 rows and ignored additional fields. Public grants
+permit only the configured platform resource, and each requested action requires
+an actor grant. Missing actions retain order and duplicates in missingPermissions.
+Memory/restricted PostgreSQL verify atomic competing duplicate creation and stored
+permission JSON; live HTTP runs creation beside JWT/MCP. Role update/deletion and
+remaining provider/helper/ORM/callback/full-preset gates stay open.

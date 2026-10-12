@@ -26,7 +26,7 @@ pub(super) async fn handle<S: AuthStore + 'static>(
 ) -> BlueprintResult<Value> {
     let service = OrganizationService::new(app.store.clone());
     let (token, transient) = session;
-    if let Some(body) = roles::handle(&service, path, query, session, now).await? {
+    if let Some(body) = roles::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);
     }
     if path == "/organization/accept-invitation" {
@@ -120,6 +120,7 @@ pub(super) fn strip_record_keys(path: &str, payload: &mut Value) {
     // Zod record construction skips the own __proto__ key at this level.
     let metadata = match path {
         "/organization/create" => payload.get_mut("metadata"),
+        "/organization/create-role" => payload.get_mut("permission"),
         "/organization/update" => payload
             .get_mut("data")
             .and_then(|data| data.get_mut("metadata")),
@@ -137,6 +138,7 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
         routing::{get, post},
     };
     Router::new()
+        .route("/organization/create-role", post(dispatch::<S>))
         .route(
             "/organization/list-roles",
             get(dispatch::<S>).head(not_found),

@@ -105,6 +105,8 @@ pub type BlueprintResult<T> = Result<T, BlueprintError>;
 pub struct BlueprintError {
     pub code: String,
     pub message: String,
+    /// Structured operation details; transports explicitly select public fields.
+    pub details: BTreeMap<String, serde_json::Value>,
 }
 
 impl BlueprintError {
@@ -113,7 +115,14 @@ impl BlueprintError {
         Self {
             code: code.into(),
             message: message.into(),
+            details: BTreeMap::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_detail(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+        self.details.insert(key.into(), value);
+        self
     }
 }
 

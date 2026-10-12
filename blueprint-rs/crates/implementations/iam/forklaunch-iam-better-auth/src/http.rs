@@ -481,6 +481,7 @@ fn failure(error: &BlueprintError) -> Response {
         | "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED"
         | "YOU_ARE_NOT_ALLOWED_TO_LIST_A_ROLE"
         | "YOU_ARE_NOT_ALLOWED_TO_READ_A_ROLE"
+        | "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE"
         | "SESSION_NOT_FRESH"
         | "MISSING_OR_NULL_ORIGIN"
         | "INVALID_ORIGIN"
@@ -498,7 +499,7 @@ fn failure(error: &BlueprintError) -> Response {
         }
         _ => StatusCode::BAD_REQUEST,
     };
-    let body = if matches!(
+    let mut body = if matches!(
         error.code.as_str(),
         "INVALID_CALLBACK_VALUE_TYPE" | "HTTP_MESSAGE_ONLY"
     ) {
@@ -508,6 +509,13 @@ fn failure(error: &BlueprintError) -> Response {
     } else {
         json!({"code":error.code,"message":error.message})
     };
+    if matches!(
+        error.code.as_str(),
+        "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE" | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_A_ROLE"
+    ) && let Some(missing) = error.details.get("missingPermissions")
+    {
+        body["missingPermissions"] = missing.clone();
+    }
     (status, Json(body)).into_response()
 }
 

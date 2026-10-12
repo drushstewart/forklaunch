@@ -1,4 +1,5 @@
-//! Stored dynamic role reads and explicit access-control grants.
+//! Stored dynamic roles and explicit access-control grants.
+mod create;
 use super::permission::allowed;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,

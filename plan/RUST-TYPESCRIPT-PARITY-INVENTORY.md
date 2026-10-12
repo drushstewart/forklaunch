@@ -587,3 +587,13 @@ Permission strings stay unchanged in storage while responses contain parsed JSON
 Memory/restricted PostgreSQL and live HTTP/JWT/MCP validate both routes. Dynamic
 role mutations and remaining provider/helper/ORM/callback/full-preset gates stay
 open.
+
+Fifty-eight raw routes include dynamic role creation. All 212 actual HTTP/storage/
+cookie comparisons pass, including nullish scope, lowercase names without
+trimming, the configured predefined-name guard, permission/resource ordering,
+duplicate names beyond 100 rows and ignored additional fields. Public grants
+permit only the configured platform resource, and each requested action requires
+an actor grant. Missing actions retain order and duplicates in missingPermissions.
+Memory/restricted PostgreSQL verify atomic competing duplicate creation and stored
+permission JSON; live HTTP runs creation beside JWT/MCP. Role update/deletion and
+remaining provider/helper/ORM/callback/full-preset gates stay open.

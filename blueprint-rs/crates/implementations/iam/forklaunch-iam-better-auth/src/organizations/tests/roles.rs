@@ -26,7 +26,10 @@ pub(super) async fn exercise<S: AuthStore>(store: Arc<S>) {
         "YOU_ARE_NOT_ALLOWED_TO_LIST_A_ROLE"
     );
     let mut tx = store.begin(true).await.unwrap();
-    tx.insert(Model::OrganizationRole,json!({"id":"native-role-read-grant","organizationId":org,"role":"owner","permission":"{\"ac\":[\"read\"]}","createdAt":timestamp(now)})).await.unwrap();
+    tx.insert(Model::OrganizationRole,json!({"id":"native-role-read-grant","organizationId":org,"role":"owner","permission":"{\"ac\":[\"read\",\"create\"]}","createdAt":timestamp(now)})).await.unwrap();
+    tx.commit().await.unwrap();
+    creations(&store, &service, token, now).await;
+    let mut tx = store.begin(true).await.unwrap();
     for i in 0..105 {
         tx.insert(Model::OrganizationRole,json!({"id":format!("native-role-{i}"),"organizationId":org,"role":format!("MiXeD-{i}"),"permission":if i==104 {"{"} else {"{\"platform\":[\"platform:read\"]}"},"createdAt":timestamp(now)})).await.unwrap();
     }
@@ -80,5 +83,91 @@ pub(super) async fn exercise<S: AuthStore>(store: Arc<S>) {
             .unwrap()["permission"],
         "{\"platform\":[\"platform:read\"]}"
     );
+    tx.commit().await.unwrap();
+}
+
+async fn creations<S: AuthStore>(
+    store: &Arc<S>,
+    service: &OrganizationService<S>,
+    token: &str,
+    now: DateTime<Utc>,
+) {
+    let request = json!({"role":"MiXeD-Created", "permission":{"platform":["platform:read","platform:write"]}});
+    let (left, right) = tokio::join!(
+        service.create_organization_role(token, false, &request, now),
+        service.create_organization_role(token, false, &request, now)
+    );
+    let created = match (left, right) {
+        (Ok(created), Err(error)) | (Err(error), Ok(created)) => {
+            assert_eq!(error.code, "ROLE_NAME_IS_ALREADY_TAKEN");
+            created
+        }
+        _ => panic!("one duplicate role creation must succeed"),
+    };
+    assert_eq!(created["roleData"]["role"], "mixed-created");
+    assert_eq!(created["statements"], request["permission"]);
+    let denied = service
+        .create_organization_role(
+            token,
+            false,
+            &json!({"role":"denied", "permission":{"platform":["bogus","bogus",""]}}),
+            now,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code, "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE");
+    assert_eq!(
+        denied.details["missingPermissions"],
+        json!(["platform:bogus", "platform:bogus", "platform:"])
+    );
+    assert_eq!(
+        service
+            .create_organization_role(
+                token,
+                false,
+                &json!({"role":"OWNER", "permission":{"team":[]}}),
+                now
+            )
+            .await
+            .unwrap_err()
+            .code,
+        "ROLE_NAME_IS_ALREADY_TAKEN"
+    );
+    let member_role = service
+        .create_organization_role(
+            token,
+            false,
+            &json!({"role":"member", "permission":{}}),
+            now,
+        )
+        .await
+        .unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    let persisted = tx
+        .get(
+            Model::OrganizationRole,
+            created["roleData"]["id"].as_str().unwrap(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        persisted["permission"],
+        crate::ecmascript::stringify(&request["permission"])
+    );
+    tx.commit().await.unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    tx.delete(
+        Model::OrganizationRole,
+        created["roleData"]["id"].as_str().unwrap(),
+    )
+    .await
+    .unwrap();
+    tx.delete(
+        Model::OrganizationRole,
+        member_role["roleData"]["id"].as_str().unwrap(),
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
 }
