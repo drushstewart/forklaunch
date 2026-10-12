@@ -23,6 +23,9 @@ use crate::{
     core::{application_output::output_path, command::command, env::find_workspace_root},
 };
 
+mod contracts;
+mod sdk;
+
 pub(crate) struct DevCommand;
 
 impl CliCommand for DevCommand {
@@ -32,6 +35,9 @@ impl CliCommand for DevCommand {
             .arg(Arg::new("services").num_args(0..).help("Compose services to start; defaults to the application"))
             .arg(Arg::new("compose_file").long("compose-file").short('f').action(ArgAction::Append).help("Additional Compose overrides, resolved from the application root"))
             .arg(Arg::new("project_name").long("project-name"))
+            .arg(Arg::new("sdk_target").long("sdk-target").value_parser(["typescript", "rust", "all"]).help("Run HTTP SDK watch with development; implies --export-contracts"))
+            .arg(Arg::new("sdk_service").long("sdk-service").requires("sdk_target").help("Limit HTTP SDK generation to one registered service"))
+            .arg(Arg::new("export_contracts").long("export-contracts").action(ArgAction::SetTrue).help("Export native contracts and OpenAPI before startup and each reload"))
             .arg(Arg::new("no_watch").long("no-watch").action(ArgAction::SetTrue))
             .arg(Arg::new("no_deps").long("no-deps").action(ArgAction::SetTrue))
             .arg(Arg::new("no_build").long("no-build").action(ArgAction::SetTrue))
@@ -84,23 +90,48 @@ impl CliCommand for DevCommand {
             serde_json::from_slice(&output.stdout).context("Invalid Compose configuration")?;
         let manifest: toml::Value =
             toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
+        if let Some(service) = matches.get_one::<String>("sdk_service") {
+            anyhow::ensure!(
+                manifest
+                    .get("projects")
+                    .and_then(toml::Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .any(|project| project.get("name").and_then(toml::Value::as_str)
+                        == Some(service.as_str())
+                        && matches!(
+                            project.get("type").and_then(toml::Value::as_str),
+                            Some("Service" | "Worker")
+                        )),
+                "Unknown SDK service: {service}"
+            );
+        }
         let selected: Vec<String> = matches
             .get_many::<String>("services")
             .map(|names| names.cloned().collect())
             .unwrap_or_default();
-        let (planned, changes) = plan(
+        let (mut planned, mut changes) = plan(
             &root,
             &manifest,
             base,
             &selected,
             !matches.get_flag("no_deps"),
         )?;
+        if matches.get_flag("export_contracts") || matches.contains_id("sdk_target") {
+            contracts::enable(&root, &manifest, &mut planned, &mut changes)?;
+        }
+        let rust_sdk_directory = sdk::rust_watch(
+            &root,
+            matches.get_one::<String>("sdk_target").map(String::as_str),
+            &mut planned,
+            &mut changes,
+        )?;
         let watch = !matches.get_flag("no_watch") && !changes.as_object().unwrap().is_empty();
         if matches.get_flag("dryrun") {
             println!(
                 "{}",
                 serde_json::to_string_pretty(
-                    &json!({"root":root,"watch":watch,"selectedServices":selected,"nativeServices":changes})
+                    &json!({"root":root,"watch":watch,"selectedServices":selected,"nativeServices":changes,"sdkTarget":matches.get_one::<String>("sdk_target"),"sdkService":matches.get_one::<String>("sdk_service")})
                 )?
             );
             return Ok(());
@@ -116,6 +147,9 @@ impl CliCommand for DevCommand {
                     "Native development reloads require Docker Compose 2.32 or later; --no-watch starts without reloads"
                 );
             }
+        }
+        if let Some(directory) = rust_sdk_directory {
+            fs::create_dir_all(directory)?;
         }
         // Resolved Compose may contain environment values; tempfile keeps it private.
         let mut temporary = tempfile::Builder::new()
@@ -147,7 +181,17 @@ impl CliCommand for DevCommand {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
         run.env("COMPOSE_MENU", "false");
-        supervise(run)
+        let sdk = matches
+            .get_one::<String>("sdk_target")
+            .map(|target| {
+                sdk::command(
+                    &root,
+                    target,
+                    matches.get_one::<String>("sdk_service").map(String::as_str),
+                )
+            })
+            .transpose()?;
+        supervise(run, sdk)
     }
 }
 
@@ -426,7 +470,7 @@ fn plan(
     Ok((compose, Value::Object(changes)))
 }
 
-fn supervise(mut command: Process) -> Result<()> {
+fn supervise(mut command: Process, sdk: Option<Process>) -> Result<()> {
     let interrupts = Arc::new(AtomicUsize::new(0));
     let handler = interrupts.clone();
     ctrlc::set_handler(move || {
@@ -437,11 +481,15 @@ fn supervise(mut command: Process) -> Result<()> {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
+    let mut sdk = sdk.map(sdk::Watcher::spawn).transpose()?;
     let mut child = command
         .spawn()
         .context("Failed to start development stack")?;
     let mut forwarded = 0;
     loop {
+        if let Some(watcher) = &mut sdk {
+            watcher.report_exit();
+        }
         if let Some(status) = child.try_wait()? {
             if status.success() || forwarded > 0 {
                 return Ok(());
@@ -471,7 +519,7 @@ fn supervise(mut command: Process) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn fixture() -> (tempfile::TempDir, toml::Value, Value) {
+    pub(super) fn fixture() -> (tempfile::TempDir, toml::Value, Value) {
         let root = tempfile::tempdir().unwrap();
         fs::create_dir_all(root.path().join("services/native-api")).unwrap();
         fs::create_dir_all(root.path().join("shared/models")).unwrap();

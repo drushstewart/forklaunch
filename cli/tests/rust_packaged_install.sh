@@ -21,6 +21,8 @@ with tarfile.open(archive) as package:
 PYTHON
 SOURCE_ROOT="$(find "$RUN_ROOT/source" -mindepth 1 -maxdepth 1 -type d)"
 test -f "$SOURCE_ROOT/src/dev.rs"
+test -f "$SOURCE_ROOT/src/dev/contracts.rs"
+test -f "$SOURCE_ROOT/src/dev/sdk.rs"
 test -f "$SOURCE_ROOT/src/sdk/workspace.rs"
 test -f "$SOURCE_ROOT/src/sdk/workspace/bun.rs"
 test -f "$SOURCE_ROOT/src/templates/sdk/typescript/safeStringify.ts"

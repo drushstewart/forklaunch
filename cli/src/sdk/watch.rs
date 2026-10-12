@@ -73,7 +73,7 @@ impl CliCommand for WatchCommand {
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
-        let (app_root, _) = crate::core::validate::require_manifest(matches)?;
+        let (app_root, manifest) = crate::core::validate::require_manifest(matches)?;
 
         if !rust_project::is_rust_app_root(&app_root)? {
             anyhow::bail!("SDK watch is currently implemented for Rust and mixed Rust apps");
@@ -82,6 +82,20 @@ impl CliCommand for WatchCommand {
         let target = matches.get_one::<String>("target").unwrap().as_str();
         let source = matches.get_one::<String>("from").unwrap().as_str();
         let selected_service = matches.get_one::<String>("service").map(String::as_str);
+        if let Some(service) = selected_service {
+            anyhow::ensure!(
+                manifest
+                    .projects
+                    .iter()
+                    .any(|project| project.name == service
+                        && matches!(
+                            project.r#type,
+                            crate::core::manifest::ProjectType::Service
+                                | crate::core::manifest::ProjectType::Worker
+                        )),
+                "Unknown SDK service: {service}"
+            );
+        }
         let interval = Duration::from_millis(*matches.get_one::<u64>("interval_ms").unwrap());
         let once = matches.get_flag("once");
 
@@ -106,14 +120,22 @@ fn run_sdk_watch(
     once: bool,
     stdout: &mut StandardStream,
 ) -> Result<()> {
-    generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)?;
-
     if once {
+        generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)?;
         log_ok!(stdout, "SDK watch pass completed");
         return Ok(());
     }
 
+    // Capture before generation so an export arriving during it is processed next.
     let mut last_fingerprint = artifact_fingerprint(app_root, source, selected_service)?;
+    if let Err(error) =
+        generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)
+    {
+        log_error!(
+            stdout,
+            "SDK regeneration failed; waiting for artifact changes: {error:#}"
+        );
+    }
     log_info!(
         stdout,
         "Watching {source} artifacts every {}ms",

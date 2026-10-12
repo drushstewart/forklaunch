@@ -317,6 +317,7 @@ validated separately by the module suites.
 forklaunch dev
 forklaunch dev native-api legacy-api --no-deps
 forklaunch dev --dryrun
+forklaunch dev native-api --sdk-target typescript --sdk-service native-api
 ```
 
 The command resolves the application's Compose file and optional `--compose-file`
@@ -332,6 +333,24 @@ auxiliary workers retain their launch arguments. TypeScript services retain thei
 existing Compose development commands and reload behavior. Ctrl-C or SIGTERM
 stops Compose before the CLI removes its private temporary configuration; the
 application's Compose files and production Dockerfiles are preserved.
+
+Use `--export-contracts` to export native contract and OpenAPI artifacts after each
+successful build and before the service starts. Exports use registered artifact
+paths, stage both files before publication, and preserve unchanged outputs. An export
+failure keeps prior artifacts and prevents that startup from serving stale contracts.
+
+`--sdk-target typescript|rust|all` also enables native exports and starts HTTP SDK
+watch as a child of development. `--sdk-service NAME` optionally scopes generation;
+without it, SDK watch includes all registered HTTP services. The CLI stops its SDK
+watcher when development exits. A standalone `forklaunch sdk watch` also waits for
+missing initial artifacts; `--once` still reports missing or invalid artifacts as
+an error. Watch compares content, so identical exports do not trigger regeneration.
+
+Automatic export currently covers native services and their auxiliary workers.
+Mixed applications still need TypeScript OpenAPI exports from `forklaunch openapi
+export` before generating a combined SDK. This option does not yet refresh socket
+artifacts or start WebSocket SDK watch. Use `--sdk-service` to follow one native
+service independently while developing a mixed application.
 
 Native reloads require [Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
 Use `--no-watch` to start without Compose reloads, `--no-build` to reuse images,
@@ -827,5 +846,6 @@ included in generated framework sources.
 
 SDK watch compares artifact contents, so an identical re-export does not regenerate
 clients. Repeated HTTP and WebSocket SDK generation preserves timestamps on unchanged
-outputs and workspace files. Source changes still require contract export before
-SDK watch can regenerate the clients.
+outputs and workspace files. Source changes require contract export before
+SDK watch can regenerate the clients; `dev --export-contracts` performs this step
+for native services on startup and reload.

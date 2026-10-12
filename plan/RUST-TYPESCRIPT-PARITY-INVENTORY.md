@@ -1367,3 +1367,30 @@ other account/session/member scans and general indexed pagination remain open.
   name, two binaries and a default binary; it verifies custom contract and OpenAPI
   outputs and the requested export copy. The CLI rebuild passes with both this
   change and the SDK regeneration stability changes.
+
+### Native development contract/SDK loop (2026-10-12)
+
+- [x] `forklaunch dev --export-contracts` runs the freshly built native binary in
+  contract mode before startup and each Compose reload, honoring registered contract
+  and OpenAPI paths. Artifacts are staged before publication; failed exports retain
+  prior outputs, and identical outputs retain timestamps. Shell variables are escaped
+  for Compose interpolation. Path containment/collisions and read-only planning are
+  checked, including native auxiliary workers.
+- [x] `--sdk-target typescript|rust|all` implies native exports and owns an HTTP SDK
+  watcher for the lifetime of development. `--sdk-service` scopes generation. Shutdown
+  reaps the owned watcher; newly generated Rust SDK directories are watched even when
+  absent at planning time. Dry-run does not create those directories.
+- [x] Standalone SDK watch waits for initial artifacts instead of exiting; `--once`
+  retains strict failure behavior. Watch captures input content before regeneration
+  so concurrent exports are observed on the next pass. Unknown service selections fail.
+- [x] Real Node and Bun mixed Compose fixtures pass native/TypeScript reloads, native
+  schema-to-SDK refresh, HTTP/MCP before and after source edits, SIGTERM shutdown and
+  production configuration preservation. Node starts standalone SDK watch before the
+  first contract exists; Bun runs the owned watcher and checks it exits with dev.
+- Validation: 1,068 CLI tests pass; CLI rebuild passes; Cargo source inventory passes
+  with 754 required embedded source/template files. The initial live run exposed and
+  led to correction of Compose variable interpolation; both corrected runs pass.
+  Retained runs: `rust-mixed-dev/run.4t05u9pg` (Node), `run.v8f0ns32` (Bun).
+- Still open: automatic TypeScript exports for combined mixed-app SDKs and automatic
+  socket artifact/WebSocket SDK refresh in development. These remain separate from
+  the now-validated native HTTP contract/SDK loop. Full parity is not claimed.

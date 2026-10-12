@@ -59,7 +59,9 @@ fixture.write_text(f'''services:
     healthcheck:
       disable: true
 ''')
-args = [str(binary), 'dev', 'native-api', 'legacy-api', '--path', str(app), '--project-name', name, '--compose-file', str(fixture), '--no-deps']
+args = [str(binary), 'dev', 'native-api', 'legacy-api', '--path', str(app), '--project-name', name, '--compose-file', str(fixture), '--no-deps', '--export-contracts']
+if runtime == 'bun':
+    args += ['--sdk-target', 'typescript', '--sdk-service', 'native-api']
 original = {str(p.relative_to(app)): p.read_bytes() for p in app.rglob('*') if p.is_file()}
 preview = subprocess.run(args + ['--dryrun'], cwd=app, env=env, capture_output=True, text=True, check=True, timeout=60)
 plan = json.loads(preview.stdout)
@@ -68,6 +70,8 @@ assert original == {str(p.relative_to(app)): p.read_bytes() for p in app.rglob('
 log_path = root / 'dev.log'
 log = log_path.open('w')
 process = None
+sdk_watch = None
+sdk_log = (root / 'sdk-watch.log').open('w')
 containers = []
 def owned_ids():
     return subprocess.check_output(['docker', 'ps', '-a', '--filter', f'label=com.docker.compose.project={name}', '--format', '{{.ID}}'], text=True).split()
@@ -94,6 +98,10 @@ def wait_json(url, field, expected, timeout=900):
         time.sleep(1)
     raise AssertionError(f'Timed out waiting for {url}: {log_path.read_text()[-20000:]}')
 try:
+    if runtime == 'node':
+        sdk_watch = subprocess.Popen([str(binary), 'sdk', 'watch', '--path', str(app), '--service', 'native-api', '--target', 'typescript', '--interval-ms', '100'], cwd=app, env=env, stdout=sdk_log, stderr=subprocess.STDOUT)
+        time.sleep(1)
+        assert sdk_watch.poll() is None, 'SDK watch exited before first contract export'
     process = subprocess.Popen(args, cwd=app, env=env, stdout=log, stderr=subprocess.STDOUT)
     deadline = time.monotonic() + 1200
     endpoints = {}
@@ -115,9 +123,23 @@ try:
     wait_json(native + '/health', 'status', 'ok')
     wait_json(typescript + '/legacy-api', 'message', 'LegacyApi')
     subprocess.run(['node', str(repo / 'cli/tests/rust_mixed_dev_probe.mjs'), native, typescript, mcp, 'LegacyApi'], check=True, timeout=90)
+    def wait_sdk(expected, timeout=60):
+        deadline = time.monotonic() + timeout
+        path = app / 'sdks/typescript/src/index.ts'
+        while time.monotonic() < deadline:
+            assert sdk_watch is None or sdk_watch.poll() is None, 'SDK watch exited'
+            if path.exists() and expected in path.read_text():
+                return
+            time.sleep(0.2)
+        raise AssertionError(f'SDK did not refresh: {path}')
+    wait_sdk("recordCount")
+    contract = app / '.forklaunch/contracts/native-api/contract.json'
+    assert json.loads(contract.read_text())['generator'] == 'framework-rs'
     source = app / 'crates/native-api/src/routes/health.rs'
-    source.write_text(source.read_text().replace('"ok".to_string()', '"native-reloaded".to_string()', 1))
+    source.write_text(source.read_text().replace('"ok".to_string()', '"native-reloaded".to_string()', 1).replace('"const":"ok"', '"const":"native-reloaded"', 1).replace('"properties":{"service"', '"properties":{"developmentMarker":{"type":"boolean"},"service"', 1))
     native = wait_json(lambda: endpoint('native-api', native_port) + '/health', 'status', 'native-reloaded', timeout=180).removesuffix('/health')
+    wait_sdk("developmentMarker")
+    assert 'native-reloaded' in contract.read_text()
     source = app / 'modules/legacy-api/api/controllers/legacyApi.controller.ts'
     source.write_text(source.read_text().replace("message: 'LegacyApi'", "message: 'LegacyApiReloaded'", 1))
     typescript = wait_json(lambda: endpoint('legacy-api', ts_port) + '/legacy-api', 'message', 'LegacyApiReloaded', timeout=60).removesuffix('/legacy-api')
@@ -126,10 +148,14 @@ try:
     process.send_signal(signal.SIGTERM)
     assert process.wait(timeout=90) == 0
     assert all(not container['State']['Running'] for container in inspect(containers))
+    if runtime == 'bun':
+        commands = subprocess.check_output(['ps', '-axo', 'command'], text=True)
+        assert f'sdk watch --path {app} --target typescript' not in commands, 'Owned SDK watcher survived development shutdown'
+
     for file in ['docker-compose.yaml', 'Dockerfile', 'Dockerfile.rust', 'modules/Dockerfile']:
         if file in original:
             assert (app / file).read_bytes() == original[file]
-    print(f'PASS {runtime} mixed dev startup, Rust/TypeScript source reloads, HTTP/MCP before/after edits, SIGTERM supervision and preserved production configuration: {root}', flush=True)
+    print(f'PASS {runtime} mixed dev startup, Rust/TypeScript source reloads, native contract export and SDK refresh, HTTP/MCP before/after edits, SIGTERM supervision and preserved production configuration: {root}', flush=True)
 finally:
     if process is not None and process.poll() is None:
         process.send_signal(signal.SIGTERM)
@@ -138,6 +164,10 @@ finally:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
+    if sdk_watch is not None and sdk_watch.poll() is None:
+        sdk_watch.terminate()
+        sdk_watch.wait(timeout=10)
+    sdk_log.close()
     log.close()
     ids = owned_ids()
     if ids:
