@@ -90,7 +90,7 @@ part of the configured module.
 `/change-password`, `/update-user`, `/list-accounts`, `/unlink-account`, `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
 `/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token`, `/jwks`,
 `/request-password-reset`, `/reset-password`, `/send-verification-email`, `/change-email` and
-`/delete-user`.
+`/delete-user`, `/reset-password/:token` and `/delete-user/callback`.
 It authenticates signed cookies against authoritative tenant-bound storage,
 refreshes sessions, emits verified JWT headers and publishes only public keys.
 Mutation guards reject forged/missing origins and unsafe callbacks. Revoke/logout
@@ -152,6 +152,14 @@ work runs outside write locks; atomic consumption permits one concurrent winner.
 Live memory/encrypted PostgreSQL exercise reset and subsequent password checks
 through HTTP beside MCP. Reset-email delivery remains configured disabled.
 
+GET reset/deletion callbacks match 52 actual HTTP/storage comparisons, including
+trusted destinations, encoded raw token segments, query replacement, redirect
+content type, combined validation errors and expired-verification cleanup. GET
+reset redirects retain valid tokens; the POST consumes them. GET callbacks ignore
+mutation Origin checks and use configured authority despite forged Host headers.
+Live memory/encrypted PostgreSQL follow redirects with successful reset and MCP
+startup/invocation/shutdown. Disabled deletion keeps its coded 404 response.
+
 Remaining user/account/provider/org routes, real TS ORM
-conformance, custom callbacks and module generation remain open; these twenty-one
+conformance, custom callbacks and module generation remain open; these twenty-three
 routes do not constitute the complete Better Auth preset.

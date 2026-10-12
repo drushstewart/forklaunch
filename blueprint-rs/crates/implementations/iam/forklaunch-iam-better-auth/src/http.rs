@@ -21,6 +21,7 @@ use std::sync::Arc;
 use url::Url;
 use zeroize::Zeroizing;
 
+mod callback;
 mod credential;
 mod rate;
 mod request;
@@ -118,6 +119,14 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))
             .route("/reset-password", post(dispatch::<S>))
+            .route(
+                "/reset-password/{token}",
+                get(callback::reset::<S>).head(not_found),
+            )
+            .route(
+                "/delete-user/callback",
+                get(callback::delete::<S>).head(not_found),
+            )
             .route("/request-password-reset", post(dispatch::<S>))
             .route("/send-verification-email", post(dispatch::<S>))
             .route("/change-email", post(dispatch::<S>))

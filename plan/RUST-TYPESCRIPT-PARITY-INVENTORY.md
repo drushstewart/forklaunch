@@ -377,3 +377,12 @@ concurrent winner and hashing runs outside tenant locks. Live memory and
 restricted-role PostgreSQL exercise reset and subsequent verification via HTTP
 beside MCP. Email verification/callback routes, remaining user/account/provider/
 org operations, real ORM conformance and CLI preset remain open.
+
+Twenty-three raw native auth routes include GET reset-token and disabled deletion
+callbacks. Fifty-two actual HTTP/storage comparisons cover trusted destinations,
+raw encoded token segments, combined query errors, redirect query/content type,
+configured authority despite forged Host headers and expired-verification cleanup.
+GET redirects retain valid tokens for single-use POST reset. Live memory and
+restricted-role PostgreSQL follow that lifecycle over HTTP beside MCP. Email
+verification, remaining user/account/provider/org operations, real ORM conformance
+and CLI preset remain open.

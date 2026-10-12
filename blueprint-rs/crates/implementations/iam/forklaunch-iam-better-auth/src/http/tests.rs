@@ -235,6 +235,39 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
     let mut tx = store.begin(true).await.unwrap();
     tx.insert(Model::Verification, json!({"id":"http-reset","identifier":"reset-password:http-token","value":"http-owner","createdAt":now.to_rfc3339(),"expiresAt":(now + chrono::Duration::minutes(1)).to_rfc3339()})).await.unwrap();
     tx.commit().await.unwrap();
+
+    let browser = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let redirect = browser
+        .get(format!(
+            "{base}/api/auth/reset-password/http-token?callbackURL=%2Fdashboard"
+        ))
+        .header("cookie", "")
+        .header("origin", "https://evil.test")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(redirect.status(), StatusCode::FOUND);
+    assert_eq!(
+        redirect.headers()["location"],
+        "http://localhost:3000/dashboard?token=http-token"
+    );
+    assert_eq!(redirect.headers()["content-type"], "application/json");
+    assert!(redirect.text().await.unwrap().is_empty());
+    let disabled = browser
+        .get(format!(
+            "{base}/api/auth/delete-user/callback?token=unused&callbackURL=%2Fdashboard"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(disabled.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        disabled.json::<Value>().await.unwrap(),
+        json!({"message":"Not found","code":"NOT_FOUND"})
+    );
     let reset = client
         .post(format!("{base}/api/auth/reset-password"))
         .json(&json!({"token":"http-token", "newPassword":"http-reset-password"}))
