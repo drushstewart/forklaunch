@@ -8,7 +8,8 @@ import tempfile
 
 repo = Path(__file__).resolve().parents[2]
 binary = Path(os.environ.get('FORKLAUNCH_CLI', repo / 'cli/target/debug/forklaunch')).resolve()
-output = repo / 'cli/tests/output/rust-sdk-workspace'
+socket = os.environ.get('FORKLAUNCH_TEST_SOCKET_WORKSPACE') == '1'
+output = repo / 'cli/tests/output' / ('rust-socket-workspace' if socket else 'rust-sdk-workspace')
 output.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='run.', dir=output)).resolve()
 env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_ACCOUNT': 'parity-offline-sdk-workspace', 'CARGO_INCREMENTAL': '0'}
@@ -25,10 +26,25 @@ for runtime in ['node', 'bun']:
     before = {str(p.relative_to(app)): p.read_bytes() for p in (app / 'modules').rglob('*') if p.is_file()}
     (app / 'package.json').write_text(json.dumps({'private': True, 'scripts': {'owned': 'echo application-owned'}}))
     (app / 'pnpm-workspace.yaml').write_text("packages: ['tools/*']\nminimumReleaseAge: 1440\n")
-    artifact = app / '.forklaunch/openapi/legacy-api/openapi.json'
-    artifact.parent.mkdir(parents=True, exist_ok=True)
-    artifact.write_text(json.dumps({'openapi': '3.1.0', 'info': {'title': 'Owned workspace fixture', 'version': '1'}, 'paths': {}}))
-    cli('sdk', 'generate', '--target', 'typescript', '--from', 'openapi', '--service', 'legacy-api')
+    if socket:
+        artifact = app / '.forklaunch/socket-contracts/native-api/socket-contract.json'
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_bytes((repo / 'cli/tests/fixtures/rust_socket_contract.json').read_bytes())
+        cli('sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract', '--service', 'native-api')
+        cli('sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract', '--service', 'native-api', '--check')
+        workspace = app / 'pnpm-workspace.yaml'
+        workspace.write_text(''.join(line for line in workspace.read_text().splitlines(keepends=True) if 'sdks/typescript-websocket/' not in line))
+        stale = workspace.read_bytes()
+        package_before_check = (app / 'package.json').read_bytes()
+        checked = subprocess.run([str(binary), 'sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract', '--service', 'native-api', '--check', '--path', str(app)], cwd=root, env=env, capture_output=True, text=True, timeout=180)
+        assert checked.returncode != 0 and 'out of date' in checked.stderr + checked.stdout
+        assert workspace.read_bytes() == stale and (app / 'package.json').read_bytes() == package_before_check
+        cli('sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract', '--service', 'native-api')
+    else:
+        artifact = app / '.forklaunch/openapi/legacy-api/openapi.json'
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text(json.dumps({'openapi': '3.1.0', 'info': {'title': 'Owned workspace fixture', 'version': '1'}, 'paths': {}}))
+        cli('sdk', 'generate', '--target', 'typescript', '--from', 'openapi', '--service', 'legacy-api')
     assert before == {str(p.relative_to(app)): p.read_bytes() for p in (app / 'modules').rglob('*') if p.is_file()}
     package = json.loads((app / 'package.json').read_text())
     assert package['scripts']['owned'] == 'echo application-owned'
@@ -39,9 +55,9 @@ for runtime in ['node', 'bun']:
         listed = json.loads(subprocess.check_output(['pnpm', 'list', '--recursive', '--depth', '-1', '--json'], cwd=app, env=env))
         names = {p.get('name') for p in listed}
         assert {f'@{runtime}-workspace/{name}' for name in ['core', 'monitoring', 'legacy-api', 'client-sdk']} <= names
-        assert '@forklaunch-generated/sdk' in names
+        assert ('native-api-websocket-sdk' if socket else '@forklaunch-generated/sdk') in names
     else:
-        assert {'modules/*', 'sdks/typescript'} <= set(package['workspaces'])
+        assert {'modules/*', 'sdks/typescript-websocket/*' if socket else 'sdks/typescript'} <= set(package['workspaces'])
     build = subprocess.run([manager, 'run', 'build'], cwd=app, env=env, capture_output=True, text=True, timeout=1800)
     print(build.stdout, flush=True)
     print(build.stderr, flush=True)

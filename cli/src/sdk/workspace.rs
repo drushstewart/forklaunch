@@ -1,4 +1,4 @@
-//! Keep generated HTTP SDKs in the application's JavaScript workspace.
+//! Keep generated SDKs in the application's JavaScript workspace.
 use std::{fs, path::Path};
 
 use anyhow::{Context, Result, bail};
@@ -45,7 +45,24 @@ fn add_packages(workspace: &mut Yaml, additions: &[String]) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum SdkWorkspace {
+    Http,
+    WebSocket,
+}
+
 pub(super) fn include_typescript_sdk(root: &Path) -> Result<()> {
+    for (path, content) in plan_typescript_sdk(root, SdkWorkspace::Http)? {
+        fs::write(output_path(root, Path::new(path))?, content)?;
+    }
+    Ok(())
+}
+
+/// Pure planning lets socket generation validate/check every output before writes.
+pub(super) fn plan_typescript_sdk(
+    root: &Path,
+    kind: SdkWorkspace,
+) -> Result<Vec<(&'static str, String)>> {
     let manifest_path = root.join(".forklaunch/manifest.toml");
     let manifest: toml::Value = if manifest_path.is_file() {
         toml::from_str(&fs::read_to_string(manifest_path)?)?
@@ -65,7 +82,11 @@ pub(super) fn include_typescript_sdk(root: &Path) -> Result<()> {
     } else {
         Yaml::Mapping(Default::default())
     };
-    let mut additions = vec!["sdks/typescript".to_owned()];
+    let sdk_pattern = match kind {
+        SdkWorkspace::Http => "sdks/typescript",
+        SdkWorkspace::WebSocket => "sdks/typescript-websocket/*",
+    };
+    let mut additions = vec![sdk_pattern.to_owned()];
     let mut has_modules = false;
     if let Some(relative) = manifest.get("modules_path").and_then(toml::Value::as_str) {
         let relative = Path::new(relative);
@@ -172,29 +193,35 @@ pub(super) fn include_typescript_sdk(root: &Path) -> Result<()> {
         .or_insert_with(|| json!({}))
         .as_object_mut()
         .context("Root scripts must be an object")?;
+    let (prefix, source, filter) = match kind {
+        SdkWorkspace::Http => ("sdk", "contract", "@forklaunch-generated/sdk"),
+        SdkWorkspace::WebSocket => ("sdk:socket", "socket-contract", "*-websocket-sdk"),
+    };
     for (name, command) in [
         (
-            "sdk:generate",
-            "forklaunch sdk generate --target typescript --from contract",
+            "generate",
+            format!("forklaunch sdk generate --target typescript --from {source}"),
         ),
         (
-            "sdk:check",
-            "forklaunch sdk generate --target typescript --from contract --check",
+            "check",
+            format!("forklaunch sdk generate --target typescript --from {source} --check"),
         ),
         (
-            "sdk:watch",
-            "forklaunch sdk watch --target typescript --from contract",
+            "watch",
+            format!("forklaunch sdk watch --target typescript --from {source}"),
         ),
         (
-            "sdk:typecheck",
+            "typecheck",
             if bun {
-                "bun run --filter @forklaunch-generated/sdk build"
+                format!("bun run --filter '{filter}' build")
             } else {
-                "pnpm --filter @forklaunch-generated/sdk build"
+                format!("pnpm --filter '{filter}' build")
             },
         ),
     ] {
-        scripts.entry(name).or_insert(json!(command));
+        scripts
+            .entry(format!("{prefix}:{name}"))
+            .or_insert(json!(command));
     }
     if has_modules {
         let build = if bun {
@@ -214,9 +241,10 @@ pub(super) fn include_typescript_sdk(root: &Path) -> Result<()> {
     // Parse and validate both files before publishing either update.
     let package = serde_json::to_string_pretty(&package)? + "\n";
     let workspace = serde_yml::to_string(&workspace)?;
-    fs::write(package_path, package)?;
-    fs::write(workspace_path, workspace)?;
-    Ok(())
+    Ok(vec![
+        ("package.json", package),
+        ("pnpm-workspace.yaml", workspace),
+    ])
 }
 
 #[cfg(test)]
@@ -314,6 +342,49 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .contains(&json!("src/modules/core"))
+        );
+    }
+
+    #[test]
+    fn socket_planning_is_read_only_and_coexists_with_http_generation() {
+        let root = fixture("bun");
+        let files = plan_typescript_sdk(root.path(), SdkWorkspace::WebSocket).unwrap();
+        assert!(!root.path().join("package.json").exists());
+        assert!(!root.path().join("pnpm-workspace.yaml").exists());
+        for (path, content) in files {
+            fs::write(root.path().join(path), content).unwrap();
+        }
+        include_typescript_sdk(root.path()).unwrap();
+        let package: Json =
+            serde_json::from_str(&fs::read_to_string(root.path().join("package.json")).unwrap())
+                .unwrap();
+        assert!(
+            package["workspaces"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("sdks/typescript-websocket/*"))
+        );
+        assert!(
+            package["workspaces"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("sdks/typescript"))
+        );
+        assert!(
+            package["scripts"]["sdk:socket:generate"]
+                .as_str()
+                .unwrap()
+                .ends_with("--from socket-contract")
+        );
+        assert!(
+            package["scripts"]["sdk:generate"]
+                .as_str()
+                .unwrap()
+                .ends_with("--from contract")
+        );
+        assert_eq!(
+            package["scripts"]["sdk:socket:typecheck"],
+            "bun run --filter '*-websocket-sdk' build"
         );
     }
 

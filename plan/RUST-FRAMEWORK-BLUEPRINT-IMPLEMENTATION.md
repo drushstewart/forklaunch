@@ -1338,3 +1338,23 @@ the native services pass the complete HTTP/MCP startup/configuration/shutdown
 matrix. The Rust/mixed release orchestration regression also passes. CI includes
 rust_sdk_workspace.sh. Unified development orchestration, socket-only workspace
 integration and platform deployment remain separate work.
+
+
+Socket-only workspace checkpoint (2026-10-12): socket SDK generation now uses
+shared pure workspace planning, so TypeScript-first Node/Bun apps include their
+modules and socket packages in root installation/builds. Separate sdk:socket:*
+commands coexist with HTTP SDK commands and preserve overrides. Socket check mode
+includes root package/workspace drift without writing them. Existing PNPM YAML
+comments/layout are retained when membership suffices; inserted entries retain
+sequence order/indentation and handle missing trailing newlines. Both protocol
+workspace plans coexist, and invalid planning remains non-mutating.
+
+All 1,049 CLI tests pass. The actual socket-only Node/Bun fixture invokes the
+bundled compiler, generates/checks SDKs and AsyncAPI, rejects stale workspace
+membership without rewriting configuration, installs real dependencies, and
+builds every module/socket SDK plus Cargo from the root. Bun builds each module
+exactly once. Both TypeScript services pass live HTTP/MCP calls, and native
+services pass the complete HTTP/MCP startup/configuration/shutdown matrix. CI
+includes rust_socket_workspace.sh. Carrying generated nested Bun install policy
+to the new root remains a follow-up; unified development orchestration and
+platform deployment remain open.

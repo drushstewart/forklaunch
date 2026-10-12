@@ -502,10 +502,26 @@ fn stage_workspace(
                     ))
                 })
             {
+                // Append after existing members so exclusions and comments
+                // retain their order, using the existing sequence indentation.
+                let mut insertion = offset;
+                let mut sequence_indent = indent;
+                let mut cursor = offset;
+                for line in content[offset..].split_inclusive('\n') {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with("- ") {
+                        sequence_indent = line.len() - line.trim_start().len();
+                        insertion = cursor + line.len();
+                    } else if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                        break;
+                    }
+                    cursor += line.len();
+                }
+                let separator = if content[..insertion].ends_with('\n') { "" } else { "\n" };
                 let mut updated = content;
                 updated.insert_str(
-                    offset,
-                    &format!("{}- 'sdks/typescript-websocket/*'\n", " ".repeat(indent)),
+                    insertion,
+                    &format!("{separator}{}- 'sdks/typescript-websocket/*'\n", " ".repeat(sequence_indent)),
                 );
                 updated
             } else {
@@ -514,7 +530,21 @@ fn stage_workspace(
         };
         serde_yml::from_str::<serde_yml::Value>(&updated)
             .context("Invalid generated pnpm workspace")?;
-        stage(files, "pnpm-workspace.yaml", updated)?;
+        // Shared planning also supplies Bun membership and mixed TS modules.
+        // Keep the existing comment-preserving YAML edit when it already has
+        // the complete planned membership/policies.
+        let planned = super::workspace::plan_typescript_sdk(root, super::workspace::SdkWorkspace::WebSocket)?;
+        for (path, content) in planned {
+            if path == "pnpm-workspace.yaml" {
+                let final_content = if serde_yml::from_str::<serde_yml::Value>(&updated)?
+                    == serde_yml::from_str::<serde_yml::Value>(&content)? {
+                    updated.clone()
+                } else { content };
+                stage(files, path, final_content)?;
+            } else {
+                stage(files, path, content)?;
+            }
+        }
     }
     Ok(())
 }
@@ -583,6 +613,31 @@ mod tests {
         assert!(pnpm.contains("crates/*"));
         assert!(pnpm.contains("sdks/typescript-websocket/*"));
     }
+    #[test]
+    fn socket_workspace_preserves_yaml_sequence_layout() {
+        for source in [
+            "# owned\npackages:\n- modules/*",
+            "# owned\npackages:\n  - modules/*\n# policy comment\nminimumReleaseAge: 1440\n",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            fs::write(root.path().join("pnpm-workspace.yaml"), source).unwrap();
+            let mut files = BTreeMap::new();
+            stage_workspace(root.path(), &mut files, &[], "typescript").unwrap();
+            let output = &files[Path::new("pnpm-workspace.yaml")];
+            assert!(output.starts_with("# owned\n"));
+            if source.contains("# policy comment") {
+                assert!(output.contains("# policy comment"));
+            }
+            let value: serde_yml::Value = serde_yml::from_str(output).unwrap();
+            assert_eq!(value["packages"].as_sequence().unwrap().len(), 2);
+            assert_eq!(
+                fs::read_to_string(root.path().join("pnpm-workspace.yaml")).unwrap(),
+                source
+            );
+            assert!(!root.path().join("package.json").exists());
+        }
+    }
+
     #[test]
     fn normalized_output_paths_detect_collisions_before_writes() {
         let mut files = BTreeMap::new();

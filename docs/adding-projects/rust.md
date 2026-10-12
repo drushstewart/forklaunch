@@ -184,7 +184,10 @@ modules directory. PNPM membership is merged as YAML; Bun also receives root
 policies take precedence, while missing module tooling and policies are retained.
 The default root build runs Cargo when present, then all JavaScript package
 builds. A custom root build script remains application-owned. Module source and
-nested workspace files are preserved.
+nested workspace files are preserved. Socket-only SDK generation uses the same
+PNPM/Bun workspace integration and provides separate `sdk:socket:generate`,
+`sdk:socket:check`, `sdk:socket:watch` and `sdk:socket:typecheck` scripts. Socket
+`--check` includes root package/workspace drift and leaves these files unchanged.
 
 In a mixed application, the shared `sdks/typescript` package includes both native
 and TypeScript services. `--from contract` uses Rust contracts and TypeScript
