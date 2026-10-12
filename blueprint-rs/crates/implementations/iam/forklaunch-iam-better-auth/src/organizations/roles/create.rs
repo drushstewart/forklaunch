@@ -40,10 +40,10 @@ impl<S: AuthStore> OrganizationService<S> {
             })?;
         let role = text(&member, "role")?;
         if !allowed(&mut tx, &org, role, Some(&json!({"ac":["create"]}))).await? {
-            return Err(denied());
+            return Err(denied("create"));
         }
         let permission = &body["permission"];
-        check_permissions(&mut tx, &org, role, permission).await?;
+        check_permissions(&mut tx, &org, role, permission, "create").await?;
         if tx
             .list(Model::OrganizationRole)
             .await?
@@ -59,30 +59,31 @@ impl<S: AuthStore> OrganizationService<S> {
         Ok(json!({"success":true,"roleData":row,"statements":permission}))
     }
 }
-fn denied() -> BlueprintError {
+pub(super) fn denied(action: &str) -> BlueprintError {
     BlueprintError::new(
-        "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE",
-        "You are not allowed to create a role",
+        format!("YOU_ARE_NOT_ALLOWED_TO_{}_A_ROLE", action.to_uppercase()),
+        format!("You are not allowed to {action} a role"),
     )
 }
-fn taken() -> BlueprintError {
+pub(super) fn taken() -> BlueprintError {
     BlueprintError::new(
         "ROLE_NAME_IS_ALREADY_TAKEN",
         "That role name is already taken",
     )
 }
-fn check_predefined(name: &str) -> BlueprintResult<()> {
+pub(super) fn check_predefined(name: &str) -> BlueprintResult<()> {
     if ["owner", "admin", "editor", "viewer", "system"].contains(&name) {
         Err(taken())
     } else {
         Ok(())
     }
 }
-async fn check_permissions<T: AuthTransaction>(
+pub(super) async fn check_permissions<T: AuthTransaction>(
     tx: &mut T,
     org: &str,
     role: &str,
     permission: &Value,
+    action: &str,
 ) -> BlueprintResult<()> {
     let fields = permission.as_object().ok_or_else(super::super::internal)?;
     if fields.keys().any(|key| key != "platform") {
@@ -105,6 +106,6 @@ async fn check_permissions<T: AuthTransaction>(
     if missing.is_empty() {
         Ok(())
     } else {
-        Err(denied().with_detail("missingPermissions", json!(missing)))
+        Err(denied(action).with_detail("missingPermissions", json!(missing)))
     }
 }

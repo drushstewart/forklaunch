@@ -1,3 +1,4 @@
+mod mutations;
 use super::*;
 pub(super) async fn exercise<S: AuthStore>(store: Arc<S>) {
     let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
@@ -26,9 +27,10 @@ pub(super) async fn exercise<S: AuthStore>(store: Arc<S>) {
         "YOU_ARE_NOT_ALLOWED_TO_LIST_A_ROLE"
     );
     let mut tx = store.begin(true).await.unwrap();
-    tx.insert(Model::OrganizationRole,json!({"id":"native-role-read-grant","organizationId":org,"role":"owner","permission":"{\"ac\":[\"read\",\"create\"]}","createdAt":timestamp(now)})).await.unwrap();
+    tx.insert(Model::OrganizationRole,json!({"id":"native-role-read-grant","organizationId":org,"role":"owner","permission":"{\"ac\":[\"read\",\"create\",\"update\",\"delete\"]}","createdAt":timestamp(now)})).await.unwrap();
     tx.commit().await.unwrap();
     creations(&store, &service, token, now).await;
+    mutations::exercise(&store, &service, token, org, now).await;
     let mut tx = store.begin(true).await.unwrap();
     for i in 0..105 {
         tx.insert(Model::OrganizationRole,json!({"id":format!("native-role-{i}"),"organizationId":org,"role":format!("MiXeD-{i}"),"permission":if i==104 {"{"} else {"{\"platform\":[\"platform:read\"]}"},"createdAt":timestamp(now)})).await.unwrap();

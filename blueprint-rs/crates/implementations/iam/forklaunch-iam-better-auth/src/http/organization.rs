@@ -121,6 +121,9 @@ pub(super) fn strip_record_keys(path: &str, payload: &mut Value) {
     let metadata = match path {
         "/organization/create" => payload.get_mut("metadata"),
         "/organization/create-role" => payload.get_mut("permission"),
+        "/organization/update-role" => payload
+            .get_mut("data")
+            .and_then(|data| data.get_mut("permission")),
         "/organization/update" => payload
             .get_mut("data")
             .and_then(|data| data.get_mut("metadata")),
@@ -139,6 +142,8 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
     };
     Router::new()
         .route("/organization/create-role", post(dispatch::<S>))
+        .route("/organization/update-role", post(dispatch::<S>))
+        .route("/organization/delete-role", post(dispatch::<S>))
         .route(
             "/organization/list-roles",
             get(dispatch::<S>).head(not_found),

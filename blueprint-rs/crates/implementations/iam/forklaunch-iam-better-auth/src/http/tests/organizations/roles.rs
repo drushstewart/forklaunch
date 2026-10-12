@@ -1,3 +1,4 @@
+mod mutations;
 use super::*;
 pub(super) async fn exercise<S: AuthStore>(
     client: &reqwest::Client,
@@ -87,4 +88,5 @@ pub(super) async fn exercise<S: AuthStore>(
         body["missingPermissions"],
         json!(["platform:bogus", "platform:bogus"])
     );
+    mutations::exercise(client, base, cookie, store, org).await;
 }

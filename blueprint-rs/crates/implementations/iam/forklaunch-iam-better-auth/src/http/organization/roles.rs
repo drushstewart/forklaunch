@@ -1,9 +1,14 @@
+mod mutation_validation;
 use super::validation::{received, validation};
 use super::{AuthStore, BlueprintResult, DateTime, HashMap, OrganizationService, Utc, Value};
 pub(super) fn is_route(path: &str) -> bool {
     matches!(
         path,
-        "/organization/list-roles" | "/organization/get-role" | "/organization/create-role"
+        "/organization/list-roles"
+            | "/organization/get-role"
+            | "/organization/create-role"
+            | "/organization/update-role"
+            | "/organization/delete-role"
     )
 }
 pub(super) fn validate_query(path: &str, query: &HashMap<String, Value>) -> BlueprintResult<()> {
@@ -50,6 +55,16 @@ pub(super) async fn handle<S: AuthStore>(
 ) -> BlueprintResult<Option<Value>> {
     let (token, transient) = session;
     Ok(Some(match path {
+        "/organization/update-role" => {
+            service
+                .update_organization_role(token, transient, payload, now)
+                .await?
+        }
+        "/organization/delete-role" => {
+            service
+                .delete_organization_role(token, transient, payload, now)
+                .await?
+        }
         "/organization/create-role" => {
             service
                 .create_organization_role(token, transient, payload, now)
@@ -76,7 +91,7 @@ pub(super) async fn handle<S: AuthStore>(
 
 pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
     if path != "/organization/create-role" {
-        return Ok(());
+        return mutation_validation::validate_body(path, body);
     }
     if !body.is_some_and(Value::is_object) {
         return Err(validation(format!(

@@ -597,3 +597,14 @@ an actor grant. Missing actions retain order and duplicates in missingPermission
 Memory/restricted PostgreSQL verify atomic competing duplicate creation and stored
 permission JSON; live HTTP runs creation beside JWT/MCP. Role update/deletion and
 remaining provider/helper/ORM/callback/full-preset gates stay open.
+
+Sixty raw routes include all five configured dynamic-role operations. Update and
+deletion pass 332 and 324 actual HTTP/storage/cookie comparisons. Updates enforce
+per-action grants before renaming, reject same-name renames, update duplicate
+matches and retain member role strings. Stored updatedAt advances while the
+response retains the prior projection. Deletion checks the first 100 matching
+members after substring filtering, then exact trimmed roles, and removes matching
+stored rows. Name-based predefined protection differs from ID selection. Memory/
+restricted PostgreSQL verify atomic deletion, blocked assigned roles and duplicate
+updates/deletes; live HTTP runs both routes beside JWT/MCP. Providers, server JWT
+helpers, real ORM/callback, shared parser and full-preset generation remain open.

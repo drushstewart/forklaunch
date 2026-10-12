@@ -482,6 +482,8 @@ fn failure(error: &BlueprintError) -> Response {
         | "YOU_ARE_NOT_ALLOWED_TO_LIST_A_ROLE"
         | "YOU_ARE_NOT_ALLOWED_TO_READ_A_ROLE"
         | "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE"
+        | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_A_ROLE"
+        | "YOU_ARE_NOT_ALLOWED_TO_DELETE_A_ROLE"
         | "SESSION_NOT_FRESH"
         | "MISSING_OR_NULL_ORIGIN"
         | "INVALID_ORIGIN"

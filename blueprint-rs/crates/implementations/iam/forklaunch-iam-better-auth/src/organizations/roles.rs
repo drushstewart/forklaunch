@@ -1,5 +1,6 @@
 //! Stored dynamic roles and explicit access-control grants.
 mod create;
+mod mutation;
 use super::permission::allowed;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
