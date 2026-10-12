@@ -1510,3 +1510,14 @@ implementation evidence: ForkLaunch owns the base IAM credentials/directory/sess
 logic, and the separate native Better Auth crate follows API/behavior comparisons
 rather than depending on a Rust clone of Better Auth. This does not close the
 remaining provider, custom client, ORM/hooks, scalable storage or compliance work.
+
+### Interactive native naming (2026-10-12)
+
+Native initialization now prompts for an omitted name only when stdin and stderr
+are terminals. The default is `my-<kind>`; service/worker/library names select their
+Cargo package and project directory together. Explicit positional names retain
+existing validation. Noninteractive omission fails immediately with guidance and
+no application writes. The real-PTY fixture covers application, service, library
+and worker prompts, custom/default selection, invalid-name rejection and closed
+stdin behavior, then removes its temporary workspace. It is included in the init
+command integration suite. All 1,074 CLI unit tests and the rebuilt CLI pass.

@@ -678,7 +678,7 @@ Current CLI structure to build on:
 - [x] Add `forklaunch init worker <name> --language rust`.
 - [x] Add `forklaunch init library <name> --language rust`.
 - [x] Add `forklaunch init router <name> --language rust` if Rust route module generation remains separate from service generation.
-- [ ] Add prompts for Rust package/crate name when the generated default is not enough.
+- [x] Add prompts for Rust package/crate name when the generated default is not enough. Interactive native init offers `my-<kind>` and accepts an explicit project/crate name; positional names remain available for automation, and noninteractive omission fails without writes. Real-terminal application/service/library/worker tests validate custom/default names and invalid/noninteractive rejection.
 - [x] Add prompts for SDK targets: TypeScript frontend SDK, Rust backend SDK, or both.
 
 ### Rust Templates

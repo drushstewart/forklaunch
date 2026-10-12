@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     fs::{create_dir_all, read_to_string, remove_dir_all, remove_file, rename, write},
-    io::Write,
+    io::{IsTerminal, Write},
     path::{Component, Path, PathBuf},
 };
 
@@ -1611,13 +1611,33 @@ fn library_smoke_test_rs(crate_module: &str) -> String {
 }
 
 fn required_name(matches: &ArgMatches, label: &str) -> Result<String> {
-    let name = matches
-        .get_one::<String>("name")
-        .with_context(|| format!("Missing {label} name"))?;
-    if !validate_name(name) {
+    let name = if let Some(name) = matches.get_one::<String>("name") {
+        name.clone()
+    } else if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
+        let description = if matches!(label, "service" | "worker" | "library") {
+            format!("Rust {label} crate name")
+        } else {
+            format!("Rust {label} name")
+        };
+        dialoguer::Input::<String>::new()
+            .with_prompt(description)
+            .default(format!("my-{label}"))
+            .validate_with(|name: &String| {
+                if validate_name(name) {
+                    Ok(())
+                } else {
+                    Err("Name cannot be empty or include numbers or spaces")
+                }
+            })
+            .interact_text()
+            .with_context(|| format!("Failed to read {label} name"))?
+    } else {
+        bail!("Missing {label} name; pass it as a positional argument in non-interactive use");
+    };
+    if !validate_name(&name) {
         bail!("{label} name cannot be empty or include numbers or spaces");
     }
-    Ok(name.clone())
+    Ok(name)
 }
 
 fn option(matches: &ArgMatches, id: &str) -> Option<String> {

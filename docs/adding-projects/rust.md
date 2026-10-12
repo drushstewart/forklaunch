@@ -23,6 +23,12 @@ The service serves `/health`, `/users`, `/openapi.json`, and a Scalar documentat
 
 Network requests use Axum and the same contract handlers as `local_router`. Path parameters, decoded URL queries, headers, binary bodies, body limits, CORS, and request IDs pass through the framework adapter.
 
+When running in a terminal, you may omit the application, service, worker, library
+or router name. Native initialization prompts for it and offers `my-<kind>` as the
+default. For service/worker/library generation, this name is also the Cargo package
+and project directory name. Pass the positional name explicitly in scripts; missing
+names fail immediately when input or error output is not a terminal.
+
 ## Add Rust to an existing TypeScript application
 
 Run native initialization from the application root containing `.forklaunch`:

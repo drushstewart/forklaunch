@@ -264,4 +264,6 @@ find rust-app -maxdepth 3 -type f \
     | sort \
     | sed -n '1,80p'
 
+FORKLAUNCH_CLI="${FORKLAUNCH_CLI:-$SCRIPT_DIR/../target/release/forklaunch}" python3 "$SCRIPT_DIR/rust_name_prompt.py"
+
 echo "[SUCCESS] Rust init command tests passed"
