@@ -37,4 +37,11 @@ and `sizeLimit` through ordinary add-job maps, persisted scheduler templates,
 the first scheduled job and subsequent iterations. The scheduler fixture checks
 these options on every completed/failed job and verifies two retained log rows
 and the configured failure-history bound through real workers in both directions.
-Scheduler timestamp/date/other advanced-option conformance remains separate.
+Scheduler date/other advanced-option conformance remains separate.
+
+Subsequent scheduler iterations retain their creation `timestamp`, using the
+same value passed to the transition script. Cron first/subsequent jobs also
+retain `prevMillis` for the scheduled instant; interval jobs omit it, matching
+the actual Node implementation. The bidirectional fixture checks timestamps
+against persisted creation time and cron metadata against each qualified job ID,
+in addition to diagnostic/size option and actual retention checks.

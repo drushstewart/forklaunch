@@ -416,6 +416,11 @@ try {
           assert.equal(job.opts.attempts, 1);
           assert.deepEqual(job.opts.backoff, jobOptions.backoff);
           assert.equal(job.opts.repeat.limit, 3);
+          assert.equal(typeof job.opts.timestamp, 'number');
+          assert.ok(Math.abs(job.opts.timestamp - job.timestamp) < 100);
+          if (kind === 'cron')
+            assert.equal(job.opts.prevMillis, Number(job.id.split(':').at(-1)));
+          else assert.equal(job.opts.prevMillis, undefined);
           assert.equal(job.opts.keepLogs, 2);
           assert.equal(job.opts.stackTraceLimit, 1);
           assert.equal(job.opts.sizeLimit, 2048);

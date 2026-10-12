@@ -1432,7 +1432,7 @@ impl Worker {
         };
 
         // Build the msgpacked opts for the Lua script
-        let opts_packed = Self::pack_update_scheduler_opts(job_opts);
+        let opts_packed = Self::pack_update_scheduler_opts(job_opts, now, next_millis);
 
         // Template data
         let template_data = serde_json::to_string(job_data).unwrap_or_else(|_| "{}".to_string());
@@ -1497,8 +1497,14 @@ impl Worker {
     }
 
     /// Pack job options into msgpack format for the updateJobScheduler script.
-    fn pack_update_scheduler_opts(job_opts: &JobOptions) -> Vec<u8> {
+    fn pack_update_scheduler_opts(
+        job_opts: &JobOptions,
+        timestamp: u64,
+        next_millis: u64,
+    ) -> Vec<u8> {
         use rmp::encode::*;
+        #[cfg(not(feature = "forklaunch-job-options"))]
+        let _ = (timestamp, next_millis);
 
         let mut entries: Vec<(&str, Vec<u8>)> = Vec::new();
 
@@ -1613,7 +1619,21 @@ impl Worker {
         }
 
         #[cfg(feature = "forklaunch-job-options")]
-        crate::queue::Queue::append_compat_job_options(&mut entries, job_opts);
+        {
+            crate::queue::Queue::append_compat_job_options(&mut entries, job_opts);
+            let mut encoded = Vec::new();
+            write_uint(&mut encoded, timestamp).unwrap();
+            entries.push(("timestamp", encoded));
+            if job_opts
+                .repeat
+                .as_ref()
+                .is_some_and(|repeat| repeat.pattern.is_some())
+            {
+                let mut encoded = Vec::new();
+                write_uint(&mut encoded, next_millis).unwrap();
+                entries.push(("prevMillis", encoded));
+            }
+        }
 
         // Encode as msgpack map
         let mut buf = Vec::with_capacity(128);

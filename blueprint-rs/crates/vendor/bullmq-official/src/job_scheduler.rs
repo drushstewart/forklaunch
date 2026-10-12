@@ -364,7 +364,14 @@ pub(crate) fn pack_delayed_job_opts(
     }
 
     #[cfg(feature = "forklaunch-job-options")]
-    crate::queue::Queue::append_compat_job_options(&mut entries, job_opts);
+    {
+        crate::queue::Queue::append_compat_job_options(&mut entries, job_opts);
+        if repeat_opts.pattern.is_some() {
+            let mut encoded = Vec::new();
+            write_uint(&mut encoded, next_millis).unwrap();
+            entries.push(("prevMillis", encoded));
+        }
+    }
 
     // Encode as msgpack map
     let mut buf = Vec::with_capacity(128);
