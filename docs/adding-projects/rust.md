@@ -334,23 +334,26 @@ existing Compose development commands and reload behavior. Ctrl-C or SIGTERM
 stops Compose before the CLI removes its private temporary configuration; the
 application's Compose files and production Dockerfiles are preserved.
 
-Use `--export-contracts` to export native contract and OpenAPI artifacts after each
-successful build and before the service starts. Exports use registered artifact
+Use `--export-contracts` to export native contracts and native/TypeScript OpenAPI
+after each successful build and before the service starts. Exports use registered artifact
 paths, stage both files before publication, and preserve unchanged outputs. An export
 failure keeps prior artifacts and prevents that startup from serving stale contracts.
 
-`--sdk-target typescript|rust|all` also enables native exports and starts HTTP SDK
+`--sdk-target typescript|rust|all` also enables these exports and starts HTTP SDK
 watch as a child of development. `--sdk-service NAME` optionally scopes generation;
 without it, SDK watch includes all registered HTTP services. The CLI stops its SDK
 watcher when development exits. A standalone `forklaunch sdk watch` also waits for
 missing initial artifacts; `--once` still reports missing or invalid artifacts as
 an error. Watch compares content, so identical exports do not trigger regeneration.
 
-Automatic export currently covers native services and their auxiliary workers.
-Mixed applications still need TypeScript OpenAPI exports from `forklaunch openapi
-export` before generating a combined SDK. This option does not yet refresh socket
-artifacts or start WebSocket SDK watch. Use `--sdk-service` to follow one native
-service independently while developing a mixed application.
+Automatic export covers selected native services, their auxiliary workers, and
+TypeScript services. TypeScript exports use the service image’s installed Node or
+Bun runtime after rebuilding its workspace, including shared libraries. Generated
+outputs and dependencies use private container volumes. Shared source edits trigger
+rebuild, export and restart. Combined SDKs read the explicit default document in
+TypeScript version bundles; named-version selection remains unsupported. Dotted
+operation IDs retain their namespace in generated method names. This option does
+not yet refresh socket artifacts or start WebSocket SDK watch.
 
 Native reloads require [Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
 Use `--no-watch` to start without Compose reloads, `--no-build` to reuse images,
@@ -358,7 +361,7 @@ and `--project-name` to select the Compose project. `--no-deps` starts only the
 named services; configure required databases or providers through the existing
 Compose/environment settings. Automatic native startup supports generated binary
 commands; custom entrypoints require an explicit development setup. Dry-run shows
-the native changes without starting containers or writing application files.
+native and TypeScript changes without starting containers or writing application files.
 
 ## Portable source and containers
 
@@ -848,4 +851,4 @@ SDK watch compares artifact contents, so an identical re-export does not regener
 clients. Repeated HTTP and WebSocket SDK generation preserves timestamps on unchanged
 outputs and workspace files. Source changes require contract export before
 SDK watch can regenerate the clients; `dev --export-contracts` performs this step
-for native services on startup and reload.
+for native and TypeScript services on startup and reload.

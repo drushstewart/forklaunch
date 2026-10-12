@@ -25,6 +25,7 @@ use crate::{
 
 mod contracts;
 mod sdk;
+mod typescript;
 
 pub(crate) struct DevCommand;
 
@@ -37,11 +38,11 @@ impl CliCommand for DevCommand {
             .arg(Arg::new("project_name").long("project-name"))
             .arg(Arg::new("sdk_target").long("sdk-target").value_parser(["typescript", "rust", "all"]).help("Run HTTP SDK watch with development; implies --export-contracts"))
             .arg(Arg::new("sdk_service").long("sdk-service").requires("sdk_target").help("Limit HTTP SDK generation to one registered service"))
-            .arg(Arg::new("export_contracts").long("export-contracts").action(ArgAction::SetTrue).help("Export native contracts and OpenAPI before startup and each reload"))
+            .arg(Arg::new("export_contracts").long("export-contracts").action(ArgAction::SetTrue).help("Export native contracts and TypeScript OpenAPI before startup and each reload"))
             .arg(Arg::new("no_watch").long("no-watch").action(ArgAction::SetTrue))
             .arg(Arg::new("no_deps").long("no-deps").action(ArgAction::SetTrue))
             .arg(Arg::new("no_build").long("no-build").action(ArgAction::SetTrue))
-            .arg(Arg::new("dryrun").long("dryrun").visible_alias("dry-run").action(ArgAction::SetTrue).help("Print native development changes without starting containers or writing app files"))
+            .arg(Arg::new("dryrun").long("dryrun").visible_alias("dry-run").action(ArgAction::SetTrue).help("Print development changes without starting containers or writing app files"))
     }
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
@@ -117,8 +118,12 @@ impl CliCommand for DevCommand {
             &selected,
             !matches.get_flag("no_deps"),
         )?;
+        let mut typescript_changes = json!({});
         if matches.get_flag("export_contracts") || matches.contains_id("sdk_target") {
             contracts::enable(&root, &manifest, &mut planned, &mut changes)?;
+            let active = active_services(&planned, &selected, !matches.get_flag("no_deps"))?;
+            typescript_changes =
+                typescript::enable(&root, &manifest, &active, &mut planned, &changes)?;
         }
         let rust_sdk_directory = sdk::rust_watch(
             &root,
@@ -126,12 +131,14 @@ impl CliCommand for DevCommand {
             &mut planned,
             &mut changes,
         )?;
-        let watch = !matches.get_flag("no_watch") && !changes.as_object().unwrap().is_empty();
+        let watch = !matches.get_flag("no_watch")
+            && (!changes.as_object().unwrap().is_empty()
+                || !typescript_changes.as_object().unwrap().is_empty());
         if matches.get_flag("dryrun") {
             println!(
                 "{}",
                 serde_json::to_string_pretty(
-                    &json!({"root":root,"watch":watch,"selectedServices":selected,"nativeServices":changes,"sdkTarget":matches.get_one::<String>("sdk_target"),"sdkService":matches.get_one::<String>("sdk_service")})
+                    &json!({"root":root,"watch":watch,"selectedServices":selected,"nativeServices":changes,"typescriptServices":typescript_changes,"sdkTarget":matches.get_one::<String>("sdk_target"),"sdkService":matches.get_one::<String>("sdk_service")})
                 )?
             );
             return Ok(());
@@ -144,7 +151,7 @@ impl CliCommand for DevCommand {
                 || !supports_restart(&String::from_utf8_lossy(&version.stdout))
             {
                 bail!(
-                    "Native development reloads require Docker Compose 2.32 or later; --no-watch starts without reloads"
+                    "Development reloads require Docker Compose 2.32 or later; --no-watch starts without reloads"
                 );
             }
         }
@@ -200,13 +207,7 @@ fn supports_restart(version: &str) -> bool {
     matches!((parts.next().and_then(|v| v.parse::<u32>().ok()), parts.next().and_then(|v| v.parse::<u32>().ok())), (Some(major), Some(minor)) if major > 2 || major == 2 && minor >= 32)
 }
 
-fn plan(
-    root: &Path,
-    manifest: &toml::Value,
-    mut compose: Value,
-    selected: &[String],
-    dependencies: bool,
-) -> Result<(Value, Value)> {
+fn active_services(compose: &Value, selected: &[String], dependencies: bool) -> Result<BTreeSet<String>> {
     let services = compose
         .get("services")
         .and_then(Value::as_object)
@@ -238,6 +239,20 @@ fn plan(
             }
         }
     }
+    Ok(active)
+}
+
+fn plan(
+    root: &Path,
+    manifest: &toml::Value,
+    mut compose: Value,
+    selected: &[String],
+    dependencies: bool,
+) -> Result<(Value, Value)> {
+    let active = active_services(&compose, selected, dependencies)?;
+    let services = compose["services"]
+        .as_object()
+        .context("Compose services missing")?;
     let mut required = active.clone();
     for name in &active {
         if let Some(binary) = services

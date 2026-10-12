@@ -61,11 +61,12 @@ fixture.write_text(f'''services:
 ''')
 args = [str(binary), 'dev', 'native-api', 'legacy-api', '--path', str(app), '--project-name', name, '--compose-file', str(fixture), '--no-deps', '--export-contracts']
 if runtime == 'bun':
-    args += ['--sdk-target', 'typescript', '--sdk-service', 'native-api']
+    args += ['--sdk-target', 'typescript']
 original = {str(p.relative_to(app)): p.read_bytes() for p in app.rglob('*') if p.is_file()}
 preview = subprocess.run(args + ['--dryrun'], cwd=app, env=env, capture_output=True, text=True, check=True, timeout=60)
 plan = json.loads(preview.stdout)
 assert plan['watch'] and set(plan['nativeServices']) == {'native-api'}
+assert set(plan['typescriptServices']) == {'legacy-api'}
 assert original == {str(p.relative_to(app)): p.read_bytes() for p in app.rglob('*') if p.is_file()}, 'Dev dry-run changed application files'
 log_path = root / 'dev.log'
 log = log_path.open('w')
@@ -99,7 +100,7 @@ def wait_json(url, field, expected, timeout=900):
     raise AssertionError(f'Timed out waiting for {url}: {log_path.read_text()[-20000:]}')
 try:
     if runtime == 'node':
-        sdk_watch = subprocess.Popen([str(binary), 'sdk', 'watch', '--path', str(app), '--service', 'native-api', '--target', 'typescript', '--interval-ms', '100'], cwd=app, env=env, stdout=sdk_log, stderr=subprocess.STDOUT)
+        sdk_watch = subprocess.Popen([str(binary), 'sdk', 'watch', '--path', str(app), '--target', 'typescript', '--interval-ms', '100'], cwd=app, env=env, stdout=sdk_log, stderr=subprocess.STDOUT)
         time.sleep(1)
         assert sdk_watch.poll() is None, 'SDK watch exited before first contract export'
     process = subprocess.Popen(args, cwd=app, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -133,6 +134,8 @@ try:
             time.sleep(0.2)
         raise AssertionError(f'SDK did not refresh: {path}')
     wait_sdk("recordCount")
+    wait_sdk("legacyApi")
+    assert (app / ".forklaunch/openapi/legacy-api/openapi.json").is_file()
     contract = app / '.forklaunch/contracts/native-api/contract.json'
     assert json.loads(contract.read_text())['generator'] == 'framework-rs'
     source = app / 'crates/native-api/src/routes/health.rs'
@@ -142,6 +145,19 @@ try:
     assert 'native-reloaded' in contract.read_text()
     source = app / 'modules/legacy-api/api/controllers/legacyApi.controller.ts'
     source.write_text(source.read_text().replace("message: 'LegacyApi'", "message: 'LegacyApiReloaded'", 1))
+    schema = app / 'modules/legacy-api/domain/schemas/legacyApi.schema.ts'
+    schema.write_text(schema.read_text().replace('import { string }', 'import { string, optional }').replace('export const LegacyApiResponseSchema = {', 'export const LegacyApiResponseSchema = { tsDevelopmentMarker: optional(string),'))
+    wait_sdk('tsDevelopmentMarker', timeout=120)
+    core = app / 'modules/core'
+    shared = core / 'development.schema.ts'
+    shared.write_text("import { optional, string } from './registrations';\nexport const sharedDevelopmentSchema = optional(string);\n")
+    index = core / 'index.ts'
+    index.write_text(index.read_text() + "\nexport * from './development.schema';\n")
+    core_name = json.loads((core / 'package.json').read_text())['name']
+    schema.write_text(f"import {{ sharedDevelopmentSchema }} from '{core_name}';\n" + schema.read_text().replace('export const LegacyApiResponseSchema = {', 'export const LegacyApiResponseSchema = { sharedLibrary: sharedDevelopmentSchema,'))
+    wait_sdk('sharedLibrary', timeout=120)
+    shared.write_text("import { optional, object, string } from './registrations';\nexport const sharedDevelopmentSchema = optional(object({ sharedLibraryMarker: optional(string) }));\n")
+    wait_sdk('sharedLibraryMarker', timeout=120)
     typescript = wait_json(lambda: endpoint('legacy-api', ts_port) + '/legacy-api', 'message', 'LegacyApiReloaded', timeout=60).removesuffix('/legacy-api')
     mcp = endpoint('legacy-api', ts_port + 2000) + '/mcp'
     subprocess.run(['node', str(repo / 'cli/tests/rust_mixed_dev_probe.mjs'), native, typescript, mcp, 'LegacyApiReloaded'], check=True, timeout=90)
@@ -155,7 +171,7 @@ try:
     for file in ['docker-compose.yaml', 'Dockerfile', 'Dockerfile.rust', 'modules/Dockerfile']:
         if file in original:
             assert (app / file).read_bytes() == original[file]
-    print(f'PASS {runtime} mixed dev startup, Rust/TypeScript source reloads, native contract export and SDK refresh, HTTP/MCP before/after edits, SIGTERM supervision and preserved production configuration: {root}', flush=True)
+    print(f'PASS {runtime} mixed dev startup, Rust/TypeScript source reloads, native/TypeScript/shared-library contract export and combined SDK refresh, HTTP/MCP before/after edits, SIGTERM supervision and preserved production configuration: {root}', flush=True)
 finally:
     if process is not None and process.poll() is None:
         process.send_signal(signal.SIGTERM)
@@ -178,3 +194,7 @@ finally:
             subprocess.run(['docker', resource, 'rm', *ids], check=True)
     for image in [configuration['services']['legacy-api']['image'], f'forklaunch-dev-{name}-native-api:local']:
         subprocess.run(['docker', 'image', 'rm', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+# Reuse generated sources to validate TypeScript-only selection without compiling
+# a second native workspace. The replay owns a distinct Compose project.
+subprocess.run([os.environ.get('PYTHON', 'python3'), str(repo / 'cli/tests/rust_mixed_dev_typescript_replay.py'), str(app)], check=True, env=env)

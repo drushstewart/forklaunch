@@ -7,6 +7,13 @@ use convert_case::{Case, Casing};
 use serde_json::{json, Value};
 
 pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
+    // TypeScript exporters preserve named versions and serialize their default
+    // document under the empty key. Resolve references within that document.
+    let document = if document.get("openapi").is_none() {
+        document.get("").unwrap_or(document)
+    } else {
+        document
+    };
     let version = document
         .get("openapi")
         .and_then(Value::as_str)
@@ -154,7 +161,15 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
             let mut route = json!({"method": method.to_ascii_uppercase(), "path": path, "request": request,
                 "responses": success_responses});
             let operation_name = match operation.get("operationId") {
-                Some(Value::String(name)) if !name.trim().is_empty() => name.clone(),
+                Some(Value::String(name)) if !name.trim().is_empty() => {
+                    // TypeScript names exported operations as router.operation.
+                    // Keep the full namespace while producing legal method names.
+                    if name.contains('.') {
+                        name.replace('.', " ").to_case(Case::Camel)
+                    } else {
+                        name.clone()
+                    }
+                }
                 Some(Value::String(_)) | None => {
                     format!(
                         "{}{}",
@@ -447,13 +462,27 @@ mod operation_name_tests {
             "/users/search":{"get":{"responses":response}}
         }});
         let contract = contract_from_openapi(&spec).unwrap();
-        assert!(contract["routes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|route| route["operationName"] == "getUsersId"));
+        assert!(
+            contract["routes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|route| route["operationName"] == "getUsersId")
+        );
         spec["paths"]["/users/{id}"]["get"]["operationId"] = json!("find-user");
         spec["paths"]["/users/search"]["get"]["operationId"] = json!("findUser");
+        assert!(contract_from_openapi(&spec).is_err());
+        spec["paths"]["/users/{id}"]["get"]["operationId"] = json!("users.findUser");
+        spec["paths"]["/users/search"]["get"]["operationId"] = json!("users.search");
+        let contract = contract_from_openapi(&spec).unwrap();
+        assert!(
+            contract["routes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|route| route["operationName"] == "usersFindUser")
+        );
+        spec["paths"]["/users/search"]["get"]["operationId"] = json!("usersFindUser");
         assert!(contract_from_openapi(&spec).is_err());
     }
     #[test]
@@ -597,5 +626,19 @@ mod extended_method_tests {
             .unwrap_err()
             .to_string()
             .contains("must be an object"));
+    }
+}
+
+#[cfg(test)]
+mod version_bundle_tests {
+    use super::*;
+    #[test]
+    fn imports_explicit_default_with_local_references_without_combining_versions() {
+        let document = json!({"openapi":"3.1.0","paths":{"/default":{"get":{"operationId":"defaultOperation","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Response"}}}}}}}},"components":{"schemas":{"Response":{"type":"object","properties":{"message":{"type":"string"}}}}}});
+        let expected = contract_from_openapi(&document).unwrap();
+        let bundled = json!({"":document,"v2":{"openapi":"3.1.0","paths":{"/other":{}}}});
+        assert_eq!(contract_from_openapi(&bundled).unwrap(), expected);
+        assert!(contract_from_openapi(&json!({"v2":bundled["v2"]})).is_err());
+        assert!(contract_from_openapi(&json!({"openapi":"2.0","":bundled[""]})).is_err());
     }
 }

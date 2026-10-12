@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { probeMcp } from './rust_mcp_probe.mjs';
 const [native, typescript, mcp, expected] = process.argv.slice(2);
-await probeMcp(native);
+if (native !== '-') await probeMcp(native);
 assert.equal(
   (await (await fetch(`${typescript}/legacy-api`)).json()).message,
   expected

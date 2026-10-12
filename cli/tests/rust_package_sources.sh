@@ -14,6 +14,7 @@ root = Path(sys.argv[1])
 packaged = set(Path(sys.argv[2]).read_text().splitlines())
 expected = {
     "src/dev/contracts.rs",
+    "src/dev/typescript.rs",
     "src/dev/sdk.rs",
     "src/templates/rust/application/Cargo.toml.template",
     "src/templates/rust/application/typescript-sdk-tsconfig.json",

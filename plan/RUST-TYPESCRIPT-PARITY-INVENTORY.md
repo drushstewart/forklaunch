@@ -1394,3 +1394,33 @@ other account/session/member scans and general indexed pagination remain open.
 - Still open: automatic TypeScript exports for combined mixed-app SDKs and automatic
   socket artifact/WebSocket SDK refresh in development. These remain separate from
   the now-validated native HTTP contract/SDK loop. Full parity is not claimed.
+
+### Mixed TypeScript development export (2026-10-12, validation in progress)
+
+`dev --export-contracts` now plans TypeScript workspace rebuild and OpenAPI export
+before startup/reload, alongside native exports. Shared libraries are mounted and
+watched; per-container dependency/build volumes isolate runtime outputs. Default
+TypeScript OpenAPI version bundles and dotted operation namespaces import into
+both SDK languages. Export failure preserves previous artifacts; dry-run remains
+read-only. The Node/Bun fixture now covers service schemas, shared-library schemas,
+combined SDK refresh, HTTP/MCP after reload, and a TypeScript-only selection replay.
+
+Evidence so far: the 1,070-test CLI suite passes with the isolated-volume change;
+the subsequent focused export suite passes both planning and failed/empty-export
+artifact preservation, startup gating and unchanged timestamp checks. Cargo package
+inventory includes all 755 required embedded source/template files. SDKs from an
+actual retained TypeScript export compile in Rust and TypeScript.
+The earlier live fixture passed initial HTTP/MCP startup but its schema edit
+incorrectly added a request field that MikroORM rejected. That fixture input is
+corrected to change only the response. Fresh full reload checks remain pending: the
+shared Docker builder reported a missing snapshot, and an owned separate builder
+is running the retries. Do not count these retries as passes until they complete.
+Automatic socket export/WebSocket SDK watch and named API-version selection remain
+open. The full source-archive installation suite has not been rerun for this change.
+
+Checklist reconciliation: four older billing entries now point to existing
+phase-16 implementations and validation: embedded PostgreSQL migrations, direct
+and managed Stripe transport, webhook subscription synchronization, and controlled
+HTTP provider tests. Docker/Axum fixtures satisfy the original container/mock test
+intent without adding testcontainers/wiremock dependencies. Customer persistence,
+provider/local-write reconciliation, and configured mapper review remain open.

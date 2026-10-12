@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use crate::core::application_output::output_path;
 
-fn quote(value: &str) -> String {
+pub(super) fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
@@ -29,7 +29,7 @@ fn script(scratch: &Path, contract: &Path, openapi: &Path) -> Result<String> {
     ))
 }
 
-fn resolved_output(path: &Path) -> Result<PathBuf> {
+pub(super) fn resolved_output(path: &Path) -> Result<PathBuf> {
     let mut existing = path;
     let mut suffix = Vec::new();
     while !existing.exists() {
