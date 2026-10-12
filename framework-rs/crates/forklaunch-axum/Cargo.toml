@@ -47,3 +47,7 @@ tower = { version = "0.5", features = ["util"] }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "docs_parity"
+required-features = ["adapter"]

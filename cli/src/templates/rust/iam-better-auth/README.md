@@ -20,7 +20,9 @@ SUPERUSER nor BYPASSRLS. Export the settings in `.env.example` before running
 Google credentials as a pair when enabling Google. JWKS verification defaults
 to this service's `/api/auth/jwks`, with issuer and audience equal to the base URL.
 
-`GET /discovery/auth-methods`, `/openapi.json` and `/docs` are public. Raw auth
+`GET /discovery/auth-methods`, `/openapi.json` and `/docs` are public. Scalar docs
+include the application API and the complete BetterAuth API as separate sources.
+Raw auth
 routes keep cookie/CSRF semantics and remain outside the MCP tool registry.
 Role/permission surfacing verifies request HMAC; compliance JWTs resolve their
 system role from current stored organization membership rather than token role
@@ -37,5 +39,5 @@ JWT/session/email fragment values and clears only the configured session cookie.
 callback destinations against the configured trusted origins.
 
 This scaffold serves one trusted configured tenant. Nondefault auth base paths,
-additional Scalar documentation sources, complete ORM/hooks and broader custom
+complete ORM/hooks and broader custom
 Better Auth options remain parity work.

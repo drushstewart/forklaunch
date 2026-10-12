@@ -61,6 +61,8 @@ pub struct RouterConfig {
     pub docs_path: String,
     /// Title rendered in the documentation UI.
     pub docs_title: String,
+    /// Additional Scalar documents, shown after the generated application API.
+    pub docs_sources: Vec<crate::ScalarSource>,
     /// Whether the Swagger UI is also served.
     pub swagger_enabled: bool,
     /// Path the Swagger UI is served from.
@@ -87,6 +89,7 @@ impl Default for RouterConfig {
             docs_enabled: true,
             docs_path: "/docs".to_owned(),
             docs_title: "API Reference".to_owned(),
+            docs_sources: Vec::new(),
             swagger_enabled: false,
             swagger_path: "/swagger".to_owned(),
             body_limit: DEFAULT_BODY_LIMIT_BYTES,
@@ -464,21 +467,7 @@ impl ForkLaunchRouter {
             router = router.nest(&mount.prefix, mount.router);
         }
 
-        if config.openapi_enabled {
-            let options = config.openapi_options(&registry);
-            let document = generate_openapi_json_with_options(&registry, &options);
-            router = router.route(&config.openapi_path, openapi_handler(document));
-
-            if config.docs_enabled {
-                let html = scalar_html(&config.docs_title, &config.openapi_path);
-                router = router.route(&config.docs_path, docs_handler(html));
-            }
-
-            if config.swagger_enabled {
-                let html = swagger_html(&config.docs_title, &config.openapi_path);
-                router = router.route(&config.swagger_path, docs_handler(html));
-            }
-        }
+        router = mount_documentation(router, &config, &registry);
 
         let telemetry = config
             .telemetry
@@ -951,6 +940,34 @@ pub fn framework_response_to_axum(response: FrameworkResponse) -> Response {
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
+fn mount_documentation(
+    mut router: Router,
+    config: &RouterConfig,
+    registry: &ContractRegistry,
+) -> Router {
+    if config.openapi_enabled {
+        let options = config.openapi_options(registry);
+        let document = generate_openapi_json_with_options(registry, &options);
+        router = router.route(&config.openapi_path, openapi_handler(document));
+
+        if config.docs_enabled {
+            let html = crate::docs::scalar_html(
+                &config.docs_title,
+                &config.openapi_path,
+                &config.docs_sources,
+            );
+            router = router.route(&config.docs_path, docs_handler(html));
+        }
+
+        if config.swagger_enabled {
+            let html = crate::docs::swagger_html(&config.docs_title, &config.openapi_path);
+            router = router.route(&config.swagger_path, docs_handler(html));
+        }
+    }
+
+    router
+}
+
 /// A dependency-free request-id generator backed by a monotonic counter.
 #[derive(Clone, Default)]
 struct CounterMakeRequestId {
@@ -964,18 +981,6 @@ impl MakeRequestId for CounterMakeRequestId {
             .ok()
             .map(RequestId::new)
     }
-}
-
-fn scalar_html(title: &str, spec_url: &str) -> String {
-    format!(
-        "<!doctype html>\n<html>\n  <head>\n    <title>{title}</title>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  </head>\n  <body>\n    <script id=\"api-reference\" data-url=\"{spec_url}\"></script>\n    <script src=\"https://cdn.jsdelivr.net/npm/@scalar/api-reference\"></script>\n  </body>\n</html>\n"
-    )
-}
-
-fn swagger_html(title: &str, spec_url: &str) -> String {
-    format!(
-        "<!doctype html>\n<html>\n  <head>\n    <title>{title}</title>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui.css\" />\n  </head>\n  <body>\n    <div id=\"swagger-ui\"></div>\n    <script src=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui-bundle.js\"></script>\n    <script>\n      window.onload = () => {{ window.ui = SwaggerUIBundle({{ url: '{spec_url}', dom_id: '#swagger-ui' }}); }};\n    </script>\n  </body>\n</html>\n"
-    )
 }
 
 #[cfg(test)]

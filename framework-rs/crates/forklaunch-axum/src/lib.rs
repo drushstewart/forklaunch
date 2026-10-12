@@ -2,6 +2,10 @@
 
 #[cfg(feature = "adapter")]
 mod body_telemetry;
+#[cfg(feature = "adapter")]
+mod docs;
+#[cfg(feature = "adapter")]
+pub use docs::{ScalarDocument, ScalarSource};
 #[cfg(feature = "mcp")]
 mod mcp_runtime;
 #[cfg(feature = "adapter")]

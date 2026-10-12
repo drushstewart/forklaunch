@@ -146,6 +146,36 @@ try {
     MCP_PORT: '0',
     MCP_PATH: '/tools'
   });
+  for (const service of [first, second]) {
+    const docs = await call(service.base, '/docs');
+    assert.equal(docs.headers.get('content-type'), 'text/html; charset=utf-8');
+    const html = await docs.text();
+    const config = JSON.parse(
+      html
+        .split("Scalar.createApiReference('#app', ")[1]
+        .split(');</script>')[0]
+    );
+    assert.deepEqual(config.sources[0], {
+      title: 'API Reference',
+      url: '/openapi.json'
+    });
+    assert.deepEqual(config.sources[1], {
+      title: 'BetterAuth',
+      content: await (
+        await call(service.base, '/api/auth/open-api/generate-schema')
+      ).json()
+    });
+    assert.equal(config.sources.length, 2);
+    assert.ok(config.sources[1].content.paths['/get-session']);
+    assert.equal(
+      config.sources[1].content.servers[0].url,
+      `${origin}/api/auth`
+    );
+    const application = await (
+      await call(service.base, config.sources[0].url)
+    ).json();
+    assert.equal(Object.keys(application.paths).length, 6);
+  }
   assert.equal(
     (
       await probeMcp(first.base, [

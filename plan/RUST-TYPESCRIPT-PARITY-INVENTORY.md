@@ -884,3 +884,23 @@ tests, strict default/HTTP/all-feature clippy, 40 original callback checks,
 field-encryption features unless PostgreSQL is selected. Additional docs
 sources, nondefault base paths, complete ORM/hooks/client integration and
 broader custom options remain open.
+
+### Additional Scalar documentation sources
+
+`RouterConfig.docs_sources` accepts typed URL or inline JSON sources with optional
+slug/default selection. Scalar receives the generated application API first,
+then the additional documents. BetterAuth applications now include the complete
+raw auth schema without adding its endpoints to OpenAPI application contracts,
+SDK operations or MCP tools. The TS preset preserves the schema's existing
+server URL and relative paths, fixing its duplicated `/api/auth` request paths.
+Documentation titles and both Scalar/Swagger inline configuration are escaped.
+
+Twelve comparisons execute the actual pinned Scalar 0.10.25 renderer, the actual
+TS registration factory and Better Auth schema generator, then evaluate served
+native HTML in a JS VM. They cover remote/inline/string documents, multiple
+sources, slugs/defaults and script terminator/Unicode escaping. Live native TCP
+and generated fresh PostgreSQL services verify both docs sources and unchanged
+MCP discovery. All 27 auth tests, 38 framework tests, strict all-feature/all-target
+clippy for both crates, generated HTTP/MCP/SDK/restart/rename/delete checks and
+751 packaged sources pass. Nondefault base paths, complete ORM/hooks/client
+integration and broader custom options remain open.

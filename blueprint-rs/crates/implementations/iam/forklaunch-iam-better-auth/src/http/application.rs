@@ -279,6 +279,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         });
         config.cors = Some(cors);
         config
+            .docs_sources
+            .push(forklaunch_axum::ScalarSource::inline(
+                "BetterAuth",
+                super::public::openapi_schema(&self.base_url),
+            ));
+        config
     }
 }
 fn discovery() -> Value {

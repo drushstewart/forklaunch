@@ -147,16 +147,18 @@ pub(super) async fn reference() -> Response {
 pub(super) async fn schema<S: AuthStore + 'static>(
     State(app): State<Arc<AuthHttp<S>>>,
 ) -> Response {
-    // This is the declarative schema of the fixed ForkLaunch auth preset, not
-    // an endpoint result cache. No runtime provider/user data enter the schema.
-    // The actual configured TS generator is compared in rust_better_auth_public.
-    let mut schema: Value = serde_json::from_str(include_str!("assets/openapi.json"))
-        .expect("embedded configured auth contract is valid JSON");
-    schema["servers"] =
-        json!([{ "url": format!("{}/api/auth", app.base_url.trim_end_matches('/')) }]);
+    let schema = openapi_schema(&app.base_url);
     (
         [(header::CONTENT_TYPE, "application/json")],
         crate::ecmascript::stringify(&schema),
     )
         .into_response()
+}
+
+/// Fixed preset schema shared by the raw endpoint and the application's docs.
+pub(super) fn openapi_schema(base_url: &str) -> Value {
+    let mut schema: Value = serde_json::from_str(include_str!("assets/openapi.json"))
+        .expect("embedded configured auth contract is valid JSON");
+    schema["servers"] = json!([{ "url": format!("{}/api/auth", base_url.trim_end_matches('/')) }]);
+    schema
 }

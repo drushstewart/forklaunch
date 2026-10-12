@@ -315,6 +315,40 @@ async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
         .await
         .unwrap();
     assert_eq!(openapi["paths"].as_object().unwrap().len(), 5);
+    let docs = client.get(format!("{base}/docs")).send().await.unwrap();
+    assert_eq!(docs.status(), 200);
+    assert_eq!(docs.headers()["content-type"], "text/html; charset=utf-8");
+    let html = docs.text().await.unwrap();
+    let config = html
+        .split("Scalar.createApiReference('#app', ")
+        .nth(1)
+        .unwrap()
+        .split(");</script>")
+        .next()
+        .unwrap();
+    let config: Value = serde_json::from_str(config).unwrap();
+    assert_eq!(config["sources"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        config["sources"][0],
+        json!({"title":"API Reference","url":"/openapi.json"})
+    );
+    let raw_schema = client
+        .get(format!("{base}/api/auth/open-api/generate-schema"))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    assert_eq!(
+        config["sources"][1],
+        json!({"title":"BetterAuth","content":raw_schema})
+    );
+    assert!(
+        config["sources"][1]["content"]["paths"]
+            .get("/get-session")
+            .is_some()
+    );
     stop.send(()).unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(5), server)
         .await

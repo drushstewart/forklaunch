@@ -6,6 +6,11 @@ This workspace implements contract registration, validation primitives, an Axum 
 
 The CLI can generate runnable Rust backends with bundled framework source. See [Rust backend generation](../docs/adding-projects/rust.md) for setup, contract exports, SDKs, and current boundaries.
 
+Scalar docs accept additional documents through `RouterConfig.docs_sources`.
+Use `ScalarSource::url("External API", "https://example.com/openapi.json")` or
+`ScalarSource::inline("Authentication", schema)`; optional `slug` and `default`
+fields control source navigation. The generated application API remains first.
+
 ## Commands
 
 ```bash

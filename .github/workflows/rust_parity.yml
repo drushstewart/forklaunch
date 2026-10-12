@@ -69,6 +69,7 @@ on:
       - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_iam_directory_parity.mjs'
       - 'cli/tests/rust_better_auth_application_contracts.mjs'
+      - 'cli/tests/rust_docs_sources.mjs'
       - 'cli/tests/rust_better_auth_http.mjs'
       - 'cli/tests/rust_better_auth_origins.mjs'
       - 'cli/tests/rust_better_auth_credential_validation.mjs'
@@ -221,6 +222,7 @@ on:
       - 'cli/tests/rust_billing_base_parity.mjs'
       - 'cli/tests/rust_iam_directory_parity.mjs'
       - 'cli/tests/rust_better_auth_application_contracts.mjs'
+      - 'cli/tests/rust_docs_sources.mjs'
       - 'cli/tests/rust_better_auth_http.mjs'
       - 'cli/tests/rust_better_auth_origins.mjs'
       - 'cli/tests/rust_better_auth_credential_validation.mjs'
@@ -453,6 +455,7 @@ jobs:
       FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       FORKLAUNCH_TEST_EXPRESS_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      FORKLAUNCH_TEST_SCALAR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       FORKLAUNCH_TEST_ORM_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       FORKLAUNCH_TEST_POSTGRES_URL: postgres://postgres:parity-test-only@127.0.0.1:5432/parity
       FORKLAUNCH_TEST_KAFKA_BROKERS: 127.0.0.1:9092
@@ -467,7 +470,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.9 express@5.2.1
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.9 express@5.2.1 @scalar/express-api-reference@0.10.25
       - run: node cli/tests/rust_worker_tenant_scope_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -658,6 +661,7 @@ jobs:
       - run: node cli/tests/rust_better_auth_crypto.mjs
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_docs_sources.mjs
       - run: node cli/tests/rust_better_auth_redirects.mjs
       - run: node cli/tests/rust_better_auth_callbacks.mjs
         env:
