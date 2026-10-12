@@ -857,6 +857,8 @@ impl<'de> Deserialize<'de> for ProjectPackageJson {
                     additional_entries: HashMap::new(),
                 };
 
+                let mut dependencies_value = None;
+
                 while let Some((key, value)) = access.next_entry::<String, serde_json::Value>()? {
                     match key.as_str() {
                         "name" => {
@@ -920,22 +922,7 @@ impl<'de> Deserialize<'de> for ProjectPackageJson {
                             )
                         }
                         "dependencies" => {
-                            package.dependencies = Some(
-                                serde_json::from_value::<ProjectDependencies>(
-                                    serde_json::to_value(ProjectDependenciesWithProjectName {
-                                        project_dependencies_value: value,
-                                        app_name: package
-                                            .name
-                                            .clone()
-                                            .unwrap()
-                                            .split('/')
-                                            .collect::<Vec<&str>>()[0]
-                                            .to_string(),
-                                    })
-                                    .map_err(serde::de::Error::custom)?,
-                                )
-                                .map_err(serde::de::Error::custom)?,
-                            )
+                            dependencies_value = Some(value);
                         }
                         "devDependencies" => {
                             package.dev_dependencies = Some(
@@ -953,10 +940,55 @@ impl<'de> Deserialize<'de> for ProjectPackageJson {
                     }
                 }
 
+                if let Some(value) = dependencies_value {
+                    let name = package.name.as_deref().ok_or_else(|| {
+                        serde::de::Error::custom("package.json dependencies require a package name")
+                    })?;
+                    package.dependencies = Some(
+                        serde_json::from_value::<ProjectDependencies>(
+                            serde_json::to_value(ProjectDependenciesWithProjectName {
+                                project_dependencies_value: value,
+                                app_name: name.split('/').next().unwrap_or(name).to_string(),
+                            })
+                            .map_err(serde::de::Error::custom)?,
+                        )
+                        .map_err(serde::de::Error::custom)?,
+                    );
+                }
+
                 Ok(package)
             }
         }
 
         deserializer.deserialize_map(ProjectPackageJsonVisitor)
+    }
+}
+
+#[cfg(test)]
+mod package_order_tests {
+    use super::*;
+
+    #[test]
+    fn dependencies_can_precede_package_name() {
+        let package: ProjectPackageJson = serde_json::from_str(
+            r#"{"dependencies":{"better-auth":"custom-version"},"name":"@fixture/client-sdk"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            package.dependencies.unwrap().better_auth.as_deref(),
+            Some("custom-version")
+        );
+    }
+
+    #[test]
+    fn dependencies_without_name_return_an_error() {
+        let result = serde_json::from_str::<ProjectPackageJson>(r#"{"dependencies":{}}"#);
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("require a package name")
+        );
+        assert!(serde_json::from_str::<ProjectPackageJson>("{}").is_ok());
     }
 }

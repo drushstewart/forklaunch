@@ -233,6 +233,36 @@ orchestration remains tracked work.
 
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape. Lifecycle SDK refresh preserves each available service contract independently; a missing artifact falls back only for that service, while malformed artifacts fail explicitly. Generated service fallback methods keep their exported names (`getHealth`, `listUsers`). Deletion refreshes existing Rust SDK crates as well as an existing TypeScript client, including Rust-only applications.
 
+### Mixed compliance clients
+
+`modules/client-sdk/compliance.ts` retains TypeScript client types and accepts
+native compliance adapters without importing nonexistent TypeScript factories:
+
+```ts
+const compliance = createComplianceClient({
+  token: systemToken,
+  iam: iamClient,
+  catalog: { compliance: sharedSdk.catalog.compliance }
+});
+const results = await compliance.erase(userId);
+```
+
+Provide every registered database-backed service or worker required by the
+generated signature. Native adapter responses retain their generated success and
+business-error types. TypeScript Better Auth clients keep their `core.compliance`
+wrapper; native Better Auth adapters use `compliance` directly. IAM services are
+recognized by their variant as well as the conventional `iam` name.
+
+Services created before IAM may lack compliance routes. They require declared
+handlers or an explicit adapter implementation; their ordinary SDK client alone
+is rejected by the generated TypeScript signature. The factory checks that every
+adapter supplies both erase and export methods before dispatching requests.
+No registered database service is silently omitted. Fan-out remains concurrent,
+and callers must inspect each service's result. The mixed compliance fixture
+checks both IAM variants, real legacy/generated SDK HTTP calls, bearer propagation,
+response typing, business errors and missing adapters; persistence semantics are
+validated separately by the module suites.
+
 ## Portable source and containers
 
 Generated applications include framework source in `.forklaunch/framework-rs`. Commit this directory with the application. Cargo uses relative dependencies, so moving the application or building it inside Docker does not require the CLI author's repository checkout. Existing bundled source is preserved when initialization is repeated.

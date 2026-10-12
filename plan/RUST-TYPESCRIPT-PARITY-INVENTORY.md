@@ -1164,3 +1164,26 @@ mixed rename/sync/delete/router regression pass. CI includes
 `rust_typescript_attach.sh`. This closes default Rust-first workspace scaffolding;
 unified development orchestration, mixed compliance aggregation and platform
 deployment validation remain separate work.
+
+
+Mixed compliance aggregation checkpoint (2026-10-12): generated compliance clients
+now accept typed native adapters alongside the existing TypeScript SDK clients,
+retain each success/business-error response type, and include every registered
+database service/worker. Services initialized before IAM require explicit
+compliance implementations; their ordinary client does not satisfy the generated
+signature. Missing adapter methods fail at construction. TypeScript Better Auth
+keeps its core wrapper; native adapters do not. IAM variants are recognized even
+under custom native service names. Better Auth initialization now reuses existing
+SDK imports and declares its client-sdk runtime dependency, preserving overrides.
+Package dependency parsing accepts JSON fields in any order and reports missing
+names instead of panicking.
+
+The actual CLI fixture creates fresh mixed apps for iam-base and iam-better-auth,
+installs dependencies, builds every TypeScript package, checks strict consumer
+types and runs the real legacy/generated SDKs against owned HTTP responders.
+Bearer propagation, export/erase results, native business errors, explicit legacy
+adapters and missing-method failures pass for both variants. These checks cover
+client transport and typing; persistence remains covered separately by module
+suites. All 1,044 CLI tests pass. CI includes rust_mixed_compliance.sh. Unified
+development orchestration, root workspace integration for TypeScript-first apps,
+and deployment validation remain open.
