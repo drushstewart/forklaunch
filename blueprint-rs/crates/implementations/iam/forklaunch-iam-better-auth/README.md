@@ -343,3 +343,10 @@ prior team. Memory/restricted PostgreSQL verify competing acceptance, last-slot
 admission and complete rollback after missing later teams. Live HTTP covers
 no-team/single-team transient cookies beside JWT/MCP. Remaining full-preset
 gates include dynamic roles, providers, JWT helpers and real ORM/callbacks.
+
+Fifty-seven raw routes include dynamic role listing/lookup. All 272 actual HTTP/
+storage/cookie comparisons pass: ac:read grants, raw membership, nullish scope,
+case-sensitive name/ID selectors and union validation, first-100 listing, later
+lookup and malformed later JSON. Permission responses contain parsed JSON while
+storage strings remain intact, including literal serde keys. Memory/restricted
+PostgreSQL and live HTTP/JWT/MCP cover both routes; role mutations remain open.

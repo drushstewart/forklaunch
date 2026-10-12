@@ -10,6 +10,7 @@ use std::collections::HashMap;
 pub(super) mod invitations;
 mod members;
 mod mutation_validation;
+mod roles;
 mod teams;
 mod validation;
 pub(super) use validation::{validate_body, validate_query};
@@ -25,6 +26,9 @@ pub(super) async fn handle<S: AuthStore + 'static>(
 ) -> BlueprintResult<Value> {
     let service = OrganizationService::new(app.store.clone());
     let (token, transient) = session;
+    if let Some(body) = roles::handle(&service, path, query, session, now).await? {
+        return Ok(body);
+    }
     if path == "/organization/accept-invitation" {
         let result = service
             .accept_invitation(
@@ -133,6 +137,11 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
         routing::{get, post},
     };
     Router::new()
+        .route(
+            "/organization/list-roles",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route("/organization/get-role", get(dispatch::<S>).head(not_found))
         .route("/organization/invite-member", post(dispatch::<S>))
         .route("/organization/accept-invitation", post(dispatch::<S>))
         .route("/organization/reject-invitation", post(dispatch::<S>))

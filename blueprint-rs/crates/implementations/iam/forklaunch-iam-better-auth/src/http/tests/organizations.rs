@@ -1,6 +1,7 @@
 use super::*;
 mod invitations;
 mod members;
+mod roles;
 mod team_members;
 mod team_mutations;
 mod teams;
@@ -98,6 +99,7 @@ pub(super) async fn exercise<S: AuthStore>(
     team_mutations::exercise(client, base, cookie, store, id).await;
     team_members::exercise(client, base, cookie, store, id).await;
     invitations::exercise(client, base, cookie, store, id).await;
+    roles::exercise(client, base, cookie, store, id).await;
     mutations(client, base, cookie, store, id).await;
 }
 

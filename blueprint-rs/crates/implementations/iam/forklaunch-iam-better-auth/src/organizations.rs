@@ -15,6 +15,7 @@ mod invitations;
 mod members;
 mod mutation;
 mod permission;
+mod roles;
 mod selection;
 mod teams;
 pub use members::{AddMemberInput, MemberRoles};
