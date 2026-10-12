@@ -9,6 +9,7 @@ keywords = ["cli", "scaffolding", "microservices", "typescript", "rust"]
 repository = "https://github.com/forklaunch/forklaunch-js"
 
 [dependencies]
+ctrlc = { version = "3.5.2", features = ["termination"] }
 anyhow = "1.0"
 base64 = "0.22.1"
 clap = { version = "4.5.42", features = ["cargo"] }
@@ -62,3 +63,6 @@ tar = "0.4"
 flate2 = "1.0"
 opener = "0.7"
 toml_edit = "0.25.15"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", features = ["signal", "process"] }

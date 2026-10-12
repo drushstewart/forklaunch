@@ -255,6 +255,8 @@ fn merge_workspace(stage: &Path, template: &Path, original: &Value) -> Result<()
         for (name, command) in scripts.iter_mut() {
             *command = Json::String(if name == "build" {
                 "cargo build --workspace && pnpm -r --no-bail run build".into()
+            } else if name == "dev" {
+                "forklaunch dev".into()
             } else {
                 format!("pnpm --dir modules run {name}")
             });

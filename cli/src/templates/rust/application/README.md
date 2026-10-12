@@ -8,6 +8,8 @@
 cargo build --workspace
 cargo test --workspace
 cargo run -p <service-name>
+# Run generated Compose services together, rebuilding Rust on source edits:
+forklaunch dev
 ```
 
 Services expose `/health`, `/openapi.json`, and a Scalar UI at `/docs`. Set `HOST` and `PORT` to configure the HTTP listener. Services stop gracefully on Ctrl-C or SIGTERM.

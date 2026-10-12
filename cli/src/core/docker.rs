@@ -2416,11 +2416,14 @@ fn get_relative_context_path(
 ) -> PathBuf {
     let context_rel = if let Some(raw) = docker_compose_path {
         let compose_dir = Path::new(raw).parent().unwrap_or(Path::new(""));
-        let depth = compose_dir.components().count();
+        let depth = compose_dir.components().filter(|component| !matches!(component, std::path::Component::CurDir)).count();
         let mut up = PathBuf::new();
         for _ in 0..depth {
             up.push("..");
         }
+        // Short-form Compose binds require an explicit relative-path prefix.
+        // A root-level custom Compose filename otherwise produces a named volume.
+        if up.as_os_str().is_empty() { up.push("."); }
         up
     } else {
         PathBuf::from(".")
@@ -3289,5 +3292,20 @@ depends_on:
         assert!(result.is_ok());
         let env = result.unwrap().unwrap();
         assert_eq!(env.get("KEY"), Some(&"value".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod relative_compose_context_tests {
+    use super::*;
+
+    #[test]
+    fn root_and_nested_compose_paths_keep_bind_mount_prefixes() {
+        for compose in [None, Some("docker-compose.yaml".into()), Some("./docker-compose.yaml".into())] {
+            assert_eq!(get_relative_context_path(&compose, &"modules".into()).to_string_lossy(), "./modules");
+        }
+        for compose in ["infra/docker-compose.yaml", "./infra/docker-compose.yaml"] {
+            assert_eq!(get_relative_context_path(&Some(compose.into()), &"modules".into()).to_string_lossy(), "../modules");
+        }
     }
 }

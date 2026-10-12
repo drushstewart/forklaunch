@@ -14,7 +14,7 @@ proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 | Source package | Rust implementation | Remaining scope / evidence |
 | --- | --- | --- |
-| [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Rust build/run exists; mixed development orchestration remains. |
+| [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Native builds and mixed Node/Bun Compose orchestration pass live HTTP/MCP, source reload and shutdown fixtures; automatic contract/SDK refresh remains. |
 | [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Shared names, paths, errors and JSON helpers; audit all utility exports individually. |
 | [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption and an optional MCP HTTP server exist; SQL entity/compliance/retention services and full auth/streaming conformance remain. |
 | [`@forklaunch/e2e-tests`](../framework/e2e-tests/package.json) (generated/private) | Rust wire/runtime suites | Actual TypeScript framework service conformance remains beyond the plain Node wire fixtures. |
@@ -1249,3 +1249,22 @@ policy inheritance and override preservation for both protocols. Local Bun 1.2.1
 confirms configuration/install/build compatibility; these checks do not establish
 release-age enforcement behavior across Bun versions. Mixed development and
 platform deployment remain open.
+
+
+Mixed development checkpoint (2026-10-12): `forklaunch dev` resolves Compose and
+starts native services/workers with debug compilation, source mounts, project-scoped
+Cargo caches and restart watches for registered crates/libraries/frameworks/SDKs.
+TypeScript services retain their existing development commands. Selection and
+dependency closure preserve infrastructure containers and inactive native projects.
+Private temporary configuration and signal supervision preserve application files
+and stop Compose before CLI exit. Generated root workspaces expose the command
+through their dev script while preserving custom scripts. Native watch requires
+Compose 2.32; custom native entrypoints require explicit development configuration.
+
+Actual Rust-first Node and TypeScript-first Bun applications both pass HTTP/MCP
+startup, initialization/discovery/tool calls, Rust and TypeScript source reloads,
+HTTP/MCP after edits and SIGTERM shutdown. The fixture caught and fixed root
+Compose bind paths incorrectly interpreted as named volumes. All 1,057 CLI tests
+pass; CI runs both runtime variants through rust_mixed_dev.sh. Production Compose
+and Dockerfiles remain unchanged. Automatic source-to-contract/SDK refresh,
+Windows runtime validation and platform deployment remain separate work.

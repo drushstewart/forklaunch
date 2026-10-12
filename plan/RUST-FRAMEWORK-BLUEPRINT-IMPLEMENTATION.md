@@ -770,7 +770,8 @@ Current CLI structure to build on:
 ### Local Development
 
 - [x] Generate `cargo run -p <service>` scripts or `just`/`make` tasks for Rust services.
-- [ ] Add mixed dev orchestration for TypeScript and Rust services.
+- [x] Add mixed dev orchestration for TypeScript and Rust services. Node/Bun fixtures validate HTTP/MCP, source reloads and supervised shutdown.
+- [ ] Integrate source-triggered contract export and SDK refresh into mixed development.
 - [x] Add Docker Compose service entries for Rust services.
 - [x] Add health check defaults for Rust services.
 - [x] Add Rust test commands to app-level scripts.
@@ -1377,3 +1378,22 @@ policy inheritance and override preservation for both protocols. Local Bun 1.2.1
 confirms configuration/install/build compatibility; these checks do not establish
 release-age enforcement behavior across Bun versions. Mixed development and
 platform deployment remain open.
+
+
+Mixed development checkpoint (2026-10-12): `forklaunch dev` resolves Compose and
+starts native services/workers with debug compilation, source mounts, project-scoped
+Cargo caches and restart watches for registered crates/libraries/frameworks/SDKs.
+TypeScript services retain their existing development commands. Selection and
+dependency closure preserve infrastructure containers and inactive native projects.
+Private temporary configuration and signal supervision preserve application files
+and stop Compose before CLI exit. Generated root workspaces expose the command
+through their dev script while preserving custom scripts. Native watch requires
+Compose 2.32; custom native entrypoints require explicit development configuration.
+
+Actual Rust-first Node and TypeScript-first Bun applications both pass HTTP/MCP
+startup, initialization/discovery/tool calls, Rust and TypeScript source reloads,
+HTTP/MCP after edits and SIGTERM shutdown. The fixture caught and fixed root
+Compose bind paths incorrectly interpreted as named volumes. All 1,057 CLI tests
+pass; CI runs both runtime variants through rust_mixed_dev.sh. Production Compose
+and Dockerfiles remain unchanged. Automatic source-to-contract/SDK refresh,
+Windows runtime validation and platform deployment remain separate work.

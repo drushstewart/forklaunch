@@ -1695,6 +1695,7 @@ fn mixed_typescript_sdk_templates(root_path: &Path, name: &str) -> Vec<RenderedT
                 "type": "module",
                 "packageManager": "pnpm@10.0.0",
                 "scripts": {
+                    "dev": "forklaunch dev",
                     "rust:build": "cargo build --workspace",
                     "rust:test": "cargo test --workspace",
                     "rust:fmt": "cargo fmt --all",

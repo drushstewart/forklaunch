@@ -59,8 +59,8 @@ separate native container build are validated.
 Install the TypeScript application's dependencies before exporting all services,
 then run `forklaunch openapi export` and `forklaunch sdk generate --target all
 --from contract` to build the shared HTTP SDK described below. Adding TypeScript
-scaffolding to a Rust-first app is described below; unified development
-orchestration remains tracked work.
+scaffolding to a Rust-first app and mixed development with `forklaunch dev` are
+described below.
 
 ## Add TypeScript to an existing Rust application
 
@@ -89,7 +89,8 @@ The migration preserves native Dockerfiles, Compose entries and SDK target
 selection, including Rust-only SDK selection. `rust_typescript_attach.sh` checks
 all four initial project kinds, actual package installation and compilation,
 unmodified TypeScript HTTP/MCP startup, and the native HTTP/MCP listener matrix.
-Unified development orchestration and deployment validation remain separate work.
+Mixed development is available through `forklaunch dev`; platform deployment
+validation remains separate work.
 
 ## Native Better Auth
 
@@ -217,8 +218,8 @@ TypeScript service names in `.forklaunch/sdk/http-sources.json`; keep this file
 with the application so lifecycle regeneration can reject missing exports instead
 of silently dropping clients. A newly registered TypeScript service without an
 export is skipped only by internal lifecycle refresh; explicit SDK generation
-requires every selected service's artifact. Unified mixed development
-orchestration remains tracked separately.
+requires every selected service's artifact. `forklaunch dev` rebuilds services;
+contract export and SDK watching remain separate commands.
 
 OpenAPI export refreshes each service's configured `openapiPath` as well as the
 requested `<output>/<service>/openapi.json` layout, for both native and TypeScript
@@ -244,8 +245,8 @@ projects, restores registered native Cargo members at custom paths, and removes
 missing native registrations and their generated library dependencies. It exports
 both languages and refreshes the configured `sdkTargets`; a Rust-only target does
 not create a TypeScript SDK workspace. Unrecognized directories are skipped with
-a warning, and project sync failures stop the command. Unified development
-orchestration remains tracked work.
+a warning, and project sync failures stop the command. Use `forklaunch dev` for
+mixed service startup and source reloads.
 
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape. Lifecycle SDK refresh preserves each available service contract independently; a missing artifact falls back only for that service, while malformed artifacts fail explicitly. Generated service fallback methods keep their exported names (`getHealth`, `listUsers`). Deletion refreshes existing Rust SDK crates as well as an existing TypeScript client, including Rust-only applications.
 
@@ -278,6 +279,36 @@ and callers must inspect each service's result. The mixed compliance fixture
 checks both IAM variants, real legacy/generated SDK HTTP calls, bearer propagation,
 response typing, business errors and missing adapters; persistence semantics are
 validated separately by the module suites.
+
+## Mixed development
+
+```sh
+forklaunch dev
+forklaunch dev native-api legacy-api --no-deps
+forklaunch dev --dryrun
+```
+
+The command resolves the application's Compose file and optional `--compose-file`
+overrides, then starts the selected services and their dependencies. Generated root package workspaces expose this through `pnpm dev` or `bun run dev`;
+existing custom scripts are preserved. If JavaScript tooling lives only under
+`modules/`, invoke `forklaunch dev` from the application root. No account login is required.
+
+Native services compile debug binaries inside a Rust development image, with the
+application mounted at `/app` and Cargo output/registry/git caches in separate
+project-scoped Docker volumes. Registered native crate paths, libraries, bundled
+frameworks, native SDKs and Cargo manifests trigger a restart and rebuild. Native
+auxiliary workers retain their launch arguments. TypeScript services retain their
+existing Compose development commands and reload behavior. Ctrl-C or SIGTERM
+stops Compose before the CLI removes its private temporary configuration; the
+application's Compose files and production Dockerfiles are preserved.
+
+Native reloads require [Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
+Use `--no-watch` to start without Compose reloads, `--no-build` to reuse images,
+and `--project-name` to select the Compose project. `--no-deps` starts only the
+named services; configure required databases or providers through the existing
+Compose/environment settings. Automatic native startup supports generated binary
+commands; custom entrypoints require an explicit development setup. Dry-run shows
+the native changes without starting containers or writing application files.
 
 ## Portable source and containers
 

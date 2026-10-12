@@ -229,6 +229,9 @@ pub(super) fn plan_typescript_sdk(
             .entry(format!("{prefix}:{name}"))
             .or_insert(json!(command));
     }
+    if root.join("Cargo.toml").is_file() {
+        scripts.entry("dev").or_insert(json!("forklaunch dev"));
+    }
     if has_modules {
         let build = if bun {
             "bun run --filter '*' --if-present build"
