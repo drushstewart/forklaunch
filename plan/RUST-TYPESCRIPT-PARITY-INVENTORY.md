@@ -1137,3 +1137,30 @@ languages, checks both SDK formats, replaces stale registered files through an
 explicit `--output`, then passes workspace compilation, HTTP/MCP startup and
 lifecycle cleanup. All 1,035 CLI tests and the release orchestration regression
 pass. This closes artifact-path export consistency; broader parity gaps remain.
+
+
+Rust-first TypeScript attachment checkpoint (2026-10-12): the previous generated
+Rust app rejected TypeScript service initialization with `Invalid TestFramework:
+cargo-test`. Initialization now stages the standard Node/Express/Zod workspace
+and requested TypeScript project before publishing changed files. The app switches
+to mixed metadata and Node tooling while retaining native Cargo paths, sources,
+Dockerfiles, Compose entries, SDK targets, package scripts and custom dependency
+versions. Root PNPM membership includes modules and existing SDKs; default build
+runs Cargo plus all JavaScript packages, and other JS tool commands run where
+their configuration lives. Atomic file replacement, internal symlink rebasing,
+external-link rejection and changed-file conflict detection protect application
+files. Dry-run and rejected project generation leave the app byte-for-byte intact.
+The modules directory and foundational project names must be available.
+
+The actual CLI fixture checks service/worker/library/CAC-module first attachment,
+Rust-only SDK selection, subsequent native initialization, and reserved-name
+rejection. It uses an empty named account: local TypeScript application generation
+no longer performs the unused token lookup/refresh that previously gated rendering.
+Real dependency installation and the combined Cargo/TypeScript workspace build
+pass. The unmodified generated TypeScript service answers HTTP and MCP
+initialization/discovery/tool invocation; the native service passes the full
+HTTP/MCP configuration/startup/shutdown matrix. All 1,038 CLI tests and the existing
+mixed rename/sync/delete/router regression pass. CI includes
+`rust_typescript_attach.sh`. This closes default Rust-first workspace scaffolding;
+unified development orchestration, mixed compliance aggregation and platform
+deployment validation remain separate work.

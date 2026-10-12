@@ -59,8 +59,37 @@ separate native container build are validated.
 Install the TypeScript application's dependencies before exporting all services,
 then run `forklaunch openapi export` and `forklaunch sdk generate --target all
 --from contract` to build the shared HTTP SDK described below. Adding TypeScript
-scaffolding to a Rust-first app and application-wide mixed orchestration remain
-tracked work.
+scaffolding to a Rust-first app is described below; unified development
+orchestration remains tracked work.
+
+## Add TypeScript to an existing Rust application
+
+```sh
+forklaunch init service legacy-api --language typescript -d postgresql -D "Legacy API"
+pnpm install
+pnpm build
+```
+
+The first TypeScript service, worker, library or module adds a `modules` workspace
+using Node, Express, Zod, Prettier, ESLint and Vitest. Application settings switch
+to those JavaScript tools and mark the app mixed; native projects retain their
+Cargo paths and sources. The root package workspace includes both TypeScript
+projects and existing SDK packages. Existing scripts and dependency versions are
+preserved; missing root build/tool commands are added. `pnpm build` builds Cargo
+and JavaScript packages when no custom root build script already exists.
+
+Initialization stages the workspace and requested project before updating the
+application. `--dryrun` leaves it unchanged, and failed project generation does
+not publish the staged workspace. The `modules` directory and foundational
+project names (`core`, `monitoring`, `client-sdk`) must be available. External
+application symlinks are rejected during staging; internal links are preserved.
+Local application scaffolding does not require a platform login.
+
+The migration preserves native Dockerfiles, Compose entries and SDK target
+selection, including Rust-only SDK selection. `rust_typescript_attach.sh` checks
+all four initial project kinds, actual package installation and compilation,
+unmodified TypeScript HTTP/MCP startup, and the native HTTP/MCP listener matrix.
+Unified development orchestration and deployment validation remain separate work.
 
 ## Native Better Auth
 
@@ -172,8 +201,8 @@ TypeScript service names in `.forklaunch/sdk/http-sources.json`; keep this file
 with the application so lifecycle regeneration can reject missing exports instead
 of silently dropping clients. A newly registered TypeScript service without an
 export is skipped only by internal lifecycle refresh; explicit SDK generation
-requires every selected service's artifact. Mixed TypeScript scaffolding and
-development orchestration are tracked separately.
+requires every selected service's artifact. Unified mixed development
+orchestration remains tracked separately.
 
 OpenAPI export refreshes each service's configured `openapiPath` as well as the
 requested `<output>/<service>/openapi.json` layout, for both native and TypeScript
@@ -199,8 +228,8 @@ projects, restores registered native Cargo members at custom paths, and removes
 missing native registrations and their generated library dependencies. It exports
 both languages and refreshes the configured `sdkTargets`; a Rust-only target does
 not create a TypeScript SDK workspace. Unrecognized directories are skipped with
-a warning, and project sync failures stop the command. Rust-first TypeScript
-scaffolding and unified development orchestration remain tracked work.
+a warning, and project sync failures stop the command. Unified development
+orchestration remains tracked work.
 
 `sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape. Lifecycle SDK refresh preserves each available service contract independently; a missing artifact falls back only for that service, while malformed artifacts fail explicitly. Generated service fallback methods keep their exported names (`getHealth`, `listUsers`). Deletion refreshes existing Rust SDK crates as well as an existing TypeScript client, including Rust-only applications.
 

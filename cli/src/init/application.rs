@@ -82,7 +82,6 @@ use crate::{
         rendered_template::{RenderedTemplate, create_forklaunch_dir, write_rendered_templates},
         symlinks::generate_symlinks,
         template::{PathIO, generate_with_template, get_routers_from_standard_package},
-        token::get_token,
         tsconfig::generate_modules_tsconfig,
         vscode::generate_vscode_settings,
     },
@@ -459,9 +458,6 @@ impl CliCommand for ApplicationCommand {
         if rust_project::uses_rust_generation(matches) {
             return rust_project::generate_rust_application(matches);
         }
-
-        // TODO: Include basic token checks (expiration, permissions mapping) in this method, but retrieve token from parent command
-        let _token = get_token()?;
 
         let mut line_editor = Editor::<ArrayCompleter, DefaultHistory>::new()?;
         let mut stdout = StandardStream::stdout(ColorChoice::Always);

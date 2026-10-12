@@ -30,7 +30,8 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [x] Dispatch per-project sync/delete by project language; preserve mixed manifest fields through TypeScript init/change/delete and async router removal. Actual Rust/TypeScript service, worker and library sync/rename/delete, preservation on unsupported router edits, all 1,025 CLI tests and native sync/delete regressions pass.
 - [x] Attach native services/workers/libraries/modules directly to existing Node/Bun applications. Preserve TypeScript source/tooling and Cargo settings, generate a separate native Dockerfile, and validate relocation, both runtime variants, HTTP/MCP startup and the mixed native container.
 - [x] Complete application-wide mixed sync, custom native member/dependency cleanup and SDK target selection (2026-10-12 runtime and CLI validation).
-- [ ] Finish Rust-first TypeScript scaffolding and development orchestration (phases 13–15).
+- [x] Add TypeScript workspaces to Rust-first applications with staged initialization, both package trees and native source preservation.
+- [ ] Finish unified mixed development orchestration (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
 - [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive installation is checked; no crate has been published during this port.
@@ -1262,3 +1263,30 @@ languages, checks both SDK formats, replaces stale registered files through an
 explicit `--output`, then passes workspace compilation, HTTP/MCP startup and
 lifecycle cleanup. All 1,035 CLI tests and the release orchestration regression
 pass. This closes artifact-path export consistency; broader parity gaps remain.
+
+
+Rust-first TypeScript attachment checkpoint (2026-10-12): the previous generated
+Rust app rejected TypeScript service initialization with `Invalid TestFramework:
+cargo-test`. Initialization now stages the standard Node/Express/Zod workspace
+and requested TypeScript project before publishing changed files. The app switches
+to mixed metadata and Node tooling while retaining native Cargo paths, sources,
+Dockerfiles, Compose entries, SDK targets, package scripts and custom dependency
+versions. Root PNPM membership includes modules and existing SDKs; default build
+runs Cargo plus all JavaScript packages, and other JS tool commands run where
+their configuration lives. Atomic file replacement, internal symlink rebasing,
+external-link rejection and changed-file conflict detection protect application
+files. Dry-run and rejected project generation leave the app byte-for-byte intact.
+The modules directory and foundational project names must be available.
+
+The actual CLI fixture checks service/worker/library/CAC-module first attachment,
+Rust-only SDK selection, subsequent native initialization, and reserved-name
+rejection. It uses an empty named account: local TypeScript application generation
+no longer performs the unused token lookup/refresh that previously gated rendering.
+Real dependency installation and the combined Cargo/TypeScript workspace build
+pass. The unmodified generated TypeScript service answers HTTP and MCP
+initialization/discovery/tool invocation; the native service passes the full
+HTTP/MCP configuration/startup/shutdown matrix. All 1,038 CLI tests and the existing
+mixed rename/sync/delete/router regression pass. CI includes
+`rust_typescript_attach.sh`. This closes default Rust-first workspace scaffolding;
+unified development orchestration, mixed compliance aggregation and platform
+deployment validation remain separate work.
