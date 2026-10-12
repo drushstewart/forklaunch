@@ -41,7 +41,7 @@ async fn main() {
         let input: Value = literal_json::parse(&line.unwrap()).unwrap();
         clock.store(input["now"].as_i64().unwrap(), Ordering::SeqCst);
         let result = match input["op"].as_str().unwrap() {
-            "seed" => seed(&store, &input).await,
+            "seed" | "replace-seed" => seed(&store, &input).await,
             "records" => records(&store, &input).await,
             "set" => set_password(store.clone(), &input).await,
             "addMember" => add_member(store.clone(), &input).await,
@@ -136,6 +136,15 @@ const MODELS: &[(&str, Model)] = &[
 ];
 async fn seed(store: &MemoryAuthStore, input: &Value) -> Value {
     let mut tx = store.begin(true).await.unwrap();
+    if input["op"] == "replace-seed" {
+        for (_, model) in MODELS {
+            for row in tx.list(*model).await.unwrap() {
+                tx.delete(*model, row["id"].as_str().unwrap())
+                    .await
+                    .unwrap();
+            }
+        }
+    }
     for (field, model) in MODELS {
         for row in input[field].as_array().into_iter().flatten() {
             tx.insert(*model, row.clone()).await.unwrap();

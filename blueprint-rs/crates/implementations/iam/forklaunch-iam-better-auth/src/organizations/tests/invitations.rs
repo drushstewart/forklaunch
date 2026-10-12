@@ -1,4 +1,5 @@
 use super::*;
+mod creation;
 mod mutations;
 pub(super) async fn exercise<S: AuthStore>(store: Arc<S>) {
     let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
@@ -69,5 +70,6 @@ pub(super) async fn exercise<S: AuthStore>(store: Arc<S>) {
         "Invitation not found!"
     );
     mutations::exercise(store.clone(), &service, token, org, now).await;
+    creation::exercise(store.clone(), &service, token, org, now).await;
     sessions.sign_out(token).await.unwrap();
 }

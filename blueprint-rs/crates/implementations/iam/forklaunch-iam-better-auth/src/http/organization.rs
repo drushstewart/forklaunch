@@ -131,6 +131,7 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
         routing::{get, post},
     };
     Router::new()
+        .route("/organization/invite-member", post(dispatch::<S>))
         .route("/organization/reject-invitation", post(dispatch::<S>))
         .route("/organization/cancel-invitation", post(dispatch::<S>))
         .route(

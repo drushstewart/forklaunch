@@ -1081,3 +1081,12 @@ server-only helpers. Checkout CLI rebuilt afterward (16.84 seconds).
 - [x] Port invitation lookup, organization lists and received-user lists with configured verified-email/error ordering, recipient scope, expiry boundaries, joined inviter details and adapter limit-before-status filtering. All 258 actual HTTP/storage/cookie comparisons pass, including HEAD/POST/OPTIONS fallback behavior. Memory/restricted PostgreSQL and live HTTP/JWT/MCP cover all three read routes. Invitation mutations, dynamic roles and remaining helper/provider/preset gates stay open.
 
 - [x] Port invitation rejection/cancellation with verified-recipient and scoped permission ordering, exact error messages, expiry/status distinctions and retained membership/session state. All 318 actual HTTP/storage/cookie comparisons and 258 invitation-read regressions pass. Memory/restricted PostgreSQL cover repeated/concurrent cancellation; live HTTP runs both routes beside JWT/MCP. Invitation creation/acceptance and remaining dynamic-role/provider/helper/preset gates stay open.
+
+Fresh archive `v8nGhW` at `51973fa19` passes relocated auth tests, live HTTP/JWT/
+MCP and the full generated service HTTP/MCP listener/startup matrix. Portable
+services/workers, both SDK generators and five signed callbacks pass. The
+snapshot contains 53 raw routes, including JSON metadata and invitation
+reads/rejection/cancellation. Checkout CLI rebuilt from subsequent creation
+sources afterward.
+
+- [x] Port invitation creation/resend with exact scoped authorization, verbatim role/creator rules, duplicate-member/invitation ordering, team validation, 48-hour expiry and bounded pending-invitation admission. All 196 actual HTTP/storage/cookie comparisons and invitation/member regressions pass. Resend preserves stored role/teams and precedes team/limit checks. Memory/restricted PostgreSQL verify concurrent last-slot admission and retained team/member state; live HTTP runs creation/resend beside JWT/MCP. Acceptance, dynamic roles and remaining provider/helper/ORM/callback/preset gates stay open.

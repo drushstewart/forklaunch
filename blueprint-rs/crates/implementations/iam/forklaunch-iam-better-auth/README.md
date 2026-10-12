@@ -325,3 +325,11 @@ pending invitations; scoped invitation:cancel can replace any status repeatedly.
 Neither operation changes membership or session selections. Memory/restricted
 PostgreSQL cover concurrent cancellation; live HTTP runs both routes beside JWT/
 MCP. Invitation creation/acceptance and remaining full-preset gates stay open.
+
+Fifty-four raw routes include invitation creation/resend. All 196 actual HTTP/
+storage/cookie comparisons pass, including role and creator rules, scoped grants,
+member/invitation duplicates, team validation and bounded invitation limits.
+Resend updates expiry while retaining stored role/teams, before team/limit checks.
+Memory/restricted PostgreSQL verify concurrent last-slot admission and retained
+team/member state; live HTTP runs creation/resend beside JWT/MCP. Acceptance and
+remaining full-preset gates stay open.

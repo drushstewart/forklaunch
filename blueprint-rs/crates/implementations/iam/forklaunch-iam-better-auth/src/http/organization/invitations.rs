@@ -1,3 +1,4 @@
+mod creation_validation;
 use super::validation::{received, validation};
 use super::{AuthStore, BlueprintResult, DateTime, HashMap, OrganizationService, Utc, Value};
 pub(in crate::http) fn is_route(path: &str) -> bool {
@@ -8,6 +9,7 @@ pub(in crate::http) fn is_route(path: &str) -> bool {
             | "/organization/list-user-invitations"
             | "/organization/reject-invitation"
             | "/organization/cancel-invitation"
+            | "/organization/invite-member"
     )
 }
 pub(super) fn validate_query(path: &str, query: &HashMap<String, Value>) -> BlueprintResult<()> {
@@ -36,6 +38,11 @@ pub(super) async fn handle<S: AuthStore>(
 ) -> BlueprintResult<Option<Value>> {
     let (token, transient) = session;
     Ok(Some(match path {
+        "/organization/invite-member" => {
+            service
+                .create_invitation(token, transient, body, now)
+                .await?
+        }
         "/organization/reject-invitation" => {
             service
                 .reject_invitation(
@@ -91,6 +98,9 @@ pub(super) async fn handle<S: AuthStore>(
 }
 
 pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
+    if path == "/organization/invite-member" {
+        return creation_validation::validate(body);
+    }
     if !matches!(
         path,
         "/organization/reject-invitation" | "/organization/cancel-invitation"
