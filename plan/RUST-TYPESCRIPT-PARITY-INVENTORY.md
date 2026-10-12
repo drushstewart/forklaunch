@@ -855,3 +855,11 @@ and disabled MCP listeners, restart persistence, graceful shutdown, rename,
 contract/SDK refresh and deletion. All 1,016 CLI tests pass. E2E CI includes the
 fixture and archive installation includes the new preset. Custom callback
 helpers, additional docs sources and complete ORM/hooks remain open.
+
+Fresh archive installation `XXfFfM` (snapshot `f288c81c4`) passes with the
+new native Better Auth preset: portable service and SDK compilation, all 27
+packaged auth tests, every other portable service/four worker backends,
+CLI/native SDK generation and the complete generated HTTP/MCP startup matrix.
+All five actual-TypeScript-signed managed capability callbacks pass. The checkout
+CLI was restored after archive installation. Callback-helper changes after this
+snapshot have separate validation.
