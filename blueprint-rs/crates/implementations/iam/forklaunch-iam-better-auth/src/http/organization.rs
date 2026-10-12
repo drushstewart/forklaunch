@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 mod members;
 mod mutation_validation;
+mod teams;
 mod validation;
 pub(super) use validation::{validate_body, validate_query};
 
@@ -24,6 +25,9 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     let service = OrganizationService::new(app.store.clone());
     let (token, transient) = session;
     if let Some(body) = members::handle(&service, path, payload, query, session, now).await? {
+        return Ok(body);
+    }
+    if let Some(body) = teams::handle(&service, path, query, session, now).await? {
         return Ok(body);
     }
     match path {
@@ -79,8 +83,14 @@ pub(super) async fn handle<S: AuthStore + 'static>(
                 )
                 .await
         }
-        "/organization/set-active" => {
-            let result = service.set_active(token, transient, payload, now).await?;
+        "/organization/set-active" | "/organization/set-active-team" => {
+            let result = if path == "/organization/set-active-team" {
+                service
+                    .set_active_team(token, transient, payload, now)
+                    .await?
+            } else {
+                service.set_active(token, transient, payload, now).await?
+            };
             if result.cookie {
                 set_cookie(
                     pending,

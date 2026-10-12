@@ -3,6 +3,7 @@ mod additions;
 mod listing;
 mod members;
 mod permissions;
+mod teams;
 
 pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
     let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
@@ -94,7 +95,8 @@ pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
     permissions::exercise_permissions(store.clone()).await;
     members::exercise_members(store.clone()).await;
     additions::exercise_additions(store.clone()).await;
-    listing::exercise_listing(store).await;
+    listing::exercise_listing(store.clone()).await;
+    teams::exercise_teams(store).await;
 }
 
 async fn exercise_selection<S: AuthStore>(

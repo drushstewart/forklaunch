@@ -131,6 +131,19 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 "/organization/list-members",
                 get(dispatch::<S>).head(not_found),
             )
+            .route(
+                "/organization/list-teams",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route(
+                "/organization/list-user-teams",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route(
+                "/organization/list-team-members",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route("/organization/set-active-team", post(dispatch::<S>))
             .route("/organization/leave", post(dispatch::<S>))
             .route("/organization/update-member-role", post(dispatch::<S>))
             .route("/organization/remove-member", post(dispatch::<S>))
@@ -399,6 +412,13 @@ fn clear(cookie: SessionCookie, headers: &mut HeaderMap) -> BlueprintResult<()> 
     Ok(())
 }
 fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
+    if error.code == "USER_IS_NOT_A_MEMBER_OF_THE_TEAM" && path == "/organization/set-active-team" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"code":error.code,"message":error.message})),
+        )
+            .into_response();
+    }
     if error.code == "UNAUTHORIZED" {
         if matches!(path, "/organization/create" | "/organization/delete") {
             return StatusCode::UNAUTHORIZED.into_response();
@@ -413,7 +433,9 @@ fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
     }
     if error.code == "USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION" {
         let status = match path {
-            "/organization/update" | "/organization/delete" => StatusCode::BAD_REQUEST,
+            "/organization/update" | "/organization/delete" | "/organization/list-user-teams" => {
+                StatusCode::BAD_REQUEST
+            }
             "/organization/has-permission" => StatusCode::UNAUTHORIZED,
             _ => StatusCode::FORBIDDEN,
         };
@@ -450,6 +472,7 @@ fn failure(error: &BlueprintError) -> Response {
         | "INVALID_EMAIL_OR_PASSWORD"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER" => StatusCode::UNAUTHORIZED,
         "YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION"
+        | "YOU_ARE_NOT_ALLOWED_TO_ACCESS_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER"
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION"

@@ -1057,3 +1057,11 @@ and server-only member/password helpers, before member listing. Checkout CLI is
 rebuilt from the subsequent listing sources.
 
 - [x] Port scoped member listing with schema/error ordering, public-user joins, filtered totals, stable en-US ICU sorting and ECMAScript Number/slice pagination. All 340 actual HTTP/storage/cookie comparisons pass, including unknown fields, malformed filter operators and orphan users. Memory/restricted PostgreSQL and live HTTP/JWT/MCP cover the new route. Real ORM collation/query conformance and remaining team/invitation/dynamic-role/preset gates stay open.
+
+Fresh archive `YdLskR` at `05723e998` passes portable auth tests (14 passed, one
+explicit-PostgreSQL test ignored), including ICU member listing, live auth HTTP/
+JWT/MCP, all generated listener/startup configurations, portable workers/services,
+both SDK generators and five signed capability callbacks. Checkout CLI is rebuilt
+from the subsequent team sources.
+
+- [x] Add organization/user team lists, team-member reads and active-team selection with exact scope, membership, permission, projection and cookie rules. All 318 actual HTTP/storage/cookie comparisons pass, including transient cookies, timestamp changes, retained memberships and malformed grants. Memory/restricted PostgreSQL and live HTTP/JWT/MCP validate team/session persistence. Team mutations, invitation/dynamic-role management, helpers and preset gates remain open.

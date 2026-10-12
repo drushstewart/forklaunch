@@ -79,6 +79,7 @@ on:
       - 'cli/tests/rust_better_auth_members.mjs'
       - 'cli/tests/rust_better_auth_add_member.mjs'
       - 'cli/tests/rust_better_auth_list_members.mjs'
+      - 'cli/tests/rust_better_auth_teams.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
       - 'cli/tests/rust_better_auth_email_tokens.mjs'
       - 'cli/tests/rust_better_auth_email_verification.mjs'
@@ -199,6 +200,7 @@ on:
       - 'cli/tests/rust_better_auth_members.mjs'
       - 'cli/tests/rust_better_auth_add_member.mjs'
       - 'cli/tests/rust_better_auth_list_members.mjs'
+      - 'cli/tests/rust_better_auth_teams.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
       - 'cli/tests/rust_better_auth_email_tokens.mjs'
       - 'cli/tests/rust_better_auth_email_verification.mjs'
@@ -480,6 +482,10 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_list_members.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_teams.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

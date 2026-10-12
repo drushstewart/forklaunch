@@ -1,5 +1,6 @@
 use super::*;
 mod members;
+mod teams;
 pub(super) async fn exercise<S: AuthStore>(
     client: &reqwest::Client,
     base: &str,
@@ -90,6 +91,7 @@ pub(super) async fn exercise<S: AuthStore>(
     assert!(view["session"]["activeOrganizationId"].is_null());
     assert_eq!(view["session"]["activeTeamId"], graph["teams"][0]["id"]);
     members::exercise(client, base, cookie, store, id).await;
+    teams::exercise(client, base, cookie).await;
     mutations(client, base, cookie, store, id).await;
 }
 

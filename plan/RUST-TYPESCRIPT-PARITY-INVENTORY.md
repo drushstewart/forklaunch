@@ -485,3 +485,15 @@ Memory/restricted PostgreSQL cover filtering, Unicode pages and orphan failures;
 live HTTP listing runs beside session/JWT and MCP lifecycle. Team/invitation/
 dynamic-role management, provider flows, remaining server JWT helpers, real ORM,
 callbacks and generated preset remain open.
+
+Forty-three native raw auth routes include organization/user team lists, team
+member reads and active-team selection. All 318 actual HTTP/storage/cookie
+comparisons pass, including self scope across organizations, permission-gated
+other-user reads, malformed grants, distinct organization/team membership guards,
+internal counter/key projections, transient cookies and selection timestamps.
+Selection preserves the active organization; clearing an existing selection emits
+a cookie once, while successful selection emits one even when unchanged. Memory
+and restricted PostgreSQL verify team/session persistence and live HTTP alongside
+JWT/MCP lifecycle. Team mutations, invitations, dynamic-role management, provider
+flows, remaining JWT helpers, real ORM/callback and generated preset gates remain
+open.
