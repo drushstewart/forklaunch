@@ -3,6 +3,7 @@ mod additions;
 mod listing;
 mod members;
 mod permissions;
+mod team_mutations;
 mod teams;
 
 pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
@@ -96,7 +97,8 @@ pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
     members::exercise_members(store.clone()).await;
     additions::exercise_additions(store.clone()).await;
     listing::exercise_listing(store.clone()).await;
-    teams::exercise_teams(store).await;
+    teams::exercise_teams(store.clone()).await;
+    team_mutations::exercise_mutations(store).await;
 }
 
 async fn exercise_selection<S: AuthStore>(

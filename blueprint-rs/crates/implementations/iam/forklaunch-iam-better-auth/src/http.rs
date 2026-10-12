@@ -144,6 +144,9 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 get(dispatch::<S>).head(not_found),
             )
             .route("/organization/set-active-team", post(dispatch::<S>))
+            .route("/organization/create-team", post(dispatch::<S>))
+            .route("/organization/update-team", post(dispatch::<S>))
+            .route("/organization/remove-team", post(dispatch::<S>))
             .route("/organization/leave", post(dispatch::<S>))
             .route("/organization/update-member-role", post(dispatch::<S>))
             .route("/organization/remove-member", post(dispatch::<S>))
@@ -322,7 +325,7 @@ async fn handle<S: AuthStore + 'static>(
     if path == "/get-session" {
         return app.session_response(view, pending, now).await;
     }
-    let view = view.ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))?;
+    let view = required_view(view, path, &payload)?;
     if path.starts_with("/organization/") {
         return organization::handle(
             app,
@@ -420,7 +423,13 @@ fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
             .into_response();
     }
     if error.code == "UNAUTHORIZED" {
-        if matches!(path, "/organization/create" | "/organization/delete") {
+        if matches!(
+            path,
+            "/organization/create"
+                | "/organization/delete"
+                | "/organization/create-team"
+                | "/organization/remove-team"
+        ) {
             return StatusCode::UNAUTHORIZED.into_response();
         }
         if path == "/organization/update" {
@@ -473,6 +482,11 @@ fn failure(error: &BlueprintError) -> Response {
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER" => StatusCode::UNAUTHORIZED,
         "YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_ACCESS_THIS_ORGANIZATION"
+        | "YOU_ARE_NOT_ALLOWED_TO_INVITE_USERS_TO_THIS_ORGANIZATION"
+        | "YOU_ARE_NOT_ALLOWED_TO_CREATE_TEAMS_IN_THIS_ORGANIZATION"
+        | "YOU_ARE_NOT_ALLOWED_TO_DELETE_TEAMS_IN_THIS_ORGANIZATION"
+        | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_TEAM"
+        | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_TEAM"
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER"
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION"
@@ -509,4 +523,21 @@ fn failure(error: &BlueprintError) -> Response {
 
 async fn not_found() -> StatusCode {
     StatusCode::NOT_FOUND
+}
+
+fn required_view(
+    view: Option<SessionView>,
+    path: &str,
+    payload: &Value,
+) -> BlueprintResult<SessionView> {
+    if view.is_none()
+        && path == "/organization/remove-team"
+        && payload["organizationId"].as_str().is_none_or(str::is_empty)
+    {
+        return Err(BlueprintError::new(
+            "NO_ACTIVE_ORGANIZATION",
+            "No active organization",
+        ));
+    }
+    view.ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))
 }

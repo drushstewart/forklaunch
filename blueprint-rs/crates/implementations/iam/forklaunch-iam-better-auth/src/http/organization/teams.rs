@@ -1,9 +1,13 @@
+mod mutation_validation;
 use super::validation::{received, validation};
 use super::{AuthStore, BlueprintResult, DateTime, HashMap, OrganizationService, Utc, Value};
 pub(super) fn is_route(path: &str) -> bool {
     matches!(
         path,
-        "/organization/list-teams"
+        "/organization/create-team"
+            | "/organization/update-team"
+            | "/organization/remove-team"
+            | "/organization/list-teams"
             | "/organization/list-user-teams"
             | "/organization/list-team-members"
             | "/organization/set-active-team"
@@ -12,6 +16,7 @@ pub(super) fn is_route(path: &str) -> bool {
 pub(super) async fn handle<S: AuthStore>(
     service: &OrganizationService<S>,
     path: &str,
+    body: &Value,
     query: &HashMap<String, Value>,
     session: (&str, bool),
     now: DateTime<Utc>,
@@ -19,6 +24,9 @@ pub(super) async fn handle<S: AuthStore>(
     let (token, transient) = session;
     let query = serde_json::json!(query);
     Ok(Some(match path {
+        "/organization/create-team" => service.create_team(token, transient, body, now).await?,
+        "/organization/update-team" => service.update_team(token, transient, body, now).await?,
+        "/organization/remove-team" => service.remove_team(token, transient, body, now).await?,
         "/organization/list-teams" => service.list_teams(token, transient, &query, now).await?,
         "/organization/list-user-teams" => {
             service
@@ -34,6 +42,12 @@ pub(super) async fn handle<S: AuthStore>(
     }))
 }
 pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
+    if matches!(
+        path,
+        "/organization/create-team" | "/organization/update-team" | "/organization/remove-team"
+    ) {
+        return mutation_validation::validate(path, body);
+    }
     if path != "/organization/set-active-team" {
         return Ok(());
     }

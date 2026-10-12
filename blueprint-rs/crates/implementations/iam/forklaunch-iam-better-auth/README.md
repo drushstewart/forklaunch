@@ -273,3 +273,16 @@ and restricted PostgreSQL verify team/session persistence and live HTTP alongsid
 JWT/MCP lifecycle. Team mutations, invitations, dynamic-role management, provider
 flows, remaining JWT helpers, real ORM/callback and generated preset gates remain
 open.
+
+Forty-six native raw auth routes include team creation, name updates and removal.
+All 110 actual HTTP/storage/cookie comparisons pass, including mutation-specific
+authorization and unauthenticated error ordering, schema/field stripping, stored
+grant failures, active-team protection and last-team safeguards. Creation stores
+zero members without enrolling the actor; updates retain organization/counters.
+Removal atomically deletes memberships and removes the team's comma-separated
+references from the first 100 pending invitations that have not expired. Expired/
+accepted invitations and other sessions' active-team selections remain unchanged.
+Memory/restricted PostgreSQL verify concurrent removals preserve the last team,
+invitation cleanup and live HTTP mutations beside JWT/MCP lifecycle. Adding and
+removing team members, invitations, dynamic roles, providers, server JWT helpers,
+real ORM/callback and generated preset gates remain open.

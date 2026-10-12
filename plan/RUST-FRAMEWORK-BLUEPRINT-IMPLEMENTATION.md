@@ -1065,3 +1065,5 @@ both SDK generators and five signed capability callbacks. Checkout CLI is rebuil
 from the subsequent team sources.
 
 - [x] Add organization/user team lists, team-member reads and active-team selection with exact scope, membership, permission, projection and cookie rules. All 318 actual HTTP/storage/cookie comparisons pass, including transient cookies, timestamp changes, retained memberships and malformed grants. Memory/restricted PostgreSQL and live HTTP/JWT/MCP validate team/session persistence. Team mutations, invitation/dynamic-role management, helpers and preset gates remain open.
+
+- [x] Port team creation/update/removal with scoped dynamic grants, mutation-specific error ordering, field stripping, active/last-team protections and live pending-invitation cleanup. All 110 actual HTTP/storage/cookie comparisons pass. Memory/restricted PostgreSQL validate concurrent removal preserves the last team, cleanup and live HTTP mutations beside JWT/MCP. Team-member mutations, invitations, dynamic roles and remaining preset/provider gates remain open.

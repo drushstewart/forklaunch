@@ -27,7 +27,7 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     if let Some(body) = members::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);
     }
-    if let Some(body) = teams::handle(&service, path, query, session, now).await? {
+    if let Some(body) = teams::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);
     }
     match path {
