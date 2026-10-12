@@ -4,12 +4,14 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import tomllib
 
 repo = Path(__file__).resolve().parents[2]
 binary = Path(os.environ.get('FORKLAUNCH_CLI', repo / 'cli/target/debug/forklaunch')).resolve()
 socket = os.environ.get('FORKLAUNCH_TEST_SOCKET_WORKSPACE') == '1'
+socket_source = 'all' if os.environ.get('FORKLAUNCH_TEST_COMBINED_SDK') == '1' else 'socket-contract'
 output = repo / 'cli/tests/output' / ('rust-socket-workspace' if socket else 'rust-sdk-workspace')
 output.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='run.', dir=output)).resolve()
@@ -32,21 +34,36 @@ for runtime in os.environ.get('FORKLAUNCH_TEST_WORKSPACE_RUNTIMES', 'node,bun').
         artifact = app / '.forklaunch/socket-contracts/native-api/socket-contract.json'
         artifact.parent.mkdir(parents=True, exist_ok=True)
         artifact.write_bytes((repo / 'cli/tests/fixtures/rust_socket_contract.json').read_bytes())
-        cli('sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract', '--service', 'native-api')
-        cli('sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract', '--service', 'native-api', '--check')
+        if socket_source == 'all':
+            contract = app / '.forklaunch/contracts/native-api/contract.json'
+            contract.parent.mkdir(parents=True, exist_ok=True)
+            contract.write_text(json.dumps({
+                'formatVersion': 'forklaunch.contract.v1', 'generator': 'framework-rs',
+                'service': {'name': 'native-api', 'version': '0.1.0'},
+                'routes': [{'name': 'Get Health', 'operationName': 'getHealth', 'method': 'GET',
+                            'path': '/health', 'request': {'params': [], 'query': [], 'headers': []},
+                            'responses': [{'statusCode': 200, 'body': {'kind': 'json',
+                                'schema': {'name': 'Health', 'jsonSchema': {'type': 'object',
+                                    'properties': {'status': {'type': 'string'}}, 'required': ['status']}}}}]}]
+            }))
+        cli('sdk', 'generate', '--target', 'typescript', '--from', socket_source, '--service', 'native-api')
+        cli('sdk', 'generate', '--target', 'typescript', '--from', socket_source, '--service', 'native-api', '--check')
         workspace = app / 'pnpm-workspace.yaml'
         workspace.write_text(''.join(line for line in workspace.read_text().splitlines(keepends=True) if 'sdks/typescript-websocket/' not in line))
         stale = workspace.read_bytes()
         package_before_check = (app / 'package.json').read_bytes()
-        checked = subprocess.run([str(binary), 'sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract', '--service', 'native-api', '--check', '--path', str(app)], cwd=root, env=env, capture_output=True, text=True, timeout=180)
+        checked = subprocess.run([str(binary), 'sdk', 'generate', '--target', 'typescript', '--from', socket_source, '--service', 'native-api', '--check', '--path', str(app)], cwd=root, env=env, capture_output=True, text=True, timeout=180)
         assert checked.returncode != 0 and 'out of date' in checked.stderr + checked.stdout
         assert workspace.read_bytes() == stale and (app / 'package.json').read_bytes() == package_before_check
-        cli('sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract', '--service', 'native-api')
+        cli('sdk', 'generate', '--target', 'typescript', '--from', socket_source, '--service', 'native-api')
     else:
         artifact = app / '.forklaunch/openapi/legacy-api/openapi.json'
         artifact.parent.mkdir(parents=True, exist_ok=True)
         artifact.write_text(json.dumps({'openapi': '3.1.0', 'info': {'title': 'Owned workspace fixture', 'version': '1'}, 'paths': {}}))
         cli('sdk', 'generate', '--target', 'typescript', '--from', 'openapi', '--service', 'legacy-api')
+    if socket and socket_source == 'all':
+        assert (app / 'sdks/typescript/src/index.ts').is_file()
+        assert (app / 'sdks/typescript-websocket/native-api/src/index.ts').is_file()
     assert before == {str(p.relative_to(app)): p.read_bytes() for p in (app / 'modules').rglob('*') if p.is_file()}
     if runtime == 'bun':
         policy_path = app / 'bunfig.toml'
@@ -55,7 +72,7 @@ for runtime in os.environ.get('FORKLAUNCH_TEST_WORKSPACE_RUNTIMES', 'node,bun').
         assert policy['install']['minimumReleaseAge'] == 86400
         assert policy['install']['minimumReleaseAgeExcludes'] == original_policy['install']['minimumReleaseAgeExcludes']
         policy_path.write_text('# application policy\n' + policy_path.read_text().replace('minimumReleaseAge = 86400', 'minimumReleaseAge = 172800'))
-        cli('sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract' if socket else 'openapi', '--service', 'native-api' if socket else 'legacy-api')
+        cli('sdk', 'generate', '--target', 'typescript', '--from', socket_source if socket else 'openapi', '--service', 'native-api' if socket else 'legacy-api')
         assert policy_path.read_text().startswith('# application policy\n')
         assert tomllib.loads(policy_path.read_text())['install']['minimumReleaseAge'] == 172800
     package = json.loads((app / 'package.json').read_text())
@@ -68,8 +85,12 @@ for runtime in os.environ.get('FORKLAUNCH_TEST_WORKSPACE_RUNTIMES', 'node,bun').
         names = {p.get('name') for p in listed}
         assert {f'@{runtime}-workspace/{name}' for name in ['core', 'monitoring', 'legacy-api', 'client-sdk']} <= names
         assert ('native-api-websocket-sdk' if socket else '@forklaunch-generated/sdk') in names
+        if socket and socket_source == 'all':
+            assert '@forklaunch-generated/sdk' in names
     else:
         assert {'modules/*', 'sdks/typescript-websocket/*' if socket else 'sdks/typescript'} <= set(package['workspaces'])
+    if socket and socket_source == 'all' and runtime == 'bun':
+        assert 'sdks/typescript' in package['workspaces']
     build = subprocess.run([manager, 'run', 'build'], cwd=app, env=env, capture_output=True, text=True, timeout=1800)
     print(build.stdout, flush=True)
     print(build.stderr, flush=True)
@@ -84,3 +105,16 @@ for runtime in os.environ.get('FORKLAUNCH_TEST_WORKSPACE_RUNTIMES', 'node,bun').
     subprocess.run(['node', str(repo / 'cli/tests/rust_mcp_service_startup.mjs'), str(Path(metadata['target_directory']) / 'debug/native-api')], cwd=app, env=env, check=True, timeout=120)
     print(f'PASS {runtime} root workspace installation/build includes TypeScript modules and SDK; both languages answer HTTP/MCP', flush=True)
 print(f'SDK workspace fixture evidence: {root}', flush=True)
+
+# Retain generated source and evidence without accumulating per-run dependencies.
+# Opt in to keeping successful-run caches when debugging the generated workspace.
+if os.environ.get('FORKLAUNCH_KEEP_TEST_CACHES') != '1':
+    for directory, directories, _ in os.walk(root, followlinks=False):
+        for name in list(directories):
+            entry = Path(directory) / name
+            if entry.is_symlink():
+                directories.remove(name)
+            elif name == 'node_modules' or (name == 'target' and (entry / 'CACHEDIR.TAG').is_file()):
+                directories.remove(name)
+                shutil.rmtree(entry)
+    print('Removed completed fixture dependency/build caches; source and evidence retained', flush=True)

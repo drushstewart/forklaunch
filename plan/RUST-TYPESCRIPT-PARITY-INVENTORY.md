@@ -1521,3 +1521,11 @@ no application writes. The real-PTY fixture covers application, service, library
 and worker prompts, custom/default selection, invalid-name rejection and closed
 stdin behavior, then removes its temporary workspace. It is included in the init
 command integration suite. All 1,074 CLI unit tests and the rebuilt CLI pass.
+
+The combined SDK workspace fixture now removes its own node_modules/build caches
+on success by default, retaining generated source; `FORKLAUNCH_KEEP_TEST_CACHES=1`
+opts out for debugging. The cleanup block was exercised against the completed
+Node/Bun run and both SDK source trees remain. The expanded Bun dev fixture also
+adds the serde_json dependency required by its custom socket registration. That
+missing fixture dependency was corrected in the in-flight run before service
+startup checks; socket lifecycle/reload validation remains pending.

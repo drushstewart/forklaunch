@@ -32,6 +32,14 @@ else:
         '-D', 'Mixed development', '-A', 'ForkLaunch', '-L', 'MIT')
 cli('init', 'service', 'native-api', '--language', 'rust', '-D', 'Native API')
 cli('init', 'service', 'legacy-api', '--language', 'typescript', '-d', 'postgresql', '-D', 'Legacy API')
+# Exercise automatic socket export and owned SDK regeneration in the Bun run.
+# This checks artifact lifecycle; the separate socket fixtures exercise wire transport.
+socket_source = app / 'crates/native-api/src/lib.rs'
+socket_registration = '    registry.register_socket("development", &serde_json::json!({"path":"/dev-socket-initial","clientMessages":{"request":{"shape":{"type":"string"}}},"serverMessages":{"reply":{"shape":{"type":"string"}}}})).unwrap();\n'
+if runtime == 'bun':
+    cargo = app / 'crates/native-api/Cargo.toml'
+    cargo.write_text(cargo.read_text().replace('[dependencies]\n', '[dependencies]\nserde_json = \"1\"\n', 1))
+    socket_source.write_text(socket_source.read_text().replace('    registry\n}', socket_registration + '    registry\n}', 1))
 base = ['docker', 'compose', '--project-directory', str(app), '-p', name, '-f', str(app / 'docker-compose.yaml')]
 configuration = json.loads(subprocess.check_output(base + ['config', '--format', 'json'], env=env))
 native_port = int(configuration['services']['native-api']['environment']['PORT'])
@@ -61,7 +69,7 @@ fixture.write_text(f'''services:
 ''')
 args = [str(binary), 'dev', 'native-api', 'legacy-api', '--path', str(app), '--project-name', name, '--compose-file', str(fixture), '--no-deps', '--export-contracts']
 if runtime == 'bun':
-    args += ['--sdk-target', 'typescript']
+    args += ['--sdk-target', 'typescript', '--sdk-source', 'all']
 original = {str(p.relative_to(app)): p.read_bytes() for p in app.rglob('*') if p.is_file()}
 preview = subprocess.run(args + ['--dryrun'], cwd=app, env=env, capture_output=True, text=True, check=True, timeout=60)
 plan = json.loads(preview.stdout)
@@ -133,6 +141,21 @@ try:
                 return
             time.sleep(0.2)
         raise AssertionError(f'SDK did not refresh: {path}')
+    def wait_socket(expected, timeout=180):
+        path = app / 'sdks/typescript-websocket/native-api/src/development.ts'
+        artifact = app / '.forklaunch/socket-contracts/native-api/socket-contract.json'
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            assert process.poll() is None, log_path.read_text()[-20000:]
+            if expected is None:
+                if not path.exists() and not artifact.exists():
+                    return
+            elif path.exists() and expected in path.read_text() and artifact.exists() and expected in artifact.read_text():
+                return
+            time.sleep(0.2)
+        raise AssertionError(f'Socket export/SDK did not refresh to {expected}: {log_path.read_text()[-12000:]}')
+    if runtime == 'bun':
+        wait_socket('/dev-socket-initial')
     wait_sdk("recordCount")
     wait_sdk("legacyApi")
     assert (app / ".forklaunch/openapi/legacy-api/openapi.json").is_file()
@@ -143,11 +166,22 @@ try:
     native = wait_json(lambda: endpoint('native-api', native_port) + '/health', 'status', 'native-reloaded', timeout=180).removesuffix('/health')
     wait_sdk("developmentMarker")
     assert 'native-reloaded' in contract.read_text()
+    if runtime == 'bun':
+        original_socket_source = socket_source.read_text()
+        socket_source.write_text(original_socket_source.replace('/dev-socket-initial', '/dev-socket-reloaded'))
+        wait_socket('/dev-socket-reloaded')
+        socket_source.write_text(original_socket_source.replace(socket_registration, ''))
+        wait_socket(None)
+        socket_source.write_text(original_socket_source.replace('/dev-socket-initial', '/dev-socket-restored'))
+        wait_socket('/dev-socket-restored')
+        wait_sdk('developmentMarker')
+        native = wait_json(lambda: endpoint('native-api', native_port) + '/health', 'status', 'native-reloaded', timeout=180).removesuffix('/health')
     source = app / 'modules/legacy-api/api/controllers/legacyApi.controller.ts'
     source.write_text(source.read_text().replace("message: 'LegacyApi'", "message: 'LegacyApiReloaded'", 1))
     schema = app / 'modules/legacy-api/domain/schemas/legacyApi.schema.ts'
     schema.write_text(schema.read_text().replace('import { string }', 'import { string, optional }').replace('export const LegacyApiResponseSchema = {', 'export const LegacyApiResponseSchema = { tsDevelopmentMarker: optional(string),'))
     wait_sdk('tsDevelopmentMarker', timeout=120)
+    wait_json(lambda: endpoint('legacy-api', ts_port) + '/legacy-api', 'message', 'LegacyApiReloaded', timeout=120)
     core = app / 'modules/core'
     shared = core / 'development.schema.ts'
     shared.write_text("import { optional, string } from './registrations';\nexport const sharedDevelopmentSchema = optional(string);\n")
@@ -156,7 +190,8 @@ try:
     core_name = json.loads((core / 'package.json').read_text())['name']
     schema.write_text(f"import {{ sharedDevelopmentSchema }} from '{core_name}';\n" + schema.read_text().replace('export const LegacyApiResponseSchema = {', 'export const LegacyApiResponseSchema = { sharedLibrary: sharedDevelopmentSchema,'))
     wait_sdk('sharedLibrary', timeout=120)
-    shared.write_text("import { optional, object, string } from './registrations';\nexport const sharedDevelopmentSchema = optional(object({ sharedLibraryMarker: optional(string) }));\n")
+    wait_json(lambda: endpoint('legacy-api', ts_port) + '/legacy-api', 'message', 'LegacyApiReloaded', timeout=120)
+    shared.write_text("import { optional, string } from './registrations';\nexport const sharedDevelopmentSchema = optional({ sharedLibraryMarker: optional(string) });\n")
     wait_sdk('sharedLibraryMarker', timeout=120)
     typescript = wait_json(lambda: endpoint('legacy-api', ts_port) + '/legacy-api', 'message', 'LegacyApiReloaded', timeout=60).removesuffix('/legacy-api')
     mcp = endpoint('legacy-api', ts_port + 2000) + '/mcp'
