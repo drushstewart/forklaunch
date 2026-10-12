@@ -51,11 +51,29 @@ export class ScrubbingService {
     // procedure codes that ARE present, and LCD/NCD only fires for a
     // procedure that has a mock crosswalk entry at all — a claim with zero
     // diagnoses and an uncrosswalked procedure would otherwise scrub clean.
-    if (diagnosisCodes.length === 0) {
+    // A blank diagnosis is a missing one
+    if (!diagnosisCodes.some((code) => code.trim() !== '')) {
       findings.push({
         category: 'required_fields',
         carcCode: 'CO-16',
         message: 'Claim has no diagnosis codes'
+      });
+    } else {
+      diagnosisCodes.forEach((code, index) => {
+        if (code.trim() === '') {
+          findings.push({
+            category: 'required_fields',
+            carcCode: 'CO-16',
+            message: `Diagnosis code ${index + 1} is blank`
+          });
+        }
+      });
+    }
+    if (lines.length === 0) {
+      findings.push({
+        category: 'required_fields',
+        carcCode: 'CO-16',
+        message: 'Claim has no charge lines'
       });
     }
     lines.forEach((line, index) => {
@@ -90,16 +108,28 @@ export class ScrubbingService {
     }
 
     // NCCI MUE — implausible unit count for a single code on one date of
-    // service.
+    // service. A claim covers one encounter, so one date: the cap applies to
+    // a code's units summed over all its lines. Lines with an invalid unit
+    // count are already flagged above and left out of the sum.
+    const unitsByCode = new Map<string, number>();
     for (const line of lines) {
-      const cap = MOCK_NCCI_MUE_CAPS[line.procedureCode];
-      if (cap != null && line.units > cap) {
+      if (Number.isInteger(line.units) && line.units > 0) {
+        unitsByCode.set(
+          line.procedureCode,
+          (unitsByCode.get(line.procedureCode) ?? 0) + line.units
+        );
+      }
+    }
+    for (const [procedureCode, units] of unitsByCode) {
+      if (!Object.hasOwn(MOCK_NCCI_MUE_CAPS, procedureCode)) continue;
+      const cap = MOCK_NCCI_MUE_CAPS[procedureCode];
+      if (units > cap) {
         findings.push({
           category: 'ncci_mue',
           // CARC 151: the information submitted does not support this many
           // or this frequency of services, the code payers use for MUE
           carcCode: 'CO-151',
-          message: `${line.procedureCode} billed at ${line.units} units, exceeds the mock unit cap of ${cap}`
+          message: `${procedureCode} billed at ${units} units, exceeds the mock unit cap of ${cap}`
         });
       }
     }
@@ -108,7 +138,7 @@ export class ScrubbingService {
     // procedure? Only checked for procedures with a mock crosswalk entry.
     for (const line of lines) {
       if (
-        line.procedureCode in MOCK_LCD_CROSSWALK &&
+        Object.hasOwn(MOCK_LCD_CROSSWALK, line.procedureCode) &&
         !isMedicallyNecessary(line.procedureCode, diagnosisCodes)
       ) {
         findings.push({
