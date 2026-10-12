@@ -103,13 +103,11 @@ async fn full_graph<T: AuthTransaction>(
         Some(limit) => usize::try_from(limit).unwrap_or(usize::MAX),
     };
     members.truncate(count);
-    let users: Vec<_> = tx
-        .list(Model::User)
-        .await?
-        .into_iter()
-        .filter(|row| members.iter().any(|member| member["userId"] == row["id"]))
-        .take(100)
-        .collect();
+    let user_ids = members
+        .iter()
+        .map(|member| text(member, "userId").map(str::to_owned))
+        .collect::<BlueprintResult<Vec<_>>>()?;
+    let users = tx.get_many(Model::User, &user_ids, 100).await?;
     for member in &mut members {
         let user = users
             .iter()

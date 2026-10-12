@@ -111,12 +111,7 @@ async fn duplicate<T: AuthTransaction>(
     id: &str,
 ) -> BlueprintResult<bool> {
     let email = text(user, "email")?.to_lowercase();
-    let Some(user) = tx
-        .list(Model::User)
-        .await?
-        .into_iter()
-        .find(|row| row["email"] == email)
-    else {
+    let Some(user) = tx.find_unique(Model::User, "email", &email).await? else {
         return Ok(false);
     };
     Ok(find_member(tx, text(&user, "id")?, id).await?.is_some())

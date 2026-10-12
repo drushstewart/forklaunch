@@ -33,6 +33,28 @@ impl<T: AuthTransaction> AuthTransaction for FaultTransaction<T> {
         }
         self.inner.get(model, id).await
     }
+    async fn find_unique(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+    ) -> BlueprintResult<Option<Value>> {
+        if self.read == Some(model) {
+            return Err(read_failure());
+        }
+        self.inner.find_unique(model, field, value).await
+    }
+    async fn get_many(
+        &mut self,
+        model: Model,
+        ids: &[String],
+        limit: usize,
+    ) -> BlueprintResult<Vec<Value>> {
+        if self.read == Some(model) {
+            return Err(read_failure());
+        }
+        self.inner.get_many(model, ids, limit).await
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         if self.read == Some(model) {
             return Err(read_failure());

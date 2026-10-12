@@ -142,8 +142,18 @@ option. Live tests execute both factories with the actual Better Auth client
 against native PostgreSQL services, including additional fields, sessions,
 profile updates, JWT/JWKS, signout and signin.
 
-This preset serves one configured tenant. Broader custom hooks/adapters, indexed
-storage pagination remain parity work.
+This preset serves one configured tenant. `AuthTransaction::find_unique` performs
+exact email/subscription and organization-slug lookups using the existing
+PostgreSQL blind indexes across current and previous encryption keys. It checks
+the decrypted field before returning a match. `get_many` loads up to 4,096 IDs in
+record insertion order, deduplicating requested IDs and skipping missing rows;
+organization user joins use it instead of scanning the user model. Custom
+`AuthTransaction` adapters must implement both methods. Neither lookup
+requires the entire model to fit in the 4,096-row `list` bound.
+
+Other account/session/member scans and general pagination still retain that bound.
+Broader custom hooks/adapters and complete indexed storage pagination remain parity
+work.
 
 ## Local cache and object storage
 

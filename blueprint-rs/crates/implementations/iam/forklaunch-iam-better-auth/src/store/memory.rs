@@ -62,6 +62,43 @@ impl AuthTransaction for MemoryAuthTransaction {
             .get(&(model, id.to_owned()))
             .map(|(_, value)| value.clone()))
     }
+    async fn find_unique(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+    ) -> BlueprintResult<Option<Value>> {
+        if !model.unique_fields().contains(&field) {
+            return Err(invalid());
+        }
+        Ok(self
+            .pending
+            .rows
+            .iter()
+            .find_map(|((family, _), (_, row))| {
+                (*family == model && row.get(field).and_then(Value::as_str) == Some(value))
+                    .then(|| row.clone())
+            }))
+    }
+    async fn get_many(
+        &mut self,
+        model: Model,
+        ids: &[String],
+        limit: usize,
+    ) -> BlueprintResult<Vec<Value>> {
+        super::validate_many(ids, limit)?;
+        let ids: std::collections::BTreeSet<_> = ids.iter().collect();
+        let mut rows: Vec<_> = ids
+            .into_iter()
+            .filter_map(|id| self.pending.rows.get(&(model, id.clone())))
+            .collect();
+        rows.sort_by_key(|(sequence, _)| *sequence);
+        Ok(rows
+            .into_iter()
+            .take(limit)
+            .map(|(_, row)| row.clone())
+            .collect())
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let mut rows: Vec<_> = self
             .pending

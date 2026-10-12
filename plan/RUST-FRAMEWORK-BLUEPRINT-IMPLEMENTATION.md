@@ -881,6 +881,7 @@ require literal Rust clones, but their public request/response behavior does.
 - [x] Add atomic memory/encrypted PostgreSQL storage for all eleven configured Better Auth models. Independent schema migration ledger, forced tenant RLS, runtime-role checks, model/record-bound encryption, rotating blind unique indexes, shared/exclusive transaction locks and transactional audit records are implemented. Live PostgreSQL verifies rollback/read-only enforcement, tenant isolation, secrets absent at rest, signing-key restoration, key rotation and ciphertext transplant rejection. Auth endpoint behavior, relationship/cascade policy and indexed pagination beyond bounded 4096-row model scans remain open.
 - [x] Audit actual configured session lifecycle beyond configuration values. Sixty checks cover exact one-hour refresh, refresh suppression, stable tokens/creation time, creation-based freshness despite extended expiry, scoped/unknown/foreign token revocation, revoke-others/all, replay, transient signed cookies, expiry cleanup and the precise expiry millisecond. Configured POST get-session is rejected with 405 because deferred refresh is disabled. Native session endpoint comparisons remain open.
 - [ ] Add indexed encrypted auth lookups and pagination beyond the explicit 4096-row model-scan bound before claiming scalable production storage parity.
+- [x] Use blind-indexed exact user email/subscription and organization-slug lookups, plus bounded primary-key user joins. Larger user directories pass memory/restricted PostgreSQL HTTP/MCP and 979 actual TS comparisons; account/session/member scans and general pagination remain open.
 - [x] Implement the native persistent session backend: random 32-character tokens, 24-hour lifetime, one-hour refresh, creation-based freshness, refresh suppression, scoped/unknown/foreign revocation, revoke-others/all, sign-out and transient expiry cleanup. Forty-eight native body/storage comparisons execute the actual configured HTTP handlers with shared seeded credentials; the fixture includes 63 checks. Memory and live encrypted PostgreSQL lifecycle tests pass. Native credential operations, production HTTP cookie/CSRF/Origin integration and indexed session lookup remain open.
 - [x] Implement native email signup/signin over encrypted auth records. Signup commits user/account/session atomically and rechecks normalized-email uniqueness under the write lock. Bounded blocking scrypt jobs hold capacity through cancellation and run outside tenant write locks; signin rechecks account credentials afterward. Thirty-nine comparisons match actual configured handler bodies/stored records, callbackURL casing, errors, case normalization and UTF-16 password limits. Memory/live PostgreSQL cover concurrent signup; a controlled password-change race rejects stale verification without creating a session. Production HTTP validation/cookies/Origin/CSRF, remaining credential/account operations and indexed lookup remain open.
 - [x] Match native authenticated password verification and rotation against actual configured handlers. Eighty-one credential comparisons cover password errors, no-revocation retention, all-own-session replacement and other-user isolation. Memory/live PostgreSQL exercise encrypted credential updates and session replacement. Blocking derivation stays outside write locks and authoritative session/account rechecks reject concurrent changes. Production HTTP cookies/CSRF/Origin, user/account operations and CLI integration remain open.
@@ -1446,3 +1447,27 @@ The fixture now installs its own TypeScript 5.9.3 consumer compiler. Its previou
 checkout compiler had advanced to 7.0.2 and rejected an inferred fixture rootDir;
 the source layout is now explicit and the archive test uses a reproducible
 compiler. This does not establish general TypeScript 7 support.
+
+
+Indexed authentication reads checkpoint (2026-10-12): AuthTransaction now exposes
+find_unique for declared unique string fields and get_many for bounded primary-key
+sets. PostgreSQL reuses current/previous-key blind indexes, deduplicates key-rotation
+hits and verifies each decrypted field before returning a match. Primary-key reads
+preserve record insertion order, deduplicate IDs, skip missing rows and bound inputs
+and results to 4,096. Memory and fixture adapters implement the same semantics.
+
+Credential signup/signin, Google email lookup, verification, member/invitation
+email resolution and organization slugs now avoid complete user/organization scans.
+Full organization user joins use primary keys while retaining their prior 100-user
+selection and ordering. Memory and restricted-role PostgreSQL tenants seeded with
+4,100 users pass credential operations and live HTTP/MCP initialization, discovery,
+tool invocation and shutdown. PostgreSQL also passes cross-tenant misses, encryption
+rotation, update/delete index cleanup, tampered-index rejection and the existing
+transaction/encryption/audit suite. All 29 native tests pass; the normally ignored
+PostgreSQL suite passes separately. Seven actual TypeScript Better Auth suites pass
+979 response/storage/protocol comparisons. Strict default and all-feature/all-target
+clippy pass and the CLI rebuild embeds the changes. Source/template inventory remains
+752 files. Custom AuthTransaction implementations must add both read methods.
+
+This closes exact unique reads and bounded user joins, not full storage scalability:
+other account/session/member scans and general indexed pagination remain open.

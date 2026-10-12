@@ -93,11 +93,7 @@ pub(super) async fn ensure_not_member<T: AuthTransaction>(
     org: &str,
     email: &str,
 ) -> BlueprintResult<()> {
-    if let Some(user) = tx
-        .list(Model::User)
-        .await?
-        .into_iter()
-        .find(|row| row["email"] == email)
+    if let Some(user) = tx.find_unique(Model::User, "email", email).await?
         && tx
             .list(Model::Member)
             .await?

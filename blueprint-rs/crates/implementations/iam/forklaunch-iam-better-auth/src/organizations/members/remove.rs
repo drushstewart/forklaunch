@@ -87,10 +87,8 @@ async fn removal_target<T: AuthTransaction>(
 ) -> BlueprintResult<Option<Value>> {
     if target.contains('@') {
         let Some(user) = tx
-            .list(Model::User)
+            .find_unique(Model::User, "email", &target.to_lowercase())
             .await?
-            .into_iter()
-            .find(|row| row["email"].as_str() == Some(target.to_lowercase().as_str()))
         else {
             return Ok(None);
         };

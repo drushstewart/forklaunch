@@ -98,11 +98,7 @@ impl<S: AuthStore> OrganizationService<S> {
     }
 }
 async fn find_slug<T: AuthTransaction>(tx: &mut T, slug: &str) -> BlueprintResult<Option<Value>> {
-    Ok(tx
-        .list(Model::Organization)
-        .await?
-        .into_iter()
-        .find(|row| row["slug"].as_str() == Some(slug)))
+    tx.find_unique(Model::Organization, "slug", slug).await
 }
 async fn member<T: AuthTransaction>(
     tx: &mut T,

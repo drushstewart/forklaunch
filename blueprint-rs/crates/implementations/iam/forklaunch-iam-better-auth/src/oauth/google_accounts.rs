@@ -175,10 +175,7 @@ impl<S: AuthStore> GoogleAccounts<S> {
                 .ok_or_else(|| link_error("unable to link account"))?
                 .into()
         } else {
-            tx.list(Model::User)
-                .await?
-                .into_iter()
-                .find(|row| row["email"] == email)
+            tx.find_unique(Model::User, "email", &email).await?
         };
         let registered = user.is_none();
         let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);

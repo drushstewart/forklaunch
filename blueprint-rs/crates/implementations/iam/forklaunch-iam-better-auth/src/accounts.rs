@@ -248,11 +248,7 @@ impl<S: AuthStore> CredentialService<S> {
     }
 }
 async fn find_email<T: AuthTransaction>(tx: &mut T, email: &str) -> BlueprintResult<Option<Value>> {
-    Ok(tx
-        .list(Model::User)
-        .await?
-        .into_iter()
-        .find(|user| user["email"].as_str() == Some(email)))
+    tx.find_unique(Model::User, "email", email).await
 }
 async fn find_credential<T: AuthTransaction>(
     tx: &mut T,

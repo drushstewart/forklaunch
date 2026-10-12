@@ -23,6 +23,45 @@ async fn exercise_transactions<S: AuthStore>(store: &S) {
     tx.commit().await.unwrap();
     {
         let mut tx = store.begin(false).await.unwrap();
+        assert_eq!(
+            tx.find_unique(Model::User, "email", "private@fixture.test")
+                .await
+                .unwrap()
+                .unwrap()["id"],
+            "user-1"
+        );
+        assert!(
+            tx.find_unique(Model::User, "email", "PRIVATE@fixture.test")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            tx.find_unique(Model::User, "email", "missing@fixture.test")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            tx.find_unique(Model::User, "subscription", "missing")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            tx.find_unique(Model::Session, "token", "private-session-token")
+                .await
+                .is_err()
+        );
+        assert!(
+            tx.find_unique(Model::User, "email OR 1=1", "ignored")
+                .await
+                .is_err()
+        );
+        tx.commit().await.unwrap();
+    }
+    {
+        let mut tx = store.begin(false).await.unwrap();
         let row = tx
             .get(Model::Jwks, "persisted-key-id")
             .await
@@ -105,6 +144,127 @@ async fn exercise_transactions<S: AuthStore>(store: &S) {
     assert_eq!(rows[0]["email"], "private@fixture.test");
     assert!(tx.get(Model::User, "rolled-back").await.unwrap().is_none());
     tx.commit().await.unwrap();
+}
+
+async fn exercise_many<T: AuthTransaction>(tx: &mut T) {
+    let ids = vec![
+        "imported-4099".into(),
+        "missing".into(),
+        "imported-2".into(),
+        "imported-4099".into(),
+    ];
+    let rows = tx.get_many(Model::User, &ids, 100).await.unwrap();
+    assert_eq!(
+        rows.iter()
+            .map(|row| row["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["imported-2", "imported-4099"]
+    );
+    assert_eq!(
+        tx.get_many(Model::User, &ids, 1).await.unwrap()[0]["id"],
+        "imported-2"
+    );
+    assert!(tx.get_many(Model::User, &ids, 0).await.unwrap().is_empty());
+    assert!(tx.get_many(Model::User, &[], 100).await.unwrap().is_empty());
+    assert!(tx.get_many(Model::User, &ids, 4097).await.is_err());
+    assert!(
+        tx.get_many(Model::User, &vec!["id".into(); 4097], 1)
+            .await
+            .is_err()
+    );
+}
+
+async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync::Arc<S>) {
+    let mut tx = store.begin(true).await.unwrap();
+    for index in 0..4100 {
+        tx.insert(Model::User, json!({"id":format!("imported-{index}"),"email":format!("imported-{index}@fixture.test")})).await.unwrap();
+    }
+    tx.insert(
+        Model::Organization,
+        json!({"id":"org-index","slug":"Quoted ' Unicode ☃"}),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(
+        tx.list(Model::User).await.is_err(),
+        "bounded list must still fail explicitly"
+    );
+    exercise_many(&mut tx).await;
+    assert_eq!(
+        tx.find_unique(Model::User, "email", "imported-4099@fixture.test")
+            .await
+            .unwrap()
+            .unwrap()["id"],
+        "imported-4099"
+    );
+    assert_eq!(
+        tx.find_unique(Model::Organization, "slug", "Quoted ' Unicode ☃")
+            .await
+            .unwrap()
+            .unwrap()["id"],
+        "org-index"
+    );
+    tx.commit().await.unwrap();
+    let now = chrono::DateTime::<chrono::Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let service = crate::accounts::CredentialService::new(store.clone());
+    let signup = serde_json::from_value(json!({"name":"Large tenant","firstName":"Large","lastName":"Tenant","email":"Beyond@Fixture.test","password":"test-only-password"})).unwrap();
+    let grant = service.sign_up(signup, "", "", now).await.unwrap();
+    let signin = serde_json::from_value(
+        json!({"email":"BEYOND@FIXTURE.TEST","password":"test-only-password"}),
+    )
+    .unwrap();
+    let login = service.sign_in(signin, "", "", now).await.unwrap();
+    assert_eq!(grant.user, login.user);
+    let organizations = crate::organizations::OrganizationService::new(store.clone());
+    assert_eq!(
+        organizations
+            .check_slug(
+                login.session["token"].as_str().unwrap(),
+                false,
+                "Quoted ' Unicode ☃",
+                now
+            )
+            .await
+            .unwrap_err()
+            .code,
+        "ORGANIZATION_SLUG_ALREADY_TAKEN"
+    );
+    let mut tx = store.begin(true).await.unwrap();
+    tx.replace(
+        Model::Organization,
+        json!({"id":"org-index","slug":"replacement"}),
+    )
+    .await
+    .unwrap();
+    assert!(
+        tx.find_unique(Model::Organization, "slug", "Quoted ' Unicode ☃")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        tx.find_unique(Model::Organization, "slug", "replacement")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    tx.delete(Model::Organization, "org-index").await.unwrap();
+    assert!(
+        tx.find_unique(Model::Organization, "slug", "replacement")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    tx.commit().await.unwrap();
+    #[cfg(feature = "http")]
+    crate::http::tests::exercise_http(store).await;
+}
+
+#[tokio::test]
+async fn memory_exact_lookups_and_credentials_exceed_the_model_scan_bound() {
+    exercise_large_unique_lookups(std::sync::Arc::new(memory::MemoryAuthStore::default())).await;
 }
 
 #[tokio::test]
@@ -194,6 +354,12 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .unwrap();
     let mut tx = other_store.begin(true).await.unwrap();
     assert!(tx.get(Model::User, "user-1").await.unwrap().is_none());
+    assert!(
+        tx.find_unique(Model::User, "email", "private@fixture.test")
+            .await
+            .unwrap()
+            .is_none()
+    );
     tx.insert(
         Model::User,
         json!({"id":"user-1","email":"private@fixture.test"}),
@@ -307,10 +473,48 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     )
     .await
     .unwrap();
+    let mut indexed = rotated.begin(false).await.unwrap();
+    assert_eq!(
+        indexed
+            .find_unique(Model::User, "email", "private@fixture.test")
+            .await
+            .unwrap()
+            .unwrap()["id"],
+        "user-1"
+    );
+    indexed.commit().await.unwrap();
     crate::sessions::tests::exercise_sessions(Arc::new(rotated.clone())).await;
     crate::accounts::tests::exercise_credentials(Arc::new(rotated.clone())).await;
     crate::organizations::tests::exercise_organizations(Arc::new(rotated.clone())).await;
-    let cleanup_tenants = vec![tenant.id().to_owned(), other.id().to_owned()];
+    let bulk_tenant = TenantContext::new(format!("{role}-bulk")).unwrap();
+    let bulk = PostgresAuthStore::new(
+        pool.clone(),
+        bulk_tenant.clone(),
+        key.clone(),
+        AuditContext::system("indexed-bulk"),
+    )
+    .await
+    .unwrap();
+    exercise_large_unique_lookups(Arc::new(bulk.clone())).await;
+    // A transplanted index must not authenticate a different valid encrypted row.
+    let moved_indexes: Vec<String> = sqlx::query_scalar("UPDATE fl_better_auth.unique_claims SET id='imported-0' WHERE tenant_id=$1 AND model='user' AND field='email' AND id='imported-4099' RETURNING blind_index")
+        .bind(bulk_tenant.id()).fetch_all(&owner).await.unwrap();
+    assert!(!moved_indexes.is_empty());
+    let mut indexed = bulk.begin(false).await.unwrap();
+    assert!(
+        indexed
+            .find_unique(Model::User, "email", "imported-4099@fixture.test")
+            .await
+            .is_err()
+    );
+    indexed.commit().await.unwrap();
+    sqlx::query("UPDATE fl_better_auth.unique_claims SET id='imported-4099' WHERE tenant_id=$1 AND model='user' AND field='email' AND blind_index=ANY($2)")
+        .bind(bulk_tenant.id()).bind(moved_indexes).execute(&owner).await.unwrap();
+    let cleanup_tenants = vec![
+        tenant.id().to_owned(),
+        other.id().to_owned(),
+        bulk_tenant.id().to_owned(),
+    ];
     #[cfg(feature = "http")]
     let cleanup_tenants = {
         // Raw storage fixtures intentionally contain incomplete session/JWKS

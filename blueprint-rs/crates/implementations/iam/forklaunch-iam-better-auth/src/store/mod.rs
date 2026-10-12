@@ -69,6 +69,24 @@ pub trait AuthTransaction: Send {
         model: Model,
         id: &str,
     ) -> impl Future<Output = BlueprintResult<Option<Value>>> + Send;
+    /// Exact lookup on a model's declared unique string field. Native backends
+    /// avoid model scans, including when the model exceeds the list bound.
+    /// Unsupported fields fail explicitly; values retain case and whitespace.
+    fn find_unique(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+    ) -> impl Future<Output = BlueprintResult<Option<Value>>> + Send;
+    /// Loads a bounded set of primary keys in record insertion order. Duplicate
+    /// IDs are returned once; missing IDs are skipped. Inputs and output limit
+    /// are bounded to 4096 while the underlying model can contain more rows.
+    fn get_many(
+        &mut self,
+        model: Model,
+        ids: &[String],
+        limit: usize,
+    ) -> impl Future<Output = BlueprintResult<Vec<Value>>> + Send;
     /// Returns insertion order, bounded to 4096 records per model. Oversized
     /// scans fail explicitly instead of silently truncating authorization data.
     fn list(&mut self, model: Model) -> impl Future<Output = BlueprintResult<Vec<Value>>> + Send;
@@ -131,6 +149,13 @@ fn validate_record(model: Model, row: &Value) -> BlueprintResult<()> {
         {
             return Err(invalid());
         }
+    }
+    Ok(())
+}
+
+fn validate_many(ids: &[String], limit: usize) -> BlueprintResult<()> {
+    if ids.len() > 4096 || limit > 4096 || ids.iter().any(|id| id.len() > 256) {
+        return Err(invalid());
     }
     Ok(())
 }

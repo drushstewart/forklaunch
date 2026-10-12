@@ -185,6 +185,58 @@ impl AuthTransaction for PostgresAuthTransaction<'_> {
             .map(|value| self.store.decode(model, id, &value))
             .transpose()
     }
+    async fn find_unique(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+    ) -> BlueprintResult<Option<Value>> {
+        if !model.unique_fields().contains(&field) {
+            return Err(invalid());
+        }
+        let indexes = self
+            .store
+            .encryptor
+            .blind_indexes(
+                &json!([model.as_str(), field, value]).to_string(),
+                self.store.tenant.id(),
+            )
+            .map_err(|_| storage_error())?;
+        // Multiple active keys can point at the same row. Deduplicate before
+        // bounding results, and fail closed if inconsistent indexes find two IDs.
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT DISTINCT r.id,r.ciphertext FROM fl_better_auth.unique_claims c JOIN fl_better_auth.records r ON r.tenant_id=c.tenant_id AND r.model=c.model AND r.id=c.id WHERE c.tenant_id=$1 AND c.model=$2 AND c.field=$3 AND c.blind_index=ANY($4) LIMIT 2",
+        ).bind(self.store.tenant.id()).bind(model.as_str()).bind(field).bind(indexes)
+            .fetch_all(&mut *self.tx).await.map_err(db_error)?;
+        if rows.len() > 1 {
+            return Err(storage_error());
+        }
+        rows.into_iter()
+            .next()
+            .map(|(id, ciphertext)| {
+                let row = self.store.decode(model, &id, &ciphertext)?;
+                if row.get(field).and_then(Value::as_str) != Some(value) {
+                    return Err(storage_error());
+                }
+                Ok(row)
+            })
+            .transpose()
+    }
+    async fn get_many(
+        &mut self,
+        model: Model,
+        ids: &[String],
+        limit: usize,
+    ) -> BlueprintResult<Vec<Value>> {
+        super::validate_many(ids, limit)?;
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id,ciphertext FROM fl_better_auth.records WHERE tenant_id=$1 AND model=$2 AND id=ANY($3) ORDER BY sequence LIMIT $4",
+        ).bind(self.store.tenant.id()).bind(model.as_str()).bind(ids).bind(i64::try_from(limit).map_err(|_| invalid())?)
+            .fetch_all(&mut *self.tx).await.map_err(db_error)?;
+        rows.into_iter()
+            .map(|(id, ciphertext)| self.store.decode(model, &id, &ciphertext))
+            .collect()
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let rows: Vec<(String,String)> = sqlx::query_as("SELECT id,ciphertext FROM fl_better_auth.records WHERE tenant_id=$1 AND model=$2 ORDER BY sequence LIMIT 4097")
             .bind(self.store.tenant.id()).bind(model.as_str()).fetch_all(&mut *self.tx).await.map_err(db_error)?;

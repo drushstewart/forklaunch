@@ -71,10 +71,8 @@ async fn handle<S: AuthStore + 'static>(
     };
     let mut tx = app.store.begin(false).await?;
     let user = tx
-        .list(Model::User)
-        .await?
-        .into_iter()
-        .find(|user| user["email"].as_str() == Some(&claims.email.to_lowercase()));
+        .find_unique(Model::User, "email", &claims.email.to_lowercase())
+        .await?;
     tx.commit().await?;
     let Some(user) = user else {
         return token_error(destination, "USER_NOT_FOUND", "User not found");

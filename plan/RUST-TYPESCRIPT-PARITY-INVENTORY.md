@@ -1316,3 +1316,27 @@ The fixture now installs its own TypeScript 5.9.3 consumer compiler. Its previou
 checkout compiler had advanced to 7.0.2 and rejected an inferred fixture rootDir;
 the source layout is now explicit and the archive test uses a reproducible
 compiler. This does not establish general TypeScript 7 support.
+
+
+Indexed authentication reads checkpoint (2026-10-12): AuthTransaction now exposes
+find_unique for declared unique string fields and get_many for bounded primary-key
+sets. PostgreSQL reuses current/previous-key blind indexes, deduplicates key-rotation
+hits and verifies each decrypted field before returning a match. Primary-key reads
+preserve record insertion order, deduplicate IDs, skip missing rows and bound inputs
+and results to 4,096. Memory and fixture adapters implement the same semantics.
+
+Credential signup/signin, Google email lookup, verification, member/invitation
+email resolution and organization slugs now avoid complete user/organization scans.
+Full organization user joins use primary keys while retaining their prior 100-user
+selection and ordering. Memory and restricted-role PostgreSQL tenants seeded with
+4,100 users pass credential operations and live HTTP/MCP initialization, discovery,
+tool invocation and shutdown. PostgreSQL also passes cross-tenant misses, encryption
+rotation, update/delete index cleanup, tampered-index rejection and the existing
+transaction/encryption/audit suite. All 29 native tests pass; the normally ignored
+PostgreSQL suite passes separately. Seven actual TypeScript Better Auth suites pass
+979 response/storage/protocol comparisons. Strict default and all-feature/all-target
+clippy pass and the CLI rebuild embeds the changes. Source/template inventory remains
+752 files. Custom AuthTransaction implementations must add both read methods.
+
+This closes exact unique reads and bounded user joins, not full storage scalability:
+other account/session/member scans and general indexed pagination remain open.
