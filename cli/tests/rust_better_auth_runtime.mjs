@@ -4,6 +4,7 @@ import { createHmac, createPublicKey, randomUUID, verify } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import http from 'node:http';
 import { probeMcp, mcpRpc } from './rust_mcp_probe.mjs';
+import { exerciseFrontendClient } from './fixtures/rust_better_auth_frontend_client.mjs';
 const [binary, sdkPath] = process.argv.slice(2);
 const { createForkLaunchSdk } = await import(pathToFileURL(sdkPath));
 const role = process.env.FORKLAUNCH_TEST_ROLE;
@@ -150,6 +151,18 @@ async function call(base, path, options = {}, status = 200) {
   assert.equal(response.status, status, await response.clone().text());
   return response;
 }
+async function checkFrontendClients(options) {
+  await exerciseFrontendClient({
+    ...options,
+    label: `blueprint: ${options.label}`
+  });
+  assert.ok(process.env.FORKLAUNCH_TEST_GENERATED_CLIENT_SDK);
+  await exerciseFrontendClient({
+    ...options,
+    sourcePath: process.env.FORKLAUNCH_TEST_GENERATED_CLIENT_SDK,
+    label: `generated: ${options.label}`
+  });
+}
 try {
   const first = await start('a');
   const second = await start('b', {
@@ -157,6 +170,17 @@ try {
     MCP_LISTENER: 'separate',
     MCP_PORT: '0',
     MCP_PATH: '/tools'
+  });
+  await checkFrontendClients({
+    target: first.base,
+    host: origin,
+    label: 'default auth path'
+  });
+  await checkFrontendClients({
+    target: second.base,
+    host: origin,
+    authBasePath: second.authPath,
+    label: 'custom auth path'
   });
   for (const service of [first, second]) {
     const docs = await call(service.base, '/docs');
@@ -337,6 +361,12 @@ try {
     BETTER_AUTH_BASE_PATH: '/ignored'
   });
   assert.equal(restarted.authPath, '/custom/auth');
+  await checkFrontendClients({
+    target: restarted.base,
+    host: `${origin}/custom/auth`,
+    authBasePath: '/ignored',
+    label: 'URL path overrides authBasePath'
+  });
   await call(second.base, '/api/auth/ok', {}, 404);
   await call(restarted.base, '/api/auth/ok', {}, 404);
   await call(restarted.base, '/ignored/ok', {}, 404);
@@ -382,6 +412,12 @@ try {
     JWKS_PUBLIC_KEY_URL: undefined
   });
   assert.equal(ownJwks.authPath, '');
+  await checkFrontendClients({
+    target: ownJwks.base,
+    host: ownOrigin,
+    authBasePath: '/',
+    label: 'root auth path'
+  });
   assert.equal((await probeMcp(ownJwks.base, ['getauthmethods'])).length, 6);
   const ownSession = await call(
     ownJwks.base,

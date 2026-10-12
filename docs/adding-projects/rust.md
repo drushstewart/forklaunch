@@ -23,6 +23,38 @@ The service serves `/health`, `/users`, `/openapi.json`, and a Scalar documentat
 
 Network requests use Axum and the same contract handlers as `local_router`. Path parameters, decoded URL queries, headers, binary bodies, body limits, CORS, and request IDs pass through the framework adapter.
 
+## Native Better Auth
+
+```sh
+forklaunch init application my-auth-app --language rust --modules iam-better-auth -D "Auth app" -A "My team" -L MIT
+```
+
+The `iam` service includes the configured Better Auth 1.7.6 authentication API,
+organizations, teams, Google OAuth and encrypted tenant-bound PostgreSQL storage.
+Use its generated README and `.env.example` for owner migrations, restricted
+runtime grants and secrets. HTTP and MCP share the listener by default; separate
+and disabled MCP modes use the same settings as other native services.
+
+Raw authentication defaults to `/api/auth`. Set `BETTER_AUTH_BASE_PATH` for a
+custom namespace or `/` for root. A path already present in `BETTER_AUTH_URL`
+takes precedence. Default JWKS verification follows that namespace; JWT issuer
+and audience use the configured URL's origin. Scalar `/docs` displays application
+contracts and the raw authentication API as separate sources. The raw routes
+and popup helpers retain cookie/CSRF behavior and do not become MCP tools.
+Application discovery, HMAC role/permission surfacing and system-role compliance
+operations use registered HTTP/MCP contracts and generated SDKs.
+
+The shared TypeScript `clientIamBetterAuthSdkClient` factory and generated
+`iamSdkClient` accept `authBasePath`, so their Better Auth client can connect to
+native default/custom/root authentication. For example, pass `authBasePath: '/'`
+with the public service origin for root auth. A path in `host` overrides this
+option. Live tests execute both factories with the actual Better Auth client
+against native PostgreSQL services, including additional fields, sessions,
+profile updates, JWT/JWKS, signout and signin.
+
+This preset serves one configured tenant. Broader custom hooks/adapters, indexed
+storage pagination and the unified mixed application SDK remain parity work.
+
 ## Local cache and object storage
 
 ```sh

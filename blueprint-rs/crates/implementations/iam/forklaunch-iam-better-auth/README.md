@@ -699,3 +699,23 @@ and graceful shutdown. All five actual-TypeScript-signed native capability
 callbacks pass forgery/staleness/replay/redelivery checks. The checkout CLI was
 rebuilt after the archive run. This confirms source portability and service
 startup; broader parity and published registry installation remain open.
+
+### Actual shared and generated frontend client interoperability
+
+The shared `clientIamBetterAuthSdkClient` and generated `iamSdkClient` factories
+now accept `authBasePath` (default `/api/auth`, `/` for root); a path already in
+`host` takes precedence. Both initial templates and subsequent AST injection
+carry the option. Eight live scenarios execute both actual TS factories and
+Better Auth 1.7.6 over native PostgreSQL HTTP: default/custom/root/URL-override
+namespaces, 80 requests total. Signup additional fields, sessions, profile
+updates, independently verified JWT/JWKS, signout and signin pass. The fixture
+owns Node cookie persistence and public-origin forwarding; universal SDK core
+construction remains a separate boundary and does not establish unified mixed
+SDK parity.
+
+The final run also exercises automatic pinned-client dependency setup, actual
+CLI TypeScript client generation, restricted PostgreSQL, shared/separate/disabled
+MCP, self-JWKS, SDKs, persistence, shutdown and rename/delete. All 1,016 CLI tests
+and 751 packaged source checks pass. E2E CI installs the pinned client and reacts
+to changes in both the auth module and frontend factory. Broader custom client
+plugins/hooks, unified mixed SDK behavior and indexed storage remain open.

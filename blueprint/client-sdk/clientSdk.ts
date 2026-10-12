@@ -24,10 +24,13 @@ export const clientBillingStripeSdkClient =
 export const clientIamSdkClient = universalSdk<IamSdkClient>;
 export const clientIamBetterAuthSdkClient = async ({
   host,
-  registryOptions
+  registryOptions,
+  authBasePath
 }: {
   host: string;
   registryOptions: RegistryOptions;
+  /** Defaults to /api/auth; use / for root. A path in host takes precedence. */
+  authBasePath?: string;
 }) => ({
   core: await universalSdk<IamBetterAuthSdkClient>({
     host,
@@ -35,6 +38,7 @@ export const clientIamBetterAuthSdkClient = async ({
   }),
   betterAuth: createAuthClient({
     baseURL: host,
+    basePath: authBasePath,
     // The Better Auth client always sends `credentials: 'include'`, so every
     // request is cookie-bearing and hits Better Auth's origin/CSRF guard.
     // Browsers set `Origin` automatically; non-browser runtimes (Node SDK

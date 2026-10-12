@@ -16,6 +16,10 @@ cleanup() {
     if [ "$OWN_DATABASE" = true ]; then docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT
+if [ -z "${FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES:-}" ]; then
+    export FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES="$RUN_ROOT/client-dependencies"
+    npm install --prefix "$FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES" --no-save --package-lock=false --ignore-scripts better-auth@1.7.6
+fi
 if [ -z "${FORKLAUNCH_TEST_POSTGRES_URL:-}" ]; then
     OWN_DATABASE=true
     docker run --detach --name "$DB_CONTAINER" --publish 127.0.0.1::5432 \
@@ -53,6 +57,8 @@ cp "$SCRIPT_DIR/fixtures/rust_better_auth_seed.rs" crates/iam/examples/seed.rs
 ROLE_CREATED=true
 cargo run --quiet -p iam --example seed
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug/iam"))')"
+env FORKLAUNCH_SKIP_FORMAT=1 "$FORKLAUNCH_CLI" init application auth-client --path "$RUN_ROOT/typescript-client" --language typescript --modules-path modules --modules iam-better-auth --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D Auth -A ForkLaunch -L MIT
+export FORKLAUNCH_TEST_GENERATED_CLIENT_SDK="$RUN_ROOT/typescript-client/modules/client-sdk/clientSdk.ts"
 node "$SCRIPT_DIR/rust_better_auth_runtime.mjs" "$BINARY" "$RUN_ROOT/relocated/sdks/typescript/dist/index.js"
 cp -R "$RUN_ROOT/relocated" "$RUN_ROOT/lifecycle"
 "$FORKLAUNCH_CLI" change service --path "$RUN_ROOT/lifecycle/crates/iam" -N identity --confirm

@@ -9,10 +9,12 @@ import { createAuthClient } from "better-auth/client";{{/is_better_auth}}
 //! export various service and worker sdk clients
 export const iamSdkClient{{^is_better_auth}}{{/is_better_auth}} = {{#is_better_auth}}async ({
     host,
-    registryOptions
+    registryOptions,
+    authBasePath
 }: {
     host: string,
-    registryOptions: RegistryOptions
+    registryOptions: RegistryOptions,
+    authBasePath?: string
 }) => ({
     core: await {{/is_better_auth}}universalSdk<IamSdkClient>{{#is_better_auth}}({
         host,
@@ -20,6 +22,7 @@ export const iamSdkClient{{^is_better_auth}}{{/is_better_auth}} = {{#is_better_a
     }),
     betterAuth: createAuthClient({
         baseURL: host,
+        basePath: authBasePath,
         // The Better Auth client always sends `credentials: 'include'`, so every
         // request is cookie-bearing and hits Better Auth's origin/CSRF guard.
         // Browsers set `Origin` automatically; non-browser runtimes (Node SDK
