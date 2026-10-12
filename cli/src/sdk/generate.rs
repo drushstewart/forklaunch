@@ -68,8 +68,8 @@ impl CliCommand for GenerateCommand {
                 Arg::new("from")
                     .long("from")
                     .default_value("openapi")
-                    .value_parser(["openapi", "contract", "socket-contract", "asyncapi"])
-                    .help("Artifact source for SDK generation (asyncapi describes a WebSocket server)"),
+                    .value_parser(["openapi", "contract", "socket-contract", "asyncapi", "all"])
+                    .help("Artifact source (all combines HTTP contracts and socket contracts)"),
             )
             .arg(
                 Arg::new("check")
@@ -149,6 +149,17 @@ pub(crate) fn generate_or_check_sdk_outputs(
     check: bool,
     stdout: &mut StandardStream,
 ) -> Result<()> {
+    if source == "all" {
+        // One watcher serializes both writers because they share workspace metadata.
+        // Try both surfaces so a missing HTTP artifact does not block socket updates.
+        let http = generate_or_check_sdk_outputs(app_root, target, "contract", selected_service, check, stdout);
+        let sockets = super::websocket::generate_from(app_root, target, "socket-contract", selected_service, check, stdout, true);
+        return match (http, sockets) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(http), Err(sockets)) => bail!("HTTP SDK: {http:#}; WebSocket SDK: {sockets:#}"),
+            (Err(error), _) | (_, Err(error)) => Err(error),
+        };
+    }
     if matches!(source, "socket-contract" | "asyncapi") {
         return super::websocket::generate_from(
             app_root,
@@ -157,6 +168,7 @@ pub(crate) fn generate_or_check_sdk_outputs(
             selected_service,
             check,
             stdout,
+            false,
         );
     }
     let manifest = read_manifest(app_root)?;

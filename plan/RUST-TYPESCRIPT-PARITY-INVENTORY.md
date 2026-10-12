@@ -1413,8 +1413,10 @@ actual retained TypeScript export compile in Rust and TypeScript.
 The earlier live fixture passed initial HTTP/MCP startup but its schema edit
 incorrectly added a request field that MikroORM rejected. That fixture input is
 corrected to change only the response. Fresh full reload checks remain pending: the
-shared Docker builder reported a missing snapshot, and an owned separate builder
-is running the retries. Do not count these retries as passes until they complete.
+shared Docker builder reported a missing snapshot. Retries with an owned separate
+builder also exceeded the 20-minute image-build deadline before service startup
+under heavy shared-machine load. Retained attempts: `run.xw81wnhl` (Node) and
+`run.tn_lh14_` (Bun). These runs are not passes; the full reload gate remains open.
 Automatic socket export/WebSocket SDK watch and named API-version selection remain
 open. The full source-archive installation suite has not been rerun for this change.
 
@@ -1424,3 +1426,24 @@ and managed Stripe transport, webhook subscription synchronization, and controll
 HTTP provider tests. Docker/Axum fixtures satisfy the original container/mock test
 intent without adding testcontainers/wiremock dependencies. Customer persistence,
 provider/local-write reconciliation, and configured mapper review remain open.
+
+### Socket development follow-up (implementation in progress)
+
+Native dev contract exports now feed a bounded host-side socket exporter. Planning
+checks socket output/ownership collisions against registered service artifacts.
+Valid changes refresh portable artifacts, empty registries retire owned output,
+and malformed contracts preserve prior output. Atomic socket publication also
+keeps unchanged timestamps. `dev --sdk-source http|websocket|all` selects the SDK
+surfaces, while `sdk generate/watch --from all` processes HTTP and sockets
+sequentially to preserve shared workspace metadata. One owned watcher handles both.
+
+This follow-up is not yet validated: the queued focused tests and a superseded
+CLI rebuild were stopped after prolonged shared-machine contention; an offline
+`cargo check --tests` is running first. Required follow-up includes combined SDK output
+and workspace checks, socket export/remove/restore integration, HTTP/MCP startup,
+and full regression/package checks. No additional parity checkbox is closed here.
+
+Local cleanup limitation: Docker could not stop the owned builder container
+`buildx_buildkit_forklaunch-parity-ts-dev-202610120` (no exit event). Its builder
+name is `forklaunch-parity-ts-dev-20261012`; retry owned-builder removal after the
+daemon recovers. No shared daemon restart or global cache cleanup was performed.

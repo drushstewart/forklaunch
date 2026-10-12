@@ -250,7 +250,7 @@ pub(super) fn rename_service(
             } else {
                 selected[0]
             };
-            generate_from(root, target, source, Some(new), false, stdout)?;
+            generate_from(root, target, source, Some(new), false, stdout, false)?;
         }
     }
     Ok(())

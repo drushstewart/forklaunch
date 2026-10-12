@@ -352,8 +352,16 @@ Bun runtime after rebuilding its workspace, including shared libraries. Generate
 outputs and dependencies use private container volumes. Shared source edits trigger
 rebuild, export and restart. Combined SDKs read the explicit default document in
 TypeScript version bundles; named-version selection remains unsupported. Dotted
-operation IDs retain their namespace in generated method names. This option does
-not yet refresh socket artifacts or start WebSocket SDK watch.
+operation IDs retain their namespace in generated method names. This option also
+refreshes registered native socket artifacts as their HTTP contract export changes.
+Use `--sdk-source websocket` or `--sdk-source all` with `--sdk-target` to watch
+WebSocket SDKs alone or alongside HTTP SDKs. Both surfaces regenerate sequentially
+in one owned watcher. `sdk generate/watch --from all` provides the same combined
+artifact selection outside development. TypeScript socket artifacts still need
+their existing explicit export workflow.
+
+The socket development integration is awaiting its validation gate; see the parity
+inventory for current test evidence.
 
 Native reloads require [Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
 Use `--no-watch` to start without Compose reloads, `--no-build` to reuse images,

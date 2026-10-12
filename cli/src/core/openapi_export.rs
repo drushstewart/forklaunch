@@ -663,14 +663,32 @@ pub(crate) fn export_registered_sockets(
         bail!("Socket artifact path conflicts with registry export metadata");
     }
     fs::create_dir_all(output.parent().context("Socket output parent missing")?)?;
-    fs::write(&output, &content)?;
+    write_socket_export(&output, content.as_bytes())?;
     cleanup_socket_export(&root, previous.as_ref(), Some(&output))?;
     let ownership = serde_json::json!({"formatVersion":1,"outputPath":output.strip_prefix(&root)?,"sha256":socket_export_digest(content.as_bytes())});
     fs::create_dir_all(marker.parent().context("Socket marker parent missing")?)?;
-    fs::write(
-        marker,
-        format!("{}\n", serde_json::to_string_pretty(&ownership)?),
+    write_socket_export(
+        &marker,
+        format!("{}\n", serde_json::to_string_pretty(&ownership)?).as_bytes(),
     )?;
+    Ok(())
+}
+
+// Readers must observe either complete version, and identical exports keep timestamps.
+fn write_socket_export(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write as _;
+    if fs::read(path).ok().as_deref() == Some(bytes) {
+        return Ok(());
+    }
+    let path = if path.exists() {
+        path.canonicalize()?
+    } else {
+        path.to_path_buf()
+    };
+    let mut pending =
+        tempfile::NamedTempFile::new_in(path.parent().context("Socket export parent missing")?)?;
+    pending.write_all(bytes)?;
+    pending.persist(path).map_err(|error| error.error)?;
     Ok(())
 }
 

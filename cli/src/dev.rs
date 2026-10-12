@@ -25,6 +25,7 @@ use crate::{
 
 mod contracts;
 mod sdk;
+mod sockets;
 mod typescript;
 
 pub(crate) struct DevCommand;
@@ -36,8 +37,9 @@ impl CliCommand for DevCommand {
             .arg(Arg::new("services").num_args(0..).help("Compose services to start; defaults to the application"))
             .arg(Arg::new("compose_file").long("compose-file").short('f').action(ArgAction::Append).help("Additional Compose overrides, resolved from the application root"))
             .arg(Arg::new("project_name").long("project-name"))
-            .arg(Arg::new("sdk_target").long("sdk-target").value_parser(["typescript", "rust", "all"]).help("Run HTTP SDK watch with development; implies --export-contracts"))
-            .arg(Arg::new("sdk_service").long("sdk-service").requires("sdk_target").help("Limit HTTP SDK generation to one registered service"))
+            .arg(Arg::new("sdk_target").long("sdk-target").value_parser(["typescript", "rust", "all"]).help("Run SDK watch with development; implies --export-contracts"))
+            .arg(Arg::new("sdk_source").long("sdk-source").value_parser(["http", "websocket", "all"]).requires("sdk_target").help("SDK surfaces to watch (default: http)"))
+            .arg(Arg::new("sdk_service").long("sdk-service").requires("sdk_target").help("Limit SDK generation to one registered service"))
             .arg(Arg::new("export_contracts").long("export-contracts").action(ArgAction::SetTrue).help("Export native contracts and TypeScript OpenAPI before startup and each reload"))
             .arg(Arg::new("no_watch").long("no-watch").action(ArgAction::SetTrue))
             .arg(Arg::new("no_deps").long("no-deps").action(ArgAction::SetTrue))
@@ -125,6 +127,12 @@ impl CliCommand for DevCommand {
             typescript_changes =
                 typescript::enable(&root, &manifest, &active, &mut planned, &changes)?;
         }
+        let socket_exports =
+            if matches.get_flag("export_contracts") || matches.contains_id("sdk_target") {
+                Some(sockets::Exports::new(&root, &manifest, &changes)?)
+            } else {
+                None
+            };
         let rust_sdk_directory = sdk::rust_watch(
             &root,
             matches.get_one::<String>("sdk_target").map(String::as_str),
@@ -138,7 +146,7 @@ impl CliCommand for DevCommand {
             println!(
                 "{}",
                 serde_json::to_string_pretty(
-                    &json!({"root":root,"watch":watch,"selectedServices":selected,"nativeServices":changes,"typescriptServices":typescript_changes,"sdkTarget":matches.get_one::<String>("sdk_target"),"sdkService":matches.get_one::<String>("sdk_service")})
+                    &json!({"root":root,"watch":watch,"selectedServices":selected,"nativeServices":changes,"typescriptServices":typescript_changes,"sdkTarget":matches.get_one::<String>("sdk_target"),"sdkSource":matches.get_one::<String>("sdk_source"),"sdkService":matches.get_one::<String>("sdk_service")})
                 )?
             );
             return Ok(());
@@ -188,17 +196,21 @@ impl CliCommand for DevCommand {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
         run.env("COMPOSE_MENU", "false");
-        let sdk = matches
+        let watcher = matches
             .get_one::<String>("sdk_target")
-            .map(|target| {
-                sdk::command(
-                    &root,
-                    target,
-                    matches.get_one::<String>("sdk_service").map(String::as_str),
-                )
+            .map(|target| -> Result<Process> {
+                let service = matches.get_one::<String>("sdk_service").map(String::as_str);
+                let source = match matches.get_one::<String>("sdk_source").map(String::as_str) {
+                    Some("websocket") => "socket-contract",
+                    Some("all") => "all",
+                    _ => "contract",
+                };
+                let mut command = sdk::command(&root, target, service)?;
+                command.args(["--from", source]);
+                Ok(command)
             })
             .transpose()?;
-        supervise(run, sdk)
+        supervise(run, watcher, socket_exports)
     }
 }
 
@@ -207,7 +219,11 @@ fn supports_restart(version: &str) -> bool {
     matches!((parts.next().and_then(|v| v.parse::<u32>().ok()), parts.next().and_then(|v| v.parse::<u32>().ok())), (Some(major), Some(minor)) if major > 2 || major == 2 && minor >= 32)
 }
 
-fn active_services(compose: &Value, selected: &[String], dependencies: bool) -> Result<BTreeSet<String>> {
+fn active_services(
+    compose: &Value,
+    selected: &[String],
+    dependencies: bool,
+) -> Result<BTreeSet<String>> {
     let services = compose
         .get("services")
         .and_then(Value::as_object)
@@ -485,7 +501,11 @@ fn plan(
     Ok((compose, Value::Object(changes)))
 }
 
-fn supervise(mut command: Process, sdk: Option<Process>) -> Result<()> {
+fn supervise(
+    mut command: Process,
+    sdk: Option<Process>,
+    mut socket_exports: Option<sockets::Exports>,
+) -> Result<()> {
     let interrupts = Arc::new(AtomicUsize::new(0));
     let handler = interrupts.clone();
     ctrlc::set_handler(move || {
@@ -504,6 +524,9 @@ fn supervise(mut command: Process, sdk: Option<Process>) -> Result<()> {
     loop {
         if let Some(watcher) = &mut sdk {
             watcher.report_exit();
+        }
+        if let Some(exports) = &mut socket_exports {
+            exports.poll();
         }
         if let Some(status) = child.try_wait()? {
             if status.success() || forwarded > 0 {

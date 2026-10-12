@@ -53,8 +53,8 @@ impl CliCommand for WatchCommand {
                 Arg::new("from")
                     .long("from")
                     .default_value("contract")
-                    .value_parser(["openapi", "contract", "socket-contract", "asyncapi"])
-                    .help("Artifact source to watch (asyncapi describes a WebSocket server)"),
+                    .value_parser(["openapi", "contract", "socket-contract", "asyncapi", "all"])
+                    .help("Artifact source (all watches HTTP contracts and socket contracts)"),
             )
             .arg(
                 Arg::new("interval_ms")
@@ -197,6 +197,11 @@ fn artifact_fingerprint(
     source: &str,
     selected_service: Option<&str>,
 ) -> Result<BTreeMap<PathBuf, [u8; 32]>> {
+    if source == "all" {
+        let mut fingerprint = artifact_fingerprint(app_root, "contract", selected_service)?;
+        fingerprint.extend(socket_artifact_fingerprint(app_root, selected_service, "socket-contract")?);
+        return Ok(fingerprint);
+    }
     if matches!(source, "socket-contract" | "asyncapi") {
         return socket_artifact_fingerprint(app_root, selected_service, source);
     }
@@ -314,6 +319,8 @@ language = "rust"
         .unwrap();
         for (source, relative) in [
             ("contract", ".forklaunch/contracts/api/contract.json"),
+            ("all", ".forklaunch/contracts/api/contract.json"),
+            ("all", ".forklaunch/socket-contracts/api/socket-contract.json"),
             (
                 "socket-contract",
                 ".forklaunch/socket-contracts/api/socket-contract.json",

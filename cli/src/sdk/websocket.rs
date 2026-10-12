@@ -22,6 +22,7 @@ pub(crate) fn generate_from(
     selected: Option<&str>,
     check: bool,
     stdout: &mut StandardStream,
+    allow_absent: bool,
 ) -> Result<()> {
     anyhow::ensure!(
         matches!(source, "socket-contract" | "asyncapi"),
@@ -133,7 +134,7 @@ pub(crate) fn generate_from(
                 count += 1;
                 continue;
             }
-            if configured.is_none() && selected.is_none() {
+            if configured.is_none() && (selected.is_none() || allow_absent) {
                 continue;
             }
         }
@@ -201,6 +202,9 @@ pub(crate) fn generate_from(
         count += 1;
     }
     if count == 0 {
+        if allow_absent {
+            return Ok(());
+        }
         bail!("No socket contract artifacts found for the selected services");
     }
     stage_workspace(&root, &mut files, &members, target)?;
@@ -575,6 +579,60 @@ pub(crate) fn rename_service(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn combined_generation_allows_absent_sockets_but_requires_explicit_artifacts() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::create_dir(root.join(".forklaunch")).unwrap();
+        let manifest = root.join(".forklaunch/manifest.toml");
+        let base = "[[projects]]\nname='api'\ntype='Service'\n";
+        fs::write(&manifest, base).unwrap();
+        let mut stdout = StandardStream::stdout(termcolor::ColorChoice::Never);
+        assert!(
+            generate_from(
+                root,
+                "typescript",
+                "socket-contract",
+                Some("api"),
+                false,
+                &mut stdout,
+                true
+            )
+            .is_ok()
+        );
+        assert!(
+            generate_from(
+                root,
+                "typescript",
+                "socket-contract",
+                Some("api"),
+                false,
+                &mut stdout,
+                false
+            )
+            .is_err()
+        );
+        assert!(!root.join("sdks").exists());
+        fs::write(
+            &manifest,
+            format!("{base}[projects.metadata]\nsocketContractArtifactPath='missing.json'\n"),
+        )
+        .unwrap();
+        assert!(
+            generate_from(
+                root,
+                "typescript",
+                "socket-contract",
+                Some("api"),
+                false,
+                &mut stdout,
+                true
+            )
+            .is_err()
+        );
+        assert!(!root.join("sdks").exists());
+    }
+
     #[test]
     fn compiled_module_names_cannot_choose_output_paths() {
         assert!(sources(&json!({"rust":{"../escape":"source"}}), "rust").is_err());
