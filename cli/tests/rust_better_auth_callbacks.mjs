@@ -1,144 +1,33 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { actualValidator } from './rust_actual_validator_fixture.mjs';
 import { betterAuthReference } from './fixtures/rust_better_auth_reference.mjs';
+import { betterAuthServer } from './fixtures/rust_better_auth_server.mjs';
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../..',
+  '../..'
 );
 const actual = actualValidator(root);
 const { trustedCallbackUrl, scriptJson } = actual.load(
   path.join(
     root,
-    'blueprint/iam-better-auth/domain/utils/betterAuthRedirect.util.ts',
-  ),
+    'blueprint/iam-better-auth/domain/utils/betterAuthRedirect.util.ts'
+  )
 );
 let cases = 0;
-async function server(reference) {
-  const routes = new Map();
-  let fetches = 0;
-  const app = {
-    internal: {
-      get(route, handler) {
-        routes.set(route, handler);
-      },
-      all() {},
-    },
-    use() {},
-    registerSdks() {},
-    listen(_port, _host, callback) {
-      callback();
-    },
-  };
-  const log = { info() {} };
-  const tokens = new Proxy({}, { get: (_, key) => key });
-  const values = {
-    BetterAuth: reference.auth,
-    HOST: 'localhost',
-    PORT: 3000,
-    VERSION: '1',
-    DOCS_PATH: '/docs',
-    OtelCollector: log,
-    Orm: {},
-    ExpressApplicationOptions: {},
-  };
-  const source = await readFile(
-    path.join(root, 'blueprint/iam-better-auth/server.ts'),
-    'utf8',
-  );
-  const compiled = actual.ts.transpileModule(source, {
-    compilerOptions: {
-      module: actual.ts.ModuleKind.CommonJS,
-      target: actual.ts.ScriptTarget.ES2022,
-    },
-  }).outputText;
-  await vm.runInNewContext(`(async()=>{${compiled}\n})()`, {
-    exports: {},
-    URL,
-    URLSearchParams,
-    async fetch(url, options) {
-      fetches++;
-      assert.equal(
-        new URL(url).origin,
-        new URL(reference.config.baseURL).origin,
-      );
-      return reference.auth.handler(new Request(url, options));
-    },
-    require(specifier) {
-      if (specifier === '@forklaunch/blueprint-core')
-        return {
-          forklaunchExpress: () => app,
-          schemaValidator: actual.validator,
-        };
-      if (specifier === '@forklaunch/core/persistence')
-        return { setupRls() {}, setupTenantFilter() {} };
-      if (specifier.endsWith('/bootstrapper'))
-        return { tokens, ci: { resolve: (token) => values[token] } };
-      if (specifier.endsWith('/sdk')) return { iamSdkClient: {} };
-      if (specifier.includes('/api/routes/')) return {};
-      if (specifier.endsWith('betterAuth.middleware'))
-        return {
-          betterAuthTelemetryHookMiddleware() {},
-          enrichBetterAuthApi: () => () => {},
-        };
-      if (specifier.endsWith('betterAuthRedirect.util'))
-        return { trustedCallbackUrl, scriptJson };
-      throw new Error(`Unexpected server dependency: ${specifier}`);
-    },
-  });
-  return {
-    fetches: () => fetches,
-    async call(route, query, cookie = '') {
-      const result = { status: 200, headers: {} };
-      const response = {
-        status(status) {
-          result.status = status;
-          return this;
-        },
-        send(body) {
-          result.body = body;
-          return this;
-        },
-        type(type) {
-          result.type = type;
-          return this;
-        },
-        setHeader(name, value) {
-          result.headers[name.toLowerCase()] = value;
-        },
-        redirect(url) {
-          result.status = 302;
-          result.location = url;
-        },
-      };
-      // Host headers must not choose the token-exchange authority.
-      await routes.get(route)(
-        {
-          query,
-          headers: { host: 'evil.example.test', cookie },
-          protocol: 'http',
-        },
-        response,
-      );
-      cases++;
-      return result;
-    },
-  };
-}
 for (const baseURL of ['http://localhost:3000', 'https://auth.example.test']) {
   const reference = await betterAuthReference(root, { baseURL });
   const context = await reference.auth.$context;
   for (const target of [
     baseURL + '/complete',
     '/complete',
-    baseURL + '/complete?x=1#old',
+    baseURL + '/complete?x=1#old'
   ]) {
     assert.equal(
       trustedCallbackUrl(target, context).origin,
-      new URL(baseURL).origin,
+      new URL(baseURL).origin
     );
     cases++;
   }
@@ -148,26 +37,28 @@ for (const baseURL of ['http://localhost:3000', 'https://auth.example.test']) {
     'javascript:alert(1)',
     'data:text/html,hello',
     baseURL.replace('://', '://user:password@') + '/complete',
-    baseURL + '.evil.example.test/complete',
+    baseURL + '.evil.example.test/complete'
   ]) {
     assert.equal(trustedCallbackUrl(target, context), null, target);
     cases++;
   }
-  const loaded = await server(reference);
+  const loaded = await betterAuthServer(root, reference, {
+    onCall: () => cases++
+  });
   for (const callback of [
     'https://evil.example.test/',
     'javascript:alert(1)',
-    '//evil.example.test/',
+    '//evil.example.test/'
   ]) {
     assert.equal(
       (await loaded.call('/api/auth/test-callback', { callbackUrl: callback }))
         .status,
-      400,
+      400
     );
     assert.equal(
       (await loaded.call('/api/auth/oauth-redirect', { callbackURL: callback }))
         .status,
-      400,
+      400
     );
   }
   assert.equal((await loaded.call('/api/auth/test-callback', {})).status, 400);
@@ -179,7 +70,7 @@ for (const baseURL of ['http://localhost:3000', 'https://auth.example.test']) {
     firstName: 'Callback',
     lastName: 'User',
     email: 'callback@example.test',
-    password: 'callback-test-only-password',
+    password: 'callback-test-only-password'
   });
   assert.equal(signup.status, 200);
   const cookies = [...client.cookies]
@@ -188,7 +79,7 @@ for (const baseURL of ['http://localhost:3000', 'https://auth.example.test']) {
   const exchanged = await loaded.call(
     '/api/auth/test-callback',
     { callbackUrl: '/complete?x=1#old' },
-    cookies,
+    cookies
   );
   assert.equal(exchanged.status, 302);
   const location = new URL(exchanged.location),
@@ -202,8 +93,8 @@ for (const baseURL of ['http://localhost:3000', 'https://auth.example.test']) {
   assert.equal(loaded.fetches(), 2);
   assert.ok(
     exchanged.headers['set-cookie'].startsWith(
-      `${context.authCookies.sessionToken.name}=;`,
-    ),
+      `${context.authCookies.sessionToken.name}=;`
+    )
   );
   if (baseURL.startsWith('https:'))
     assert.match(exchanged.headers['set-cookie'], /; Secure/);
@@ -216,7 +107,7 @@ for (const baseURL of ['http://localhost:3000', 'https://auth.example.test']) {
       provider: malicious,
       organizationId: malicious,
       callbackURL: '/complete',
-      endpoint: mode,
+      endpoint: mode
     });
     assert.equal(page.status, 200);
     assert.equal((page.body.match(/<script>/g) ?? []).length, 1);
@@ -230,23 +121,23 @@ for (const baseURL of ['http://localhost:3000', 'https://auth.example.test']) {
       fetch: async (endpoint, options) => {
         captured = { endpoint, body: JSON.parse(options.body) };
         return {
-          json: async () => ({ url: 'https://accounts.google.com/mock' }),
+          json: async () => ({ url: 'https://accounts.google.com/mock' })
         };
-      },
+      }
     });
     assert.equal(window.location.href, 'https://accounts.google.com/mock');
     assert.equal(
       captured.body[mode === 'sso' ? 'organizationId' : 'provider'],
-      malicious,
+      malicious
     );
     const intermediate = new URL(captured.body.callbackURL);
     assert.equal(intermediate.origin, new URL(baseURL).origin);
     assert.equal(
       intermediate.searchParams.get('callbackUrl'),
-      baseURL + '/complete',
+      baseURL + '/complete'
     );
   }
 }
 console.log(
-  `PASS ${cases} actual Better Auth callback/helper checks: trusted origins, configured exchange authority, token hashes, secure cookie clearing and script-safe OAuth/SSO HTML`,
+  `PASS ${cases} actual Better Auth callback/helper checks: trusted origins, configured exchange authority, token hashes, secure cookie clearing and script-safe OAuth/SSO HTML`
 );

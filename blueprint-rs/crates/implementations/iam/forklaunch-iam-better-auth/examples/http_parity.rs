@@ -31,7 +31,8 @@ async fn main() {
     let server_clock = clock.clone();
     let router = AuthHttp::new(
         store.clone(),
-        "http://localhost:3000".into(),
+        std::env::var("FORKLAUNCH_AUTH_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:3000".into()),
         b"better-auth-protocol-fixture-secret-32-characters".to_vec(),
         vec![],
     )
@@ -56,6 +57,13 @@ async fn main() {
     } else {
         router
     };
+    #[cfg(feature = "application-http")]
+    let router = if std::env::var_os("FORKLAUNCH_AUTH_POPUP_HELPERS").is_some() {
+        router.router_with_redirects()
+    } else {
+        router.router()
+    };
+    #[cfg(not(feature = "application-http"))]
     let router = router.router();
     for line in io::stdin().lock().lines() {
         let input: Value = literal_json::parse(&line.unwrap()).unwrap();

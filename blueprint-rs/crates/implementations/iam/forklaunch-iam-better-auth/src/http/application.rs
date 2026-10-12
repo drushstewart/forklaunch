@@ -20,6 +20,7 @@ use forklaunch_blueprint_core::{
 use forklaunch_core::ServiceInfo;
 use serde_json::{Value, json};
 use std::sync::Arc;
+mod redirects;
 
 /// Configured Better Auth application metadata, separate from the raw auth API.
 #[must_use]
@@ -137,6 +138,12 @@ fn text() -> BodyContract {
 }
 
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Raw auth API plus the configured test-callback and OAuth popup helpers.
+    /// The helpers use the same trusted origin policy and internal auth handlers.
+    pub fn router_with_redirects(self) -> axum::Router {
+        let settings = redirects::Settings::new(&self);
+        settings.mount(self.router())
+    }
     /// Combines five application operations with the raw auth namespace. Roles
     /// resolve from the trusted store, following configured TS callbacks.
     /// # Panics
@@ -237,7 +244,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                     }
                 },
             )
-            .nest_internal("/api/auth", self.router())
+            .nest_internal("/api/auth", self.router_with_redirects())
             .with_config(config)
     }
     fn application_config(&self, auth: HmacJwksAuth) -> RouterConfig {

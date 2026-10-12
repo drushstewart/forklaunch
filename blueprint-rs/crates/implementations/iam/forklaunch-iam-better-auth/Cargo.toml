@@ -9,8 +9,8 @@ repository.workspace = true
 [features]
 default = []
 http = ["dep:axum", "dep:tower-http", "dep:reqwest"]
-postgres = ["dep:sqlx", "dep:forklaunch-core"]
-application-http = ["http", "dep:forklaunch-axum", "dep:forklaunch-auth", "dep:forklaunch-core"]
+postgres = ["dep:sqlx", "dep:forklaunch-core", "forklaunch-core/postgres", "forklaunch-core/encryption"]
+application-http = ["http", "dep:forklaunch-axum", "dep:forklaunch-auth", "dep:forklaunch-core", "dep:tower"]
 
 [dependencies]
 forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["mcp", "remote-jwks"], optional = true }
@@ -18,6 +18,7 @@ forklaunch-auth = { path = "../../../../../framework-rs/crates/forklaunch-auth",
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 axum = { version = "0.8", optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
+tower = { version = "0.5", features = ["util"], optional = true }
 forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
 base64 = "0.22"
 hex = "0.4"
@@ -40,7 +41,7 @@ tokio = { version = "1", default-features = false, features = ["sync", "rt"] }
 serde = { version = "1", features = ["derive"] }
 regex = "1"
 url = "2"
-forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"], optional = true }
+forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", optional = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros", "uuid"], optional = true }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

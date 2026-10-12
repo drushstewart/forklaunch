@@ -100,6 +100,38 @@ async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
         .unwrap();
     assert_eq!(discovery.status(), 200);
     assert_eq!(discovery.json::<Value>().await.unwrap(), super::discovery());
+    let browser = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let popup = browser
+        .get(format!("{base}/api/auth/test-callback?callbackUrl=%2Fdone"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(popup.status(), 302);
+    assert_eq!(
+        popup.headers()["location"],
+        format!("{base}/done#token=&sessionToken=&email=unknown")
+    );
+    assert_eq!(
+        popup.headers()["set-cookie"],
+        "better-auth.session_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+    );
+    let page = client
+        .get(format!(
+            "{base}/api/auth/oauth-redirect?callbackURL=%2Fdone&provider=google"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(page.status(), 200);
+    assert!(
+        page.text()
+            .await
+            .unwrap()
+            .contains("credentials: 'include'")
+    );
     let init = rpc(&client, &base, "initialize", json!({"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"fixture","version":"1"}})).await;
     assert_eq!(
         init["result"]["serverInfo"]["name"],

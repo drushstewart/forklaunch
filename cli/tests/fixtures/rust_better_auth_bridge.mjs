@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-export function nativeAuthBridge(root) {
+export function nativeAuthBridge(root, options = {}) {
   const child = spawn(
     'cargo',
     [
@@ -11,13 +11,13 @@ export function nativeAuthBridge(root) {
       '-p',
       'forklaunch-iam-better-auth',
       '--features',
-      'http',
+      options.features ?? 'http',
       '--example',
       'http_parity'
     ],
     {
       cwd: root,
-      env: { ...process.env, CARGO_INCREMENTAL: '0' },
+      env: { ...process.env, ...options.env, CARGO_INCREMENTAL: '0' },
       stdio: ['pipe', 'pipe', 'inherit']
     }
   );

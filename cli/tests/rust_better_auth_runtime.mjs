@@ -197,6 +197,32 @@ try {
   assert.equal((await session.json()).user.id, identity.user.id);
   const token = session.headers.get('set-auth-jwt');
   const jwks = await (await call(first.base, '/api/auth/jwks')).json();
+  const popup = await call(
+    first.base,
+    '/api/auth/test-callback?callbackUrl=%2Fpopup%3Fx%3D1%23old',
+    { headers: { cookie }, redirect: 'manual' },
+    302
+  );
+  const destination = new URL(popup.headers.get('location'));
+  assert.equal(destination.origin, origin);
+  assert.equal(destination.pathname, '/popup');
+  assert.equal(destination.search, '?x=1');
+  const fragment = new URLSearchParams(destination.hash.slice(1));
+  assert.equal(fragment.get('sessionToken'), identity.token);
+  assert.equal(fragment.get('email'), 'generated@example.test');
+  assert.ok(fragment.get('token'));
+  assert.equal(popup.headers.getSetCookie().length, 1);
+  const page = await call(
+    first.base,
+    '/api/auth/oauth-redirect?callbackURL=%2Fpopup&provider=google'
+  );
+  assert.match(await page.text(), /credentials: 'include'/);
+  await call(
+    first.base,
+    '/api/auth/test-callback?callbackUrl=https%3A%2F%2Fevil.example.test',
+    {},
+    400
+  );
   publishedKeys = jwks;
   const [header, payload, signature] = token.split('.');
   const key = jwks.keys.find(

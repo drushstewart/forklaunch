@@ -5,8 +5,9 @@ scrypt hashes and signed cookies, asymmetric JWT/JWKS, all 70 raw authentication
 HTTP routes, organizations, teams, memberships, invitations and dynamic roles.
 The `application-http` feature adds the five configured HTTP/MCP application
 contracts. CLI generation accepts `--module iam-better-auth` for native Rust.
-Custom redirect helpers, additional documentation sources, complete ORM/hooks
-and broader nondefault options remain parity work. The sections below retain
+The application feature includes the two custom internal popup helpers.
+Additional documentation sources, complete ORM/hooks and broader nondefault
+options remain parity work. The sections below retain
 validation history; the latest entries describe current coverage.
 
 Generate a native application with this preset:
@@ -604,3 +605,24 @@ CLI/native SDK generation and the complete generated HTTP/MCP startup matrix.
 All five actual-TypeScript-signed managed capability callbacks pass. The checkout
 CLI was restored after archive installation. Callback-helper changes after this
 snapshot have separate validation.
+
+Both configured internal popup helpers are native. `/api/auth/test-callback`
+validates trusted destinations, exchanges through the existing auth handlers,
+clears only the configured session cookie and replaces the destination fragment
+with JWT/session/email values. `/api/auth/oauth-redirect` emits matching
+script-safe OAuth/SSO HTML, including duplicate-query coercion. Neither becomes
+an MCP tool. Ninety-two actual Express 5.2.1 / TypeScript comparisons cover HTTP
+and HTTPS, invalid origins/userinfo/schemes, anonymous/signed/forged/expired
+cookies, corrupted signing keys, response media/Accept negotiation, HEAD, cookie
+headers and HTML escaping. Independently generated JWTs verify against their
+own public keys and match claims; signatures are not compared byte-for-byte.
+
+The relocated generated service also passes these helpers against a fresh
+PostgreSQL container, plus shared/separate/disabled HTTP/MCP listeners, tenant
+isolation, SDKs, restart, graceful shutdown and rename/delete. All 27 native
+tests, strict default/HTTP/all-feature clippy, 40 original callback checks,
+161 raw HTTP regressions, five application contracts/nine response schemas and
+749 packaged sources pass. `application-http` no longer enables unused SQL or
+field-encryption features unless PostgreSQL is selected. Additional docs
+sources, nondefault base paths, complete ORM/hooks/client integration and
+broader custom options remain open.

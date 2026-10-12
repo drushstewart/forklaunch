@@ -31,6 +31,11 @@ HTTP and MCP share the listener by default. Set `MCP_ENABLED=false` to disable
 MCP, or use `MCP_LISTENER=separate` and `MCP_PORT` for another listener. Set
 `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.
 
-This scaffold serves one trusted configured tenant. Custom redirect helper
-routes, nondefault auth base paths, additional Scalar documentation sources,
-complete ORM/hooks and broader custom Better Auth options remain parity work.
+The internal `/api/auth/test-callback` exchanges a signed session cookie for
+JWT/session/email fragment values and clears only the configured session cookie.
+`/api/auth/oauth-redirect` emits the script-safe OAuth/SSO popup page. Both validate
+callback destinations against the configured trusted origins.
+
+This scaffold serves one trusted configured tenant. Nondefault auth base paths,
+additional Scalar documentation sources, complete ORM/hooks and broader custom
+Better Auth options remain parity work.
