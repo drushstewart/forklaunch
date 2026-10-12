@@ -1077,3 +1077,5 @@ HTTP/JWT/MCP and the complete generated HTTP/MCP listener/startup matrix.
 Portable services/workers, both SDK generators and five signed capability
 callbacks pass. This snapshot contains 48 raw routes and both completed
 server-only helpers. Checkout CLI rebuilt afterward (16.84 seconds).
+
+- [x] Port invitation lookup, organization lists and received-user lists with configured verified-email/error ordering, recipient scope, expiry boundaries, joined inviter details and adapter limit-before-status filtering. All 258 actual HTTP/storage/cookie comparisons pass, including HEAD/POST/OPTIONS fallback behavior. Memory/restricted PostgreSQL and live HTTP/JWT/MCP cover all three read routes. Invitation mutations, dynamic roles and remaining helper/provider/preset gates stay open.

@@ -7,6 +7,7 @@ use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::collections::HashMap;
 
+pub(super) mod invitations;
 mod members;
 mod mutation_validation;
 mod teams;
@@ -24,6 +25,9 @@ pub(super) async fn handle<S: AuthStore + 'static>(
 ) -> BlueprintResult<Value> {
     let service = OrganizationService::new(app.store.clone());
     let (token, transient) = session;
+    if let Some(body) = invitations::handle(&service, path, query, session, now).await? {
+        return Ok(body);
+    }
     if let Some(body) = members::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);
     }
@@ -118,4 +122,73 @@ pub(super) fn strip_record_keys(path: &str, payload: &mut Value) {
     if let Some(Value::Object(metadata)) = metadata {
         metadata.shift_remove("__proto__");
     }
+}
+
+pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<AuthHttp<S>>> {
+    use super::{dispatch, not_found};
+    use axum::{
+        Router,
+        routing::{get, post},
+    };
+    Router::new()
+        .route(
+            "/organization/get-invitation",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route(
+            "/organization/list-invitations",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route(
+            "/organization/list-user-invitations",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route("/organization/create", post(dispatch::<S>))
+        .route(
+            "/organization/get-active-member",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route(
+            "/organization/get-active-member-role",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route(
+            "/organization/list-members",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route(
+            "/organization/list-teams",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route(
+            "/organization/list-user-teams",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route(
+            "/organization/list-team-members",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route("/organization/set-active-team", post(dispatch::<S>))
+        .route("/organization/create-team", post(dispatch::<S>))
+        .route("/organization/update-team", post(dispatch::<S>))
+        .route("/organization/remove-team", post(dispatch::<S>))
+        .route("/organization/add-team-member", post(dispatch::<S>))
+        .route("/organization/remove-team-member", post(dispatch::<S>))
+        .route("/organization/leave", post(dispatch::<S>))
+        .route("/organization/update-member-role", post(dispatch::<S>))
+        .route("/organization/remove-member", post(dispatch::<S>))
+        .route("/organization/update", post(dispatch::<S>))
+        .route("/organization/delete", post(dispatch::<S>))
+        .route("/organization/has-permission", post(dispatch::<S>))
+        .route(
+            "/organization/get-organization",
+            get(dispatch::<S>).head(not_found),
+        )
+        .route("/organization/check-slug", post(dispatch::<S>))
+        .route("/organization/set-active", post(dispatch::<S>))
+        .route("/organization/list", get(dispatch::<S>).head(not_found))
+        .route(
+            "/organization/get-full-organization",
+            get(dispatch::<S>).head(not_found),
+        )
 }

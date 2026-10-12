@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 mod create;
 mod full;
+mod invitations;
 mod members;
 mod mutation;
 mod permission;

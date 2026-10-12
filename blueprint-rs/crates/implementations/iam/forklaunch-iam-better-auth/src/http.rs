@@ -118,54 +118,6 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/sign-up/email", post(dispatch::<S>))
             .route("/sign-in/email", post(dispatch::<S>))
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
-            .route("/organization/create", post(dispatch::<S>))
-            .route(
-                "/organization/get-active-member",
-                get(dispatch::<S>).head(not_found),
-            )
-            .route(
-                "/organization/get-active-member-role",
-                get(dispatch::<S>).head(not_found),
-            )
-            .route(
-                "/organization/list-members",
-                get(dispatch::<S>).head(not_found),
-            )
-            .route(
-                "/organization/list-teams",
-                get(dispatch::<S>).head(not_found),
-            )
-            .route(
-                "/organization/list-user-teams",
-                get(dispatch::<S>).head(not_found),
-            )
-            .route(
-                "/organization/list-team-members",
-                get(dispatch::<S>).head(not_found),
-            )
-            .route("/organization/set-active-team", post(dispatch::<S>))
-            .route("/organization/create-team", post(dispatch::<S>))
-            .route("/organization/update-team", post(dispatch::<S>))
-            .route("/organization/remove-team", post(dispatch::<S>))
-            .route("/organization/add-team-member", post(dispatch::<S>))
-            .route("/organization/remove-team-member", post(dispatch::<S>))
-            .route("/organization/leave", post(dispatch::<S>))
-            .route("/organization/update-member-role", post(dispatch::<S>))
-            .route("/organization/remove-member", post(dispatch::<S>))
-            .route("/organization/update", post(dispatch::<S>))
-            .route("/organization/delete", post(dispatch::<S>))
-            .route("/organization/has-permission", post(dispatch::<S>))
-            .route(
-                "/organization/get-organization",
-                get(dispatch::<S>).head(not_found),
-            )
-            .route("/organization/check-slug", post(dispatch::<S>))
-            .route("/organization/set-active", post(dispatch::<S>))
-            .route("/organization/list", get(dispatch::<S>).head(not_found))
-            .route(
-                "/organization/get-full-organization",
-                get(dispatch::<S>).head(not_found),
-            )
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))
             .route("/reset-password", post(dispatch::<S>))
@@ -199,6 +151,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/revoke-sessions", post(dispatch::<S>))
             .route("/revoke-other-sessions", post(dispatch::<S>))
             .route("/sign-out", post(dispatch::<S>))
+            .merge(organization::routes::<S>())
             .method_not_allowed_fallback(not_found)
             .fallback(not_found)
             .layer(axum::middleware::from_fn_with_state(
@@ -332,8 +285,10 @@ async fn handle<S: AuthStore + 'static>(
     if path == "/get-session" {
         return app.session_response(view, pending, now).await;
     }
-    let view = required_view(view, path, &payload)?;
     if path.starts_with("/organization/") {
+        if !organization::invitations::is_route(path) {
+            required_view(view, path, &payload)?;
+        }
         return organization::handle(
             app,
             path,
@@ -345,6 +300,7 @@ async fn handle<S: AuthStore + 'static>(
         )
         .await;
     }
+    let view = required_view(view, path, &payload)?;
     session_operation(
         app,
         path,
@@ -430,6 +386,13 @@ fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
             .into_response();
     }
     if error.code == "UNAUTHORIZED" {
+        if path == "/organization/get-invitation" {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"message":"Not authenticated"})),
+            )
+                .into_response();
+        }
         if matches!(
             path,
             "/organization/create"
@@ -466,6 +429,13 @@ fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
     failure(error)
 }
 fn failure(error: &BlueprintError) -> Response {
+    if error.code == "HTTP_FORBIDDEN_MESSAGE_ONLY" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"message":error.message})),
+        )
+            .into_response();
+    }
     if error.code == "HTTP_INTERNAL_EMPTY" {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
@@ -502,6 +472,8 @@ fn failure(error: &BlueprintError) -> Response {
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION"
         | "USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION"
+        | "YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION"
+        | "EMAIL_VERIFICATION_REQUIRED_FOR_INVITATION"
         | "SESSION_NOT_FRESH"
         | "MISSING_OR_NULL_ORIGIN"
         | "INVALID_ORIGIN"

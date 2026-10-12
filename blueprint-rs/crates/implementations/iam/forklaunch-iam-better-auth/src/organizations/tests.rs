@@ -1,5 +1,6 @@
 use super::*;
 mod additions;
+mod invitations;
 mod listing;
 mod members;
 mod permissions;
@@ -100,7 +101,8 @@ pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
     listing::exercise_listing(store.clone()).await;
     teams::exercise_teams(store.clone()).await;
     team_mutations::exercise_mutations(store.clone()).await;
-    team_members::exercise_memberships(store).await;
+    team_members::exercise_memberships(store.clone()).await;
+    invitations::exercise(store).await;
 }
 
 async fn exercise_selection<S: AuthStore>(

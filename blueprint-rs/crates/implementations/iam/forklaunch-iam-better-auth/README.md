@@ -310,3 +310,11 @@ Workspace tests pass with unified JSON features (233 framework, 101 blueprint),
 as do explicit restricted PostgreSQL auth and existing JOSE/password/session/
 organization/team regressions. Shared generic deserializer marker keys, unpaired
 surrogates/deep nesting and real ORM metadata behavior remain open gates.
+
+Fifty-one raw auth routes include invitation lookup and organization/user lists.
+All 258 actual HTTP/storage/cookie comparisons pass: configured verification,
+recipient visibility, exact expiry boundaries, inviter joins and missing records,
+100-row limit-before-status filtering, client email-query rejection and method
+fallbacks. Native memory/restricted PostgreSQL and live HTTP cover reads beside
+JWT/MCP. Invitation lifecycle mutations and remaining dynamic-role/provider/
+helper/ORM/callback/preset gates stay open.
