@@ -224,10 +224,10 @@ async function request(
     location: a.headers.get('location')
   };
 }
-async function authorize(who, body = {}) {
+async function authorize(who, body = {}, route = '/sign-in/social') {
   // Random provider state/challenge are compared separately from the common URL.
   const a = await reference.auth.handler(
-    new Request('http://localhost:3000/api/auth/sign-in/social', {
+    new Request(`http://localhost:3000/api/auth${route}`, {
       method: 'POST',
       headers: {
         origin: 'http://localhost:3000',
@@ -249,7 +249,7 @@ async function authorize(who, body = {}) {
     op: 'request',
     now,
     method: 'POST',
-    path: '/sign-in/social',
+    path: route,
     headers: {
       origin: 'http://localhost:3000',
       'content-type': 'application/json',
@@ -587,6 +587,32 @@ try {
     await callback(expired, state, { code: 'state-expiry-boundary' });
   }
   now = beforeExpiry;
+  for (const changes of [
+    { sub: 'browser-link-new' },
+    { sub: 'browser-link-mismatch', email: 'mismatch@example.test' }
+  ]) {
+    tokenData = {
+      id_token: await token(changes),
+      access_token: 'browser-link-access',
+      scope: 'openid calendar'
+    };
+    const sessionsBefore = reference.database.session.length;
+    await callback(
+      who,
+      await authorize(
+        who,
+        {
+          additionalData: {
+            link: { userId: 'attacker', email: 'attacker@example.test' }
+          }
+        },
+        '/link-social'
+      ),
+      { code: 'browser-link-entrypoint' }
+    );
+    assert.equal(reference.database.session.length, sessionsBefore);
+    await records();
+  }
   console.log(
     `Configured Better Auth Google callbacks: ${checks} actual response/storage/wire comparisons passed; ${nativeExchanges.length} code exchanges`
   );

@@ -24,6 +24,63 @@ impl<S: AuthStore> GoogleAccounts<S> {
     pub fn new(store: Arc<S>) -> Self {
         Self { store }
     }
+    /// Links a verified direct ID token to the authenticated local user.
+    /// Existing own accounts may update tokens without re-running initial email policy.
+    /// # Errors
+    /// Returns configured direct-link ownership/email errors or storage failures.
+    pub async fn link_direct_verified(
+        &self,
+        profile: &Value,
+        tokens: &Value,
+        user_id: &str,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<()> {
+        if !crate::keyring::verify::truthy(&profile["email"]) {
+            return Err(error("USER_EMAIL_NOT_FOUND", "User email not found"));
+        }
+        let subject = account_subject(profile)?;
+        let mut tx = self.store.begin(true).await?;
+        let user = tx
+            .get(Model::User, user_id)
+            .await?
+            .ok_or_else(|| error("UNAUTHORIZED", "Unauthorized"))?;
+        let existing = tx
+            .list(Model::Account)
+            .await?
+            .into_iter()
+            .find(|row| row["providerId"] == "google" && row["accountId"] == subject);
+        let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+        if let Some(mut account) = existing {
+            if account["userId"] != user_id {
+                return Err(error(
+                    "SOCIAL_ACCOUNT_ALREADY_LINKED",
+                    "Social account already linked",
+                ));
+            }
+            copy_tokens(&mut account, tokens);
+            account["updatedAt"] = json!(timestamp);
+            tx.replace(Model::Account, account).await?;
+        } else {
+            if !crate::keyring::verify::truthy(&profile["email_verified"]) {
+                return Err(error(
+                    "LINKING_NOT_ALLOWED",
+                    "Account not linked - linking not allowed",
+                ));
+            }
+            let email = profile["email"].as_str().ok_or_else(internal)?;
+            if Some(email.to_lowercase()) != user["email"].as_str().map(str::to_lowercase) {
+                return Err(error(
+                    "LINKING_DIFFERENT_EMAILS_NOT_ALLOWED",
+                    "Account not linked - different emails not allowed",
+                ));
+            }
+            let mut account = json!({"id":uuid::Uuid::new_v4().to_string(),"userId":user_id,"accountId":subject,
+                "providerId":"google","createdAt":timestamp,"updatedAt":timestamp});
+            copy_tokens(&mut account, tokens);
+            tx.insert(Model::Account, account).await?;
+        }
+        tx.commit().await
+    }
     /// Links a trusted provider profile to the server-owned identity saved in OAuth state.
     /// # Errors
     /// Rejects unverified provider email, mismatching email or another account owner.

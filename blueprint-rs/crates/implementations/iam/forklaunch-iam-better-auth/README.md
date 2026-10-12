@@ -2,7 +2,7 @@
 
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
-cookies, asymmetric JWT issuance/public JWKs and sixty-two raw authentication HTTP
+cookies, asymmetric JWT issuance/public JWKs and sixty-four raw authentication HTTP
 routes behind the `http` feature. Configured organization, team, membership,
 invitation and dynamic-role APIs are implemented. Provider/OpenAPI, full ORM and
 callback parity remain in progress, and it is not selectable as a CLI module preset.
@@ -474,3 +474,17 @@ rejection and all five actual-TypeScript-signed capability callbacks pass. This
 snapshot contains 62 raw auth routes and Google code callbacks; later linking
 initiation work is validated separately. The checkout CLI was restored after
 the archive install.
+
+Google `/link-social` now supports direct verified ID-token linking and browser
+authorization with server-owned user/email state. Existing own accounts update
+tokens; new links enforce verified provider email and matching local email;
+another owner's provider identity returns a conflict. The combined social/link
+HTTP fixture passes 289 actual response/storage comparisons, including nested
+schemas and ignored direct-link fields. The browser callback fixture passes 236
+actual response/storage/wire comparisons through the real linking entrypoint.
+Direct-link ownership/policy/token checks pass memory and encrypted restricted
+PostgreSQL. Configured `/update-session` matches the TypeScript plugin field
+policy: protected organization/team fields cannot be set, and there are no
+configured editable session fields. The implemented route count is 64/70.
+Access-token refresh, account-info, OpenAPI/error routes, full ORM/application
+hooks and CLI preset remain open.

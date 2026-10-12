@@ -29,6 +29,7 @@ mod rate;
 mod request;
 mod social;
 mod social_callback;
+mod social_link;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -128,6 +129,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/sign-up/email", post(dispatch::<S>))
             .route("/sign-in/email", post(dispatch::<S>))
             .route("/sign-in/social", post(dispatch::<S>))
+            .route("/link-social", post(dispatch::<S>))
             .route(
                 "/callback/{provider}",
                 get(social_callback::dispatch::<S>)
@@ -137,6 +139,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
             .route("/unlink-account", post(dispatch::<S>))
             .route("/update-user", post(dispatch::<S>))
+            .route("/update-session", post(dispatch::<S>))
             .route("/reset-password", post(dispatch::<S>))
             .route(
                 "/reset-password/{token}",
@@ -358,6 +361,21 @@ async fn session_operation<S: AuthStore + 'static>(
             )
             .await
         }
+        "/update-session" => {
+            for field in ["activeOrganizationId", "activeTeamId"] {
+                if crate::keyring::verify::truthy(&payload[field]) {
+                    return Err(BlueprintError::new(
+                        "FIELD_NOT_ALLOWED",
+                        format!("{field} is not allowed to be set"),
+                    ));
+                }
+            }
+            Err(BlueprintError::new(
+                "HTTP_MESSAGE_ONLY",
+                "No fields to update",
+            ))
+        }
+        "/link-social" => social_link::link(app, &payload, &view, pending, now).await,
         "/token" => Ok(json!({"token":app.jwt(&view, now).await?})),
         "/list-sessions" => sessions.list(token, transient, now).await,
         "/revoke-session" => {
@@ -477,11 +495,14 @@ fn failure(error: &BlueprintError) -> Response {
     }
     let status = match error.code.as_str() {
         "PROVIDER_NOT_FOUND" => StatusCode::NOT_FOUND,
+        "SOCIAL_ACCOUNT_ALREADY_LINKED" => StatusCode::CONFLICT,
         "UNAUTHORIZED"
         | "INVALID_TOKEN"
         | "USER_EMAIL_NOT_FOUND"
         | "FAILED_TO_GET_USER_INFO"
         | "OAUTH_LINK_ERROR"
+        | "LINKING_NOT_ALLOWED"
+        | "LINKING_DIFFERENT_EMAILS_NOT_ALLOWED"
         | "INVALID_EMAIL_OR_PASSWORD"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER" => StatusCode::UNAUTHORIZED,
         "YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION"

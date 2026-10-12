@@ -133,6 +133,9 @@ pub(super) fn session_credentials<S: AuthStore>(
 }
 
 pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintResult<()> {
+    if path == "/link-social" {
+        return super::social_link::validate(payload);
+    }
     if path == "/sign-in/social" {
         return super::social::validate(payload);
     }
@@ -140,7 +143,7 @@ pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintRes
         return super::organization::validate_body(path, payload);
     }
     let (optional, fields) = body_fields(path);
-    if path == "/update-user" {
+    if matches!(path, "/update-user" | "/update-session") {
         if !payload.is_some_and(Value::is_object) {
             return Err(BlueprintError::new(
                 "VALIDATION_ERROR",

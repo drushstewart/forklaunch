@@ -51,6 +51,21 @@ pub(super) async fn sign_in<S: AuthStore + 'static>(
             json!({"redirect":false,"token":grant.auth.session["token"],"user":grant.auth.user}),
         );
     }
+    authorization(app, payload, pending, now, None).await
+}
+
+pub(super) async fn authorization<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    payload: &Value,
+    pending: &mut HeaderMap,
+    now: DateTime<Utc>,
+    link: Option<Value>,
+) -> BlueprintResult<Value> {
+    let provider = app
+        .google
+        .as_ref()
+        .filter(|_| payload["provider"] == "google")
+        .ok_or_else(|| BlueprintError::new("PROVIDER_NOT_FOUND", "Provider not found"))?;
     let auth_base = super::social_callback::auth_base(app)?;
     let mut data = payload.get("additionalData").cloned().unwrap_or(json!({}));
     // Reserved server state overrides caller additionalData, including absent fields.
@@ -64,6 +79,9 @@ pub(super) async fn sign_in<S: AuthStore + 'static>(
         "idTokenNonce",
     ] {
         data.as_object_mut().ok_or_else(internal)?.remove(field);
+    }
+    if let Some(link) = link {
+        data["link"] = link;
     }
     data["callbackURL"] = json!(
         payload["callbackURL"]
@@ -170,34 +188,7 @@ pub(super) fn validate(payload: Option<&Value>) -> BlueprintResult<()> {
             false,
             &mut errors,
         );
-        if let Some(params) = body.get("additionalParams") {
-            if let Some(params) = params.as_object() {
-                let before = errors.len();
-                for (key, value) in params {
-                    scalar(
-                        Some(value),
-                        &format!("body.additionalParams.{key}"),
-                        "string",
-                        true,
-                        &mut errors,
-                    );
-                }
-                if errors.len() == before
-                    && params
-                        .keys()
-                        .any(|key| crate::oauth::google_authorize::RESERVED.contains(&key.as_str()))
-                {
-                    errors.push("[body.additionalParams] additionalParams cannot include reserved OAuth parameters: state, client_id, redirect_uri, response_type, code_challenge, code_challenge_method, nonce, scope".into());
-                }
-            } else {
-                invalid(Some(params), "body.additionalParams", "record", &mut errors);
-            }
-        }
-        if let Some(data) = body.get("additionalData")
-            && !data.is_object()
-        {
-            invalid(Some(data), "body.additionalData", "record", &mut errors);
-        }
+        validate_additional(body, &mut errors);
     }
     if errors.is_empty() {
         Ok(())
@@ -205,7 +196,7 @@ pub(super) fn validate(payload: Option<&Value>) -> BlueprintResult<()> {
         Err(BlueprintError::new("VALIDATION_ERROR", errors.join("; ")))
     }
 }
-fn object(value: Option<&Value>, path: &str, errors: &mut Vec<String>) -> bool {
+pub(super) fn object(value: Option<&Value>, path: &str, errors: &mut Vec<String>) -> bool {
     if value.is_some_and(Value::is_object) {
         true
     } else {
@@ -213,7 +204,13 @@ fn object(value: Option<&Value>, path: &str, errors: &mut Vec<String>) -> bool {
         false
     }
 }
-fn scalar(value: Option<&Value>, path: &str, kind: &str, required: bool, errors: &mut Vec<String>) {
+pub(super) fn scalar(
+    value: Option<&Value>,
+    path: &str,
+    kind: &str,
+    required: bool,
+    errors: &mut Vec<String>,
+) {
     if value.is_none() && !required {
         return;
     }
@@ -226,7 +223,7 @@ fn scalar(value: Option<&Value>, path: &str, kind: &str, required: bool, errors:
         invalid(value, path, kind, errors);
     }
 }
-fn invalid(value: Option<&Value>, path: &str, kind: &str, errors: &mut Vec<String>) {
+pub(super) fn invalid(value: Option<&Value>, path: &str, kind: &str, errors: &mut Vec<String>) {
     errors.push(format!(
         "[{path}] Invalid input: expected {kind}, received {}",
         super::request::received(value)
@@ -276,5 +273,36 @@ fn validate_id_token(body: &Value, errors: &mut Vec<String>) {
                 errors,
             );
         }
+    }
+}
+
+pub(super) fn validate_additional(body: &Value, errors: &mut Vec<String>) {
+    if let Some(params) = body.get("additionalParams") {
+        if let Some(params) = params.as_object() {
+            let before = errors.len();
+            for (key, value) in params {
+                scalar(
+                    Some(value),
+                    &format!("body.additionalParams.{key}"),
+                    "string",
+                    true,
+                    errors,
+                );
+            }
+            if errors.len() == before
+                && params
+                    .keys()
+                    .any(|key| crate::oauth::google_authorize::RESERVED.contains(&key.as_str()))
+            {
+                errors.push("[body.additionalParams] additionalParams cannot include reserved OAuth parameters: state, client_id, redirect_uri, response_type, code_challenge, code_challenge_method, nonce, scope".into());
+            }
+        } else {
+            invalid(Some(params), "body.additionalParams", "record", errors);
+        }
+    }
+    if let Some(data) = body.get("additionalData")
+        && !data.is_object()
+    {
+        invalid(Some(data), "body.additionalData", "record", errors);
     }
 }

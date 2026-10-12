@@ -80,6 +80,7 @@ pub(crate) async fn exercise<S: AuthStore>(store: Arc<S>) {
     assert!(!linked.registered);
     assert_eq!(linked.auth.user["id"], local["id"]);
     exercise_link(&service, &store, &profile, &link, &local, &tokens, now).await;
+    exercise_direct_link(&service, &profile, &local, &tokens, now).await;
     link["sub"] = json!("native-orphan-subject");
     assert_eq!(
         service
@@ -169,5 +170,60 @@ async fn exercise_link<S: AuthStore>(
             .unwrap()
             .code,
         "email_does_not_match"
+    );
+}
+
+async fn exercise_direct_link<S: AuthStore>(
+    service: &GoogleAccounts<S>,
+    profile: &Value,
+    local: &Value,
+    tokens: &Value,
+    now: DateTime<Utc>,
+) {
+    let user_id = local["id"].as_str().unwrap();
+    let mut direct = profile.clone();
+    direct["sub"] = json!("native-explicit-subject");
+    direct["email"] = json!("changed-own@fixture.test");
+    direct["email_verified"] = json!(false);
+    service
+        .link_direct_verified(&direct, tokens, user_id, now)
+        .await
+        .unwrap();
+    direct["sub"] = json!("native-direct-new");
+    direct["email"] = local["email"].clone();
+    assert_eq!(
+        service
+            .link_direct_verified(&direct, tokens, user_id, now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "LINKING_NOT_ALLOWED"
+    );
+    direct["email_verified"] = json!(true);
+    service
+        .link_direct_verified(&direct, tokens, user_id, now)
+        .await
+        .unwrap();
+    direct["sub"] = json!("native-direct-mismatch");
+    direct["email"] = json!("mismatch@fixture.test");
+    assert_eq!(
+        service
+            .link_direct_verified(&direct, tokens, user_id, now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "LINKING_DIFFERENT_EMAILS_NOT_ALLOWED"
+    );
+    direct["sub"] = profile["sub"].clone();
+    assert_eq!(
+        service
+            .link_direct_verified(&direct, tokens, user_id, now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "SOCIAL_ACCOUNT_ALREADY_LINKED"
     );
 }

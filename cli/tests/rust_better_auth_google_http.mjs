@@ -562,6 +562,169 @@ try {
     );
     await records();
   }
+  // Seed synchronization replaces native random tokens; establish fresh paired cookies.
+  await call(
+    who,
+    { provider: 'google', idToken: { token: signed } },
+    undefined,
+    200
+  );
+  await call(
+    client(),
+    { provider: 'google', idToken: { token: signed } },
+    '/link-social',
+    401
+  );
+  await call(who, { provider: 'absent' }, '/link-social', 404);
+  await call(
+    who,
+    { provider: 'google', idToken: { token: signed, nonce: 'wrong' } },
+    '/link-social',
+    401
+  );
+  await call(
+    who,
+    {
+      provider: 'google',
+      idToken: {
+        token: signed,
+        accessToken: 'direct-linked-access',
+        refreshToken: 'direct-linked-refresh',
+        expiresAt: 'ignored',
+        user: { name: 12 }
+      }
+    },
+    '/link-social',
+    200
+  );
+  await records();
+  await call(
+    who,
+    {
+      provider: 'google',
+      idToken: {
+        token: await token({
+          email_verified: false,
+          email: 'changed-own@example.test'
+        })
+      }
+    },
+    '/link-social',
+    200
+  );
+  await records();
+  for (const changes of [
+    { sub: 'direct-additional' },
+    { sub: 'direct-unverified', email_verified: false },
+    { sub: 'direct-different-email', email: 'foreign@example.test' },
+    { sub: 'no-email', email: undefined }
+  ]) {
+    await call(
+      who,
+      {
+        provider: 'google',
+        idToken: { token: await token(changes), refreshToken: 'linked-refresh' }
+      },
+      '/link-social'
+    );
+    await records();
+  }
+  const foreignLinked = client();
+  await call(
+    foreignLinked,
+    {
+      provider: 'google',
+      idToken: {
+        token: await token({
+          sub: 'foreign-direct',
+          email: 'foreign-direct@example.test'
+        })
+      }
+    },
+    undefined,
+    200
+  );
+  await call(
+    who,
+    {
+      provider: 'google',
+      idToken: {
+        token: await token({
+          sub: 'foreign-direct',
+          email: 'google@example.test'
+        })
+      }
+    },
+    '/link-social',
+    409
+  );
+  await records();
+  for (const value of [null, false, 0, [], {}, 'text']) {
+    for (const field of [
+      'provider',
+      'idToken',
+      'callbackURL',
+      'requestSignUp',
+      'scopes',
+      'errorCallbackURL',
+      'disableRedirect',
+      'loginHint',
+      'additionalParams',
+      'additionalData'
+    ]) {
+      await call(who, { provider: 'google', [field]: value }, '/link-social');
+    }
+  }
+  await call(
+    who,
+    {
+      provider: 'google',
+      callbackURL: '/linked',
+      disableRedirect: true,
+      scopes: ['calendar'],
+      additionalData: {
+        link: { userId: 'attacker', email: 'attacker@example.test' }
+      },
+      newUserCallbackURL: '/ignored'
+    },
+    '/link-social',
+    200
+  );
+  const linkedState = (
+    await native({ op: 'records', now, withVerifications: true })
+  ).verifications.at(-1);
+  const linkedData = JSON.parse(linkedState.value),
+    actualLinked = JSON.parse(reference.database.verification.at(-1).value);
+  assert.equal(linkedData.link.email, actualLinked.link.email);
+  assert.equal(
+    linkedData.link.userId,
+    (await native({ op: 'records', now })).users[0].id
+  );
+  assert.equal(actualLinked.link.userId, reference.database.user[0].id);
+  assert.equal(linkedData.newUserURL, undefined);
+  assert.deepEqual(
+    omit(linkedData, ['codeVerifier', 'oauthState', 'link']),
+    omit(actualLinked, ['codeVerifier', 'oauthState', 'link'])
+  );
+  checks++;
+  await call(client(), {}, '/update-session', 401);
+  for (const body of [
+    {},
+    { token: 'forged', userId: 'foreign', expiresAt: '9999-01-01' },
+    null,
+    [],
+    false,
+    12,
+    'text'
+  ]) {
+    await call(who, body, '/update-session');
+  }
+  for (const field of ['activeOrganizationId', 'activeTeamId']) {
+    for (const value of [null, false, 0, '', true, 1, 'foreign', [], {}]) {
+      await call(who, { [field]: value }, '/update-session');
+    }
+  }
+  await records();
   console.log(
     `Configured Better Auth Google HTTP: ${checks} actual response/storage checks passed; ${requests} bounded native certificate requests`
   );
