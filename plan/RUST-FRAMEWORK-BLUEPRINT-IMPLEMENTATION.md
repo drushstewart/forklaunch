@@ -1098,3 +1098,10 @@ sources afterward.
 - [x] Port dynamic role creation with nullish scope, lowercase/predefined-name ordering, raw membership, ac:create and per-action grants, platform-only resource validation and ordered missingPermissions errors. All 212 actual HTTP/storage/cookie comparisons and role-read/permission regressions pass. Memory/restricted PostgreSQL verify atomic competing duplicate creation and stored permission JSON; live HTTP executes creation beside JWT/MCP. Blueprint workspace checks cover structured error details with explicit HTTP field selection. Role update/deletion and remaining provider/helper/ORM/callback/full-preset gates stay open.
 
 - [x] Port dynamic role update/deletion with exact schema/selector ordering, ac:update/ac:delete and per-action grants, parsed prior permissions, rename/duplicate handling, first-100 assignment filtering and predefined-name versus ID safeguards. All 332 update and 324 deletion actual HTTP/storage/cookie comparisons pass, including duplicate rows, malformed later JSON, zero/overflow permissions and adapter timestamp projection. Memory/restricted PostgreSQL verify atomic deletion, blocked assigned roles, retained member role strings and duplicate updates/deletes; live HTTP executes both routes beside JWT/MCP. Configured dynamic-role lifecycle is complete; provider/helper/ORM/callback/shared-parser/full-preset gates stay open.
+
+Fresh archive `bnXBOp` at `10349eea0` passes portable Better Auth tests and live
+HTTP/JWT/MCP, the complete generated HTTP/MCP listener/startup matrix, portable
+services/all four worker backends, CLI/native SDK targets and all five capability
+callbacks. This archive includes sixty raw auth routes and the two completed
+server-only helpers, including the configured invitation/dynamic-role lifecycle.
+Remaining provider/helper/ORM/callback/shared-parser/full-preset gates stay open.

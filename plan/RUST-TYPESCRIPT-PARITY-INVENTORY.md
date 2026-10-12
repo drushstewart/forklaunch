@@ -608,3 +608,10 @@ stored rows. Name-based predefined protection differs from ID selection. Memory/
 restricted PostgreSQL verify atomic deletion, blocked assigned roles and duplicate
 updates/deletes; live HTTP runs both routes beside JWT/MCP. Providers, server JWT
 helpers, real ORM/callback, shared parser and full-preset generation remain open.
+
+Fresh archive `bnXBOp` at `10349eea0` passes portable Better Auth tests and live
+HTTP/JWT/MCP, the complete generated HTTP/MCP listener/startup matrix, portable
+services/all four worker backends, CLI/native SDK targets and all five capability
+callbacks. This archive includes sixty raw auth routes and the two completed
+server-only helpers, including the configured invitation/dynamic-role lifecycle.
+Remaining provider/helper/ORM/callback/shared-parser/full-preset gates stay open.
