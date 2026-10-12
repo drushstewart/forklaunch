@@ -14,6 +14,7 @@ use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
 
 mod password;
+mod profile;
 pub use password::{ChangePasswordInput, PasswordChange};
 
 #[cfg(test)]

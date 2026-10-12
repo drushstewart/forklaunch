@@ -79,6 +79,27 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
 ) -> BlueprintResult<Value> {
     let service = CredentialService::new(app.store.clone());
     let (token, transient) = session;
+    match path {
+        "/list-accounts" => return service.list_accounts(token, now).await,
+        "/unlink-account" => {
+            return service
+                .unlink_account(token, super::text(&payload, "accountId")?, now)
+                .await;
+        }
+        "/update-user" => {
+            service.update_profile(token, &payload, now).await?;
+            set_cookie(
+                pending,
+                &app.cookie.serialize(token, &app.secret, !transient),
+            )?;
+            if transient {
+                set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;
+            }
+            return Ok(json!({"status":true}));
+        }
+        _ => {}
+    }
+
     if path == "/verify-password" {
         return service
             .verify_password(

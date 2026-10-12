@@ -348,3 +348,11 @@ process-global memory indexes preserve insertion eviction; live TCP concurrency
 admits exactly three of 32 requests and shuts down cleanly. User/account/provider/
 organization routes, real TypeScript ORM conformance, callbacks and CLI generation
 remain open.
+
+Sixteen raw native auth routes now include profile updates and linked-account
+listing/unlinking. Fifty actual HTTP response/cookie/storage comparisons pass,
+including opaque profile fields, private token/hash filtering, transient cookies,
+ECMAScript scope trimming and scoped errors. Atomic concurrency preserves one
+remaining account, and revoked sessions cannot update profiles. Live memory and
+restricted-role PostgreSQL verify profile HTTP operations beside MCP. Remaining
+user/account/provider/org routes, real ORM conformance and CLI preset stay open.

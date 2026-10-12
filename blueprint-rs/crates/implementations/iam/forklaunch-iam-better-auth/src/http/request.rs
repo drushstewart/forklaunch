@@ -131,6 +131,18 @@ pub(super) fn session_credentials<S: AuthStore>(
 
 pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintResult<()> {
     let (optional, fields) = body_fields(path);
+    if path == "/update-user" {
+        if !payload.is_some_and(Value::is_object) {
+            return Err(BlueprintError::new(
+                "VALIDATION_ERROR",
+                format!(
+                    "[body] Invalid input: expected record, received {}",
+                    received(payload)
+                ),
+            ));
+        }
+        return Ok(());
+    }
     if fields.is_empty() {
         return Ok(());
     }
@@ -225,6 +237,7 @@ fn body_fields(path: &str) -> (bool, &'static [(&'static str, &'static str, bool
                 ("revokeOtherSessions", "boolean", false),
             ],
         ),
+        "/unlink-account" => (false, &[("accountId", "string", true)]),
         "/revoke-session" => (false, &[("token", "string", true)]),
         "/sign-out" => (
             true,

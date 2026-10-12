@@ -179,6 +179,30 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
     let base = format!("http://{address}");
     let client = reqwest::Client::new();
     exercise_http_credentials(&client, &base).await;
+    let updated = client
+        .post(format!("{base}/api/auth/update-user"))
+        .header("cookie", &signed)
+        .header("origin", "http://localhost:3000")
+        .json(&json!({"firstName":"Updated", "privateSecret":"injected"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(updated.status(), StatusCode::OK);
+    assert!(updated.headers().get("set-cookie").is_some());
+    let accounts = client
+        .get(format!("{base}/api/auth/list-accounts"))
+        .header("cookie", &signed)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(accounts.status(), StatusCode::OK);
+    assert_eq!(accounts.json::<Value>().await.unwrap(), json!([]));
+    let mut tx = store.begin(false).await.unwrap();
+    let stored = tx.get(Model::User, "http-owner").await.unwrap().unwrap();
+    assert_eq!(stored["firstName"], "Updated");
+    assert_eq!(stored["privateSecret"], "never-public");
+    tx.commit().await.unwrap();
+
     let docs: Value = client
         .get(format!("{base}/openapi.json"))
         .send()

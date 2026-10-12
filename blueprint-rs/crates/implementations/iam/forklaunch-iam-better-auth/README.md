@@ -87,7 +87,7 @@ GET callback URLs; dynamic trusted-origin functions and disabled guards are not
 part of the configured module.
 
 `http::AuthHttp` exposes `/sign-up/email`, `/sign-in/email`, `/verify-password`,
-`/change-password`, `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
+`/change-password`, `/update-user`, `/list-accounts`, `/unlink-account`, `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
 `/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token` and `/jwks`.
 It authenticates signed cookies against authoritative tenant-bound storage,
 refreshes sessions, emits verified JWT headers and publishes only public keys.
@@ -127,6 +127,14 @@ indexes. A live TCP burst admits exactly three of 32 concurrent signin requests
 and shuts down cleanly. Defaults enable limits in production; operators may use
 `with_rate_limiting` to override this configuration.
 
+Profile updates and linked-account listing/unlinking match 50 actual HTTP
+response, cookie-attribute and storage comparisons. Opaque profile fields retain
+presence/null values, private inputs remain ignored, token/hash data stays private,
+scopes use ECMAScript trimming, and transient cookies retain their browser flag.
+Concurrent unlinking preserves at least one account; revoked sessions cannot
+update profiles. Live memory/encrypted PostgreSQL verify profile HTTP operations
+alongside MCP.
+
 Remaining user/account/provider/org routes, real TS ORM
-conformance, custom callbacks and module generation remain open; these thirteen
+conformance, custom callbacks and module generation remain open; these sixteen
 routes do not constitute the complete Better Auth preset.

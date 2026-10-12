@@ -114,6 +114,9 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Router::new()
             .route("/sign-up/email", post(dispatch::<S>))
             .route("/sign-in/email", post(dispatch::<S>))
+            .route("/list-accounts", get(dispatch::<S>).head(not_found))
+            .route("/unlink-account", post(dispatch::<S>))
+            .route("/update-user", post(dispatch::<S>))
             .route("/verify-password", post(dispatch::<S>))
             .route("/change-password", post(dispatch::<S>))
             .route(
@@ -256,7 +259,8 @@ async fn handle<S: AuthStore + 'static>(
     }
     let view = view.ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))?;
     match path {
-        "/verify-password" | "/change-password" => {
+        "/verify-password" | "/change-password" | "/list-accounts" | "/unlink-account"
+        | "/update-user" => {
             credential::authenticated(
                 app,
                 path,
@@ -327,7 +331,10 @@ fn failure(error: &BlueprintError) -> Response {
         }
         _ => StatusCode::BAD_REQUEST,
     };
-    let body = if error.code == "INVALID_CALLBACK_VALUE_TYPE" {
+    let body = if matches!(
+        error.code.as_str(),
+        "INVALID_CALLBACK_VALUE_TYPE" | "HTTP_MESSAGE_ONLY"
+    ) {
         json!({"message":error.message})
     } else if status == StatusCode::INTERNAL_SERVER_ERROR {
         json!({"code":"INTERNAL_SERVER_ERROR","message":"Authentication operation failed"})
