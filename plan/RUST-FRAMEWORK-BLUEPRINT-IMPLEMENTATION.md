@@ -1144,3 +1144,5 @@ gates remain open.
 - [x] Port Google access-token, refresh-token and account-info HTTP APIs: 157 actual response/storage/wire comparisons, live token rotation and unlink-during-refresh protection, 22 native tests, restricted encrypted PostgreSQL, 161 HTTP/289 social regressions, strict clippy and 728 packaged assets pass. Raw routes: 67/70; error/OpenAPI/reference and broader parity gates remain open.
 
 - [x] Complete the configured error HTML/production redirect, OpenAPI schema and disabled-reference routes: all 70 raw routes implemented; 27 development + 27 production full-response comparisons, 22 native tests and strict clippy pass. The schema is the fixed preset declarative contract, compared with the actual TS generator. Application surfacing/compliance/retention, ORM conformance and CLI preset remain open.
+
+- [x] Revalidate archive-installed all-70-raw-route snapshot `4f0540ba6` (`IqcM1T`): 22 portable auth tests, all services/four workers, CLI/native SDKs, complete generated HTTP/MCP startup/listener/shutdown matrix and all five actual-TypeScript-signed callbacks pass. Checkout CLI restored.

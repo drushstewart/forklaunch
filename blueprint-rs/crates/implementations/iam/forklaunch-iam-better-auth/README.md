@@ -509,3 +509,13 @@ schemas/options are outside this fixed preset. All 27 development and 27
 production public-response comparisons, 22 native tests and strict all-feature
 clippy pass. Full ORM/application hooks, application surfacing/compliance,
 retention and native CLI preset integration remain open.
+
+Fresh archive installation `IqcM1T` (snapshot `4f0540ba6`, all 70 raw routes)
+passes 22 portable auth tests, all portable services/four worker backends and
+CLI/native SDK generation. The complete generated HTTP/MCP startup matrix,
+initialization/discovery/health invocation/Origin rejection, shared/separate
+listeners, enabled/disabled/custom endpoints, explicit/ephemeral ports,
+TypeScript +2000 fallback, atomic startup rejection and graceful shutdown pass.
+All five actual-TypeScript-signed managed capability callbacks pass. The
+checkout CLI was restored after the archive installation. Later application
+surfacing changes are validated separately from this snapshot.
