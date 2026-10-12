@@ -30,6 +30,24 @@ run('init', 'library', 'discovered-models', '--language', 'typescript', '-D', 'D
 run('init', 'service', 'native-api', '--language', 'rust', '-D', 'Native API')
 run('init', 'library', 'native-models', '--language', 'rust', '-D', 'Native models')
 manifest_path = app / '.forklaunch/manifest.toml'
+# Both language exporters must refresh the registered custom OpenAPI paths.
+manifest_text = re.sub(r'^openapiPath = .*\n', '', manifest_path.read_text(), flags=re.M)
+blocks = manifest_text.split('[[projects]]')
+for name in ['legacy-api', 'native-api']:
+    for index, block in enumerate(blocks):
+        if f'\nname = "{name}"\n' not in block:
+            continue
+        if '[projects.metadata]\n' not in block:
+            boundary = re.search(r'^\[', block, flags=re.M)
+            offset = boundary.start() if boundary else len(block)
+            block = block[:offset] + '[projects.metadata]\n\n' + block[offset:]
+        blocks[index] = block.replace('[projects.metadata]\n',
+            f'[projects.metadata]\nopenapiPath = "schemas/{name}.json"\n', 1)
+        break
+    else:
+        raise AssertionError(f'Missing {name}')
+manifest_text = '[[projects]]'.join(blocks)
+manifest_path.write_text(manifest_text)
 # Remove only this library's registration while leaving the actual TS scaffold.
 text = manifest_path.read_text()
 starts = [match.start() for match in re.finditer(r'^\[\[projects\]\]$', text, flags=re.M)]
@@ -78,11 +96,22 @@ assert not (app / 'modules/native-api').exists()
 assert not (app / 'modules/native-models').exists()
 assert (app / '.forklaunch/contracts/native-api/contract.json').is_file()
 assert (app / '.forklaunch/openapi/legacy-api/openapi.json').is_file()
+for name in ['legacy-api', 'native-api']:
+    assert (app / f'schemas/{name}.json').read_bytes() == (app / f'.forklaunch/openapi/{name}/openapi.json').read_bytes()
 sdk = (app / 'sdks/typescript/src/index.ts').read_text()
 assert 'getLegacy:' in sdk and 'nativeApi:' in sdk
 assert (app / 'sdks/rust/legacy-api-sdk/Cargo.toml').is_file()
 assert (app / 'sdks/rust/native-api-sdk/Cargo.toml').is_file()
 run('sdk', 'generate', '--from', 'contract', '--target', 'all', '--check')
+run('sdk', 'generate', '--from', 'openapi', '--target', 'all')
+run('sdk', 'generate', '--from', 'openapi', '--target', 'all', '--check')
+# Explicit output retains the requested layout and still refreshes registered artifacts.
+for name in ['legacy-api', 'native-api']:
+    (app / f'schemas/{name}.json').write_text('stale')
+run('openapi', 'export', '--output', 'release-openapi')
+for name in ['legacy-api', 'native-api']:
+    assert (app / f'schemas/{name}.json').read_bytes() == (app / f'release-openapi/{name}/openapi.json').read_bytes()
+run('sdk', 'generate', '--from', 'contract', '--target', 'all')
 subprocess.run(['cargo', 'check', '--workspace'], cwd=app, env=env, check=True, timeout=1800)
 metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'], cwd=app, env=env))
 subprocess.run(['node', str(repo / 'cli/tests/rust_mcp_service_startup.mjs'),

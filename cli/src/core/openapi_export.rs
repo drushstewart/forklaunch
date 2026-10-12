@@ -1,3 +1,5 @@
+mod outputs;
+
 use std::{
     env, fs,
     io::Read as _,
@@ -277,6 +279,33 @@ pub(crate) fn export_all_services(
     manifest: &ApplicationManifestData,
     output_dir: &Path,
 ) -> Result<Vec<String>> {
+    // Validate all languages together before starting any exporter, including
+    // collisions between one service's configured path and another's default.
+    let outputs = outputs::Outputs::plan(
+        app_root,
+        output_dir,
+        manifest
+            .projects
+            .iter()
+            .filter(|project| {
+                matches!(project.r#type, ProjectType::Service | ProjectType::Worker)
+                    && (project
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.language.as_deref())
+                        == Some("rust")
+                        || !OBSERVABILITY_SERVICES.contains(&project.name.as_str()))
+            })
+            .map(|project| {
+                (
+                    project.name.as_str(),
+                    project
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.openapi_path.as_deref()),
+                )
+            }),
+    )?;
     let mut exported_services = export_all_rust_services(app_root, output_dir)?;
 
     // Tokio is the Rust runtime; TypeScript services in that mixed workspace
@@ -361,6 +390,7 @@ pub(crate) fn export_all_services(
             iam_port,
         )?;
 
+        outputs.refresh(&service.name)?;
         exported_services.push(service.name.clone());
     }
 
@@ -379,6 +409,40 @@ pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Re
         .cloned()
         .unwrap_or_default();
 
+    let outputs = outputs::Outputs::plan(
+        app_root,
+        output_dir,
+        projects
+            .iter()
+            .filter(|project| {
+                matches!(
+                    project.get("type").and_then(toml::Value::as_str),
+                    Some("Service" | "Worker")
+                ) && project
+                    .get("metadata")
+                    .and_then(|metadata| metadata.get("language"))
+                    .and_then(toml::Value::as_str)
+                    == Some("rust")
+            })
+            .filter_map(|project| {
+                project
+                    .get("name")
+                    .and_then(toml::Value::as_str)
+                    .map(|name| {
+                        let metadata = project.get("metadata");
+                        (
+                            name,
+                            metadata
+                                .and_then(|metadata| {
+                                    metadata
+                                        .get("openapiPath")
+                                        .or_else(|| metadata.get("openapi_path"))
+                                })
+                                .and_then(toml::Value::as_str),
+                        )
+                    })
+            }),
+    )?;
     let mut exported_services = Vec::new();
     for project in projects {
         let project_type = project.get("type").and_then(toml::Value::as_str);
@@ -434,6 +498,7 @@ pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Re
             &contract_path,
         )?;
 
+        outputs.refresh(service_name)?;
         export_registered_sockets(app_root, service_name, metadata, &artifact)?;
 
         exported_services.push(service_name.to_string());

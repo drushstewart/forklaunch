@@ -1123,3 +1123,17 @@ checks, workspace compilation and the full HTTP/MCP listener/startup/shutdown
 matrix; the Rust-only target fixture passes. All 1,032 CLI tests pass. CI includes
 `rust_mixed_sync.sh`. Rust-first TypeScript scaffolding, development orchestration
 and the wider deployment/runtime parity gaps remain open.
+
+
+Configured OpenAPI export checkpoint (2026-10-12): native and TypeScript exporters
+now refresh each registered `openapiPath` alongside the requested export-directory
+layout, keeping SDK watch/import and release consumers consistent. All selected
+services are checked together before export for cross-service destination
+collisions; configured external/traversing/dangling-symlink paths reject.
+Registered copies publish atomically, and aliases of the same exported file
+preserve its contents. Three unit tests cover refresh, collision/path rejection
+and symlink behavior. The generated mixed fixture now uses custom paths for both
+languages, checks both SDK formats, replaces stale registered files through an
+explicit `--output`, then passes workspace compilation, HTTP/MCP startup and
+lifecycle cleanup. All 1,035 CLI tests and the release orchestration regression
+pass. This closes artifact-path export consistency; broader parity gaps remain.
