@@ -638,3 +638,11 @@ HTTP/JWT/MCP retain absent public helper paths. Additional signing-algorithm/key
 provisioning, typed date/function options, custom callbacks and real ORM/storage
 interop remain open; unsupported fresh key profiles fail explicitly. Sixty raw
 HTTP routes remain implemented, with provider/OpenAPI/full-preset work outstanding.
+
+Main through `b5852a5a1` is merged. Its dependency vulnerability audit now covers
+Cargo's crates.io releases through the shared OSV/RustSec cache and reporting path.
+Legacy/v3/v4 locks, local-package exclusions, malformed/future locks, managed-source
+exclusions and per-ecosystem missing-lock detection pass; Git/private-registry
+sources explicitly report incomplete coverage without exposing source URLs. All
+1,016 CLI tests pass, including 15 dependency-audit tests. Commit-based Git advisory
+queries remain unsupported.
