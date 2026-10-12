@@ -159,6 +159,7 @@ fn public_key(row: &Value) -> BlueprintResult<Value> {
         "EdDSA" | "Ed25519" => ("OKP", "Ed25519", 32, 5),
         "ES256" => ("EC", "P-256", 32, 6),
         "ES384" => ("EC", "P-384", 48, 6),
+        "ES512" => ("EC", "P-521", 66, 6),
         _ => return Err(key_error()),
     };
     let coordinate = |field: &str| {

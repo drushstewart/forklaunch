@@ -219,7 +219,8 @@ for (const alg of ['EdDSA', 'Ed25519', null, '', 'HS256', 1, 'RS256']) {
 }
 for (const [algorithm, namedCurve, hash] of [
   ['ES256', 'prime256v1', 'sha256'],
-  ['ES384', 'secp384r1', 'sha384']
+  ['ES384', 'secp384r1', 'sha384'],
+  ['ES512', 'secp521r1', 'sha512']
 ]) {
   const pair = generateKeyPairSync('ec', { namedCurve });
   const publicJwk = pair.publicKey.export({ format: 'jwk' });

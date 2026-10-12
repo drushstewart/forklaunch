@@ -218,6 +218,9 @@ for (const config of [
   { alg: 'ES256', crv: 'P-256' },
   { alg: 'ES384' },
   { alg: 'ES384', crv: 'P-384' },
+  { alg: 'ES512' },
+  { alg: 'ES512', crv: 'P-521' },
+  { alg: 'ES512', crv: 'P-384' },
   { alg: 'EdDSA', crv: 'Ed448' },
   { alg: 'ES256', crv: 'P-384' },
   { alg: 'ES384', crv: 'P-256' }

@@ -64,6 +64,7 @@ pub(super) async fn profiles<S: AuthStore>(store: &Arc<S>, now: DateTime<Utc>) {
         ("Ed25519", "Ed25519"),
         ("ES256", "P-256"),
         ("ES384", "P-384"),
+        ("ES512", "P-521"),
     ] {
         let mut tx = store.begin(true).await.unwrap();
         for row in tx.list(Model::Jwks).await.unwrap() {

@@ -47,6 +47,7 @@ impl<S: AuthStore> KeyRing<S> {
                 "EdDSA" | "Ed25519" => "Ed25519",
                 "ES256" => "P-256",
                 "ES384" => "P-384",
+                "ES512" => "P-521",
                 _ => return Err(error("Unsupported signing-key algorithm")),
             };
             if options["jwks"]["keyPairConfig"]

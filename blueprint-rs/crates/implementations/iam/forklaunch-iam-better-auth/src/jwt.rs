@@ -1,6 +1,10 @@
 //! Persistent asymmetric JWT signing keys and public JWK profiles.
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
+use p521::{
+    ecdsa::signature::RandomizedSigner,
+    pkcs8::{DecodePrivateKey, EncodePrivateKey},
+};
 use ring::{
     rand::SystemRandom,
     signature::{
@@ -23,6 +27,7 @@ pub struct SigningKey {
 enum Material {
     Ed25519(Ed25519KeyPair),
     Ecdsa(EcdsaKeyPair),
+    P521(p521::ecdsa::SigningKey),
 }
 
 impl SigningKey {
@@ -37,6 +42,11 @@ impl SigningKey {
         id: impl Into<String>,
         algorithm: &str,
     ) -> BlueprintResult<Self> {
+        if algorithm == "ES512" {
+            let secret = p521::SecretKey::random(&mut rand_core::OsRng);
+            let encoded = secret.to_pkcs8_der().map_err(|_| key_error())?;
+            return Self::from_pkcs8_profile(id, encoded.as_bytes(), algorithm);
+        }
         let random = SystemRandom::new();
         let encoded = match algorithm {
             "EdDSA" | "Ed25519" => Ed25519KeyPair::generate_pkcs8(&random),
@@ -77,6 +87,13 @@ impl SigningKey {
                 EcdsaKeyPair::from_pkcs8(&ECDSA_P384_SHA384_FIXED_SIGNING, encoded, &random)
                     .map_err(|_| key_error())?,
             ),
+            "ES512" => {
+                let secret = p521::SecretKey::from_pkcs8_der(encoded).map_err(|_| key_error())?;
+                let bytes = Zeroizing::new(secret.to_bytes());
+                Material::P521(
+                    p521::ecdsa::SigningKey::from_bytes(&bytes).map_err(|_| key_error())?,
+                )
+            }
             _ => return Err(key_error()),
         };
         Ok(Self {
@@ -102,6 +119,12 @@ impl SigningKey {
                 "alg":self.algorithm,"kty":"OKP","crv":"Ed25519",
                 "x":URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()),"kid":self.id
             }),
+            Material::P521(pair) => {
+                let point = p521::ecdsa::VerifyingKey::from(pair).to_encoded_point(false);
+                let bytes = point.as_bytes();
+                json!({"alg":self.algorithm,"kty":"EC","crv":"P-521",
+                    "x":URL_SAFE_NO_PAD.encode(&bytes[1..67]),"y":URL_SAFE_NO_PAD.encode(&bytes[67..]),"kid":self.id})
+            }
             Material::Ecdsa(pair) => {
                 let bytes = pair.public_key().as_ref();
                 let width = (bytes.len() - 1) / 2;
@@ -144,15 +167,20 @@ impl SigningKey {
             URL_SAFE_NO_PAD.encode(crate::ecmascript::stringify(payload))
         );
         let signature = match &self.pair {
-            Material::Ed25519(pair) => pair.sign(content.as_bytes()),
+            Material::Ed25519(pair) => pair.sign(content.as_bytes()).as_ref().to_vec(),
             Material::Ecdsa(pair) => pair
                 .sign(&SystemRandom::new(), content.as_bytes())
-                .map_err(|_| key_error())?,
+                .map_err(|_| key_error())?
+                .as_ref()
+                .to_vec(),
+            Material::P521(pair) => {
+                let signature: p521::ecdsa::Signature = pair
+                    .try_sign_with_rng(&mut rand_core::OsRng, content.as_bytes())
+                    .map_err(|_| key_error())?;
+                signature.to_bytes().to_vec()
+            }
         };
-        Ok(format!(
-            "{content}.{}",
-            URL_SAFE_NO_PAD.encode(signature.as_ref())
-        ))
+        Ok(format!("{content}.{}", URL_SAFE_NO_PAD.encode(&signature)))
     }
 }
 

@@ -655,3 +655,11 @@ PostgreSQL validate concurrent provisioning, restored signing/session reuse,
 rotation and retired public-key verification; all 17 native tests and live HTTP/
 JWT/MCP pass. Strict all-feature clippy, rebuilt CLI and 709 embedded sources pass.
 RSA/ES512, typed options, callbacks, real ORM and full preset remain open.
+
+ES512/P-521 now joins the persistent signing/verification profiles. Actual
+comparisons pass 159 signing API calls/176 key states and 240 verification calls/
+201 key-store operations, including independent JOSE signature verification. Memory
+and restricted PostgreSQL cover atomic provisioning, restart, session signing,
+rotation and retired-key verification. Strict default/all-feature clippy, rebuilt
+CLI and 709 embedded sources pass. RSA and broader option/provider/ORM/callback/
+full-preset gates remain open.

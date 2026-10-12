@@ -28,6 +28,7 @@ icu_locale_core = "2.3"
 percent-encoding = "2"
 rand_core = { version = "0.6", features = ["getrandom"] }
 ring = "0.17"
+p521 = { version = "0.13.3", default-features = false, features = ["ecdsa", "pkcs8", "std"] }
 zeroize = "1"
 serde_json = { version = "1", features = ["raw_value", "arbitrary_precision", "preserve_order"] }
 tokio = { version = "1", default-features = false, features = ["sync", "rt"] }

@@ -125,6 +125,25 @@ fn verify_signature(
                 }
                 (verification, [vec![4], x, y].concat())
             }
+            "ES512"
+                if header["alg"] == algorithm && jwk["kty"] == "EC" && jwk["crv"] == "P-521" =>
+            {
+                use p521::ecdsa::signature::Verifier;
+                let Some(y) = jwk["y"].as_str().and_then(decode_jwk) else {
+                    return false;
+                };
+                if x.len() != 66 || y.len() != 66 {
+                    return false;
+                }
+                let Ok(key) = p521::ecdsa::VerifyingKey::from_sec1_bytes(&[vec![4], x, y].concat())
+                else {
+                    return false;
+                };
+                let Ok(signature) = p521::ecdsa::Signature::from_slice(signature) else {
+                    return false;
+                };
+                return key.verify(content, &signature).is_ok();
+            }
             _ => return false,
         };
     ring::signature::UnparsedPublicKey::new(verification, key)
@@ -142,7 +161,7 @@ fn compact(token: &str) -> Option<(Value, Value, Vec<u8>, &str)> {
     if !header.is_object()
         || !matches!(
             header["alg"].as_str(),
-            Some("EdDSA" | "Ed25519" | "ES256" | "ES384")
+            Some("EdDSA" | "Ed25519" | "ES256" | "ES384" | "ES512")
         )
     {
         return None;
