@@ -7,6 +7,8 @@ use serde_yml::Value as Yaml;
 
 use crate::core::application_output::output_path;
 
+mod bun;
+
 fn merge_missing(destination: &mut Json, source: &Json, field: &str) -> Result<()> {
     if let Some(entries) = source.get(field) {
         let entries = entries
@@ -87,12 +89,16 @@ pub(super) fn plan_typescript_sdk(
         SdkWorkspace::WebSocket => "sdks/typescript-websocket/*",
     };
     let mut additions = vec![sdk_pattern.to_owned()];
+    let mut outputs = Vec::new();
     let mut has_modules = false;
     if let Some(relative) = manifest.get("modules_path").and_then(toml::Value::as_str) {
         let relative = Path::new(relative);
         let modules_package = output_path(root, &relative.join("package.json"))?;
         if modules_package != package_path && modules_package.is_file() {
             has_modules = true;
+            if bun && let Some(policy) = self::bun::install_policy(root, relative)? {
+                outputs.push(("bunfig.toml", policy));
+            }
             let modules: Json = serde_json::from_str(&fs::read_to_string(&modules_package)?)?;
             for field in [
                 "dependencies",
@@ -241,10 +247,9 @@ pub(super) fn plan_typescript_sdk(
     // Parse and validate both files before publishing either update.
     let package = serde_json::to_string_pretty(&package)? + "\n";
     let workspace = serde_yml::to_string(&workspace)?;
-    Ok(vec![
-        ("package.json", package),
-        ("pnpm-workspace.yaml", workspace),
-    ])
+    outputs.push(("package.json", package));
+    outputs.push(("pnpm-workspace.yaml", workspace));
+    Ok(outputs)
 }
 
 #[cfg(test)]

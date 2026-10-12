@@ -188,6 +188,10 @@ nested workspace files are preserved. Socket-only SDK generation uses the same
 PNPM/Bun workspace integration and provides separate `sdk:socket:generate`,
 `sdk:socket:check`, `sdk:socket:watch` and `sdk:socket:typecheck` scripts. Socket
 `--check` includes root package/workspace drift and leaves these files unchanged.
+Bun workspaces also inherit the generated release-age policy and exact package
+exemptions in root `bunfig.toml`; existing root values and comments are retained.
+Other module-relative Bun options remain in the nested file and can be configured
+separately for root installs.
 
 In a mixed application, the shared `sdks/typescript` package includes both native
 and TypeScript services. `--from contract` uses Rust contracts and TypeScript

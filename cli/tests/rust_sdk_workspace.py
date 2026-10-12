@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import tomllib
 
 repo = Path(__file__).resolve().parents[2]
 binary = Path(os.environ.get('FORKLAUNCH_CLI', repo / 'cli/target/debug/forklaunch')).resolve()
@@ -13,7 +14,8 @@ output = repo / 'cli/tests/output' / ('rust-socket-workspace' if socket else 'ru
 output.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='run.', dir=output)).resolve()
 env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_ACCOUNT': 'parity-offline-sdk-workspace', 'CARGO_INCREMENTAL': '0'}
-for runtime in ['node', 'bun']:
+for runtime in os.environ.get('FORKLAUNCH_TEST_WORKSPACE_RUNTIMES', 'node,bun').split(','):
+    assert runtime in ['node', 'bun']
     app = root / runtime
     def cli(*args):
         subprocess.run([str(binary), *args, '--path', str(app)], cwd=root, env=env, check=True, timeout=180)
@@ -46,6 +48,16 @@ for runtime in ['node', 'bun']:
         artifact.write_text(json.dumps({'openapi': '3.1.0', 'info': {'title': 'Owned workspace fixture', 'version': '1'}, 'paths': {}}))
         cli('sdk', 'generate', '--target', 'typescript', '--from', 'openapi', '--service', 'legacy-api')
     assert before == {str(p.relative_to(app)): p.read_bytes() for p in (app / 'modules').rglob('*') if p.is_file()}
+    if runtime == 'bun':
+        policy_path = app / 'bunfig.toml'
+        policy = tomllib.loads(policy_path.read_text())
+        original_policy = tomllib.loads((app / 'modules/bunfig.toml').read_text())
+        assert policy['install']['minimumReleaseAge'] == 86400
+        assert policy['install']['minimumReleaseAgeExcludes'] == original_policy['install']['minimumReleaseAgeExcludes']
+        policy_path.write_text('# application policy\n' + policy_path.read_text().replace('minimumReleaseAge = 86400', 'minimumReleaseAge = 172800'))
+        cli('sdk', 'generate', '--target', 'typescript', '--from', 'socket-contract' if socket else 'openapi', '--service', 'native-api' if socket else 'legacy-api')
+        assert policy_path.read_text().startswith('# application policy\n')
+        assert tomllib.loads(policy_path.read_text())['install']['minimumReleaseAge'] == 172800
     package = json.loads((app / 'package.json').read_text())
     assert package['scripts']['owned'] == 'echo application-owned'
     assert 'typescript' in package['devDependencies'] and 'tsx' in package['devDependencies']

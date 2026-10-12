@@ -1358,3 +1358,22 @@ services pass the complete HTTP/MCP startup/configuration/shutdown matrix. CI
 includes rust_socket_workspace.sh. Carrying generated nested Bun install policy
 to the new root remains a follow-up; unified development orchestration and
 platform deployment remain open.
+
+
+Bun root install-policy checkpoint (2026-10-12): HTTP and socket workspace planning
+now carries generated minimumReleaseAge and exact minimumReleaseAgeExcludes from
+the nested Bun configuration into root bunfig.toml. Root overrides, comments and
+unrelated settings remain intact. Only these portable generated settings move;
+module-relative Bun options remain nested rather than changing their path base.
+Planning stays read-only and rejects malformed/outside-root destinations before
+publishing root configuration. Socket check mode includes Bun policy drift.
+
+All 1,051 CLI tests pass. Both previously validated Bun applications regenerate
+with the real CLI, inherit the generated settings, preserve a custom root age and
+comment, install real dependencies, and run their generated HTTP/socket SDK
+build commands. Missing socket policy rejects in check mode without rewriting the
+file and regenerates successfully. The shared CI workspace fixture now asserts
+policy inheritance and override preservation for both protocols. Local Bun 1.2.19
+confirms configuration/install/build compatibility; these checks do not establish
+release-age enforcement behavior across Bun versions. Mixed development and
+platform deployment remain open.
