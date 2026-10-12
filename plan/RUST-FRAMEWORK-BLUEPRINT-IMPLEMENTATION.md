@@ -609,16 +609,16 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [ ] Implement customer/subscription/plan persistence.
 - [x] Implement entitlement checks. (metered `has_entitlement`)
 - [x] Implement usage recording. (`record_usage` + `recorded_usage`)
-- [ ] Add migrations and testcontainers tests.
+- [x] Add embedded billing migrations and isolated PostgreSQL container tests. `forklaunch-billing-base/migrations`, `tests/services.rs` and `cli/tests/rust_billing_runtime.sh` cover restricted-role RLS, encryption, audits, concurrency and reopening. The fixture uses owned Docker containers directly rather than the testcontainers crate; validated in the phase-16 billing runtime checkpoint.
 
 ### Billing Stripe
 
 - [x] Implement initial Stripe config, webhook event, and checkout adapter shape.
-- [ ] Implement Stripe client integration.
+- [x] Implement Stripe client integration. `forklaunch-billing-stripe/src/client.rs` supports direct and managed transports; the phase-16 fixtures cover 21 official SDK and 23 managed gateway comparisons.
 - [x] Implement webhook verification. (`webhook::verify` — `t=...,v1=<hex>` HMAC-SHA256, constant-time)
-- [ ] Implement subscription sync.
+- [x] Implement subscription sync. `forklaunch-billing-stripe/src/synchronization.rs` and the phase-16 webhook fixture cover subscription updates, missed-create recovery and party reassignment protection. Interrupted provider/local writes remain separately open.
 - [ ] Implement customer and checkout helpers.
-- [ ] Add wiremock tests for Stripe interactions.
+- [x] Add controlled HTTP provider tests for Stripe interactions. `tests/transport.rs` uses real local Axum HTTP peers rather than wiremock; actual TypeScript/official Stripe SDK conformance covers transport and service effects in the phase-16 fixtures.
 
 ### Worker Implementations
 
