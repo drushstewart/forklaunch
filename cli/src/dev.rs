@@ -209,6 +209,7 @@ fn plan(
         }
     }
     let native_project = |project: &toml::Value| {
+        if project.get("variant").and_then(toml::Value::as_str) == Some("storefront") { return false; }
         let language = project
             .get("metadata")
             .and_then(|metadata| metadata.get("language"))

@@ -125,6 +125,17 @@ impl CliCommand for LibraryCommand {
         let rust_project_name = project_name
             .clone()
             .context("Project path is required for Rust library changes")?;
+        if crate::core::storefront::registered(&app_root_path, &rust_project_name)? {
+            crate::core::storefront::change(
+                &app_root_path,
+                &rust_project_name,
+                matches.get_one::<String>("name").map(String::as_str),
+                matches.get_one::<String>("description").map(String::as_str),
+                matches.get_flag("dryrun"),
+            )?;
+            log_ok!(stdout, "Storefront '{}' updated", rust_project_name);
+            return Ok(());
+        }
         if rust_project::is_rust_project(&app_root_path, &rust_project_name)? {
             let name = matches.get_one::<String>("name").map(String::as_str);
             if let Some(name) = name

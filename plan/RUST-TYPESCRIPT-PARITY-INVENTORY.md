@@ -1280,3 +1280,23 @@ and Bun mixed build/export order and emitted buildContext/dockerfile pairs. The
 fixture uses a unique synthetic named account and removes only that account on
 exit; it makes no publication calls. Live platform/ECS launch-command and runtime
 compatibility remain unverified; corrected metadata alone does not close that gate.
+
+
+Captured storefront lifecycle checkpoint (2026-10-12): static captures now retain
+a contained metadata.staticPath and use dedicated library lifecycle handling.
+Rename/description changes preserve asset bytes and manifest comments, update
+topology and publish the manifest atomically with filesystem rollback. Deletion
+stages assets before publishing metadata and retains recoverable data if rollback
+fails. Path checks reject external locations, symlinked capture directories,
+application metadata and directories containing other registered projects.
+
+Nested storefront initialization no longer attempts TypeScript attachment. A later
+Rust-to-TypeScript workspace attachment preserves the capture's original path,
+including legacy captures without path metadata. Sync validates captures without
+creating package/Cargo artifacts; a captured Cargo.toml is never classified as a
+native crate. Prebuilt release validation honors static paths and containment.
+All 1,061 CLI tests and the actual Rust/Node/Bun lifecycle fixture pass, including
+read-only previews, binary asset preservation, old-capture mixed migration, sync,
+rename and deletion. CI includes rust_storefront_lifecycle.sh. Static captures
+remain outside API/SDK generation; frontend hosting and native relay are separate
+tasks. Existing live mixed HTTP/MCP checks remain the service-runtime evidence.

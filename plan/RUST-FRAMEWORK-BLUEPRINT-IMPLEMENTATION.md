@@ -911,7 +911,8 @@ require literal Rust clones, but their public request/response behavior does.
 - [ ] Complete broader Better Auth ORM/hooks/client/options coverage, typed/custom JWT/JWKS adapters and indexed storage/pagination; audit dynamic/encoded namespace semantics separately.
 - [ ] Validate generated-module init/change/sync/delete, contracts, SDKs and mixed-app operation for every added module family; update release/package documentation and compatibility fixtures.
 
-- [ ] Audit and support Rust/mixed relay session-ingest and storefront extension behavior, including lifecycle and SDK interactions; these CLI surfaces have no separate published blueprint package.
+- [ ] Audit and support Rust/mixed relay session-ingest, including lifecycle and SDK interactions; this CLI surface has no separate published blueprint package.
+- [x] Support captured storefront initialization, sync, rename/description updates and deletion in Rust/Node/Bun/mixed apps. Preserve static paths across Rust-to-mixed migration and keep captures outside Cargo/package/API generation; hosting remains a deployment concern.
 
 - [x] Audit all exported HTTP methods (including WebDAV/link/unlink/subscribe variants) and generated custom-router extension behavior inside built-in Rust modules; preserve actual mounted contracts and fail explicitly for unsupported combinations.
 
@@ -1409,3 +1410,23 @@ and Bun mixed build/export order and emitted buildContext/dockerfile pairs. The
 fixture uses a unique synthetic named account and removes only that account on
 exit; it makes no publication calls. Live platform/ECS launch-command and runtime
 compatibility remain unverified; corrected metadata alone does not close that gate.
+
+
+Captured storefront lifecycle checkpoint (2026-10-12): static captures now retain
+a contained metadata.staticPath and use dedicated library lifecycle handling.
+Rename/description changes preserve asset bytes and manifest comments, update
+topology and publish the manifest atomically with filesystem rollback. Deletion
+stages assets before publishing metadata and retains recoverable data if rollback
+fails. Path checks reject external locations, symlinked capture directories,
+application metadata and directories containing other registered projects.
+
+Nested storefront initialization no longer attempts TypeScript attachment. A later
+Rust-to-TypeScript workspace attachment preserves the capture's original path,
+including legacy captures without path metadata. Sync validates captures without
+creating package/Cargo artifacts; a captured Cargo.toml is never classified as a
+native crate. Prebuilt release validation honors static paths and containment.
+All 1,061 CLI tests and the actual Rust/Node/Bun lifecycle fixture pass, including
+read-only previews, binary asset preservation, old-capture mixed migration, sync,
+rename and deletion. CI includes rust_storefront_lifecycle.sh. Static captures
+remain outside API/SDK generation; frontend hosting and native relay are separate
+tasks. Existing live mixed HTTP/MCP checks remain the service-runtime evidence.

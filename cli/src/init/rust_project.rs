@@ -472,6 +472,9 @@ pub(crate) fn is_rust_project(app_root: &Path, name: &str) -> Result<bool> {
     }
     let manifest_path = app_root.join(".forklaunch").join("manifest.toml");
     let manifest = read_manifest_value(&manifest_path)?;
+    if project_table(&manifest, name).and_then(|project| project.get("variant")).and_then(Value::as_str) == Some("storefront") {
+        return Ok(false);
+    }
     Ok(project_table(&manifest, name)
         .and_then(|project| project.get("metadata"))
         .and_then(Value::as_table)

@@ -92,6 +92,27 @@ unmodified TypeScript HTTP/MCP startup, and the native HTTP/MCP listener matrix.
 Mixed development is available through `forklaunch dev`; platform deployment
 validation remains separate work.
 
+## Captured storefronts
+
+```sh
+forklaunch init module storefront shop --from /path/to/capture/manifest.json --path .
+forklaunch sync library shop --path .
+forklaunch change library -N boutique -D "Captured shop" --path crates/shop --confirm
+```
+
+Captured storefronts work in Rust, Node, Bun and mixed applications. Initialization
+copies the sibling `site/` assets and registers a library with the `storefront`
+variant and a contained `metadata.staticPath`. Rename and description changes use
+that registration and preserve asset bytes, application tooling and manifest
+comments. `--dryrun` previews initialization or changes without writes.
+`forklaunch delete library boutique --continue` removes the registered capture and
+its topology references. Missing captures fail sync with an explicit error.
+
+Adding a TypeScript workspace to a Rust application preserves the capture's
+original location, including captures created before `staticPath` was recorded.
+Static captures do not join Cargo or package workspaces and do not generate API
+or SDK routes. Hosting the captured frontend remains a separate deployment step.
+
 ## Native Better Auth
 
 ```sh

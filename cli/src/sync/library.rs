@@ -178,6 +178,10 @@ impl CliCommand for LibrarySyncCommand {
             };
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
+        if crate::core::storefront::registered(&app_root_path, library_name)? {
+            crate::core::storefront::change(&app_root_path, library_name, None, None, true)?;
+            return Ok(());
+        }
         if rust_project::is_rust_project(&app_root_path, library_name)? {
             let mut stdout = StandardStream::stdout(ColorChoice::Always);
             rust_project::sync_rust_project(

@@ -456,6 +456,10 @@ fn project_is_rust(project: &ProjectEntry) -> bool {
 }
 
 fn project_relative_path(manifest: &ApplicationManifestData, project: &ProjectEntry) -> String {
+    if crate::core::storefront::is_capture(project) {
+        return project.metadata.as_ref().and_then(|metadata| metadata.static_path.clone())
+            .unwrap_or_else(|| Path::new(&manifest.modules_path).join(&project.name).to_string_lossy().into_owned());
+    }
     if project_is_rust(project) {
         project
             .metadata
@@ -1436,6 +1440,27 @@ mod tests {
                 "Dockerfile.custom"
             );
         }
+    }
+
+    #[test]
+    fn prebuilt_release_keeps_storefront_paths_after_mixed_migration() {
+        let root = TempDir::new().unwrap();
+        let mut manifest = rust_release_test_manifest();
+        manifest.modules_path = "modules".into();
+        manifest.runtime = "node".into();
+        for directory in ["modules", "crates/accounts", "crates/email-worker", "crates/shop"] {
+            std::fs::create_dir_all(root.path().join(directory)).unwrap();
+        }
+        let mut capture = manifest.projects[0].clone();
+        capture.name = "shop".into();
+        capture.r#type = ProjectType::Library;
+        capture.variant = Some("storefront".into());
+        capture.metadata = Some(ProjectMetadata { static_path: Some("crates/shop".into()), ..ProjectMetadata::default() });
+        assert_eq!(project_relative_path(&manifest, &capture), "crates/shop");
+        manifest.projects.push(capture);
+        super::super::prebuilt::validate_paths(root.path(), &manifest).unwrap();
+        manifest.projects.last_mut().unwrap().metadata.as_mut().unwrap().static_path = Some("../outside".into());
+        assert!(super::super::prebuilt::validate_paths(root.path(), &manifest).is_err());
     }
 
     #[test]

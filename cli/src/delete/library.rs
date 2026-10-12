@@ -82,6 +82,19 @@ impl CliCommand for LibraryCommand {
             |_| "Library not found".to_string(),
         )?;
 
+        if crate::core::storefront::registered(&app_root_path, &library_name)? {
+            if !matches.get_flag("continue")
+                && !prompt_for_confirmation(
+                    &mut line_editor,
+                    "Delete this storefront and its captured assets? (y/N) ",
+                )?
+            {
+                return Ok(());
+            }
+            crate::core::storefront::delete(&app_root_path, &library_name)?;
+            log_ok!(stdout, "Storefront '{}' deleted", library_name);
+            return Ok(());
+        }
         if rust_project::is_rust_project(&app_root_path, &library_name)? {
             if !matches.get_flag("continue") {
                 let continue_delete = prompt_for_confirmation(

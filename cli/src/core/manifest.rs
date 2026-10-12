@@ -130,6 +130,13 @@ pub(crate) fn next_available_redis_partition(projects: &[ProjectEntry]) -> u32 {
 
 #[derive(Debug, Serialize, Deserialize, Content, Clone, Default)]
 pub(crate) struct ProjectMetadata {
+    #[serde(
+        rename = "staticPath",
+        alias = "static_path",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) static_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) language: Option<String>,
     pub(crate) r#type: Option<String>,

@@ -67,7 +67,10 @@ pub(super) fn validate_paths(root: &Path, manifest: &ApplicationManifestData) ->
         }
         let metadata = project.metadata.as_ref();
         let directory =
-            if metadata.and_then(|metadata| metadata.language.as_deref()) == Some("rust") {
+            if crate::core::storefront::is_capture(project) {
+                metadata.and_then(|metadata| metadata.static_path.clone())
+                    .unwrap_or_else(|| format!("{}/{}", manifest.modules_path, project.name))
+            } else if metadata.and_then(|metadata| metadata.language.as_deref()) == Some("rust") {
                 metadata
                     .and_then(|metadata| metadata.crate_path.clone())
                     .unwrap_or_else(|| format!("crates/{}", project.name))

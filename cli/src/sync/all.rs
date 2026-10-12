@@ -59,6 +59,13 @@ pub fn sync_all_projects(
     prompts_map: &HashMap<String, HashMap<String, String>>,
     stdout: &mut StandardStream,
 ) -> Result<bool> {
+    for project in manifest_data
+        .projects
+        .iter()
+        .filter(|project| crate::core::storefront::is_capture(project))
+    {
+        crate::core::storefront::change(app_root_path, &project.name, None, None, true)?;
+    }
     if rust_project::is_rust_app_root(app_root_path)? {
         rust_project::sync_all_rust_projects(app_root_path, stdout)?;
         // Native sync persists its own changes. Refresh callers (including
@@ -104,7 +111,8 @@ pub fn sync_all_projects(
 
     let mut orphaned_projects = vec![];
     for project in &manifest_data.projects {
-        if project.metadata.as_ref().and_then(|metadata| metadata.language.as_deref()) != Some("rust")
+        if !crate::core::storefront::is_capture(project)
+            && project.metadata.as_ref().and_then(|metadata| metadata.language.as_deref()) != Some("rust")
             && !DIRS_TO_IGNORE.contains(&project.name.as_str())
             && !existing_folders.contains(&project.name)
         {
@@ -212,6 +220,9 @@ pub fn sync_all_projects(
             .iter()
             .find(|p| p.name == project_name);
 
+        if manifest_project.is_some_and(crate::core::storefront::is_capture) {
+            continue;
+        }
         let project_type = if let Some(existing) = manifest_project {
             let init_type: InitializeType = match existing.r#type {
                 ProjectType::Service => InitializeType::Service,

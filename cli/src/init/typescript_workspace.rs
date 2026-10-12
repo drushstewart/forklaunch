@@ -164,6 +164,34 @@ fn merge_workspace(stage: &Path, template: &Path, original: &Value) -> Result<()
         .or_insert_with(|| Value::Array(vec![]))
         .as_array_mut()
         .context("Projects must be an array")?;
+    // Existing static captures keep their path when the JavaScript modules root changes.
+    for project in projects
+        .iter_mut()
+        .filter(|project| project.get("variant").and_then(Value::as_str) == Some("storefront"))
+    {
+        let name = project
+            .get("name")
+            .and_then(Value::as_str)
+            .context("Storefront name missing")?
+            .to_owned();
+        let metadata = project
+            .as_table_mut()
+            .context("Project must be a table")?
+            .entry("metadata")
+            .or_insert_with(|| Value::Table(Default::default()))
+            .as_table_mut()
+            .context("Project metadata must be a table")?;
+        if !metadata.contains_key("staticPath") && !metadata.contains_key("static_path") {
+            let modules = original
+                .get("modules_path")
+                .and_then(Value::as_str)
+                .unwrap_or("crates");
+            metadata.insert(
+                "staticPath".into(),
+                Value::String(Path::new(modules).join(name).to_string_lossy().into_owned()),
+            );
+        }
+    }
     for project in generated
         .get("projects")
         .and_then(Value::as_array)
@@ -363,6 +391,9 @@ pub(super) fn attach_if_needed(matches: &ArgMatches) -> Result<bool> {
     let Some((kind, selected)) = matches.subcommand() else {
         return Ok(false);
     };
+    if kind == "module" && selected.subcommand_name() == Some("storefront") {
+        return Ok(false);
+    }
     if !matches!(kind, "service" | "worker" | "library" | "module")
         || super::rust_project::uses_rust_generation(selected)
     {

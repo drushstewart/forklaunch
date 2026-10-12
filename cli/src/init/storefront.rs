@@ -25,7 +25,7 @@ use crate::{
         command::command,
         manifest::{
             ApplicationInitializationMetadata, InitializableManifestConfig,
-            InitializableManifestConfigMetadata, ManifestData, ProjectType,
+            InitializableManifestConfigMetadata, ManifestData, ProjectMetadata, ProjectType,
             add_project_definition_to_manifest, application::ApplicationManifestData,
             library::LibraryManifestData,
         },
@@ -50,18 +50,8 @@ use crate::{
 /// `core/base_path.rs` — a `ManifestData::Storefront` would have to answer
 /// for each of those rendering paths.
 ///
-/// KNOWN TRADEOFF, flagged for review: reusing `Library` means the manifest
-/// advertises a contract this command does not fulfil. `init/library.rs`
-/// additionally registers the project in `pnpm-workspace.yaml` and the root
-/// `package.json`, generates a `package.json` and tsconfig entry, and creates
-/// symlinks. A storefront gets none of those, because a captured static site
-/// is not a pnpm package. Consumers keyed on `ProjectType::Library`
-/// (`sync/library.rs`, `change/library.rs`, `delete/library.rs`) therefore
-/// see an entry whose artifacts are absent; `delete` tolerates this because
-/// its removal helpers no-op on missing entries, but that is the callee being
-/// forgiving, not a guarantee. A real `ProjectType::Storefront` would make
-/// the exhaustiveness checker enforce these decisions instead of leaving them
-/// implicit — worth doing if storefronts ever need to sync or deploy.
+/// Lifecycle commands recognize this variant and preserve its static assets
+/// without adding Cargo or JavaScript package artifacts.
 const STOREFRONT_VARIANT: &str = "storefront";
 
 /// The `manifest.json` `schemaVersion` this command knows how to read. Bump
@@ -352,7 +342,10 @@ impl CliCommand for StorefrontCommand {
             Some(STOREFRONT_VARIANT.to_string()),
             None,
             None,
-            None,
+            Some(ProjectMetadata {
+                static_path: Some(project_output_path.strip_prefix(&app_root_path)?.to_string_lossy().into_owned()),
+                ..ProjectMetadata::default()
+            }),
         )
         .with_context(|| ERROR_FAILED_TO_ADD_PROJECT_METADATA_TO_MANIFEST)?;
 
