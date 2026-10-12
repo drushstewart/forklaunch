@@ -1504,3 +1504,9 @@ HTTP/MCP and native reload but failed because its shared-schema fixture imported
 an unexported `object` helper. The fixture now uses supported `optional({...})`
 syntax and waits for service readiness between schema edits. Fresh corrected
 Node/Bun runs remain pending; that failure is not a development parity pass.
+
+Two older IAM architectural recommendations are also reconciled with existing
+implementation evidence: ForkLaunch owns the base IAM credentials/directory/session
+logic, and the separate native Better Auth crate follows API/behavior comparisons
+rather than depending on a Rust clone of Better Auth. This does not close the
+remaining provider, custom client, ORM/hooks, scalable storage or compliance work.
