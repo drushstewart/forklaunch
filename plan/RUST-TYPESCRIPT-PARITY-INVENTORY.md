@@ -1187,3 +1187,26 @@ client transport and typing; persistence remains covered separately by module
 suites. All 1,044 CLI tests pass. CI includes rust_mixed_compliance.sh. Unified
 development orchestration, root workspace integration for TypeScript-first apps,
 and deployment validation remain open.
+
+
+TypeScript-first root workspace checkpoint (2026-10-12): reproducing HTTP SDK
+generation on an actual Node-first mixed application showed a root PNPM workspace
+containing only the SDK, omitting all four TypeScript module packages. SDK
+workspace generation now merges module membership and tooling at the application
+root, including configured modules paths, nested exclusions and missing workspace
+policies. It parses YAML structurally, supports inline package lists, preserves
+custom root scripts/dependency versions/policies, and adds Bun workspaces and
+Bun SDK commands. A missing root build runs Cargo when present and then the
+JavaScript packages. Redundant direct-child entries are omitted because Bun
+otherwise executes their builds twice. Module source and nested configuration
+remain unchanged; invalid workspace configuration rejects before either root
+configuration file is rewritten.
+
+All 1,047 CLI tests pass. Fresh Node and Bun mixed apps install dependencies and
+build Cargo plus every module and the HTTP SDK from their application root. The
+Bun fixture asserts exactly one successful build per module. Both applications'
+TypeScript services answer HTTP and MCP initialization/discovery/tool invocation;
+the native services pass the complete HTTP/MCP startup/configuration/shutdown
+matrix. The Rust/mixed release orchestration regression also passes. CI includes
+rust_sdk_workspace.sh. Unified development orchestration, socket-only workspace
+integration and platform deployment remain separate work.

@@ -1049,8 +1049,7 @@ fn generate_typescript_sdk(app_root: &Path, services: &[SdkService]) -> Result<(
     if !compiler_config.exists() {
         write(&compiler_config, rust_project::TYPESCRIPT_SDK_TSCONFIG)?;
     }
-    write_or_update_root_package_json(app_root)?;
-    ensure_pnpm_workspace_includes_typescript_sdk(app_root)?;
+    super::workspace::include_typescript_sdk(app_root)?;
     write(
         sdk_root.join("package.json"),
         serde_json::to_string_pretty(&json!({
@@ -1074,89 +1073,6 @@ fn generate_typescript_sdk(app_root: &Path, services: &[SdkService]) -> Result<(
         typescript_sdk(services)?,
     )?;
     Ok(())
-}
-
-fn write_or_update_root_package_json(app_root: &Path) -> Result<()> {
-    let package_path = app_root.join("package.json");
-    let mut package = if package_path.exists() {
-        serde_json::from_str::<JsonValue>(
-            &read_to_string(&package_path)
-                .with_context(|| format!("Failed to read {}", package_path.display()))?,
-        )
-        .with_context(|| format!("Failed to parse {}", package_path.display()))?
-    } else {
-        json!({})
-    };
-
-    let package_object = package
-        .as_object_mut()
-        .context("Root package.json must be a JSON object")?;
-    package_object
-        .entry("private".to_string())
-        .or_insert(JsonValue::Bool(true));
-    package_object
-        .entry("type".to_string())
-        .or_insert(JsonValue::String("module".to_string()));
-    package_object
-        .entry("packageManager".to_string())
-        .or_insert(JsonValue::String("pnpm@10.0.0".to_string()));
-
-    let scripts = package_object
-        .entry("scripts".to_string())
-        .or_insert_with(|| json!({}))
-        .as_object_mut()
-        .context("Root package.json scripts must be a JSON object")?;
-    scripts.insert(
-        "sdk:generate".to_string(),
-        JsonValue::String(
-            "forklaunch sdk generate --target typescript --from contract".to_string(),
-        ),
-    );
-    scripts.insert(
-        "sdk:check".to_string(),
-        JsonValue::String(
-            "forklaunch sdk generate --target typescript --from contract --check".to_string(),
-        ),
-    );
-    scripts.insert(
-        "sdk:typecheck".to_string(),
-        JsonValue::String("pnpm --filter @forklaunch-generated/sdk build".to_string()),
-    );
-    scripts.insert(
-        "sdk:watch".to_string(),
-        JsonValue::String("forklaunch sdk watch --target typescript --from contract".to_string()),
-    );
-
-    write(&package_path, serde_json::to_string_pretty(&package)?)
-        .with_context(|| format!("Failed to update {}", package_path.display()))
-}
-
-fn ensure_pnpm_workspace_includes_typescript_sdk(app_root: &Path) -> Result<()> {
-    let workspace_path = app_root.join("pnpm-workspace.yaml");
-    let sdk_line = "  - \"sdks/typescript\"";
-    if !workspace_path.exists() {
-        return write(&workspace_path, format!("packages:\n{sdk_line}\n"))
-            .with_context(|| format!("Failed to write {}", workspace_path.display()));
-    }
-
-    let mut contents = read_to_string(&workspace_path)
-        .with_context(|| format!("Failed to read {}", workspace_path.display()))?;
-    if contents
-        .lines()
-        .any(|line| line.trim() == "- \"sdks/typescript\"" || line.trim() == "- sdks/typescript")
-    {
-        return Ok(());
-    }
-    if !contents.ends_with('\n') {
-        contents.push('\n');
-    }
-    if !contents.lines().any(|line| line.trim() == "packages:") {
-        contents.push_str("packages:\n");
-    }
-    contents.push_str(sdk_line);
-    contents.push('\n');
-    write(&workspace_path, contents)
-        .with_context(|| format!("Failed to update {}", workspace_path.display()))
 }
 
 fn check_sdk_outputs(app_root: &Path, target: &str, services: &[SdkService]) -> Result<()> {

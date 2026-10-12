@@ -14,6 +14,7 @@ mod models;
 mod render;
 mod openapi;
 mod http_sources;
+mod workspace;
 mod schema;
 pub(crate) mod watch;
 pub(crate) mod websocket;
