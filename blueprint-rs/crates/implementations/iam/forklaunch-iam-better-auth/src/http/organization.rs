@@ -25,6 +25,17 @@ pub(super) async fn handle<S: AuthStore + 'static>(
 ) -> BlueprintResult<Value> {
     let service = OrganizationService::new(app.store.clone());
     let (token, transient) = session;
+    if path == "/organization/accept-invitation" {
+        let result = service
+            .accept_invitation(
+                token,
+                transient,
+                payload["invitationId"].as_str().unwrap_or(""),
+                now,
+            )
+            .await?;
+        return selected(app, pending, session, result);
+    }
     if let Some(body) = invitations::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);
     }
@@ -95,16 +106,7 @@ pub(super) async fn handle<S: AuthStore + 'static>(
             } else {
                 service.set_active(token, transient, payload, now).await?
             };
-            if result.cookie {
-                set_cookie(
-                    pending,
-                    &app.cookie.serialize(token, &app.secret, !transient),
-                )?;
-                if transient {
-                    set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;
-                }
-            }
-            Ok(result.body)
+            selected(app, pending, session, result)
         }
         _ => Err(internal()),
     }
@@ -132,6 +134,7 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
     };
     Router::new()
         .route("/organization/invite-member", post(dispatch::<S>))
+        .route("/organization/accept-invitation", post(dispatch::<S>))
         .route("/organization/reject-invitation", post(dispatch::<S>))
         .route("/organization/cancel-invitation", post(dispatch::<S>))
         .route(
@@ -194,4 +197,23 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
             "/organization/get-full-organization",
             get(dispatch::<S>).head(not_found),
         )
+}
+
+fn selected<S: AuthStore>(
+    app: &AuthHttp<S>,
+    pending: &mut HeaderMap,
+    session: (&str, bool),
+    result: crate::organizations::OrganizationSelection,
+) -> BlueprintResult<Value> {
+    let (token, transient) = session;
+    if result.cookie {
+        set_cookie(
+            pending,
+            &app.cookie.serialize(token, &app.secret, !transient),
+        )?;
+        if transient {
+            set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;
+        }
+    }
+    Ok(result.body)
 }

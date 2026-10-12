@@ -1,4 +1,5 @@
 use super::*;
+mod acceptance;
 mod creation;
 mod mutations;
 pub(super) async fn exercise<S: AuthStore>(store: Arc<S>) {
@@ -71,5 +72,6 @@ pub(super) async fn exercise<S: AuthStore>(store: Arc<S>) {
     );
     mutations::exercise(store.clone(), &service, token, org, now).await;
     creation::exercise(store.clone(), &service, token, org, now).await;
+    acceptance::exercise(store.clone(), &service, org, now).await;
     sessions.sign_out(token).await.unwrap();
 }

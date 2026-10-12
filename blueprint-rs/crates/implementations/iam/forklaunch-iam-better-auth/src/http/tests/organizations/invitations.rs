@@ -1,4 +1,5 @@
 use super::*;
+mod acceptance;
 mod creation;
 mod mutations;
 pub(super) async fn exercise<S: AuthStore>(
@@ -72,4 +73,5 @@ pub(super) async fn exercise<S: AuthStore>(
     tx.commit().await.unwrap();
     mutations::exercise(client, base, cookie, store, org).await;
     creation::exercise(client, base, cookie, store, org).await;
+    acceptance::exercise(client, base, store, org).await;
 }

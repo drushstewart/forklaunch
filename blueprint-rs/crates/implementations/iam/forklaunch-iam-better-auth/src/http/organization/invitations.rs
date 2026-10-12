@@ -10,6 +10,7 @@ pub(in crate::http) fn is_route(path: &str) -> bool {
             | "/organization/reject-invitation"
             | "/organization/cancel-invitation"
             | "/organization/invite-member"
+            | "/organization/accept-invitation"
     )
 }
 pub(super) fn validate_query(path: &str, query: &HashMap<String, Value>) -> BlueprintResult<()> {
@@ -103,7 +104,9 @@ pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult
     }
     if !matches!(
         path,
-        "/organization/reject-invitation" | "/organization/cancel-invitation"
+        "/organization/reject-invitation"
+            | "/organization/cancel-invitation"
+            | "/organization/accept-invitation"
     ) {
         return Ok(());
     }

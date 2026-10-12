@@ -1,4 +1,5 @@
 //! Configured invitation visibility and adapter joins.
+mod accept;
 mod create;
 mod mutation;
 use super::{

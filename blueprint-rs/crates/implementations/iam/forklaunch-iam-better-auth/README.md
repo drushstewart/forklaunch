@@ -333,3 +333,13 @@ Resend updates expiry while retaining stored role/teams, before team/limit check
 Memory/restricted PostgreSQL verify concurrent last-slot admission and retained
 team/member state; live HTTP runs creation/resend beside JWT/MCP. Acceptance and
 remaining full-preset gates stay open.
+
+Fifty-five raw routes include acceptance, completing configured invitation
+lifecycle. All 186 actual HTTP/storage/cookie comparisons pass: recipient and
+verification ordering, exact expiry, member limits, duplicate memberships,
+verbatim roles, keyed team/counter enrollment and active scope. Only single-team
+acceptance emits cookies and selects a team; absent/multiple teams retain the
+prior team. Memory/restricted PostgreSQL verify competing acceptance, last-slot
+admission and complete rollback after missing later teams. Live HTTP covers
+no-team/single-team transient cookies beside JWT/MCP. Remaining full-preset
+gates include dynamic roles, providers, JWT helpers and real ORM/callbacks.
