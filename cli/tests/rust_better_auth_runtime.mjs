@@ -41,7 +41,9 @@ async function start(tenant, overrides = {}) {
   const base = new URL(configuredURL);
   const authPath =
     base.pathname.replace(/\/+$/, '') ||
-    `/${configuredPath.replace(/^\/+|\/+$/g, '')}`;
+    (configuredPath.replace(/^\/+|\/+$/g, '')
+      ? `/${configuredPath.replace(/^\/+|\/+$/g, '')}`
+      : '');
   const child = spawn(binary, [], {
     env: {
       ...inherited,
@@ -373,12 +375,14 @@ try {
   await stop(restarted);
   const ownOrigin = restarted.base;
   const ownJwks = await start('a', {
-    MCP_ENABLED: 'false',
+    MCP_ENABLED: 'true',
     SERVICE_PORT: new URL(ownOrigin).port,
-    BETTER_AUTH_URL: `${ownOrigin}/default/keys`,
-    BETTER_AUTH_BASE_PATH: '/ignored',
+    BETTER_AUTH_URL: ownOrigin,
+    BETTER_AUTH_BASE_PATH: '/',
     JWKS_PUBLIC_KEY_URL: undefined
   });
+  assert.equal(ownJwks.authPath, '');
+  assert.equal((await probeMcp(ownJwks.base, ['getauthmethods'])).length, 6);
   const ownSession = await call(
     ownJwks.base,
     `${ownJwks.authPath}/get-session`,

@@ -140,7 +140,16 @@ app.internal.get(`${authBasePath}/oauth-redirect`, async (req, res) => {
 
 //! registers the betterAuth middleware
 app.internal.all(
-  `${authBasePath}/{*any}`,
+  authBasePath
+    ? `${authBasePath}/{*any}`
+    : [
+        ...new Set(
+          Object.values(resolvedAuth.api)
+            .map((endpoint) => (endpoint as { path?: string }).path)
+            .filter((path): path is string => Boolean(path))
+            .map((path) => `/${path.split('/')[1]}{/{*any}}`)
+        )
+      ],
   betterAuthTelemetryHookMiddleware,
   enrichBetterAuthApi(ci.resolve(tokens.BetterAuth) as BetterAuth)
 );

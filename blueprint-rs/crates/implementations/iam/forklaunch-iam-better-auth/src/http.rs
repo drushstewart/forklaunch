@@ -83,10 +83,10 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         }
         .with_base_path("/api/auth")
     }
-    /// Sets a trusted non-root authentication namespace. A path already present
+    /// Sets a trusted fixed authentication namespace. A path already present
     /// in `base_url` takes precedence, matching Better Auth's URL resolution.
     /// # Errors
-    /// Rejects root, parameterized, encoded or otherwise invalid namespaces.
+    /// Rejects parameterized, encoded or otherwise invalid namespaces.
     pub fn with_base_path(mut self, path: impl Into<String>) -> BlueprintResult<Self> {
         let path = path.into();
         let path = if path.starts_with('/') {
@@ -96,25 +96,22 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         };
         self.base_path = path;
         let effective = self.auth_base_path();
-        if effective.is_empty()
-            || effective.chars().any(|character| {
-                character.is_control()
-                    || character.is_whitespace()
-                    || matches!(character, '{' | '}' | ':' | '*' | '?' | '#' | '%' | '\\')
-            })
-            || self.base_path.chars().any(|character| {
-                character.is_control()
-                    || character.is_whitespace()
-                    || matches!(character, '?' | '#' | '\\')
-            })
-            || self
-                .base_path
-                .split('/')
-                .any(|part| matches!(part, "." | ".."))
+        if effective.chars().any(|character| {
+            character.is_control()
+                || character.is_whitespace()
+                || matches!(character, '{' | '}' | ':' | '*' | '?' | '#' | '%' | '\\')
+        }) || self.base_path.chars().any(|character| {
+            character.is_control()
+                || character.is_whitespace()
+                || matches!(character, '?' | '#' | '\\')
+        }) || self
+            .base_path
+            .split('/')
+            .any(|part| matches!(part, "." | ".."))
         {
             return Err(BlueprintError::new(
                 "better_auth_invalid_config",
-                "Authentication base path must be a fixed non-root namespace",
+                "Authentication base path must be a fixed namespace",
             ));
         }
         Ok(self)
@@ -126,7 +123,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     pub fn auth_base_url(&self) -> String {
         let parsed = Url::parse(&self.base_url).expect("validated auth base URL");
         if parsed.path().trim_matches('/').is_empty() {
-            format!("{}{}", self.base_url.trim_end_matches('/'), self.base_path)
+            let origin = self.base_url.trim_end_matches('/');
+            if self.base_path == "/" {
+                origin.to_owned()
+            } else {
+                format!("{origin}{}", self.base_path)
+            }
         } else {
             self.base_url.clone()
         }

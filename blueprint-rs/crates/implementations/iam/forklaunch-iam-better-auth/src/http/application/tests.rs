@@ -14,8 +14,6 @@ const USER: &str = "11000000-0000-4000-8000-000000000001";
 #[test]
 fn trusted_auth_namespaces_reject_unsafe_mounts_and_mcp_collisions() {
     for path in [
-        "",
-        "/",
         "/auth/{id}",
         "/auth/*",
         "/auth?x=1",
@@ -101,6 +99,8 @@ async fn application_http_mcp_auth_roles_compliance_and_shutdown() {
         ("/api/auth", ""),
         ("/identity/login", ""),
         ("/ignored", "/custom/auth"),
+        ("/", ""),
+        ("", ""),
     ] {
         application_surfaces(base_path, url_path).await;
     }
@@ -112,7 +112,8 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
         base_path
     } else {
         url_path
-    };
+    }
+    .trim_end_matches('/');
     let now = Utc::now();
     let store = Arc::new(MemoryAuthStore::default());
     let mut tx = store.begin(true).await.unwrap();

@@ -34,7 +34,7 @@ proof that TypeScript and Rust producers/consumers can exchange jobs.
 | [`@forklaunch/blueprint-core`](../blueprint/core/package.json) (generated/private) | forklaunch-blueprint-core and framework crates | Core DTOs/contracts exist; compliance/service registrations and shared role/provider behavior remain. |
 | [`@forklaunch/blueprint-ecommerce-stripe`](../blueprint/ecommerce-stripe/package.json) (generated/private) | forklaunch-ecommerce-axum; Rust CLI ecommerce-stripe module | Core 27 catalog/cart/order/payment routes plus health start over HTTP/MCP with PostgreSQL, HMAC, provider selection and durable inventory events. Live generated HTTP/MCP, both SDKs, separate inventory worker, restart persistence and init/sync/rename/delete checks pass. Tax/shipping calculators pass 32 actual TS comparisons; bulk catalog import passes actual TS and generated PostgreSQL HTTP/MCP/SDK fixtures. Checkout HTTP/MCP/SDK wiring passes eight actual TS controller comparisons, cross-process payment races and ten parallel-cart checks. Verified Stripe/PayPal callbacks pass actual TS business comparisons and cross-process capture/replay/inventory checks; 31 application routes plus health start over HTTP/MCP. Generated Compose starts the separate inventory worker; Linux HTTP/MCP, paid/cancelled delivery and graceful shutdown pass. Persistence compliance and interrupted capture reconciliation remain. |
 | [`@forklaunch/blueprint-iam-base`](../blueprint/iam-base/package.json) (generated/private) | Rust init module iam-base | Generated sessions plus thirty configured directory CRUD/grant routes, JWKS/HMAC/RBAC, transactional organization scope and HTTP/MCP startup are covered. Configured discovery/compliance also match the actual all-`none` policy; application-specific metadata and provider lifecycle remain. |
-| [`@forklaunch/blueprint-iam-better-auth`](../blueprint/iam-better-auth/package.json) (generated/private) | Native parity in progress | All 70 raw auth routes and server-only password/member helpers pass configured comparisons and encrypted PostgreSQL/live HTTP/MCP checks. Organization/member/team/invitation lifecycle is implemented; Application surfacing/compliance, remaining JWT helpers, real ORM/compliance/callbacks and CLI preset remain open. |
+| [`@forklaunch/blueprint-iam-better-auth`](../blueprint/iam-better-auth/package.json) (generated/private) | forklaunch-iam-better-auth and native CLI preset | All 70 configured raw routes, four server-only helpers, five application HTTP/MCP contracts, surfacing/compliance/retention, real encrypted ORM conformance, popup helpers, Scalar sources and default/custom/root namespaces pass actual comparisons. Generated restricted PostgreSQL, SDKs, shared/separate/disabled MCP, self-JWKS, restart and rename/delete pass. Broader custom options/hooks/client integration, typed JWT/JWKS adapters and indexed storage remain. |
 | [`@forklaunch/implementation-billing-base`](../blueprint/implementations/billing/base/package.json) | forklaunch-billing-base | Five asynchronous base services implement plan/subscription CRUD and checkout/payment-link/portal cache lifecycles, with typed DTOs, optional backups and tenant-RLS PostgreSQL persistence. 168 actual TS base-class operations and native concurrency/expiry/encryption/audit/rotation fixtures pass. Generated billing modules and HTTP/MCP startup now pass; 65 actual configured mapper cases now pass; Redis cache interop remains. |
 | [`@forklaunch/implementation-billing-stripe`](../blueprint/implementations/billing/stripe/package.json) | forklaunch-billing-stripe | Version-pinned authenticated Stripe client and five persistent async provider services pass 21 official SDK transport cases and 144 actual TS wrapper operations with backup/cache lifecycle. Raw-body authentication is shared with ecommerce and rejects stale callbacks. Legacy synchronous adapter fails closed. Generated modules/contracts and HTTP/MCP startup now pass. Twenty-six actual TS webhook state/provider-effect comparisons pass, with paginated product updates and subscription reassignment protection. Native tenant-RLS webhook receipts and replica-safe platform nonces pass PostgreSQL gates. Managed outbound transport passes 23 actual TS gateway comparisons and native JSON capability signature checks. Configured mapper audit now covers 65 actual cases; reconciliation remains. |
 | [`@forklaunch/implementation-cac-base`](../blueprint/implementations/cac/base/package.json) | forklaunch-cac-base | Mock codes and provider descriptor/lookup match actual TS fixtures; authenticated generated module, both SDKs and CLI lifecycle now pass. |
@@ -925,3 +925,22 @@ an override, SDKs and rename/delete. All 28 native tests, 1,016 CLI tests, stric
 clippy, 161 raw HTTP regressions, 40 existing callbacks, 12 Scalar comparisons
 and 751 packaged sources pass. Root/dynamic/encoded namespaces, full ORM/hooks/
 client integration and broader custom options remain open.
+
+### Root-mounted authentication and reserved namespaces
+
+`BETTER_AUTH_BASE_PATH=/` (or empty) mounts raw authentication at root while
+keeping application contracts, docs, SDKs and MCP reachable. The framework's
+`merge_internal` API reserves declared fixed namespaces; collision validation
+and parent nesting apply to each reservation. The actual TS preset now limits
+its root catch-all to known auth namespaces, avoiding interception of application
+routes. Root reset errors no longer introduce an extra slash.
+
+All 450 actual Express/TS comparisons pass across nine configurations, including
+630 raw-route dispatch probes and root signed sessions/Google/reset/popup flows.
+The full native application HTTP/MCP test runs under five configurations. A fresh
+generated PostgreSQL service passes root HTTP/MCP and default self-JWKS without
+an override, as well as custom/separate and URL-override/disabled listeners,
+persisted sessions, SDKs and rename/delete. All 28 native/40 framework tests,
+strict all-feature/all-target clippy for both crates and 751 packaged sources
+pass. Dynamic/encoded namespaces and broader ORM/hooks/client/options work
+remain separate gates.

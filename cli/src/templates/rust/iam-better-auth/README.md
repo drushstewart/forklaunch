@@ -3,7 +3,7 @@
 Native Better Auth with encrypted tenant-bound PostgreSQL, cookie sessions,
 credentials, Google OAuth, organizations, teams, roles and permissions. The 70
 configured raw auth routes default to `/api/auth`. Set `BETTER_AUTH_BASE_PATH`
-to a fixed non-root namespace; a path already present in `BETTER_AUTH_URL` takes
+to a fixed namespace (use `/` for root); a path already present in `BETTER_AUTH_URL` takes
 precedence. Five application contracts
 provide public discovery, HMAC role/permission surfacing and system-role JWT
 compliance export/erasure through HTTP and MCP.
@@ -41,6 +41,9 @@ JWT/session/email fragment values and clears only the configured session cookie.
 `<auth-base-path>/oauth-redirect` emits the script-safe OAuth/SSO popup page. Both validate
 callback destinations against the configured trusted origins.
 
-This scaffold serves one trusted configured tenant. Root, parameterized and
+Root auth reserves its own endpoint namespaces and keeps application routes,
+docs, SDKs and MCP available.
+
+This scaffold serves one trusted configured tenant. Parameterized and
 percent-encoded auth namespaces, complete ORM/hooks and broader custom
 Better Auth options remain parity work.

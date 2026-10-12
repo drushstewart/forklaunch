@@ -7,7 +7,7 @@ The `application-http` feature adds the five configured HTTP/MCP application
 contracts. CLI generation accepts `--module iam-better-auth` for native Rust.
 The application feature includes the two custom internal popup helpers.
 Scalar docs include both application contracts and the complete BetterAuth API.
-Fixed non-root auth namespaces are configurable. Root/dynamic/encoded namespaces,
+Fixed auth namespaces, including root mounts, are configurable. Dynamic/encoded namespaces,
 complete ORM/hooks and broader nondefault options remain parity work. The sections below retain
 validation history; the latest entries describe current coverage.
 
@@ -668,3 +668,22 @@ an override, SDKs and rename/delete. All 28 native tests, 1,016 CLI tests, stric
 clippy, 161 raw HTTP regressions, 40 existing callbacks, 12 Scalar comparisons
 and 751 packaged sources pass. Root/dynamic/encoded namespaces, full ORM/hooks/
 client integration and broader custom options remain open.
+
+### Root-mounted authentication and reserved namespaces
+
+`BETTER_AUTH_BASE_PATH=/` (or empty) mounts raw authentication at root while
+keeping application contracts, docs, SDKs and MCP reachable. The framework's
+`merge_internal` API reserves declared fixed namespaces; collision validation
+and parent nesting apply to each reservation. The actual TS preset now limits
+its root catch-all to known auth namespaces, avoiding interception of application
+routes. Root reset errors no longer introduce an extra slash.
+
+All 450 actual Express/TS comparisons pass across nine configurations, including
+630 raw-route dispatch probes and root signed sessions/Google/reset/popup flows.
+The full native application HTTP/MCP test runs under five configurations. A fresh
+generated PostgreSQL service passes root HTTP/MCP and default self-JWKS without
+an override, as well as custom/separate and URL-override/disabled listeners,
+persisted sessions, SDKs and rename/delete. All 28 native/40 framework tests,
+strict all-feature/all-target clippy for both crates and 751 packaged sources
+pass. Dynamic/encoded namespaces and broader ORM/hooks/client/options work
+remain separate gates.

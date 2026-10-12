@@ -38,7 +38,9 @@ try {
     { baseURL: 'https://auth.example.test', basePath: 'identity/login' },
     { baseURL: 'https://auth.example.test/custom/auth', basePath: '/ignored' },
     { baseURL: 'http://localhost:3000/custom/auth/', basePath: '/ignored' },
-    { baseURL: 'https://auth.example.test/', basePath: '/login/' }
+    { baseURL: 'https://auth.example.test/', basePath: '/login/' },
+    { baseURL: 'http://localhost:3000', basePath: '/' },
+    { baseURL: 'https://auth.example.test', basePath: '' }
   ]) {
     const reference = await betterAuthReference(root, {
       baseURL,
@@ -56,6 +58,12 @@ try {
       app.get(route, (request, response, next) => {
         Promise.resolve(handler(request, response)).catch(next);
       });
+    app.all(loaded.rawPaths, (_request, response) =>
+      response.status(204).end()
+    );
+    app.get('/discovery/auth-methods', (_request, response) =>
+      response.json({ application: true })
+    );
     const server = await new Promise((resolve) => {
       const server = app.listen(0, '127.0.0.1', () => resolve(server));
     });
@@ -159,6 +167,23 @@ try {
       return actual;
     }
     try {
+      const transport = `http://127.0.0.1:${server.address().port}`;
+      for (const endpoint of reference.routes) {
+        const probe = endpoint.path.replace(/:[A-Za-z]+/g, 'fixture');
+        const response = await fetch(`${transport}${effectivePath}${probe}`, {
+          redirect: 'manual'
+        });
+        assert.equal(
+          response.status,
+          204,
+          `${basePath} raw dispatch: ${probe}`
+        );
+      }
+      assert.deepEqual(
+        await (await fetch(`${transport}/discovery/auth-methods`)).json(),
+        { application: true }
+      );
+      checks++;
       const schema = await native({
         op: 'request',
         method: 'GET',

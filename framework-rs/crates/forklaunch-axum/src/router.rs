@@ -343,6 +343,9 @@ impl ForkLaunchRouter {
 
         for mut mount in internal_mounts {
             mount.prefix = join_base_path(&prefix, &mount.prefix);
+            for namespace in &mut mount.reserved_prefixes {
+                *namespace = join_base_path(&prefix, namespace);
+            }
             self.internal_mounts.push(mount);
         }
 
@@ -464,7 +467,11 @@ impl ForkLaunchRouter {
         }
 
         for mount in internal_mounts {
-            router = router.nest(&mount.prefix, mount.router);
+            router = if mount.prefix == "/" {
+                router.merge(mount.router)
+            } else {
+                router.nest(&mount.prefix, mount.router)
+            };
         }
 
         router = mount_documentation(router, &config, &registry);
@@ -534,11 +541,12 @@ impl ForkLaunchRouter {
         self,
         options: forklaunch_mcp::server::McpServerOptions,
     ) -> Result<(Router, Router), String> {
-        if self
-            .internal_mounts
-            .iter()
-            .any(|mount| internal::contains_path(&mount.prefix, &options.path))
-        {
+        if self.internal_mounts.iter().any(|mount| {
+            mount
+                .reserved_prefixes
+                .iter()
+                .any(|prefix| internal::contains_path(prefix, &options.path))
+        }) {
             return Err("MCP endpoint conflicts with an internal HTTP namespace".into());
         }
         if (self.config.openapi_enabled && options.path == self.config.openapi_path)

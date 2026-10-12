@@ -35,7 +35,8 @@ async fn reset_response<S: AuthStore + 'static>(
     let query = super::request::parse_query(query);
     let callback = query_string(&query, "callbackURL", true)?.unwrap_or("");
     trusted(app, callback)?;
-    let base = Url::parse(&app.auth_base_url()).map_err(|_| internal())?;
+    let auth_base = app.auth_base_url();
+    let base = Url::parse(&auth_base).map_err(|_| internal())?;
     let mut valid = false;
     if !token.is_empty() && !callback.is_empty() {
         let mut tx = app.store.begin(true).await?;
@@ -57,7 +58,7 @@ async fn reset_response<S: AuthStore + 'static>(
         }
     }
     let mut destination = if callback.is_empty() {
-        Url::parse(&format!("{base}/error")).map_err(|_| internal())?
+        Url::parse(&format!("{auth_base}/error")).map_err(|_| internal())?
     } else {
         base.join(callback).map_err(|_| internal())?
     };

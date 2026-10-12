@@ -12,13 +12,16 @@ export async function betterAuthServer(root, reference, options = {}) {
     )
   );
   const routes = new Map();
+  let rawPaths;
   let fetches = 0;
   const app = {
     internal: {
       get(route, handler) {
         routes.set(route, handler);
       },
-      all() {}
+      all(paths) {
+        rawPaths = paths;
+      }
     },
     use() {},
     registerSdks() {},
@@ -85,6 +88,7 @@ export async function betterAuthServer(root, reference, options = {}) {
   });
   return {
     routes,
+    rawPaths,
     fetches: () => fetches,
     async call(route, query, cookie = '') {
       const result = { status: 200, headers: {} };

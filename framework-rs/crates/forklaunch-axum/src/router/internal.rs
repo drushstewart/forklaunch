@@ -6,6 +6,7 @@ use forklaunch_contract::ContractRegistry;
 
 pub(super) struct InternalMount {
     pub(super) prefix: String,
+    pub(super) reserved_prefixes: Vec<String>,
     pub(super) router: Router,
 }
 
@@ -28,7 +29,46 @@ impl ForkLaunchRouter {
         );
         let prefix = join_base_path(&self.base_path, prefix);
         assert!(prefix != "/", "internal HTTP mount cannot reserve the root");
-        self.internal_mounts.push(InternalMount { prefix, router });
+        self.internal_mounts.push(InternalMount {
+            reserved_prefixes: vec![prefix.clone()],
+            prefix,
+            router,
+        });
+        self
+    }
+    /// Merges an application-owned API while reserving its declared namespaces.
+    /// Use this for APIs mounted at the application root. The caller must list
+    /// every namespace registered by `router`; contracts/docs/MCP cannot claim
+    /// these prefixes. Shared HTTP middleware still applies.
+    /// # Panics
+    /// Rejects empty reservations, root/parameterized prefixes or invalid paths.
+    /// Router construction rejects overlapping namespaces and contract/docs paths.
+    #[must_use]
+    pub fn merge_internal<P: AsRef<str>>(
+        mut self,
+        router: Router,
+        namespaces: impl IntoIterator<Item = P>,
+    ) -> Self {
+        let reserved_prefixes = namespaces
+            .into_iter()
+            .map(|prefix| {
+                let prefix = prefix.as_ref();
+                assert!(
+                    fixed_prefix(prefix) && !prefix.trim_matches('/').is_empty(),
+                    "internal HTTP merge requires fixed non-root namespaces"
+                );
+                join_base_path(&self.base_path, prefix)
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            !reserved_prefixes.is_empty(),
+            "internal HTTP merge requires declared namespaces"
+        );
+        self.internal_mounts.push(InternalMount {
+            prefix: join_base_path(&self.base_path, "/"),
+            reserved_prefixes,
+            router,
+        });
         self
     }
 }
@@ -78,29 +118,41 @@ pub(super) fn validate(
         (config.openapi_enabled && config.docs_enabled).then_some(config.docs_path.as_str()),
         (config.openapi_enabled && config.swagger_enabled).then_some(config.swagger_path.as_str()),
     ];
-    for (index, mount) in mounts.iter().enumerate() {
-        if !fixed_prefix(&mount.prefix) || mount.prefix == "/" {
-            return Err("internal HTTP mount requires a fixed non-root absolute prefix");
+    let mut reserved = Vec::new();
+    for mount in mounts {
+        if !fixed_prefix(&mount.prefix) || mount.reserved_prefixes.is_empty() {
+            return Err("internal HTTP mount requires a fixed prefix and declared namespaces");
         }
-        if mounts[..index].iter().any(|other| {
-            contains_path(&mount.prefix, &other.prefix)
-                || contains_path(&other.prefix, &mount.prefix)
-        }) {
-            return Err("overlapping internal HTTP namespaces");
-        }
-        if registry
-            .routes()
-            .iter()
-            .any(|route| intersects_route(&mount.prefix, &route.openapi_path))
-        {
-            return Err("internal HTTP namespace conflicts with a registered contract");
-        }
-        if docs
-            .iter()
-            .flatten()
-            .any(|path| intersects_route(&mount.prefix, path))
-        {
-            return Err("internal HTTP namespace conflicts with documentation");
+        for prefix in &mount.reserved_prefixes {
+            if !fixed_prefix(prefix)
+                || prefix == "/"
+                || (mount.prefix != "/" && !contains_path(&mount.prefix, prefix))
+            {
+                return Err(
+                    "internal HTTP mount requires fixed non-root namespaces within its prefix",
+                );
+            }
+            if reserved
+                .iter()
+                .any(|other: &&str| contains_path(prefix, other) || contains_path(other, prefix))
+            {
+                return Err("overlapping internal HTTP namespaces");
+            }
+            if registry
+                .routes()
+                .iter()
+                .any(|route| intersects_route(prefix, &route.openapi_path))
+            {
+                return Err("internal HTTP namespace conflicts with a registered contract");
+            }
+            if docs
+                .iter()
+                .flatten()
+                .any(|path| intersects_route(prefix, path))
+            {
+                return Err("internal HTTP namespace conflicts with documentation");
+            }
+            reserved.push(prefix.as_str());
         }
     }
     Ok(())
@@ -116,6 +168,69 @@ mod tests {
     };
     use forklaunch_contract::RouteContract;
     use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn merged_internal_namespaces_preserve_application_routes_and_parent_paths() {
+        let raw = Router::new().route("/token", get(|| async { "auth" }));
+        let child = ForkLaunchRouter::anonymous()
+            .with_base_path("/v1")
+            .merge_internal(raw, ["/token"])
+            .get(
+                RouteContract::get("Discovery", "Discovery", "/discovery"),
+                || async { "application" },
+            );
+        let app = ForkLaunchRouter::anonymous()
+            .with_base_path("/platform")
+            .nest("/tenant", child);
+        assert_eq!(app.registry().routes().len(), 1);
+        let app = app.into_router();
+        for (path, expected) in [
+            ("/platform/tenant/v1/token", "auth"),
+            ("/platform/tenant/v1/discovery", "application"),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 1024).await.unwrap(),
+                expected
+            );
+        }
+        for path in ["/token", "/platform/tenant/token"] {
+            assert_eq!(
+                app.clone()
+                    .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+        }
+    }
+
+    #[test]
+    fn merged_internal_namespaces_reject_contract_docs_and_mount_collisions() {
+        for route in ["/token", "/token/nested", "/{group}"] {
+            let app = ForkLaunchRouter::anonymous()
+                .merge_internal(Router::new(), ["/token"])
+                .get(RouteContract::get("Overlap", "Overlap", route), || async {
+                    "overlap"
+                });
+            assert!(validate(&app.internal_mounts, &app.registry, &app.config).is_err());
+        }
+        let app = ForkLaunchRouter::anonymous().merge_internal(Router::new(), ["/docs"]);
+        assert!(validate(&app.internal_mounts, &app.registry, &app.config).is_err());
+        let app = ForkLaunchRouter::anonymous()
+            .merge_internal(Router::new(), ["/token", "/session"])
+            .nest_internal("/session/refresh", Router::new());
+        assert!(validate(&app.internal_mounts, &app.registry, &app.config).is_err());
+        let app = ForkLaunchRouter::anonymous()
+            .merge_internal(Router::new(), ["/token", "/token/refresh"]);
+        assert!(validate(&app.internal_mounts, &app.registry, &app.config).is_err());
+    }
 
     #[tokio::test]
     async fn nested_internal_mounts_keep_raw_bodies_limits_and_request_ids() {

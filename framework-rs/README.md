@@ -11,6 +11,12 @@ Use `ScalarSource::url("External API", "https://example.com/openapi.json")` or
 `ScalarSource::inline("Authentication", schema)`; optional `slug` and `default`
 fields control source navigation. The generated application API remains first.
 
+Application-owned HTTP APIs can use `nest_internal(prefix, router)` or
+`merge_internal(router, namespaces)` for a root mount. Declare every raw namespace
+when merging. Contracts, documentation and MCP endpoints cannot claim reserved
+namespaces; parent router paths and shared middleware still apply. Internal
+routes remain outside generated application contracts and SDK/MCP operations.
+
 ## Commands
 
 ```bash

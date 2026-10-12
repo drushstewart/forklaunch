@@ -151,7 +151,6 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     #[must_use]
     pub fn application_router(self, auth: HmacJwksAuth, info: ServiceInfo) -> ForkLaunchRouter {
         let config = self.application_config(auth);
-        let base_path = self.auth_base_path();
         let store = self.store.clone();
         let clock = self.clock.clone();
         let contracts = registry(&info.name, &info.version);
@@ -169,7 +168,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         let permissions_clock = clock;
         let exporter = store.clone();
         let eraser = store;
-        ForkLaunchRouter::new(info)
+        let router = ForkLaunchRouter::new(info)
             .get(contract("GetAuthMethods"), || async { Json(discovery()) })
             .get(
                 contract("Surface User Roles"),
@@ -245,8 +244,16 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                     }
                 },
             )
-            .nest_internal(base_path, self.router_with_redirects())
-            .with_config(config)
+            .with_config(config);
+        self.mount_raw_auth(router)
+    }
+    fn mount_raw_auth(self, router: ForkLaunchRouter) -> ForkLaunchRouter {
+        let base_path = self.auth_base_path();
+        if base_path.is_empty() {
+            router.merge_internal(self.router_with_redirects(), root_namespaces())
+        } else {
+            router.nest_internal(base_path, self.router_with_redirects())
+        }
     }
     fn application_config(&self, auth: HmacJwksAuth) -> RouterConfig {
         let cors = self.cors_layer();
@@ -288,6 +295,28 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         config
     }
 }
+fn root_namespaces() -> Vec<String> {
+    // The fixed preset's OpenAPI paths supply the raw namespaces. These public
+    // metadata/helper routes may be hidden by the upstream OpenAPI generator.
+    let schema = super::public::openapi_schema("http://auth.invalid");
+    schema["paths"]
+        .as_object()
+        .expect("embedded auth paths")
+        .keys()
+        .map(String::as_str)
+        .chain([
+            "/open-api",
+            "/error",
+            "/reference",
+            "/test-callback",
+            "/oauth-redirect",
+        ])
+        .map(|path| format!("/{}", path.split('/').nth(1).expect("absolute auth path")))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 fn discovery() -> Value {
     json!({"email":true,"username":false,"magicLink":false,"emailOtp":false,"phoneNumber":false,"passkey":false,"anonymous":false,"sso":false,"genericOAuth":false,"twoFactor":false,"socialProviders":["google"]})
 }
