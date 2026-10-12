@@ -15,6 +15,7 @@ encryption = ["dep:aes-gcm", "dep:hkdf", "dep:hmac", "dep:sha2", "dep:base64", "
 [dependencies]
 forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-contract = { path = "../forklaunch-contract" }
+forklaunch-core-macros = { path = "../forklaunch-core-macros" }
 
 opentelemetry = { version = "0.31", features = ["metrics", "trace"] }
 tracing = "0.1"

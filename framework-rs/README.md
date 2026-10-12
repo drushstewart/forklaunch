@@ -17,6 +17,17 @@ when merging. Contracts, documentation and MCP endpoints cannot claim reserved
 namespaces; parent router paths and shared middleware still apply. Internal
 routes remain outside generated application contracts and SDK/MCP operations.
 
+Persistence adapters can derive `forklaunch_core::persistence::compliance::ComplianceMetadata`
+on named structs. Field attributes such as `#[compliance(level = "pii", nullable,
+name = "email_address")]` declare classification, storage nullability and storage
+name. Supported levels are `none`, `pii`, `phi`, and `pci`; unannotated fields
+default to `none` and non-nullable. Only explicitly classified nullable fields
+qualify for anonymization. Metadata does not turn on encryption or perform
+export, erasure, or retention writes: adapters must verify their storage schema
+and enforce tenant boundaries. Rust `Option`, serde renames and encryption
+configuration do not implicitly change these declarations. The derive supports
+generics and `#[compliance(crate_path = "renamed_core")]` for renamed dependencies.
+
 ## Commands
 
 ```bash

@@ -6,6 +6,7 @@ members = [
     "crates/forklaunch-contract",
     "crates/forklaunch-contract-macros",
     "crates/forklaunch-core",
+    "crates/forklaunch-core-macros",
     "crates/forklaunch-http",
     "crates/forklaunch-validation",
     "crates/forklaunch-auth",

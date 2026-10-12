@@ -525,7 +525,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Implement tenant context helpers. (validated identity and transaction-local database context)
 - [x] Implement RLS setup helpers for Postgres. (safe DDL identifiers, FORCE RLS, read/write policies)
 - [ ] Implement retention policy enforcement hooks.
-- [ ] Add compliance metadata derives where appropriate.
+- [x] Add compliance metadata derives where appropriate. (`ComplianceMetadata` on named structs; explicit classification/storage-name/nullability, generic and renamed-dependency support; no implicit encryption or database writes.)
 
 ## Phase 10 - `blueprint-rs` Workspace Scaffold
 
@@ -1525,3 +1525,23 @@ other account/session/member scans and general indexed pagination remain open.
 - Still open: automatic TypeScript exports for combined mixed-app SDKs and automatic
   socket artifact/WebSocket SDK refresh in development. These remain separate from
   the now-validated native HTTP contract/SDK loop. Full parity is not claimed.
+
+### Explicit persistence compliance metadata (2026-10-12)
+
+`forklaunch-core-macros` supplies the core-reexported `ComplianceMetadata` derive.
+Named structs declare entity names and each field's none/PII/PHI/PCI classification,
+storage name and nullability. Unannotated fields remain unclassified and non-nullable.
+Anonymization eligibility follows the TypeScript rule: classified and nullable.
+Rust Option types, encryption settings and serde renames cannot silently authorize
+field erasure. Application adapters must check storage metadata and tenant scope;
+generic retention enforcement and compliance data-service integration remain open.
+
+Core/macro unit and integration tests and three documentation examples pass,
+including compile-fail coverage. Strict all-target clippy passes. The derive handles
+lifetimes/type/const generics, where clauses, raw identifiers and renamed dependencies;
+unknown/duplicate attributes and duplicate storage names fail compilation.
+
+A rebuilt CLI also generates an application containing the new macro crate, core
+metadata API and integration tests; all core/macro tests and documentation examples
+pass from that generated workspace. Its temporary source is removed after validation.
+The CLI package inventory includes all 764 required embedded sources/templates.

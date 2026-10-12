@@ -1271,6 +1271,7 @@ dependencies = [
  "base64 0.22.1",
  "forklaunch-common",
  "forklaunch-contract",
+ "forklaunch-core-macros",
  "hkdf",
  "hmac",
  "opentelemetry",
@@ -1286,6 +1287,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zeroize",
+]
+
+[[package]]
+name = "forklaunch-core-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
 ]
 
 [[package]]

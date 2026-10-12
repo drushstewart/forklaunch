@@ -1,4 +1,5 @@
 //! Tenant context and transaction-scoped `PostgreSQL` isolation helpers.
+pub mod compliance;
 #[cfg(feature = "encryption")]
 #[path = "field_encryptor.rs"]
 pub mod encryption;

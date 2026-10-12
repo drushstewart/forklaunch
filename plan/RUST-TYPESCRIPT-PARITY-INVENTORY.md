@@ -16,7 +16,7 @@ proof that TypeScript and Rust producers/consumers can exchange jobs.
 | --- | --- | --- |
 | [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Native builds and mixed Node/Bun Compose orchestration pass live HTTP/MCP, source reload and shutdown fixtures; automatic contract/SDK refresh remains. |
 | [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Shared names, paths, errors and JSON helpers; audit all utility exports individually. |
-| [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption and an optional MCP HTTP server exist; SQL entity/compliance/retention services and full auth/streaming conformance remain. |
+| [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption, explicit compliance metadata derives and an optional MCP HTTP server exist; SQL entity/compliance/retention services and full auth/streaming conformance remain. |
 | [`@forklaunch/e2e-tests`](../framework/e2e-tests/package.json) (generated/private) | Rust wire/runtime suites | Actual TypeScript framework service conformance remains beyond the plain Node wire fixtures. |
 | [`@forklaunch/express`](../framework/express/package.json) | forklaunch-axum | Equivalent HTTP behavior is the target; multipart/SSE and full validation/auth/error fixtures remain. |
 | [`@forklaunch/hyper-express`](../framework/hyper-express/package.json) | forklaunch-axum | All 27 exported HTTP methods dispatch through shared validation/auth and nested contracts; both SDK artifact sources and actual compiled TypeScript router token forwarding are covered. Runtime-specific adapter internals need no clone. |
@@ -1560,3 +1560,18 @@ Billing snapshot review also replaced unresolved dependency-injection placeholde
 and JSON-erased role Sets with explicit auth methods and role arrays. Both baseline
 update and normal comparison pass all 66 route/28 schema cases again. The
 compatibility guide now carries the documentation site's standard frontmatter.
+
+### Explicit compliance metadata derives (2026-10-12)
+
+The new core derive exposes explicit none/PII/PHI/PCI field classification, storage
+names and nullability to application-owned persistence adapters. Only classified,
+explicitly nullable fields qualify for anonymization. It does not infer compliance
+from encryption or Option/serde metadata. Generic structs, raw identifiers and
+renamed core dependencies compile; malformed/duplicate declarations fail closed.
+Core/macro tests, compile-fail documentation examples and strict all-target clippy
+pass. Generic retention enforcement and database compliance integration stay open.
+
+A rebuilt CLI also generates an application containing the new macro crate, core
+metadata API and integration tests; all core/macro tests and documentation examples
+pass from that generated workspace. Its temporary source is removed after validation.
+The CLI package inventory includes all 764 required embedded sources/templates.

@@ -24,7 +24,7 @@ public packages.
 | --- | --- | --- | --- |
 | [`@forklaunch/bunrun`](../../framework/bunrun/package.json) | `1.2.26` | Package source | CLI Cargo/watch and mixed orchestration |
 | [`@forklaunch/common`](../../framework/common/package.json) | `1.2.30` | Package source | forklaunch-common |
-| [`@forklaunch/core`](../../framework/core/package.json) | `3.0.1` | Package source | forklaunch-core, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp |
+| [`@forklaunch/core`](../../framework/core/package.json) | `3.0.1` | Package source | forklaunch-core, forklaunch-core-macros, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp |
 | [`@forklaunch/e2e-tests`](../../framework/e2e-tests/package.json) | `0.0.3` | Private fixture | Rust wire/runtime suites |
 | [`@forklaunch/express`](../../framework/express/package.json) | `1.2.48` | Package source | forklaunch-axum |
 | [`@forklaunch/hyper-express`](../../framework/hyper-express/package.json) | `1.2.48` | Package source | forklaunch-axum |
