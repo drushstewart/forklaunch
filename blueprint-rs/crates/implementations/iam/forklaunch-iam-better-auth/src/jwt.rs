@@ -15,6 +15,8 @@ use ring::{
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
+mod rsa_key;
+
 /// An asymmetric signing key with a persistent identifier.
 /// Deliberately has no Debug/Serialize implementation exposing private material.
 pub struct SigningKey {
@@ -28,6 +30,7 @@ enum Material {
     Ed25519(Ed25519KeyPair),
     Ecdsa(EcdsaKeyPair),
     P521(p521::ecdsa::SigningKey),
+    Rsa(Box<rsa_key::RsaKey>),
 }
 
 impl SigningKey {
@@ -42,6 +45,20 @@ impl SigningKey {
         id: impl Into<String>,
         algorithm: &str,
     ) -> BlueprintResult<Self> {
+        Self::generate_config(id, algorithm, 2048)
+    }
+    pub(crate) fn generate_config(
+        id: impl Into<String>,
+        algorithm: &str,
+        bits: usize,
+    ) -> BlueprintResult<Self> {
+        if matches!(
+            algorithm,
+            "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512"
+        ) {
+            let encoded = rsa_key::RsaKey::generate(bits)?;
+            return Self::from_pkcs8_profile(id, &encoded, algorithm);
+        }
         if algorithm == "ES512" {
             let secret = p521::SecretKey::random(&mut rand_core::OsRng);
             let encoded = secret.to_pkcs8_der().map_err(|_| key_error())?;
@@ -94,6 +111,9 @@ impl SigningKey {
                     p521::ecdsa::SigningKey::from_bytes(&bytes).map_err(|_| key_error())?,
                 )
             }
+            "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512" => {
+                Material::Rsa(Box::new(rsa_key::RsaKey::restore(encoded)?))
+            }
             _ => return Err(key_error()),
         };
         Ok(Self {
@@ -115,6 +135,7 @@ impl SigningKey {
     #[must_use]
     pub fn public_jwk(&self) -> Value {
         match &self.pair {
+            Material::Rsa(key) => key.public(&self.id, &self.algorithm),
             Material::Ed25519(pair) => json!({
                 "alg":self.algorithm,"kty":"OKP","crv":"Ed25519",
                 "x":URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()),"kid":self.id
@@ -167,6 +188,7 @@ impl SigningKey {
             URL_SAFE_NO_PAD.encode(crate::ecmascript::stringify(payload))
         );
         let signature = match &self.pair {
+            Material::Rsa(key) => key.sign(content.as_bytes(), &self.algorithm)?,
             Material::Ed25519(pair) => pair.sign(content.as_bytes()).as_ref().to_vec(),
             Material::Ecdsa(pair) => pair
                 .sign(&SystemRandom::new(), content.as_bytes())

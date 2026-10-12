@@ -663,3 +663,15 @@ and restricted PostgreSQL cover atomic provisioning, restart, session signing,
 rotation and retired-key verification. Strict default/all-feature clippy, rebuilt
 CLI and 709 embedded sources pass. RSA and broader option/provider/ORM/callback/
 full-preset gates remain open.
+
+RSA RS256/384/512 and PSS PS256/384/512 now support encrypted PKCS8 persistence,
+restored signing/session reuse and public verification. Actual comparisons pass
+189 signing calls/216 key states and 393 verification calls/309 key-store
+operations, with independent JOSE verification and invalid hash/algorithm/PSS
+salt rejection. Memory/restricted PostgreSQL validate concurrency, restart,
+rotation and retired keys. Prime generation uses the blocking executor; default
+session issuance prefers EdDSA before another live profile. Final keyring tests,
+strict all-feature clippy, rebuilt CLI and 711 embedded sources pass; live HTTP/
+JWT/MCP and 27 prior keyring comparisons pass. RSA provisioning supports 2048–4096
+bits; larger keys and typed options/custom adapters/provider/ORM/full-preset gates
+remain open.

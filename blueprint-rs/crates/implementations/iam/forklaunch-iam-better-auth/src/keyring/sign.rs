@@ -4,7 +4,7 @@ mod duration;
 mod schema;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, KeyRing, Model, Utc,
-    Value, json, mint_profile, optional_time, required_time, restore,
+    Value, json, mint_config, optional_time, required_time, restore,
 };
 use std::cmp::Reverse;
 impl<S: AuthStore> KeyRing<S> {
@@ -48,17 +48,27 @@ impl<S: AuthStore> KeyRing<S> {
                 "ES256" => "P-256",
                 "ES384" => "P-384",
                 "ES512" => "P-521",
+                "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512" => "",
                 _ => return Err(error("Unsupported signing-key algorithm")),
             };
-            if options["jwks"]["keyPairConfig"]
-                .get("crv")
-                .is_some_and(|value| value != curve)
+            if !curve.is_empty()
+                && options["jwks"]["keyPairConfig"]
+                    .get("crv")
+                    .is_some_and(|value| value != curve)
             {
                 return Err(error(format!(
                     "Invalid or unsupported crv option provided, the only supported value for {primary} is {curve}"
                 )));
             }
-            let key = mint_profile(&mut tx, now, primary).await?;
+            let bits = if curve.is_empty() {
+                match options["jwks"]["keyPairConfig"].get("modulusLength").filter(|value| !value.is_null()) {
+                    None => 2048,
+                    Some(value) => value.as_u64().filter(|bits| (2048..=4096).contains(bits)).and_then(|bits| usize::try_from(bits).ok()).ok_or_else(|| error("Invalid or unsupported modulusLength option provided, 2048 bits or larger keys must be used"))?,
+                }
+            } else {
+                2048
+            };
+            let key = mint_config(&mut tx, now, primary, bits).await?;
             if let Some(interval) = options["jwks"]["rotationInterval"]
                 .as_f64()
                 .filter(|interval| *interval != 0.0)

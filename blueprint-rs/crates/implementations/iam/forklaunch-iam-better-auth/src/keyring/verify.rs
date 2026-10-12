@@ -1,4 +1,5 @@
 //! Trusted server-only verification using the persisted configured key set.
+mod rsa;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, KeyRing, Model, Utc,
     Value, json,
@@ -95,6 +96,12 @@ fn verify_signature(
     {
         return false;
     }
+    if matches!(
+        algorithm,
+        "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512"
+    ) {
+        return header["alg"] == algorithm && rsa::verify(jwk, algorithm, content, signature);
+    }
     let Some(x) = jwk["x"].as_str().and_then(decode_jwk) else {
         return false;
     };
@@ -161,7 +168,19 @@ fn compact(token: &str) -> Option<(Value, Value, Vec<u8>, &str)> {
     if !header.is_object()
         || !matches!(
             header["alg"].as_str(),
-            Some("EdDSA" | "Ed25519" | "ES256" | "ES384" | "ES512")
+            Some(
+                "EdDSA"
+                    | "Ed25519"
+                    | "ES256"
+                    | "ES384"
+                    | "ES512"
+                    | "RS256"
+                    | "RS384"
+                    | "RS512"
+                    | "PS256"
+                    | "PS384"
+                    | "PS512"
+            )
         )
     {
         return None;

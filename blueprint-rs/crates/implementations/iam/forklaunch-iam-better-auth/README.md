@@ -2,9 +2,10 @@
 
 This crate implements the configured Better Auth 1.7.6 protocol incrementally.
 It currently provides compatible scrypt password hashes and signed session
-cookies, Ed25519 JWT issuance/public JWKs and thirteen raw credential/session/JWT HTTP routes
-behind the `http` feature. User/account/provider and organization endpoints
-remain in progress, and it is not selectable as a CLI module preset.
+cookies, asymmetric JWT issuance/public JWKs and sixty raw authentication HTTP
+routes behind the `http` feature. Configured organization, team, membership,
+invitation and dynamic-role APIs are implemented. Provider/OpenAPI, full ORM and
+callback parity remain in progress, and it is not selectable as a CLI module preset.
 
 `credentials` uses N=16384, r=16, p=1, a 64-byte derived key, NFKC-normalized
 passwords and a random 16-byte salt encoded as lowercase hex text. The salt text
@@ -21,7 +22,7 @@ and tenant membership. Signing a cookie does not authenticate a user.
 installed JavaScript libraries. The existing Better Auth protocol and callback
 fixtures cover the configured TypeScript service separately.
 
-`jwt::SigningKey` issues the configured EdDSA payload (subject, email, active
+`jwt::SigningKey` issues the configured session payload (subject, email, active
 organization, issuer/audience, issued time and 15-minute expiry). Public JWKs
 contain no private material. The PKCS#8 persistence representation must be
 wrapped in tenant-bound encryption by storage. Key restoration preserves IDs
@@ -394,3 +395,15 @@ HTTP/JWT/MCP retain absent public helper paths. Additional signing-algorithm/key
 provisioning, typed date/function options, custom callbacks and real ORM/storage
 interop remain open; unsupported fresh key profiles fail explicitly. Sixty raw
 HTTP routes remain implemented, with provider/OpenAPI/full-preset work outstanding.
+
+Persistent signing profiles support EdDSA/Ed25519, ES256/P-256, ES384/P-384,
+ES512/P-521, RS256/384/512 and PS256/384/512. The server-only signing helper
+accepts `overrideOptions.jwks.keyPairConfig.alg`; RSA `modulusLength` currently
+supports 2048–4096 bits (default 2048). Native PKCS8 private material stays in the
+encrypted store. RSA signing uses ring, and prime generation runs on the blocking
+executor. Default session signing prefers a live EdDSA key before falling back
+to another profile. Public verification can use retired keys and never needs
+private material. Actual comparisons cover 189 signing calls/216 key states and
+393 verification calls/309 key-store operations with independent JOSE signature
+verification. Larger RSA keys, typed date/function options, custom signing/key
+adapters, provider/ORM/shared-parser and full-preset parity remain open.

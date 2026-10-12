@@ -1326,6 +1326,7 @@ dependencies = [
  "regex",
  "reqwest",
  "ring",
+ "rsa",
  "ryu-js",
  "scrypt",
  "serde",

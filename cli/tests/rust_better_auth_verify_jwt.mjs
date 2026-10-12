@@ -1,6 +1,6 @@
 // Execute the configured server-only verifier against independently signed tokens.
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { constants, generateKeyPairSync, sign } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -294,6 +294,95 @@ for (const [algorithm, namedCurve, hash] of [
     'HS256'
   ])
     await compare({ token: ecToken(base, { alg, kid: row.id }) });
+  await compare({ token: valid.slice(0, -8) });
+}
+const rsaPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const rsaPublic = rsaPair.publicKey.export({ format: 'jwk' });
+for (const algorithm of [
+  'RS256',
+  'RS384',
+  'RS512',
+  'PS256',
+  'PS384',
+  'PS512'
+]) {
+  const hash = 'sha' + algorithm.slice(2);
+  const padding = algorithm.startsWith('PS')
+    ? constants.RSA_PKCS1_PSS_PADDING
+    : constants.RSA_PKCS1_PADDING;
+  Object.assign(row, { alg: algorithm, publicKey: JSON.stringify(rsaPublic) });
+  function rsaToken(
+    payload,
+    headerAlg = algorithm,
+    saltLength = Number(algorithm.slice(2)) / 8
+  ) {
+    const content =
+      Buffer.from(JSON.stringify({ alg: headerAlg, kid: row.id })).toString(
+        'base64url'
+      ) +
+      '.' +
+      Buffer.from(JSON.stringify(payload)).toString('base64url');
+    return (
+      content +
+      '.' +
+      sign(hash, Buffer.from(content), {
+        key: rsaPair.privateKey,
+        padding,
+        saltLength
+      }).toString('base64url')
+    );
+  }
+  const valid = rsaToken(base);
+  for (const patch of [
+    {},
+    { use: 'enc' },
+    { alg: 'HS256' },
+    { kid: 'ignored' },
+    { key_ops: ['verify'] },
+    { key_ops: ['sign'] },
+    { ext: false },
+    { ext: null },
+    { d: null },
+    { n: 'bad' },
+    { e: 'bad' },
+    { n: rsaPublic.n + '!' },
+    { e: rsaPublic.e + '=' }
+  ]) {
+    row.publicKey = JSON.stringify({ ...rsaPublic, ...patch });
+    inputs.push({ op: 'replace', now: start, row: { ...row } });
+    expected.push({ ok: true });
+    await compare({ token: valid });
+  }
+  row.publicKey = JSON.stringify(rsaPublic);
+  for (const rowAlg of [
+    algorithm,
+    null,
+    'EdDSA',
+    algorithm.startsWith('RS') ? 'PS256' : 'RS256'
+  ]) {
+    row.alg = rowAlg;
+    inputs.push({ op: 'replace', now: start, row: { ...row } });
+    expected.push({ ok: true });
+    await compare({ token: valid });
+  }
+  row.alg = algorithm;
+  inputs.push({ op: 'replace', now: start, row: { ...row } });
+  expected.push({ ok: true });
+  for (const payload of [
+    base,
+    { ...base, exp: start },
+    { ...base, exp: start + 1 },
+    { ...base, nbf: start + 1 }
+  ])
+    await compare({ token: rsaToken(payload) });
+  for (const headerAlg of [
+    'EdDSA',
+    'HS256',
+    algorithm.startsWith('RS') ? 'PS256' : 'RS256'
+  ])
+    await compare({ token: rsaToken(base, headerAlg) });
+  if (algorithm.startsWith('PS'))
+    await compare({ token: rsaToken(base, algorithm, 0) });
   await compare({ token: valid.slice(0, -8) });
 }
 const run = spawnSync(

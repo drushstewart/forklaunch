@@ -212,6 +212,13 @@ for (const interval of [60, 0, -1, 0.0015, null]) {
   );
 }
 for (const config of [
+  ...['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512'].map((alg) => ({
+    alg
+  })),
+  { alg: 'RS256', modulusLength: 3072 },
+  { alg: 'RS256', modulusLength: 1024 },
+  { alg: 'PS256', modulusLength: '2048' },
+  { alg: 'PS384', modulusLength: 2048.5 },
   { alg: 'Ed25519' },
   { alg: 'EdDSA', crv: 'Ed25519' },
   { alg: 'ES256' },

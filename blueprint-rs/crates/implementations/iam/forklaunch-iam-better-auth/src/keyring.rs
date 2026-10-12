@@ -48,14 +48,18 @@ impl<S: AuthStore> KeyRing<S> {
         let mut tx = self.store.begin(true).await?;
         let rows = tx.list(Model::Jwks).await?;
         let mut candidates = Vec::new();
-        for row in &rows {
+        for row in rows.iter().take(100) {
             if optional_time(row, "expiresAt")?.is_none_or(|expires| expires > now) {
                 candidates.push((required_time(row, "createdAt")?, row));
             }
         }
         // Stable sorting preserves the actual adapter's first-insertion tie rule.
         candidates.sort_by_key(|(created, _)| Reverse(*created));
-        let key = if let Some((_, row)) = candidates.first() {
+        let selected = candidates
+            .iter()
+            .find(|(_, row)| row["alg"] == "EdDSA" || row["alg"].is_null())
+            .or_else(|| candidates.first());
+        let key = if let Some((_, row)) = selected {
             restore(row)?
         } else {
             mint(&mut tx, now).await?
@@ -124,15 +128,30 @@ async fn mint_profile<T: AuthTransaction>(
     now: DateTime<Utc>,
     algorithm: &str,
 ) -> BlueprintResult<SigningKey> {
+    mint_config(tx, now, algorithm, 2048).await
+}
+async fn mint_config<T: AuthTransaction>(
+    tx: &mut T,
+    now: DateTime<Utc>,
+    algorithm: &str,
+    bits: usize,
+) -> BlueprintResult<SigningKey> {
     let id = uuid::Uuid::new_v4().to_string();
-    let key = SigningKey::generate_profile(&id, algorithm)?;
-    tx.insert(
-        Model::Jwks,
-        json!({"id":id,"alg":algorithm,"crv":key.public_jwk()["crv"],"createdAt":timestamp(now),
+    let key_id = id.clone();
+    let key_algorithm = algorithm.to_string();
+    // RSA prime generation must not block an async HTTP/MCP executor thread.
+    let key = tokio::task::spawn_blocking(move || {
+        SigningKey::generate_config(key_id, &key_algorithm, bits)
+    })
+    .await
+    .map_err(|_| key_error())??;
+    let mut row = json!({"id":id,"alg":algorithm,"createdAt":timestamp(now),
         "publicKey":serde_json::to_string(&key.public_jwk()).map_err(|_| key_error())?,
-        "privateKey":STANDARD.encode(key.private_pkcs8())}),
-    )
-    .await?;
+        "privateKey":STANDARD.encode(key.private_pkcs8())});
+    if let Some(curve) = key.public_jwk().get("crv") {
+        row["crv"] = curve.clone();
+    }
+    tx.insert(Model::Jwks, row).await?;
     Ok(key)
 }
 fn restore(row: &Value) -> BlueprintResult<SigningKey> {
@@ -155,6 +174,24 @@ fn public_key(row: &Value) -> BlueprintResult<Value> {
     let key: Value = serde_json::from_str(row["publicKey"].as_str().ok_or_else(key_error)?)
         .map_err(|_| key_error())?;
     let algorithm = row["alg"].as_str().unwrap_or("EdDSA");
+    if matches!(
+        algorithm,
+        "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512"
+    ) {
+        if key["kid"] != row["id"]
+            || key["alg"] != algorithm
+            || key["kty"] != "RSA"
+            || key.as_object().is_none_or(|key| key.len() != 5)
+            || ["n", "e"].iter().any(|field| {
+                key[field]
+                    .as_str()
+                    .is_none_or(|value| URL_SAFE_NO_PAD.decode(value).is_err() || value.is_empty())
+            })
+        {
+            return Err(key_error());
+        }
+        return Ok(key);
+    }
     let (kind, curve, width, fields) = match algorithm {
         "EdDSA" | "Ed25519" => ("OKP", "Ed25519", 32, 5),
         "ES256" => ("EC", "P-256", 32, 6),

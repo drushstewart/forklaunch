@@ -65,6 +65,12 @@ pub(super) async fn profiles<S: AuthStore>(store: &Arc<S>, now: DateTime<Utc>) {
         ("ES256", "P-256"),
         ("ES384", "P-384"),
         ("ES512", "P-521"),
+        ("RS256", ""),
+        ("RS384", ""),
+        ("RS512", ""),
+        ("PS256", ""),
+        ("PS384", ""),
+        ("PS512", ""),
     ] {
         let mut tx = store.begin(true).await.unwrap();
         for row in tx.list(Model::Jwks).await.unwrap() {
@@ -85,7 +91,12 @@ pub(super) async fn profiles<S: AuthStore>(store: &Arc<S>, now: DateTime<Utc>) {
         let keys = service.jwks(now).await.unwrap();
         assert_eq!(keys["keys"].as_array().unwrap().len(), 1);
         assert_eq!(keys["keys"][0]["alg"], algorithm);
-        assert_eq!(keys["keys"][0]["crv"], curve);
+        if curve.is_empty() {
+            assert!(keys["keys"][0].get("crv").is_none());
+            assert_eq!(keys["keys"][0]["kty"], "RSA");
+        } else {
+            assert_eq!(keys["keys"][0]["crv"], curve);
+        }
         let key = &keys["keys"][0];
         assert!(key.get("d").is_none());
         assert!(key.get("privateKey").is_none());
@@ -154,4 +165,34 @@ async fn asymmetric_profiles_initialize_once_restore_reuse_and_rotate() {
         DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap(),
     )
     .await;
+}
+
+#[tokio::test]
+async fn default_session_signing_prefers_primary_algorithm_over_newer_extra_profile() {
+    let store = Arc::new(MemoryAuthStore::default());
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    let primary = mint(&mut tx, now).await.unwrap();
+    mint_profile(&mut tx, now + Duration::seconds(1), "ES256")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let service = KeyRing::new(store, "https://auth.fixture.test");
+    let token = service
+        .issue(
+            "user",
+            "profile@example.test",
+            None,
+            now + Duration::seconds(2),
+        )
+        .await
+        .unwrap();
+    let header: Value = serde_json::from_slice(
+        &URL_SAFE_NO_PAD
+            .decode(token.split('.').next().unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(header["kid"], primary.public_jwk()["kid"]);
+    assert_eq!(header["alg"], "EdDSA");
 }
