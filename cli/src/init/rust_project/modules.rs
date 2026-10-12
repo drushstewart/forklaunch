@@ -8,6 +8,7 @@ const BLUEPRINT_CARGO: &str =
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum BuiltinModule {
     Iam,
+    IamBetterAuth,
     Cac,
     MessagingBase,
     MessagingTwilio,
@@ -20,6 +21,7 @@ impl BuiltinModule {
     pub(super) fn from_variant(variant: &str) -> Option<Self> {
         match variant {
             "iam-base" => Some(Self::Iam),
+            "iam-better-auth" => Some(Self::IamBetterAuth),
             "cac-base" => Some(Self::Cac),
             "messaging-base" => Some(Self::MessagingBase),
             "messaging-twilio" => Some(Self::MessagingTwilio),
@@ -32,6 +34,7 @@ impl BuiltinModule {
     fn variant(self) -> &'static str {
         match self {
             Self::Iam => "iam-base",
+            Self::IamBetterAuth => "iam-better-auth",
             Self::Cac => "cac-base",
             Self::MessagingBase => "messaging-base",
             Self::MessagingTwilio => "messaging-twilio",
@@ -43,15 +46,24 @@ impl BuiltinModule {
     pub(super) fn template(self) -> &'static str {
         match self {
             Self::Iam => "iam",
+            Self::IamBetterAuth => "iam-better-auth",
             Self::Cac => "cac",
             Self::MessagingBase | Self::MessagingTwilio => "messaging",
             Self::EcommerceStripe => "ecommerce",
             Self::BillingBase | Self::BillingStripe => "billing",
         }
     }
+    pub(super) fn service_name(self) -> &'static str {
+        if self == Self::IamBetterAuth {
+            "iam"
+        } else {
+            self.template()
+        }
+    }
     fn description(self) -> &'static str {
         match self {
             Self::Iam => "Persistent PostgreSQL IAM",
+            Self::IamBetterAuth => "Encrypted PostgreSQL Better Auth",
             Self::Cac => "CAC code-set service",
             Self::MessagingBase => "Persistent messaging hooks",
             Self::MessagingTwilio => "Persistent Twilio SMS messaging",
@@ -75,11 +87,11 @@ pub(crate) fn generate_rust_module(matches: &ArgMatches) -> Result<()> {
     let kind = option(matches, "module")
         .as_deref()
         .and_then(BuiltinModule::from_variant)
-        .context("Rust module generation currently supports --module iam-base, cac-base, messaging-base, messaging-twilio, ecommerce-stripe, billing-base or billing-stripe")?;
+        .context("Rust module generation currently supports --module iam-base, iam-better-auth, cac-base, messaging-base, messaging-twilio, ecommerce-stripe, billing-base or billing-stripe")?;
     if option(matches, "database").is_some_and(|database| database != "postgresql") {
         bail!("Rust modules currently support --database postgresql");
     }
-    let name = option(matches, "name").unwrap_or_else(|| kind.template().to_owned());
+    let name = option(matches, "name").unwrap_or_else(|| kind.service_name().to_owned());
     if !validate_name(&name) {
         bail!("Invalid module service name");
     }
@@ -267,8 +279,8 @@ pub(super) fn ensure_module_compose(
     kind: BuiltinModule,
     dryrun: bool,
 ) -> Result<()> {
-    if kind == BuiltinModule::Iam {
-        return ensure_iam_compose(root, name, dryrun);
+    if matches!(kind, BuiltinModule::Iam | BuiltinModule::IamBetterAuth) {
+        return ensure_iam_compose(root, name, kind, dryrun);
     }
     if kind == BuiltinModule::EcommerceStripe {
         return ensure_ecommerce_compose(root, name, dryrun);
@@ -539,7 +551,7 @@ fn ensure_billing_compose(
     Ok(())
 }
 
-fn ensure_iam_compose(root: &Path, name: &str, dryrun: bool) -> Result<()> {
+fn ensure_iam_compose(root: &Path, name: &str, kind: BuiltinModule, dryrun: bool) -> Result<()> {
     if dryrun {
         return Ok(());
     }
@@ -565,6 +577,17 @@ fn ensure_iam_compose(root: &Path, name: &str, dryrun: bool) -> Result<()> {
         ("JWKS_PUBLIC_KEY_URL", "${IAM_JWKS_PUBLIC_KEY_URL:?Configure JWT verification}"),
     ] {
         env.entry(key.to_owned()).or_insert_with(|| value.to_owned());
+    }
+    if kind == BuiltinModule::IamBetterAuth {
+        for (key, value) in [
+            ("BETTER_AUTH_URL", "${IAM_BETTER_AUTH_URL:?Configure the public authentication origin}"),
+            ("BETTER_AUTH_SECRET", "${IAM_BETTER_AUTH_SECRET:?Configure a 32-byte authentication secret}"),
+            ("CORS_ORIGINS", "${CORS_ORIGINS:-}"),
+            ("GOOGLE_CLIENT_ID", "${GOOGLE_CLIENT_ID:-}"),
+            ("GOOGLE_CLIENT_SECRET", "${GOOGLE_CLIENT_SECRET:-}"),
+        ] {
+            env.entry(key.to_owned()).or_insert_with(|| value.to_owned());
+        }
     }
     write(path, yaml_to_string(&compose)?)?;
     Ok(())

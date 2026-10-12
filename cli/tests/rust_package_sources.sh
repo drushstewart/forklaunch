@@ -17,6 +17,12 @@ expected = {
     "src/templates/rust/application/typescript-sdk-tsconfig.json",
     "src/templates/rust/project/Cargo.toml.template",
     "src/templates/rust/iam/Cargo.toml.template",
+    "src/templates/rust/iam-better-auth/Cargo.toml.template",
+    "src/templates/rust/iam-better-auth/lib.rs",
+    "src/templates/rust/iam-better-auth/main.rs",
+    "src/templates/rust/iam-better-auth/env.example",
+    "src/templates/rust/iam-better-auth/README.md",
+
     "src/templates/rust/cac/Cargo.toml.template",
     "src/templates/rust/cac/lib.rs",
     "src/templates/rust/cac/main.rs",

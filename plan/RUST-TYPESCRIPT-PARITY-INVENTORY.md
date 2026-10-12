@@ -843,3 +843,15 @@ export protection, erasure/replay, raw-route separation and graceful shutdown.
 All 27 native tests, strict all-feature clippy and 742 packaged assets pass.
 The native CLI preset, custom callback helpers and remaining full ORM/hooks
 coverage are still open; this does not declare full parity.
+
+Native CLI generation now accepts `iam-better-auth` in Rust/mixed applications
+and module initialization. It retains the default service name `iam`, rejects
+conflicting IAM presets before writing files, embeds the encrypted auth store,
+and emits operator configuration, migrations, application contracts and health.
+The relocated generated fixture passes sync/reinitialization preservation,
+TypeScript/Rust SDK compilation, real restricted PostgreSQL startup, tenant
+session isolation, independent JWT verification, HMAC MCP tools, shared/separate
+and disabled MCP listeners, restart persistence, graceful shutdown, rename,
+contract/SDK refresh and deletion. All 1,016 CLI tests pass. E2E CI includes the
+fixture and archive installation includes the new preset. Custom callback
+helpers, additional docs sources and complete ORM/hooks remain open.

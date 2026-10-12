@@ -32,6 +32,7 @@ CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" init worker redis-jobs --path "$RUN_ROOT/app" --language rust -t redis -D Jobs
 "$CLI" init worker bullmq-jobs --path "$RUN_ROOT/app" --language rust -t bullmq -D Jobs
 "$CLI" init worker kafka-jobs --path "$RUN_ROOT/app" --language rust -t kafka -D Jobs
+"$CLI" init module auth --path "$RUN_ROOT/app" --language rust -m iam-better-auth
 "$CLI" init module coding --path "$RUN_ROOT/app" --language rust -m cac-base
 "$CLI" init module messaging --path "$RUN_ROOT/app" --language rust -m messaging-base
 "$CLI" init module texting --path "$RUN_ROOT/app" --language rust -m messaging-twilio
@@ -92,7 +93,7 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-ws/tests/transport.rs').is_file(), 'Packaged WebSocket transport tests missing'
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
     else:
-        for source in ['Cargo.toml', 'src/credentials.rs', 'src/cookies.rs', 'src/jwt.rs', 'src/keyring.rs', 'src/sessions.rs', 'src/accounts.rs', 'src/accounts/password.rs', 'src/origins.rs', 'src/origins/policy.rs', 'src/http.rs', 'src/http/request.rs', 'src/http/tests.rs', 'examples/http_parity.rs', 'src/store/postgres.rs', 'migrations/0001_auth.sql']:
+        for source in ['Cargo.toml', 'src/credentials.rs', 'src/cookies.rs', 'src/jwt.rs', 'src/keyring.rs', 'src/sessions.rs', 'src/accounts.rs', 'src/accounts/password.rs', 'src/origins.rs', 'src/origins/policy.rs', 'src/http.rs', 'src/http/application.rs', 'src/http/application/tests.rs', 'src/http/request.rs', 'src/http/tests.rs', 'examples/http_parity.rs', 'src/store/postgres.rs', 'migrations/0001_auth.sql']:
             assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged Better Auth foundation missing: {source}'
         assert root.joinpath('crates/implementations/worker/forklaunch-worker-redis/src/bullmq.rs').is_file(), 'Packaged BullMQ adapter missing'
         assert root.joinpath('crates/vendor/bullmq-official/src/worker.rs').is_file(), 'Packaged BullMQ outcome hook missing'
@@ -158,7 +159,7 @@ done
 python3 - <<'PYTHON'
 from pathlib import Path
 import json
-for name in ['accounts','postgres-jobs','redis-jobs','kafka-jobs','bullmq-jobs','coding','messaging','texting','ecommerce']:
+for name in ['accounts','auth','postgres-jobs','redis-jobs','kafka-jobs','bullmq-jobs','coding','messaging','texting','ecommerce']:
     contract=json.loads((Path('.forklaunch/contracts')/name/'contract.json').read_text())
     assert contract['generator']=='framework-rs'
     spec=json.loads((Path('.forklaunch/openapi')/name/'openapi.json').read_text())

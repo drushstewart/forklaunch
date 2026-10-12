@@ -137,7 +137,7 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         .any(|module| modules::BuiltinModule::from_variant(module).is_none())
     {
         bail!(
-            "Rust application module generation currently supports iam-base, cac-base, messaging-base, messaging-twilio, ecommerce-stripe, billing-base and billing-stripe; add other modules after their Rust adapters are implemented"
+            "Rust application module generation currently supports iam-base, iam-better-auth, cac-base, messaging-base, messaging-twilio, ecommerce-stripe, billing-base and billing-stripe; add other modules after their Rust adapters are implemented"
         );
     }
     if !modules.is_empty()
@@ -265,8 +265,8 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
     let mut module_names = std::collections::HashSet::new();
     for module in &modules {
         let kind = modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
-        if !module_names.insert(kind.template()) {
-            bail!("Conflicting Rust modules target the same service: {}", kind.template());
+        if !module_names.insert(kind.service_name()) {
+            bail!("Conflicting Rust modules target the same service: {}", kind.service_name());
         }
     }
 
@@ -279,7 +279,7 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
     }
     for module in modules {
         let kind = modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
-        modules::generate_module_at(&root_path, kind.template(), matches, dryrun, kind)?;
+        modules::generate_module_at(&root_path, kind.service_name(), matches, dryrun, kind)?;
     }
     log_ok!(
         stdout,

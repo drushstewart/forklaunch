@@ -1,11 +1,22 @@
 # Native Better Auth module
 
-This crate implements the configured Better Auth 1.7.6 protocol incrementally.
-It currently provides compatible scrypt password hashes and signed session
-cookies, asymmetric JWT issuance/public JWKs and sixty-four raw authentication HTTP
-routes behind the `http` feature. Configured organization, team, membership,
-invitation and dynamic-role APIs are implemented. Provider/OpenAPI, full ORM and
-callback parity remain in progress, and it is not selectable as a CLI module preset.
+This crate implements the configured Better Auth 1.7.6 protocol: compatible
+scrypt hashes and signed cookies, asymmetric JWT/JWKS, all 70 raw authentication
+HTTP routes, organizations, teams, memberships, invitations and dynamic roles.
+The `application-http` feature adds the five configured HTTP/MCP application
+contracts. CLI generation accepts `--module iam-better-auth` for native Rust.
+Custom redirect helpers, additional documentation sources, complete ORM/hooks
+and broader nondefault options remain parity work. The sections below retain
+validation history; the latest entries describe current coverage.
+
+Generate a native application with this preset:
+
+```sh
+forklaunch init application my-app --language rust --modules iam-better-auth
+```
+
+Use the generated service README and `.env.example` for migrations, restricted
+PostgreSQL grants, tenant/encryption configuration and HTTP/MCP settings.
 
 `credentials` uses N=16384, r=16, p=1, a 64-byte derived key, NFKC-normalized
 passwords and a random 16-byte salt encoded as lowercase hex text. The salt text
@@ -573,3 +584,15 @@ export protection, erasure/replay, raw-route separation and graceful shutdown.
 All 27 native tests, strict all-feature clippy and 742 packaged assets pass.
 The native CLI preset, custom callback helpers and remaining full ORM/hooks
 coverage are still open; this does not declare full parity.
+
+Native CLI generation now accepts `iam-better-auth` in Rust/mixed applications
+and module initialization. It retains the default service name `iam`, rejects
+conflicting IAM presets before writing files, embeds the encrypted auth store,
+and emits operator configuration, migrations, application contracts and health.
+The relocated generated fixture passes sync/reinitialization preservation,
+TypeScript/Rust SDK compilation, real restricted PostgreSQL startup, tenant
+session isolation, independent JWT verification, HMAC MCP tools, shared/separate
+and disabled MCP listeners, restart persistence, graceful shutdown, rename,
+contract/SDK refresh and deletion. All 1,016 CLI tests pass. E2E CI includes the
+fixture and archive installation includes the new preset. Custom callback
+helpers, additional docs sources and complete ORM/hooks remain open.
