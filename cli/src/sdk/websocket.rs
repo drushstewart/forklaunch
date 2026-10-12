@@ -264,7 +264,7 @@ pub(crate) fn generate_from(
         for (relative, content) in files {
             let destination = root.join(relative);
             fs::create_dir_all(destination.parent().context("Socket output parent")?)?;
-            fs::write(destination, content)?;
+            super::write_if_changed(destination, content)?;
         }
         log_ok!(
             stdout,

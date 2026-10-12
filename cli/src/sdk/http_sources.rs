@@ -72,6 +72,12 @@ pub(super) fn write(root: &Path, services: &BTreeSet<String>) -> Result<()> {
     if bytes.len() > 1024 * 1024 {
         bail!("HTTP SDK source state exceeds 1 MiB");
     }
+    match fs::read(&path) {
+        Ok(existing) if existing == bytes => return Ok(()),
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
     staged.write_all(&bytes)?;
     staged

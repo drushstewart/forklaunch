@@ -2027,12 +2027,16 @@ fn find_manifest_root(start: &Path) -> Result<PathBuf> {
 
 fn edit_cargo_members(root: &Path, update: impl FnOnce(&mut toml_edit::Array)) -> Result<()> {
     let path = root.join("Cargo.toml");
-    let mut cargo: toml_edit::DocumentMut = read_to_string(&path)?.parse()?;
+    let original = read_to_string(&path)?;
+    let mut cargo: toml_edit::DocumentMut = original.parse()?;
     let members = cargo["workspace"]["members"]
         .as_array_mut()
         .context("Expected workspace.members array")?;
     update(members);
-    write(path, cargo.to_string())?;
+    let updated = cargo.to_string();
+    if updated != original {
+        write(path, updated)?;
+    }
     Ok(())
 }
 

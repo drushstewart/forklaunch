@@ -1340,3 +1340,19 @@ clippy pass and the CLI rebuild embeds the changes. Source/template inventory re
 
 This closes exact unique reads and bounded user joins, not full storage scalability:
 other account/session/member scans and general indexed pagination remain open.
+
+### SDK regeneration stability (2026-10-12)
+
+- [x] HTTP, socket-contract and AsyncAPI watchers fingerprint artifact contents with
+  streaming SHA-256 instead of filesystem timestamps. Identical re-exports do not
+  trigger regeneration; equal-size edits with preserved timestamps are detected.
+- [x] HTTP/WebSocket SDK outputs, TypeScript workspace files, HTTP source tracking
+  and Cargo membership updates preserve unchanged files, preventing avoidable
+  development rebuilds when SDK generation repeats.
+- Validation: 1,063 CLI tests pass; the final streaming fingerprint implementation
+  additionally passes all four watch tests. Regression tests cover repeated native
+  and TypeScript generation, workspace timestamps, and timestamp collisions.
+- Still open: automatic contract export and SDK refresh integrated with `forklaunch
+  dev`, including custom artifact paths and mixed-runtime restart handling. Existing
+  live HTTP/MCP development validation remains recorded above; this checkpoint
+  changes generation/watch behavior and does not claim a new startup validation.

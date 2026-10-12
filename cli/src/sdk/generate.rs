@@ -1,6 +1,8 @@
+#[cfg(test)]
+use std::fs::write;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{create_dir_all, read_to_string, write},
+    fs::{create_dir_all, read_to_string},
     io::Write,
     path::Path,
 };
@@ -1047,10 +1049,10 @@ fn generate_typescript_sdk(app_root: &Path, services: &[SdkService]) -> Result<(
     create_dir_all(sdk_root.join("src"))?;
     let compiler_config = sdk_root.join("tsconfig.json");
     if !compiler_config.exists() {
-        write(&compiler_config, rust_project::TYPESCRIPT_SDK_TSCONFIG)?;
+        super::write_if_changed(&compiler_config, rust_project::TYPESCRIPT_SDK_TSCONFIG)?;
     }
     super::workspace::include_typescript_sdk(app_root)?;
-    write(
+    super::write_if_changed(
         sdk_root.join("package.json"),
         serde_json::to_string_pretty(&json!({
             "name": "@forklaunch-generated/sdk",
@@ -1068,7 +1070,7 @@ fn generate_typescript_sdk(app_root: &Path, services: &[SdkService]) -> Result<(
             }
         }))?,
     )?;
-    write(
+    super::write_if_changed(
         sdk_root.join("src").join("index.ts"),
         typescript_sdk(services)?,
     )?;
@@ -1246,11 +1248,11 @@ fn generate_rust_sdks(app_root: &Path, services: &[SdkService]) -> Result<()> {
         let package_name = format!("{}-sdk", service.name);
         let crate_dir = app_root.join("sdks").join("rust").join(&package_name);
         create_dir_all(crate_dir.join("src"))?;
-        write(
+        super::write_if_changed(
             crate_dir.join("Cargo.toml"),
             rust_sdk_cargo_toml(&package_name, &service.name, service_has_multipart(service)),
         )?;
-        write(crate_dir.join("src").join("lib.rs"), rust_sdk(service)?)?;
+        super::write_if_changed(crate_dir.join("src").join("lib.rs"), rust_sdk(service)?)?;
         add_rust_workspace_member(
             app_root,
             &Path::new("sdks")
@@ -1433,6 +1435,39 @@ fn render_sdk_template<T: Content>(template_path: &str, data: &T) -> Result<Stri
 #[cfg(test)]
 mod compiler_config_tests {
     use super::*;
+    #[test]
+    fn repeated_generation_preserves_output_and_workspace_timestamps() {
+        let root = tempfile::tempdir().unwrap();
+        generate_typescript_sdk(root.path(), &[]).unwrap();
+        let paths = [
+            "package.json",
+            "pnpm-workspace.yaml",
+            "sdks/typescript/package.json",
+            "sdks/typescript/tsconfig.json",
+            "sdks/typescript/src/index.ts",
+        ];
+        let timestamp = std::time::UNIX_EPOCH + std::time::Duration::from_secs(123456789);
+        for path in paths {
+            std::fs::File::options()
+                .write(true)
+                .open(root.path().join(path))
+                .unwrap()
+                .set_times(std::fs::FileTimes::new().set_modified(timestamp))
+                .unwrap();
+        }
+        generate_typescript_sdk(root.path(), &[]).unwrap();
+        for path in paths {
+            assert_eq!(
+                std::fs::metadata(root.path().join(path))
+                    .unwrap()
+                    .modified()
+                    .unwrap(),
+                timestamp,
+                "rewrote {path}"
+            );
+        }
+    }
+
     #[test]
     fn sdk_generation_adds_missing_compiler_configuration_and_preserves_user_settings() {
         let root = tempfile::tempdir().unwrap();
@@ -1897,6 +1932,33 @@ language = "rust"
         assert!(!source.contains("stale method"));
         assert!(!root.path().join("sdks/typescript").exists());
         assert!(!root.path().join("sdks/rust/existing-sdk").exists());
+        let paths = [
+            root.path().join("Cargo.toml"),
+            sdk.join("Cargo.toml"),
+            sdk.join("src/lib.rs"),
+        ];
+        let timestamp = std::time::UNIX_EPOCH + std::time::Duration::from_secs(123456789);
+        for path in &paths {
+            std::fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_times(std::fs::FileTimes::new().set_modified(timestamp))
+                .unwrap();
+        }
+        regenerate_sdk_outputs_if_present(
+            root.path(),
+            &mut StandardStream::stdout(ColorChoice::Never),
+        )
+        .unwrap();
+        for path in &paths {
+            assert_eq!(
+                std::fs::metadata(path).unwrap().modified().unwrap(),
+                timestamp,
+                "rewrote {}",
+                path.display()
+            );
+        }
     }
     #[test]
     fn malformed_existing_artifact_is_not_silently_replaced() {

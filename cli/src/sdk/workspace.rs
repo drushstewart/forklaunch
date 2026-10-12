@@ -55,7 +55,7 @@ pub(super) enum SdkWorkspace {
 
 pub(super) fn include_typescript_sdk(root: &Path) -> Result<()> {
     for (path, content) in plan_typescript_sdk(root, SdkWorkspace::Http)? {
-        fs::write(output_path(root, Path::new(path))?, content)?;
+        super::write_if_changed(output_path(root, Path::new(path))?, content)?;
     }
     Ok(())
 }

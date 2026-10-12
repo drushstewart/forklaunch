@@ -824,3 +824,8 @@ resource retrieval stays disabled. The checked SDK/export/import profile
 continues rejecting encoded pointer separators before generation. Vendor
 licenses, pinned archive checksums and the small compatibility patch are
 included in generated framework sources.
+
+SDK watch compares artifact contents, so an identical re-export does not regenerate
+clients. Repeated HTTP and WebSocket SDK generation preserves timestamps on unchanged
+outputs and workspace files. Source changes still require contract export before
+SDK watch can regenerate the clients.

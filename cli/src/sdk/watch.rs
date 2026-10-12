@@ -1,14 +1,15 @@
 use std::{
     collections::BTreeMap,
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     thread::sleep,
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 
 use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use sha2::{Digest, Sha256};
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 
 use crate::{
@@ -156,11 +157,24 @@ fn run_sdk_watch(
     }
 }
 
+fn artifact_digest(path: &Path) -> Result<[u8; 32]> {
+    let mut input = fs::File::open(path)?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0; 65536];
+    loop {
+        let count = input.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(digest.finalize().into());
+        }
+        digest.update(&buffer[..count]);
+    }
+}
+
 fn artifact_fingerprint(
     app_root: &Path,
     source: &str,
     selected_service: Option<&str>,
-) -> Result<BTreeMap<PathBuf, (u64, u128)>> {
+) -> Result<BTreeMap<PathBuf, [u8; 32]>> {
     if matches!(source, "socket-contract" | "asyncapi") {
         return socket_artifact_fingerprint(app_root, selected_service, source);
     }
@@ -175,13 +189,8 @@ fn artifact_fingerprint(
             canonical.starts_with(&root),
             "SDK artifact path must stay inside the application"
         );
-        let metadata = fs::metadata(&canonical)?;
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map_or(0, |duration| duration.as_nanos());
-        fingerprint.insert(canonical, (metadata.len(), modified));
+        let digest = artifact_digest(&canonical)?;
+        fingerprint.insert(canonical, digest);
     }
     Ok(fingerprint)
 }
@@ -190,7 +199,7 @@ fn socket_artifact_fingerprint(
     app_root: &Path,
     selected: Option<&str>,
     source: &str,
-) -> Result<BTreeMap<PathBuf, (u64, u128)>> {
+) -> Result<BTreeMap<PathBuf, [u8; 32]>> {
     let root = app_root.canonicalize()?;
     let manifest_path = root.join(".forklaunch/manifest.toml");
     let manifest: toml::Value = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
@@ -257,13 +266,8 @@ fn socket_artifact_fingerprint(
             canonical.starts_with(&root),
             "Socket artifact path must stay inside the application"
         );
-        let metadata = fs::metadata(&canonical)?;
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map_or(0, |duration| duration.as_nanos());
-        fingerprint.insert(canonical, (metadata.len(), modified));
+        let digest = artifact_digest(&canonical)?;
+        fingerprint.insert(canonical, digest);
     }
     Ok(fingerprint)
 }
@@ -271,6 +275,59 @@ fn socket_artifact_fingerprint(
 #[cfg(test)]
 mod socket_tests {
     use super::*;
+    #[test]
+    fn fingerprints_content_despite_timestamp_changes_or_collisions() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::create_dir_all(root.join(".forklaunch")).unwrap();
+        fs::write(
+            root.join(".forklaunch/manifest.toml"),
+            r#"[[projects]]
+name = "api"
+type = "Service"
+[projects.metadata]
+language = "rust"
+"#,
+        )
+        .unwrap();
+        for (source, relative) in [
+            ("contract", ".forklaunch/contracts/api/contract.json"),
+            (
+                "socket-contract",
+                ".forklaunch/socket-contracts/api/socket-contract.json",
+            ),
+            ("asyncapi", ".forklaunch/asyncapi/api/asyncapi.json"),
+        ] {
+            let path = root.join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, "aa").unwrap();
+            let original = artifact_fingerprint(root, source, Some("api")).unwrap();
+            let timestamp = std::time::UNIX_EPOCH + Duration::from_secs(123456789);
+            let times = fs::FileTimes::new().set_modified(timestamp);
+            fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_times(times)
+                .unwrap();
+            assert_eq!(
+                original,
+                artifact_fingerprint(root, source, Some("api")).unwrap()
+            );
+            fs::write(&path, "bb").unwrap();
+            fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_times(times)
+                .unwrap();
+            assert_ne!(
+                original,
+                artifact_fingerprint(root, source, Some("api")).unwrap()
+            );
+        }
+    }
+
     #[test]
     fn tracks_asyncapi_inputs_without_generated_contract_outputs() {
         let directory = tempfile::tempdir().unwrap();
