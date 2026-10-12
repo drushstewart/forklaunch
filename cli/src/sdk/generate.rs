@@ -149,14 +149,19 @@ pub(crate) fn generate_or_check_sdk_outputs(
 ) -> Result<()> {
     if matches!(source, "socket-contract" | "asyncapi") {
         return super::websocket::generate_from(
-            app_root, target, source, selected_service, check, stdout,
+            app_root,
+            target,
+            source,
+            selected_service,
+            check,
+            stdout,
         );
     }
     let manifest = read_manifest(app_root)?;
     let services = match source {
-        "contract" => rust_sdk_services_from_contracts(app_root, &manifest, selected_service)?,
+        "contract" => http_sdk_services_from_contracts(app_root, &manifest, selected_service)?,
         "openapi" => {
-            rust_sdk_services_from_artifacts(app_root, &manifest, selected_service, "openapi")?
+            http_sdk_services_from_artifacts(app_root, &manifest, selected_service, "openapi")?
         }
         // Internal lifecycle scaffolding can run before artifacts exist. This
         // source is deliberately unavailable through the public command.
@@ -165,7 +170,16 @@ pub(crate) fn generate_or_check_sdk_outputs(
     };
 
     if services.is_empty() {
-        bail!("No Rust services or workers found for SDK generation");
+        bail!("No HTTP services or workers found for SDK generation");
+    }
+
+    let mut tracked_sources = super::http_sources::read(app_root)?;
+    for project in typescript_sdk_projects(&manifest, selected_service) {
+        if let Some(name) = project.get("name").and_then(Value::as_str)
+            && services.iter().any(|service| service.name == name)
+        {
+            tracked_sources.insert(name.to_owned());
+        }
     }
 
     // Validate every requested output before mutating workspace files.
@@ -194,6 +208,7 @@ pub(crate) fn generate_or_check_sdk_outputs(
         log_ok!(stdout, "Generated Rust SDK crate(s)");
     }
 
+    super::http_sources::write(app_root, &tracked_sources)?;
     Ok(())
 }
 
@@ -214,6 +229,10 @@ pub(crate) fn regenerate_sdk_outputs_if_present(
         generate_typescript_sdk(app_root, &services)?;
         log_ok!(stdout, "Regenerated TypeScript SDK");
     }
+    let services_names = services
+        .iter()
+        .map(|service| service.name.clone())
+        .collect::<BTreeSet<_>>();
     let existing_rust_services = services
         .into_iter()
         .filter(|service| {
@@ -226,6 +245,13 @@ pub(crate) fn regenerate_sdk_outputs_if_present(
         generate_rust_sdks(app_root, &existing_rust_services)?;
         log_ok!(stdout, "Regenerated Rust SDK crate(s)");
     }
+    let imported = typescript_sdk_projects(&manifest, None)
+        .into_iter()
+        .filter_map(|project| project.get("name").and_then(Value::as_str))
+        .filter(|name| services_names.contains(*name))
+        .map(str::to_owned)
+        .collect();
+    super::http_sources::write(app_root, &imported)?;
     Ok(())
 }
 
@@ -399,10 +425,10 @@ fn sdk_router(service_name: &str, router_name: &str, service: bool) -> SdkRouter
 // Lifecycle operations can invalidate one project's artifact. Preserve every
 // other project's actual contract, and never conceal malformed artifacts.
 fn rust_sdk_services_for_lifecycle(app_root: &Path, manifest: &Value) -> Result<Vec<SdkService>> {
-    rust_sdk_services(manifest, None)
+    let mut services = rust_sdk_services(manifest, None)
         .into_iter()
         .map(|fallback| {
-            match rust_sdk_services_from_contracts(app_root, manifest, Some(&fallback.name)) {
+            match http_sdk_services_from_contracts(app_root, manifest, Some(&fallback.name)) {
                 Ok(mut services) => services.pop().context("Missing Rust SDK service"),
                 Err(error)
                     if error.chain().any(|cause| {
@@ -416,67 +442,63 @@ fn rust_sdk_services_for_lifecycle(app_root: &Path, manifest: &Value) -> Result<
                 Err(error) => Err(error),
             }
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    let tracked = super::http_sources::read(app_root)?;
+    for project in typescript_sdk_projects(manifest, None) {
+        let name = project
+            .get("name")
+            .and_then(Value::as_str)
+            .context("SDK service name is required")?;
+        match http_sdk_services_from_artifacts(app_root, manifest, Some(name), "openapi") {
+            Ok(imported) => services.extend(imported),
+            Err(error)
+                if !tracked.contains(name)
+                    && error.chain().any(|cause| {
+                        cause
+                            .downcast_ref::<std::io::Error>()
+                            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+                    }) => {}
+            Err(error) => {
+                return Err(error.context(format!(
+                    "Restore the TypeScript OpenAPI export for {name} before regenerating its SDK"
+                )));
+            }
+        }
+    }
+    Ok(services)
 }
 
-fn rust_sdk_services_from_contracts(
+fn http_sdk_services_from_contracts(
     app_root: &Path,
     manifest: &Value,
     selected_service: Option<&str>,
 ) -> Result<Vec<SdkService>> {
-    rust_sdk_services_from_artifacts(app_root, manifest, selected_service, "contract")
+    http_sdk_services_from_artifacts(app_root, manifest, selected_service, "contract")
 }
 
-fn rust_sdk_services_from_artifacts(
+fn typescript_sdk_projects<'a>(
+    manifest: &'a Value,
+    selected_service: Option<&str>,
+) -> Vec<&'a Value> {
+    super::http_sources::projects(manifest, selected_service)
+        .into_iter()
+        .filter(|project| super::http_sources::is_typescript(project))
+        .collect()
+}
+
+fn http_sdk_services_from_artifacts(
     app_root: &Path,
     manifest: &Value,
     selected_service: Option<&str>,
     source: &str,
 ) -> Result<Vec<SdkService>> {
     let mut services = Vec::new();
-    for project in manifest
-        .get("projects")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        let project_type = project.get("type").and_then(Value::as_str);
-        if !matches!(project_type, Some("Service") | Some("Worker")) {
-            continue;
-        }
-        let Some(service_name) = project.get("name").and_then(Value::as_str) else {
-            continue;
-        };
-        if let Some(selected_service) = selected_service
-            && selected_service != service_name
-        {
-            continue;
-        }
-        let Some(metadata) = project.get("metadata").and_then(Value::as_table) else {
-            continue;
-        };
-        if metadata.get("language").and_then(Value::as_str) != Some("rust") {
-            continue;
-        }
-
-        let (metadata_key, directory, filename) = if source == "openapi" {
-            ("openapiPath", "openapi", "openapi.json")
-        } else {
-            ("contractArtifactPath", "contracts", "contract.json")
-        };
-        let artifact_path = metadata
-            .get(metadata_key)
+    for project in super::http_sources::projects(manifest, selected_service) {
+        let service_name = project
+            .get("name")
             .and_then(Value::as_str)
-            .map_or_else(
-                || {
-                    app_root
-                        .join(".forklaunch")
-                        .join(directory)
-                        .join(service_name)
-                        .join(filename)
-                },
-                |path| app_root.join(path),
-            );
+            .context("SDK service name is required")?;
+        let (source, artifact_path) = super::http_sources::artifact(app_root, project, source)?;
         let artifact_path = artifact_path
             .canonicalize()
             .with_context(|| format!("Failed to locate {}", artifact_path.display()))?;
@@ -2129,3 +2151,6 @@ mod recursive_model_tests {
         assert_eq!(ts_type_from_schema(&schema), "{ [key: string]: MapRef1 }");
     }
 }
+
+#[cfg(test)]
+mod mixed_tests;

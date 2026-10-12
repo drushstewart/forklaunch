@@ -53,7 +53,7 @@ against native PostgreSQL services, including additional fields, sessions,
 profile updates, JWT/JWKS, signout and signin.
 
 This preset serves one configured tenant. Broader custom hooks/adapters, indexed
-storage pagination and the unified mixed application SDK remain parity work.
+storage pagination remain parity work.
 
 ## Local cache and object storage
 
@@ -108,6 +108,33 @@ forklaunch sdk generate --path . --target all --from contract --check
 ```
 
 Exports are written under `.forklaunch/contracts/<service>/contract.json` and `.forklaunch/openapi/<service>/openapi.json`. TypeScript output lives in `sdks/typescript`; Rust SDK crates live in `sdks/rust`. New TypeScript SDKs include a strict browser-compatible `tsconfig.json`, so their `build` script and `pnpm sdk:typecheck` work directly. SDK regeneration preserves an existing compiler configuration. `--sdk-targets rust` on app initialization omits the TypeScript package scaffold. Rust services require generated SDKs; live TypeScript SDK mode is rejected.
+
+In a mixed application, the shared `sdks/typescript` package includes both native
+and TypeScript services. `--from contract` uses Rust contracts and TypeScript
+OpenAPI exports; `--from openapi` uses OpenAPI for both. Rust clients are generated
+for both languages too. Run `openapi export` before generation, and use
+`serviceBaseUrls` to point each client at its service origin:
+
+```ts
+import { createForkLaunchSdk } from './sdks/typescript/src/index.js';
+
+const sdk = createForkLaunchSdk({
+  serviceBaseUrls: {
+    'native-api': 'http://localhost:8000',
+    'typescript-api': 'http://localhost:8001'
+  }
+});
+```
+
+`forklaunch sdk watch --from contract` watches both languages, the manifest and
+configured artifact paths. It keeps the previous SDK when an export is missing
+or malformed and resumes after the artifact changes. The CLI records imported
+TypeScript service names in `.forklaunch/sdk/http-sources.json`; keep this file
+with the application so lifecycle regeneration can reject missing exports instead
+of silently dropping clients. A newly registered TypeScript service without an
+export is skipped only by internal lifecycle refresh; explicit SDK generation
+requires every selected service's artifact. Mixed TypeScript scaffolding and
+development orchestration are tracked separately.
 
 `--from openapi` reads the actual OpenAPI 3.0/3.1 JSON artifact at each project's `openapiPath`; export it first. It uses operation IDs and JSON parameter schemas, with JSON, text, URL-encoded form, multipart or raw binary request bodies, resolving document-local schema graphs with expansion limits. Missing artifacts, external/missing references, unguarded recursive aliases, unsupported identifiers and unsupported body formats fail before SDK files are written. The importer preserves every explicit 200–599 status with a JSON, text, binary, or absent body, including declared business-error payloads. Each status currently supports one media type. TypeScript narrows each status to its payload, and Rust returns a separate enum variant; the lowest status retains the original response model name, with `StatusNNN` model suffixes for other variants. Conflicting generated names and duplicate statuses fail before output writes. Empty responses (including 204/205 and HEAD) resolve to `undefined` in TypeScript and `()` in Rust; explicit JSON `null` remains distinct. Text responses decode as strings; binary downloads decode as `Uint8Array` in TypeScript and `Vec<u8>` in Rust. Declared JSON errors override default error types, including `application/problem+json`. Schema-free JSON remains `unknown`/`serde_json::Value`. Nullable schemas support OpenAPI 3.0 `nullable`, null-containing type arrays, and single nullable `anyOf`/`oneOf` alternatives. Dictionaries retain typed values, and open objects preserve additional fields through Serde flattening. Rust `oneOf`, `anyOf`, and multiple-type schemas generate untagged enums with ordered `Variant1`, `Variant2`, etc. branches, including nested arrays and objects. Serde chooses the first deserializable branch; full schema-constraint validation remains the server’s responsibility. Closed structured objects reject unknown fields during decoding. Nullable root objects use a distinct inner model. Text uploads use `body: string`; raw binary uploads use `body: Uint8Array` in TypeScript and `body: Option<Vec<u8>>` in Rust. JSON, text and URL-encoded Rust requests retain `Option<String>`; form strings must already be URL-encoded. TypeScript URL-encoded form requests accept the schema-derived object or `URLSearchParams`; field records encode composite values with the shared TypeScript `safeStringify` implementation. Clients send the contract media type and preserve binary view offsets. Multipart responses, complete schema-constraint conformance and equivalent framework-native code generator behavior remain parity tasks. Artifact paths must stay inside the application.
 

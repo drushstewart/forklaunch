@@ -7,7 +7,7 @@ use std::{
     time::{Duration, UNIX_EPOCH},
 };
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 
@@ -27,7 +27,7 @@ impl WatchCommand {
 
 impl CliCommand for WatchCommand {
     fn command(&self) -> Command {
-        command("watch", "Regenerate SDKs when Rust artifacts change")
+        command("watch", "Regenerate SDKs when service artifacts change")
             .arg(
                 Arg::new("base_path")
                     .long("path")
@@ -115,7 +115,7 @@ fn run_sdk_watch(
     let mut last_fingerprint = artifact_fingerprint(app_root, source, selected_service)?;
     log_info!(
         stdout,
-        "Watching Rust {source} artifacts every {}ms",
+        "Watching {source} artifacts every {}ms",
         interval.as_millis()
     );
 
@@ -144,7 +144,7 @@ fn run_sdk_watch(
         }
 
         last_fingerprint = fingerprint;
-        log_info!(stdout, "Rust {source} artifacts changed; regenerating SDKs");
+        log_info!(stdout, "{source} artifacts changed; regenerating SDKs");
         if let Err(error) =
             generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)
         {
@@ -164,59 +164,26 @@ fn artifact_fingerprint(
     if matches!(source, "socket-contract" | "asyncapi") {
         return socket_artifact_fingerprint(app_root, selected_service, source);
     }
-    let root = match source {
-        "contract" => app_root.join(".forklaunch").join("contracts"),
-        "openapi" => app_root.join(".forklaunch").join("openapi"),
-        "socket-contract" => app_root.join(".forklaunch").join("socket-contracts"),
-        _ => unreachable!("validated by clap"),
-    };
+    let root = app_root.canonicalize()?;
     let mut fingerprint = BTreeMap::new();
-    collect_artifact_fingerprint(&root, selected_service, &mut fingerprint)?;
-    Ok(fingerprint)
-}
-
-fn collect_artifact_fingerprint(
-    path: &Path,
-    selected_service: Option<&str>,
-    fingerprint: &mut BTreeMap<PathBuf, (u64, u128)>,
-) -> Result<()> {
-    if !path.exists() {
-        return Ok(());
-    }
-
-    for entry in fs::read_dir(path).with_context(|| format!("Failed to read {}", path.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if selected_service.is_some()
-                && path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| Some(name) != selected_service)
-                && path.parent().is_some_and(|parent| {
-                    parent.file_name().and_then(|name| name.to_str()) == Some("contracts")
-                        || parent.file_name().and_then(|name| name.to_str()) == Some("openapi")
-                        || parent.file_name().and_then(|name| name.to_str())
-                            == Some("socket-contracts")
-                })
-            {
-                continue;
-            }
-            collect_artifact_fingerprint(&path, selected_service, fingerprint)?;
+    for path in super::http_sources::watched_paths(&root, source, selected_service)? {
+        if !path.exists() {
             continue;
         }
-
-        let metadata = fs::metadata(&path)
-            .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
+        let canonical = path.canonicalize()?;
+        anyhow::ensure!(
+            canonical.starts_with(&root),
+            "SDK artifact path must stay inside the application"
+        );
+        let metadata = fs::metadata(&canonical)?;
         let modified = metadata
             .modified()
             .ok()
-            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
             .map_or(0, |duration| duration.as_nanos());
-        fingerprint.insert(path, (metadata.len(), modified));
+        fingerprint.insert(canonical, (metadata.len(), modified));
     }
-
-    Ok(())
+    Ok(fingerprint)
 }
 
 fn socket_artifact_fingerprint(
@@ -390,6 +357,69 @@ socketContractArtifactPath = "custom/other.json"
             artifact_fingerprint(root, "socket-contract", Some("chat"))
                 .unwrap()
                 .len(),
+            3
+        );
+    }
+}
+
+#[cfg(test)]
+mod mixed_http_tests {
+    use super::*;
+
+    #[test]
+    fn contract_watch_tracks_custom_typescript_exports_and_selected_services() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        fs::create_dir_all(root.join(".forklaunch/contracts/native-api")).unwrap();
+        fs::create_dir_all(root.join("artifacts/typescript")).unwrap();
+        fs::write(
+            root.join(".forklaunch/manifest.toml"),
+            r#"
+[[projects]]
+name = "native-api"
+type = "Service"
+[projects.metadata]
+language = "rust"
+[[projects]]
+name = "typescript-api"
+type = "Service"
+[projects.metadata]
+openapiPath = "artifacts/typescript/spec.json"
+[[projects]]
+name = "minio"
+type = "Service"
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join(".forklaunch/contracts/native-api/contract.json"),
+            "{}",
+        )
+        .unwrap();
+        let spec = root.join("artifacts/typescript/spec.json");
+        fs::write(&spec, "{}").unwrap();
+        let initial = artifact_fingerprint(root, "contract", None).unwrap();
+        assert_eq!(initial.len(), 3);
+        assert!(initial.contains_key(&spec.canonicalize().unwrap()));
+        let native = artifact_fingerprint(root, "contract", Some("native-api")).unwrap();
+        assert_eq!(native.len(), 2);
+        fs::write(&spec, "{\"changed\":true}").unwrap();
+        assert_ne!(
+            artifact_fingerprint(root, "contract", None).unwrap(),
+            initial
+        );
+        assert_eq!(
+            artifact_fingerprint(root, "contract", Some("native-api")).unwrap(),
+            native
+        );
+        fs::remove_file(&spec).unwrap();
+        assert_eq!(
+            artifact_fingerprint(root, "contract", None).unwrap().len(),
+            2
+        );
+        fs::write(&spec, "{\"restored\":true}").unwrap();
+        assert_eq!(
+            artifact_fingerprint(root, "contract", None).unwrap().len(),
             3
         );
     }

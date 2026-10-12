@@ -9,6 +9,18 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 
+pub(crate) const OBSERVABILITY_SERVICES: &[&str] = &[
+    "mimir",
+    "loki",
+    "tempo",
+    "grafana",
+    "otel",
+    "otel-collector",
+    "memcached",
+    "minio",
+    "minio-init",
+];
+
 /// Resolve a command name to its full path by searching PATH.
 /// Falls back to the bare command name if not found (lets the OS try).
 pub(crate) fn resolve_command(name: &str) -> String {
@@ -281,17 +293,6 @@ pub(crate) fn export_all_services(
 
     // Include both services and workers (workers have a server component)
     // Exclude observability services as they are not user application components
-    const OBSERVABILITY_SERVICES: &[&str] = &[
-        "mimir",
-        "loki",
-        "tempo",
-        "grafana",
-        "otel",
-        "otel-collector",
-        "memcached",
-        "minio",
-        "minio-init",
-    ];
 
     let services: Vec<_> = manifest
         .projects

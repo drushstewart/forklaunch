@@ -26,7 +26,8 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 - [ ] Validate generated ECS defaults, health checks, and service startup separately from the local container checks. Read-only audit of local `forklaunch-platform` at `3fb59b3cc` found a concrete integration gap: deployment/image planning maps non-Bun runtimes (including Tokio) to PNPM, and generated ECS commands invoke JavaScript start scripts. Rust needs native binary startup and image/build support in the platform before this gate can pass; local container success does not establish ECS parity.
 - [x] Keep generated Rust SDKs for empty worker HTTP contracts free of unused Serde imports, path helpers and client-field warnings; compile packaged PostgreSQL/Redis worker SDKs with warnings denied.
 - [x] Verify all 752 current embedded Rust source/template files are present in the CLI Cargo package, including documentation examples; `.template` manifests and source symlinks preserve complete generated workspaces.
-- [ ] Finish mixed-app orchestration and one shared SDK surface (phases 13–15).
+- [x] Generate one shared HTTP SDK from native contracts and TypeScript OpenAPI, preserve imported clients through lifecycle refresh, and watch both languages/custom paths. All 1,023 CLI tests, strict generated Rust/TypeScript consumers, live clients against both servers, relocation, loss/recovery and native HTTP/MCP startup pass.
+- [ ] Finish mixed-app scaffolding, per-project lifecycle dispatch and development orchestration (phases 13–15).
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
 - [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive installation is checked; no crate has been published during this port.
@@ -1173,3 +1174,20 @@ gates remain open.
 - [x] Revalidate fresh archive installation `EklWnG` at `f20252656`: all portable services/four workers, both SDK targets, all 28 packaged auth tests, full HTTP/MCP startup/listener/shutdown matrix and all five actual-signed native capability callbacks pass. Restore checkout CLI afterward.
 
 - [x] Validate actual shared and generated TypeScript BetterAuth frontend clients against native PostgreSQL over default/custom/root/URL-override namespaces. Add `authBasePath` to both CLI generation paths; 80 live client requests cover additional fields, sessions, profile update, independent JWT/JWKS and signout/signin. Fresh standalone dependency setup/TypeScript generation, HTTP/MCP/self-JWKS/SDK/persistence/lifecycle, all 1,016 CLI tests and 751 packaged source checks pass. Unified mixed SDK and broader custom client/plugins/hooks remain open.
+
+
+Mixed HTTP SDK checkpoint (2026-10-12): `sdk generate --from contract` now imports
+TypeScript OpenAPI alongside native contracts; `--from openapi` imports both
+languages' OpenAPI. Both target languages include every selected service, while
+libraries and TypeScript observability services stay excluded. Versioned source
+tracking prevents lifecycle regeneration from silently removing previously imported
+clients when an export disappears. Artifact and source-state paths are contained
+inside the application. Check mode does not write files. Watch follows the manifest,
+custom paths and TypeScript exports in contract mode, retains output on errors and
+recovers on subsequent changes. All 1,023 CLI tests and 752 embedded-source checks
+pass. `rust_mixed_sdk_runtime.sh` runs real CLI export, relocation, lifecycle refresh,
+watch loss/recovery, strict TypeScript compilation, generated Rust SDK Clippy and
+both live SDK targets against native and tsx HTTP services. Native HTTP/MCP discovery,
+health invocation, listener modes, startup rejection and graceful shutdown pass.
+The TypeScript server/export hook is fixture-owned; mixed TypeScript scaffolding,
+project lifecycle routing and dev orchestration remain open.
