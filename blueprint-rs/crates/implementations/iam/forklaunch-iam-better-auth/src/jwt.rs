@@ -1,19 +1,28 @@
-//! The configured Better Auth `EdDSA` token and public JWK profile.
+//! Persistent asymmetric JWT signing keys and public JWK profiles.
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use ring::{
     rand::SystemRandom,
-    signature::{Ed25519KeyPair, KeyPair},
+    signature::{
+        ECDSA_P256_SHA256_FIXED_SIGNING, ECDSA_P384_SHA384_FIXED_SIGNING, EcdsaKeyPair,
+        Ed25519KeyPair, KeyPair,
+    },
 };
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
-/// An Ed25519 signing key with a persistent identifier.
+/// An asymmetric signing key with a persistent identifier.
 /// Deliberately has no Debug/Serialize implementation exposing private material.
 pub struct SigningKey {
     id: String,
     private: Zeroizing<Vec<u8>>,
-    pair: Ed25519KeyPair,
+    pair: Material,
+    algorithm: String,
+}
+
+enum Material {
+    Ed25519(Ed25519KeyPair),
+    Ecdsa(EcdsaKeyPair),
 }
 
 impl SigningKey {
@@ -21,24 +30,60 @@ impl SigningKey {
     /// # Errors
     /// Returns a safe error on invalid IDs or secure randomness failure.
     pub fn generate(id: impl Into<String>) -> BlueprintResult<Self> {
-        let encoded =
-            Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).map_err(|_| key_error())?;
-        Self::from_pkcs8(id, encoded.as_ref())
+        Self::generate_profile(id, "EdDSA")
     }
 
-    /// Restores a previously stored signing key without changing its key ID.
+    pub(crate) fn generate_profile(
+        id: impl Into<String>,
+        algorithm: &str,
+    ) -> BlueprintResult<Self> {
+        let random = SystemRandom::new();
+        let encoded = match algorithm {
+            "EdDSA" | "Ed25519" => Ed25519KeyPair::generate_pkcs8(&random),
+            "ES256" => EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &random),
+            "ES384" => EcdsaKeyPair::generate_pkcs8(&ECDSA_P384_SHA384_FIXED_SIGNING, &random),
+            _ => return Err(key_error()),
+        }
+        .map_err(|_| key_error())?;
+        Self::from_pkcs8_profile(id, encoded.as_ref(), algorithm)
+    }
+
+    /// Restores a previously stored Ed25519 signing key without changing its key ID.
     /// # Errors
     /// Rejects malformed private keys and missing/oversized key IDs.
     pub fn from_pkcs8(id: impl Into<String>, encoded: &[u8]) -> BlueprintResult<Self> {
+        Self::from_pkcs8_profile(id, encoded, "EdDSA")
+    }
+
+    pub(crate) fn from_pkcs8_profile(
+        id: impl Into<String>,
+        encoded: &[u8],
+        algorithm: &str,
+    ) -> BlueprintResult<Self> {
         let id = id.into();
         if id.is_empty() || id.len() > 256 || encoded.len() > 4096 {
             return Err(key_error());
         }
-        let pair = Ed25519KeyPair::from_pkcs8(encoded).map_err(|_| key_error())?;
+        let random = SystemRandom::new();
+        let pair = match algorithm {
+            "EdDSA" | "Ed25519" => {
+                Material::Ed25519(Ed25519KeyPair::from_pkcs8(encoded).map_err(|_| key_error())?)
+            }
+            "ES256" => Material::Ecdsa(
+                EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, encoded, &random)
+                    .map_err(|_| key_error())?,
+            ),
+            "ES384" => Material::Ecdsa(
+                EcdsaKeyPair::from_pkcs8(&ECDSA_P384_SHA384_FIXED_SIGNING, encoded, &random)
+                    .map_err(|_| key_error())?,
+            ),
+            _ => return Err(key_error()),
+        };
         Ok(Self {
             id,
             private: Zeroizing::new(encoded.to_vec()),
             pair,
+            algorithm: algorithm.to_string(),
         })
     }
 
@@ -52,10 +97,18 @@ impl SigningKey {
     /// Public-only key, matching the configured Better Auth `/jwks` response.
     #[must_use]
     pub fn public_jwk(&self) -> Value {
-        json!({
-            "alg": "EdDSA", "kty": "OKP", "crv": "Ed25519",
-            "x": URL_SAFE_NO_PAD.encode(self.pair.public_key().as_ref()), "kid": self.id
-        })
+        match &self.pair {
+            Material::Ed25519(pair) => json!({
+                "alg":self.algorithm,"kty":"OKP","crv":"Ed25519",
+                "x":URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()),"kid":self.id
+            }),
+            Material::Ecdsa(pair) => {
+                let bytes = pair.public_key().as_ref();
+                let width = (bytes.len() - 1) / 2;
+                json!({"alg":self.algorithm,"kty":"EC","crv":if width == 32 {"P-256"} else {"P-384"},
+                    "x":URL_SAFE_NO_PAD.encode(&bytes[1..=width]),"y":URL_SAFE_NO_PAD.encode(&bytes[width+1..]),"kid":self.id})
+            }
+        }
     }
 
     /// Issues the actual configured payload with a 15-minute lifetime.
@@ -72,22 +125,10 @@ impl SigningKey {
         issued_at: u64,
     ) -> BlueprintResult<String> {
         let expires_at = issued_at.checked_add(900).ok_or_else(key_error)?;
-        let header = json!({"alg": "EdDSA", "kid": self.id});
-        let payload = json!({
+        self.sign_payload(&json!({
             "iat": issued_at, "exp": expires_at, "iss": base_url, "aud": base_url,
             "sub": user_id, "email": email, "activeOrganizationId": active_organization_id
-        });
-        let encode = |value: &Value| {
-            serde_json::to_vec(value)
-                .map(|bytes| URL_SAFE_NO_PAD.encode(bytes))
-                .map_err(|_| key_error())
-        };
-        let content = format!("{}.{}", encode(&header)?, encode(&payload)?);
-        let signature = self.pair.sign(content.as_bytes());
-        Ok(format!(
-            "{content}.{}",
-            URL_SAFE_NO_PAD.encode(signature.as_ref())
-        ))
+        }))
     }
     /// Signs an already validated server-owned claims object.
     /// # Errors
@@ -96,15 +137,21 @@ impl SigningKey {
         if !payload.is_object() {
             return Err(key_error());
         }
-        let header = json!({"alg":"EdDSA","kid":self.id});
+        let header = json!({"alg":self.algorithm,"kid":self.id});
         let content = format!(
             "{}.{}",
             URL_SAFE_NO_PAD.encode(crate::ecmascript::stringify(&header)),
             URL_SAFE_NO_PAD.encode(crate::ecmascript::stringify(payload))
         );
+        let signature = match &self.pair {
+            Material::Ed25519(pair) => pair.sign(content.as_bytes()),
+            Material::Ecdsa(pair) => pair
+                .sign(&SystemRandom::new(), content.as_bytes())
+                .map_err(|_| key_error())?,
+        };
         Ok(format!(
             "{content}.{}",
-            URL_SAFE_NO_PAD.encode(self.pair.sign(content.as_bytes()).as_ref())
+            URL_SAFE_NO_PAD.encode(signature.as_ref())
         ))
     }
 }

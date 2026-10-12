@@ -83,6 +83,7 @@ pub(crate) async fn exercise_key_lifecycle<S: AuthStore>(store: Arc<S>) {
             .await
             .is_err()
     );
+    sign::profiles(&store, now).await;
 }
 
 #[tokio::test]

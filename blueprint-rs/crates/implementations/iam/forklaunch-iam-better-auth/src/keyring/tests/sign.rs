@@ -57,3 +57,100 @@ async fn schema_and_duration_precede_key_mint_but_claim_failure_retains_key() {
     tx.commit().await.unwrap();
     exercise(&service, now).await;
 }
+
+// Exercise the same persistent profile lifecycle through memory and encrypted PostgreSQL.
+pub(super) async fn profiles<S: AuthStore>(store: &Arc<S>, now: DateTime<Utc>) {
+    for (algorithm, curve) in [
+        ("Ed25519", "Ed25519"),
+        ("ES256", "P-256"),
+        ("ES384", "P-384"),
+    ] {
+        let mut tx = store.begin(true).await.unwrap();
+        for row in tx.list(Model::Jwks).await.unwrap() {
+            tx.delete(Model::Jwks, row["id"].as_str().unwrap())
+                .await
+                .unwrap();
+        }
+        tx.commit().await.unwrap();
+        let service = KeyRing::new(store.clone(), "https://auth.fixture.test");
+        let body = json!({"payload":{"sub":"profile-user"},"overrideOptions":{"jwks":{"keyPairConfig":{"alg":algorithm}}}});
+        let (first, second) = tokio::join!(
+            service.sign_jwt(Some(&body), now),
+            service.sign_jwt(Some(&body), now)
+        );
+        let first = first.unwrap();
+        let second = second.unwrap();
+        let retired_token = first.clone();
+        let keys = service.jwks(now).await.unwrap();
+        assert_eq!(keys["keys"].as_array().unwrap().len(), 1);
+        assert_eq!(keys["keys"][0]["alg"], algorithm);
+        assert_eq!(keys["keys"][0]["crv"], curve);
+        let key = &keys["keys"][0];
+        assert!(key.get("d").is_none());
+        assert!(key.get("privateKey").is_none());
+        let restarted = KeyRing::new(store.clone(), "https://auth.fixture.test");
+        for token in [
+            first,
+            second,
+            restarted.sign_jwt(Some(&body), now).await.unwrap(),
+        ] {
+            assert_eq!(
+                restarted.verify_jwt(Some(&token), now).await.unwrap()["payload"]["sub"],
+                "profile-user"
+            );
+        }
+        // Ordinary session token issuance can reuse the latest asymmetric key.
+        let issued = restarted
+            .issue("session-user", "profile@example.test", None, now)
+            .await
+            .unwrap();
+        assert_eq!(
+            restarted
+                .verify_jwt(Some(&json!({"token":issued})), now)
+                .await
+                .unwrap()["payload"]["sub"],
+            "session-user"
+        );
+        assert_eq!(restarted.jwks(now).await.unwrap(), keys);
+        let mut tx = store.begin(true).await.unwrap();
+        let mut row = tx.list(Model::Jwks).await.unwrap().remove(0);
+        row["expiresAt"] = json!(timestamp(now - Duration::seconds(1)));
+        tx.replace(Model::Jwks, row).await.unwrap();
+        tx.commit().await.unwrap();
+        let minted = restarted.sign_jwt(Some(&body), now).await.unwrap();
+        assert_eq!(
+            restarted.verify_jwt(Some(&minted), now).await.unwrap()["payload"]["sub"],
+            "profile-user"
+        );
+        assert_eq!(
+            restarted
+                .verify_jwt(Some(&retired_token), now)
+                .await
+                .unwrap()["payload"]["sub"],
+            "profile-user"
+        );
+        let mut tx = store.begin(true).await.unwrap();
+        assert_eq!(tx.list(Model::Jwks).await.unwrap().len(), 2);
+        for row in tx.list(Model::Jwks).await.unwrap() {
+            tx.delete(Model::Jwks, row["id"].as_str().unwrap())
+                .await
+                .unwrap();
+        }
+        tx.commit().await.unwrap();
+        assert_eq!(
+            restarted
+                .verify_jwt(Some(&retired_token), now)
+                .await
+                .unwrap()["payload"],
+            Value::Null
+        );
+    }
+}
+#[tokio::test]
+async fn asymmetric_profiles_initialize_once_restore_reuse_and_rotate() {
+    profiles(
+        &Arc::new(MemoryAuthStore::default()),
+        DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap(),
+    )
+    .await;
+}

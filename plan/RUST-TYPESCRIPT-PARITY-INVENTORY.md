@@ -646,3 +646,12 @@ exclusions and per-ecosystem missing-lock detection pass; Git/private-registry
 sources explicitly report incomplete coverage without exposing source URLs. All
 1,016 CLI tests pass, including 15 dependency-audit tests. Commit-based Git advisory
 queries remain unsupported.
+
+JWT key profiles now include Ed25519 alias, ES256/P-256 and ES384/P-384. Native
+PKCS8 persistence retains encrypted private material while public JWKS exposes
+only coordinates. Actual TypeScript comparisons pass 151 signing calls/165 key
+states and 213 verification calls/182 key-store operations. Memory/restricted
+PostgreSQL validate concurrent provisioning, restored signing/session reuse,
+rotation and retired public-key verification; all 17 native tests and live HTTP/
+JWT/MCP pass. Strict all-feature clippy, rebuilt CLI and 709 embedded sources pass.
+RSA/ES512, typed options, callbacks, real ORM and full preset remain open.

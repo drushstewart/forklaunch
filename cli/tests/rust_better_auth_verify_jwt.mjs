@@ -217,6 +217,84 @@ for (const alg of ['EdDSA', 'Ed25519', null, '', 'HS256', 1, 'RS256']) {
   await compare({ token: valid });
   await compare({ token: token(base, { alg: 'Ed25519', kid: row.id }) });
 }
+for (const [algorithm, namedCurve, hash] of [
+  ['ES256', 'prime256v1', 'sha256'],
+  ['ES384', 'secp384r1', 'sha384']
+]) {
+  const pair = generateKeyPairSync('ec', { namedCurve });
+  const publicJwk = pair.publicKey.export({ format: 'jwk' });
+  Object.assign(row, {
+    alg: algorithm,
+    crv: publicJwk.crv,
+    publicKey: JSON.stringify(publicJwk)
+  });
+  function ecToken(payload, header = { alg: algorithm, kid: row.id }) {
+    const content =
+      Buffer.from(JSON.stringify(header)).toString('base64url') +
+      '.' +
+      Buffer.from(JSON.stringify(payload)).toString('base64url');
+    return (
+      content +
+      '.' +
+      sign(hash, Buffer.from(content), {
+        key: pair.privateKey,
+        dsaEncoding: 'ieee-p1363'
+      }).toString('base64url')
+    );
+  }
+  const valid = ecToken(base);
+  for (const patch of [
+    {},
+    { use: 'enc' },
+    { alg: 'HS256' },
+    { kid: 'ignored' },
+    { key_ops: ['verify'] },
+    { key_ops: ['sign'] },
+    { ext: false },
+    { ext: null },
+    { d: null },
+    { crv: 'P-521' },
+    { x: 'bad' },
+    { y: 'bad' },
+    { x: publicJwk.x + '!' },
+    { y: publicJwk.y + '=' }
+  ]) {
+    row.publicKey = JSON.stringify({ ...publicJwk, ...patch });
+    inputs.push({ op: 'replace', now: start, row: { ...row } });
+    expected.push({ ok: true });
+    await compare({ token: valid });
+  }
+  row.publicKey = JSON.stringify(publicJwk);
+  for (const rowAlg of [
+    algorithm,
+    null,
+    'EdDSA',
+    algorithm === 'ES256' ? 'ES384' : 'ES256'
+  ]) {
+    row.alg = rowAlg;
+    inputs.push({ op: 'replace', now: start, row: { ...row } });
+    expected.push({ ok: true });
+    await compare({ token: valid });
+  }
+  row.alg = algorithm;
+  inputs.push({ op: 'replace', now: start, row: { ...row } });
+  expected.push({ ok: true });
+  for (const payload of [
+    base,
+    { ...base, exp: start },
+    { ...base, exp: start + 1 },
+    { ...base, nbf: start + 1 },
+    { ...base, sub: '' }
+  ])
+    await compare({ token: ecToken(payload) });
+  for (const alg of [
+    'EdDSA',
+    algorithm === 'ES256' ? 'ES384' : 'ES256',
+    'HS256'
+  ])
+    await compare({ token: ecToken(base, { alg, kid: row.id }) });
+  await compare({ token: valid.slice(0, -8) });
+}
 const run = spawnSync(
   'cargo',
   [

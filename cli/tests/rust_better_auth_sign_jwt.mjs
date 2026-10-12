@@ -211,6 +211,36 @@ for (const interval of [60, 0, -1, 0.0015, null]) {
     start + 1
   );
 }
+for (const config of [
+  { alg: 'Ed25519' },
+  { alg: 'EdDSA', crv: 'Ed25519' },
+  { alg: 'ES256' },
+  { alg: 'ES256', crv: 'P-256' },
+  { alg: 'ES384' },
+  { alg: 'ES384', crv: 'P-384' },
+  { alg: 'EdDSA', crv: 'Ed448' },
+  { alg: 'ES256', crv: 'P-384' },
+  { alg: 'ES384', crv: 'P-256' }
+]) {
+  reference.database.jwks.splice(0);
+  inputs.push({ op: 'clear', now: start });
+  expected.push({ cleared: true });
+  inputs.push({ op: 'records', now: start });
+  expected.push([]);
+  const overrideOptions = { jwks: { keyPairConfig: config } };
+  await compare({ payload: { sub: 'profile-user' }, overrideOptions });
+  await compare(
+    { payload: { sub: 'profile-user', extra: [1, 'value'] }, overrideOptions },
+    start + 1
+  );
+  if (
+    !config.crv ||
+    (['Ed25519', 'P-256', 'P-384'].includes(config.crv) &&
+      config.alg !== 'ES256' &&
+      config.alg !== 'ES384')
+  )
+    await compare({ payload: { sub: 'fallback-user' } });
+}
 const run = spawnSync(
   'cargo',
   [

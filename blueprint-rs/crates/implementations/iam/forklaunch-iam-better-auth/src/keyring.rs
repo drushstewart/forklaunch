@@ -117,11 +117,18 @@ impl<S: AuthStore> KeyRing<S> {
 }
 
 async fn mint<T: AuthTransaction>(tx: &mut T, now: DateTime<Utc>) -> BlueprintResult<SigningKey> {
+    mint_profile(tx, now, "EdDSA").await
+}
+async fn mint_profile<T: AuthTransaction>(
+    tx: &mut T,
+    now: DateTime<Utc>,
+    algorithm: &str,
+) -> BlueprintResult<SigningKey> {
     let id = uuid::Uuid::new_v4().to_string();
-    let key = SigningKey::generate(&id)?;
+    let key = SigningKey::generate_profile(&id, algorithm)?;
     tx.insert(
         Model::Jwks,
-        json!({"id":id,"alg":"EdDSA","crv":"Ed25519","createdAt":timestamp(now),
+        json!({"id":id,"alg":algorithm,"crv":key.public_jwk()["crv"],"createdAt":timestamp(now),
         "publicKey":serde_json::to_string(&key.public_jwk()).map_err(|_| key_error())?,
         "privateKey":STANDARD.encode(key.private_pkcs8())}),
     )
@@ -134,29 +141,41 @@ fn restore(row: &Value) -> BlueprintResult<SigningKey> {
         return Err(key_error());
     }
     let encoded = Zeroizing::new(STANDARD.decode(encoded).map_err(|_| key_error())?);
-    let key = SigningKey::from_pkcs8(row["id"].as_str().ok_or_else(key_error)?, &encoded)?;
+    let key = SigningKey::from_pkcs8_profile(
+        row["id"].as_str().ok_or_else(key_error)?,
+        &encoded,
+        row["alg"].as_str().unwrap_or("EdDSA"),
+    )?;
     if key.public_jwk() != public_key(row)? {
         return Err(key_error());
     }
     Ok(key)
 }
 fn public_key(row: &Value) -> BlueprintResult<Value> {
-    if row["alg"] != "EdDSA" || row["crv"] != "Ed25519" {
-        return Err(key_error());
-    }
     let key: Value = serde_json::from_str(row["publicKey"].as_str().ok_or_else(key_error)?)
         .map_err(|_| key_error())?;
-    if key["kid"] != row["id"]
-        || key["alg"] != "EdDSA"
-        || key["kty"] != "OKP"
-        || key["crv"] != "Ed25519"
-        || !key["x"].as_str().is_some_and(|value| {
-            value.len() == 43
-                && URL_SAFE_NO_PAD
-                    .decode(value)
-                    .is_ok_and(|bytes| bytes.len() == 32)
+    let algorithm = row["alg"].as_str().unwrap_or("EdDSA");
+    let (kind, curve, width, fields) = match algorithm {
+        "EdDSA" | "Ed25519" => ("OKP", "Ed25519", 32, 5),
+        "ES256" => ("EC", "P-256", 32, 6),
+        "ES384" => ("EC", "P-384", 48, 6),
+        _ => return Err(key_error()),
+    };
+    let coordinate = |field: &str| {
+        key[field].as_str().is_some_and(|value| {
+            URL_SAFE_NO_PAD
+                .decode(value)
+                .is_ok_and(|bytes| bytes.len() == width)
         })
-        || key.as_object().is_none_or(|key| key.len() != 5)
+    };
+    if key["kid"] != row["id"]
+        || key["alg"] != algorithm
+        || key["kty"] != kind
+        || key["crv"] != curve
+        || row["crv"] != curve
+        || !coordinate("x")
+        || kind == "EC" && !coordinate("y")
+        || key.as_object().is_none_or(|key| key.len() != fields)
     {
         return Err(key_error());
     }

@@ -4,7 +4,7 @@ mod duration;
 mod schema;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, KeyRing, Model, Utc,
-    Value, json, mint, optional_time, required_time, restore,
+    Value, json, mint_profile, optional_time, required_time, restore,
 };
 use std::cmp::Reverse;
 impl<S: AuthStore> KeyRing<S> {
@@ -43,16 +43,21 @@ impl<S: AuthStore> KeyRing<S> {
         let key = if let Some((_, row)) = selected {
             restore(row)?
         } else {
-            if primary != "EdDSA"
-                || options["jwks"]["keyPairConfig"]
-                    .get("crv")
-                    .is_some_and(|crv| crv != "Ed25519")
+            let curve = match primary {
+                "EdDSA" | "Ed25519" => "Ed25519",
+                "ES256" => "P-256",
+                "ES384" => "P-384",
+                _ => return Err(error("Unsupported signing-key algorithm")),
+            };
+            if options["jwks"]["keyPairConfig"]
+                .get("crv")
+                .is_some_and(|value| value != curve)
             {
-                return Err(error(
-                    "Signing-key provisioning requires the configured EdDSA/Ed25519 profile",
-                ));
+                return Err(error(format!(
+                    "Invalid or unsupported crv option provided, the only supported value for {primary} is {curve}"
+                )));
             }
-            let key = mint(&mut tx, now).await?;
+            let key = mint_profile(&mut tx, now, primary).await?;
             if let Some(interval) = options["jwks"]["rotationInterval"]
                 .as_f64()
                 .filter(|interval| *interval != 0.0)

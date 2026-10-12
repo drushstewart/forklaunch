@@ -52,36 +52,20 @@ impl<S: AuthStore> KeyRing<S> {
         let Some(row) = row else {
             return Ok(None);
         };
-        if row
-            .get("alg")
-            .is_some_and(|alg| !alg.is_null() && alg != "EdDSA" && alg != "Ed25519")
-        {
+        let algorithm = if row["alg"].is_null() {
+            "EdDSA"
+        } else if let Some(algorithm) = row["alg"].as_str() {
+            algorithm
+        } else {
             return Ok(None);
-        }
+        };
         let Some(jwk) = row["publicKey"]
             .as_str()
             .and_then(|text| crate::ecmascript::parse(text).ok())
         else {
             return Ok(None);
         };
-        if jwk["kty"] != "OKP"
-            || jwk["crv"] != "Ed25519"
-            || jwk.get("ext").is_some_and(|value| !value.is_boolean())
-            || jwk
-                .get("key_ops")
-                .is_some_and(|value| value != &json!(["verify"]))
-            || jwk.get("d").is_some()
-            || jwk.get("priv").is_some_and(truthy)
-        {
-            return Ok(None);
-        }
-        let Some(key) = jwk["x"].as_str().and_then(decode_jwk) else {
-            return Ok(None);
-        };
-        if ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
-            .verify(content.as_bytes(), &signature)
-            .is_err()
-        {
+        if !verify_signature(&jwk, algorithm, &header, content.as_bytes(), &signature) {
             return Ok(None);
         }
         if !claims(
@@ -95,6 +79,59 @@ impl<S: AuthStore> KeyRing<S> {
         Ok(Some(payload))
     }
 }
+fn verify_signature(
+    jwk: &Value,
+    algorithm: &str,
+    header: &Value,
+    content: &[u8],
+    signature: &[u8],
+) -> bool {
+    if jwk.get("ext").is_some_and(|value| !value.is_boolean())
+        || jwk
+            .get("key_ops")
+            .is_some_and(|value| value != &json!(["verify"]))
+        || jwk.get("d").is_some()
+        || jwk.get("priv").is_some_and(truthy)
+    {
+        return false;
+    }
+    let Some(x) = jwk["x"].as_str().and_then(decode_jwk) else {
+        return false;
+    };
+    let (verification, key): (&dyn ring::signature::VerificationAlgorithm, Vec<u8>) =
+        match algorithm {
+            "EdDSA" | "Ed25519"
+                if matches!(header["alg"].as_str(), Some("EdDSA" | "Ed25519"))
+                    && jwk["kty"] == "OKP"
+                    && jwk["crv"] == "Ed25519" =>
+            {
+                (&ring::signature::ED25519, x)
+            }
+            "ES256" | "ES384" if header["alg"] == algorithm && jwk["kty"] == "EC" => {
+                let (curve, width, verification): (
+                    _,
+                    _,
+                    &dyn ring::signature::VerificationAlgorithm,
+                ) = if algorithm == "ES256" {
+                    ("P-256", 32, &ring::signature::ECDSA_P256_SHA256_FIXED)
+                } else {
+                    ("P-384", 48, &ring::signature::ECDSA_P384_SHA384_FIXED)
+                };
+                let Some(y) = jwk["y"].as_str().and_then(decode_jwk) else {
+                    return false;
+                };
+                if jwk["crv"] != curve || x.len() != width || y.len() != width {
+                    return false;
+                }
+                (verification, [vec![4], x, y].concat())
+            }
+            _ => return false,
+        };
+    ring::signature::UnparsedPublicKey::new(verification, key)
+        .verify(content, signature)
+        .is_ok()
+}
+
 fn compact(token: &str) -> Option<(Value, Value, Vec<u8>, &str)> {
     let parts: Vec<_> = token.split('.').collect();
     if parts.len() != 3 {
@@ -102,7 +139,12 @@ fn compact(token: &str) -> Option<(Value, Value, Vec<u8>, &str)> {
     }
     let parse = |part| crate::ecmascript::parse(std::str::from_utf8(&decode(part)?).ok()?).ok();
     let header = parse(parts[0])?;
-    if !header.is_object() || header["alg"] != "EdDSA" && header["alg"] != "Ed25519" {
+    if !header.is_object()
+        || !matches!(
+            header["alg"].as_str(),
+            Some("EdDSA" | "Ed25519" | "ES256" | "ES384")
+        )
+    {
         return None;
     }
     if let Some(crit) = header.get("crit")
