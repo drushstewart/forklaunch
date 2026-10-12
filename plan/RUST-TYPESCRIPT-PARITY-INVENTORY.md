@@ -386,3 +386,10 @@ GET redirects retain valid tokens for single-use POST reset. Live memory and
 restricted-role PostgreSQL follow that lifecycle over HTTP beside MCP. Email
 verification, remaining user/account/provider/org operations, real ORM conformance
 and CLI preset remain open.
+
+Configured HS256 email-token verification passes 96 actual JOSE/HTTP comparisons,
+including signature/algorithm/critical headers, malformed claims, optional numeric
+claim ordering, expiry boundaries, padding/noncanonical bits, BOMs, duplicate keys
+and numeric overflow. Raw JSON number handling is local to token verification.
+Email-verification HTTP/user/session/redirect integration remains open; native
+raw route count stays twenty-three.

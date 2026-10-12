@@ -163,3 +163,11 @@ startup/invocation/shutdown. Disabled deletion keeps its coded 404 response.
 Remaining user/account/provider/org routes, real TS ORM
 conformance, custom callbacks and module generation remain open; these twenty-three
 routes do not constitute the complete Better Auth preset.
+
+`credentials::verify_email_token` verifies the configured HS256 email-token
+protocol, with 96 actual JOSE/HTTP comparisons. It distinguishes signature/JWT
+failures, expiry and the handler claim-schema failures, preserving optional
+iat/nbf/exp ordering, critical-header behavior, padding/noncanonical bits, UTF-8
+BOMs, duplicate JSON keys and JavaScript numeric overflow. Raw numeric parsing
+is local to token validation. Email verification HTTP/user/session/redirect
+integration remains open; the raw route count stays twenty-three.

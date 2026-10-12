@@ -48,3 +48,6 @@ pub fn verify_password(password: &str, encoded_hash: &str) -> bool {
 fn credential_error() -> BlueprintError {
     BlueprintError::new("password_hash_failed", "Unable to securely hash password")
 }
+
+mod email_token;
+pub use email_token::{EmailTokenError, VerifiedEmailToken, verify_email_token};
