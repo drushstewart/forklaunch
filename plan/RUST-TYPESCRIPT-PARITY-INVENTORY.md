@@ -404,3 +404,8 @@ responses. Live memory and restricted-role PostgreSQL verify HTTP mutations,
 forgery rejection, issued cookies and subsequent session/JWT access beside MCP.
 Configured email delivery/change requests remain disabled. Provider/org/account
 operations, real ORM conformance, custom callbacks and CLI preset stay open.
+
+Reset credential selection/update also requires accountId=userId, preserving
+mismatched legacy rows and creating a proper credential when none matches. The
+44-case actual HTTP fixture preserves hash equality groups to detect accidental
+updates to legacy rows; memory and restricted PostgreSQL exercise both paths.

@@ -56,6 +56,21 @@ const socialAccount = reference.database.account.find(
 socialAccount.providerId = 'google';
 socialAccount.accountId = 'social-subject';
 delete socialAccount.password;
+const ownerCredential = reference.database.account.find(
+  (row) => row.userId === ownerId,
+);
+reference.database.account.push({
+  ...ownerCredential,
+  id: 'legacy-owner-credential',
+  accountId: 'legacy-owner-subject',
+});
+reference.database.account.push({
+  ...ownerCredential,
+  id: 'legacy-social-credential',
+  userId: socialId,
+  accountId: 'legacy-social-subject',
+});
+
 for (const [id, token, user, created, expires] of [
   ['valid', 'valid', ownerId, start, start + 60000],
   ['expired', 'expired', ownerId, start, start - 1],
@@ -183,18 +198,20 @@ const actual = run.stdout
   .map((line) => JSON.parse(line))
   .slice(1);
 assert.equal(actual.length, expected.length);
-function normalize(value) {
-  if (Array.isArray(value)) return value.map(normalize);
+function normalize(value, hashes = new Map()) {
+  if (Array.isArray(value)) return value.map((item) => normalize(item, hashes));
   if (value && typeof value === 'object')
     return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        key === 'password'
-          ? '[stored hash]'
-          : key === 'id' && value.providerId
-            ? `account:${value.userId}:${value.providerId}`
-            : normalize(item),
-      ]),
+      Object.entries(value).map(([key, item]) => {
+        if (key === 'password') {
+          if (!hashes.has(item))
+            hashes.set(item, `[stored hash:${hashes.size + 1}]`);
+          return [key, hashes.get(item)];
+        }
+        if (key === 'id' && value.providerId)
+          return [key, `account:${value.userId}:${value.providerId}`];
+        return [key, normalize(item, hashes)];
+      }),
     );
   return value;
 }

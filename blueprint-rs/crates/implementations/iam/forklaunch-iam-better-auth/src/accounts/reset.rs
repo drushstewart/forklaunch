@@ -55,16 +55,19 @@ impl<S: AuthStore> CredentialService<S> {
         if tx.get(Model::User, &user_id).await?.is_none() {
             return Err(user_not_found());
         }
-        let mut account = tx
-            .list(Model::Account)
-            .await?
-            .into_iter()
-            .find(|row| row["userId"] == user_id && row["providerId"] == "credential");
+        let account = super::find_credential(&mut tx, &user_id).await?;
         let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
-        if let Some(row) = account.as_mut() {
-            row["password"] = json!(hash);
-            row["updatedAt"] = json!(timestamp);
-            tx.replace(Model::Account, row.clone()).await?;
+        if account.is_some() {
+            for mut row in tx.list(Model::Account).await? {
+                if row["userId"] == user_id
+                    && row["providerId"] == "credential"
+                    && row["accountId"] == user_id
+                {
+                    row["password"] = json!(hash);
+                    row["updatedAt"] = json!(timestamp);
+                    tx.replace(Model::Account, row).await?;
+                }
+            }
         } else {
             tx.insert(Model::Account, json!({"id":uuid::Uuid::new_v4().to_string(),"userId":user_id,"accountId":user_id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
         }
@@ -92,29 +95,7 @@ pub(crate) mod tests {
 
     pub(crate) async fn exercise_reset<S: AuthStore>(store: Arc<S>) {
         let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
-        let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
-        let mut tx = store.begin(true).await.unwrap();
-        tx.insert(Model::User, json!({"id":"reset-native-owner","email":"reset-native@fixture.test","name":"Reset Owner"})).await.unwrap();
-        for (id, identifier, expires) in [
-            (
-                "single-reset",
-                "reset-password:single",
-                now + chrono::Duration::minutes(1),
-            ),
-            (
-                "expired-reset",
-                "reset-password:expired",
-                now - chrono::Duration::milliseconds(1),
-            ),
-            (
-                "unrelated-reset",
-                "other:retained",
-                now + chrono::Duration::minutes(1),
-            ),
-        ] {
-            tx.insert(Model::Verification, json!({"id":id,"identifier":identifier,"value":"reset-native-owner","createdAt":timestamp,"updatedAt":timestamp,"expiresAt":expires.to_rfc3339_opts(SecondsFormat::Millis,true)})).await.unwrap();
-        }
-        tx.commit().await.unwrap();
+        seed_reset(store.as_ref(), now).await;
         let sessions = SessionService::new(store.clone());
         let session = sessions
             .create("reset-native-owner", "", "", now)
@@ -141,12 +122,21 @@ pub(crate) mod tests {
             .await
             .unwrap()
             .into_iter()
-            .find(|row| row["userId"] == "reset-native-owner")
+            .find(|row| {
+                row["userId"] == "reset-native-owner" && row["accountId"] == "reset-native-owner"
+            })
             .unwrap();
         assert!(credentials::verify_password(
             password,
             account["password"].as_str().unwrap()
         ));
+        assert_eq!(
+            tx.get(Model::Account, "legacy-reset-account")
+                .await
+                .unwrap()
+                .unwrap()["password"],
+            "not-selected"
+        );
         assert!(
             tx.get(Model::Verification, "single-reset")
                 .await
@@ -167,6 +157,7 @@ pub(crate) mod tests {
                 .unwrap()
                 .is_some()
         );
+        check_updated_credential(store.as_ref(), &service, now).await;
         assert_eq!(
             service
                 .reset_password("expired", "valid-password".into(), now)
@@ -182,6 +173,65 @@ pub(crate) mod tests {
                 .unwrap()
                 .is_none()
         );
+        tx.commit().await.unwrap();
+    }
+    async fn check_updated_credential<S: AuthStore>(
+        store: &S,
+        service: &CredentialService<S>,
+        now: DateTime<Utc>,
+    ) {
+        service
+            .reset_password("update-all", "updated-again-password".into(), now)
+            .await
+            .unwrap();
+        let mut tx = store.begin(false).await.unwrap();
+        let accounts: Vec<_> = tx
+            .list(Model::Account)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|row| {
+                row["userId"] == "reset-native-owner" && row["providerId"] == "credential"
+            })
+            .collect();
+        assert_eq!(accounts.len(), 2);
+        assert_eq!(accounts[0]["password"], "not-selected");
+        assert!(credentials::verify_password(
+            "updated-again-password",
+            accounts[1]["password"].as_str().unwrap()
+        ));
+        tx.commit().await.unwrap();
+    }
+
+    async fn seed_reset<S: AuthStore>(store: &S, now: DateTime<Utc>) {
+        let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+        let mut tx = store.begin(true).await.unwrap();
+        tx.insert(Model::User, json!({"id":"reset-native-owner","email":"reset-native@fixture.test","name":"Reset Owner"})).await.unwrap();
+        tx.insert(Model::Account,json!({"id":"legacy-reset-account","userId":"reset-native-owner","providerId":"credential","accountId":"legacy-subject","password":"not-selected"})).await.unwrap();
+        for (id, identifier, expires) in [
+            (
+                "single-reset",
+                "reset-password:single",
+                now + chrono::Duration::minutes(1),
+            ),
+            (
+                "update-all-reset",
+                "reset-password:update-all",
+                now + chrono::Duration::minutes(1),
+            ),
+            (
+                "expired-reset",
+                "reset-password:expired",
+                now - chrono::Duration::milliseconds(1),
+            ),
+            (
+                "unrelated-reset",
+                "other:retained",
+                now + chrono::Duration::minutes(1),
+            ),
+        ] {
+            tx.insert(Model::Verification, json!({"id":id,"identifier":identifier,"value":"reset-native-owner","createdAt":timestamp,"updatedAt":timestamp,"expiresAt":expires.to_rfc3339_opts(SecondsFormat::Millis,true)})).await.unwrap();
+        }
         tx.commit().await.unwrap();
     }
 }

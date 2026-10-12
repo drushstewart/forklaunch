@@ -182,3 +182,8 @@ state changes, forged-token rejection, signed-cookie issuance and subsequent
 session/JWT access over HTTP beside MCP. Email sending/change requests remain
 configured disabled. Remaining provider/org/account operations and CLI preset
 stay open.
+
+Reset credential selection/update also requires accountId=userId, preserving
+mismatched legacy rows and creating a proper credential when none matches. The
+44-case actual HTTP fixture preserves hash equality groups to detect accidental
+updates to legacy rows; memory and restricted PostgreSQL exercise both paths.
