@@ -319,7 +319,10 @@ docker compose build accounts
 docker compose up accounts
 ```
 
-The generated Dockerfile builds workspace binaries, and Compose selects the service binary, port, and health check. A relocated generated-service image passes local build, health/OpenAPI, and SIGTERM shutdown checks. Container deployment to ECS has not yet been verified.
+The generated Dockerfile builds workspace binaries, and Compose selects the service binary, port, and health check. A relocated generated-service image passes local build, health/OpenAPI, and SIGTERM shutdown checks. Release metadata selects the root `Dockerfile.rust` for native services and workers
+in Node/Bun applications, and the module workspace Dockerfile for TypeScript.
+A project-local Dockerfile takes precedence with its project-local build context.
+Container deployment to ECS has not yet been verified.
 
 ## Current boundaries
 

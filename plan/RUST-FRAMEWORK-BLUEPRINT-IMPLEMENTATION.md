@@ -1397,3 +1397,15 @@ Compose bind paths incorrectly interpreted as named volumes. All 1,057 CLI tests
 pass; CI runs both runtime variants through rust_mixed_dev.sh. Production Compose
 and Dockerfiles remain unchanged. Automatic source-to-contract/SDK refresh,
 Windows runtime validation and platform deployment remain separate work.
+
+
+Mixed release Dockerfile checkpoint (2026-10-12): release metadata now selects
+the native root Dockerfile.rust for Node/Bun applications instead of assigning the
+TypeScript Dockerfile to every service. Native worker service/consumer entries use
+the same rule. Project-local Dockerfiles retain project-local contexts; configured
+TypeScript Dockerfile names remain intact. All 1,058 CLI tests pass. The actual
+release command also passes ten owned-platform/tool scenarios, now including Node
+and Bun mixed build/export order and emitted buildContext/dockerfile pairs. The
+fixture uses a unique synthetic named account and removes only that account on
+exit; it makes no publication calls. Live platform/ECS launch-command and runtime
+compatibility remain unverified; corrected metadata alone does not close that gate.

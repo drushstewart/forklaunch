@@ -483,6 +483,26 @@ fn project_abs_path(
     app_root.join(project_relative_path(manifest, project))
 }
 
+fn project_dockerfile(
+    app_root: &Path,
+    manifest: &ApplicationManifestData,
+    project: &ProjectEntry,
+) -> String {
+    if project_abs_path(app_root, manifest, project)
+        .join("Dockerfile")
+        .is_file()
+    {
+        return "Dockerfile".to_string();
+    }
+    if project_is_rust(project) && matches!(manifest.runtime.as_str(), "node" | "bun") {
+        return "Dockerfile.rust".to_string();
+    }
+    manifest
+        .dockerfile
+        .clone()
+        .unwrap_or_else(|| "Dockerfile".to_string())
+}
+
 fn project_build_context(
     app_root: &Path,
     manifest: &ApplicationManifestData,
@@ -494,7 +514,7 @@ fn project_build_context(
     }
 
     if project_is_rust(project) {
-        let dockerfile = manifest.dockerfile.as_deref().unwrap_or("Dockerfile");
+        let dockerfile = project_dockerfile(app_root, manifest, project);
         if app_root.join(dockerfile).exists() {
             return Some(".".to_string());
         }
@@ -673,10 +693,7 @@ pub(crate) fn generate_release_manifest(
                     serves: serving_ports(project),
                 }),
                 build_context: project_build_context(app_root, manifest, project),
-                dockerfile: manifest
-                    .dockerfile
-                    .clone()
-                    .or_else(|| Some("Dockerfile".to_string())),
+                dockerfile: Some(project_dockerfile(app_root, manifest, project)),
             });
         } else if project.r#type == ProjectType::Worker {
             let runtime_deps = project_runtime_deps.get(&project.name).cloned();
@@ -811,10 +828,7 @@ pub(crate) fn generate_release_manifest(
                     serves: serving_ports(project),
                 }),
                 build_context: project_build_context(app_root, manifest, project),
-                dockerfile: manifest
-                    .dockerfile
-                    .clone()
-                    .or_else(|| Some("Dockerfile".to_string())),
+                dockerfile: Some(project_dockerfile(app_root, manifest, project)),
             });
 
             let worker_type_str = project_worker_type(project);
@@ -854,10 +868,7 @@ pub(crate) fn generate_release_manifest(
                 status: None,
                 config: ServiceConfigEnum::Worker(worker_config),
                 build_context: project_build_context(app_root, manifest, project),
-                dockerfile: manifest
-                    .dockerfile
-                    .clone()
-                    .or_else(|| Some("Dockerfile".to_string())),
+                dockerfile: Some(project_dockerfile(app_root, manifest, project)),
             });
         }
     }
@@ -1353,6 +1364,78 @@ mod tests {
             panic!("email worker should have worker config");
         };
         assert_eq!(worker_config.worker_type, WorkerType::PostgreSQL);
+    }
+
+    #[test]
+    fn mixed_release_uses_each_languages_dockerfile_for_services_and_workers() {
+        for runtime in ["node", "bun"] {
+            let root = TempDir::new().unwrap();
+            std::fs::write(root.path().join("Dockerfile.rust"), "FROM rust:1.91-slim\n").unwrap();
+            std::fs::create_dir_all(root.path().join("modules")).unwrap();
+            std::fs::write(root.path().join("modules/Dockerfile"), "FROM node:22\n").unwrap();
+            let mut manifest = rust_release_test_manifest();
+            manifest.runtime = runtime.to_string();
+            manifest.modules_path = "modules".to_string();
+            manifest.language = Some("mixed".to_string());
+            let mut legacy = manifest.projects[0].clone();
+            legacy.name = "legacy-api".to_string();
+            legacy.metadata = Some(ProjectMetadata {
+                language: Some("typescript".to_string()),
+                ..ProjectMetadata::default()
+            });
+            manifest.projects.push(legacy);
+            let release = generate_release_manifest(
+                root.path(),
+                "app-id".into(),
+                "1.0.0".into(),
+                "commit".into(),
+                None,
+                None,
+                &manifest,
+                &HashMap::new(),
+                Vec::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashSet::new(),
+            )
+            .unwrap();
+            assert_eq!(release.services.len(), 4);
+            for service in release.services {
+                let legacy = service.id == "legacy-api";
+                assert_eq!(
+                    service.build_context.as_deref(),
+                    Some(if legacy { "modules" } else { "." })
+                );
+                assert_eq!(
+                    service.dockerfile.as_deref(),
+                    Some(if legacy {
+                        "Dockerfile"
+                    } else {
+                        "Dockerfile.rust"
+                    })
+                );
+            }
+            // A project-local Dockerfile is relative to its project-local context.
+            let custom = root.path().join("crates/accounts");
+            std::fs::create_dir_all(&custom).unwrap();
+            std::fs::write(custom.join("Dockerfile"), "FROM custom\n").unwrap();
+            assert_eq!(
+                project_build_context(root.path(), &manifest, &manifest.projects[0]).as_deref(),
+                Some("crates/accounts")
+            );
+            assert_eq!(
+                project_dockerfile(root.path(), &manifest, &manifest.projects[0]),
+                "Dockerfile"
+            );
+            manifest.dockerfile = Some("Dockerfile.custom".into());
+            assert_eq!(
+                project_dockerfile(root.path(), &manifest, &manifest.projects[2]),
+                "Dockerfile.custom"
+            );
+        }
     }
 
     #[test]
