@@ -150,7 +150,7 @@ impl<S: AuthStore> CredentialService<S> {
 fn unauthorized() -> BlueprintError {
     BlueprintError::new("UNAUTHORIZED", "Unauthorized")
 }
-fn truthy(value: &Value) -> bool {
+pub(super) fn truthy(value: &Value) -> bool {
     match value {
         Value::Null | Value::Bool(false) => false,
         Value::Number(number) => number.as_f64() != Some(0.0),

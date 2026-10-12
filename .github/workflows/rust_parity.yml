@@ -73,6 +73,7 @@ on:
       - 'cli/tests/rust_better_auth_profiles.mjs'
       - 'cli/tests/rust_better_auth_configured_disabled.mjs'
       - 'cli/tests/rust_better_auth_reset_password.mjs'
+      - 'cli/tests/rust_better_auth_set_password.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
       - 'cli/tests/rust_better_auth_email_tokens.mjs'
       - 'cli/tests/rust_better_auth_email_verification.mjs'
@@ -187,6 +188,7 @@ on:
       - 'cli/tests/rust_better_auth_profiles.mjs'
       - 'cli/tests/rust_better_auth_configured_disabled.mjs'
       - 'cli/tests/rust_better_auth_reset_password.mjs'
+      - 'cli/tests/rust_better_auth_set_password.mjs'
       - 'cli/tests/rust_better_auth_token_callbacks.mjs'
       - 'cli/tests/rust_better_auth_email_tokens.mjs'
       - 'cli/tests/rust_better_auth_email_verification.mjs'
@@ -453,6 +455,7 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_reset_password.mjs
+      - run: node cli/tests/rust_better_auth_set_password.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

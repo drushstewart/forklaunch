@@ -1032,3 +1032,5 @@ Fresh packaged install `ac1c0T` validates the twenty-route auth checkpoint at
 startup configurations, portable modules/workers, CLI/native SDKs and all five
 managed callbacks. Checkout CLI restored. Token-reset additions are validated
 separately and are newer than this archive snapshot.
+
+- [x] Match the configured server-only initial-password helper against 36 actual Better Auth API/storage outcomes, with strict credential identity, empty/missing passwords, session refresh/expiry and validation ordering. Verify one concurrent assignment wins in memory/restricted PostgreSQL and deterministic revocation during derivation prevents a write. Keep this helper server-only; remaining provider/org/JWT helper and CLI preset gates remain open.

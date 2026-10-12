@@ -409,3 +409,12 @@ Reset credential selection/update also requires accountId=userId, preserving
 mismatched legacy rows and creating a proper credential when none matches. The
 44-case actual HTTP fixture preserves hash equality groups to detect accidental
 updates to legacy rows; memory and restricted PostgreSQL exercise both paths.
+
+The native server-only `CredentialService::set_password` helper matches 36 actual
+configured Better Auth API/storage comparisons. It creates only strictly scoped
+credentials, fills empty/null/missing passwords and rejects already-set passwords;
+authoritative session refresh/expiry and password validation retain actual order.
+Memory and restricted PostgreSQL exercise concurrent initial assignment, legacy
+row preservation and empty credentials. A deterministic memory-store race revokes
+the session after derivation and proves no password is written. No public route is
+added for this server-only API; the native raw HTTP count remains twenty-four.

@@ -5,6 +5,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use forklaunch_iam_better_auth::{
+    accounts::CredentialService,
     http::AuthHttp,
     store::{AuthStore, AuthTransaction, Model, memory::MemoryAuthStore},
 };
@@ -70,6 +71,7 @@ async fn main() {
                 }
                 records
             }
+            "set" => set_password(store.clone(), &input).await,
             "request" => {
                 let mut request = Request::builder()
                     .method(input["method"].as_str().unwrap())
@@ -113,5 +115,20 @@ async fn main() {
             operation => panic!("unknown operation {operation}"),
         };
         println!("{result}");
+    }
+}
+
+async fn set_password(store: Arc<MemoryAuthStore>, input: &Value) -> Value {
+    match CredentialService::new(store.clone())
+        .set_password(
+            input["token"].as_str().unwrap(),
+            input["password"].as_str().unwrap().to_owned(),
+            input["transient"].as_bool().unwrap_or(false),
+            DateTime::<Utc>::from_timestamp_millis(input["now"].as_i64().unwrap()).unwrap(),
+        )
+        .await
+    {
+        Ok(body) => json!({"body":body}),
+        Err(error) => json!({"error":{"code":error.code,"message":error.message}}),
     }
 }
