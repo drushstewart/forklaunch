@@ -53,9 +53,10 @@ def http():
 
 try:
     process = subprocess.Popen([str(binary), 'dev', 'legacy-api', '--path', str(app), '--project-name', project,
-        '--compose-file', str(app / 'dev.fixture.yaml'), '--no-deps', '--sdk-target', 'typescript'],
+        '--compose-file', str(app / 'dev.fixture.yaml'), '--no-deps', '--sdk-target', 'typescript',
+        *(['--no-build'] if '--reuse-image' in sys.argv[2:] else [])],
         cwd=app, env=env, stdout=log, stderr=subprocess.STDOUT)
-    message = wait(http)
+    message = wait(http, seconds=1200)
     shared = app / 'modules/core/development.schema.ts'
     assert 'sharedLibraryMarker' in shared.read_text()
     shared.write_text(shared.read_text().replace('sharedLibraryMarker', 'sharedLibraryReplayMarker'))

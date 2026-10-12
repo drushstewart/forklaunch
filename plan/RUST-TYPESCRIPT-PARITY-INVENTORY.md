@@ -1529,3 +1529,20 @@ Node/Bun run and both SDK source trees remain. The expanded Bun dev fixture also
 adds the serde_json dependency required by its custom socket registration. That
 missing fixture dependency was corrected in the in-flight run before service
 startup checks; socket lifecycle/reload validation remains pending.
+
+### Development validation follow-up (2026-10-12, ongoing)
+
+The corrected Node full mixed loop passes in `rust-mixed-dev/run.xb4uz99y`:
+HTTP/MCP before/after source edits, native/TypeScript/shared-library contract and
+SDK refresh, supervised shutdown and preserved production configuration. Its
+first TypeScript-only replay hit the fixture's four-minute fresh image-build limit;
+that is not a pass. A retry uses the same retained application and a build-aware
+startup deadline. Future full runs keep the owned service image until replay and
+use `--no-build`, then remove it, avoiding a redundant dependency install.
+
+Bun's expanded fixture now supplies serde_json for its explicit socket registration,
+uses the actual `socket_development.ts` output name, and refreshes ephemeral host
+ports while waiting for startup (Docker may change them after a restart). A fresh
+run at `rust-mixed-dev/run.b25r_8kn` is validating socket export/change/removal/restore
+plus the shared-library loop. The superseded attempts are retained as logs only.
+No additional development checklist item is closed while these checks remain open.

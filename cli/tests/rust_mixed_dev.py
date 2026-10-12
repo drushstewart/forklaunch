@@ -79,6 +79,7 @@ assert original == {str(p.relative_to(app)): p.read_bytes() for p in app.rglob('
 log_path = root / 'dev.log'
 log = log_path.open('w')
 process = None
+replay_ready = False
 sdk_watch = None
 sdk_log = (root / 'sdk-watch.log').open('w')
 containers = []
@@ -126,11 +127,10 @@ try:
         if all(key in endpoints for key in [('native-api', native_port), ('legacy-api', ts_port), ('legacy-api', ts_port + 2000)]):
             break
         time.sleep(2)
-    native = endpoints[('native-api', native_port)]
-    typescript = endpoints[('legacy-api', ts_port)]
-    mcp = endpoints[('legacy-api', ts_port + 2000)] + '/mcp'
-    wait_json(native + '/health', 'status', 'ok')
-    wait_json(typescript + '/legacy-api', 'message', 'LegacyApi')
+    # Docker can assign a new ephemeral host port when a startup rebuild restarts.
+    native = wait_json(lambda: endpoint('native-api', native_port) + '/health', 'status', 'ok').removesuffix('/health')
+    typescript = wait_json(lambda: endpoint('legacy-api', ts_port) + '/legacy-api', 'message', 'LegacyApi').removesuffix('/legacy-api')
+    mcp = endpoint('legacy-api', ts_port + 2000) + '/mcp'
     subprocess.run(['node', str(repo / 'cli/tests/rust_mixed_dev_probe.mjs'), native, typescript, mcp, 'LegacyApi'], check=True, timeout=90)
     def wait_sdk(expected, timeout=60):
         deadline = time.monotonic() + timeout
@@ -142,7 +142,7 @@ try:
             time.sleep(0.2)
         raise AssertionError(f'SDK did not refresh: {path}')
     def wait_socket(expected, timeout=180):
-        path = app / 'sdks/typescript-websocket/native-api/src/development.ts'
+        path = app / 'sdks/typescript-websocket/native-api/src/socket_development.ts'
         artifact = app / '.forklaunch/socket-contracts/native-api/socket-contract.json'
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -206,6 +206,7 @@ try:
     for file in ['docker-compose.yaml', 'Dockerfile', 'Dockerfile.rust', 'modules/Dockerfile']:
         if file in original:
             assert (app / file).read_bytes() == original[file]
+    replay_ready = True
     print(f'PASS {runtime} mixed dev startup, Rust/TypeScript source reloads, native/TypeScript/shared-library contract export and combined SDK refresh, HTTP/MCP before/after edits, SIGTERM supervision and preserved production configuration: {root}', flush=True)
 finally:
     if process is not None and process.poll() is None:
@@ -227,9 +228,15 @@ finally:
         ids = subprocess.check_output(['docker', resource, 'ls', '--filter', f'label=com.docker.compose.project={name}', '--format', '{{.ID}}' if resource == 'network' else '{{.Name}}'], text=True).split()
         if ids:
             subprocess.run(['docker', resource, 'rm', *ids], check=True)
-    for image in [configuration['services']['legacy-api']['image'], f'forklaunch-dev-{name}-native-api:local']:
+    images = [f'forklaunch-dev-{name}-native-api:local']
+    if not replay_ready:
+        images.append(configuration['services']['legacy-api']['image'])
+    for image in images:
         subprocess.run(['docker', 'image', 'rm', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # Reuse generated sources to validate TypeScript-only selection without compiling
 # a second native workspace. The replay owns a distinct Compose project.
-subprocess.run([os.environ.get('PYTHON', 'python3'), str(repo / 'cli/tests/rust_mixed_dev_typescript_replay.py'), str(app)], check=True, env=env)
+try:
+    subprocess.run([os.environ.get('PYTHON', 'python3'), str(repo / 'cli/tests/rust_mixed_dev_typescript_replay.py'), str(app), '--reuse-image'], check=True, env=env)
+finally:
+    subprocess.run(['docker', 'image', 'rm', configuration['services']['legacy-api']['image']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
