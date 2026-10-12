@@ -36,6 +36,8 @@ BullMQ queue defaults also support simple deduplication, TTL throttling and
 replacement of delayed jobs (`deduplication` with `ttl`, `extend`, `replace` and
 job `delay`). Actual TypeScript/native producers share the same deduplication
 keys in both directions, including release after completion and TTL expiry.
+`keep_last_if_active` retains the newest duplicate submitted during processing
+and runs one follow-up after either successful completion or terminal failure.
 Configure these through `BullMqOptions.queue.default_job_options`. Failed
 attempts retain their reason and diagnostic history through immediate/delayed
 retries and terminal failure; `stack_trace_limit` controls the newest retained
