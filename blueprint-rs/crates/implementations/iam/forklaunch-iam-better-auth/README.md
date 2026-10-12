@@ -415,3 +415,10 @@ legacy data, link coercion and atomic consumption pass memory/restricted
 PostgreSQL checks. Strict all-feature clippy, rebuilt CLI and 715 embedded sources
 pass. Google HTTP authorization/callback and token/account lifecycle remain open;
 this foundation adds no raw routes.
+
+Configured Google authorization URL construction now passes 37 actual provider
+comparisons: S256 PKCE, scopes, callback URI, login hints, reserved parameters,
+overwrite behavior, Unicode/query encoding and JavaScript numeric-key ordering.
+Strict all-feature clippy, rebuilt CLI and 717 embedded sources pass; CI runs the
+fixture. HTTP social-login/ID-token user-account-session integration, callback
+code exchange and token lifecycle remain open. No raw route is added yet.
