@@ -1575,3 +1575,19 @@ A rebuilt CLI also generates an application containing the new macro crate, core
 metadata API and integration tests; all core/macro tests and documentation examples
 pass from that generated workspace. Its temporary source is removed after validation.
 The CLI package inventory includes all 764 required embedded sources/templates.
+
+### Combined development loop and image reuse (2026-10-12)
+
+Bun `rust-mixed-dev/run.3r582t9d` passes the complete mixed loop: HTTP/MCP
+startup and post-edit calls, native and TypeScript reloads, native/TypeScript/
+shared-library contract and SDK refresh, socket creation/change/removal/restore,
+SIGTERM watcher shutdown and unchanged production configuration. Its subsequent
+TypeScript-only replay failed because Compose rejects `up --watch --no-build`.
+This is a separate failed replay, not a failure of the completed mixed loop.
+
+The CLI now implements watched `--no-build` through a private image-only plan:
+remove build definitions, preserve explicit/default local image names and restart
+rules, and forbid pulling replacement build-backed images. Custom rebuild rules
+fail explicitly. All 1,075 CLI tests and the rebuild pass. Real TypeScript-only
+Bun replay with image reuse is still pending; the earlier Node replay passed.
+No additional development checklist gate is closed at this checkpoint.

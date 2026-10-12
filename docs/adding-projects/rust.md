@@ -371,7 +371,11 @@ inventory for current test evidence.
 
 Native reloads require [Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
 Use `--no-watch` to start without Compose reloads, `--no-build` to reuse images,
-and `--project-name` to select the Compose project. `--no-deps` starts only the
+and `--project-name` to select the Compose project. With reloads enabled,
+`--no-build` requires existing local images for build-backed services; it removes
+image build definitions from the private development plan and retains restart
+watches. Custom `rebuild` watch rules are rejected for this combination.
+`--no-deps` starts only the
 named services; configure required databases or providers through the existing
 Compose/environment settings. Automatic native startup supports generated binary
 commands; custom entrypoints require an explicit development setup. Dry-run shows

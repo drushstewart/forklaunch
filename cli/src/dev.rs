@@ -142,6 +142,10 @@ impl CliCommand for DevCommand {
         let watch = !matches.get_flag("no_watch")
             && (!changes.as_object().unwrap().is_empty()
                 || !typescript_changes.as_object().unwrap().is_empty());
+        let reuse_watched_images = watch && matches.get_flag("no_build");
+        if reuse_watched_images {
+            reuse_images(&mut planned)?;
+        }
         if matches.get_flag("dryrun") {
             println!(
                 "{}",
@@ -178,12 +182,14 @@ impl CliCommand for DevCommand {
             .arg(&root)
             .arg("-f")
             .arg(temporary.path())
-            .arg("up")
-            .arg(if matches.get_flag("no_build") {
+            .arg("up");
+        if !reuse_watched_images {
+            run.arg(if matches.get_flag("no_build") {
                 "--no-build"
             } else {
                 "--build"
             });
+        }
         if watch {
             run.arg("--watch");
         }
@@ -212,6 +218,41 @@ impl CliCommand for DevCommand {
             .transpose()?;
         supervise(run, watcher, socket_exports)
     }
+}
+
+// Compose rejects `up --watch --no-build`. Remove build definitions from this
+// private plan instead, retaining the same local image names and restart rules.
+// Never pull a replacement for an image that would otherwise be built locally.
+fn reuse_images(compose: &mut Value) -> Result<()> {
+    let project = compose
+        .get("name")
+        .and_then(Value::as_str)
+        .context("Resolved Compose project name missing")?
+        .to_owned();
+    let services = compose
+        .get_mut("services")
+        .and_then(Value::as_object_mut)
+        .context("Resolved Compose services missing")?;
+    for (name, service) in services {
+        let service = service.as_object_mut().context("Invalid Compose service")?;
+        if service
+            .get("develop")
+            .and_then(|value| value.get("watch"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|rule| rule.get("action").and_then(Value::as_str) == Some("rebuild"))
+        {
+            bail!("Service {name} has a rebuild watch rule incompatible with --no-build");
+        }
+        if service.remove("build").is_some() {
+            service
+                .entry("image")
+                .or_insert_with(|| json!(format!("{project}-{name}")));
+            service.insert("pull_policy".into(), json!("never"));
+        }
+    }
+    Ok(())
 }
 
 fn supports_restart(version: &str) -> bool {
@@ -718,6 +759,32 @@ mod tests {
         .unwrap();
         assert_eq!(planned, base);
         assert_eq!(changes, json!({}));
+    }
+
+    #[test]
+    fn watched_no_build_reuses_images_without_mutating_restart_rules() {
+        let mut compose = json!({"name":"fixture", "services": {
+            "native": {"image":"native:dev", "build":{"context":"."}, "pull_policy":"build", "develop":{"watch":[{"action":"restart","path":"src"}]}},
+            "legacy": {"build":"."},
+            "database": {"image":"postgres:17", "pull_policy":"missing"}
+        }});
+        let restart = compose["services"]["native"]["develop"].clone();
+        reuse_images(&mut compose).unwrap();
+        assert_eq!(compose["services"]["native"]["image"], "native:dev");
+        assert_eq!(compose["services"]["legacy"]["image"], "fixture-legacy");
+        for name in ["native", "legacy"] {
+            assert!(compose["services"][name].get("build").is_none());
+            assert_eq!(compose["services"][name]["pull_policy"], "never");
+        }
+        assert_eq!(compose["services"]["native"]["develop"], restart);
+        assert_eq!(compose["services"]["database"]["pull_policy"], "missing");
+        let mut rebuild = json!({"name":"fixture", "services":{"native":{"build":".","develop":{"watch":[{"action":"rebuild","path":"src"}]}}}});
+        assert!(
+            reuse_images(&mut rebuild)
+                .unwrap_err()
+                .to_string()
+                .contains("rebuild watch rule")
+        );
     }
 
     #[test]
