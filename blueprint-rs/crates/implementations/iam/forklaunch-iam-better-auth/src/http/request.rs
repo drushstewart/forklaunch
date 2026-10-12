@@ -49,9 +49,11 @@ pub(super) async fn parse_body(
             .expect("fixed JSON MIME expression")
     });
     if json.is_match(&normalized) {
-        return serde_json::from_slice::<Value>(&bytes)
+        return std::str::from_utf8(&bytes)
+            .map_err(|_| ())
+            .and_then(|text| crate::ecmascript::parse(text).map_err(|_| ()))
             .map(Some)
-            .map_err(|_| BlueprintError::new("BAD_REQUEST", "Invalid JSON in request body"));
+            .map_err(|()| BlueprintError::new("BAD_REQUEST", "Invalid JSON in request body"));
     }
     if normalized.contains("application/x-www-form-urlencoded") {
         return Ok(Some(Value::Object(
@@ -213,6 +215,22 @@ fn received(value: Option<&Value>) -> &'static str {
         None => "undefined",
         Some(Value::Null) => "null",
         Some(Value::Bool(_)) => "boolean",
+        Some(Value::Number(value))
+            if value
+                .to_string()
+                .parse::<f64>()
+                .is_ok_and(|n| n == f64::INFINITY) =>
+        {
+            "Infinity"
+        }
+        Some(Value::Number(value))
+            if value
+                .to_string()
+                .parse::<f64>()
+                .is_ok_and(|n| n == f64::NEG_INFINITY) =>
+        {
+            "-Infinity"
+        }
         Some(Value::Number(_)) => "number",
         Some(Value::String(_)) => "string",
         Some(Value::Array(_)) => "array",

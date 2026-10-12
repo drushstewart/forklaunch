@@ -97,14 +97,21 @@ impl<S: AuthStore> OrganizationService<S> {
             }
         }
         if let Some(metadata) = data.get("metadata") {
-            organization["metadata"] =
-                json!(serde_json::to_string(metadata).map_err(|_| internal())?);
+            organization["metadata"] = json!(crate::ecmascript::stringify(metadata));
         }
         tx.replace(Model::Organization, organization.clone())
             .await?;
         tx.commit().await?;
         if let Some(metadata) = organization.get("metadata").and_then(Value::as_str) {
-            organization["metadata"] = serde_json::from_str(metadata).unwrap_or(Value::Null);
+            let mut parsed: Value = crate::ecmascript::parse(metadata).map_err(|_| internal())?;
+            if crate::ecmascript::unsafe_metadata(&parsed) {
+                return Err(BlueprintError::new(
+                    "HTTP_INTERNAL_EMPTY",
+                    "Invalid organization metadata",
+                ));
+            }
+            crate::ecmascript::revive_dates(&mut parsed);
+            organization["metadata"] = parsed;
         }
         Ok(organization)
     }

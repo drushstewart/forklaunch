@@ -1069,4 +1069,11 @@ from the subsequent team sources.
 - [x] Port team creation/update/removal with scoped dynamic grants, mutation-specific error ordering, field stripping, active/last-team protections and live pending-invitation cleanup. All 110 actual HTTP/storage/cookie comparisons pass. Memory/restricted PostgreSQL validate concurrent removal preserves the last team, cleanup and live HTTP mutations beside JWT/MCP. Team-member mutations, invitations, dynamic roles and remaining preset/provider gates remain open.
 
 - [x] Add team-member addition/removal with required/coerced user IDs, scoped grants, shared keyed membership creation and exact counter/session effects. All 164 actual HTTP/storage/cookie comparisons and the 40-case server-only addition regression pass. Memory/restricted PostgreSQL verify duplicate-add and competing-remove races; live HTTP executes both routes beside JWT/MCP. Invitation/dynamic-role/provider/helper and generated preset gates remain open.
-- [ ] Expand raw auth JSON parser/serialized metadata conformance for numeric overflow, IEEE-754 integer rounding and ECMAScript exponent formatting. The current generic serde JSON parser rejects overflowing numbers; close this gate before claiming complete raw parser parity.
+- [x] Match raw auth numeric parsing and serialized metadata against 114 actual HTTP/storage/cookie comparisons: overflow, IEEE-754 rounding, exponent formatting, negative zero, duplicate/index/insertion keys, literal serde marker keys, reserved metadata keys and update-only ISO date revival. Preserve update persistence before strict metadata response failures. All 233 framework and 101 blueprint workspace tests pass with unified JSON features; explicit restricted PostgreSQL auth, 96 JOSE cases and HTTP/organization/team/password regressions pass.
+- [ ] Audit literal serde marker keys across shared generic request, MCP and persistence deserializers under unified arbitrary-precision/raw-value features; the auth boundary uses a literal-key-preserving raw parser. Unpaired surrogate/deep nesting and real ORM metadata conformance remain open before universal raw JSON parity.
+
+Fresh archive `5DF6N8` at `f014f7547` passes portable auth tests, live auth
+HTTP/JWT/MCP and the complete generated HTTP/MCP listener/startup matrix.
+Portable services/workers, both SDK generators and five signed capability
+callbacks pass. This snapshot contains 48 raw routes and both completed
+server-only helpers. Checkout CLI rebuilt afterward (16.84 seconds).

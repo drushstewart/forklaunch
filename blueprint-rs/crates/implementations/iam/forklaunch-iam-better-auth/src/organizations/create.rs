@@ -38,8 +38,7 @@ impl<S: AuthStore> OrganizationService<S> {
             }
         }
         if let Some(metadata) = body.get("metadata") {
-            organization["metadata"] =
-                json!(serde_json::to_string(metadata).map_err(|_| internal())?);
+            organization["metadata"] = json!(crate::ecmascript::stringify(metadata));
         }
         tx.insert(Model::Organization, organization.clone()).await?;
         let user = text(&view.user, "id")?;

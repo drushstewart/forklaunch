@@ -119,6 +119,22 @@ pub(super) fn received(value: Option<&Value>) -> &'static str {
         None => "undefined",
         Some(Value::Null) => "null",
         Some(Value::Bool(_)) => "boolean",
+        Some(Value::Number(value))
+            if value
+                .to_string()
+                .parse::<f64>()
+                .is_ok_and(|n| n == f64::INFINITY) =>
+        {
+            "Infinity"
+        }
+        Some(Value::Number(value))
+            if value
+                .to_string()
+                .parse::<f64>()
+                .is_ok_and(|n| n == f64::NEG_INFINITY) =>
+        {
+            "-Infinity"
+        }
         Some(Value::Number(_)) => "number",
         Some(Value::String(_)) => "string",
         Some(Value::Array(_)) => "array",

@@ -1,4 +1,6 @@
 //! Executes production auth HTTP handlers against an owned fixture store/clock.
+#[path = "../src/ecmascript/json.rs"]
+mod literal_json;
 use axum::{
     body::{Body, to_bytes},
     http::Request,
@@ -36,7 +38,7 @@ async fn main() {
     })
     .router();
     for line in io::stdin().lock().lines() {
-        let input: Value = serde_json::from_str(&line.unwrap()).unwrap();
+        let input: Value = literal_json::parse(&line.unwrap()).unwrap();
         clock.store(input["now"].as_i64().unwrap(), Ordering::SeqCst);
         let result = match input["op"].as_str().unwrap() {
             "seed" => seed(&store, &input).await,
@@ -79,7 +81,7 @@ async fn main() {
                     })
                     .collect();
                 let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
-                let body: Value = serde_json::from_slice(&bytes)
+                let body: Value = literal_json::parse(std::str::from_utf8(&bytes).unwrap_or(""))
                     .unwrap_or_else(|_| json!(String::from_utf8_lossy(&bytes)));
                 json!({"status":status,"headers":headers,"body":body})
             }

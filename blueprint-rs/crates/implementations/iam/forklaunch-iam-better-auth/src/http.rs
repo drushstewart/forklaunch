@@ -246,7 +246,11 @@ async fn dispatch<S: AuthStore + 'static>(
     let path = request.uri().path().to_owned();
     let response = handle(&app, request, &mut pending).await;
     let mut response = match response {
-        Ok(body) => Json(body).into_response(),
+        Ok(body) => (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            crate::ecmascript::stringify(&body),
+        )
+            .into_response(),
         Err(error) => failure_for_path(&error, &path),
     };
     for (name, value) in &pending {
@@ -276,7 +280,8 @@ async fn handle<S: AuthStore + 'static>(
     }
     request::validate_body(path, payload.as_ref())?;
     organization::validate_query(path, &query)?;
-    let payload = payload.unwrap_or(Value::Null);
+    let mut payload = payload.unwrap_or(Value::Null);
+    organization::strip_record_keys(path, &mut payload);
     if path == "/get-session" {
         pending.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
         pending.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));

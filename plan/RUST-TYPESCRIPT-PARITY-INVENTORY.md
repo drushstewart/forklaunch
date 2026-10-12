@@ -522,3 +522,13 @@ seat, concurrent removal has one winner and sessions retain active-team values.
 Live HTTP runs the new routes beside JWT/MCP lifecycle. Invitation/dynamic-role
 management, providers, server JWT helpers, real ORM/callback, raw JSON numeric
 edge cases and generated preset gates remain open.
+
+Raw auth JSON/metadata now passes 114 actual HTTP/storage/cookie comparisons,
+including numeric overflow, IEEE double rounding/formatting, index/insertion key
+ordering, literal serde marker keys, reserved-key failures after persistence and
+update-only ISO date revival. All 233 framework and 101 blueprint workspace tests
+pass with unified JSON features; explicit PostgreSQL auth passes. Shared generic
+deserializer marker keys, unpaired surrogates/deep nesting and real ORM metadata
+behavior remain separate gates. Fresh archive `5DF6N8` validates the preceding
+48-route snapshot's generated service/worker HTTP/MCP startup matrix, both SDK
+generators and five managed callbacks; checkout CLI rebuilt afterward.

@@ -298,3 +298,15 @@ seat, concurrent removal has one winner and sessions retain active-team values.
 Live HTTP runs the new routes beside JWT/MCP lifecycle. Invitation/dynamic-role
 management, providers, server JWT helpers, real ORM/callback, raw JSON numeric
 edge cases and generated preset gates remain open.
+
+Raw auth JSON and metadata pass 114 actual HTTP/storage/cookie comparisons.
+Numbers follow IEEE double coercion and ECMAScript stringification, including
+overflow, negative zero and exponent thresholds. Metadata preserves duplicate
+key positions and sorts array-index keys before insertion-ordered keys. The HTTP
+record boundary strips top-level `__proto__`; strict update parsing rejects
+reserved keys after persistence and revives ISO date strings for its response.
+Literal serde marker keys remain ordinary metadata through a bounded raw parser.
+Workspace tests pass with unified JSON features (233 framework, 101 blueprint),
+as do explicit restricted PostgreSQL auth and existing JOSE/password/session/
+organization/team regressions. Shared generic deserializer marker keys, unpaired
+surrogates/deep nesting and real ORM metadata behavior remain open gates.

@@ -105,3 +105,17 @@ pub(super) async fn handle<S: AuthStore + 'static>(
         _ => Err(internal()),
     }
 }
+
+pub(super) fn strip_record_keys(path: &str, payload: &mut Value) {
+    // Zod record construction skips the own __proto__ key at this level.
+    let metadata = match path {
+        "/organization/create" => payload.get_mut("metadata"),
+        "/organization/update" => payload
+            .get_mut("data")
+            .and_then(|data| data.get_mut("metadata")),
+        _ => None,
+    };
+    if let Some(Value::Object(metadata)) = metadata {
+        metadata.shift_remove("__proto__");
+    }
+}
