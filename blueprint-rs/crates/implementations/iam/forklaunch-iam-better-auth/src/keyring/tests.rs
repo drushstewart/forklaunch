@@ -1,3 +1,4 @@
+mod sign;
 mod verify;
 use super::*;
 use crate::store::memory::MemoryAuthStore;
@@ -13,6 +14,7 @@ pub(crate) async fn exercise_key_lifecycle<S: AuthStore>(store: Arc<S>) {
         .issue("user", "fixture@example.test", None, now)
         .await
         .unwrap();
+    sign::exercise(&service, now).await;
     verify::exercise(&store, &service, &token, now).await;
     let restarted = KeyRing::new(store.clone(), "https://auth.fixture.test");
     assert_eq!(

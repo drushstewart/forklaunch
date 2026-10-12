@@ -89,6 +89,24 @@ impl SigningKey {
             URL_SAFE_NO_PAD.encode(signature.as_ref())
         ))
     }
+    /// Signs an already validated server-owned claims object.
+    /// # Errors
+    /// Returns a sanitized error when the claims are not an object.
+    pub(crate) fn sign_payload(&self, payload: &Value) -> BlueprintResult<String> {
+        if !payload.is_object() {
+            return Err(key_error());
+        }
+        let header = json!({"alg":"EdDSA","kid":self.id});
+        let content = format!(
+            "{}.{}",
+            URL_SAFE_NO_PAD.encode(crate::ecmascript::stringify(&header)),
+            URL_SAFE_NO_PAD.encode(crate::ecmascript::stringify(payload))
+        );
+        Ok(format!(
+            "{content}.{}",
+            URL_SAFE_NO_PAD.encode(self.pair.sign(content.as_bytes()).as_ref())
+        ))
+    }
 }
 
 fn key_error() -> BlueprintError {

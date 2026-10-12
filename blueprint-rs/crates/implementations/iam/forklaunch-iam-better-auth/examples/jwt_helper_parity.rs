@@ -19,6 +19,29 @@ async fn main() {
         let now = DateTime::<Utc>::from_timestamp(input["now"].as_i64().unwrap(), 0).unwrap();
         let service = KeyRing::new(store.clone(), "http://localhost:3000");
         let result = match input["op"].as_str().unwrap() {
+            "clear" => {
+                let mut tx = store.begin(true).await.unwrap();
+                for row in tx.list(Model::Jwks).await.unwrap() {
+                    tx.delete(Model::Jwks, row["id"].as_str().unwrap())
+                        .await
+                        .unwrap();
+                }
+                tx.commit().await.unwrap();
+                json!({"cleared":true})
+            }
+            "records" => {
+                let mut tx = store.begin(false).await.unwrap();
+                let rows = tx.list(Model::Jwks).await.unwrap();
+                tx.commit().await.unwrap();
+                json!(rows)
+            }
+            "sign" => match service.sign_jwt(input.get("body"), now).await {
+                Ok(body) => json!({"body":body}),
+                Err(error) if error.code == "VALIDATION_ERROR" => {
+                    json!({"error":{"code":error.code,"message":error.message}})
+                }
+                Err(error) => json!({"error":{"message":error.message}}),
+            },
             "seed" => {
                 let mut tx = store.begin(true).await.unwrap();
                 tx.insert(Model::Jwks, input["row"].clone()).await.unwrap();

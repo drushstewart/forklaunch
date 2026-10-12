@@ -383,3 +383,14 @@ HTTP confirms signing/verifying helper paths remain absent beside JWT/MCP. Three
 of four configured server helpers now have native implementations. Signing,
 additional-algorithm provisioning/interop, providers, real ORM/callback, shared
 parser and full-preset generation remain open.
+
+All four configured server-only helper entrypoints now have native implementations.
+The configured EdDSA signJWT profile passes 129 actual API and 134 key-state
+comparisons, with independently verified signatures. Cover schema/default-duration
+ordering, key persistence after claim failure, exact claim setters, issuer/audience
+precedence, fractional/negative/overflow durations and numeric key rotation. Memory/
+restricted PostgreSQL exercise signing and verification beside key lifecycle; live
+HTTP/JWT/MCP retain absent public helper paths. Additional signing-algorithm/key
+provisioning, typed date/function options, custom callbacks and real ORM/storage
+interop remain open; unsupported fresh key profiles fail explicitly. Sixty raw
+HTTP routes remain implemented, with provider/OpenAPI/full-preset work outstanding.
