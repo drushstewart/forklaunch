@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {assertJsonSnapshot} from './rust_json_snapshot.mjs';
 import {actualValidator} from './rust_actual_validator_fixture.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const {load}=actualValidator(root);
@@ -55,10 +56,12 @@ try{
  await writeFile(input,JSON.stringify(cases));
  execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-asyncapi','raw::tests'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_RAW_SOCKET_INPUT:input,FORKLAUNCH_TEST_RAW_SOCKET_OUTPUT:output,FORKLAUNCH_TEST_RAW_SOCKET_REFERENCES:references},stdio:'inherit',timeout:300000});
  const native=JSON.parse(await readFile(output,'utf8'));
+ const documents=[];
  for(let index=0;index<cases.length;index++){
   assert.equal(native[index].ok,true,JSON.stringify(native[index]));
   const actual=JSON.parse(JSON.stringify(generateAsyncApi(cases[index],{title:'Fixture',version:'1.0.0'})));
   assert.deepEqual(native[index].document,actual,`metadata ${index}`);
+  documents.push(actual);
   for(const operation of Object.values(actual.operations??{})){
    for(const reference of [operation.channel.$ref,...operation.messages.map(message=>message.$ref)]){
     const resolved=decodeURIComponent(reference.slice(2)).split('/').reduce((value,key)=>value?.[key.replaceAll('~1','/').replaceAll('~0','~')],actual);
@@ -67,6 +70,7 @@ try{
   }
   await parse(actual);await parse(native[index].document);
  }
+ await assertJsonSnapshot(root,'rust_asyncapi_metadata.snap.json',documents);
  const recursive=JSON.parse(await readFile(references,'utf8'));await parse(recursive);
  // The parser also dereferences literal $ref data inside const/examples. Keep
  // those assertions in the original output and AJV checks; parse a structural

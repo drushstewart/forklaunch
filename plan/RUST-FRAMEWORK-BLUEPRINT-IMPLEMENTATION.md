@@ -201,7 +201,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Map auth and access levels: public, authenticated, protected, internal.
 - [x] Define contract artifact format emitted by Rust services.
 - [ ] Confirm TypeScript and Rust contract artifacts can normalize to the same OpenAPI and AsyncAPI outputs.
-- [ ] Add snapshot fixtures from representative TypeScript routes for parity testing.
+- [x] Add snapshot fixtures from representative TypeScript routes for parity testing. (`rust_billing_contracts_parity.mjs` records 66 actual configured base/Stripe route contracts and 28 actual validator/OpenAPI DTO schemas; existing Rust comparisons run before the snapshot check.)
 
 ## Phase 1 - `framework-rs` Workspace Scaffold
 
@@ -790,7 +790,7 @@ Current CLI structure to build on:
 - [ ] Build a canonical contract fixture service in TypeScript.
 - [x] Build the same canonical contract fixture service in Rust. (`forklaunch-blueprint-sample-service::iam_router` — runnable, contract-driven, serves OpenAPI)
 - [ ] Snapshot OpenAPI outputs and compare normalized output.
-- [ ] Snapshot AsyncAPI outputs and compare normalized output.
+- [x] Snapshot AsyncAPI outputs and compare normalized output. (`rust_ws_metadata_parity.mjs` compares 34 actual TypeScript/native WebSocket documents, then checks committed key-normalized snapshots; official schema/parser and payload/reference checks also pass. Broader external AsyncAPI protocols remain separately tracked.)
 - [x] Run generated TypeScript SDK against the Rust service. (`cli/tests/rust_http_runtime.sh`; relocated app, live HTTP, graceful shutdown verified)
 - [x] Run generated Rust SDK against the compiled TypeScript HTTP wire fixture, including typed JSON, statuses, text/binary uploads and multipart files through both contract and OpenAPI generation. Full TypeScript framework service conformance remains separate.
 - [x] Add CLI tests that generate Rust TypeScript/Rust SDKs and typecheck the generated TypeScript SDK entrypoint.

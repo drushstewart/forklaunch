@@ -1479,3 +1479,28 @@ node_modules trees across eight fixture families. Source worktrees and retained
 fixture sources/logs remain. The previously stuck owned Docker builder is now
 absent. Fresh Node and Bun dev checks own distinct projects and clean their Docker
 resources on exit.
+
+### Actual TypeScript conformance snapshots (2026-10-12)
+
+`rust_ws_metadata_parity.mjs` now checks a committed 34-document AsyncAPI baseline
+after exact actual-TypeScript/native equality. Normalization sorts object keys
+only, preserving arrays, special/prototype keys, literal values and all schema
+constraints. All cases pass, including official JSON Schema validation, 63 parser
+documents, 11 documented parser limitations and independent recursive/literal
+reference and payload checks. External non-WebSocket protocol scope stays open.
+
+`rust_billing_contracts_parity.mjs` now records 66 configured TypeScript base/Stripe
+routes and 28 complete validator/OpenAPI DTO schemas after the existing native
+route and selected schema-property comparisons. Full DTO snapshots add drift
+visibility without claiming that those selected comparisons prove every schema
+constraint. Both suites pass again without the update flag. The shared JSON
+snapshot helper rejects updates in CI; fixture/helper changes trigger the parity
+workflow. This closes representative-TypeScript snapshot coverage and normalized
+AsyncAPI snapshots, while canonical whole-service OpenAPI equivalence remains open.
+
+The package inventory now includes all 760 required native embedded sources,
+including the new native snapshots. The first fresh mixed-dev run reached real
+HTTP/MCP and native reload but failed because its shared-schema fixture imported
+an unexported `object` helper. The fixture now uses supported `optional({...})`
+syntax and waits for service readiness between schema edits. Fresh corrected
+Node/Bun runs remain pending; that failure is not a development parity pass.

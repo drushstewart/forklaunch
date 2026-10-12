@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {assertJsonSnapshot} from './rust_json_snapshot.mjs';
 import {actualValidator} from './rust_actual_validator_fixture.mjs';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
@@ -42,12 +43,15 @@ const {toPrettyCamelCase}=load(path.join(root,'framework/common/src/camelCase.ts
 const simpleNative=route=>({method:route.method,path:route.path,operation:route.operationName,access:route.access,params:route.request.params.map(field=>field.name).sort(),query:route.request.query.map(field=>field.name).sort(),body:route.request.body!=null,statuses:route.responses.map(response=>response.statusCode).sort()});
 const simpleTs=route=>({method:route.method,path:route.path.replace(/\/$/,''),operation:toPrettyCamelCase(route.options.name),access:route.options.access,params:Object.keys(route.options.params??{}).sort(),query:Object.keys(route.options.query??{}).sort(),body:route.options.body!==undefined,statuses:Object.keys(route.options.responses).map(Number).sort()});
 let count=0,schemaCount=0;
+const snapshots=[];
 for(const stripe of [false,true]){
  captured.length=0;
  const variant=stripe?'stripe':'base';
  for(const family of [...families,'compliance',...(stripe?['webhook','platformEvents']:[])])load(path.join(root,`blueprint/billing-${variant}/api/routes/${family}.routes.ts`));
  const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-billing-interface','--example','module_contract',...(stripe?['--','--stripe']:[])],{cwd:root,encoding:'utf8',timeout:120000}));
  assert.equal(native.routes.length,captured.length);
+ const baseline={variant,routes:captured.map(route=>({...simpleTs(route),name:route.options.name,auth:route.options.auth})),schemas:{}};
+ snapshots.push(baseline);
  for(const route of captured){const expected=simpleTs(route),actual=native.routes.find(candidate=>candidate.operationName===expected.operation);assert.ok(actual,expected.operation);assert.deepEqual(simpleNative(actual),expected);assert.equal(actual.name,route.options.name);if(route.options.access!=='public')assert.equal(actual.auth.method,route.options.auth?.hmac?'hmac':'jwt');if(route.options.auth?.allowedRoles)assert.deepEqual(actual.rbac.allowedRoles,[...route.options.auth.allowedRoles]);count++;}
  const enums={};
  for(const name of ['planCadence','currency','billingProvider','paymentMethod','party','status']){
@@ -66,6 +70,7 @@ for(const stripe of [false,true]){
    const route=native.routes.find(route=>route.operationName===operation);assert.ok(route,operation);
    const actual=form==='Read'?route.responses[0].body.schema.jsonSchema:route.request.body.schema.jsonSchema;
    expected=validation.validator.openapi(expected);
+   baseline.schemas[sourceName]=expected;
    assert.deepEqual(Object.keys(actual.properties).sort(),Object.keys(expected.properties).sort(),variant+' '+sourceName+' properties');
    assert.deepEqual([...(actual.required??[])].sort(),[...(expected.required??[])].sort(),variant+' '+sourceName+' required');
    for(const [key,field]of Object.entries(expected.properties))assert.deepEqual(fieldShape(actual.properties[key]),JSON.parse(JSON.stringify(fieldShape(field))),variant+' '+sourceName+' '+key);
@@ -73,4 +78,5 @@ for(const stripe of [false,true]){
   }
  }
 }
+await assertJsonSnapshot(root,'rust_billing_contracts.snap.json',snapshots);
 console.log(`PASS ${count} actual TypeScript/Rust billing route contracts and ${schemaCount} actual validator/OpenAPI DTO schemas: methods, paths, names, HMAC, params/query/body, response statuses, required fields and enums`);
