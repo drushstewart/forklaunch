@@ -49,7 +49,9 @@ and native workers exchange three-iteration schedules for both success and
 failure. The next iteration is scheduled before processing starts, so removal
 cancels queued work even while the current job is active; it lets that active job
 finish. A preprocessor rejection still advances the schedule. Zero
-`max_started_attempts` disables that limit, as in TypeScript.
+`max_started_attempts` disables that limit, as in TypeScript. Scheduler templates
+and all iterations preserve `keep_logs`, `stack_trace_limit` and `size_limit`;
+actual workers verify bounded logs and failure histories in both directions.
 
 Worker handlers can override `JobHandler::process_batch` to return failures per job. `RunnerConfig::batch_size` and generated `WORKER_BATCH_SIZE` default to one, preserving single handlers. Concurrent batch sizes are bounded to 1000 total deliveries; all leases renew and batch cancellation preserves expiry recovery. See the [batch handler documentation](../docs/adding-projects/rust.md#worker-batch-handlers).
 

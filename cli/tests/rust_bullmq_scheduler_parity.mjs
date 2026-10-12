@@ -303,10 +303,17 @@ try {
             : { pattern: '* * * * * *', tz: 'America/Los_Angeles' }),
           limit: 3
         };
-        const event = { id: 'scheduled-event', failAttempts: fails ? 10 : 0 };
+        const event = {
+          id: 'scheduled-event',
+          failAttempts: fails ? 10 : 0,
+          logRows: ['one', 'two', 'three']
+        };
         const jobOptions = {
           attempts: 1,
-          backoff: { type: 'fixed', delay: 20 }
+          backoff: { type: 'fixed', delay: 20 },
+          keepLogs: 2,
+          stackTraceLimit: 1,
+          sizeLimit: 2048
         };
         const opts = {
           retries: 1,
@@ -353,6 +360,8 @@ try {
             opts,
             async (values) => {
               observed.push(...values);
+              const [active] = await producer.queue.getJobs(['active']);
+              for (const row of values[0].logRows) await active.log(row);
               if (fails) throw Error('scheduled_failure');
             },
             () => {}
@@ -407,6 +416,13 @@ try {
           assert.equal(job.opts.attempts, 1);
           assert.deepEqual(job.opts.backoff, jobOptions.backoff);
           assert.equal(job.opts.repeat.limit, 3);
+          assert.equal(job.opts.keepLogs, 2);
+          assert.equal(job.opts.stackTraceLimit, 1);
+          assert.equal(job.opts.sizeLimit, 2048);
+          const logs = await producer.queue.getJobLogs(job.id);
+          assert.deepEqual(logs.logs, ['two', 'three']);
+          assert.equal(logs.count, 2);
+          assert.equal(job.stacktrace.length, fails ? 1 : 0);
         }
         assert.equal(await producer.queue.getWaitingCount(), 0);
         assert.equal(await producer.queue.getDelayedCount(), 0);

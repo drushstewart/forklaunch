@@ -31,3 +31,10 @@ Twelve actual-library scenarios cover interval/cron schedules in both directions
 three-iteration limits, completed/failed runs, inspection/removal, cancellation
 during active work, preprocessor rejection and the zero-limit boundary. The
 fixtures reproduced both timing and zero-limit mismatches before their fixes.
+
+A shared compatibility encoder now carries `keepLogs` (`kl`), `stackTraceLimit`
+and `sizeLimit` through ordinary add-job maps, persisted scheduler templates,
+the first scheduled job and subsequent iterations. The scheduler fixture checks
+these options on every completed/failed job and verifies two retained log rows
+and the configured failure-history bound through real workers in both directions.
+Scheduler timestamp/date/other advanced-option conformance remains separate.

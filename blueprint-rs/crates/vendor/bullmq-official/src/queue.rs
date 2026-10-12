@@ -586,16 +586,12 @@ impl Queue {
 
         // Encode as msgpack map
         #[cfg(feature = "forklaunch-job-options")]
-        for (key, value) in [
-            ("kl", opts.keep_logs.map(u64::from)),
-            ("stackTraceLimit", opts.stack_trace_limit.map(u64::from)),
-            ("timestamp", opts.timestamp),
-            ("sizeLimit", opts.size_limit.map(|value| value as u64)),
-        ] {
-            if let Some(value) = value {
+        {
+            Self::append_compat_job_options(&mut entries, opts);
+            if let Some(timestamp) = opts.timestamp {
                 let mut encoded = Vec::new();
-                write_uint(&mut encoded, value).unwrap();
-                entries.push((key, encoded));
+                write_uint(&mut encoded, timestamp).unwrap();
+                entries.push(("timestamp", encoded));
             }
         }
         let mut buf = Vec::with_capacity(64);
@@ -606,6 +602,25 @@ impl Queue {
         }
 
         buf
+    }
+
+    /// Shared diagnostic/size metadata for ordinary and scheduler job maps.
+    #[cfg(feature = "forklaunch-job-options")]
+    pub(crate) fn append_compat_job_options(
+        entries: &mut Vec<(&'static str, Vec<u8>)>,
+        opts: &JobOptions,
+    ) {
+        for (key, value) in [
+            ("kl", opts.keep_logs.map(u64::from)),
+            ("stackTraceLimit", opts.stack_trace_limit.map(u64::from)),
+            ("sizeLimit", opts.size_limit.map(|value| value as u64)),
+        ] {
+            if let Some(value) = value {
+                let mut encoded = Vec::new();
+                rmp::encode::write_uint(&mut encoded, value).unwrap();
+                entries.push((key, encoded));
+            }
+        }
     }
 
     pub(crate) fn encode_remove_on_finish(rof: &crate::types::RemoveOnFinish) -> Vec<u8> {
@@ -2888,6 +2903,9 @@ impl Queue {
                 entries.push(("priority", b));
             }
         }
+
+        #[cfg(feature = "forklaunch-job-options")]
+        Self::append_compat_job_options(&mut entries, opts);
 
         let mut buf = Vec::with_capacity(64);
         write_map_len(&mut buf, entries.len() as u32).unwrap();
