@@ -284,6 +284,7 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
         .await
         .unwrap();
     assert_eq!(verified.status(), StatusCode::OK);
+    exercise_http_email(&client, &base, &store, secret, now).await;
     let docs: Value = client
         .get(format!("{base}/openapi.json"))
         .send()
@@ -604,4 +605,92 @@ async fn live_production_rate_limit_is_atomic_and_shuts_down() {
         .unwrap()
         .unwrap();
     assert!(tokio::net::TcpStream::connect(address).await.is_err());
+}
+
+async fn exercise_http_email<S: AuthStore>(
+    client: &reqwest::Client,
+    base: &str,
+    store: &Arc<S>,
+    secret: &[u8],
+    now: DateTime<Utc>,
+) {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let sign = |claims: Value| {
+        let input = format!(
+            "{}.{}",
+            URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256"}"#),
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
+        );
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret).unwrap();
+        mac.update(input.as_bytes());
+        format!(
+            "{input}.{}",
+            URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
+        )
+    };
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::User,json!({"id":"email-http-owner","email":"email-http@fixture.test","name":"Email User","emailVerified":false,"privateSecret":"retained"})).await.unwrap();
+    tx.commit().await.unwrap();
+    let token = sign(json!({"email":"email-http@fixture.test", "exp":now.timestamp()+60}));
+    let response = client
+        .get(format!("{base}/api/auth/verify-email?token={token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get("set-cookie").is_none());
+    assert_eq!(
+        response.json::<Value>().await.unwrap(),
+        json!({"status":true,"user":null})
+    );
+    let forged = client
+        .get(format!("{base}/api/auth/verify-email?token={token}x"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(forged.status(), StatusCode::UNAUTHORIZED);
+    let token = sign(
+        json!({"email":"email-http@fixture.test", "updateTo":"Changed-Email-Http@fixture.test", "requestType":"change-email-verification", "exp":now.timestamp()+60}),
+    );
+    let response = client
+        .get(format!("{base}/api/auth/verify-email?token={token}"))
+        .header("x-forwarded-for", "198.51.100.66")
+        .header("user-agent", "EmailHttp")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let cookie = response.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["user"]["email"], "changed-email-http@fixture.test");
+    assert_eq!(body["user"]["emailVerified"], true);
+    assert!(body["user"].get("privateSecret").is_none());
+    let view: Value = client
+        .get(format!("{base}/api/auth/get-session"))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(view["user"]["email"], body["user"]["email"]);
+    assert_eq!(view["session"]["ipAddress"], "198.51.100.66");
+    assert_eq!(view["session"]["userAgent"], "EmailHttp");
+    let mut tx = store.begin(false).await.unwrap();
+    assert_eq!(
+        tx.get(Model::User, "email-http-owner")
+            .await
+            .unwrap()
+            .unwrap()["privateSecret"],
+        "retained"
+    );
+    tx.commit().await.unwrap();
 }

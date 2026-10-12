@@ -94,7 +94,12 @@ async fn main() {
                                     .headers()
                                     .get_all(name)
                                     .iter()
-                                    .map(|value| value.to_str().unwrap())
+                                    .map(|value| value
+                                        .as_bytes()
+                                        .iter()
+                                        .copied()
+                                        .map(char::from)
+                                        .collect::<String>())
                                     .collect::<Vec<_>>()
                             ),
                         )

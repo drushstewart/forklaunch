@@ -113,7 +113,7 @@ pub(super) async fn delete<S: AuthStore + 'static>(
     }
 }
 use axum::response::IntoResponse;
-fn query_string<'a>(
+pub(super) fn query_string<'a>(
     query: &'a HashMap<String, Value>,
     field: &str,
     required: bool,
@@ -134,7 +134,7 @@ fn query_string<'a>(
         )),
     }
 }
-fn trusted<S>(app: &AuthHttp<S>, callback: &str) -> BlueprintResult<()> {
+pub(super) fn trusted<S>(app: &AuthHttp<S>, callback: &str) -> BlueprintResult<()> {
     if !callback.is_empty() && !app.policy.trusted(callback, true) {
         return Err(BlueprintError::new(
             "INVALID_CALLBACK_URL",

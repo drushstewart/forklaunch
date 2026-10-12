@@ -393,3 +393,14 @@ claim ordering, expiry boundaries, padding/noncanonical bits, BOMs, duplicate ke
 and numeric overflow. Raw JSON number handling is local to token verification.
 Email-verification HTTP/user/session/redirect integration remains open; native
 raw route count stays twenty-three.
+
+Twenty-four native raw auth routes now include signed email verification. Its 52
+actual HTTP response/storage/cookie/header comparisons cover idempotent normal
+verification, confirmation/verified/legacy email-change tokens, authoritative
+session checks, session reuse/creation and transient cookies. Error callbacks
+append existing query text; success callbacks preserve relative locations, Latin-1
+byte strings and HTTP whitespace normalization. Malformed claims retain empty 500
+responses. Live memory and restricted-role PostgreSQL verify HTTP mutations,
+forgery rejection, issued cookies and subsequent session/JWT access beside MCP.
+Configured email delivery/change requests remain disabled. Provider/org/account
+operations, real ORM conformance, custom callbacks and CLI preset stay open.

@@ -90,7 +90,7 @@ part of the configured module.
 `/change-password`, `/update-user`, `/list-accounts`, `/unlink-account`, `/ok`, `/get-session`, `/list-sessions`, `/sign-out`,
 `/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`, `/token`, `/jwks`,
 `/request-password-reset`, `/reset-password`, `/send-verification-email`, `/change-email` and
-`/delete-user`, `/reset-password/:token` and `/delete-user/callback`.
+`/delete-user`, `/reset-password/:token`, `/delete-user/callback` and `/verify-email`.
 It authenticates signed cookies against authoritative tenant-bound storage,
 refreshes sessions, emits verified JWT headers and publishes only public keys.
 Mutation guards reject forged/missing origins and unsafe callbacks. Revoke/logout
@@ -161,7 +161,7 @@ Live memory/encrypted PostgreSQL follow redirects with successful reset and MCP
 startup/invocation/shutdown. Disabled deletion keeps its coded 404 response.
 
 Remaining user/account/provider/org routes, real TS ORM
-conformance, custom callbacks and module generation remain open; these twenty-three
+conformance, custom callbacks and module generation remain open; these twenty-four
 routes do not constitute the complete Better Auth preset.
 
 `credentials::verify_email_token` verifies the configured HS256 email-token
@@ -169,5 +169,16 @@ protocol, with 96 actual JOSE/HTTP comparisons. It distinguishes signature/JWT
 failures, expiry and the handler claim-schema failures, preserving optional
 iat/nbf/exp ordering, critical-header behavior, padding/noncanonical bits, UTF-8
 BOMs, duplicate JSON keys and JavaScript numeric overflow. Raw numeric parsing
-is local to token validation. Email verification HTTP/user/session/redirect
-integration remains open; the raw route count stays twenty-three.
+is local to token validation. This verifier backs the signed email-verification HTTP flow.
+
+Signed email verification matches 52 actual HTTP response/storage/cookie/header
+comparisons. Normal verification is idempotent without automatic sign-in. Signed
+confirmation, verified-change and legacy-change tokens preserve configured
+behavior, authoritative session checks, session reuse/creation and transient
+cookies. Error redirects append query text; success redirects preserve relative
+locations and Fetch byte-string/whitespace normalization. Malformed claim schemas
+retain empty 500 responses. Live memory/restricted-role PostgreSQL verify signup
+state changes, forged-token rejection, signed-cookie issuance and subsequent
+session/JWT access over HTTP beside MCP. Email sending/change requests remain
+configured disabled. Remaining provider/org/account operations and CLI preset
+stay open.

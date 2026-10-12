@@ -23,6 +23,7 @@ use zeroize::Zeroizing;
 
 mod callback;
 mod credential;
+mod email;
 mod rate;
 mod request;
 #[cfg(test)]
@@ -137,6 +138,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 "/ok",
                 get(|| async { Json(json!({"ok":true})) }).head(not_found),
             )
+            .route("/verify-email", get(email::dispatch::<S>).head(not_found))
             .route("/jwks", get(dispatch::<S>).head(not_found))
             .route("/token", get(dispatch::<S>).head(not_found))
             .route(
