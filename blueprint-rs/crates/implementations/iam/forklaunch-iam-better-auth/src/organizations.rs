@@ -15,6 +15,7 @@ mod members;
 mod mutation;
 mod permission;
 mod selection;
+pub use members::{AddMemberInput, MemberRoles};
 #[cfg(test)]
 pub(crate) mod tests;
 

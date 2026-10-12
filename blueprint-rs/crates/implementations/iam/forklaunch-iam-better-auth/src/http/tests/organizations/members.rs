@@ -22,29 +22,18 @@ pub(super) async fn exercise<S: AuthStore>(
             .status(),
         StatusCode::OK
     );
-    let member: Value = client
-        .get(format!("{base}/api/auth/organization/get-active-member"))
-        .header("cookie", cookie)
+    assert_eq!(
+        post(
+            "add-member",
+            json!({"userId":"http-owner","role":"member","organizationId":id})
+        )
         .send()
         .await
         .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(member["role"], "owner");
-    assert!(member["user"].get("privateSecret").is_none());
-    let role: Value = client
-        .get(format!(
-            "{base}/api/auth/organization/get-active-member-role"
-        ))
-        .header("cookie", cookie)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(role, json!({"role":"owner"}));
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+    let member = reads(client, base, cookie).await;
     assert_eq!(
         post(
             "update-member-role",
@@ -103,4 +92,31 @@ pub(super) async fn exercise<S: AuthStore>(
             .is_none()
     );
     tx.commit().await.unwrap();
+}
+
+async fn reads(client: &reqwest::Client, base: &str, cookie: &str) -> Value {
+    let member: Value = client
+        .get(format!("{base}/api/auth/organization/get-active-member"))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(member["role"], "owner");
+    assert!(member["user"].get("privateSecret").is_none());
+    let role: Value = client
+        .get(format!(
+            "{base}/api/auth/organization/get-active-member-role"
+        ))
+        .header("cookie", cookie)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(role, json!({"role":"owner"}));
+    member
 }

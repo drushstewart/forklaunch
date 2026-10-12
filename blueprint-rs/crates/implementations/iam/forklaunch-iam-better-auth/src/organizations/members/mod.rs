@@ -5,10 +5,12 @@ use super::{
     OrganizationService, Utc, Value, find_slug, json, load, missing, text, unauthorized,
     update_active,
 };
+mod add;
 mod leave;
 mod read;
 mod remove;
 mod role;
+pub use add::{AddMemberInput, MemberRoles};
 
 fn no_active() -> BlueprintError {
     BlueprintError::new("NO_ACTIVE_ORGANIZATION", "No active organization")

@@ -42,6 +42,7 @@ async fn main() {
             "seed" => seed(&store, &input).await,
             "records" => records(&store, &input).await,
             "set" => set_password(store.clone(), &input).await,
+            "addMember" => add_member(store.clone(), &input).await,
             "request" => {
                 let mut request = Request::builder()
                     .method(input["method"].as_str().unwrap())
@@ -85,6 +86,22 @@ async fn main() {
             operation => panic!("unknown operation {operation}"),
         };
         println!("{result}");
+    }
+}
+
+async fn add_member(store: Arc<MemoryAuthStore>, input: &Value) -> Value {
+    use forklaunch_iam_better_auth::organizations::{AddMemberInput, OrganizationService};
+    match OrganizationService::new(store)
+        .add_member(
+            input["token"].as_str(),
+            input["transient"].as_bool().unwrap_or(false),
+            serde_json::from_value::<AddMemberInput>(input["body"].clone()).unwrap(),
+            DateTime::<Utc>::from_timestamp_millis(input["now"].as_i64().unwrap()).unwrap(),
+        )
+        .await
+    {
+        Ok(body) => json!({"body":body}),
+        Err(error) => json!({"error":{"code":error.code,"message":error.message}}),
     }
 }
 

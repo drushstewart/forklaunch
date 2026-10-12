@@ -239,3 +239,14 @@ Memory and restricted PostgreSQL exercise competing owners leaving, ensuring one
 owner survives, and live HTTP member operations alongside JWT/MCP lifecycle.
 Member listing, server-only addition, team/invitation/dynamic-role management,
 provider flows, real ORM conformance, callbacks and CLI preset remain open.
+
+The trusted server-only `OrganizationService::add_member` helper matches 40 actual
+API/storage outcomes. Typed inputs preserve role arrays by joining them verbatim;
+the explicit organization requires no session, while an optional session provides
+active-scope fallback and refresh/expiry effects. User/team/organization checks,
+duplicate ordering, the configured 100-member limit, keyed team membership reuse,
+undercount reconciliation (including its timestamp) and retained overcounts match
+the configured adapter. Memory/restricted PostgreSQL verify concurrent duplicate
+and last-slot admission; live HTTP rejects public add-member access. Raw auth
+route count remains 38. Member listing and the remaining team/invitation/dynamic
+role, provider, real ORM, callback, JWT-helper and CLI preset gates remain open.
