@@ -1,20 +1,9 @@
 use super::*;
+mod permissions;
 
 pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
     let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
-    let mut tx = store.begin(true).await.unwrap();
-    for (id, email) in [
-        ("org-native-owner", "org-native@fixture.test"),
-        ("org-native-foreign", "org-native-foreign@fixture.test"),
-    ] {
-        tx.insert(
-            Model::User,
-            json!({"id":id,"email":email,"name":"Native Org Person","privateField":"not-public"}),
-        )
-        .await
-        .unwrap();
-    }
-    tx.commit().await.unwrap();
+    seed_owners(store.as_ref()).await;
     let sessions = SessionService::new(store.clone());
     let session = sessions
         .create("org-native-owner", "", "", now)
@@ -99,6 +88,7 @@ pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
             .code,
         "UNAUTHORIZED"
     );
+    permissions::exercise_permissions(store).await;
 }
 
 async fn exercise_selection<S: AuthStore>(
@@ -172,4 +162,20 @@ async fn exercise_selection<S: AuthStore>(
 #[tokio::test]
 async fn native_organization_creation_graph_selection_and_atomic_slug() {
     exercise_organizations(Arc::new(crate::store::memory::MemoryAuthStore::default())).await;
+}
+
+async fn seed_owners<S: AuthStore>(store: &S) {
+    let mut tx = store.begin(true).await.unwrap();
+    for (id, email) in [
+        ("org-native-owner", "org-native@fixture.test"),
+        ("org-native-foreign", "org-native-foreign@fixture.test"),
+    ] {
+        tx.insert(
+            Model::User,
+            json!({"id":id,"email":email,"name":"Native Org Person","privateField":"not-public"}),
+        )
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
 }

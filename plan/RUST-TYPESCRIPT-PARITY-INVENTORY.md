@@ -437,3 +437,18 @@ Live memory and restricted PostgreSQL verify organization HTTP, session/JWT
 organization claims, cookies and MCP discovery/invocation/shutdown. Organization
 updates/deletion, remaining member/team/invitation/dynamic-role APIs, provider
 flows, real ORM conformance, custom callbacks and CLI preset remain open.
+
+Thirty-three native raw auth routes include metadata-only organization reads,
+updates, deletion and permission checks. All 212 actual HTTP/storage/cookie
+comparisons pass. Dynamic stored grants merge into each configured static role
+and remain scoped to one organization; composite roles cannot pool permissions
+across separate roles to satisfy a single request. Platform-only default roles
+retain mutation denials. Schema/alias ordering, malformed permission JSON/schema
+(including numeric overflow), field whitelists and endpoint-specific error bodies
+and statuses match actual handlers. Deletion removes organization/member/invite
+records and clears only the actor's matching active organization; configured
+team/role rows and other sessions' selections remain, matching the actual adapter.
+Memory/restricted PostgreSQL cover granted mutations, atomic concurrent deletion
+and HTTP storage persistence beside JWT/MCP startup/lifecycle. Remaining member,
+team, invitation, dynamic-role management, provider, real ORM, callback and CLI
+preset gates remain open.

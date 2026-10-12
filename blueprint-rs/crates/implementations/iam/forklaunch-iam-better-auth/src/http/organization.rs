@@ -7,6 +7,7 @@ use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::collections::HashMap;
 
+mod mutation_validation;
 mod validation;
 pub(super) use validation::{validate_body, validate_query};
 
@@ -22,6 +23,31 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     let service = OrganizationService::new(app.store.clone());
     let (token, transient) = session;
     match path {
+        "/organization/update" => service.update(token, transient, payload, now).await,
+        "/organization/delete" => {
+            service
+                .delete(
+                    token,
+                    transient,
+                    payload["organizationId"].as_str().ok_or_else(internal)?,
+                    now,
+                )
+                .await
+        }
+        "/organization/has-permission" => {
+            service.has_permission(token, transient, payload, now).await
+        }
+        "/organization/get-organization" => {
+            service
+                .metadata(
+                    token,
+                    transient,
+                    query.get("organizationId").and_then(Value::as_str),
+                    query.get("organizationSlug").and_then(Value::as_str),
+                    now,
+                )
+                .await
+        }
         "/organization/create" => service.create(token, transient, payload, now).await,
         "/organization/check-slug" => {
             service

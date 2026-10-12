@@ -3,7 +3,15 @@ use super::{BlueprintError, BlueprintResult, HashMap, Value, internal};
 pub(crate) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
     if matches!(
         path,
-        "/organization/list" | "/organization/get-full-organization"
+        "/organization/update" | "/organization/has-permission"
+    ) {
+        return super::mutation_validation::validate_body(path, body);
+    }
+    if matches!(
+        path,
+        "/organization/list"
+            | "/organization/get-full-organization"
+            | "/organization/get-organization"
     ) {
         return Ok(());
     }
@@ -25,6 +33,7 @@ pub(crate) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult
             ("subscription", "string", false, true),
             ("status", "string", false, true),
         ],
+        "/organization/delete" => &[("organizationId", "string", true, false)],
         "/organization/check-slug" => &[("slug", "string", true, false)],
         "/organization/set-active" => &[
             ("organizationId", "string", false, true),
@@ -64,11 +73,17 @@ pub(crate) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult
     }
 }
 pub(crate) fn validate_query(path: &str, query: &HashMap<String, Value>) -> BlueprintResult<()> {
-    if path != "/organization/get-full-organization" {
+    if !matches!(
+        path,
+        "/organization/get-full-organization" | "/organization/get-organization"
+    ) {
         return Ok(());
     }
     let mut errors = Vec::new();
     for field in ["organizationId", "organizationSlug", "membersLimit"] {
+        if field == "membersLimit" && path == "/organization/get-organization" {
+            continue;
+        }
         if let Some(value) = query.get(field)
             && !value.is_string()
         {
@@ -88,10 +103,10 @@ pub(crate) fn validate_query(path: &str, query: &HashMap<String, Value>) -> Blue
         Err(validation(errors.join("; ")))
     }
 }
-fn validation(message: String) -> BlueprintError {
+pub(super) fn validation(message: String) -> BlueprintError {
     BlueprintError::new("VALIDATION_ERROR", message)
 }
-fn received(value: Option<&Value>) -> &'static str {
+pub(super) fn received(value: Option<&Value>) -> &'static str {
     match value {
         None => "undefined",
         Some(Value::Null) => "null",

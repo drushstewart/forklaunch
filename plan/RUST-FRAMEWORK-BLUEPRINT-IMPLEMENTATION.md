@@ -1042,3 +1042,5 @@ both SDK generators pass; checkout CLI restored. This snapshot includes 24 raw
 auth routes and the server-only password helper, before organization additions.
 
 - [x] Port organization creation, slug checks, listing, full graphs and active selection with actual configured default team/owner/keyed membership and session side effects. All 134 actual HTTP/storage/cookie comparisons pass; memory and restricted PostgreSQL check concurrent slug creation and HTTP/JWT organization claims beside MCP. Remaining organization/member/team/invitation/dynamic-role operations are still tracked by the open organization endpoint gate.
+
+- [x] Add organization metadata/update/delete/permission routes with scoped stored dynamic grants, platform-only static-role denials, per-role composite authorization and actual deletion/session side effects. All 212 actual HTTP/storage/cookie comparisons pass, including validation/alias and malformed stored-grant errors. Memory and restricted PostgreSQL validate concurrent deletion and live granted HTTP mutations beside JWT/MCP lifecycle. Member/team/invitation/dynamic-role management and the complete generated preset remain open.

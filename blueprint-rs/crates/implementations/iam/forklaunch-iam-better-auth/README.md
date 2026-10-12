@@ -92,7 +92,9 @@ part of the configured module.
 `/request-password-reset`, `/reset-password`, `/send-verification-email`, `/change-email` and
 `/delete-user`, `/reset-password/:token`, `/delete-user/callback`, `/verify-email`,
 `/organization/create`, `/organization/check-slug`, `/organization/list`,
-`/organization/get-full-organization` and `/organization/set-active`.
+`/organization/get-full-organization`, `/organization/set-active`,
+`/organization/get-organization`, `/organization/update`, `/organization/delete`
+and `/organization/has-permission`.
 It authenticates signed cookies against authoritative tenant-bound storage,
 refreshes sessions, emits verified JWT headers and publishes only public keys.
 Mutation guards reject forged/missing origins and unsafe callbacks. Revoke/logout
@@ -211,3 +213,18 @@ Live memory and restricted PostgreSQL verify organization HTTP, session/JWT
 organization claims, cookies and MCP discovery/invocation/shutdown. Organization
 updates/deletion, remaining member/team/invitation/dynamic-role APIs, provider
 flows, real ORM conformance, custom callbacks and CLI preset remain open.
+
+Thirty-three native raw auth routes include metadata-only organization reads,
+updates, deletion and permission checks. All 212 actual HTTP/storage/cookie
+comparisons pass. Dynamic stored grants merge into each configured static role
+and remain scoped to one organization; composite roles cannot pool permissions
+across separate roles to satisfy a single request. Platform-only default roles
+retain mutation denials. Schema/alias ordering, malformed permission JSON/schema
+(including numeric overflow), field whitelists and endpoint-specific error bodies
+and statuses match actual handlers. Deletion removes organization/member/invite
+records and clears only the actor's matching active organization; configured
+team/role rows and other sessions' selections remain, matching the actual adapter.
+Memory/restricted PostgreSQL cover granted mutations, atomic concurrent deletion
+and HTTP storage persistence beside JWT/MCP startup/lifecycle. Remaining member,
+team, invitation, dynamic-role management, provider, real ORM, callback and CLI
+preset gates remain open.

@@ -4,6 +4,10 @@ use super::{
     find_slug, internal, json, load, member, missing, not_member, text, unauthorized,
     update_active,
 };
+enum Graph {
+    Metadata,
+    Full(Option<i64>),
+}
 impl<S: AuthStore> OrganizationService<S> {
     /// Returns an organization's configured member/invitation/team graph.
     /// Slug takes precedence over ID, then the session's active organization.
@@ -16,6 +20,32 @@ impl<S: AuthStore> OrganizationService<S> {
         id: Option<&str>,
         slug: Option<&str>,
         members_limit: Option<i64>,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Value> {
+        self.read_organization(token, transient, id, slug, Graph::Full(members_limit), now)
+            .await
+    }
+    /// Reads organization metadata without loading its member graph.
+    /// # Errors
+    /// Returns authoritative session, missing-organization or membership errors.
+    pub async fn metadata(
+        &self,
+        token: &str,
+        transient: bool,
+        id: Option<&str>,
+        slug: Option<&str>,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Value> {
+        self.read_organization(token, transient, id, slug, Graph::Metadata, now)
+            .await
+    }
+    async fn read_organization(
+        &self,
+        token: &str,
+        transient: bool,
+        id: Option<&str>,
+        slug: Option<&str>,
+        graph: Graph,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
@@ -39,14 +69,18 @@ impl<S: AuthStore> OrganizationService<S> {
         };
         let organization = organization.ok_or_else(missing)?;
         let id = text(&organization, "id")?.to_owned();
-        let graph = full_graph(&mut tx, organization, members_limit).await?;
+        let body = if let Graph::Full(limit) = graph {
+            full_graph(&mut tx, organization, limit).await?
+        } else {
+            organization
+        };
         if !member(&mut tx, text(&view.user, "id")?, &id).await? {
             update_active(&mut tx, &view, None, None, now).await?;
             tx.commit().await?;
             return Err(not_member());
         }
         tx.commit().await?;
-        Ok(graph)
+        Ok(body)
     }
 }
 async fn full_graph<T: AuthTransaction>(

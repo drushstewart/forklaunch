@@ -119,6 +119,13 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/sign-in/email", post(dispatch::<S>))
             .route("/list-accounts", get(dispatch::<S>).head(not_found))
             .route("/organization/create", post(dispatch::<S>))
+            .route("/organization/update", post(dispatch::<S>))
+            .route("/organization/delete", post(dispatch::<S>))
+            .route("/organization/has-permission", post(dispatch::<S>))
+            .route(
+                "/organization/get-organization",
+                get(dispatch::<S>).head(not_found),
+            )
             .route("/organization/check-slug", post(dispatch::<S>))
             .route("/organization/set-active", post(dispatch::<S>))
             .route("/organization/list", get(dispatch::<S>).head(not_found))
@@ -203,10 +210,11 @@ async fn dispatch<S: AuthStore + 'static>(
     request: Request,
 ) -> Response {
     let mut pending = HeaderMap::new();
+    let path = request.uri().path().to_owned();
     let response = handle(&app, request, &mut pending).await;
     let mut response = match response {
         Ok(body) => Json(body).into_response(),
-        Err(error) => failure(&error),
+        Err(error) => failure_for_path(&error, &path),
     };
     for (name, value) in &pending {
         response.headers_mut().append(name, value.clone());
@@ -286,13 +294,7 @@ async fn handle<S: AuthStore + 'static>(
     if path == "/get-session" {
         return app.session_response(view, pending, now).await;
     }
-    let view = view.ok_or_else(|| {
-        if path == "/organization/create" {
-            BlueprintError::new("HTTP_UNAUTHORIZED_EMPTY", "Unauthorized")
-        } else {
-            BlueprintError::new("UNAUTHORIZED", "Unauthorized")
-        }
-    })?;
+    let view = view.ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))?;
     if path.starts_with("/organization/") {
         return organization::handle(
             app,
@@ -381,7 +383,47 @@ fn clear(cookie: SessionCookie, headers: &mut HeaderMap) -> BlueprintResult<()> 
     }
     Ok(())
 }
+fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
+    if error.code == "UNAUTHORIZED" {
+        if matches!(path, "/organization/create" | "/organization/delete") {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        if path == "/organization/update" {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"message":"User not found"})),
+            )
+                .into_response();
+        }
+    }
+    if error.code == "USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION" {
+        let status = match path {
+            "/organization/update" | "/organization/delete" => StatusCode::BAD_REQUEST,
+            "/organization/has-permission" => StatusCode::UNAUTHORIZED,
+            _ => StatusCode::FORBIDDEN,
+        };
+        return (
+            status,
+            Json(json!({"code":error.code,"message":error.message})),
+        )
+            .into_response();
+    }
+    failure(error)
+}
 fn failure(error: &BlueprintError) -> Response {
+    if error.code == "HTTP_INTERNAL_EMPTY" {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+    if error.code == "HTTP_BAD_REQUEST_EMPTY" {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    if error.code == "HTTP_INTERNAL_MESSAGE_ONLY" {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"message":error.message})),
+        )
+            .into_response();
+    }
     if error.code == "HTTP_UNAUTHORIZED_EMPTY" {
         return StatusCode::UNAUTHORIZED.into_response();
     }
@@ -390,7 +432,9 @@ fn failure(error: &BlueprintError) -> Response {
     }
     let status = match error.code.as_str() {
         "UNAUTHORIZED" | "INVALID_EMAIL_OR_PASSWORD" => StatusCode::UNAUTHORIZED,
-        "USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION"
+        "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION"
+        | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION"
+        | "USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION"
         | "SESSION_NOT_FRESH"
         | "MISSING_OR_NULL_ORIGIN"
         | "INVALID_ORIGIN"
