@@ -1,4 +1,5 @@
 //! Bounded, operator-configured `OpenID` Connect authorization-code clients.
+mod refresh;
 mod transport;
 use forklaunch_common::{FrameworkError, FrameworkResult};
 use oauth2::{
@@ -11,8 +12,10 @@ use openidconnect::{
     core::{
         CoreAuthenticationFlow, CoreClient, CoreClientAuthMethod, CoreIdTokenClaims,
         CoreJwsSigningAlgorithm, CoreProviderMetadata, CoreResponseType, CoreTokenResponse,
+        CoreTokenType,
     },
 };
+pub use refresh::OidcRefresh;
 use std::time::{Duration, Instant};
 use subtle::ConstantTimeEq;
 
@@ -230,6 +233,16 @@ impl OidcProvider {
             .request_async(&self.transport)
             .await
             .map_err(|_| failed())?;
+        let claims = self.verify_claims(&client, &tokens, &pending.nonce)?;
+        Ok(OidcLogin { claims, tokens })
+    }
+    fn verify_claims(
+        &self,
+        client: &Client,
+        tokens: &CoreTokenResponse,
+        nonce: impl openidconnect::NonceVerifier,
+    ) -> FrameworkResult<CoreIdTokenClaims> {
+        validate_tokens(tokens)?;
         let id_token = tokens.id_token().ok_or_else(failed)?;
         let verifier = client
             .id_token_verifier()
@@ -241,9 +254,7 @@ impl OidcProvider {
                     Ok(())
                 }
             });
-        let claims = id_token
-            .claims(&verifier, &pending.nonce)
-            .map_err(|_| failed())?;
+        let claims = id_token.claims(&verifier, nonce).map_err(|_| failed())?;
         if claims.subject().as_str().is_empty()
             || claims
                 .authorized_party()
@@ -262,11 +273,19 @@ impl OidcProvider {
                 return Err(failed());
             }
         }
-        Ok(OidcLogin {
-            claims: claims.clone(),
-            tokens,
-        })
+        Ok(claims.clone())
     }
+}
+fn validate_tokens(tokens: &CoreTokenResponse) -> FrameworkResult<()> {
+    if tokens.access_token().secret().is_empty()
+        || tokens
+            .refresh_token()
+            .is_some_and(|token| token.secret().is_empty())
+        || !matches!(tokens.token_type(), CoreTokenType::Bearer)
+    {
+        return Err(failed());
+    }
+    Ok(())
 }
 fn failed() -> FrameworkError {
     FrameworkError::new("oidc_authentication_failed", "OIDC authentication failed")

@@ -73,7 +73,7 @@ fetches provider keys using HTTPS (loopback HTTP is available for fixtures),
 without redirects, with a 15-second timeout and a 1 MiB response limit.
 The adapter supports RS256 ID tokens, S256 PKCE, public clients and
 `client_secret_basic` authentication. Advertised incompatible flows/auth methods
-are rejected; other grants and signing algorithms are not enabled.
+are rejected; authorization-code and refresh grants use RS256 ID tokens.
 
 `provider.begin(&scopes)` returns `PendingAuthorization`. Redirect the browser to
 `pending.authorization_url()` and keep the non-cloneable pending value in the
@@ -89,6 +89,14 @@ when present. Errors and Debug output omit credentials, tokens and provider
 response details. Rediscover explicitly to refresh metadata/keys. This generic
 adapter is separate from the configured Better Auth Google/account flow.
 
+
+`provider.refresh(&refresh_token, &initial_claims)` accepts a server-owned refresh
+token and the original verified login claims from trusted encrypted storage.
+Keep those original claims across rotations. Refresh checks unchanged identity,
+audience, optional nonce and authentication time; an omitted ID token yields
+`claims: None`. A missing replacement refresh token retains the supplied token.
+Applications own atomic rotation persistence and concurrent refresh coordination.
+Never accept the original claims from a request.
 
 `forklaunch_auth::typescript::TypeScriptRbacPolicy` is an explicit compatibility
 policy for verified, server-enriched JWT/Basic sessions. It preserves omitted

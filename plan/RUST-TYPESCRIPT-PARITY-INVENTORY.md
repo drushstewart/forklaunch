@@ -3774,3 +3774,23 @@ This closes the explicit OAuth/OIDC library-integration requirement. The generic
 adapter does not provision accounts/sessions or implement refresh grants or
 automatic key refresh; the configured Better Auth Google flow remains separate.
 Checklist: 656/682 complete (96.2%), 26 open.
+
+
+OIDC refresh receipt (2026-10-13): the optional generic adapter now supports
+refresh grants using trusted original login claims and encrypted server-owned
+tokens. Newly returned ID tokens retain issuer, subject and audience, cannot
+backdate issuance before the login, and preserve authentication time and nonce
+when supplied, following [OIDC refresh rules](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse).
+An omitted ID token produces absent claims; an omitted replacement refresh token
+retains the supplied token. Rotated tokens are returned for application-owned
+atomic persistence. Empty/non-Bearer token responses and mismatched original
+provider/client claims fail closed. This supersedes the earlier refresh limitation.
+
+All 25 auth tests and strict all-feature/all-target clippy pass, including real
+local-provider refresh wire requests, identity/nonce/time/hash failures, token
+rotation and optional tokens. Generated run `YAAZD4` compiles both SDKs and passes
+signed-JWT authorization plus the HTTP/MCP listener/startup/shutdown matrix.
+All 919 embedded assets are packaged. Logs:
+`/private/tmp/fl-oidc-refresh-{tests,clippy,generated,package}.log`.
+Automatic key refresh and account/session provisioning remain open; the broader
+provider gate stays open. Checklist remains 656/682 (96.2%), 26 open.

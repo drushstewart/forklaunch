@@ -136,6 +136,10 @@ audience, expiry and nonce; the adapter also checks present azp, nonempty subjec
 future iat and a present access-token hash. Public/confidential client wire tests,
 invalid metadata, state/config mismatch, oversized declared/chunked bodies,
 redirects and invalid/substituted token tests pass. Errors/Debug omit secrets.
-Refresh grants, automatic key refresh and account/session provisioning are not
-implemented by this generic adapter. The all-lockfile audit has no unreviewed
+Refresh grants bind newly verified ID tokens to original trusted issuer, subject,
+audience, optional nonce and authentication time. Missing ID tokens remain absent;
+missing replacement refresh tokens retain the supplied token. Non-Bearer and empty
+tokens fail closed. Original claims and tokens must come from trusted server
+storage; the application owns rotation concurrency and persistence. Automatic key
+refresh and account/session provisioning are not implemented by this adapter. The all-lockfile audit has no unreviewed
 findings after the public-verification-only RSA review above.

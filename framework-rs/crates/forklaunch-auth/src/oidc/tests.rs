@@ -129,9 +129,12 @@ impl ProviderFixture {
         .unwrap()
     }
     fn respond(&self, pending: &PendingAuthorization, changes: &Value) {
+        self.respond_with_nonce(pending.nonce.secret(), changes);
+    }
+    fn respond_with_nonce(&self, nonce: &str, changes: &Value) {
         let now = chrono::Utc::now().timestamp();
         let digest = Sha256::digest(b"private-access-token");
-        let mut claims = json!({"sub":"subject", "iss":self.issuer,"aud":"client", "exp":now+300,"iat":now,"nonce":pending.nonce.secret(),"at_hash":URL_SAFE_NO_PAD.encode(&digest[..16]),"email":"person@example.test","email_verified":true});
+        let mut claims = json!({"sub":"subject", "iss":self.issuer,"aud":"client", "exp":now+300,"iat":now,"nonce":nonce,"at_hash":URL_SAFE_NO_PAD.encode(&digest[..16]),"email":"person@example.test","email_verified":true});
         claims
             .as_object_mut()
             .unwrap()
@@ -388,4 +391,135 @@ async fn invalid_discovery_metadata_and_scope_configuration_fail_closed() {
         assert!(client.begin(&scopes).is_err());
     }
     assert_eq!(fixture.count.load(Ordering::SeqCst), 0);
+}
+
+async fn initial_login(fixture: &ProviderFixture, client: &OidcProvider) -> OidcLogin {
+    let pending = client.begin(&[]).unwrap();
+    fixture.respond(
+        &pending,
+        &json!({"auth_time":chrono::Utc::now().timestamp()-90}),
+    );
+    let state = pending.state().to_owned();
+    client
+        .exchange(pending, &state, "initial-code")
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn refresh_preserves_original_identity_and_handles_optional_tokens_and_rotation() {
+    let fixture = ProviderFixture::new().await;
+    let client = fixture.client().await;
+    let login = initial_login(&fixture, &client).await;
+    let original = login
+        .claims
+        .clone()
+        .set_expiration(chrono::Utc::now() - chrono::Duration::seconds(1));
+    let refresh_token = login.tokens.refresh_token().unwrap();
+    for rotated in [None, Some("rotated-refresh-token")] {
+        let mut response = json!({"access_token":"fresh-access", "token_type":"Bearer"});
+        if let Some(rotated) = rotated {
+            response["refresh_token"] = json!(rotated);
+        }
+        *fixture.reply.lock().unwrap() = response;
+        let refreshed = client.refresh(refresh_token, &original).await.unwrap();
+        assert!(refreshed.claims.is_none());
+        assert_eq!(
+            refreshed.tokens.refresh_token().unwrap().secret(),
+            rotated.unwrap_or(refresh_token.secret())
+        );
+        assert!(!format!("{refreshed:?}").contains("fresh-access"));
+    }
+    for include_nonce in [false, true] {
+        let mut changes = json!({"auth_time":original.auth_time().unwrap().timestamp()});
+        if !include_nonce {
+            changes["nonce"] = Value::Null;
+        }
+        fixture.respond_with_nonce(original.nonce().unwrap().secret(), &changes);
+        let refreshed = client.refresh(refresh_token, &original).await.unwrap();
+        let claims = refreshed.claims.unwrap();
+        assert_eq!(claims.subject(), original.subject());
+        assert_eq!(claims.auth_time(), original.auth_time());
+        assert_eq!(claims.nonce().is_some(), include_nonce);
+    }
+    let requests = fixture.requests.lock().unwrap();
+    for request in requests.iter().skip(1) {
+        let form: std::collections::HashMap<_, _> = oauth2::url::form_urlencoded::parse(
+            request.split_once("\r\n\r\n").unwrap().1.as_bytes(),
+        )
+        .into_owned()
+        .collect();
+        assert_eq!(form["grant_type"], "refresh_token");
+        assert_eq!(form["refresh_token"], *refresh_token.secret());
+        assert!(!form.contains_key("code_verifier"));
+    }
+}
+
+#[tokio::test]
+async fn refreshed_id_tokens_cannot_change_the_original_login() {
+    let fixture = ProviderFixture::new().await;
+    let client = fixture.client().await;
+    let login = initial_login(&fixture, &client).await;
+    let original = &login.claims;
+    let refresh_token = login.tokens.refresh_token().unwrap();
+    for changes in [
+        json!({"sub":"other"}),
+        json!({"iss":"https://other.example"}),
+        json!({"aud":"other"}),
+        json!({"aud":["client","client"]}),
+        json!({"nonce":"other"}),
+        json!({"auth_time":1}),
+        json!({"iat":1}),
+        json!({"exp":1}),
+        json!({"at_hash":"wrong"}),
+    ] {
+        fixture.respond_with_nonce(original.nonce().unwrap().secret(), &changes);
+        assert_eq!(
+            client
+                .refresh(refresh_token, original)
+                .await
+                .unwrap_err()
+                .message(),
+            "OIDC authentication failed",
+            "{changes}"
+        );
+    }
+    for response in [
+        json!({"access_token":"", "token_type":"Bearer"}),
+        json!({"access_token":"token", "token_type":"Bearer", "refresh_token":""}),
+        json!({"access_token":"token", "token_type":"MAC"}),
+        json!({"error":"invalid_grant","error_description":"private refresh detail"}),
+    ] {
+        *fixture.reply.lock().unwrap() = response;
+        assert_eq!(
+            client
+                .refresh(refresh_token, original)
+                .await
+                .unwrap_err()
+                .message(),
+            "OIDC authentication failed"
+        );
+    }
+}
+
+#[tokio::test]
+async fn refresh_rejects_another_provider_or_client_before_network_access() {
+    let fixture = ProviderFixture::new().await;
+    let client = fixture.client().await;
+    let login = initial_login(&fixture, &client).await;
+    let refresh_token = login.tokens.refresh_token().unwrap();
+    for original in [
+        login
+            .claims
+            .clone()
+            .set_issuer(IssuerUrl::new("https://other.example".into()).unwrap()),
+        login
+            .claims
+            .clone()
+            .set_audiences(vec![openidconnect::Audience::new("other".into())]),
+        login.claims.clone().set_audiences(vec![]),
+    ] {
+        assert!(client.refresh(refresh_token, &original).await.is_err());
+    }
+    assert_eq!(fixture.count.load(Ordering::SeqCst), 1);
 }
