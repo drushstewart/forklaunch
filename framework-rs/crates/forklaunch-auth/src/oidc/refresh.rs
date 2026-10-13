@@ -51,22 +51,24 @@ impl OidcProvider {
             .map_err(|_| failed())?;
         super::validate_tokens(&tokens)?;
         let claims = if tokens.id_token().is_some() {
-            let claims = self.verify_claims(&client, &tokens, |nonce: Option<&Nonce>| {
-                match (nonce, initial_claims.nonce()) {
-                    (None, _) => Ok(()),
-                    (Some(actual), Some(expected))
-                        if bool::from(
-                            actual
-                                .secret()
-                                .as_bytes()
-                                .ct_eq(expected.secret().as_bytes()),
-                        ) =>
-                    {
-                        Ok(())
+            let verifier = self.verification_client(&tokens).await?;
+            let claims =
+                self.verify_claims(&verifier, &tokens, |nonce: Option<&Nonce>| {
+                    match (nonce, initial_claims.nonce()) {
+                        (None, _) => Ok(()),
+                        (Some(actual), Some(expected))
+                            if bool::from(
+                                actual
+                                    .secret()
+                                    .as_bytes()
+                                    .ct_eq(expected.secret().as_bytes()),
+                            ) =>
+                        {
+                            Ok(())
+                        }
+                        _ => Err("invalid refresh nonce".into()),
                     }
-                    _ => Err("invalid refresh nonce".into()),
-                }
-            })?;
+                })?;
             if claims.subject() != initial_claims.subject()
                 || claims.audiences() != initial_claims.audiences()
                 || claims.issue_time() < initial_claims.issue_time()

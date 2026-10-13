@@ -22,6 +22,7 @@ p=Path('crates/authorization/src/main.rs')
 p.write_text(p.read_text().replace('router(state).serve_with_default_mcp','authorization::policy_fixture::register(router(state)).serve_with_default_mcp'))
 PY
 cargo build -p authorization
+cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-auth --features oidc oidc
 "$CLI" openapi export --path .
 "$CLI" sdk generate --path . --target all --from contract
 "${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript/tsconfig.json --noEmit

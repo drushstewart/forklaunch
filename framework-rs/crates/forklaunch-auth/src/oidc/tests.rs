@@ -16,6 +16,8 @@ struct ProviderFixture {
     issuer: String,
     reply: Arc<Mutex<Value>>,
     metadata: Arc<Mutex<Value>>,
+    keys: Arc<Mutex<Value>>,
+    key_requests: Arc<Mutex<Vec<String>>>,
     requests: Arc<Mutex<Vec<String>>>,
     count: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
@@ -43,6 +45,12 @@ impl ProviderFixture {
         let received = requests.clone();
         let count = Arc::new(AtomicUsize::new(0));
         let calls = count.clone();
+        let keys = Arc::new(Mutex::new(
+            json!({"keys":[crate::jwt::tests::rsa_jwk("fixture")]}),
+        ));
+        let served_keys = keys.clone();
+        let key_requests = Arc::new(Mutex::new(Vec::new()));
+        let received_keys = key_requests.clone();
         let task = tokio::spawn(async move {
             loop {
                 let (mut socket, _) = listener.accept().await.unwrap();
@@ -84,11 +92,10 @@ impl ProviderFixture {
                     "/.well-known/openid-configuration" => {
                         ("200 OK", "", document.lock().unwrap().to_string())
                     }
-                    "/jwks" => (
-                        "200 OK",
-                        "",
-                        json!({"keys":[crate::jwt::tests::rsa_jwk("fixture")]}).to_string(),
-                    ),
+                    "/jwks" => {
+                        received_keys.lock().unwrap().push(text);
+                        ("200 OK", "", served_keys.lock().unwrap().to_string())
+                    }
                     "/token" => {
                         calls.fetch_add(1, Ordering::SeqCst);
                         received.lock().unwrap().push(text);
@@ -113,6 +120,8 @@ impl ProviderFixture {
             issuer,
             reply,
             metadata,
+            keys,
+            key_requests,
             requests,
             count,
             task,
@@ -132,6 +141,9 @@ impl ProviderFixture {
         self.respond_with_nonce(pending.nonce.secret(), changes);
     }
     fn respond_with_nonce(&self, nonce: &str, changes: &Value) {
+        self.respond_with_key(nonce, changes, "fixture", crate::jwt::tests::RSA_PRIVATE);
+    }
+    fn respond_with_key(&self, nonce: &str, changes: &Value, kid: &str, key: &[u8]) {
         let now = chrono::Utc::now().timestamp();
         let digest = Sha256::digest(b"private-access-token");
         let mut claims = json!({"sub":"subject", "iss":self.issuer,"aud":"client", "exp":now+300,"iat":now,"nonce":nonce,"at_hash":URL_SAFE_NO_PAD.encode(&digest[..16]),"email":"person@example.test","email_verified":true});
@@ -140,13 +152,8 @@ impl ProviderFixture {
             .unwrap()
             .extend(changes.as_object().unwrap().clone());
         let mut header = Header::new(Algorithm::RS256);
-        header.kid = Some("fixture".into());
-        let token = encode(
-            &header,
-            &claims,
-            &EncodingKey::from_rsa_pem(crate::jwt::tests::RSA_PRIVATE).unwrap(),
-        )
-        .unwrap();
+        header.kid = Some(kid.into());
+        let token = encode(&header, &claims, &EncodingKey::from_rsa_pem(key).unwrap()).unwrap();
         *self.reply.lock().unwrap() = json!({"access_token":"private-access-token","refresh_token":"private-refresh-token","token_type":"Bearer","expires_in":300,"id_token":token});
     }
 }
@@ -422,8 +429,10 @@ async fn refresh_preserves_original_identity_and_handles_optional_tokens_and_rot
             response["refresh_token"] = json!(rotated);
         }
         *fixture.reply.lock().unwrap() = response;
+        let key_requests = fixture.key_requests.lock().unwrap().len();
         let refreshed = client.refresh(refresh_token, &original).await.unwrap();
         assert!(refreshed.claims.is_none());
+        assert_eq!(fixture.key_requests.lock().unwrap().len(), key_requests);
         assert_eq!(
             refreshed.tokens.refresh_token().unwrap().secret(),
             rotated.unwrap_or(refresh_token.secret())
@@ -522,4 +531,84 @@ async fn refresh_rejects_another_provider_or_client_before_network_access() {
         assert!(client.refresh(refresh_token, &original).await.is_err());
     }
     assert_eq!(fixture.count.load(Ordering::SeqCst), 1);
+}
+
+// Generated test-only RSA key; never used by production authentication.
+const ROTATION_PRIVATE: &[u8] = include_bytes!("rotation-test.pem");
+fn rotation_jwk() -> Value {
+    json!({"kty":"RSA", "use":"sig", "alg":"RS256", "kid":"rotated", "e":"AQAB", "n":"kPszNF2ghKj80PvXDNA8pzL2TNEoJKp5g5eIbpPmjHJvyaItOcQOhKcvg5SkW7WVePRqGKIslE-NOg4qMS35oos1g5V9rOnsEunTRciygsCQkaL5WVBNerFLpuUBGypUOYd2W6TpKIsdENXBYO-SDckAYxEZUEdjZshi_AsgWQbfki7axKB67DgTonA0utX3JpG4h9PDVgj6erihubsUdM40Wuslh_j92H1Y3uGQBcvAnwlgvfd_t6WULNeeLAtng-ewemnqEbGSmuZiLPNU2TO9fnwa0C0Cm802BRyYdqDlw3JmLatuqLiO4Ft6PxQDSwlZa1uqy8Y0E3QHhGLp3Q"})
+}
+
+#[tokio::test]
+async fn signing_key_rotation_is_verified_without_recreating_the_provider() {
+    let fixture = ProviderFixture::new().await;
+    let client = fixture.client().await;
+    assert_eq!(fixture.key_requests.lock().unwrap().len(), 1);
+    let pending = client.begin(&[]).unwrap();
+    let state = pending.state().to_owned();
+    fixture.respond(&pending, &json!({}));
+    let original = client
+        .exchange(pending, &state, "first-code")
+        .await
+        .unwrap();
+    *fixture.keys.lock().unwrap() = json!({"keys":[rotation_jwk()]});
+    let pending = client.begin(&[]).unwrap();
+    let state = pending.state().to_owned();
+    fixture.respond_with_key(
+        pending.nonce.secret(),
+        &json!({}),
+        "rotated",
+        ROTATION_PRIVATE,
+    );
+    let rotated = client
+        .exchange(pending, &state, "second-code")
+        .await
+        .unwrap();
+    assert_eq!(rotated.claims.subject(), original.claims.subject());
+    fixture.respond_with_key(
+        original.claims.nonce().unwrap().secret(),
+        &json!({}),
+        "rotated",
+        ROTATION_PRIVATE,
+    );
+    let refreshed = client
+        .refresh(original.tokens.refresh_token().unwrap(), &original.claims)
+        .await
+        .unwrap();
+    assert_eq!(
+        refreshed.claims.unwrap().subject(),
+        original.claims.subject()
+    );
+    assert_eq!(fixture.count.load(Ordering::SeqCst), 3);
+    let requests = fixture.key_requests.lock().unwrap();
+    assert_eq!(requests.len(), 4);
+    for request in requests.iter() {
+        assert!(request.starts_with("GET /jwks "));
+        assert!(!request.to_ascii_lowercase().contains("authorization:"));
+        assert!(!request.contains("private-"));
+    }
+}
+
+#[tokio::test]
+async fn unavailable_or_revoked_keys_never_fall_back_to_discovery_keys() {
+    for keys in [
+        json!({"keys":[]}),
+        json!({"keys":[rotation_jwk()]}),
+        json!({"provider_error":"private-detail"}),
+        json!({"keys":[], "padding":" ".repeat(1024 * 1024)}),
+    ] {
+        let fixture = ProviderFixture::new().await;
+        let client = fixture.client().await;
+        *fixture.keys.lock().unwrap() = keys;
+        let pending = client.begin(&[]).unwrap();
+        let state = pending.state().to_owned();
+        fixture.respond(&pending, &json!({}));
+        let error = client.exchange(pending, &state, "code").await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "oidc_authentication_failed: OIDC authentication failed"
+        );
+        assert_eq!(fixture.count.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.key_requests.lock().unwrap().len(), 2);
+    }
 }

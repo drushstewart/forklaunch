@@ -11,8 +11,8 @@ use openidconnect::{
     AccessTokenHash, IssuerUrl, Nonce, TokenResponse as _,
     core::{
         CoreAuthenticationFlow, CoreClient, CoreClientAuthMethod, CoreIdTokenClaims,
-        CoreJwsSigningAlgorithm, CoreProviderMetadata, CoreResponseType, CoreTokenResponse,
-        CoreTokenType,
+        CoreJsonWebKeySet, CoreJwsSigningAlgorithm, CoreProviderMetadata, CoreResponseType,
+        CoreTokenResponse, CoreTokenType,
     },
 };
 pub use refresh::OidcRefresh;
@@ -30,7 +30,8 @@ type Client = CoreClient<
 
 /// A discovered provider pinned to operator-owned issuer/client/callback config.
 /// This adapter supports authorization code + S256 PKCE and RS256 ID tokens.
-/// Discovery is explicit; construct a new provider to refresh discovery/JWK data.
+/// Discovery pins endpoints. Each ID-token verification fetches fresh keys from
+/// the pinned JWKS endpoint, with the same transport limits and no redirects.
 pub struct OidcProvider {
     metadata: CoreProviderMetadata,
     client_id: ClientId,
@@ -151,12 +152,21 @@ impl OidcProvider {
         })
     }
     fn client(&self) -> Client {
-        CoreClient::from_provider_metadata(
-            self.metadata.clone(),
-            self.client_id.clone(),
-            self.secret.clone(),
-        )
-        .set_redirect_uri(self.redirect.clone())
+        self.client_with_metadata(self.metadata.clone())
+    }
+    fn client_with_metadata(&self, metadata: CoreProviderMetadata) -> Client {
+        CoreClient::from_provider_metadata(metadata, self.client_id.clone(), self.secret.clone())
+            .set_redirect_uri(self.redirect.clone())
+    }
+    async fn verification_client(&self, tokens: &CoreTokenResponse) -> FrameworkResult<Client> {
+        validate_tokens(tokens)?;
+        tokens.id_token().ok_or_else(failed)?;
+        // The token never selects this URL. Fetch once per verification without
+        // credential headers; do not fall back to discovery-time keys on failure.
+        let keys = CoreJsonWebKeySet::fetch_async(self.metadata.jwks_uri(), &self.transport)
+            .await
+            .map_err(|_| failed())?;
+        Ok(self.client_with_metadata(self.metadata.clone().set_jwks(keys)))
     }
     /// Create unpredictable CSRF state, nonce and an S256 PKCE verifier.
     /// # Errors
@@ -233,7 +243,8 @@ impl OidcProvider {
             .request_async(&self.transport)
             .await
             .map_err(|_| failed())?;
-        let claims = self.verify_claims(&client, &tokens, &pending.nonce)?;
+        let verifier = self.verification_client(&tokens).await?;
+        let claims = self.verify_claims(&verifier, &tokens, &pending.nonce)?;
         Ok(OidcLogin { claims, tokens })
     }
     fn verify_claims(

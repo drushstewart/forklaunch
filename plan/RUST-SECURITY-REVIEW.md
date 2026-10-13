@@ -140,8 +140,14 @@ Refresh grants bind newly verified ID tokens to original trusted issuer, subject
 audience, optional nonce and authentication time. Missing ID tokens remain absent;
 missing replacement refresh tokens retain the supplied token. Non-Bearer and empty
 tokens fail closed. Original claims and tokens must come from trusted server
-storage; the application owns rotation concurrency and persistence. Automatic key
-refresh and account/session provisioning are not implemented by this adapter. The all-lockfile audit has no unreviewed
+storage; the application owns rotation concurrency and persistence. ID-token
+verification now fetches fresh keys from the discovery-pinned JWKS endpoint,
+without credentials, redirects, discovery-key fallback or token-grant retries.
+The existing 1 MiB response bound and 15-second request timeout apply. This adds
+one network request per returned ID token; unavailable keys reject authentication.
+Refresh responses without an ID token do not fetch keys. Owned-provider tests
+cover changed key material, revoked/empty/malformed/oversized key sets and exact
+request counts. Account/session provisioning remains application-owned. The all-lockfile audit has no unreviewed
 findings after the public-verification-only RSA review above.
 
 

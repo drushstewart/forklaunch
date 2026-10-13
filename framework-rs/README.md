@@ -86,7 +86,13 @@ applications own encrypted token persistence and account/session creation.
 Verification checks signature, issuer, audience, expiry, nonce, a present
 `azp`, nonempty subject, future issue time (60-second tolerance), and `at_hash`
 when present. Errors and Debug output omit credentials, tokens and provider
-response details. Rediscover explicitly to refresh metadata/keys. This generic
+response details. Each login or refresh response containing an ID token fetches
+fresh verification keys from the discovery-pinned JWKS URL before validation.
+This adds one bounded public-key GET per ID-token response and never retries a
+code exchange or refresh grant. Key requests carry no client/token credentials;
+invalid, unavailable or revoked keys fail closed without a discovery-key fallback.
+Refresh responses without ID tokens do not fetch keys. Rediscover explicitly when
+provider endpoints/metadata change. This generic
 adapter is separate from the configured Better Auth Google/account flow.
 
 

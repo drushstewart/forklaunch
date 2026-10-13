@@ -4175,3 +4175,24 @@ The [AsyncAPI 3 reply model](https://www.asyncapi.com/docs/reference/specificati
 remains broader than this fixed WebSocket profile: dynamic/cross-channel replies,
 automatic correlation, upgrade security/parameters, other protocols and event
 projects stay open. Checklist remains 657/682 (96.3%), 25 open.
+
+
+OIDC signing-key rotation receipt (2026-10-13): login and refresh responses with
+ID tokens now fetch fresh JWKS from the discovery-pinned URL before verification.
+This supersedes the automatic-key-refresh limitation in the earlier receipts.
+Keys are fetched once per verification without credential headers or token-grant
+retries, using existing no-redirect, 1 MiB and 15-second transport bounds. Failed,
+revoked, malformed and oversized key sets never fall back to discovery-time keys.
+Refresh responses without ID tokens skip the key request. The deliberate absence
+of a cache adds provider latency/load and makes key availability a login dependency;
+endpoint metadata changes still require explicit rediscovery.
+
+All 28 auth tests and strict all-feature/all-target Clippy pass. A local provider
+rotates actual RSA key material between discovery, login and refresh, asserting
+identity binding, exact grant/key request counts and credential-free key fetches.
+Generated relocated run `z9iUdx` executes the vendored OIDC wire tests, compiles
+both SDKs and passes Basic/JWT authorization and the complete HTTP/MCP listener,
+discovery, invocation and shutdown matrix. All 939 embedded assets are packaged.
+Logs: `/private/tmp/fl-oidc-key-refresh-{tests,clippy,generated,package}.log`.
+Account/session provisioning and broader provider/options coverage remain open.
+Checklist remains 657/682 (96.3%), 25 open.
