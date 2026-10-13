@@ -78,6 +78,10 @@ pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
             return Err("private verification detail".into());
         }
         Ok(())
+    }).with_json_reviver(|key,value| {
+        if key=="drop" { return Ok(None); }
+        if key=="rejectReviver" { return Err("private reviver detail".into()); }
+        Ok(Some(if key=="value" && value=="revive" {json!("revived")} else {value}))
     })).unwrap();
     for version in ["v1","v2"] {
         hooks.insert(&contracts()[6],version,forklaunch_http::VersionBodyHooks::default()

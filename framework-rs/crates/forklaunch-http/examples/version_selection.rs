@@ -32,8 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     plan.with_body_hooks(version["name"].as_str().unwrap(), fixture_hooks(mode))?;
             }
         }
-        if let Some(verify) = fixture.get("verify") {
-            plan = plan.with_parser_hooks(fixture_parser_hooks(verify))?;
+        if fixture.get("verify").is_some() || fixture.get("reviver").is_some() {
+            plan = plan.with_parser_hooks(fixture_parser_hooks(&fixture))?;
         }
         let mut cases = Vec::new();
         for case in fixture["cases"].as_array().unwrap() {
@@ -236,13 +236,39 @@ fn fixture_versions(mut contract: RouteContract, fixture: &Value) -> RouteContra
     contract
 }
 
-fn fixture_parser_hooks(verify: &Value) -> forklaunch_http::BodyParserHooks {
-    let verify = verify.clone();
-    forklaunch_http::BodyParserHooks::default().with_verify(move |_, bytes, charset| {
-        let received = json!({"bytes":bytes,"charset":charset});
-        if verify["reject"] == true || received != verify["expected"] {
-            return Err("verification rejected".into());
-        }
-        Ok(())
-    })
+fn fixture_parser_hooks(fixture: &Value) -> forklaunch_http::BodyParserHooks {
+    let mut hooks = forklaunch_http::BodyParserHooks::default();
+    if let Some(verify) = fixture.get("verify") {
+        let verify = verify.clone();
+        hooks = hooks.with_verify(move |_, bytes, charset| {
+            let received = json!({"bytes":bytes,"charset":charset});
+            if verify["reject"] == true || received != verify["expected"] {
+                return Err("verification rejected".into());
+            }
+            Ok(())
+        });
+    }
+    if fixture.get("reviver").is_some() {
+        let trace = fixture["reviver"] == "trace";
+        let count = std::sync::atomic::AtomicI64::new(0);
+        hooks = hooks.with_json_reviver(move |key, value| {
+            let ordinal = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            if key == "reject" {
+                return Err("private reviver detail".into());
+            }
+            if key == "drop" {
+                return Ok(None);
+            }
+            Ok(Some(match value {
+                Value::Number(value) => json!(if trace {
+                    ordinal
+                } else {
+                    value.as_i64().ok_or("integer")? * 2
+                }),
+                Value::String(value) => json!(value.trim().to_uppercase()),
+                value => value,
+            }))
+        });
+    }
+    hooks
 }

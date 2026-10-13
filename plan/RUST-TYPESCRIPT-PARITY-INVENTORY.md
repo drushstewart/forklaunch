@@ -3506,3 +3506,28 @@ generators, startup/discovery/Origin rejection and graceful shutdown.
 Receipts: `/private/tmp/fl-parser-hooks-{actual,native,clippy,package,generated}.log`.
 Checklist remains **652/682 (95.6%), 30 open**. JSON reviver and non-body/missing-body
 transformation semantics remain in the broad versioning gate.
+
+### Native JSON reviver traversal (2026-10-13)
+
+`BodyParserHooks::with_json_reviver` applies child-first transformations once,
+before version-specific callbacks. It preserves JavaScript numeric-key ordering,
+other source-key order and duplicate-key last-value/original-position behavior
+through an ordered parser, without changing global serde_json map features.
+Object properties and the root can be removed; empty decoded bodies bypass the
+reviver. Callback failures return a fixed 400. Traversal is depth-bounded.
+
+Validation: **513 actual TypeScript/native parser comparisons**, including 29 new
+reviver fixtures with ordered callback effects, duplicate keys, nested arrays,
+property removal, compression, primitive roots, empty/BOM input and errors.
+24 contract, 34 HTTP, 64 Axum and three integration tests pass, plus strict
+Clippy, blueprint-core compilation and 909 source-package files. Fresh `run.NtsKUh`
+passes HTTP/MCP reviver transformation/rejection, private-error omission, all prior
+media/parser/verification checks and both SDKs across three artifact forms and
+native generators, including service startup/discovery and graceful shutdown.
+Receipts: `/private/tmp/fl-reviver-{actual,native,clippy,blueprint,package,generated}.log`.
+
+Sparse array deletion explicitly returns 400: native JSON values cannot represent
+JavaScript holes. Mutable reviver holders/source context, broader undefined/default
+validation and non-body transformations remain open. Root deletion is an absent
+parsed value and requires a compatible contract/handler; the typed required-body
+extractor requires a present value. Checklist **652/682 (95.6%), 30 open**.

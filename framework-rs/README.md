@@ -642,7 +642,7 @@ Runtime callbacks are not serialized into contracts or SDKs. Export schemas that
 describe accepted wire input and explicit response schemas; attach native
 callbacks when constructing the server. This supports native equivalents of body
 preprocessing/transformation, without interpreting JavaScript functions. Missing
-body defaults, query/parameter/header transformations and JSON reviver callbacks remain separate work.
+body defaults and query/parameter/header transformations remain separate work.
 
 
 `BodyParserHooks::with_verify` adds verification for the shared JSON, text,
@@ -655,3 +655,19 @@ checks run first. A verification error returns a fixed 403 without exposing the
 callback's error text, even when schema validation is disabled. Multipart and
 SSE are outside this body-parser verification API. The callback is read-only;
 it does not expose Express's mutable request/response objects.
+
+
+`BodyParserHooks::with_json_reviver` visits JSON children before their parent and
+finally visits the root with key `""`. It runs once before per-version hooks.
+Canonical uint32 object keys are visited numerically, then other keys in source
+order; repeated JSON keys keep their original position and last value. Callbacks
+return `Some(value)` to retain/replace a value and `None` to remove an object
+property or the root. Empty decoded bodies bypass the reviver, matching
+body-parser's special-case `{}` result. Callback failures return a fixed 400.
+
+This native JSON callback does not expose mutable JavaScript holders or source
+context. Sparse array removal returns 400 because `serde_json::Value` cannot
+represent array holes; it is not silently converted to null. A removed root is
+an absent parsed body, so callers must use an appropriate optional-body contract
+and handler; `VersionedBody<T>` requires a present value. Broader undefined/default
+and sparse-array validation semantics remain open. Traversal is depth-bounded.

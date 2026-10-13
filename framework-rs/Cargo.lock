@@ -1384,6 +1384,7 @@ dependencies = [
  "futures-util",
  "mime",
  "multer",
+ "serde",
  "serde_json",
 ]
 

@@ -114,8 +114,17 @@ for(const kind of ['json','text']) for(const reject of [false,true]) {
  const bytes=Buffer.from(kind==='json'?'\ufeff{"value":"水"}':'\ufeff水','utf16le');
  cases.push([kind,gzipSync(bytes),'utf-16le',undefined,'gzip',{reject,expected:{bytes:[...bytes],charset:'utf-16le'}}]);
 }
+for(const value of ['{"a":2,"nested":{"drop":3,"value":" a "},"items":[1,2]}','{}','[]','42','" hi "','null','{"reject":1}','{"__proto__":{"value":2},"constructor":2}','{"2":2,"10":10,"1":1,"01":3}','','\ufeff',' ','{']) {
+ for(const encoding of [undefined,'gzip']) {
+  const bytes=Buffer.from(value);
+  cases.push(['json',encoding?gzipSync(bytes):bytes,undefined,{json:{strict:false}},encoding,undefined,true]);
+ }
+}
+for(const value of ['{"z":1,"2":2,"1":1,"10":10,"nested":{"drop":0,"q":3},"array":[4,5],"z":9}','{"4294967295":1,"03":2,"4294967294":3,"1":4,"a":5}','[1,{"z":2,"a":3},4]']) {
+ cases.push(['json',Buffer.from(value),undefined,undefined,undefined,undefined,'trace']);
+}
 const fixtures=[],expected=[];
-for(const [kind,bytes,charset,parserOptions,contentEncoding,verify] of cases) {
+for(const [kind,bytes,charset,parserOptions,contentEncoding,verify,reviver] of cases) {
  const req=Readable.from([bytes]);
  const contentType=(kind==='json'?'application/json':kind==='form'?'application/x-www-form-urlencoded':kind==='file'?'application/octet-stream':'text/plain')+(charset?`; charset=${charset}`:'');
  req.headers={'content-type':contentType,'content-length':String(bytes.length),...(contentEncoding?{'content-encoding':contentEncoding}:{})};
@@ -128,7 +137,16 @@ for(const [kind,bytes,charset,parserOptions,contentEncoding,verify] of cases) {
    assert.deepEqual({bytes:[...buf],charset:encoding},verify.expected);
    if(verify.reject)throw Error('private verification detail');
   }}}:parserOptions;
-  contentParse(options)(req,{},error=>{clearTimeout(timer);error?reject(error):resolve();});
+  let reviverCount=0;
+  const configured=reviver?{...options,json:{...options?.json,reviver(key,value){
+   const ordinal=++reviverCount;
+   if(key==='reject')throw Error('private reviver detail');
+   if(key==='drop')return undefined;
+   if(typeof value==='number')return reviver==='trace'?ordinal:value*2;
+   if(typeof value==='string')return value.trim().toUpperCase();
+   return value;
+  }}}:options;
+  contentParse(configured)(req,{},error=>{clearTimeout(timer);error?reject(error):resolve();});
  }).catch(error=>{failure=error;});
  const versions=[{name:'fallback',schema:true}];
  if(failure) expected.push([{status:failure.status}]);
@@ -138,7 +156,7 @@ for(const [kind,bytes,charset,parserOptions,contentEncoding,verify] of cases) {
   versions.push({name:'exact',schema:{...(kind==='file'?{type:'array'}:{}),const:body}});
   expected.push([{version:'exact',matched:['fallback','exact'],status:200,body}]);
  }
- fixtures.push({kind,contentType,contentEncoding,parserOptions,verify,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
+ fixtures.push({kind,contentType,contentEncoding,parserOptions,verify,reviver,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
 }
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000,maxBuffer:32*1024*1024}));
 for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],`${cases[i][0]} ${cases[i][2]} ${cases[i][4]} ${cases[i][1].subarray(0,64).toString('hex')}`);

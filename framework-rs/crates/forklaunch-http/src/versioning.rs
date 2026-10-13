@@ -151,6 +151,9 @@ impl VersionedRoutePlan {
         if matches!(body.kind, BodyKind::Multipart | BodyKind::ServerSentEvent) {
             return Err("This body kind does not use body-parser verification".into());
         }
+        if hooks.has_json_reviver() && !matches!(body.kind, BodyKind::Json | BodyKind::Unknown) {
+            return Err("JSON reviver requires a JSON body parser".into());
+        }
         self.parser_hooks = hooks;
         Ok(self)
     }
@@ -301,7 +304,12 @@ impl VersionedRoutePlan {
         }
         let value = match body.kind {
             BodyKind::Json | BodyKind::Unknown => {
-                parse_json_body(bytes, &charset, self.parsers.json_strict)?
+                return parse_json_body(
+                    bytes,
+                    &charset,
+                    self.parsers.json_strict,
+                    &self.parser_hooks,
+                );
             }
             BodyKind::File | BodyKind::Binary => {
                 Value::Array(bytes.iter().copied().map(Value::from).collect())
@@ -326,10 +334,11 @@ fn parse_json_body(
     bytes: &[u8],
     charset: &str,
     strict: bool,
-) -> Result<Value, ContractValidationError> {
+    hooks: &BodyParserHooks,
+) -> Result<Option<Value>, ContractValidationError> {
     let text = charset::decode(bytes, charset)?;
     if text.is_empty() {
-        return Ok(serde_json::json!({}));
+        return Ok(Some(serde_json::json!({})));
     }
     let first = text
         .trim_start_matches([' ', '\t', '\r', '\n'])
@@ -338,7 +347,12 @@ fn parse_json_body(
     if strict && !matches!(first, Some(b'{' | b'[')) {
         return Err(invalid_body("JSON body must be an object or array"));
     }
-    serde_json::from_str(&text).map_err(|_| invalid_body("invalid JSON body"))
+    if hooks.has_json_reviver() {
+        return hooks.revive_json(&text);
+    }
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|_| invalid_body("invalid JSON body"))
 }
 
 fn validate_parser_options(parsers: &forklaunch_contract::BodyParserOptions) -> Result<(), String> {

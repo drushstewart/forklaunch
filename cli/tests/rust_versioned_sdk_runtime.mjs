@@ -109,6 +109,12 @@ try {
  assert.equal(verified.status,202);assert.deepEqual(await verified.json(),{value:'ab!'});
  const verifyMcp=await mcpRpc(base,'tools/call',{name:'writeTransform [vv2]',arguments:{body:{value:'wire-deny'}}});
  assert.equal(verifyMcp.isError,true);assert.ok(!JSON.stringify(verifyMcp).includes('private verification detail'));
+ const revived=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({value:'revive',drop:'removed'})});
+ assert.equal(revived.status,202);assert.deepEqual(await revived.json(),{value:'revived!'});
+ const revivedMcp=await mcpRpc(base,'tools/call',{name:'writeTransform [vv2]',arguments:{body:{value:'revive'}}});
+ assert.equal(revivedMcp.isError,false);assert.deepEqual(JSON.parse(revivedMcp.content[0].text),{value:'revived!'});
+ const reviverFailure=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({value:'ab',rejectReviver:true})});
+ assert.equal(reviverFailure.status,400);assert.ok(!(await reviverFailure.text()).includes('private reviver detail'));
  for(const value of ['deny',' ']) {
   const response=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({value})});
   assert.equal(response.status,400);
