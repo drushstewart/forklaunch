@@ -3,7 +3,7 @@ use axum::{
     extract::{Form, Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
 };
 use forklaunch_ecommerce_base::{BaseEcommerceService, store::InMemoryEcommerceStore};
 use forklaunch_ecommerce_interface::{
@@ -24,6 +24,7 @@ struct Fixture {
     calls: Arc<Mutex<Vec<Value>>>,
     captures: Arc<AtomicUsize>,
     fail_capture: Arc<AtomicBool>,
+    details: Arc<Mutex<Option<Value>>>,
 }
 async fn token(
     State(state): State<Fixture>,
@@ -77,6 +78,32 @@ async fn capture(
     }
     Json(json!({"id":id,"status":"COMPLETED"})).into_response()
 }
+fn completed_details(id: &str) -> Value {
+    json!({"id":id,"status":"COMPLETED","intent":"CAPTURE","purchase_units":[{
+        "reference_id":id,"amount":{"currency_code":"USD","value":"1.05"},
+        "payments":{"captures":[{"id":"CAPTURE_owned","status":"COMPLETED","final_capture":true,
+            "amount":{"currency_code":"USD","value":"1.05"}}]}}]})
+}
+async fn details(
+    State(state): State<Fixture>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Json<Value> {
+    assert_eq!(headers["authorization"], "Bearer owned-access-token");
+    state
+        .calls
+        .lock()
+        .unwrap()
+        .push(json!({"operation":"retrieve","id":id}));
+    Json(
+        state
+            .details
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| completed_details(&id)),
+    )
+}
 async fn verify(State(state): State<Fixture>, Json(body): Json<Value>) -> Response {
     state
         .calls
@@ -106,6 +133,7 @@ async fn live_paypal_wire_capture_claims_retries_and_signature_verification() {
         .route("/v1/oauth2/token", post(token))
         .route("/v2/checkout/orders", post(create))
         .route("/v2/checkout/orders/{id}/capture", post(capture))
+        .route("/v2/checkout/orders/{id}", get(details))
         .route("/v1/notifications/verify-webhook-signature", post(verify))
         .with_state(state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -116,8 +144,9 @@ async fn live_paypal_wire_capture_claims_retries_and_signature_verification() {
     let client = PaypalClient::new("owned-client".into(), "owned-secret".into(), &origin).unwrap();
     assert!(!format!("{client:?}").contains("owned-secret"));
     assert!(!format!("{client:?}").contains("owned-client"));
+    let store = Arc::new(InMemoryEcommerceStore::default());
     let service = Arc::new(PaypalPaymentService::new(
-        BaseEcommerceService::new(Arc::new(InMemoryEcommerceStore::default())),
+        BaseEcommerceService::new(Arc::clone(&store)),
         client.clone(),
     ));
     let created = service.create_payment(request("pay")).await.unwrap();
@@ -211,6 +240,140 @@ async fn live_paypal_wire_capture_claims_retries_and_signature_verification() {
         state.captures.load(Ordering::SeqCst),
         3,
         "matches TS: a failed payment cannot claim an external capture"
+    );
+    // Simulate a crash after the provisional TS-compatible claim. Recovery only GETs.
+    let actor = forklaunch_blueprint_core::AuditContext::actor("operator", "capture-recovery");
+    service.create_payment(request("recover")).await.unwrap();
+    service
+        .base()
+        .claim_for_confirmation("ORDER_recover")
+        .await
+        .unwrap();
+    let repaired = service
+        .reconcile_captured_payment("recover", actor.clone())
+        .await
+        .unwrap();
+    assert_eq!(repaired.status, PaymentStatus::Succeeded);
+    assert_eq!(store.payment_reconciliation_audits().unwrap().len(), 1);
+    assert_eq!(state.captures.load(Ordering::SeqCst), 3);
+    // Repair a failed local write after actual provider completion as well.
+    service.create_payment(request("repair")).await.unwrap();
+    service
+        .fail_payment(FailPaymentDto {
+            provider_ref: "ORDER_repair".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .reconcile_captured_payment("repair", actor.clone())
+            .await
+            .unwrap()
+            .status,
+        PaymentStatus::Succeeded
+    );
+    for (pointer, replacement) in [
+        ("/id", json!("substituted")),
+        ("/status", json!("APPROVED")),
+        ("/intent", json!("AUTHORIZE")),
+        ("/purchase_units/0/reference_id", json!("other")),
+        ("/purchase_units/0/amount/value", json!("2.05")),
+        ("/purchase_units/0/amount/currency_code", json!("EUR")),
+        (
+            "/purchase_units/0/payments/captures/0/status",
+            json!("PENDING"),
+        ),
+        (
+            "/purchase_units/0/payments/captures/0/status",
+            json!("REFUNDED"),
+        ),
+        (
+            "/purchase_units/0/payments/captures/0/status",
+            json!("PARTIALLY_REFUNDED"),
+        ),
+        (
+            "/purchase_units/0/payments/captures/0/final_capture",
+            json!(false),
+        ),
+        ("/purchase_units/0/payments/captures/0/id", json!("")),
+        (
+            "/purchase_units/0/payments/captures/0/amount/value",
+            json!("1.0501"),
+        ),
+        (
+            "/purchase_units/0/payments/captures/0/amount/value",
+            json!("1e2"),
+        ),
+        (
+            "/purchase_units/0/payments/captures/0/amount/value",
+            json!("9223372036854775808"),
+        ),
+        (
+            "/purchase_units/0/payments/captures/0/amount/currency_code",
+            json!("EUR"),
+        ),
+        ("/purchase_units/0/payments/captures", json!([])),
+        ("/purchase_units", json!([])),
+    ] {
+        let mut reply = completed_details("ORDER_recover");
+        *reply.pointer_mut(pointer).unwrap() = replacement;
+        *state.details.lock().unwrap() = Some(reply);
+        let error = service
+            .reconcile_captured_payment("recover", actor.clone())
+            .await
+            .unwrap_err();
+        assert!(!error.message.contains("CAPTURE_owned"));
+    }
+    for mode in [
+        "multiple-units",
+        "multiple-captures",
+        "refund",
+        "authorization",
+    ] {
+        let mut reply = completed_details("ORDER_recover");
+        match mode {
+            "multiple-units" => {
+                let unit = reply["purchase_units"][0].clone();
+                reply["purchase_units"].as_array_mut().unwrap().push(unit);
+            }
+            "multiple-captures" => {
+                let capture = reply["purchase_units"][0]["payments"]["captures"][0].clone();
+                reply["purchase_units"][0]["payments"]["captures"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(capture);
+            }
+            "refund" => {
+                reply["purchase_units"][0]["payments"]["refunds"] = json!([{"id":"refund"}]);
+            }
+            _ => {
+                reply["purchase_units"][0]["payments"]["authorizations"] =
+                    json!([{"id":"authorization"}]);
+            }
+        }
+        *state.details.lock().unwrap() = Some(reply);
+        assert!(
+            service
+                .reconcile_captured_payment("recover", actor.clone())
+                .await
+                .is_err()
+        );
+    }
+    *state.details.lock().unwrap() = None;
+    assert!(
+        service
+            .reconcile_captured_payment(
+                "recover",
+                forklaunch_blueprint_core::AuditContext::system("missing-actor")
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(store.payment_reconciliation_audits().unwrap().len(), 2);
+    assert_eq!(
+        state.captures.load(Ordering::SeqCst),
+        3,
+        "Recovery never initiates capture"
     );
     for (mode, expected) in [
         ("success", true),

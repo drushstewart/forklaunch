@@ -1,6 +1,7 @@
 //! `PayPal` Orders v2 provider with atomic confirmation claims in the shared
 //! ecommerce store. Webhook signatures are verified by `PayPal`'s HTTPS API.
 #![forbid(unsafe_code)]
+pub mod reconciliation;
 use forklaunch_blueprint_core::{
     BlueprintError, BlueprintResult,
     provider_http::{ProviderHttpClient, provider_status_error},

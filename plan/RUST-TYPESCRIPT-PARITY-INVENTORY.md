@@ -3921,3 +3921,38 @@ All 925 embedded assets are packaged. Logs:
 `/private/tmp/fl-billing-reconciliation-package.log`.
 Outbound provider/local-write recovery and remaining mapper decisions stay open;
 checklist remains 657/682 (96.3%), 25 open.
+
+
+Verified PayPal capture recovery receipt (2026-10-13): `PaypalOrderReader` and
+`PaypalClient::retrieve_order_details` add authenticated bounded order retrieval.
+`PaypalPaymentService::reconcile_captured_payment` verifies completed/final capture
+state, exact amount/currency and order reference before a local repair. One purchase
+unit/one capture matches this client's creation format. Pending/refunded, multiple,
+substituted and mismatched evidence is rejected; no capture/refund/delivery request
+is issued. Ordinary TypeScript provisional-claim and failure semantics remain,
+with 22 actual client cases and 19 wrapper operations passing unchanged.
+
+`PaymentReconciliationStore` adds audited snapshot-checked repair for memory and
+PostgreSQL. Migration 6 adds tenant-RLS audit metadata. Runtime roles need SELECT
+and operators need INSERT; generated documentation and fixture grants are updated.
+Audit failure rolls back a changed payment, stale snapshots and anonymous actors
+are rejected, and a delayed legacy claim release cannot reset verified completion.
+Seven base business-rule tests, two recovery tests (including restricted PostgreSQL
+and reopening), the PayPal live provider test and both native Axum tests pass.
+Strict all-feature/all-target clippy passes for base/PayPal/Axum. Provider cases
+reject amount/currency/reference/status mismatches, overflow/invalid money,
+multiple captures/units, refund/authorization metadata and substituted order IDs.
+
+Generated run `oDyeRU` compiles both SDKs from both artifacts and passes live
+HTTP/MCP, checkout/webhook comparisons, worker delivery, encrypted persistence,
+restart and CLI/Compose lifecycle. Its runtime phase was resumed in the same
+compiled workspace after supplying the required Stripe fixture dependency path.
+All 930 embedded assets are packaged. Logs:
+`/private/tmp/fl-paypal-reconciliation-{tests,clippy,parity,package}.log`,
+`/private/tmp/fl-paypal-reconciliation-generated.log`,
+`/private/tmp/fl-paypal-reconciliation-generated-final.log`.
+A disk-full build and stopped retained PostgreSQL fixture were resolved by removing
+1.46 GiB of inactive port-owned executables and starting a fresh owned database.
+No source/unrelated workspaces were removed. Uncaptured/ambiguous claims and
+cancelled-order provider references remain open; checklist remains 657/682
+(96.3%), 25 open.

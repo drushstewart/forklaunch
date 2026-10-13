@@ -8,6 +8,7 @@ pub mod events;
 pub mod import;
 #[cfg(feature = "postgres")]
 pub mod postgres;
+pub mod reconciliation;
 pub mod retention;
 pub mod shipping;
 pub mod store;

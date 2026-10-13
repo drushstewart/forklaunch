@@ -169,3 +169,25 @@ not independently verify provider truth: trusted operators must inspect/repair
 state before asserting Applied or RetryAllowed. No automatic public resolution
 endpoint is exposed. Raw payloads/secrets are not stored. Configure at least two
 pool connections and share store clones for admission control.
+
+
+PayPal capture reconciliation review (2026-10-13): authenticated order retrieval
+uses the configured provider origin/merchant credentials, bounded response size
+and existing redirect/retry restrictions. Repair accepts only a matching order ID,
+CAPTURE intent, COMPLETED order and one final COMPLETED capture with exact amount,
+currency and purchase-unit order reference. Pending/refunded, multiple-unit/capture
+or ambiguous evidence is rejected without mutation. It never invokes capture,
+refund or order delivery. Raw order responses may contain PII and are not audited
+or logged; the audit retains only payment/provider/capture identifiers, amount,
+currency, prior status and the verified operator context.
+
+Memory/PostgreSQL compare the inspected payment snapshot under the mutation lock.
+Payment repair and actor audit are atomic; audit failure leaves the original row.
+A delayed legacy claim release checks verified-capture audit evidence and cannot
+reset the payment. Migration 6 enforces tenant RLS on audit metadata; runtime roles
+need SELECT and reconciliation operators additionally need INSERT. Trusted internal
+VerifiedCapture values must never be bound directly to an unauthenticated request.
+This does not establish a distributed transaction or recover every provider state;
+uncaptured claims, ambiguous/multiple captures and cancelled-order references still
+require review. Provider status semantics reference the official
+[PayPal Orders documentation](https://developer.paypal.com/api/orders-v2/save-with-purchase/paypal).

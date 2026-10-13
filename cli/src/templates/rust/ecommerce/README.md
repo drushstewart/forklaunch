@@ -4,7 +4,7 @@ Persistent ecommerce service with HTTP and MCP, HMAC catalog/cart/order/payment 
 
 Apply `cargo run -p {{{name}}} -- --migrate` with a schema-owner connection. Generated Compose runs the HTTP service and a separate `<module>-inventory-worker` from the same image. The worker shares database/tenant/encryption settings and exposes container readiness on port 9090 without a host port. Sync preserves worker settings; rename/delete follow the owning module. Run the HTTP service with `cargo run -p {{{name}}}` and a separate inventory process with `cargo run -p {{{name}}} -- --worker`. HTTP health is `/health`; MCP is `/mcp` on the same listener. Offline `FORKLAUNCH_MODE=contract` exports routes without provider/storage credentials. Configure the trusted tenant, encryption keys and providers in `.env.example`; request fields cannot change the database tenant.
 
-Runtime database roles must have no SUPERUSER/BYPASSRLS. Grant schema USAGE on `fl_ecommerce,fl_worker`, SELECT/INSERT/UPDATE/DELETE on `fl_ecommerce.records,fl_ecommerce.order_retention,fl_worker.jobs`, SELECT/INSERT on `fl_ecommerce.inventory_event_receipts`, SELECT/INSERT/UPDATE on `fl_ecommerce.webhook_events`, INSERT on `fl_ecommerce.pii_read_audit`, and USAGE on `fl_worker` sequences. Apply migrations separately with the owner role. Addresses are encrypted and plaintext reads audit the verified service actor.
+Runtime database roles must have no SUPERUSER/BYPASSRLS. Grant schema USAGE on `fl_ecommerce,fl_worker`, SELECT/INSERT/UPDATE/DELETE on `fl_ecommerce.records,fl_ecommerce.order_retention,fl_worker.jobs`, SELECT/INSERT on `fl_ecommerce.inventory_event_receipts`, SELECT/INSERT/UPDATE on `fl_ecommerce.webhook_events`, INSERT on `fl_ecommerce.pii_read_audit`, SELECT on `fl_ecommerce.payment_reconciliation_audit`, and USAGE on `fl_worker` sequences. Apply migrations separately with the owner role. Addresses are encrypted and plaintext reads audit the verified service actor.
 
 Order transitions and their inventory jobs commit together. The worker decrements on paid, restocks cancellation from paid/fulfilled and ignores stock for pending cancellation. All item deltas and durable receipts commit together, preserving stock on retry/redelivery. The worker uses the same tenant and database, with optional HTTP readiness and bearer-authenticated pause/resume/drain controls.
 
@@ -40,3 +40,14 @@ address, matching TypeScript; a delete policy erases the whole order. Migration
 order updates and disappear on deletion. Memory development stores use
 `InMemoryEcommerceStore::for_tenant` to bind retention requests. Treat any reported
 errors or exhausted batch budget as incomplete enforcement.
+
+
+Migration 6 adds audited capture reconciliation. Custom PayPal integrations can
+call `PaypalPaymentService::reconcile_captured_payment(payment_id, actor_context)`
+to read authenticated provider evidence and repair a matching local payment.
+Only completed, final, single-unit/single-capture evidence with matching order
+reference, amount and currency is accepted. No capture, refund or order delivery
+is initiated. Reconciliation operators additionally need INSERT on
+`fl_ecommerce.payment_reconciliation_audit`. Ordinary claim release reads that
+table so a delayed failure cannot undo a verified capture. Pending/refunded or
+ambiguous evidence and cancelled-order provider references require manual review.

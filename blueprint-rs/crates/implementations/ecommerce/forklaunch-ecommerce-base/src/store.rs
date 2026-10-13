@@ -368,7 +368,9 @@ pub(crate) fn apply_mutation(
 /// applications should use the `PostgreSQL` adapter and restricted database roles.
 #[derive(Debug, Default)]
 pub struct InMemoryEcommerceStore {
-    records: Mutex<BTreeMap<(RecordKind, String), Record>>,
+    pub(crate) records: Mutex<BTreeMap<(RecordKind, String), Record>>,
+    pub(crate) payment_reconciliation_audit:
+        Mutex<Vec<crate::reconciliation::PaymentReconciliationAudit>>,
     applied_events: Mutex<BTreeMap<String, String>>,
     retention_tenant: Option<forklaunch_core::persistence::TenantContext>,
     retention_markers: Mutex<std::collections::BTreeSet<String>>,
@@ -578,7 +580,26 @@ impl EcommerceStore for InMemoryEcommerceStore {
                 break;
             }
         }
-        let result = apply_mutation(old.ok_or_else(|| not_found(query.kind))?, mutation)?;
+        let old = old.ok_or_else(|| not_found(query.kind))?;
+        if matches!(mutation, Mutation::ReleaseConfirmation)
+            && let Record::Payment(payment) = &old
+            && self
+                .payment_reconciliation_audit
+                .lock()
+                .map_err(storage_error)?
+                .iter()
+                .any(|audit| {
+                    audit.payment_id == payment.id
+                        && Some(audit.evidence.provider_ref.as_str())
+                            == payment.provider_ref.as_deref()
+                })
+        {
+            return Ok(MutationResult {
+                record: old,
+                changed: false,
+            });
+        }
+        let result = apply_mutation(old, mutation)?;
         Record::from_data(result.record.kind(), result.record.data()?)?;
         check_unique(&records, &result.record)?;
         records.insert(

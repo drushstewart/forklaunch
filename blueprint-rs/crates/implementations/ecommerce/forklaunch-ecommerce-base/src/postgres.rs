@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
 mod compliance;
+mod reconciliation;
 mod retention;
 mod webhook;
 
@@ -402,6 +403,20 @@ impl EcommerceStore for PostgresEcommerceStore {
         let record = self
             .decode(&mut tx, selector.kind, &id, data.0, "mutate")
             .await?;
+        if matches!(mutation, Mutation::ReleaseConfirmation)
+            && let Record::Payment(payment) = &record
+        {
+            let verified: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM fl_ecommerce.payment_reconciliation_audit WHERE tenant_id=$1 AND payment_id=$2 AND provider_ref=$3)")
+                .bind(self.tenant.id()).bind(&payment.id).bind(&payment.provider_ref)
+                .fetch_one(&mut *tx).await.map_err(storage_error)?;
+            if verified {
+                tx.commit().await.map_err(storage_error)?;
+                return Ok(MutationResult {
+                    record,
+                    changed: false,
+                });
+            }
+        }
         let result = apply_mutation(record, mutation)?;
         if result.changed {
             let data = self.encode(&result.record)?;

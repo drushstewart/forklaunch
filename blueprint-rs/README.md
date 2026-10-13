@@ -240,3 +240,23 @@ context are required; the inspected attempt ID protects against stale decisions.
 The audit and receipt/removal commit together. No raw payloads or provider secrets
 are retained by these tables. This is an explicit operational recovery API;
 provider repairs and interrupted outbound API mutations remain separate work.
+
+
+PayPal recovery is available through
+`PaypalPaymentService::reconcile_captured_payment(payment_id, actor_context)`.
+It retrieves the provider order with configured merchant credentials, verifies a
+completed final capture against the local order reference, amount and currency,
+and atomically repairs/audits the payment. It never calls capture or triggers order
+transitions/delivery. The current implementation accepts one purchase unit and
+one final capture, matching this client's create-order format. Other layouts,
+pending/refunded states and mismatched evidence require review. Monetary comparison
+uses exact decimal arithmetic under the existing amountCents/100 contract.
+
+`PaymentReconciliationStore` implements optimistic snapshot checks and atomic
+audits for memory/PostgreSQL. Migration 6 adds tenant-RLS audit metadata; runtime
+roles need SELECT and reconciliation operators need INSERT. A delayed failed
+capture cannot release a payment that has recorded verified capture evidence.
+The trusted server-only `VerifiedCapture` API must not accept unverified public
+request bodies. No new public endpoint is enabled. Ordinary PayPal operations
+retain the TypeScript claim/failure semantics until explicit reconciliation;
+cancelled-order references and broader outbound recovery remain open.
