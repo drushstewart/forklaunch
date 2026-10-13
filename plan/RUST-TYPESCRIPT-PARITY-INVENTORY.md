@@ -2519,3 +2519,10 @@ Evidence: `/private/tmp/fl-relay-orm-before.log` (2 redemptions instead of 1) an
 `fl-relay-orm-after.log` (pass). This fixes the reference behavior; native relay
 service, HTTP/MCP and generated lifecycle work remain open. Checklist stays
 648/682 (95.0%), 34 open.
+
+Relay redirect audit also reproduced browser URL normalization turning
+`/\t/foreign.test`, `/\n/foreign.test` and `/\r/foreign.test` into another-origin
+URLs. The TS template now rejects ASCII controls before accepting root-relative
+paths, with real template/URL-parser regression coverage. Evidence:
+`fl-relay-redirect-before.log` fails and `fl-relay-redirect-after.log` passes.
+The native relay primitive applies the same guard.

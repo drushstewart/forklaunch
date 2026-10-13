@@ -19,6 +19,13 @@ const cookies = async()=>({secret:'relay-fixture-secret',sessionTokenName:'bette
 const service = em => new RelaySessionService(em,cookies,logger);
 try {
   await orm.schema.create();
+  const { sanitizeRedirectPath } = source.load('cli/src/templates/project/relay/domain/utils/redirect-path.util.ts');
+  for(const input of [null,undefined,'','https://foreign.test','//foreign.test','/\\foreign.test','/\t/foreign.test','/\n/foreign.test','/\r/foreign.test']) {
+    const safe = sanitizeRedirectPath(input);
+    assert.equal(safe,'/',JSON.stringify(input));
+    assert.equal(new URL(safe,'https://fixture.test').origin,'https://fixture.test');
+  }
+  for(const input of ['/','/dashboard?q=1#part','/path with spaces','/%2F%2Fhost']) assert.equal(sanitizeRedirectPath(input),input);
   const result = await service(orm.em.fork()).ingest({nonce:'relay-once',tokens:{access_token:'owned-token'}});
   const ticket = new URL(result.redirectPath,'https://fixture.test').searchParams.get('ticket');
   assert.ok(ticket);
