@@ -2082,3 +2082,17 @@ contract/OpenAPI artifacts. The owned generated workspace and MinIO container
 were removed. This completes the engineering review, not the separate remaining
 provider, deployment, scalability and implementation gates.
 Checklist: **632/682 (92.7%), 50 open**.
+
+
+### Generated Rust SDK diagnostic redaction (2026-10-12)
+
+Both Rust emitters redact client URLs, default-header values and typed/transport
+request values in Debug output, retaining field names and body-presence flags.
+Reqwest transport errors strip their URLs. Generated consumers assert that URL
+credentials, auth headers, query/path tokens and text/binary bodies do not leak.
+Native SDK media/strict compilation, five Rust SDK tests and strict all-target
+Clippy pass. Rebuilt CLI-generated clients pass the new assertions through both
+contract/OpenAPI artifacts, calling Rust and compiled TypeScript services.
+HTTP/MCP startup, initialization, discovery, invocation, Origin rejection and
+graceful shutdown pass. The owned generated workspace was removed.
+Checklist remains **632/682 (92.7%), 50 open**.

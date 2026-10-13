@@ -9,7 +9,7 @@ type SdkRequestHook = Arc<dyn Fn(&mut SdkRequest) + Send + Sync>;
 
 {{#has_multipart}}pub use reqwest::multipart::{Form as MultipartForm, Part as MultipartPart};{{/has_multipart}}
 
-#[derive(Debug{{^has_multipart}}, Clone, PartialEq, Eq{{/has_multipart}})]
+{{^has_multipart}}#[derive(Clone, PartialEq, Eq)]{{/has_multipart}}
 pub struct SdkRequest {
     pub method: &'static str,
     pub url: String,
@@ -19,6 +19,20 @@ pub struct SdkRequest {
     pub body_bytes: Option<Vec<u8>>,
     {{#has_multipart}}pub multipart: Option<MultipartForm>,{{/has_multipart}}
     pub content_type: &'static str,
+}
+
+impl fmt::Debug for SdkRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("SdkRequest")
+            .field("method", &self.method)
+            .field("has_url", &!self.url.is_empty())
+            .field("query_fields", &self.query.keys().collect::<Vec<_>>())
+            .field("header_names", &self.headers.keys().collect::<Vec<_>>())
+            .field("has_body", &self.body.is_some())
+            .field("has_body_bytes", &self.body_bytes.is_some())
+            {{#has_multipart}}.field("has_multipart", &self.multipart.is_some()){{/has_multipart}}
+            .finish_non_exhaustive()
+    }
 }
 
 {{#has_operations}}
@@ -84,7 +98,7 @@ impl Error for SdkError {
 
 impl From<reqwest::Error> for SdkError {
     fn from(error: reqwest::Error) -> Self {
-        Self::Transport(error)
+        Self::Transport(error.without_url())
     }
 }
 
@@ -107,12 +121,23 @@ pub enum SdkAuth {
 
 {{{model_source}}}
 {{#operations}}
-#[derive(Debug, Default{{^multipart_request}}, Clone, PartialEq, Eq, Serialize, Deserialize{{/multipart_request}})]
+#[derive(Default{{^multipart_request}}, Clone, PartialEq, Eq, Serialize, Deserialize{{/multipart_request}})]
 pub struct {{request_type}} {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
     pub body: Option<{{#multipart_request}}MultipartForm{{/multipart_request}}{{^multipart_request}}{{#binary_request}}Vec<u8>{{/binary_request}}{{^binary_request}}String{{/binary_request}}{{/multipart_request}}>,
+}
+
+impl fmt::Debug for {{request_type}} {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("{{request_type}}")
+            .field("param_names", &self.params.keys().collect::<Vec<_>>())
+            .field("query_names", &self.query.keys().collect::<Vec<_>>())
+            .field("header_names", &self.headers.keys().collect::<Vec<_>>())
+            .field("has_body", &self.body.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug{{^streaming_response}}, Clone, PartialEq, Serialize, Deserialize{{/streaming_response}})]
@@ -138,8 +163,8 @@ impl fmt::Debug for {{client_name}} {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("{{client_name}}")
-            .field("base_url", &self.base_url)
-            .field("default_headers", &self.default_headers)
+            .field("has_base_url", &!self.base_url.is_empty())
+            .field("default_header_names", &self.default_headers.keys().collect::<Vec<_>>())
             .field("has_auth", &self.auth.is_some())
             .field("has_request_hook", &self.request_hook.is_some())
             .finish()

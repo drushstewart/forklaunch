@@ -14,6 +14,27 @@ async fn main() {
 }
 
 async fn verify(base: &str) {
+    let confidential=AccountsClient::new("https://url-user:url-secret@example.test/path?token=query-secret")
+        .with_default_header("authorization","Bearer header-secret")
+        .with_bearer_token("auth-secret");
+    let mut diagnostic=confidential.health_get_health_request(Default::default());
+    diagnostic.query.insert("token".into(),"query-secret".into());
+    diagnostic.body=Some("body-secret".into());
+    diagnostic.body_bytes=Some(b"binary-secret".to_vec());
+    let mut input=accounts_sdk::AccountsHealthGetHealthRequest::default();
+    input.params.insert("id".into(),"param-secret".into());
+    input.query=diagnostic.query.clone();
+    input.headers.insert("authorization".into(),"header-secret".into());
+    input.body=diagnostic.body.clone();
+    let rendered=format!("{confidential:?} {diagnostic:?} {input:?}");
+    for secret in ["url-user","url-secret","query-secret","body-secret","binary-secret","header-secret","auth-secret","param-secret"] {
+        assert!(!rendered.contains(secret),"SDK diagnostic leaked {secret}");
+    }
+    assert!(rendered.contains("authorization"));
+    let error=reqwest::Client::new().get("http://127.0.0.1:1/?token=transport-secret")
+        .header("invalid\nname","x").build().unwrap_err();
+    let error:accounts_sdk::SdkError=error.into();
+    assert!(!format!("{error:?} {error}").contains("transport-secret"));
     let client =
         AccountsClient::new(format!("{base}/")).with_default_header("x-sdk-consumer", "rust");
     let AccountsHealthGetHealthResponses::Status200(health) = client

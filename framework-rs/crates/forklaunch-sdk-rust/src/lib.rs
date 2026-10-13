@@ -43,7 +43,7 @@ pub fn generate_rust_sdk_source(plan: &SdkGenerationPlan, options: &RustSdkOptio
     let _ = writeln!(source);
     let _ = writeln!(source, "use std::collections::BTreeMap;");
     let _ = writeln!(source);
-    let _ = writeln!(source, "#[derive(Debug, Clone, PartialEq, Eq)]");
+    let _ = writeln!(source, "#[derive(Clone, PartialEq, Eq)]");
     let _ = writeln!(source, "pub struct SdkRequest {{");
     let _ = writeln!(source, "    pub method: &'static str,");
     let _ = writeln!(source, "    pub url: String,");
@@ -55,6 +55,21 @@ pub fn generate_rust_sdk_source(plan: &SdkGenerationPlan, options: &RustSdkOptio
     let _ = writeln!(source, "    pub body_schema: Option<&'static str>,");
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
+    source.push_str(
+        r#"impl std::fmt::Debug for SdkRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("SdkRequest")
+            .field("method", &self.method)
+            .field("has_url", &!self.url.is_empty())
+            .field("query_fields", &self.query.keys().collect::<Vec<_>>())
+            .field("header_names", &self.headers.keys().collect::<Vec<_>>())
+            .field("has_body", &self.body.is_some())
+            .field("has_body_bytes", &self.body_bytes.is_some())
+            .finish_non_exhaustive()
+    }
+}
+"#,
+    );
     if plan.operations.iter().any(multipart_body) {
         source.push_str(include_str!("multipart.rs"));
         source.push('\n');
@@ -94,11 +109,16 @@ fn path_with_params(path: &str, params: &BTreeMap<String, String>) -> String {
         write_request_struct(&mut source, operation);
     }
 
-    let _ = writeln!(source, "#[derive(Debug, Clone)]");
+    let _ = writeln!(source, "#[derive(Clone)]");
     let _ = writeln!(source, "pub struct {} {{", options.client_struct);
     let _ = writeln!(source, "    base_url: String,");
     let _ = writeln!(source, "}}");
     let _ = writeln!(source);
+    let _ = writeln!(
+        source,
+        "impl std::fmt::Debug for {} {{\n    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{\n        formatter.debug_struct(\"{}\").field(\"has_base_url\", &!self.base_url.is_empty()).finish_non_exhaustive()\n    }}\n}}",
+        options.client_struct, options.client_struct
+    );
     let _ = writeln!(source, "impl {} {{", options.client_struct);
     let _ = writeln!(source, "    #[must_use]");
     let _ = writeln!(
@@ -191,7 +211,7 @@ fn write_operation(source: &mut String, operation: &SdkOperation) {
 
 fn write_request_struct(source: &mut String, operation: &SdkOperation) {
     let request_type = format!("{}Request", rust_type_name(&operation.name));
-    let _ = writeln!(source, "#[derive(Debug, Clone, Default, PartialEq, Eq)]");
+    let _ = writeln!(source, "#[derive(Clone, Default, PartialEq, Eq)]");
     let _ = writeln!(source, "pub struct {request_type} {{");
     let _ = writeln!(source, "    pub params: BTreeMap<String, String>,");
     let _ = writeln!(source, "    pub query: BTreeMap<String, String>,");
@@ -205,6 +225,12 @@ fn write_request_struct(source: &mut String, operation: &SdkOperation) {
     };
     let _ = writeln!(source, "    pub body: Option<{body_type}>,");
     let _ = writeln!(source, "}}");
+    let _ = writeln!(source, "impl std::fmt::Debug for {request_type} {{");
+    source.push_str(
+        "    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n",
+    );
+    let _ = writeln!(source, "        formatter.debug_struct({request_type:?})");
+    source.push_str("            .field(\"param_names\", &self.params.keys().collect::<Vec<_>>())\n            .field(\"query_names\", &self.query.keys().collect::<Vec<_>>())\n            .field(\"header_names\", &self.headers.keys().collect::<Vec<_>>())\n            .field(\"has_body\", &self.body.is_some())\n            .finish_non_exhaustive()\n    }\n}\n");
     let _ = writeln!(source);
 }
 

@@ -60,6 +60,17 @@ export async function verifyTypes(sdk = createForkLaunchSdk()) {
   appendFileSync(join(temporary, 'native-sdk.rs'), String.raw`
 fn main() {
     let client = ForkLaunchClient::new("http://localhost");
+    let confidential=ForkLaunchClient::new("https://url-user:url-secret@example.test/path?token=query-secret");
+    let mut diagnostic=confidential.post_text_request(PostTextRequest { body:Some("body-secret".into()), ..Default::default() });
+    diagnostic.headers.insert("authorization".into(),"Bearer header-secret".into());
+    diagnostic.query.insert("token".into(),"query-secret".into());
+    let mut input=PostTextRequest { body:Some("body-secret".into()), ..Default::default() };
+    input.params.insert("id".into(),"param-secret".into());
+    input.query=diagnostic.query.clone();
+    input.headers=diagnostic.headers.clone();
+    let rendered=format!("{confidential:?} {diagnostic:?} {input:?}");
+    for secret in ["url-user","url-secret","query-secret","body-secret","header-secret","param-secret"] { assert!(!rendered.contains(secret),"diagnostic leaked {secret}"); }
+    assert!(rendered.contains("authorization"));
     let request = client.post_binary_request(PostBinaryRequest { body: Some(vec![0, 255, 1]), ..Default::default() });
     assert_eq!(request.body_bytes, Some(vec![0, 255, 1]));
     assert!(request.body.is_none());

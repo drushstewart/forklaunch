@@ -79,6 +79,10 @@ source review. A passing gate means there are no **unreviewed** findings.
   invocation, Origin rejection and shutdown. Body/stream/schema limits are
   bounded at their documented layers. Deployment-wide connection quotas, rate
   limits and public Host/Origin policy remain deployment configuration.
+- **Generated SDK diagnostics:** Rust client, transport request and typed request
+  Debug implementations omit URL, parameter, header and body values. Transport
+  errors strip reqwest URLs. Application response models retain ordinary
+  Debug behavior. Generated consumers assert credential/body redaction.
 - **Generated SDKs:** path/query values are encoded, multipart boundaries belong
   to the encoder, caller cancellation is preserved and SSE event buffers are
   bounded. Base URLs and fetch/HTTP clients are trusted caller configuration.
