@@ -2041,3 +2041,20 @@ workspace formatting and 861 packaged-source checks pass. Redis reported zero
 remaining keys; both owned infrastructure containers were removed after use.
 The generated benchmark example is included in the CLI source bundle.
 Checklist: **631/682 (92.5%), 51 open**.
+
+
+### Strict HS256 time claims found during security review (2026-10-12)
+
+The expanded actual TypeScript fixture first reproduced a native 200 response
+for a token that expired thirty seconds earlier, where TypeScript returned 403.
+The HS256 principal helper inherited jsonwebtoken's default sixty-second leeway
+and disabled not-before checking. It now uses zero leeway, enforces `exp <= now`
+as expired, validates optional `nbf`/`iat` numeric types, preserves fractional
+not-before comparisons and rejects empty signing keys. Future `iat` alone remains
+valid, matching JOSE without maxTokenAge. Explicit caller-owned JWK/JWKS Validation
+policies remain unchanged. All 34 actual-framework HTTP outcomes, sixteen auth
+tests, OpenAPI snapshots and strict auth Clippy pass. Earlier relocated generated
+HTTP/MCP checks and 108 blueprint library tests also passed (five environment-gated
+tests were ignored); their owned generated workspace was removed.
+Checklist remains **631/682 (92.5%), 51 open**. Dependency and broader security
+review continue; this is a concrete finding/fix, not a completed security audit.

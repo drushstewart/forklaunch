@@ -48,8 +48,9 @@ retention service. This does not claim generic SQL/ORM retention parity.
 through `jsonwebtoken`. Supply a server-owned subject, expiry in UNIX seconds,
 roles, permissions, scopes, features and subscription state. The function rejects
 empty subjects/keys; applications own expiry policy, secret generation, rotation
-and key distribution. `verify_jwt_hs256` checks the signature and expiry before
-returning a principal. For asymmetric keys and issuer/audience/algorithm policy,
+and key distribution. `verify_jwt_hs256` checks the signature, strict expiry and optional not-before
+time before returning a principal. It rejects empty keys and malformed optional
+`nbf`/`iat` claims; it does not add implicit clock tolerance. For asymmetric keys and issuer/audience/algorithm policy,
 use `jwt::verify_jwk`, `verify_jwks`, or the optional remote-JWKS adapter with an
 explicit `Validation`. Token-provided key URLs never select trusted keys.
 

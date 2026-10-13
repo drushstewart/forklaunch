@@ -63,14 +63,23 @@ try{
  assert.equal(verified.protectedHeader.alg,'HS256');
  const token=await new SignJWT({sub:'tester'}).setProtectedHeader({alg:'HS256'}).setExpirationTime('1h').sign(key);
  const expired=await new SignJWT({sub:'tester',exp:1}).setProtectedHeader({alg:'HS256'}).sign(key);
+ const now=Math.floor(Date.now()/1000);
+ const recentlyExpired=await new SignJWT({sub:'tester',exp:now-30}).setProtectedHeader({alg:'HS256'}).sign(key);
+ const notYetValid=await new SignJWT({sub:'tester',exp:now+7200,nbf:now+3600}).setProtectedHeader({alg:'HS256'}).sign(key);
  const forged=await new SignJWT({sub:'tester'}).setProtectedHeader({alg:'HS256'}).setExpirationTime('1h').sign(new TextEncoder().encode('wrong-key'));
  const users=[{id:'user_1',email:'ada@example.com',display_name:null,disabled:false,roles:[]},{id:'user_2',email:'grace@example.com',display_name:null,disabled:false,roles:[]}];
+ const numericDates=[];
+ for(const [extra,status] of [[{nbf:null},403],[{nbf:'0'},403],[{iat:null},403],[{iat:'0'},403],[{nbf:0.5,iat:now+3600},200]]){
+  const signed=await new SignJWT({sub:'tester',exp:now+7200,...extra}).setProtectedHeader({alg:'HS256'}).sign(key);
+  numericDates.push(['/users',signed,status,...(status===200?[{items:users,next_cursor:null}]:[])]);
+ }
  const cases=[
   ['/users/user_1',token,200,users[0]],['/users/user_1',issued.token,200,users[0]],['/users/user_2',token,200,users[1]],
   ['/users',token,200,{items:users,next_cursor:null}],
   ['/users?limit=2&cursor=user_1',token,200,{items:users,next_cursor:null}],
   ['/users/missing',token,404,''],['/users',undefined,401],['/users','invalid',403],
-  ['/users',expired,403],['/users',forged,403]
+  ['/users',expired,403],['/users',forged,403],
+  ['/users',recentlyExpired,403],['/users',notYetValid,403],...numericDates
  ];
  for(const [path,bearer,status,body] of cases){
   for(const [name,url] of [['TypeScript',ts],['Rust',rust]]){

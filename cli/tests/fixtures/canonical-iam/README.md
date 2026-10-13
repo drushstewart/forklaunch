@@ -19,7 +19,7 @@ FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES=/tmp/fl-canonical-http-dependencies \
 
 The runner creates an isolated source bundle, starts both services on ephemeral
 loopback ports, checks successful reads/lists, missing users and valid/missing/
-malformed/expired/forged JWTs, and retrieves both generated OpenAPI documents.
+malformed/expired/forged JWTs and optional NumericDate claim types/boundaries, and retrieves both generated OpenAPI documents.
 Telemetry export is disabled for this local fixture. It terminates both processes
 and removes its owned temporary source bundle even on failure.
 

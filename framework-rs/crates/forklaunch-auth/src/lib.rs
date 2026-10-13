@@ -157,11 +157,37 @@ pub fn parse_basic(header: &str) -> Option<(String, String)> {
 /// Returns [`AuthError::InvalidCredentials`] when the token is malformed,
 /// expired, or signed with a different key.
 pub fn verify_jwt_hs256(token: &str, signature_key: &[u8]) -> Result<Principal, AuthError> {
+    if signature_key.is_empty() {
+        return Err(AuthError::InvalidCredentials);
+    }
     jwt::check_header_policy(token)?;
-    let validation = Validation::new(Algorithm::HS256);
-    decode::<JwtClaims>(token, &DecodingKey::from_secret(signature_key), &validation)
-        .map(|data| Principal::from_claims(data.claims))
-        .map_err(|_| AuthError::InvalidCredentials)
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.leeway = 0;
+    validation.validate_nbf = true;
+    let data =
+        decode::<serde_json::Value>(token, &DecodingKey::from_secret(signature_key), &validation)
+            .map_err(|_| AuthError::InvalidCredentials)?;
+    let now = jsonwebtoken::get_current_timestamp();
+    let now_number = serde_json::Number::from(now)
+        .as_f64()
+        .ok_or(AuthError::InvalidCredentials)?;
+    // JOSE validates optional NumericDate types even without maxTokenAge.
+    // Keep fractional nbf values rather than silently truncating them.
+    for name in ["nbf", "iat"] {
+        if let Some(value) = data.claims.get(name) {
+            let date = value.as_f64().ok_or(AuthError::InvalidCredentials)?;
+            if name == "nbf" && date > now_number {
+                return Err(AuthError::InvalidCredentials);
+            }
+        }
+    }
+    let claims: JwtClaims =
+        serde_json::from_value(data.claims).map_err(|_| AuthError::InvalidCredentials)?;
+    // jsonwebtoken's comparison is strict '<'; JOSE expires at exp <= now.
+    if u64::try_from(claims.exp).map_err(|_| AuthError::InvalidCredentials)? <= now {
+        return Err(AuthError::InvalidCredentials);
+    }
+    Ok(Principal::from_claims(claims))
 }
 
 /// Issues an HS256 JWT from server-owned claims and a nonempty signing key.
@@ -318,6 +344,37 @@ mod tests {
             .expect("clock after epoch")
             .as_secs();
         usize::try_from(now).unwrap_or(0) + 3600
+    }
+
+    #[test]
+    fn hs256_time_claims_match_jose_and_empty_keys_fail_closed() {
+        let now = jsonwebtoken::get_current_timestamp();
+        let secret = b"test-only-signing-key";
+        let sign = |claims: &serde_json::Value, key: &[u8]| {
+            encode(
+                &Header::new(Algorithm::HS256),
+                claims,
+                &EncodingKey::from_secret(key),
+            )
+            .unwrap()
+        };
+        for claims in [
+            serde_json::json!({"sub":"tester","exp":now}),
+            serde_json::json!({"sub":"tester","exp":now-30}),
+            serde_json::json!({"sub":"tester","exp":now+7200,"nbf":now+3600}),
+            serde_json::json!({"sub":"tester","exp":now+7200,"nbf":null}),
+            serde_json::json!({"sub":"tester","exp":now+7200,"nbf":"0"}),
+            serde_json::json!({"sub":"tester","exp":now+7200,"iat":null}),
+            serde_json::json!({"sub":"tester","exp":now+7200,"iat":"0"}),
+        ] {
+            assert!(
+                verify_jwt_hs256(&sign(&claims, secret), secret).is_err(),
+                "{claims}"
+            );
+        }
+        let claims = serde_json::json!({"sub":"tester","exp":now+7200,"nbf":0.5,"iat":now+3600});
+        assert!(verify_jwt_hs256(&sign(&claims, secret), secret).is_ok());
+        assert!(verify_jwt_hs256(&sign(&claims, b""), b"").is_err());
     }
 
     #[test]
