@@ -184,6 +184,21 @@ try {
   );
   assert.equal((await compare(start + 30 + 30 * 86400)).keys.keys.length, 1);
   checks += 5;
+  // The configured adapter limits findMany to its first 100 inserted records.
+  // Publication must apply that limit before filtering expired keys.
+  const boundaryTime = start + 30 + 30 * 86400;
+  const boundaryRows = await native({ op: 'records', now: boundaryTime });
+  const template = boundaryRows.find((row) => !row.expiresAt);
+  for (let index = boundaryRows.length; index < 101; index++) {
+    const row = { ...template, id: `fixture-boundary-${index}` };
+    const publicKey = JSON.parse(row.publicKey);
+    publicKey.kid = row.id;
+    row.publicKey = JSON.stringify(publicKey);
+    await native({ op: 'seed', now: boundaryTime, row });
+  }
+  const boundary = await compare(boundaryTime);
+  assert.ok(!boundary.keys.keys.some((key) => key.kid === 'fixture-boundary-100'));
+  checks++;
   console.log(
     `Better Auth native key lifecycle parity: ${checks} comparisons passed`,
   );

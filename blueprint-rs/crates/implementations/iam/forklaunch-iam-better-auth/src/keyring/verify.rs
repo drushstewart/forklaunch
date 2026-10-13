@@ -44,10 +44,10 @@ impl<S: AuthStore> KeyRing<S> {
         };
         let mut tx = self.store.begin(false).await?;
         let row = tx
-            .list(Model::Jwks)
+            .list_page(Model::Jwks, None, 100)
             .await?
+            .records
             .into_iter()
-            .take(100)
             .find(|row| row["id"] == kid);
         tx.commit().await?;
         let Some(row) = row else {

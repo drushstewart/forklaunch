@@ -92,24 +92,38 @@ impl<S: AuthStore> RetentionService<S> {
         options: &RetentionOptions,
     ) -> BlueprintResult<usize> {
         let mut tx = self.store.begin(!options.dry_run).await?;
-        let mut rows: Vec<_> = tx
-            .list(Model::Account)
-            .await?
-            .into_iter()
-            .filter(|row| {
-                row.get("retentionAnonymizedAt").is_none_or(Value::is_null)
-                    && created(row).is_some_and(|date| date < cutoff)
-            })
-            .collect();
+        // Keep only the oldest batch, with insertion order breaking equal dates.
+        // Dry runs count all matches without retaining decrypted account records.
+        let mut rows = BTreeMap::new();
+        let mut matches = 0;
+        let mut after = None;
+        loop {
+            let page = tx.list_page(Model::Account, after, 256).await?;
+            for row in page.records {
+                if row.get("retentionAnonymizedAt").is_none_or(Value::is_null)
+                    && let Some(date) = created(&row).filter(|date| *date < cutoff)
+                {
+                    matches += 1;
+                    if !options.dry_run && options.batch_size > 0 {
+                        rows.insert((date, matches), row);
+                        if rows.len() > options.batch_size {
+                            rows.pop_last();
+                        }
+                    }
+                }
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
+            }
+        }
         if options.dry_run {
             tx.commit().await?;
-            return Ok(rows.len());
+            return Ok(matches);
         }
-        rows.sort_by_key(created);
-        rows.truncate(options.batch_size);
         let count = rows.len();
         let stamp = now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        for mut row in rows {
+        for mut row in rows.into_values() {
             for field in ["accessToken", "refreshToken", "idToken", "password"] {
                 row[field] = Value::Null;
             }

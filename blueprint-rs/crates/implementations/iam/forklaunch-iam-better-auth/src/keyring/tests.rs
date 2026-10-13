@@ -90,3 +90,80 @@ pub(crate) async fn exercise_key_lifecycle<S: AuthStore>(store: Arc<S>) {
 async fn concurrent_key_initialization_restart_rotation_grace_and_corruption() {
     exercise_key_lifecycle(Arc::new(MemoryAuthStore::default())).await;
 }
+
+pub(crate) async fn exercise_large<S: AuthStore>(store: Arc<S>) {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let ring = KeyRing::new(store.clone(), "https://auth.fixture.test");
+    let original = ring.jwks(now).await.unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    let template = tx
+        .get(Model::Jwks, original["keys"][0]["kid"].as_str().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    for index in 0..4_100 {
+        let mut row = template.clone();
+        row["id"] = json!(format!("large-key-{index}"));
+        let mut public: Value = serde_json::from_str(row["publicKey"].as_str().unwrap()).unwrap();
+        public["kid"] = row["id"].clone();
+        row["publicKey"] = json!(public.to_string());
+        tx.insert(Model::Jwks, row).await.unwrap();
+    }
+    tx.commit().await.unwrap();
+    assert_eq!(
+        ring.jwks(now).await.unwrap()["keys"]
+            .as_array()
+            .unwrap()
+            .len(),
+        100
+    );
+    let token = ring
+        .issue("user", "fixture@example.test", None, now)
+        .await
+        .unwrap();
+    assert_eq!(
+        ring.verify_jwt(Some(&json!({"token":token})), now)
+            .await
+            .unwrap()["payload"]["sub"],
+        "user"
+    );
+    let rotated = ring.rotate(now + Duration::seconds(1)).await.unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    assert_eq!(
+        tx.get(Model::Jwks, "large-key-4099")
+            .await
+            .unwrap()
+            .unwrap()["expiresAt"],
+        timestamp(now + Duration::seconds(1))
+    );
+    assert!(
+        tx.get(Model::Jwks, rotated["kid"].as_str().unwrap())
+            .await
+            .unwrap()
+            .unwrap()
+            .get("expiresAt")
+            .is_none()
+    );
+    tx.commit().await.unwrap();
+    // The configured first-100 window excludes the newly appended key.
+    assert_eq!(
+        ring.jwks(now + Duration::days(31)).await.unwrap(),
+        json!({"keys":[]})
+    );
+    // Leave no key-window exhaustion behind for the subsequent HTTP fixture.
+    let mut tx = store.begin(true).await.unwrap();
+    let mut after = None;
+    loop {
+        let page = tx.list_page(Model::Jwks, after, 256).await.unwrap();
+        for row in page.records {
+            tx.delete(Model::Jwks, row["id"].as_str().unwrap())
+                .await
+                .unwrap();
+        }
+        after = page.next;
+        if after.is_none() {
+            break;
+        }
+    }
+    tx.commit().await.unwrap();
+}

@@ -46,7 +46,7 @@ impl<S: AuthStore> KeyRing<S> {
     ) -> BlueprintResult<String> {
         let issued_at = u64::try_from(now.timestamp()).map_err(|_| key_error())?;
         let mut tx = self.store.begin(true).await?;
-        let rows = tx.list(Model::Jwks).await?;
+        let rows = tx.list_page(Model::Jwks, None, 100).await?.records;
         let mut candidates = Vec::new();
         for row in rows.iter().take(100) {
             if optional_time(row, "expiresAt")?.is_none_or(|expires| expires > now) {
@@ -70,17 +70,18 @@ impl<S: AuthStore> KeyRing<S> {
     }
 
     /// Publishes live keys and expired keys still within the actual default
-    /// 30-day grace period. An empty store initializes one key atomically.
+    /// 30-day grace period, within the configured adapter's first 100 records.
+    /// An empty store initializes one key atomically.
     /// An existing store containing only retired keys may publish an empty set,
     /// matching Better Auth; token issuance then provisions a new live key.
     /// # Errors
     /// Returns sanitized storage or corrupted key metadata failures.
     pub async fn jwks(&self, now: DateTime<Utc>) -> BlueprintResult<Value> {
         let mut tx = self.store.begin(true).await?;
-        let mut rows = tx.list(Model::Jwks).await?;
+        let mut rows = tx.list_page(Model::Jwks, None, 100).await?.records;
         if rows.is_empty() {
             mint(&mut tx, now).await?;
-            rows = tx.list(Model::Jwks).await?;
+            rows = tx.list_page(Model::Jwks, None, 100).await?.records;
         }
         let mut keys = Vec::new();
         for row in rows {
@@ -102,16 +103,25 @@ impl<S: AuthStore> KeyRing<S> {
     }
 
     /// Operator-controlled rotation. Retired keys remain public for the default
-    /// grace period; subsequent tokens select the new key. No public endpoint
+    /// grace period. Public key selection retains the configured first-100 limit;
+    /// operators must prune old records before that window fills. No public endpoint
     /// exposes this administrative operation.
     /// # Errors
     /// Returns sanitized storage or corrupted key metadata failures.
     pub async fn rotate(&self, now: DateTime<Utc>) -> BlueprintResult<Value> {
         let mut tx = self.store.begin(true).await?;
-        for mut row in tx.list(Model::Jwks).await? {
-            if optional_time(&row, "expiresAt")?.is_none_or(|expires| expires > now) {
-                row["expiresAt"] = json!(timestamp(now));
-                tx.replace(Model::Jwks, row).await?;
+        let mut after = None;
+        loop {
+            let page = tx.list_page(Model::Jwks, after, 256).await?;
+            for mut row in page.records {
+                if optional_time(&row, "expiresAt")?.is_none_or(|expires| expires > now) {
+                    row["expiresAt"] = json!(timestamp(now));
+                    tx.replace(Model::Jwks, row).await?;
+                }
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
             }
         }
         let key = mint(&mut tx, now).await?;

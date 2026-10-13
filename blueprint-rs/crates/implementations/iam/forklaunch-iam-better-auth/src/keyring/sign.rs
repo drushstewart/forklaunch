@@ -30,7 +30,7 @@ impl<S: AuthStore> KeyRing<S> {
             .as_str()
             .unwrap_or("EdDSA");
         let mut candidates = Vec::new();
-        for row in tx.list(Model::Jwks).await?.into_iter().take(100) {
+        for row in tx.list_page(Model::Jwks, None, 100).await?.records {
             if optional_time(&row, "expiresAt")?.is_none_or(|expiry| expiry > now) {
                 candidates.push((required_time(&row, "createdAt")?, row));
             }

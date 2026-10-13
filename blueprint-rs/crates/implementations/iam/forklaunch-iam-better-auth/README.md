@@ -79,12 +79,21 @@ a paged fallback; valid string relationships use indexes. Team reads/mutations,
 membership-key/pair lookup and invitation listing/creation also use scoped indexes.
 Provider identity, password/reset and compliance account queries use scoped
 indexes. OAuth state and reset callback expiration cleanup traverse keyset pages,
-preserving global cleanup and one-time token semantics. Keyring and retention
-scans still require migration before claiming scalable production parity.
+preserving global cleanup and one-time token semantics. All production auth
+service traversals now use scoped indexes or keyset pages. Retention scans retain
+only the oldest requested batch, preserving insertion-order ties; dry runs count
+without collecting decrypted rows. Response arrays still require memory
+proportional to their returned matches, and global expiration/retention scans
+remain linear in tenant records.
 
-`keyring::KeyRing` initializes keys atomically, selects the newest live key,
+`keyring::KeyRing` initializes keys atomically, selects the newest live key within
+the configured TypeScript adapter's first 100 inserted records,
 restores private keys from storage, rotates keys through trusted operator calls,
-and publishes retired keys through the configured 30-day grace period. Both
+and publishes retired keys through the configured 30-day grace period within
+that same 100-record window. Administrative rotation retires all live keys using
+bounded pages. Operators must prune old records before the selection window fills:
+newly appended keys outside the first 100 are not published or selected, matching
+the configured upstream behavior. Both
 memory and real PostgreSQL tests cover concurrent initialization, process/service
 reconstruction, rotation, exact grace expiry and corrupt-public-key rejection.
 The actual-library lifecycle fixture checks stable insertion ties and expired

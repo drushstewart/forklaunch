@@ -606,13 +606,23 @@ async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync:
             .is_none()
     );
     tx.commit().await.unwrap();
+    exercise_large_services(store, &login.user, now).await;
+}
+
+async fn exercise_large_services<S: AuthStore + 'static>(
+    store: std::sync::Arc<S>,
+    user: &Value,
+    now: chrono::DateTime<chrono::Utc>,
+) {
     exercise_large_account_queries(
         store.clone(),
-        login.user["id"].as_str().unwrap(),
-        login.user["email"].as_str().unwrap(),
+        user["id"].as_str().unwrap(),
+        user["email"].as_str().unwrap(),
         now,
     )
     .await;
+    crate::retention::tests::exercise_large(store.clone()).await;
+    crate::keyring::tests::exercise_large(store.clone()).await;
     #[cfg(feature = "http")]
     crate::http::tests::exercise_http(store).await;
 }

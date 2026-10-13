@@ -129,3 +129,70 @@ async fn seed<S: AuthStore>(store: &S, cutoff: DateTime<Utc>) {
 fn stamp(value: DateTime<Utc>) -> String {
     value.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
+
+// Called on the shared >4,096-account memory and restricted PostgreSQL fixture.
+pub(crate) async fn exercise_large<S: AuthStore>(store: Arc<S>) {
+    let now = DateTime::parse_from_rfc3339("2028-02-29T12:34:56.789Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let cutoff = account_cutoff(now).unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    for (id, age) in [("late", 1), ("tie-first", 2), ("tie-second", 2)] {
+        tx.insert(
+            Model::Account,
+            json!({
+                "id":format!("large-retention-{id}"), "userId":"large-retention-owner",
+                "createdAt":stamp(cutoff - Duration::days(age)), "accessToken":"private"
+            }),
+        )
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+    let service = RetentionService::new(store.clone());
+    let options = RetentionOptions {
+        batch_size: 1,
+        ..RetentionOptions::default()
+    };
+    assert_eq!(
+        service
+            .batch(
+                cutoff,
+                now,
+                &RetentionOptions {
+                    dry_run: true,
+                    ..options.clone()
+                }
+            )
+            .await
+            .unwrap(),
+        3
+    );
+    assert_eq!(
+        service
+            .batch(
+                cutoff,
+                now,
+                &RetentionOptions {
+                    batch_size: 0,
+                    ..options.clone()
+                }
+            )
+            .await
+            .unwrap(),
+        0
+    );
+    for id in ["tie-first", "tie-second", "late"] {
+        assert_eq!(service.batch(cutoff, now, &options).await.unwrap(), 1);
+        let mut tx = store.begin(false).await.unwrap();
+        let row = tx
+            .get(Model::Account, &format!("large-retention-{id}"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row["retentionAnonymizedAt"], stamp(now));
+        assert!(row["accessToken"].is_null());
+        tx.commit().await.unwrap();
+    }
+    assert_eq!(service.enforce(now, &options).await.processed, 0);
+}
