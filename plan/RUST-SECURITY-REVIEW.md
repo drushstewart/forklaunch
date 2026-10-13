@@ -155,3 +155,17 @@ route-shape matching; malformed escapes and non-UTF-8 values return 400 regardle
 of schema-validation mode. Encoded slashes stay within the matched capture and raw
 URI bytes remain available to authenticators. percent-encoding was already in the
 lockfiles; this adds a direct dependency without a version change.
+
+
+Billing webhook reconciliation review (2026-10-13): migration 4 adds tenant-RLS
+intent and append-only-by-runtime-grants resolution audit tables. An advisory
+transaction lock serializes delivery and resolution; intent commits on a separate
+connection before callbacks start. Errors/cancellation leave ambiguous attempts
+blocked instead of blindly replaying external effects. Resolution requires an
+actor/correlation context and the exact inspected attempt identity. It cannot
+steal an active callback lock. Audit, receipt and pending-marker deletion are one
+transaction; failed audit insertion leaves the attempt blocked. Resolution does
+not independently verify provider truth: trusted operators must inspect/repair
+state before asserting Applied or RetryAllowed. No automatic public resolution
+endpoint is exposed. Raw payloads/secrets are not stored. Configure at least two
+pool connections and share store clones for admission control.

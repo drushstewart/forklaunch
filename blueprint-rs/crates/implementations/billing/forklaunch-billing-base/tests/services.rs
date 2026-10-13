@@ -299,7 +299,7 @@ async fn memory_billing_lifecycle_cache_validation_and_concurrency() {
 #[ignore = "requires an isolated FORKLAUNCH_TEST_POSTGRES_URL owner database"]
 #[allow(clippy::too_many_lines)]
 async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
-    use forklaunch_billing_base::services::postgres::PostgresBillingStore;
+    use forklaunch_billing_base::services::postgres::{PostgresBillingStore, WebhookResolution};
     use forklaunch_blueprint_core::AuditContext;
     use forklaunch_core::persistence::{TenantContext, encryption::FieldEncryptor};
     use sqlx::postgres::PgPoolOptions;
@@ -312,7 +312,7 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     PostgresBillingStore::migrate(&owner).await.unwrap();
     let role = format!("fl_bill_{}", uuid::Uuid::new_v4().simple());
     let password = "billing-fixture-only";
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role}; GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}; GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.platform_event_nonces TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role}; GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}; GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role};GRANT SELECT,INSERT,DELETE ON fl_billing.webhook_attempts TO {role};GRANT INSERT ON fl_billing.webhook_reconciliation_audit TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.platform_event_nonces TO {role}")).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(10)
         .connect_with(
@@ -399,6 +399,47 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
             .await
             .is_err()
     );
+    assert_eq!(
+        store
+            .with_webhook_receipt("stripe", "evt_retry", "unknown", || async {
+                panic!("Ambiguous effects must never replay automatically")
+            })
+            .await
+            .unwrap_err()
+            .code,
+        "billing_webhook_reconciliation_required"
+    );
+    let pending = store.pending_webhooks(100).await.unwrap();
+    assert_eq!(pending.len(), 1);
+    assert!(other.pending_webhooks(100).await.unwrap().is_empty());
+    assert!(
+        other
+            .resolve_webhook(&pending[0], WebhookResolution::Applied)
+            .await
+            .is_err()
+    );
+    let anonymous = store
+        .with_audit_context(AuditContext {
+            actor_id: None,
+            correlation_id: "anonymous".into(),
+        })
+        .unwrap();
+    assert!(
+        anonymous
+            .resolve_webhook(&pending[0], WebhookResolution::Applied)
+            .await
+            .is_err()
+    );
+    store
+        .resolve_webhook(&pending[0], WebhookResolution::RetryAllowed)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .resolve_webhook(&pending[0], WebhookResolution::Applied)
+            .await
+            .is_err()
+    );
     assert!(
         store
             .with_webhook_receipt("stripe", "evt_retry", "unknown", || async { Ok(()) })
@@ -430,6 +471,160 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     );
     release.send(()).unwrap();
     assert!(processing.await.unwrap().unwrap());
+    // Cancellation after committed local effects survives store reconstruction.
+    let (entered, ready) = tokio::sync::oneshot::channel();
+    let interrupted_store = Arc::clone(&store);
+    let interrupted = tokio::spawn(async move {
+        interrupted_store
+            .with_webhook_receipt("stripe", "evt_interrupted", "unknown", || async {
+                interrupted_store
+                    .claim_platform_event_nonce("committed-effect")
+                    .await?;
+                entered.send(()).unwrap();
+                std::future::pending::<()>().await;
+                Ok(())
+            })
+            .await
+    });
+    ready.await.unwrap();
+    let pending = store.pending_webhooks(100).await.unwrap().pop().unwrap();
+    assert_eq!(
+        store
+            .resolve_webhook(&pending, WebhookResolution::Applied)
+            .await
+            .unwrap_err()
+            .code,
+        "billing_webhook_busy"
+    );
+    interrupted.abort();
+    assert!(interrupted.await.unwrap_err().is_cancelled());
+    let restarted = PostgresBillingStore::new(
+        pool.clone(),
+        tenant.clone(),
+        Arc::clone(&keys),
+        audit.clone(),
+    )
+    .await
+    .unwrap();
+    // Wait only for the aborted transaction's asynchronous rollback to release its lock.
+    let mut blocked = None;
+    for _ in 0..100 {
+        let error = restarted
+            .with_webhook_receipt("stripe", "evt_interrupted", "unknown", || async {
+                panic!("Committed effects must survive interruption without replay")
+            })
+            .await
+            .unwrap_err();
+        if error.code != "billing_webhook_busy" {
+            blocked = Some(error.code);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        blocked.as_deref(),
+        Some("billing_webhook_reconciliation_required")
+    );
+    assert!(
+        !restarted
+            .claim_platform_event_nonce("committed-effect")
+            .await
+            .unwrap()
+    );
+    restarted
+        .resolve_webhook(&pending, WebhookResolution::Applied)
+        .await
+        .unwrap();
+    assert!(
+        !restarted
+            .with_webhook_receipt("stripe", "evt_interrupted", "unknown", || async {
+                panic!("Reconciled effects must remain deduplicated")
+            })
+            .await
+            .unwrap()
+    );
+    assert!(restarted.pending_webhooks(100).await.unwrap().is_empty());
+    assert!(restarted.pending_webhooks(0).await.is_err());
+    let resolutions: Vec<(String,String,String)> = sqlx::query_as(
+        "SELECT resolution,actor_id,correlation_id FROM fl_billing.webhook_reconciliation_audit WHERE tenant_id=$1 ORDER BY resolved_at")
+        .bind(tenant.id()).fetch_all(&owner).await.unwrap();
+    assert_eq!(resolutions.len(), 2);
+    assert_eq!(resolutions[0].0, "retry_allowed");
+    assert_eq!(resolutions[1].0, "applied");
+    assert!(
+        resolutions
+            .iter()
+            .all(|(_, actor, correlation)| actor == "service:billing-fixture"
+                && correlation == "billing-fixture-correlation")
+    );
+    // A stale inspection cannot resolve a later attempt of the same event.
+    assert!(
+        store
+            .with_webhook_receipt("stripe", "evt_stale", "unknown", || async {
+                Err(forklaunch_blueprint_core::BlueprintError::new(
+                    "fixture", "failed",
+                ))
+            })
+            .await
+            .is_err()
+    );
+    let stale = store.pending_webhooks(100).await.unwrap().pop().unwrap();
+    store
+        .resolve_webhook(&stale, WebhookResolution::RetryAllowed)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .with_webhook_receipt("stripe", "evt_stale", "unknown", || async {
+                Err(forklaunch_blueprint_core::BlueprintError::new(
+                    "fixture", "failed",
+                ))
+            })
+            .await
+            .is_err()
+    );
+    let current = store.pending_webhooks(100).await.unwrap().pop().unwrap();
+    assert_ne!(current.attempt_id, stale.attempt_id);
+    assert!(
+        store
+            .resolve_webhook(&stale, WebhookResolution::Applied)
+            .await
+            .is_err()
+    );
+    // Failed audit insertion must neither erase the attempt nor create a receipt.
+    sqlx::raw_sql(&format!(
+        "REVOKE INSERT ON fl_billing.webhook_reconciliation_audit FROM {role}"
+    ))
+    .execute(&owner)
+    .await
+    .unwrap();
+    assert!(
+        store
+            .resolve_webhook(&current, WebhookResolution::Applied)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        store.pending_webhooks(100).await.unwrap(),
+        vec![current.clone()]
+    );
+    sqlx::raw_sql(&format!(
+        "GRANT INSERT ON fl_billing.webhook_reconciliation_audit TO {role}"
+    ))
+    .execute(&owner)
+    .await
+    .unwrap();
+    store
+        .resolve_webhook(&current, WebhookResolution::Applied)
+        .await
+        .unwrap();
+    let hidden: i64 = sqlx::query_scalar("SELECT count(*) FROM fl_billing.webhook_attempts")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(hidden, 0);
+    drop(restarted);
+    drop(anonymous);
     assert!(store.claim_platform_event_nonce("nonce").await.unwrap());
     assert!(!store.claim_platform_event_nonce("nonce").await.unwrap());
     assert!(other.claim_platform_event_nonce("nonce").await.unwrap());
@@ -689,6 +884,8 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
         "records",
         "sensitive_read_audit",
         "webhook_receipts",
+        "webhook_attempts",
+        "webhook_reconciliation_audit",
         "platform_event_nonces",
     ] {
         sqlx::query(&format!(

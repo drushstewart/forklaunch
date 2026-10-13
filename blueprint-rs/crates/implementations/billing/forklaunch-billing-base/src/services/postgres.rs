@@ -1,5 +1,8 @@
 //! Tenant-isolated billing persistence and TTL cache. Provider payloads and opaque
 //! session URIs are encrypted; plaintext reads and actor audits commit together.
+mod webhooks;
+pub use webhooks::{PendingWebhook, WebhookResolution};
+
 use super::{
     BillingKind, BillingStore, Scope, conflict, invalid, merge, not_found, storage_error,
     validate_id, validate_record,
@@ -85,75 +88,6 @@ impl PostgresBillingStore {
             audit,
             ..self.clone()
         })
-    }
-    /// Serializes delivery of one provider event and records success durably.
-    /// The callback's provider calls and local writes are separate transactions;
-    /// a crash between effects and receipt commit still requires reconciliation.
-    /// Duplicate concurrent deliveries fail promptly so callers may retry.
-    /// A store shares admission limits across clones; dedicate its pool to the
-    /// service and configure at least two connections for callback writes.
-    /// # Errors
-    /// Rejects malformed IDs, event type reuse, busy delivery and callback failures.
-    pub async fn with_webhook_receipt<F, Fut>(
-        &self,
-        provider: &str,
-        event_id: &str,
-        event_type: &str,
-        apply: F,
-    ) -> BlueprintResult<bool>
-    where
-        F: FnOnce() -> Fut + Send,
-        Fut: std::future::Future<Output = BlueprintResult<()>> + Send,
-    {
-        if self.pool.options().get_max_connections() < 2 {
-            return Err(BlueprintError::new(
-                "billing_configuration",
-                "Webhook processing requires at least two database connections",
-            ));
-        }
-        let _permit = self.webhook_slots.try_acquire().map_err(|_| {
-            BlueprintError::new(
-                "billing_webhook_busy",
-                "Billing webhook processing capacity is exhausted",
-            )
-        })?;
-        for value in [provider, event_id, event_type] {
-            validate_id(value)?;
-        }
-        let mut tx = self.transaction().await?;
-        let key = json!([self.tenant.id(), provider, event_id]).to_string();
-        let locked: bool =
-            sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))")
-                .bind(key)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(db_error)?;
-        if !locked {
-            return Err(BlueprintError::new(
-                "billing_webhook_busy",
-                "Billing event is being processed",
-            ));
-        }
-        let recorded: Option<String> = sqlx::query_scalar(
-            "SELECT event_type FROM fl_billing.webhook_receipts WHERE tenant_id=$1 AND provider=$2 AND event_id=$3")
-            .bind(self.tenant.id()).bind(provider).bind(event_id)
-            .fetch_optional(&mut *tx).await.map_err(db_error)?;
-        if let Some(recorded) = recorded {
-            if recorded != event_type {
-                return Err(BlueprintError::new(
-                    "billing_event_conflict",
-                    "Billing event ID was reused for another type",
-                ));
-            }
-            tx.commit().await.map_err(db_error)?;
-            return Ok(false);
-        }
-        apply().await?;
-        sqlx::query("INSERT INTO fl_billing.webhook_receipts(tenant_id,provider,event_id,event_type) VALUES($1,$2,$3,$4)")
-            .bind(self.tenant.id()).bind(provider).bind(event_id).bind(event_type)
-            .execute(&mut *tx).await.map_err(db_error)?;
-        tx.commit().await.map_err(db_error)?;
-        Ok(true)
     }
     /// Claims a verified platform nonce across replicas for ten minutes.
     /// # Errors

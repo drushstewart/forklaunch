@@ -3892,3 +3892,32 @@ The percent-encoding dependency was already locked; only the HTTP dependency edg
 was added. Sparse values, mutable holder/context behavior, cross-field side-effect
 ordering and remaining codec boundaries stay open. Checklist remains 657/682
 (96.3%), 25 open.
+
+
+Billing webhook recovery receipt (2026-10-13): migration 4 adds tenant-isolated,
+metadata-only attempts committed before callback effects and an operator resolution
+audit. Failed, cancelled or interrupted callbacks remain blocked across replicas
+and restarts. This intentionally tightens native retry behavior: ambiguous effects
+are not blindly re-executed. Successful receipt insertion and attempt removal are
+atomic. Bounded pending inspection and exact-attempt resolution support Applied
+(suppress replay) or RetryAllowed (operator-verified safe retry); this API does not
+query or repair provider state automatically. Active callbacks retain their lock,
+and stale attempts cannot resolve newer retries. Actor/correlation context and
+atomic audit insertion are required. Runtime/operator grants are documented.
+
+Three base unit tests, memory/restricted-role PostgreSQL integration and the native
+HTTP/MCP integration pass. Tests include cancellation after a committed local write,
+store reopening without replay, tenant separation, active callback contention,
+stale resolution, anonymous resolution rejection, audit-write rollback, successful
+deduplication and a two-connection pool. Strict base/Axum all-feature/all-target
+clippy passes. Generated run `f21N1N` passes signed direct/platform blocked replay,
+restart, encrypted storage, both live SDKs/import paths, managed gateway callbacks,
+HTTP/MCP startup/shutdown and rename/delete lifecycle. The earlier `Wj5b8x` run
+found a malformed platform test envelope, corrected before the passing run.
+All 925 embedded assets are packaged. Logs:
+`/private/tmp/fl-billing-reconciliation-tests.log`,
+`/private/tmp/fl-billing-reconciliation-clippy.log`,
+`/private/tmp/fl-billing-reconciliation-generated-final.log`,
+`/private/tmp/fl-billing-reconciliation-package.log`.
+Outbound provider/local-write recovery and remaining mapper decisions stay open;
+checklist remains 657/682 (96.3%), 25 open.

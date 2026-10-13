@@ -43,11 +43,11 @@ async function start(binary,tenant='a',extra={}){
 }
 async function stop(info){if(info.child.exitCode===null)info.child.kill('SIGTERM');const timer=setTimeout(()=>info.child.kill('SIGKILL'),10000);try{assert.equal(await info.exit,0,info.errors());}finally{clearTimeout(timer);}}
 async function call(base,path,method='GET',body,status=200,auth){const raw=body===undefined?undefined:JSON.stringify(body),response=await fetch(base+path,{method,body:raw,headers:{authorization:auth??hmac(path.split('?')[0],method,raw),...(raw?{'content-type':'application/json'}:{})},signal:AbortSignal.timeout(10000)});assert.equal(response.status,status,await response.clone().text());return response.headers.get('content-type')?.includes('application/json')?response.json():response.text();}
-async function stripeEvent(base,event,{tamper=false,stale=false}={}){
+async function stripeEvent(base,event,{tamper=false,stale=false,expected=200}={}){
  const raw=JSON.stringify(event),ts=Math.floor(Date.now()/1000)-(stale?301:0);
  const signature=`t=${ts},v1=${createHmac('sha256','whsec_fixture').update(`${ts}.${raw}`).digest('hex')}`;
  const result=await fetch(base+'/webhook',{method:'POST',body:raw+(tamper?' ':''),headers:{'content-type':'application/json','stripe-signature':signature}});
- assert.equal(result.status,tamper||stale?400:200,await result.clone().text());
+ assert.equal(result.status,tamper||stale?400:expected,await result.clone().text());
 }
 async function platformEvent(base,event,nonce=randomUUID(),expected=200,keyId='platform',timestamp){
  const raw=JSON.stringify(event),path=`/platform-events/${event.feature??'payments'}`;
@@ -86,6 +86,10 @@ try{
   await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},403,jwt(['viewer']));
   const portal=await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},200,jwt());await call(base,`/billing-portal/${portal.id}`,'GET',undefined,200,jwt());const updated=await call(base,`/billing-portal/${portal.id}`,'PUT',{id:portal.id,customerId:'must-not-reassign',...providerFields},200,jwt());assert.equal(updated.id,portal.id);assert.equal(updated.customerId,portal.customerId);
   if(stripe){
+   const failedEvent={id:'evt-reconcile',type:'billing_portal.session.created',data:{object:{id:'bps_invalid'}}};
+   await stripeEvent(base,failedEvent,{expected:400});
+   await stripeEvent(base,failedEvent,{expected:503});
+   await platformEvent(base,{...failedEvent,feature:'payments',data:failedEvent.data.object},randomUUID(),503);
    await stripeEvent(base,{id:'evt-webhook-portal',type:'billing_portal.session.created',data:{object:{id:'bps_webhook',customer:'cus_fixture',created:1700000000,url:'https://provider.example/webhook-portal'}}});
    const webhookPortal=await call(base,'/billing-portal/bps_webhook','GET',undefined,200,jwt());assert.equal(Object.hasOwn(webhookPortal,'stripeFields'),false);
   }
@@ -114,7 +118,7 @@ try{
    const mcpResult=await mcpRpc(base,'tools/call',{name:'handlewebhookevent',arguments:{body:raw,headers:{'stripe-signature':signed}}});assert.equal(mcpResult.isError,false,JSON.stringify(mcpResult));
   }
   const other=await start(binary,'b');await call(other.base,`/plan/${plan.id}`,'GET',undefined,404);await stop(other);
-  await stop(running);const reopened=await start(binary);await call(reopened.base,`/plan/${plan.id}`);await call(reopened.base,`/subscription/${sub.id}`);if(stripe){await stripeEvent(reopened.base,replayEvent);assert.equal((await call(reopened.base,`/subscription/${sub.id}`)).active,true);const disabled=await start(binary,'a',{STRIPE_WEBHOOK_SECRET:undefined,INSTANCE_HMAC_KEY:undefined});assert.equal((await fetch(disabled.base+'/webhook',{method:'POST',body:'{}',headers:{'content-type':'application/json','stripe-signature':'invalid'}})).status,400);await stop(disabled);}await stop(reopened);
+  await stop(running);const reopened=await start(binary);await call(reopened.base,`/plan/${plan.id}`);await call(reopened.base,`/subscription/${sub.id}`);if(stripe){await stripeEvent(reopened.base,{id:'evt-reconcile',type:'billing_portal.session.created',data:{object:{id:'bps_invalid'}}},{expected:503});await stripeEvent(reopened.base,replayEvent);assert.equal((await call(reopened.base,`/subscription/${sub.id}`)).active,true);const disabled=await start(binary,'a',{STRIPE_WEBHOOK_SECRET:undefined,INSTANCE_HMAC_KEY:undefined});assert.equal((await fetch(disabled.base+'/webhook',{method:'POST',body:'{}',headers:{'content-type':'application/json','stripe-signature':'invalid'}})).status,400);await stop(disabled);}await stop(reopened);
  }
  const managed=await start(stripeBinary,'a',{STRIPE_SECRET_KEY:undefined,STRIPE_API_KEY:undefined,STRIPE_API_BASE:undefined,PLATFORM_GATEWAY_URL:`http://127.0.0.1:${provider.address().port}/managed/`,INSTANCE_ID:'instance_fixture'});
  await probeMcp(managed.base,['createPlan','handlewebhookevent','receiveplatformevent']);

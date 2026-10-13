@@ -220,3 +220,23 @@ supports checkout creation, retrieval, update and expiry. Applications can persi
 a provider customer ID in the native customer's `id` field and pass it to checkout.
 Provider requests and local persistence remain separate operations; interrupted
 provider/local-write reconciliation is still an open gate.
+
+
+Billing webhook migration 4 records intent before executing a verified callback.
+Callback errors, timeout/cancellation and process interruption leave a durable
+attempt. Subsequent deliveries return 503 and do not repeat ambiguous effects.
+Successful processing atomically inserts the final receipt and removes intent.
+Existing migration-2 receipts still deduplicate without executing the callback.
+Runtime roles additionally need SELECT/INSERT/DELETE on
+`fl_billing.webhook_attempts`; reconciliation operators need INSERT on
+`fl_billing.webhook_reconciliation_audit`.
+
+Use `PostgresBillingStore::pending_webhooks(1..=1000)` to inspect outstanding
+attempts. This list includes active callbacks; resolution cannot take an active
+callback's event lock. After checking and repairing external/local state, call
+`resolve_webhook(&attempt, WebhookResolution::Applied)` to suppress replay, or
+`RetryAllowed` only after verifying re-execution is safe. The actor and correlation
+context are required; the inspected attempt ID protects against stale decisions.
+The audit and receipt/removal commit together. No raw payloads or provider secrets
+are retained by these tables. This is an explicit operational recovery API;
+provider repairs and interrupted outbound API mutations remain separate work.

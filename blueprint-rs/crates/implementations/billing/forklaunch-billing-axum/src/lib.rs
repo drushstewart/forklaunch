@@ -211,6 +211,10 @@ fn failure(error: &BlueprintError) -> Response {
         "billing_conflict" | "billing_event_conflict" => {
             (StatusCode::CONFLICT, "Billing record conflict")
         }
+        "billing_webhook_reconciliation_required" => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Billing event requires reconciliation",
+        ),
         "billing_webhook_busy" => (
             StatusCode::SERVICE_UNAVAILABLE,
             "Billing event is being processed",
