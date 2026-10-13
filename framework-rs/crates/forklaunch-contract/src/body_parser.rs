@@ -1,6 +1,8 @@
 //! Serializable parser choices shared by all versions of a route.
 use forklaunch_common::json_string;
 
+// Independent switches mirror body-parser options, rather than mutually exclusive states.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BodyParserOptions {
     pub json_wire: BodyParserWireOptions,
@@ -12,6 +14,8 @@ pub struct BodyParserOptions {
     pub text_default_charset: String,
     pub form_default_charset: String,
     pub form_extended: bool,
+    pub form_charset_sentinel: bool,
+    pub form_interpret_numeric_entities: bool,
     /// Bounded by the runtime to 32 bracket levels.
     pub form_depth: usize,
     /// Bounded by the runtime to 100,000 parameters.
@@ -29,6 +33,8 @@ impl Default for BodyParserOptions {
             text_default_charset: "utf-8".into(),
             form_default_charset: "utf-8".into(),
             form_extended: true,
+            form_charset_sentinel: false,
+            form_interpret_numeric_entities: false,
             form_depth: 32,
             form_parameter_limit: 1000,
         }
@@ -38,12 +44,14 @@ impl BodyParserOptions {
     #[must_use]
     pub fn to_json(&self) -> String {
         format!(
-            "{{\"jsonStrict\":{},\"jsonDefaultCharset\":{},\"textDefaultCharset\":{},\"formDefaultCharset\":{},\"formExtended\":{},\"formDepth\":{},\"formParameterLimit\":{},\"jsonWire\":{},\"textWire\":{},\"formWire\":{},\"rawWire\":{}}}",
+            "{{\"jsonStrict\":{},\"jsonDefaultCharset\":{},\"textDefaultCharset\":{},\"formDefaultCharset\":{},\"formExtended\":{},\"formCharsetSentinel\":{},\"formInterpretNumericEntities\":{},\"formDepth\":{},\"formParameterLimit\":{},\"jsonWire\":{},\"textWire\":{},\"formWire\":{},\"rawWire\":{}}}",
             self.json_strict,
             json_string(&self.json_default_charset),
             json_string(&self.text_default_charset),
             json_string(&self.form_default_charset),
             self.form_extended,
+            self.form_charset_sentinel,
+            self.form_interpret_numeric_entities,
             self.form_depth,
             self.form_parameter_limit,
             self.json_wire.to_json(),

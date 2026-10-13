@@ -21,9 +21,28 @@ pub(super) fn parse_decoded(
     if parameter_count > options.form_parameter_limit {
         return Err(body_too_large("form exceeds parameter limit"));
     }
+    let mut latin1 = latin1;
+    let sentinel = if options.form_charset_sentinel {
+        text.split('&')
+            .enumerate()
+            .find(|(_, part)| part.starts_with("utf8="))
+            .map(|(index, part)| {
+                match part {
+                    "utf8=%E2%9C%93" => latin1 = false,
+                    "utf8=%26%2310003%3B" => latin1 = true,
+                    _ => {}
+                }
+                index
+            })
+    } else {
+        None
+    };
     let limit = u64::try_from(parameter_count.max(100)).expect("bounded parameter count");
     let mut groups = std::collections::BTreeMap::<String, (usize, Vec<Value>)>::new();
     for (index, part) in text.split('&').enumerate() {
+        if sentinel == Some(index) {
+            continue;
+        }
         if index >= options.form_parameter_limit {
             return Err(body_too_large("form exceeds parameter limit"));
         }
@@ -36,11 +55,15 @@ pub(super) fn parse_decoded(
             (&part[..index], &part[index + 1..])
         });
         let key = decode(key, latin1);
+        let mut value = decode(value, latin1);
+        if latin1 && options.form_interpret_numeric_entities {
+            value = numeric_entities(&value);
+        }
         groups
             .entry(key)
             .or_insert_with(|| (index, Vec::new()))
             .1
-            .push(Value::String(decode(value, latin1)));
+            .push(Value::String(value));
     }
     let mut groups: Vec<_> = groups.into_iter().collect();
     // Object.keys enumerates canonical JavaScript integer keys before strings.
@@ -137,6 +160,36 @@ const fn digit(byte: u8) -> Option<u8> {
         b'a'..=b'f' => Some(byte - b'a' + 10),
         b'A'..=b'F' => Some(byte - b'A' + 10),
         _ => None,
+    }
+}
+
+fn numeric_entities(mut text: &str) -> String {
+    let mut units = Vec::with_capacity(text.len());
+    while let Some(start) = text.find("&#") {
+        units.extend(text[..start].encode_utf16());
+        let tail = &text[start + 2..];
+        let count = tail.bytes().take_while(u8::is_ascii_digit).count();
+        if count > 0 && tail.as_bytes().get(count) == Some(&b';') {
+            units.push(entity_code_unit(&tail[..count]));
+            text = &tail[count + 1..];
+        } else {
+            units.extend("&#".encode_utf16());
+            text = tail;
+        }
+    }
+    units.extend(text.encode_utf16());
+    String::from_utf16_lossy(&units)
+}
+
+// JS parseInt rounds to a Number, then fromCharCode applies ToUint16. The
+// remainder is a nonnegative integer smaller than 65536, so this cast is bounded.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn entity_code_unit(digits: &str) -> u16 {
+    let number = digits.parse::<f64>().unwrap_or(f64::INFINITY);
+    if number.is_finite() {
+        (number % 65536.0) as u16
+    } else {
+        0
     }
 }
 

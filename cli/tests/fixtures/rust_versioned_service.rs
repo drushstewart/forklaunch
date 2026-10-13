@@ -32,6 +32,8 @@ pub fn contracts() -> Vec<RouteContract> {
         file=file.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(202,Some(output))]});
     }
     let mut form=RouteContract::post("Write Form","Write versioned form","/versioned-form");
+    form.options.body_parser.form_charset_sentinel=true;
+    form.options.body_parser.form_interpret_numeric_entities=true;
     for (version,minimum,status) in [("v1",1,201),("v2",2,202),("v3",0,200)] {
         let mut input=BodyContract { kind:BodyKind::UrlEncoded, content_type:Some("application/x-www-form-urlencoded".into()), ..BodyContract::json("FormInput") };
         let value=if version=="v3" {json!({"type":"object","required":["items"],"properties":{"items":{"type":"array","minItems":2,"items":{"type":"string"}}}})} else {json!({"type":"string","minLength":minimum})};

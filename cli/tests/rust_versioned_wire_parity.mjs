@@ -78,6 +78,20 @@ for(const kind of ['json','text','form','file']) {
  cases.push([kind,bytes,undefined,undefined,'unsupported']);
 }
 cases.push(['text',Buffer.concat([gzipSync(Buffer.from('one')),gzipSync(Buffer.from('two'))]),undefined,undefined,'gzip']);
+for(const charset of ['utf-8','iso-8859-1']) for(const charsetSentinel of [false,true]) for(const interpretNumericEntities of [false,true]) {
+ for(const value of [
+  'utf8=%E2%9C%93&value=%E6%B0%B4','utf8=%26%2310003%3B&value=%E9',
+  'value=%E9&utf8=%26%2310003%3B','utf8=other&value=%E9',
+  'utf8=%e2%9c%93&value=%E9','utf8=%26%2310003%3B&utf8=%E2%9C%93&value=%E9',
+  'utf8=%E2%9C%93&utf8=%26%2310003%3B&value=%E9',
+  'value=%26%239786%3B','value=%26%2355357%3B%26%2356832%3B',
+  'value=%26%2365536%3B','value=%26%239007199254740993%3B',
+  `value=%26%23${'9'.repeat(400)}%3B`,
+  'value=%26%23x%3B%26%23%3B%26%2342','value[]=%26%2365%3B&value[]=%26%2366%3B',
+  '%26%2365%3B=%26%2366%3B','utf8=','utf8=%26%2310003%3B&value=%26%239786%3B',
+ ]) cases.push(['form',Buffer.from(value),charset,{urlencoded:{charsetSentinel,interpretNumericEntities}}]);
+}
+cases.push(['form',Buffer.from('utf8=%E2%9C%93&a=b&c=d'),undefined,{urlencoded:{charsetSentinel:true,parameterLimit:2}}]);
 const fixtures=[],expected=[];
 for(const [kind,bytes,charset,parserOptions,contentEncoding] of cases) {
  const req=Readable.from([bytes]);

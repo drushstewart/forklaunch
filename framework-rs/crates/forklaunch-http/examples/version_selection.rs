@@ -167,6 +167,12 @@ fn configure_parsers(contract: &mut RouteContract, options: &Value) {
     if let Some(value) = options["urlencoded"]["extended"].as_bool() {
         parsers.form_extended = value;
     }
+    if let Some(value) = options["urlencoded"]["charsetSentinel"].as_bool() {
+        parsers.form_charset_sentinel = value;
+    }
+    if let Some(value) = options["urlencoded"]["interpretNumericEntities"].as_bool() {
+        parsers.form_interpret_numeric_entities = value;
+    }
     if let Some(value) = options["urlencoded"]["depth"].as_u64() {
         parsers.form_depth = usize::try_from(value).unwrap();
     }

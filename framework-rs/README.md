@@ -589,8 +589,7 @@ autodetection, Latin-1, ASCII, and encoding_rs legacy encodings. Unsupported
 charsets reject with 415, including when schema rejection is disabled. The
 comparison matrix covers Windows-1252, Shift-JIS, GB18030, Big5 and KOI8-R as well
 as Unicode encodings; failed multibyte leads retry the following byte to match
-iconv behavior. This does not claim every iconv alias/table, unpaired surrogate
-behavior, custom charset defaults or form charset-sentinel options.
+iconv behavior. This does not claim every iconv alias/table or unpaired surrogate behavior.
 
 Set `route.options.body_parser` to configure versioned parsing: JSON strict mode,
 JSON/text/form default charsets, form extended mode, nesting depth and parameter
@@ -599,8 +598,7 @@ roots, while extended=false or depth=0 retains literal bracketed form keys. All
 versions share these options. Registration rejects unsupported default charsets,
 form depth above 32, or parameter limits outside 1..=100,000. Custom options are
 included in contract artifacts; default options preserve the prior artifact
-shape. These options currently apply to the versioned pipeline. Custom verify/reviver hooks and form sentinel/entity options remain separate
-work.
+shape. These options currently apply to the versioned pipeline. Custom verify/reviver hooks remain separate work.
 
 The `json_wire`, `text_wire`, `form_wire` and `raw_wire` options set a decompressed
 byte limit and enable/disable inflation independently. Defaults match body-parser:
@@ -612,3 +610,11 @@ Decoding reads at most the limit plus one byte. Transport limits still bound
 compressed bytes, and multipart retains its separate part/field/total limits.
 Parsed values use decoded bytes while original request bytes remain available to
 raw handlers; TypeScript body-parser's verify buffer contains decompressed bytes.
+
+`form_charset_sentinel` recognizes the first `utf8=` field, switches percent
+decoding for the standard UTF-8/Latin-1 sentinels, and removes that first field
+from the parsed object. It still counts toward the parameter limit. With
+`form_interpret_numeric_entities`, Latin-1 values decode decimal HTML entities
+using JavaScript Number/UTF-16 code-unit behavior, including paired surrogates;
+keys remain unchanged. Both options default to false. Unpaired surrogates retain
+the documented native string representation limitation.

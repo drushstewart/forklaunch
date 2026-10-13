@@ -3436,3 +3436,24 @@ and native generators. Receipts:
 Checklist remains **652/682 (95.6%), 30 open**. Custom verify/reviver hooks, form
 sentinel/entity options, complete legacy codec coverage and schema transformations
 remain on the broader parser/versioning work.
+
+
+### 2026-10-13 — Form charset sentinels and numeric entities
+
+Versioned form options now support charsetSentinel and interpretNumericEntities.
+The first literal `utf8=` part is removed and, for a recognized sentinel, selects
+UTF-8 or Latin-1 percent decoding. It still counts against parameter limits.
+Numeric entities affect Latin-1 values only, preserving keys, Number rounding,
+UTF-16 code-unit wrapping and paired surrogates. Both options default to false;
+unpaired-surrogate representation remains the previously documented limitation.
+
+Validation: **404 actual TypeScript parser/native comparisons**, including both
+sentinel orders, unknown/lowercase sentinels, all option combinations, repeats,
+large/overflowing entities, pairs, and sentinel-inclusive limits; 24 contract,
+30 HTTP and 61 Axum tests; strict Clippy; 906 package files. Fresh `run.TaomOs`
+proves sentinel/entity decoding changes the selected HTTP version while preserving
+wire data, and passes all HTTP/MCP/media/compression checks, both SDKs across three
+artifacts and native generators, startup/discovery and graceful shutdown.
+Receipts: `/private/tmp/fl-form-options-{actual,native,clippy,generated,package}.log`.
+Checklist remains **652/682 (95.6%), 30 open**. Verify/reviver hooks, schema/request
+transformations and complete legacy codec/invalid-string coverage remain open.
