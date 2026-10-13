@@ -2279,3 +2279,16 @@ Logs: `/private/tmp/fl-session-index-tests.log`, `fl-session-index-postgres.log`
 `fl-session-index-runtime.log`. The owned database and generated workspace were
 removed after completion. Account/member indexes and session collection queries
 remain open. Checklist remains **645/682 (94.6%), 37 open**.
+
+### Callback/client checklist reconciliation
+
+The callback exchange/client integration checkbox remained open after the
+implemented popup-helper and actual shared/generated frontend-client work
+recorded above. The fresh `fl-session-index-runtime.log` run revalidates both:
+trusted signed callback exchange, JWT/session/email fragment fields and cookie
+clearing, independently verified token/JWKS, and eight actual client namespace
+scenarios (80 requests). HTTP/MCP startup, persistence, shutdown and module
+rename/delete also pass. Mark the specific callback/client task complete;
+optional plugins/hooks and unified mixed SDK behavior retain their own gates.
+This is reconciliation of verified implementation, not a newly added runtime
+feature. Checklist: **646/682 (94.7%), 36 open**.
