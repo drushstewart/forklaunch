@@ -14,23 +14,8 @@ use forklaunch_validation::FrameworkSchema;
 use serde_json::{Map, Value};
 
 /// Limits in addition to Axum's request body limit and the framework router limit.
-/// Install with `Extension(MultipartLimits { .. })`. All parts, including those
-/// overwritten by repeated names, count against these limits.
-#[derive(Debug, Clone, Copy)]
-pub struct MultipartLimits {
-    pub parts: usize,
-    pub field_bytes: usize,
-    pub total_bytes: usize,
-}
-impl Default for MultipartLimits {
-    fn default() -> Self {
-        Self {
-            parts: 128,
-            field_bytes: 1024 * 1024,
-            total_bytes: 2 * 1024 * 1024,
-        }
-    }
-}
+/// Install with `Extension(MultipartLimits { .. })`; version matching shares it.
+pub use forklaunch_http::MultipartLimits;
 
 /// A multipart model decoded with Serde and validated with the framework's garde
 /// rules before entering the handler. Error responses never include field values.

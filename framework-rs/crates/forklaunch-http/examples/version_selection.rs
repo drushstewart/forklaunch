@@ -19,6 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let text = fixture["kind"] == "text";
         let file = fixture["kind"] == "file";
         let form = fixture["kind"] == "form";
+        let multipart = fixture["kind"] == "multipart";
         for version in fixture["versions"].as_array().unwrap() {
             let mut body = BodyContract::json("Input");
             if text {
@@ -32,6 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if form {
                 body.kind = BodyKind::UrlEncoded;
                 body.content_type = Some("application/x-www-form-urlencoded".into());
+            }
+            if multipart {
+                body.kind = BodyKind::Multipart;
+                body.content_type = Some("multipart/form-data".into());
             }
             body.schema = body.schema.with_json_schema(version["schema"].to_string());
             contract = contract.with_version(VersionedContract {
@@ -50,7 +55,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .with_header(
                 "content-type",
-                if form {
+                if multipart {
+                    "multipart/form-data; boundary=boundary"
+                } else if form {
                     "application/x-www-form-urlencoded"
                 } else if file {
                     "application/octet-stream"
@@ -60,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "application/json"
                 },
             )
-            .with_body(if file {
+            .with_body(if file || multipart {
                 Body::Binary(
                     case.as_array()
                         .unwrap()

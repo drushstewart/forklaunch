@@ -45,6 +45,10 @@ const temporary=mkdtempSync(join(tmpdir(),'fl-multipart-extract-'));
 try{
  const fixtures=[];
  for(const parts of cases){const bytes=wire(parts);fixtures.push({bytes:[...bytes],expected:await parse(bytes)});}
+ const versions=fixtures.map(({bytes,expected})=>({kind:'multipart',versions:[{name:'fallback',schema:{type:'object'}},{name:'exact',schema:{const:expected}}],cases:[bytes]}));
+ const selected=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(versions),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
+ for(const result of selected)assert.deepEqual(result.cases,[{version:'exact',matched:['fallback','exact'],status:200}]);
+ console.log(`PASS ${cases.length} actual multipart parser/native version-selection comparisons`);
  const path=join(temporary,'cases.json');writeFileSync(path,JSON.stringify(fixtures));
  execFileSync('cargo',['test','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--features','multipart','multipart_matches_typescript_parser','--','--nocapture'],{env:{...process.env,CARGO_INCREMENTAL:'0',FORKLAUNCH_TEST_MULTIPART_CASES:path},stdio:'inherit',timeout:300000});
  console.log(`PASS ${cases.length} actual TypeScript content-parser / native typed multipart comparisons`);

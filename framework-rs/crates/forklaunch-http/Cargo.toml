@@ -12,6 +12,8 @@ forklaunch-contract = { path = "../forklaunch-contract", features = ["schema-val
 forklaunch-core = { path = "../forklaunch-core" }
 
 serde_json = "=1.0.151"
+multer = "3"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [lints]
 workspace = true

@@ -244,3 +244,64 @@ async fn versioned_files_preserve_non_utf8_empty_and_json_looking_bytes() {
         );
     }
 }
+
+#[tokio::test]
+async fn versioned_multipart_keeps_wire_bytes_and_respects_shared_limits() {
+    let mut contract = RouteContract::post("Multipart", "Multipart", "/multipart");
+    for (name, minimum, status) in [("v1", 1, 201), ("v2", 2, 202)] {
+        let body = BodyContract {
+            kind: BodyKind::Multipart,
+            schema: forklaunch_contract::SchemaRef::named("Multipart").with_json_schema(
+                json!({"type":"object","required":["label"],"properties":{"label":{"type":"string","minLength":minimum}}}).to_string()),
+            content_type: Some("multipart/form-data".into()),
+        };
+        contract = contract.with_version(VersionedContract {
+            version: name.into(),
+            request: RequestContract::default().with_body(body),
+            responses: vec![ResponseContract::new(status, None)],
+        });
+    }
+    let app = ForkLaunchRouter::new(ServiceInfo::new("multipart", "1"))
+        .post(
+            contract,
+            |Extension(version): Extension<SelectedVersion>, body: bytes::Bytes| async move {
+                (
+                    if version.version == "v1" {
+                        StatusCode::CREATED
+                    } else {
+                        StatusCode::ACCEPTED
+                    },
+                    body,
+                )
+            },
+        )
+        .into_router();
+    for (text, status) in [("a", 201), ("水a", 202), ("", 400)] {
+        let wire = format!(
+            "--b\r\nContent-Disposition: form-data; name=\"label\"\r\n\r\n{text}\r\n--b--\r\n"
+        );
+        let request = || {
+            Request::post("/multipart")
+                .header("content-type", "multipart/form-data; boundary=b")
+                .body(Body::from(wire.clone()))
+                .unwrap()
+        };
+        let response = app.clone().oneshot(request()).await.unwrap();
+        assert_eq!(response.status().as_u16(), status);
+        if status != 400 {
+            assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), wire);
+        }
+        let limited = app
+            .clone()
+            .layer(Extension(forklaunch_http::MultipartLimits {
+                parts: 1,
+                field_bytes: 1,
+                total_bytes: 1,
+            }));
+        let response = limited.oneshot(request()).await.unwrap();
+        assert_eq!(
+            response.status().as_u16(),
+            if text == "a" { 201 } else { 400 }
+        );
+    }
+}

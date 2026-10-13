@@ -3219,3 +3219,30 @@ Checklist remains **652/682 (95.6%), 30 open**. Nested forms no longer block the
 standard UTF-8 selection profile. Multipart matching, configurable parser options,
 non-UTF-8 charsets, parser-limit error-status equivalence and arbitrary request
 transformations remain incomplete; this is not a claim of every Express option.
+
+### 2026-10-13 — Buffered multipart version matching and generated SDK lint fix
+
+Version matching now parses buffered multipart text fields and native byte-array
+file fields once per request. The matcher shares `MultipartLimits` with the
+existing typed Axum extractor and honors extension overrides; overwritten parts
+count toward all limits. Parsing polls immediately ready memory without entering
+an executor or waiting for I/O. Handler wire bytes are preserved. HTTP now depends
+on the same multer parser already used by Axum; both workspace locks are updated.
+
+Validation: seven actual TypeScript multipart parser/native version-selection
+comparisons and the existing seven typed-extractor comparisons; 58 Axum and 26
+HTTP tests (including malformed bodies and custom limits); five Rust SDK tests;
+strict Clippy and blueprint dependency checks; 901 embedded package files. The
+new generated multipart routes exposed nested-condition lint errors in the
+shared Rust SDK template's empty-form delimiter handling. The template now uses
+an Option filter, retaining compatibility without an edition-specific let chain.
+Fresh generated `run.0xntgf` passes multipart HTTP/MCP calls, raw attachment byte
+preservation, the full prior media matrix, both SDKs through three artifact forms
+and both native generators, startup/discovery and graceful shutdown. Receipts:
+`/private/tmp/fl-version-multipart-{actual-final,units,clippy,blueprint,sdk-tests,generated-final,package-final}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. Native multipart byte-array schema
+matching is complete for this profile; nested OpenAPI opaque-file annotations,
+parser-limit error-status equivalence, charset/configurable parser behavior and
+arbitrary transformations remain open. Mixed text/file duplicate-name ordering
+retains the already documented nonportable TypeScript behavior.

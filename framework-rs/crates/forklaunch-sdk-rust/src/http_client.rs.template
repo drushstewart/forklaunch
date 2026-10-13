@@ -318,12 +318,10 @@ impl {{client_name}} {
         }
         let mut prepared = builder.build()?;
         // Reqwest emits zero bytes for an empty form; MIME still needs a closing delimiter.
-        if let Some(boundary) = multipart_boundary {
-            if prepared.body().and_then(reqwest::Body::as_bytes).is_some_and(|bytes| bytes.is_empty()) {
-                let closing = format!("--{boundary}--\r\n");
-                prepared.headers_mut().insert(reqwest::header::CONTENT_LENGTH, reqwest::header::HeaderValue::from(closing.len()));
-                *prepared.body_mut() = Some(closing.into());
-            }
+        if let Some(boundary) = multipart_boundary.filter(|_| prepared.body().and_then(reqwest::Body::as_bytes).is_some_and(|bytes| bytes.is_empty())) {
+            let closing = format!("--{boundary}--\r\n");
+            prepared.headers_mut().insert(reqwest::header::CONTENT_LENGTH, reqwest::header::HeaderValue::from(closing.len()));
+            *prepared.body_mut() = Some(closing.into());
         }
         let response = self.http.execute(prepared).await?;
         {{/has_multipart}}{{^has_multipart}}let response = builder.send().await?;{{/has_multipart}}

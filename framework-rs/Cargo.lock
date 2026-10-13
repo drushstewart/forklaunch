@@ -1324,6 +1324,8 @@ dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
  "forklaunch-core",
+ "futures-util",
+ "multer",
  "serde_json",
 ]
 

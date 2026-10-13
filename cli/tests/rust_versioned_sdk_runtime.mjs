@@ -48,6 +48,14 @@ try {
   const response=await fetch(`${base}/versioned-form`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
   assert.equal(response.status,400,body);
  }
+ for(const [label,version,status] of [['a','v1',201],['水a','v2',202]]) {
+  const form=new FormData();form.append('label',label);form.append('file',new Blob([new Uint8Array([0,255,128])]),'file.bin');
+  const wire=new Request(`${base}/versioned-multipart`,{method:'POST',body:form});
+  const bytes=Array.from(new Uint8Array(await wire.clone().arrayBuffer()));
+  const response=await fetch(wire);assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,bytes});
+  const result=await mcpRpc(base,'tools/call',{name:`writeMultipart [v${version}]`,arguments:{body:{label}}});
+  assert.equal(result.isError,false,JSON.stringify(result));const value=JSON.parse(result.content[0].text);assert.equal(value.version,version);assert.ok(Buffer.from(value.bytes).includes(Buffer.from(label)));
+ }
  const invalid=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:'v2',value:'bad'})});assert.equal(invalid.status,400);
  const openapi=await(await fetch(`${base}/openapi.json`)).json();
  assert.deepEqual(openapi.paths['/versions'].post['x-forklaunch-versions'],['v1','v2']);

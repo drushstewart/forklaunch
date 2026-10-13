@@ -11,6 +11,9 @@ use serde_json::Value;
 use std::sync::Arc;
 #[path = "versioning_form.rs"]
 mod form;
+#[path = "versioning_multipart.rs"]
+mod multipart;
+pub use multipart::MultipartLimits;
 
 /// Available to local handlers and as an Axum request extension.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,10 +121,21 @@ impl VersionedRoutePlan {
         &self,
         request: &FrameworkRequest,
     ) -> Result<Option<(RouteContract, SelectedVersion)>, Vec<ContractValidationError>> {
+        self.select_with_multipart_limits(request, MultipartLimits::default())
+    }
+
+    /// Select a version with the same limits as a configured multipart extractor.
+    /// # Errors
+    /// Returns validation errors when parsing or every candidate schema fails.
+    pub fn select_with_multipart_limits(
+        &self,
+        request: &FrameworkRequest,
+        limits: MultipartLimits,
+    ) -> Result<Option<(RouteContract, SelectedVersion)>, Vec<ContractValidationError>> {
         if self.variants.is_empty() {
             return Ok(None);
         }
-        let body_value = self.body_value(request);
+        let body_value = self.body_value(request, limits);
         let mut matched = Vec::new();
         let mut selected = None;
         for variant in &self.variants {
@@ -148,7 +162,7 @@ impl VersionedRoutePlan {
             })
     }
     // Versions share a parser. Decode once, even when many schemas are tried.
-    fn body_value(&self, request: &FrameworkRequest) -> Option<Value> {
+    fn body_value(&self, request: &FrameworkRequest, limits: MultipartLimits) -> Option<Value> {
         let variant = self.variants.iter().find(|variant| {
             matches!(
                 variant.body,
@@ -167,6 +181,11 @@ impl VersionedRoutePlan {
                 bytes.iter().copied().map(Value::from).collect(),
             )),
             BodyKind::UrlEncoded => form::parse(bytes),
+            BodyKind::Multipart => multipart::parse(
+                bytes,
+                crate::header_value(&request.headers, "content-type")?,
+                limits,
+            ),
             _ => std::str::from_utf8(bytes)
                 .ok()
                 .map(|text| Value::String(text.into())),

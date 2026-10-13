@@ -2,7 +2,7 @@
 
 pub mod sse;
 pub mod versioning;
-pub use versioning::{SelectedVersion, VersionedRoutePlan};
+pub use versioning::{MultipartLimits, SelectedVersion, VersionedRoutePlan};
 
 use std::{
     collections::BTreeMap,

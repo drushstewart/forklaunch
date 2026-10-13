@@ -525,6 +525,14 @@ shared across candidate versions. `rust_versioned_form_parity.mjs` compares the
 profile against the actual TypeScript content middleware. Configurable parser
 options and non-UTF-8 charsets remain incomplete.
 
+Multipart version matching uses buffered wire bytes and shares `MultipartLimits`
+with the typed Axum extractor, including caller-installed limit extensions.
+Text fields become strings and file fields become byte arrays; repeated names
+use the last part, and overwritten parts still count toward limits. The matcher
+polls only ready memory and does not start an executor. Handlers retain the exact
+original body. Native byte-array schemas are supported; nested OpenAPI opaque
+file schemas and parser-limit error-status equivalence remain incomplete.
+
 Local handlers read `FrameworkRequest.version`; Axum handlers can extract
 `Extension<forklaunch_http::SelectedVersion>`. This contains `version` and
 `matched_versions`. MCP exposes each version as `operation [v<version>]` when

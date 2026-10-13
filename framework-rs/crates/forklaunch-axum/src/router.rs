@@ -888,7 +888,12 @@ fn select_contract_version(
     parts: &mut Parts,
     request: &FrameworkRequest,
 ) -> Result<RouteContract, Vec<forklaunch_http::ContractValidationError>> {
-    match plan.select(request) {
+    let limits = parts
+        .extensions
+        .get::<forklaunch_http::MultipartLimits>()
+        .copied()
+        .unwrap_or_default();
+    match plan.select_with_multipart_limits(request, limits) {
         Ok(Some((selected, version))) => {
             parts.extensions.insert(version);
             Ok(selected)
