@@ -19,6 +19,8 @@ try {
   assert.equal(inputSchema.properties.body.examples[0].metadata.$ref, '#');
   if (process.env.FORKLAUNCH_TEST_SCHEMA_RESOURCES === 'dynamic') {
     assert.equal(inputSchema.properties.body.properties.children.items.$dynamicRef, '#node');
+  } else if (process.env.FORKLAUNCH_TEST_SCHEMA_RESOURCES === 'recursive') {
+    assert.equal(inputSchema.properties.body.properties.children.items.$recursiveRef, '#');
   } else {
     assert.equal(inputSchema.properties.body.properties.children.items.$ref, process.env.FORKLAUNCH_TEST_SCHEMA_RESOURCES ? '#' : '#/properties/body');
   }

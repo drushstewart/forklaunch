@@ -27,6 +27,14 @@ fn body(name: &str, schema: &str) -> BodyContract {
                 value.pointer_mut(pointer).unwrap()["$dynamicRef"] = json!("#node");
             }
         }
+        if mode == "recursive" && name == "Tree" {
+            value["$schema"] = json!("https://json-schema.org/draft/2019-09/schema");
+            value["$recursiveAnchor"] = json!(true);
+            for pointer in ["/properties/children/items", "/properties/parent/anyOf/0", "/properties/optional"] {
+                value.pointer_mut(pointer).unwrap().as_object_mut().unwrap().remove("$ref");
+                value.pointer_mut(pointer).unwrap()["$recursiveRef"] = json!("#");
+            }
+        }
         if mode == "legacy" {
             value["$schema"] = json!("http://json-schema.org/draft-04/schema#");
             value["id"] = value.as_object_mut().unwrap().remove("$id").unwrap();

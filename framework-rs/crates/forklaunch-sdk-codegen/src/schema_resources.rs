@@ -2,7 +2,7 @@
 use super::{ExpansionBudget, queue_anchor};
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use url::Url;
 
 const ROOT: &str = "https://forklaunch.invalid/__document__";
@@ -18,6 +18,7 @@ pub(super) struct Resources {
     roots: BTreeMap<String, String>,
     anchors: BTreeMap<String, String>,
     dynamic: BTreeMap<String, Bindings>,
+    recursive: BTreeSet<String>,
 }
 impl Resources {
     #[allow(clippy::too_many_lines)]
@@ -40,6 +41,7 @@ impl Resources {
             roots: BTreeMap::from([(ROOT.into(), String::new())]),
             anchors: BTreeMap::new(),
             dynamic: BTreeMap::new(),
+            recursive: BTreeSet::new(),
         };
         let mut pending = vec![(
             document,
@@ -105,6 +107,21 @@ impl Resources {
                     result
                         .scopes
                         .insert(std::ptr::from_ref(value) as usize, base.clone());
+                    if let Some(anchor) = object.get("$recursiveAnchor") {
+                        if !dialect.contains("2019-09") || !anchor.is_boolean() {
+                            bail!("$recursiveAnchor requires a boolean and the 2019-09 dialect");
+                        }
+                        if anchor == true {
+                            if result.roots.get(&base) != Some(&pointer) {
+                                bail!("SDK recursive anchors must identify resource roots");
+                            }
+                            budget.bytes = budget
+                                .bytes
+                                .checked_sub(base.len())
+                                .context("SDK schema resource index exceeds 32 MiB")?;
+                            result.recursive.insert(base.clone());
+                        }
+                    }
                     for keyword in ["$anchor", "$dynamicAnchor"] {
                         if let Some(anchor) = object.get(keyword) {
                             if keyword == "$dynamicAnchor" && !dialect.contains("2020-12") {
@@ -288,6 +305,20 @@ impl Resources {
                 }
             }
         }
+        // The empty name cannot collide with a legal dynamic anchor. It tracks
+        // the outermost resource in the uninterrupted recursive-anchor chain.
+        if self.recursive.contains(self.base(schema)) {
+            if !bindings.contains_key("") {
+                let pointer = &self.roots[self.base(schema)];
+                budget.bytes = budget
+                    .bytes
+                    .checked_sub(pointer.len())
+                    .context("SDK recursive schema context exceeds 32 MiB")?;
+                bindings.insert(String::new(), pointer.clone());
+            }
+        } else {
+            bindings.remove("");
+        }
         Ok(bindings)
     }
 
@@ -295,6 +326,24 @@ impl Resources {
         self.scopes
             .get(&(std::ptr::from_ref(schema) as usize))
             .map_or(self.default_base.as_str(), String::as_str)
+    }
+
+    pub(super) fn recursive_pointer(
+        &self,
+        schema: &Value,
+        reference: &str,
+        bindings: &Bindings,
+    ) -> Result<String> {
+        if reference != "#" {
+            bail!("2019-09 recursive references must use #");
+        }
+        if self.recursive.contains(self.base(schema)) {
+            return bindings
+                .get("")
+                .cloned()
+                .context("Missing recursive schema binding");
+        }
+        self.pointer(schema, reference)
     }
 
     pub(super) fn dynamic_pointer(
@@ -371,6 +420,31 @@ fn resolve(base: &str, reference: &str) -> Result<Url> {
 mod tests {
     use super::super::{DEFINITIONS, ExpansionBudget, REFERENCE, bundle, normalize};
     use serde_json::json;
+
+    #[test]
+    fn recursive_resource_roots_and_profile_boundaries() {
+        let schema = json!({"$schema":"https://json-schema.org/draft/2019-09/schema", "$recursiveAnchor":true,
+            "type":"object", "properties":{"next":{"$recursiveRef":"#"}}});
+        assert!(bundle(&schema, &schema, &mut ExpansionBudget::default()).is_ok());
+        for invalid in [
+            json!({"$recursiveAnchor":true, "type":"object"}),
+            json!({"$schema":"https://json-schema.org/draft/2019-09/schema", "$recursiveAnchor":"yes"}),
+            json!({"$schema":"https://json-schema.org/draft/2019-09/schema", "$recursiveRef":"#/other"}),
+            json!({"$schema":"https://json-schema.org/draft/2019-09/schema", "properties":{"child":{"$recursiveAnchor":true}}}),
+            json!({"$schema":"https://json-schema.org/draft/2020-12/schema", "$recursiveRef":"#"}),
+        ] {
+            assert!(normalize(&invalid, "Rejected").is_err());
+        }
+        assert!(
+            super::super::bundle_with_resource_policy(
+                &schema,
+                &schema,
+                &mut ExpansionBudget::default(),
+                false
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn dynamic_recursion_requires_an_explicit_supported_dialect() {

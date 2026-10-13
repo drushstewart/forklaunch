@@ -1,4 +1,4 @@
-// Compare the actual SDK graph compiler with independent AJV 2020-12 evaluation.
+// Compare the actual SDK graph compiler with independent AJV 2019-09/2020-12 evaluation.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
@@ -7,6 +7,7 @@ import path from 'node:path';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const require=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES ?? root,'package.json'));
 const Ajv=require('ajv/dist/2020').default;
+const Ajv2019=require('ajv/dist/2019').default;
 const node=(id,type)=>({$id:id,$dynamicAnchor:'node',type:'object',additionalProperties:false,required:['value'],properties:{value:{type},next:{$ref:'base'}}});
 const schema={
  $schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/root',type:'object',additionalProperties:false,
@@ -34,15 +35,20 @@ const fixtures=[
  {schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/plain-root',$dynamicAnchor:'node',type:'object',properties:{next:{$dynamicRef:'#plain'}},$defs:{Value:{$anchor:'plain',type:'string'}}},cases:[[{next:'value'},true,false],[{next:{}},false,true]]},
  {ajvUnsupported:true,schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/uri-root',$dynamicAnchor:'node',type:'object',properties:{next:{$dynamicRef:'target#node'}},$defs:{Target:{$id:'target',$dynamicAnchor:'node',type:'string'}}},cases:[[{next:{}},true],[{next:'value'},false]]},
 ];
+// The 2019-09 predecessor uses a single resource-root recursive binding.
+const recursiveSchema=JSON.parse(JSON.stringify(schema).replaceAll('2020-12','2019-09').replaceAll('"$dynamicAnchor":"node"','"$recursiveAnchor":true').replaceAll('"$dynamicRef":"#node"','"$recursiveRef":"#"').replaceAll('"$ref":"#node"','"$ref":"#"'));
+fixtures.push({schema:recursiveSchema,cases:fixtures[0].cases});
+fixtures.push({schema:{$schema:'https://json-schema.org/draft/2019-09/schema',$recursiveAnchor:true,type:'object',additionalProperties:false,properties:{next:{$ref:'#/$defs/Base'}},$defs:{Base:{$id:'https://schema.fixture.test/nonrecursive',$recursiveAnchor:false,type:'object',additionalProperties:false,properties:{child:{$recursiveRef:'#'}}}}},cases:[[{next:{child:{}}},true],[{next:{child:{next:{}}}},false,true]]});
 const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0, differences=0, unsupported=0;
 for(let i=0;i<fixtures.length;i++) {
  let original;
+ const Validator=fixtures[i].schema.$schema.includes("2019-09") ? Ajv2019 : Ajv;
  if(fixtures[i].ajvUnsupported) {
-  assert.throws(()=>new Ajv({strict:false}).compile(fixtures[i].schema),/only supports hash fragment reference/);
+  assert.throws(()=>new Validator({strict:false}).compile(fixtures[i].schema),/only supports hash fragment reference/);
   unsupported+=fixtures[i].cases.length;
- } else { original=new Ajv({strict:false}).compile(fixtures[i].schema); }
- const compiled=new Ajv({strict:false}).compile(bundled[i].schema);
+ } else { original=new Validator({strict:false}).compile(fixtures[i].schema); }
+ const compiled=new Validator({strict:false}).compile(bundled[i].schema);
  for(const [index,[value,valid,ajvValid=valid]]of fixtures[i].cases.entries()) {
   assert.equal(bundled[i].original[index],valid,`Native original ${i}/${index}`);
   assert.equal(bundled[i].compiled[index],valid,`Native compiled ${i}/${index}`);

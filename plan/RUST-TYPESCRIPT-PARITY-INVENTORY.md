@@ -2686,3 +2686,30 @@ The combined generated resource suite also passes all four variants (static,
 legacy, mixed and dynamic), recorded in `fl-resource-dynamic-regression.log`.
 Strict all-feature framework API docs pass and the security audit reports no
 unexpected advisories (`fl-resource-dynamic-docs.log`, `fl-resource-dynamic-audit.log`).
+
+
+### 2026-10-13 — 2019-09 recursive SDK resource roots
+
+The shared HTTP graph compiler now supports explicit 2019-09 resource-root
+`$recursiveAnchor` booleans and `$recursiveRef: "#"`. Binding state is isolated
+from named 2020-12 anchors, participates in model identity and consumes the same
+expansion budget. Non-anchored resources preserve static root fallback; malformed
+anchors, non-root anchors, other recursive URI values and unsupported dialects
+fail before generation. This follows the
+[2019-09 recursive-reference profile](https://json-schema.org/draft/2019-09/draft-handrews-json-schema-02#rfc.section.8.2.4.2).
+
+The combined conformance fixture passes 36 native-original/compiled cases:
+27 independent AJV agreements, five explicitly recorded AJV scope/anchor
+result differences, and four unsupported AJV URI-reference cases. New tests
+cover nested resource roots, false/absent recursive anchors, strict profile
+boundaries and both static/dynamic forms. All 31 shared compiler, 5 native Rust,
+8 native TypeScript and 1,088 CLI tests pass, with strict native lint, formatting
+and 890 packaged source/template checks. The generated recursive-resource mode
+passes both languages, both artifact sources, both native generators, strict
+Rust consumer lint, and live HTTP/MCP startup, invocation and shutdown.
+Evidence: `fl-resource-recursive-{ajv,unit,clippy,cli-tests,format,package,generated}.log`.
+
+Five committed dynamic fixtures and the completed recursive fixture were cleaned
+up (182 generated workspaces removed cumulatively). Checklist remains
+**651/682 (95.5%), 31 open**; remaining resource work includes legacy fragment
+IDs and resource-aware socket unions.

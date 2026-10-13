@@ -218,8 +218,10 @@ impl Graph<'_> {
             }
             resources.check_target(schema)?;
         }
-        if object.contains_key("$recursiveRef") {
-            bail!("Recursive schema references are unsupported by SDK generation");
+        if object.contains_key("$recursiveRef")
+            && (!self.resource_ids || !dialect.contains("2019-09"))
+        {
+            bail!("Recursive references require the 2019-09 HTTP SDK profile");
         }
         if object.contains_key("$dynamicRef")
             && (!self.resource_ids || !dialect.contains("2020-12"))
@@ -232,8 +234,10 @@ impl Graph<'_> {
         }
         let reference_key = if object.contains_key("$ref") {
             "$ref"
-        } else {
+        } else if object.contains_key("$dynamicRef") {
             "$dynamicRef"
+        } else {
+            "$recursiveRef"
         };
         if let Some(reference) = object.get(reference_key) {
             let reference = reference.as_str().context("Schema $ref must be a string")?;
@@ -250,7 +254,9 @@ impl Graph<'_> {
                 .checked_sub(reference.len() + object.keys().map(String::len).sum::<usize>())
                 .context("SDK schema graph exceeds 32 MiB")?;
             let resources = self.resources.as_ref().unwrap();
-            let pointer = if reference_key == "$dynamicRef" {
+            let pointer = if reference_key == "$recursiveRef" {
+                resources.recursive_pointer(schema, reference, &bindings)?
+            } else if reference_key == "$dynamicRef" {
                 resources.dynamic_pointer(schema, reference, &bindings)?
             } else {
                 resources.pointer(schema, reference)?
@@ -299,6 +305,7 @@ impl Graph<'_> {
                         | "definitions"
                         | "$anchor"
                         | "$dynamicAnchor"
+                        | "$recursiveAnchor"
                         | "$id"
                 ) && !key.starts_with("x-")
                 {
@@ -306,7 +313,12 @@ impl Graph<'_> {
                 }
                 if !matches!(
                     key.as_str(),
-                    "$defs" | "definitions" | "$anchor" | "$dynamicAnchor" | "$id"
+                    "$defs"
+                        | "definitions"
+                        | "$anchor"
+                        | "$dynamicAnchor"
+                        | "$recursiveAnchor"
+                        | "$id"
                 ) {
                     resolved[key] = clone_literal(value, self.budget)?;
                 }
@@ -342,7 +354,8 @@ impl Graph<'_> {
                 .context("SDK schema graph exceeds 32 MiB")?;
             let value = match key.as_str() {
                 // Only reachable definitions participate in the graph.
-                "$defs" | "definitions" | "$anchor" | "$dynamicAnchor" | "$id" => continue,
+                "$defs" | "definitions" | "$anchor" | "$dynamicAnchor" | "$recursiveAnchor"
+                | "$id" => continue,
                 "properties" | "patternProperties" | "dependentSchemas" => {
                     let mut properties = Map::new();
                     for (name, schema) in value
