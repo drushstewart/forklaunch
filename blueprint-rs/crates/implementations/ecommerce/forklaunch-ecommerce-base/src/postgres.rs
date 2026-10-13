@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
 mod webhook;
+mod compliance;
 
 #[derive(Clone)]
 pub struct PostgresEcommerceStore {

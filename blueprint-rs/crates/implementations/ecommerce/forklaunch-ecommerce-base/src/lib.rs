@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 pub mod catalog;
 pub mod checkout;
+pub mod compliance;
 pub mod events;
 pub mod import;
 #[cfg(feature = "postgres")]

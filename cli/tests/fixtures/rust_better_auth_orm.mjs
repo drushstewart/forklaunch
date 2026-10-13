@@ -5,7 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import crypto from 'node:crypto';
 import { actualValidator } from '../rust_actual_validator_fixture.mjs';
-export async function betterAuthOrm(root, dependencies) {
+export async function betterAuthOrm(root, dependencies, resolveAdditional, sameRealm = false) {
   const require = createRequire(path.join(dependencies, 'package.json'));
   const core = await import(pathToFileURL(require.resolve('@mikro-orm/core')));
   const { MikroORM } = await import(
@@ -13,6 +13,8 @@ export async function betterAuthOrm(root, dependencies) {
   );
   let persistence;
   const actual = actualValidator(root, (specifier, _file, load) => {
+    const additional = resolveAdditional?.(specifier, _file, load);
+    if (additional !== undefined) return additional;
     if (specifier === '@mikro-orm/core') return core;
     if (specifier === 'crypto') return { default: crypto, ...crypto };
     if (specifier === 'uuid') return { v4: crypto.randomUUID };
@@ -26,7 +28,7 @@ export async function betterAuthOrm(root, dependencies) {
       return load(
         path.join(root, 'blueprint/core/persistence/sql.base.properties.ts')
       );
-  });
+  }, { sameRealm });
   const load = (file) => actual.load(path.join(root, file));
   persistence = {
     ...load('framework/core/src/persistence/compliancePropertyBuilder.ts'),

@@ -2452,3 +2452,22 @@ namespaces, self-JWKS, persistence, shutdown and rename/delete
 (`fl-auth-final-scans-runtime.log`). Indexed auth storage gate is complete:
 **647/682 (94.9%), 35 open**. Broader Better Auth custom hooks/options and dynamic
 namespace semantics remain separate, open work.
+
+
+### Ecommerce classified export and erasure hooks
+
+Added tenant-bound memory/PostgreSQL hooks for the actual Order shipping-address
+classification. Default order-ID subject resolution matches the TypeScript
+walker's fallback; explicit customer-ID mapping matches its constructor override.
+The real encrypted ORM fixture revealed that classified values serialize as
+opaque objects. Rust now preserves that behavior with a non-Debug protected
+address and explicit audited `deanon` access; JSON export cannot leak addresses.
+Whole-order erasure leaves unclassified records untouched and reports incomplete
+operations. PostgreSQL decrypt/audit/delete work commits atomically, with foreign
+tenant isolation and audit-failure rollback verified. All five native ecommerce
+tests, restricted PostgreSQL, strict default/all-feature Clippy and 12 actual
+MikroORM/native comparisons pass. The same-realm fixture mode preserves MikroORM's
+`instanceof Function` handling of real lazy enum factories; default fixture
+execution is unchanged. CI includes the new comparison. Evidence:
+`/private/tmp/fl-ecommerce-compliance-{tests,postgres,clippy,clippy-default,actual}.log`.
+Retention remains open; checklist remains 647/682 (94.9%).

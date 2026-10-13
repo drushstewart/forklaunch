@@ -1,5 +1,7 @@
 #[path = "support/catalog.rs"]
 mod catalog;
+#[path = "support/compliance.rs"]
+mod compliance;
 #[path = "support/events.rs"]
 mod events;
 #[path = "support/webhook.rs"]
@@ -511,6 +513,31 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         .unwrap();
     assert_eq!(visible, 0);
     business_rules(Arc::clone(&a)).await;
+    compliance::exercise(Arc::clone(&a)).await;
+    let compliance_a = forklaunch_ecommerce_base::compliance::EcommerceComplianceService::new(
+        Arc::clone(&a),
+        forklaunch_ecommerce_base::compliance::OrderSubjectField::CustomerId,
+    );
+    let compliance_b = forklaunch_ecommerce_base::compliance::EcommerceComplianceService::new(
+        Arc::clone(&b),
+        forklaunch_ecommerce_base::compliance::OrderSubjectField::CustomerId,
+    );
+    assert!(
+        compliance_b
+            .export("foreign-owner")
+            .await
+            .unwrap()
+            .entities
+            .is_empty()
+    );
+    assert_eq!(
+        compliance_b
+            .erase("foreign-owner")
+            .await
+            .unwrap()
+            .records_deleted,
+        0
+    );
     let service = BaseEcommerceService::new(Arc::clone(&a));
     let other = BaseEcommerceService::new(Arc::clone(&b));
     assert!(other.get_order("order").await.is_err());
@@ -564,6 +591,12 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     .await
     .unwrap();
     assert!(service.get_order("order2").await.is_err());
+    let failed_export = compliance_a.export("foreign-owner").await.unwrap();
+    assert!(failed_export.entities.is_empty());
+    assert_eq!(failed_export.failures.len(), 1);
+    let failed_erase = compliance_a.erase("foreign-owner").await.unwrap();
+    assert_eq!(failed_erase.records_deleted, 0);
+    assert_eq!(failed_erase.failures.len(), 1);
     assert!(
         service
             .transition_order(TransitionOrderDto {
@@ -583,6 +616,11 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         service.get_order("order2").await.unwrap().status,
         OrderStatus::Pending,
         "audit failures roll mutations back"
+    );
+    assert_eq!(
+        compliance_a.export("foreign-owner").await.unwrap().entities["Order"].len(),
+        1,
+        "audit failure must roll back erasure"
     );
     let rotated = Arc::new(
         FieldEncryptor::new("ecommerce-test-new-secret-only")

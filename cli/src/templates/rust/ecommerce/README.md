@@ -17,3 +17,16 @@ Checkout leaves the basket intact until a paid webhook clears it, matching the T
 Provider callbacks are public at `/webhook/stripe` and `/webhook/paypal`; they verify provider signatures before creating durable tenant/provider event receipts. Stripe verifies the exact request bytes with the SDK timestamp window. PayPal sends the complete original event to its verification API. Successful matching payments atomically mark pending orders paid and enqueue inventory delivery, then clear the basket. Replay is serialized across processes. Amount/currency mismatches preserve the TypeScript payment-confirmed/order-pending behavior. PayPal decimal reconciliation requires exact nonnegative cents; malformed/fractional-cent values cannot authorize an order transition.
 
 PayPal capture uses the TypeScript wrapper’s provisional succeeded claim and rolls it back on provider errors. A process interruption during capture requires external reconciliation. Event receipts and operation locks do not make external charging exactly once.
+
+
+The native `forklaunch_ecommerce_base::compliance` service provides tenant-bound
+Order export and whole-record erasure hooks. Construct it with an existing store
+and an explicit `OrderSubjectField`: `Id` matches the TypeScript generic walk's
+fallback, while `CustomerId` matches a TypeScript `{ Order: 'customerId' }`
+override. Exported shipping addresses serialize as opaque objects; use their
+`deanon` method with a trusted audit sink for explicit plaintext access. Database
+reads and audit inserts commit together; failed audits or decryption roll back
+an erasure. A nonempty `failures` list means the operation is incomplete.
+Unclassified carts, payments and event receipts are not cascaded. These are
+trusted application hooks; this preset defines no new public compliance route.
+Order retention policy integration remains separate work.

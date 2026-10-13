@@ -1,4 +1,5 @@
 //! Atomic persistence boundary shared by memory and `PostgreSQL` implementations.
+mod compliance;
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_ecommerce_interface::{
     CartDto, CartItemDto, InventoryDto, OrderDto, OrderStatus, PaymentDto, PaymentStatus,
