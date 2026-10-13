@@ -42,6 +42,13 @@ mod forklaunch_tests {
     use serde_json::json;
     #[test]
     fn legacy_reference_siblings_establish_ajv_id_scopes() {
+        for id_key in ["id", "$id"] {
+            let value = json!({id_key:"nested/", "$ref":"target"});
+            assert_eq!(
+                crate::spec::analyze_object_classic(value.as_object().unwrap(), id_key).id,
+                Some("nested/")
+            );
+        }
         assert_eq!(
             legacy_id(&json!({"id":"nested/", "$ref":"target"})),
             Some("nested/")

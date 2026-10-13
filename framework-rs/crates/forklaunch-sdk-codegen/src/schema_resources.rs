@@ -108,8 +108,7 @@ impl Resources {
                             if !legacy {
                                 bail!("Nonempty schema ID fragments require a legacy dialect");
                             }
-                            let anchor = anchor.to_owned();
-                            validate_anchor(&anchor, true)?;
+                            let anchor = normalize_uri_encoding(anchor);
                             if !id.starts_with('#') {
                                 let mut scope = uri.clone();
                                 scope.set_fragment(None);
@@ -427,6 +426,12 @@ impl Resources {
         let mut uri = resolve(base, reference)?;
         let fragment = uri.fragment().unwrap_or("").to_owned();
         uri.set_fragment(None);
+        if let Some(pointer) = self
+            .anchors
+            .get(&format!("{uri}#{}", normalize_uri_encoding(&fragment)))
+        {
+            return Ok(pointer.clone());
+        }
         if fragment.contains("%2F") || fragment.contains("%2f") {
             bail!(
                 "Checked schemas require literal JSON-pointer separators; escape slash tokens with ~1"
@@ -494,6 +499,38 @@ fn validate_anchor(anchor: &str, legacy: bool) -> Result<()> {
     Ok(())
 }
 
+// URI normalization decodes unreserved characters but keeps encoded delimiters
+// distinct: a legacy ID "#%2Falias" is not the pointer-shaped ID "#/alias".
+fn normalize_uri_encoding(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
+            && let (Some(high), Some(low)) = (
+                char::from(bytes[index + 1]).to_digit(16),
+                char::from(bytes[index + 2]).to_digit(16),
+            )
+        {
+            let decoded =
+                u8::try_from(high * 16 + low).expect("two hexadecimal digits fit in a byte");
+            if decoded.is_ascii_alphanumeric() || b"-._~".contains(&decoded) {
+                output.push(char::from(decoded));
+            } else {
+                use std::fmt::Write;
+                write!(output, "%{decoded:02X}").unwrap();
+            }
+            index += 3;
+        } else {
+            let character = value[index..].chars().next().unwrap();
+            output.push(character);
+            index += character.len_utf8();
+        }
+    }
+    output
+}
+
 fn escape(value: &str) -> String {
     value.replace('~', "~0").replace('/', "~1")
 }
@@ -505,9 +542,10 @@ fn resolve(base: &str, reference: &str) -> Result<Url> {
     {
         bail!("Invalid schema resource URI");
     }
-    Url::parse(base)?
+    let resolved = Url::parse(base)?
         .join(reference)
-        .context("Invalid schema resource URI")
+        .context("Invalid schema resource URI")?;
+    Url::parse(&normalize_uri_encoding(resolved.as_str())).context("Invalid schema resource URI")
 }
 
 #[cfg(test)]
@@ -564,9 +602,13 @@ mod tests {
             assert_eq!(compiled["properties"]["second"]["type"], "integer");
             assert!(compiled["properties"]["first"]["$ref"].is_string());
         }
-        for id in ["#1invalid", "#_invalid", "#/pointer"] {
-            let schema = json!({"$schema":"http://json-schema.org/draft-07/schema#", "$id":id,"type":"string"});
-            assert!(normalize(&schema, "Invalid").is_err());
+    }
+
+    #[test]
+    fn legacy_fragment_normalization_rejects_duplicate_aliases() {
+        for (first, second) in [("#%41", "#A"), ("#%2falias", "#%2Falias")] {
+            let value = json!({"$schema":"http://json-schema.org/draft-07/schema#","definitions":{"First":{"$id":first},"Second":{"$id":second}}});
+            assert!(normalize(&value, "Duplicate").is_err());
         }
     }
 

@@ -69,6 +69,16 @@ fixtures.push({allErrorsParity:true,schema:{$schema:'https://json-schema.org/dra
 for(const [draft,id] of [['04','id'],['06','$id'],['07','$id']]) {
  fixtures.push({schema:{$schema:`http://json-schema.org/draft-${draft}/schema#`,[id]:'https://schema.fixture.test/combined-root',type:'object',properties:{word:{$ref:'other#Word'},count:{$ref:'other#Count'},leaf:{$ref:'other#Leaf'}},definitions:{Word:{[id]:'other#Word',type:'object',required:['value'],properties:{value:{type:'string'},next:{$ref:'#Word'},leaf:{$ref:'#Leaf'}},definitions:{Leaf:{[id]:'#Leaf',type:'integer'}}},Count:{[id]:'other#Count',type:'integer'}}},cases:[ [{word:{value:'a',next:{value:'b'}},count:1},true],[{word:{value:1}},false],[{word:{value:'a',next:{value:2}}},false],[{count:'bad'},false],[{word:{value:'a',leaf:1}},true],[{word:{value:'a',leaf:'bad'}},false],[{leaf:1},true],[{leaf:'bad'},false] ]});
 }
+for(const [draft,id] of [['04','id'],['06','$id'],['07','$id']]) {
+ for(const [identity,reference] of [['#1name','#1name'],['#_name','#_name'],['#/alias','#/alias'],['other#/alias','other#/alias'],['#%41','#A'],['#%2Falias','#%2Falias'],['#%E6%B0%B4','#%E6%B0%B4'],['#a%20b','#a%20b'],['other%41#Word','otherA#Word'],['other?x=%41#Word','other?x=A#Word'],['other%2fpart#Word','other%2Fpart#Word']]) {
+  fixtures.push({schema:{$schema:`http://json-schema.org/draft-${draft}/schema#`,[id]:'https://schema.fixture.test/permissive',type:'object',properties:{value:{$ref:reference}},definitions:{Value:{[id]:identity,type:'string'}}},cases:[[{value:'a'},true],[{value:1},false]]});
+ }
+ fixtures.push({schema:{$schema:`http://json-schema.org/draft-${draft}/schema#`,[id]:'https://schema.fixture.test/encoded-aliases',type:'object',alias:{type:'boolean'},properties:{encoded:{$ref:'#%2Falias'},literal:{$ref:'#/alias'}},definitions:{Encoded:{[id]:'#%2Falias',type:'string'},Literal:{[id]:'#/alias',type:'integer'}}},cases:[[{encoded:'a',literal:1},true],[{encoded:1},false],[{literal:'a'},false],[{literal:true},false]]});
+ fixtures.push({schema:{$schema:`http://json-schema.org/draft-${draft}/schema#`,[id]:'https://schema.fixture.test/alias-sibling',type:'object',properties:{value:{$ref:'other#Alias'}},definitions:{Alias:{[id]:'other#Alias',$ref:'target'},Target:{[id]:'target',type:'string'}}},cases:[[{value:'a'},true],[{value:1},false]]});
+}
+for(const dialect of ['2019-09','2020-12']) for(const [identity,reference] of [['other%41','otherA#Word'],['other?x=%41','other?x=A#Word'],['other%2fpart','other%2Fpart#Word']]) {
+ fixtures.push({schema:{$schema:`https://json-schema.org/draft/${dialect}/schema`,$id:'https://schema.fixture.test/normalized',type:'object',properties:{value:{$ref:reference}},$defs:{Word:{$id:identity,$anchor:'Word',type:'string'}}},cases:[[{value:'a'},true],[{value:1},false]]});
+}
 const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0, differences=0, unsupported=0, allErrorsComparisons=0;
 for(let i=0;i<fixtures.length;i++) {

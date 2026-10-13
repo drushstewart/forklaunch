@@ -80,7 +80,12 @@ pub(crate) fn analyze_object_classic<'a>(
 
     let has_anchor = raw_id.is_some_and(|id| id.starts_with('#'));
     let id = match raw_id {
-        Some(id) if !has_anchor && dollar_ref.is_none() => Some(id),
+        Some(id)
+            if !has_anchor
+                && (cfg!(feature = "forklaunch-ajv-ref-siblings") || dollar_ref.is_none()) =>
+        {
+            Some(id)
+        }
         _ => None,
     };
 

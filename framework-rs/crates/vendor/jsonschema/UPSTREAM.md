@@ -71,3 +71,12 @@ cache identity preserve distinct full alias URIs, including aliases sharing a
 path. Feature-gated resolver/validator regressions cover recursion, nested
 anchors, distinct cached targets and unavailable bare/pointer resources.
 Default upstream behavior remains unchanged.
+
+The legacy fragment compatibility profile also indexes exact pointer-shaped and
+percent-encoded aliases. Exact registered IDs take precedence over document
+pointers, encoded delimiters stay distinct from literal delimiters, and ordinary
+fragment-only names retain their existing resource scope. The registry's classic
+schema-object analysis now honors `forklaunch-ajv-ref-siblings` when registering
+IDs beside references, matching the existing ID extraction/compiler policy.
+Borrowed/owned registry regressions and actual AJV/native/generated comparisons
+cover these paths. URI syntax checks still reject malformed source references.

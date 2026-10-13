@@ -22,7 +22,7 @@ fn body(name: &str, schema: &str) -> BodyContract {
         if mode == "siblings" && name == "Mutual" {
             value["minProperties"] = json!(1);
         }
-        if let Some(draft) = mode.strip_prefix("fragment").or_else(|| mode.strip_prefix("uri")) {
+        if let Some(draft) = mode.strip_prefix("fragment").or_else(|| mode.strip_prefix("uri")).or_else(|| mode.strip_prefix("pointer")) {
             value["$schema"] = json!(format!("http://json-schema.org/draft-0{draft}/schema#"));
             let id = if draft == "4" { "id" } else { "$id" };
             if draft == "4" { value["id"] = value.as_object_mut().unwrap().remove("$id").unwrap(); }
@@ -40,6 +40,13 @@ fn body(name: &str, schema: &str) -> BodyContract {
                     value["$ref"] = json!("nodes#MutualA");
                     value["$defs"]["A"][id] = json!("nodes#MutualA");
                     value["$defs"]["B"][id] = json!("nodes#MutualB");
+                }
+                if mode.starts_with("pointer") {
+                    value["$ref"] = json!("nodes#%2FMutualA");
+                    value["$defs"]["A"][id] = json!("nodes#%2FMutualA");
+                    value["$defs"]["B"][id] = json!("nodes#/MutualB");
+                    value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("#/MutualB");
+                    value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("#%2FMutualA");
                 }
             }
         }

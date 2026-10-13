@@ -2983,3 +2983,34 @@ work: an additional direct AJV probe accepts pointer-shaped, digit-leading and
 underscore-leading legacy IDs that the shared compiler still rejects. This
 receipt covers named fragments within the existing profile; it does not claim
 those broader spellings are implemented.
+
+### 2026-10-13 — Legacy fragment spellings and URI normalization
+
+Legacy IDs now support pointer-shaped fragments, digit/underscore names and
+percent-encoded names through the shared compiler/native codec. Exact registered
+IDs take precedence over document pointers. URI normalization decodes unreserved
+characters and normalizes escape case across paths, queries and fragments while
+preserving encoded delimiters: `#%2Falias` and `#/alias` remain separate targets.
+Normalized duplicate aliases fail explicitly. Encoded-slash references without
+an explicit matching alias still obey the checked JSON-pointer boundary.
+
+Registry object analysis now applies the existing AJV sibling-ID policy during
+indexing as well as ID extraction/compilation, so a legacy ID beside `$ref` can
+be referenced elsewhere. Both borrowed and owned registry paths are covered.
+The opt-in vendor features retain default upstream behavior; malformed URI
+syntax is outside this compatibility profile.
+
+Validation: 240 original/bundled native cases, 227 default-mode AJV agreements,
+the same nine recorded AJV differences/four unsupported URI cases, and 12
+additional allErrors-mode comparisons. The expanded matrix compiles 32 clients
+per language and passes 96 live socket roundtrips, including external imports.
+Three generated `pointer4`/`pointer6`/`pointer7` service variants pass HTTP/MCP
+startup, discovery, invocation, Origin rejection and shutdown, typed recursive
+SDKs through both artifact formats and both native generators. All 13,908 actual
+TypeScript/native codec comparisons and the generated live client suite pass.
+Resolver suites pass 153 compatibility/150 default tests; validator suites pass
+1,987 compatibility/1,992 default tests. Affected native suites, all 1,095 CLI
+tests, strict clippy/docs, formatting and 890 packaged sources pass. Evidence:
+`fl-schema-permissive-{parity,sockets,typescript,referencing,referencing-default,vendor,default,unit,cli,clippy,docs,package,generated-pointer4,generated-pointer6,generated-pointer7}.log`.
+Checklist remains **651/682 (95.5%), 31 open**. Mixed-dialect runtime translation
+is the remaining identified resource-import boundary.

@@ -1424,6 +1424,36 @@ mod tests {
 
     #[cfg(feature = "forklaunch-legacy-fragment-ids")]
     #[test]
+    fn pointer_shaped_and_encoded_legacy_ids_resolve_before_document_pointers() {
+        for draft in [Draft::Draft4, Draft::Draft6, Draft::Draft7] {
+            let id = if draft == Draft::Draft4 { "id" } else { "$id" };
+            for (identity, reference) in [
+                ("#/alias", "#/alias"),
+                ("#%41", "#A"),
+                ("#%2Falias", "#%2Falias"),
+                ("#%E6%B0%B4", "#%E6%B0%B4"),
+            ] {
+                let resource = draft.create_resource(json!({id:"https://aliases.test/root","alias":{"type":"boolean"},"definitions":{"Value":{id:identity,"type":"integer"}}}));
+                for owned in [false, true] {
+                    let builder = if owned {
+                        Registry::new().add("https://aliases.test/root", resource.clone())
+                    } else {
+                        Registry::new().add("https://aliases.test/root", &resource)
+                    };
+                    let registry = builder.unwrap().prepare().unwrap();
+                    let resolver =
+                        registry.resolver(from_str("https://aliases.test/root").unwrap());
+                    assert_eq!(
+                        resolver.lookup(reference).unwrap().contents()["type"],
+                        "integer"
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+    #[test]
     fn legacy_uri_fragment_aliases_are_exact_and_do_not_invent_resource_roots() {
         for draft in [Draft::Draft4, Draft::Draft6, Draft::Draft7] {
             let id = if draft == Draft::Draft4 { "id" } else { "$id" };

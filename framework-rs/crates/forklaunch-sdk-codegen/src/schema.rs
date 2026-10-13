@@ -315,13 +315,6 @@ impl Graph<'_> {
                 continue;
             };
             let reference = reference.as_str().context("Schema $ref must be a string")?;
-            if reference.starts_with('#')
-                && (reference.contains("%2F") || reference.contains("%2f"))
-            {
-                bail!(
-                    "Checked schemas require literal JSON-pointer separators; escape slash tokens with ~1"
-                );
-            }
             self.budget.bytes = self
                 .budget
                 .bytes
