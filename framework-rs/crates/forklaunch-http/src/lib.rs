@@ -12,7 +12,7 @@ use std::{
     fmt::{self, Write as _},
 };
 
-use forklaunch_common::{FrameworkError, FrameworkResult, json_string, sanitize_path_slashes};
+use forklaunch_common::{FrameworkError, FrameworkResult, json_string, normalize_route_path};
 pub use forklaunch_contract::HttpMethod;
 use forklaunch_contract::{ContractRegistry, FieldContract, RouteContract, ValidationMode};
 use forklaunch_core::ServiceInfo;
@@ -134,7 +134,7 @@ impl FrameworkRequest {
         Self {
             context,
             method,
-            path: sanitize_path_slashes(&path.into()),
+            path: normalize_route_path(&path.into()),
             params: Params::new(),
             query: Query::new(),
             headers: Headers::new(),
@@ -789,8 +789,8 @@ pub fn match_path_checked(
     pattern: &str,
     path: &str,
 ) -> Result<Option<Params>, ContractValidationError> {
-    let pattern = sanitize_path_slashes(pattern);
-    let path = sanitize_path_slashes(path);
+    let pattern = normalize_route_path(pattern);
+    let path = normalize_route_path(path);
     let pattern_segments = path_segments(&pattern);
     let path_segments = path_segments(&path);
     if pattern_segments.len() != path_segments.len() {

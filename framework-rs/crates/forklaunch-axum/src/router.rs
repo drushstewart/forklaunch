@@ -26,7 +26,7 @@ use axum::{
     routing::MethodRouter,
 };
 use forklaunch_auth::{AuthError, authorize};
-use forklaunch_common::{join_base_path, sanitize_path_slashes};
+use forklaunch_common::{join_base_path, normalize_route_path};
 use forklaunch_contract::{
     AccessLevel, AuthConfig, BodyKind, ContractRegistry, HttpMethod, RouteContract, ValidationMode,
 };
@@ -282,7 +282,7 @@ impl ForkLaunchRouter {
     /// Sets a base path prepended to every route registered afterwards.
     #[must_use]
     pub fn with_base_path(mut self, base_path: impl AsRef<str>) -> Self {
-        self.base_path = sanitize_path_slashes(base_path.as_ref());
+        self.base_path = normalize_route_path(base_path.as_ref());
         self
     }
 

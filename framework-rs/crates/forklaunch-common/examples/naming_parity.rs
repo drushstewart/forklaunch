@@ -5,6 +5,9 @@ use forklaunch_common::{
     remove_non_alphanumeric, split_by_separators, to_camel_case_identifier, to_pretty_camel_case,
     to_valid_identifier, uncapitalize,
 };
+use forklaunch_common::{
+    remove_double_leading_slash, remove_trailing_slash, sanitize_path_slashes,
+};
 use std::io::{self, BufRead};
 fn main() {
     for line in io::stdin().lock().lines() {
@@ -70,6 +73,18 @@ fn main() {
                 JsonField::new("isValidIdentifier", is_valid_identifier(&input).to_string()),
                 JsonField::new("getTransformationInfo", details),
                 JsonField::new("hashString", hash_string(&input).to_string()),
+                JsonField::new(
+                    "removeTrailingSlash",
+                    json_string(&remove_trailing_slash(&input))
+                ),
+                JsonField::new(
+                    "removeDoubleLeadingSlash",
+                    json_string(&remove_double_leading_slash(&input))
+                ),
+                JsonField::new(
+                    "sanitizePathSlashes",
+                    json_string(&sanitize_path_slashes(&input))
+                ),
             ])
         );
     }

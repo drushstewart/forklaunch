@@ -15,7 +15,7 @@ proof that TypeScript and Rust producers/consumers can exchange jobs.
 | Source package | Rust implementation | Remaining scope / evidence |
 | --- | --- | --- |
 | [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Native builds and mixed Node/Bun Compose orchestration pass live HTTP/MCP, source reload and shutdown fixtures; automatic contract/SDK refresh remains. |
-| [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Twelve public naming/hash exports now have direct Rust equivalents and 7,092 actual-source comparisons; operation naming uses the TypeScript separator, cleanup, prefix and fallback semantics. Path normalization, other utilities and JavaScript-only value/type boundaries remain under symbol audit. |
+| [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Fifteen public naming/hash/slash exports now have direct Rust equivalents and 10,455 actual-source comparisons; operation naming uses the TypeScript separator, cleanup, prefix and fallback semantics. Path normalization, other utilities and JavaScript-only value/type boundaries remain under symbol audit. |
 | [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-core-macros, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption, explicit compliance metadata derives and an optional MCP HTTP server exist; Bounded tenant-scoped retention hooks exist; generic SQL entity/compliance/retention adapters and full auth/streaming conformance remain. |
 | [`@forklaunch/e2e-tests`](../framework/e2e-tests/package.json) (generated/private) | Rust wire/runtime suites | Actual TypeScript framework service conformance remains beyond the plain Node wire fixtures. |
 | [`@forklaunch/express`](../framework/express/package.json) | forklaunch-axum | Equivalent HTTP behavior is the target; multipart/SSE and full validation/auth/error fixtures remain. |
@@ -4054,3 +4054,22 @@ template link; all 936 embedded assets are included. Logs:
 `/private/tmp/fl-common-naming-{parity,tests,clippy,generated,package}.log`.
 Remaining utility/symbol and transport boundaries stay open; checklist is still
 657/682 (96.3%), 25 open.
+
+
+Common slash helper receipt (2026-10-13): `removeTrailingSlash`,
+`removeDoubleLeadingSlash` and `sanitizePathSlashes` now map to their exact
+single-step Rust counterparts, including empty/root inputs, relative paths,
+repeated slashes and trailing line separators. Native contract/request/router
+normalization moved to explicit `normalize_route_path`, preserving its existing
+leading-slash insertion, boundary collapse and root behavior. Callers needing the
+old normalization should use that function rather than the TypeScript helpers.
+
+The common actual-source matrix now checks 697 inputs across fifteen exports
+(10,455 comparisons). All 159 affected common/contract/HTTP/Axum/MCP tests and
+strict all-feature/all-target Clippy pass. Generated run `ecWquM` validates
+versioned field transforms/defaults, parameter decoding/raw wire preservation,
+both SDKs from both artifacts and HTTP/MCP listener/startup/shutdown profiles.
+All 936 embedded assets remain packaged. Logs:
+`/private/tmp/fl-common-path-{parity,tests,clippy,generated,package}.log`.
+OpenAPI parameter-string conversion and the rest of the public utility/symbol
+audit remain open; checklist stays 657/682 (96.3%), 25 open.

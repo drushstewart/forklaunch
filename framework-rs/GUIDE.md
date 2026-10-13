@@ -132,6 +132,16 @@ becomes `alpha`. Regenerate clients when names use these edge cases.
 be used for security decisions. Inputs are Rust UTF-8 strings; JavaScript non-string
 coercion and isolated surrogate code units are outside this typed boundary.
 
+The public `remove_trailing_slash`, `remove_double_leading_slash` and
+`sanitize_path_slashes` helpers match TypeScript's single-step replacements.
+For example, `/` becomes empty after trailing-slash removal, `///` loses only
+one leading slash, and a missing leading slash is not inserted. Native contract,
+request and router normalization uses `normalize_route_path` instead: it preserves
+root `/`, adds missing leading slashes and removes repeated boundary slashes.
+Callers that relied on the earlier Rust helpers' full normalization should use
+`normalize_route_path`.
+
+
 [Export and SDK commands](../docs/adding-projects/rust.md#export-contracts-and-sdks)
 cover contract/OpenAPI imports, both client languages and mixed applications.
 The shared compiler handles recursive schemas with bounded graph processing;

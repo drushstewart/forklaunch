@@ -48,34 +48,46 @@ impl fmt::Display for FrameworkError {
 
 impl Error for FrameworkError {}
 
-/// Removes a trailing slash unless the path is the root path.
+/// Removes exactly one trailing slash, matching TypeScript `removeTrailingSlash`.
 #[must_use]
 pub fn remove_trailing_slash(path: &str) -> String {
-    if path.len() > 1 {
-        path.trim_end_matches('/').to_owned()
+    path.strip_suffix('/').unwrap_or(path).to_owned()
+}
+
+/// Removes one slash from a double leading slash, without adding a missing slash.
+#[must_use]
+pub fn remove_double_leading_slash(path: &str) -> String {
+    if path.starts_with("//") {
+        path[1..].to_owned()
     } else {
         path.to_owned()
     }
 }
 
-/// Collapses multiple leading slashes into a single leading slash.
-#[must_use]
-pub fn remove_double_leading_slash(path: &str) -> String {
-    let trimmed = path.trim_start_matches('/');
-    format!("/{trimmed}")
-}
-
-/// Normalizes leading and trailing slashes for route-like paths.
+/// Applies TypeScript's single trailing/leading slash replacements in that order.
 #[must_use]
 pub fn sanitize_path_slashes(path: &str) -> String {
-    remove_trailing_slash(&remove_double_leading_slash(path))
+    remove_double_leading_slash(&remove_trailing_slash(path))
+}
+
+/// Native route normalization: adds a leading slash, collapses repeated leading
+/// slashes and removes all trailing slashes while preserving `/` for the root.
+/// Use the single-step helpers above when reproducing the TypeScript utilities.
+#[must_use]
+pub fn normalize_route_path(path: &str) -> String {
+    let normalized = format!("/{}", path.trim_start_matches('/'));
+    if normalized.len() > 1 {
+        normalized.trim_end_matches('/').to_owned()
+    } else {
+        normalized
+    }
 }
 
 /// Joins a route base path and child path while preserving root-path behavior.
 #[must_use]
 pub fn join_base_path(base_path: &str, child_path: &str) -> String {
-    let base_path = sanitize_path_slashes(base_path);
-    let child_path = sanitize_path_slashes(child_path);
+    let base_path = normalize_route_path(base_path);
+    let child_path = normalize_route_path(child_path);
 
     match (base_path.as_str(), child_path.as_str()) {
         ("/", "/") => "/".to_owned(),

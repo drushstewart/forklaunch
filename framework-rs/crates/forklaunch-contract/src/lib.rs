@@ -21,7 +21,7 @@ pub use schema_bundle::{bundle_document_schema, bundle_literal_schema_references
 use std::collections::BTreeMap;
 
 use forklaunch_common::{
-    json_array, json_string, json_string_array, open_api_compliant_path, sanitize_path_slashes,
+    json_array, json_string, json_string_array, normalize_route_path, open_api_compliant_path,
     to_pretty_camel_case,
 };
 
@@ -916,7 +916,7 @@ impl RouteContract {
         path: impl AsRef<str>,
     ) -> Self {
         let name = name.into();
-        let path = sanitize_path_slashes(path.as_ref());
+        let path = normalize_route_path(path.as_ref());
         Self {
             operation_name: to_pretty_camel_case(&name),
             name,

@@ -7,11 +7,16 @@ import {actualValidator} from './rust_actual_validator_fixture.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const {load}=actualValidator(root);
 const reference={...load(path.join(root,'framework/common/src/camelCase.ts')),
- ...load(path.join(root,'framework/common/src/hashString.ts'))};
-const cases=['','HTTP-Response_id','API-Key','123invalid','123-ABC','123','!!!',' --_./:',
+ ...load(path.join(root,'framework/common/src/hashString.ts')),
+ ...load(path.join(root,'framework/common/src/slashManipulation.ts'))};
+const cases=['/','//','///','////','users','users/','users//','/users///','///users//','//a//b///','','HTTP-Response_id','API-Key','123invalid','123-ABC','123','!!!',' --_./:',
  'foo!bar','foo@bar','foo\tbar','foo\nbar','foo\u00a0bar','foo?bar','foo#bar','foo[bar]',
  '$money','_private','FOO__bar','École.İSTANBUL','Kelvin/ßeta','İstanbul','ßeta','𐐨word','𐐀word','😀hello',
  'a\0b','Σςσ','a'.repeat(5000),String.fromCodePoint(0x10ffff)];
+for(const prefix of ['', '/', '//', '///'])
+for(const body of ['', 'users', 'é/用户'])
+for(const suffix of ['', '/', '//', '///', '/\n', '/\r', '/\u2028', '/\u2029'])
+ cases.push(prefix+body+suffix);
 const atoms=['a','Z','1','0',' ','-','_', '.', '/', ':','!', '$','\t','é','İ','K','ß','😀','𐐨'];
 for(const left of atoms)for(const right of atoms)cases.push(`${left}${right}HTTP`);
 let seed=0x12345678;
@@ -28,4 +33,4 @@ assert.equal(native.status,0,native.stderr);
 const results=native.stdout.trim().split('\n').map(line=>JSON.parse(line));
 assert.equal(results.length,cases.length);
 for(let index=0;index<cases.length;index++)assert.deepEqual(results[index],JSON.parse(JSON.stringify(expected[index])),JSON.stringify(cases[index]));
-console.log(`PASS ${cases.length} inputs across ${Object.keys(reference).length} actual TypeScript naming/hash exports (${cases.length*Object.keys(reference).length} comparisons)`);
+console.log(`PASS ${cases.length} inputs across ${Object.keys(reference).length} actual TypeScript naming/hash/path exports (${cases.length*Object.keys(reference).length} comparisons)`);
