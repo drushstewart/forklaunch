@@ -43,7 +43,7 @@ remain open under checklist item 849; this inventory does not close that item.
 | [`@forklaunch/infrastructure-s3`](../framework/infrastructure/S3/package.json) | forklaunch-infrastructure-s3 | Async store, bounded streaming/multipart transfers, codecs, signed downloads and browser POST policies are implemented with real MinIO fixtures. POST size/type/key/expiry enforcement, AWS signature vectors, SDK credential cache/rotation and actual TypeScript policy fixtures are covered; ordinary SigV4 bucket endpoints only. |
 | [`@forklaunch/infrastructure-redis`](../framework/infrastructure/redis/package.json) | forklaunch-infrastructure-redis | Async cache/queue/pubsub and real fixtures exist; audit remaining provider-specific options and typed codecs. |
 | [`@forklaunch/internal`](../framework/internal/package.json) | contract macros, CLI embedded templates and Rust tooling | Map remaining exported build/runtime helpers; JavaScript compiler utilities remain in the TypeScript path. |
-| [`@forklaunch/testing`](../framework/testing/package.json) | forklaunch-testing and runtime fixtures | Local calls and response helpers exist; actual cross-language conformance harness remains. |
+| [`@forklaunch/testing`](../framework/testing/package.json) | forklaunch-testing and runtime fixtures | Test environment configuration, nine database aliases, Redis/Kafka/S3 endpoints and mock tokens match 970 actual TypeScript cases; child-process environment isolation passes. Container ownership/lifecycle, ORM setup/database clearing and the complete blueprint harness remain. |
 | [`@forklaunch/universal-sdk`](../framework/universal-sdk/package.json) | forklaunch-sdk-rust, forklaunch-sdk-typescript, forklaunch-sdk-codegen and CLI SDKs | HTTP/multipart uploads, bounded CLI SSE responses and guarded recursive CLI models and omission/null presence exist through both artifact formats, with actual TypeScript conformance and live clients; native Rust and TypeScript typed HTTP/SSE responses and recursive models share the CLI compiler and pass strict consumers and live clients; one shared HTTP SDK now imports native contracts and TypeScript OpenAPI, with both live client languages, lifecycle preservation and custom-path watch recovery. Remaining schema conformance, multipart response scope and broader realtime profiles remain. |
 | [`@forklaunch/validator`](../framework/validator/package.json) | forklaunch-validation and schema contracts | JSON Schema validation/coercion exists; audit Zod/TypeBox exported behaviors against shared fixtures. |
 | [`@forklaunch/ws`](../framework/ws/package.json) | forklaunch-ws, forklaunch-asyncapi | Typed native server/client transports now cover authenticated upgrades, serde/garde payloads, bounded I/O, validated ping/pong/close and bidirectional actual TypeScript interoperability. Optional Axum upgrades share HTTP/MCP listeners, preserve negotiated subprotocols and use the same typed engine. Raw socket metadata/checked AsyncAPI exports match actual TypeScript channel/operation behavior in 34 conformance documents, with standalone recursive and reachable legacy annotation schema relocation, once-decoded local pointers and official schema validation. References into literal assertion/default/example data now use separately bundled schema copies, preserving the original values and recursive targets under copy/output bounds. Optional compiled raw JSON Schema codecs validate original payloads before serde, with bounded compilation and disabled external retrieval; 4,104 actual-helper/AJV and 168 Zod cases pass. Generated native Rust clients share the typed transport, with actual TS-server and invalid-peer fixtures plus recursive/empty consumer compilation. Generated Node TypeScript clients pass strict ESM/CommonJS consumers, 4,104 codec comparisons, actual TS/native peers, bounded queues and cancellation/close cleanup. CLI `--from socket-contract` now generates multi-socket Rust/Node packages and checked AsyncAPI, with service selection, check/watch, custom artifact/output paths and validation before writes. Relocated live clients, parser conformance and HTTP/MCP startup pass. Rust service registries now export portable socket artifacts automatically, with custom contained paths and content-owned move/removal cleanup preserving edited/manual artifacts. Owned socket SDK module/package pruning, empty-registry watch recovery and service rename/delete now pass with preserved user files/compiler options and updated Cargo membership. External AsyncAPI 3.0.0 JSON WebSocket server imports now support native/CLI generation/check/watch, local schema extraction, explicit directions, checked disjoint messages, input ownership and SDK rename/pruning. Relocated strict consumers/live peers and HTTP/MCP startup pass. Broader AsyncAPI event/protocol profiles and binary payload metadata remain. |
@@ -4447,4 +4447,26 @@ The original fixture compared escaped JSON with literal newlines; that assertion
 was corrected and both runtime modes rerun successfully. All **949** embedded Rust
 source/template files are packaged, including the new formatter example. Logs:
 `/private/tmp/fl-parse-errors-{parity,tests,clippy,generated,runtime,startup,package}.log`.
+Checklist remains **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Testing environment and token compatibility
+
+`forklaunch-testing` now maps `DatabaseType`, `TestEnvConfig`,
+`setupTestEnvironment` and `TEST_TOKENS` to native typed configuration,
+`setup_test_environment`, `TestService::with_test_environment` and the shared
+mock token constants. Nine database spellings normalize to five families; SQLite
+needs no container. Container endpoints expose explicit host/port mappings for
+databases, Redis, Kafka and S3. Test-only defaults, custom overrides (including
+empty strings and literal prototype-like keys), absent infrastructure and retained
+baseline variables match **970 actual TypeScript source comparisons**. Missing
+required mappings return an error. Native commands receive an owned environment
+map; a real child-process check proves propagation without parent mutation.
+
+Two existing native testing tests, strict all-feature/all-target Clippy, nine
+release graph/packaging boundary tests and all **951** embedded source/template
+files pass. No dependency was added to the default runtime; example serialization
+uses dev dependencies. This does not implement Docker ownership/cleanup, ORM
+setup, database clearing or the full blueprint harness. Logs:
+`/private/tmp/fl-testing-env-{parity,tests,clippy,package,release-tests}.log`.
 Checklist remains **658/682 (96.5%), 24 open**.

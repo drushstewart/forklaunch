@@ -202,6 +202,9 @@ on:
       - 'cli/tests/rust_typescript_basic_parity.mjs'
       - 'cli/tests/rust_typescript_session_parity.mjs'
       - 'cli/tests/rust_parse_errors_parity.mjs'
+      - 'cli/tests/rust_testing_environment_parity.mjs'
+      - 'framework/testing/src/environment.ts'
+      - 'framework/testing/src/tokens.ts'
       - 'cli/tests/rust_typescript_hmac_parity.mjs'
       - 'cli/tests/rust_typescript_authorization_runtime*'
       - 'cli/tests/fixtures/rust_typescript_authorization.rs'
@@ -408,6 +411,9 @@ on:
       - 'cli/tests/rust_typescript_basic_parity.mjs'
       - 'cli/tests/rust_typescript_session_parity.mjs'
       - 'cli/tests/rust_parse_errors_parity.mjs'
+      - 'cli/tests/rust_testing_environment_parity.mjs'
+      - 'framework/testing/src/environment.ts'
+      - 'framework/testing/src/tokens.ts'
       - 'cli/tests/rust_typescript_hmac_parity.mjs'
       - 'cli/tests/rust_typescript_authorization_runtime*'
       - 'cli/tests/fixtures/rust_typescript_authorization.rs'
@@ -644,6 +650,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_testing_environment_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_parse_errors_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

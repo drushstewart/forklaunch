@@ -889,3 +889,32 @@ plus signs remain literal. Invalid escapes or UTF-8 produce 400 even when schema
 validation is disabled. Callback execution is synchronous; errors omit callback
 text. These hooks do not implement mutable JavaScript holders, sparse arrays or
 cross-field callback side-effect ordering.
+
+### Test environment compatibility
+
+`forklaunch_testing::setup_test_environment` builds the same environment values as
+TypeScript `setupTestEnvironment` from already-started container endpoints. It
+supports postgres/postgresql, mysql/mariadb, mongodb/mongo, mssql and sqlite/libsql,
+plus Redis, Kafka and S3. SQLite selects `:memory:` without requiring a container.
+Mapped ports are explicit; missing required mappings return an error. Test-only
+credentials, telemetry, HMAC and service defaults match the TypeScript helper.
+Custom variables override defaults, including empty strings. Unrelated baseline
+variables remain; the helper does not clear stale database/infrastructure keys.
+
+```rust
+use forklaunch_testing::{TestEnvConfig, TestService};
+
+let service = TestService::new("accounts")
+    .with_env("SERVICE_PORT", "0")
+    .with_test_environment(&TestEnvConfig::default())?;
+let mut command = std::process::Command::new("./accounts");
+command.envs(&service.env);
+# Ok::<(), forklaunch_testing::TestEnvironmentError>(())
+```
+
+The native helper returns an owned environment map for a command/configuration
+loader; it does not mutate the process-global environment. `TestContainerEndpoint`
+only describes a host and mapped ports, with no container ownership or cleanup.
+`TEST_TOKENS` supplies the same deliberately invalid mock Bearer/HMAC values as
+TypeScript and cannot authenticate real requests. Container management, ORM setup,
+database clearing and the complete blueprint test harness remain separate work.
