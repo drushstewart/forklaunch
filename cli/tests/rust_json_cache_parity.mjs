@@ -33,14 +33,14 @@ vm.runInNewContext(compile(await readFile(path.join(root,'framework/infrastructu
 const master='native-json-current-fixture-key',previous=['native-json-previous-fixture-key'],tenant='tenant-a';
 const key=()=>{const value=`fl-json-parity:${randomUUID()}`;keys.push(value);return value;};
 async function native(operations,options={}){
- const child=spawn('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-infrastructure-redis','--features','redis-client,encryption','--example','json_cache_parity'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_REDIS_URL:url},stdio:['pipe','pipe','inherit']});let output='';child.stdout.on('data',chunk=>output+=chunk);child.stdin.end(JSON.stringify({master,previous,tenant,operations,...options}));
+ const child=spawn('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-infrastructure-redis','--features','redis-client,encryption,serde_json/arbitrary_precision,serde_json/raw_value','--example','json_cache_parity'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_REDIS_URL:url},stdio:['pipe','pipe','inherit']});let output='';child.stdout.on('data',chunk=>output+=chunk);child.stdin.end(JSON.stringify({master,previous,tenant,operations,...options}));
  assert.equal(await new Promise(resolve=>child.once('close',resolve)),0);return JSON.parse(output);
 }
 try{
  for(const format of ['v2','v3']){
   const actual=new exports.RedisTtlCache(60000,{}, {url},{},{encryptor:new FieldEncryptor(master,{previousKeys:previous,format})});
   const compliance={tenantId:tenant};
-  for(const value of [{email:'private@example.test',unicode:'秘密🙂',nested:[null,false,0]},false,0,null,[], 'v2:ordinary-json-string']){
+  for(const value of [{email:'private@example.test',unicode:'秘密🙂',nested:[null,false,0]},...['$serde_json::private::Number','$serde_json::private::RawValue'].map(key=>({[key]:'123',nested:[{[key]:{literal:true}}]})),false,0,null,[], 'v2:ordinary-json-string']){
    const tsKey=key(),rustKey=key();
    await actual.putRecord({key:tsKey,value},compliance);
    assert.deepEqual(await native([{op:'get',key:tsKey}],{format}),[{found:true,value}]);

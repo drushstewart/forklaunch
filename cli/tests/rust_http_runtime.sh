@@ -136,6 +136,11 @@ async function verifyRustClient(baseUrl) {
   }
 }
 async function verifyStatusVariants(sdk) {
+  for(const key of ['$serde_json::private::Number','$serde_json::private::RawValue']) {
+    const body={value:{[key]:'123',nested:[{[key]:{literal:true}}]}};
+    assert.deepEqual((await sdk.accounts.jsonEcho.echoJson({body})).response,body);
+  }
+
   const query=forkLaunchQueryOptions(['accounts','status','queued'],sdk.accounts.status.getStatus,{params:{mode:'queued'}});
   assert.equal((await query.queryFn({signal:new AbortController().signal})).response.jobId,'queued-1');
   const mutation=forkLaunchMutationOptions(['accounts','status'],sdk.accounts.status.getStatus);
@@ -212,6 +217,12 @@ try {
   await probeMcp(service.baseUrl,['getText','getBinary']);
   const mcpText=await mcpRpc(service.baseUrl,'tools/call',{name:'getText',arguments:{}});assert.equal(mcpText.content[0].text,'Hello\nRust 🦀');
   const mcpBinary=await mcpRpc(service.baseUrl,'tools/call',{name:'getBinary',arguments:{}});assert.deepEqual([...Buffer.from(mcpBinary.content[0].resource.blob,'base64')],[0,255,13,10,42]);
+
+  for(const key of ['$serde_json::private::Number','$serde_json::private::RawValue']) {
+    const body={value:{[key]:'123',nested:[{[key]:{literal:true}}]}};
+    const result=await mcpRpc(service.baseUrl,'tools/call',{name:'echoJson',arguments:{body}});
+    assert.deepEqual(result.structuredContent,body);
+  }
   const baseUrl = service.baseUrl;
   const sdk = createForkLaunchSdk({ baseUrl });
   const health = await sdk.accounts.health.getHealth();

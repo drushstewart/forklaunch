@@ -81,6 +81,33 @@ mod tests {
     use serde_json::{Value, json};
 
     #[test]
+    fn literal_serde_marker_keys_survive_plain_and_encrypted_records() {
+        #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+        struct Record {
+            metadata: Value,
+        }
+        let codec = JsonRecordCodec::new(FieldEncryptor::new("literal-fixture-key").unwrap());
+        let tenant = TenantContext::new("tenant-a").unwrap();
+        for key in [
+            "$serde_json::private::Number",
+            "$serde_json::private::RawValue",
+        ] {
+            for value in [json!("123"), json!({"nested":true}), json!(null)] {
+                let literal = Value::Object([(key.to_owned(), value)].into_iter().collect());
+                for context in [None, Some(&tenant)] {
+                    let bytes = codec.encode(&literal, context).unwrap();
+                    assert_eq!(codec.decode::<Value>(&bytes, context).unwrap(), literal);
+                    let record = Record {
+                        metadata: literal.clone(),
+                    };
+                    let bytes = codec.encode(&record, context).unwrap();
+                    assert_eq!(codec.decode::<Record>(&bytes, context).unwrap(), record);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn authenticated_records_require_context_and_support_rotation_and_plaintext_migration() {
         let old = JsonRecordCodec::new(FieldEncryptor::new("old-record-key").unwrap());
         let codec = JsonRecordCodec::new(

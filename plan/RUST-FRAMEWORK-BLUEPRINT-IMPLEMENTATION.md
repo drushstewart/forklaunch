@@ -1087,7 +1087,7 @@ from the subsequent team sources.
 
 - [x] Add team-member addition/removal with required/coerced user IDs, scoped grants, shared keyed membership creation and exact counter/session effects. All 164 actual HTTP/storage/cookie comparisons and the 40-case server-only addition regression pass. Memory/restricted PostgreSQL verify duplicate-add and competing-remove races; live HTTP executes both routes beside JWT/MCP. Invitation/dynamic-role/provider/helper and generated preset gates remain open.
 - [x] Match raw auth numeric parsing and serialized metadata against 114 actual HTTP/storage/cookie comparisons: overflow, IEEE-754 rounding, exponent formatting, negative zero, duplicate/index/insertion keys, literal serde marker keys, reserved metadata keys and update-only ISO date revival. Preserve update persistence before strict metadata response failures. All 233 framework and 101 blueprint workspace tests pass with unified JSON features; explicit restricted PostgreSQL auth, 96 JOSE cases and HTTP/organization/team/password regressions pass.
-- [ ] Audit literal serde marker keys across shared generic request, MCP and persistence deserializers under unified arbitrary-precision/raw-value features; the auth boundary uses a literal-key-preserving raw parser. Unpaired surrogate/deep nesting and real ORM metadata conformance remain open before universal raw JSON parity.
+- [x] Audit literal serde marker keys across shared generic request, MCP and persistence deserializers under unified arbitrary-precision/raw-value features. The pinned transitive parser patch preserves literal objects across these boundaries; see [RUST-JSON-BOUNDARY-AUDIT.md](RUST-JSON-BOUNDARY-AUDIT.md). Unpaired surrogate/deep nesting and real ORM metadata conformance remain open before universal raw JSON parity.
 
 Fresh archive `5DF6N8` at `f014f7547` passes portable auth tests, live auth
 HTTP/JWT/MCP and the complete generated HTTP/MCP listener/startup matrix.
@@ -1877,3 +1877,35 @@ initialization/discovery/tool invocation and graceful shutdown checks.
 
 Checklist: **626/682 (91.8%), 56 open**. No TanStack runtime dependency is added to
 ordinary generated SDK use. See the framework README for cache scoping and usage.
+
+### Literal JSON object keys across request, MCP and persistence boundaries (2026-10-12)
+
+Completed the [JSON boundary audit](RUST-JSON-BOUNDARY-AUDIT.md) and fixed literal
+`$serde_json::private::Number` / `$serde_json::private::RawValue` object keys being
+interpreted as internal Serde markers under unified dependency features. The
+vendored 1.0.151 parser distinguishes real map keys from internal number/raw
+markers, preserving exact numbers, RawValue, nested DTO values and owned/borrowed
+Value conversions. Framework, blueprint and generated application roots share
+one patched parser; dependency pins prevent silent bypass by newer registry
+versions. Generation/sync adds missing patches and preserves user overrides.
+
+Validation: 237 default-feature and 262 all-feature upstream/parser regression
+tests passed, plus alloc-only compilation. Framework and blueprint library
+suites passed 242 and 108 tests respectively (4 and 5 environment-gated tests
+ignored). Strict framework workspace Clippy, focused manual/routed MCP checks,
+and five CLI workspace migration tests passed. Actual TS/native Redis and S3
+fixtures passed both encrypted wire formats and both producer/reader directions
+with literal marker objects under raw-value/arbitrary-precision features. The
+expanded actual TS/AJV/native WebSocket matrix passed all **13,908** cases.
+
+All **859** bundled source/template entries are packaged. A fresh source archive
+installed the CLI, generated and relocated all native module families, compiled
+both languages' SDKs through native/contract/OpenAPI/AsyncAPI paths, and passed
+live HTTP/MCP startup and capability checks. A separate relocated HTTP fixture
+passed literal-object HTTP and MCP roundtrips, both SDK languages against Rust
+and TS wire servers, contract/OpenAPI regeneration and graceful shutdown.
+
+Checklist: **627/682 (91.9%), 55 open**. External workspace consumers must apply
+the documented root Cargo patch. Registry publication/upstream adoption,
+unpaired surrogates, deeper nesting and broader ORM/JavaScript normalization
+remain separate gates.

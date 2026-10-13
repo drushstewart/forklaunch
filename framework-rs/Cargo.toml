@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-exclude = ["crates/vendor/jsonschema", "crates/vendor/referencing"]
+exclude = ["crates/vendor/jsonschema", "crates/vendor/referencing", "crates/vendor/serde_json"]
 members = [
     "crates/forklaunch-common",
     "crates/forklaunch-contract",
@@ -36,3 +36,6 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
+
+[patch.crates-io]
+serde_json = { path = "crates/vendor/serde_json" }

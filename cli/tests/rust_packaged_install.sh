@@ -85,6 +85,10 @@ for workspace in ['framework-rs','blueprint-rs']:
             for source in ['Cargo.toml', 'Cargo.lock', 'Cargo.toml.upstream', 'UPSTREAM.md', 'LICENSE']:
                 assert root.joinpath('crates/vendor', vendor, source).is_file(), f'Packaged schema validator source missing: {vendor}/{source}'
         assert root.joinpath('crates/vendor/referencing/metaschemas/draft7.json').is_file(), 'Packaged validator meta-schemas missing'
+        for source in ['Cargo.toml', 'Cargo.lock', 'Cargo.toml.upstream', 'UPSTREAM.md', 'LICENSE-APACHE', 'LICENSE-MIT', 'src/value/de.rs', 'tests/forklaunch_literal_keys.rs']:
+            assert root.joinpath('crates/vendor/serde_json', source).is_file(), f'Packaged literal JSON parser missing: {source}'
+        assert 'serde_json' in Path('Cargo.toml').read_text(), 'Generated root lacks transitive literal JSON parser patch'
+
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws.rs').is_file(), 'Packaged async S3 adapter missing'
         assert root.joinpath('crates/forklaunch-infrastructure-s3/src/aws_post.rs').is_file(), 'Packaged S3 POST signer missing'
         assert root.joinpath('crates/forklaunch-contract/src/schema.rs').is_file(), 'Packaged recursive schema rebasing missing'

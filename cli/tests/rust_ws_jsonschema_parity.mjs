@@ -109,6 +109,9 @@ const validator = {
   },
 };
 const schemas = [
+  { const: { '$serde_json::private::Number': '123' } },
+  { const: { '$serde_json::private::RawValue': '{"nested":true}' } },
+
   ...[undefined, 'draft-04', 'draft-06', '2019-09', '2020-12'].flatMap(
     (draft) => {
       const dialect = draft
@@ -428,6 +431,10 @@ const schemas = [
   },
 ];
 const values = [
+  { '$serde_json::private::Number': '123' },
+  { '$serde_json::private::RawValue': '{"nested":true}' },
+  { nested: [{ '$serde_json::private::Number': { literal: true } }] },
+
   '',
   'hello 水',
   'abc',

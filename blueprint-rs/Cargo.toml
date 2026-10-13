@@ -48,3 +48,6 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = "warn"
 pedantic = "warn"
+
+[patch.crates-io]
+serde_json = { path = "../framework-rs/crates/vendor/serde_json" }

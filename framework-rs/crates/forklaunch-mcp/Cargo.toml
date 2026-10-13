@@ -18,7 +18,7 @@ rmcp = { version = "3.5.1", default-features = false, features = ["server", "tra
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["time"], optional = true }
 tower = { version = "0.5", features = ["util"], optional = true }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "=1.0.151", features = ["preserve_order"] }
 percent-encoding = { version = "2", optional = true }
 form_urlencoded = { version = "1", optional = true }
 

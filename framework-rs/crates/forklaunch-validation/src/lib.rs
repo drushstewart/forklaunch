@@ -252,6 +252,34 @@ pub mod coerce {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn generic_json_requests_preserve_literal_serde_marker_keys() {
+        #[derive(serde::Deserialize)]
+        struct Body {
+            nested: serde_json::Value,
+        }
+        for key in [
+            "$serde_json::private::Number",
+            "$serde_json::private::RawValue",
+        ] {
+            let literal = serde_json::Value::Object(
+                [(key.to_owned(), serde_json::json!({"value":true}))]
+                    .into_iter()
+                    .collect(),
+            );
+            let encoded = literal.to_string();
+            assert_eq!(
+                super::parse_json::<serde_json::Value>(encoded.as_bytes()).unwrap(),
+                literal
+            );
+            let typed = format!("{{\"nested\":{encoded}}}");
+            assert_eq!(
+                super::parse_json::<Body>(typed.as_bytes()).unwrap().nested,
+                literal
+            );
+        }
+    }
+
     use forklaunch_http::ContractValidationLocation;
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};

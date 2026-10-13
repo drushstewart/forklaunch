@@ -1404,7 +1404,36 @@ fn ensure_embedded_framework(app_root: &Path, dryrun: bool) -> Result<()> {
     if !cargo.exists() {
         write(cargo, FRAMEWORK_CARGO)?;
     }
-    write_embedded_sources(&FRAMEWORK_CRATES, &root.join("crates"))
+    write_embedded_sources(&FRAMEWORK_CRATES, &root.join("crates"))?;
+    ensure_literal_json_patch(
+        app_root,
+        ".forklaunch/framework-rs/crates/vendor/serde_json",
+    )?;
+    ensure_literal_json_patch(&root, "crates/vendor/serde_json")
+}
+
+// Existing applications need the same transitive parser as newly generated roots.
+// Preserve explicit application patches; their compatibility remains application-owned.
+fn ensure_literal_json_patch(root: &Path, vendor: &str) -> Result<()> {
+    let path = root.join("Cargo.toml");
+    if !path.exists() {
+        return Ok(());
+    }
+    let original = read_to_string(&path)?;
+    let mut cargo: toml_edit::DocumentMut = original.parse()?;
+    if cargo
+        .get("patch")
+        .and_then(|patch| patch.get("crates-io"))
+        .and_then(|registry| registry.get("serde_json"))
+        .is_some()
+    {
+        return Ok(());
+    }
+    let mut patch = toml_edit::InlineTable::new();
+    patch.insert("path", vendor.into());
+    cargo["patch"]["crates-io"]["serde_json"] = toml_edit::value(patch);
+    write(path, cargo.to_string())?;
+    Ok(())
 }
 
 fn write_embedded_sources(dir: &Dir<'_>, root: &Path) -> Result<()> {
@@ -3082,6 +3111,31 @@ fn escape_rust_string(value: &str) -> String {
 
 #[cfg(test)]
 mod workspace_tests {
+    #[test]
+    fn literal_json_patch_updates_existing_roots_idempotently_and_preserves_overrides() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("Cargo.toml");
+        std::fs::write(&path, "# user comment\n[workspace]\nmembers = []\n").unwrap();
+        super::ensure_literal_json_patch(
+            root.path(),
+            ".forklaunch/framework-rs/crates/vendor/serde_json",
+        )
+        .unwrap();
+        let first = std::fs::read_to_string(&path).unwrap();
+        assert!(first.contains("# user comment"));
+        let cargo: toml::Value = toml::from_str(&first).unwrap();
+        assert_eq!(
+            cargo["patch"]["crates-io"]["serde_json"]["path"].as_str(),
+            Some(".forklaunch/framework-rs/crates/vendor/serde_json")
+        );
+        super::ensure_literal_json_patch(root.path(), "replacement").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), first);
+        let custom = "[workspace]\nmembers = []\n[patch.crates-io]\nserde_json = { path = \"custom/json\" }\n";
+        std::fs::write(&path, custom).unwrap();
+        super::ensure_literal_json_patch(root.path(), "replacement").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), custom);
+    }
+
     use super::*;
 
     #[test]

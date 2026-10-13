@@ -9,7 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow = "1"
 ramhorns = "1.0.1"
-serde_json = "1"
+serde_json = "=1.0.151"
 convert_case = "0.8"
 forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-sdk-codegen = { path = "../forklaunch-sdk-codegen" }
@@ -19,7 +19,7 @@ forklaunch-openapi = { path = "../forklaunch-openapi" }
 forklaunch-sdk-rust = { path = "../forklaunch-sdk-rust" }
 forklaunch-asyncapi = { path = "../forklaunch-asyncapi", features = ["import"] }
 forklaunch-ws = { path = "../forklaunch-ws" }
-serde_json = "1"
+serde_json = "=1.0.151"
 forklaunch-contract = { path = "../forklaunch-contract" }
 
 [lints]

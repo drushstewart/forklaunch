@@ -189,3 +189,55 @@ async fn multipart_forms_and_file_tools_execute_through_real_http_extractors_and
         base64::engine::general_purpose::STANDARD.encode("水💬\0bytes")
     );
 }
+
+#[tokio::test]
+async fn literal_marker_keys_survive_http_and_mcp_request_and_response_parsing() {
+    #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, garde::Validate)]
+    struct LiteralBody {
+        #[garde(skip)]
+        body: Value,
+    }
+
+    let mut registry = ContractRegistry::new();
+    registry.register(
+        RouteContract::post("Echo", "Echo", "/echo").with_request_body(BodyContract {
+            schema: SchemaRef::named("Body").with_json_schema("{}"),
+            ..BodyContract::json("Body")
+        }),
+    );
+    let http = Router::new().route(
+        "/echo",
+        axum::routing::post(|axum::Json(body): axum::Json<Value>| async move { axum::Json(body) }),
+    );
+    let mut options = McpServerOptions::new("literal-fixture", "1");
+    options.manual_tools.push(
+        ManualTool::typed::<LiteralBody, Value, _, _>(
+            "literalManual",
+            "Literal values",
+            |input, _| async move { Ok(input.body) },
+        )
+        .unwrap(),
+    );
+    let app = mount_http(http, &registry, options).unwrap();
+    for key in [
+        "$serde_json::private::Number",
+        "$serde_json::private::RawValue",
+    ] {
+        for value in [json!("123"), json!({"nested":true}), json!(null)] {
+            let literal = Value::Object([(key.to_owned(), value)].into_iter().collect());
+            let manual = call(&app, "literalManual", literal.clone(), None).await;
+            assert_eq!(manual["result"]["isError"], false);
+            assert_eq!(manual["result"]["structuredContent"], literal);
+            let result = call(&app, "echo", literal.clone(), None).await;
+            assert_eq!(result["result"]["isError"], false);
+            assert_eq!(result["result"]["structuredContent"], literal);
+            assert_eq!(
+                serde_json::from_str::<Value>(
+                    result["result"]["content"][0]["text"].as_str().unwrap()
+                )
+                .unwrap(),
+                literal
+            );
+        }
+    }
+}

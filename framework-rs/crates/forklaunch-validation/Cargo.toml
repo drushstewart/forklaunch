@@ -12,7 +12,7 @@ forklaunch-contract = { path = "../forklaunch-contract" }
 forklaunch-http = { path = "../forklaunch-http" }
 
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = "=1.0.151"
 schemars = "0.8"
 garde = { version = "0.20", features = ["derive"] }
 uuid = { version = "1", features = ["serde"] }

@@ -273,3 +273,24 @@ cancellation against generated fetch clients. It follows the upstream
 and [TypeScript integration](https://tanstack.com/query/latest/docs/framework/react/typescript)
 interfaces. Configure `FORKLAUNCH_TEST_TANSTACK_DEPENDENCIES` to an isolated npm
 prefix containing the pinned dependencies listed in the Rust parity workflow.
+
+### Literal JSON object keys
+
+The framework workspace and generated applications select a pinned, vendored
+Serde JSON 1.0.151 patch. Literal object keys named `$serde_json::private::Number`
+or `$serde_json::private::RawValue` remain object data even when dependency
+features enable exact numbers and raw JSON. Axum, MCP, typed request fields and
+encrypted JSON record codecs all use that same parser. Real exact numbers and
+RawValue conversions retain their existing behavior.
+
+Generated roots contain a `[patch.crates-io]` entry pointing at
+`.forklaunch/framework-rs/crates/vendor/serde_json`. Generation/sync adds a missing
+entry in existing applications and preserves explicit user patches. Standalone
+consumers outside these roots must apply an equivalent workspace patch; Cargo
+does not inherit patches from dependencies. The checked package versions remain
+pinned so later registry releases cannot silently bypass the patch.
+
+The [JSON boundary audit](../plan/RUST-JSON-BOUNDARY-AUDIT.md) records coverage and
+remaining limits, including unpaired surrogates, bounded nesting, and independent
+JavaScript/ORM normalization semantics. This does not claim upstream adoption or
+registry publication of the patched parser.

@@ -128,3 +128,9 @@ read-only queue handle; subsequent job operations still need write permissions.
 Queue and worker construction check Redis's reported minimum version (5) unless
 `queue.skip_version_check` is true; the wrapper applies this setting to both.
 Native errors remain sanitized and startup/operation deadlines still apply.
+
+The blueprint workspace shares the framework's pinned literal-key JSON parser.
+The root Cargo patch applies transitively to HTTP/MCP, workers and JSON record
+persistence. When consuming these source crates from another workspace, copy the
+workspace patch described in the [JSON boundary audit](../plan/RUST-JSON-BOUNDARY-AUDIT.md);
+dependency manifests cannot apply Cargo patches to their callers.

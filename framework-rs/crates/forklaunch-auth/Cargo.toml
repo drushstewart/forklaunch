@@ -16,7 +16,7 @@ forklaunch-contract = { path = "../forklaunch-contract" }
 forklaunch-http = { path = "../forklaunch-http" }
 
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = "=1.0.151"
 jsonwebtoken = "9"
 hmac = "0.12"
 sha2 = "0.10"
