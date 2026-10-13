@@ -2303,3 +2303,18 @@ of POST and GET, forwarded bodies/query strings, decoded responses and rejected
 mismatched input. All 32 existing native/TypeScript transport comparisons also
 pass (`/private/tmp/fl-mcp-version-after.log`). Rust versioned APIs remain open;
 this repairs the TypeScript reference behavior. Checklist unchanged: 646/682.
+
+### Session collections beyond the model scan bound
+
+Single-session revocation now resolves the target token through its unique index.
+Listing/revoke-others/revoke-all traverse 256-record keyset pages in one locked
+transaction, retaining foreign sessions, insertion order and the configured
+expired-session distinction. Memory and restricted encrypted PostgreSQL verify
+4,099 owned sessions, deletion across page boundaries and foreign-user isolation.
+The PostgreSQL fixture also retains unrelated credential-fixture sessions.
+All 30 native tests, strict all-target Clippy and 63 actual Better Auth checks
+(48 native response/storage comparisons) pass. Logs:
+`/private/tmp/fl-session-collections-tests.log`, `fl-session-collections-memory.log`,
+`fl-session-collections-postgres.log`, `fl-session-collections-clippy.log`,
+`fl-session-collections-parity.log`. Full indexed relationship traversal remains
+open; checklist unchanged at 646/682.
