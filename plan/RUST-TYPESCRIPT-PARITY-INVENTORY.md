@@ -2346,3 +2346,29 @@ invocation, persistence/restart, source preservation, rename and delete. Logs:
 `fl-auth-relations-sessions.log`, `fl-auth-relations-package.log`,
 `fl-auth-relations-runtime.log`. Broader account/organization/provider/compliance
 callers still need migration; checklist remains **646/682 (94.7%), 36 open**.
+
+### Indexed membership and permission queries
+
+Organization members/full graphs/deletion, dynamic roles, membership guards and
+application role/permission surfacing now query scoped relationship indexes.
+Existing insertion ordering, filter evaluation and configured limits stay intact.
+Legacy non-string organization values preserve JSON equality via bounded pages.
+The large-tenant fixture adds 4,100 foreign members and malformed foreign dynamic
+role records: own member listing, grants, full graphs, role reads, surfacing and
+delete remain correct without reading or modifying the foreign scope.
+
+All 31 native tests, strict Clippy and restricted encrypted PostgreSQL pass.
+Twelve actual TypeScript suites pass 2,615 comparisons across membership, dynamic
+roles, permissions, invitations and surfacing. The rebuilt generated app passes
+both SDKs, eight frontend-client scenarios, HTTP/MCP startup/invocation, restart,
+source preservation and rename/delete. Logs: `/private/tmp/fl-auth-member-index-`
+`tests-final.log`, `large-final.log`, `postgres.log`, `clippy-final.log`,
+`runtime.log` and the twelve named comparison logs. Team/provider/verification/
+compliance query migration remains open. Checklist remains **646/682 (94.7%)**.
+
+Cleanup removed seven previously validated Better Auth generated workspaces,
+151 further generated runs with successful final log receipts and committed
+fixture sources, and the two newly completed generated runs. Nested Git repos,
+tracked files and active workspaces were excluded. Detailed old-run receipts:
+`/private/tmp/fl-validated-workspace-cleanup.json` and
+`/private/tmp/fl-completed-workspaces-removed.json`.
