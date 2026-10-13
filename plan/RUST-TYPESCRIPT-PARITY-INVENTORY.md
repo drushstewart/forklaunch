@@ -2292,3 +2292,14 @@ rename/delete also pass. Mark the specific callback/client task complete;
 optional plugins/hooks and unified mixed SDK behavior retain their own gates.
 This is reconciliation of verified implementation, not a newly added runtime
 feature. Checklist: **646/682 (94.7%), 36 open**.
+
+### Named-version MCP reference regression
+
+The real FastMCP fixture exposed an array-index lookup against the named version
+map, plus missing response metadata on bodyless versioned routes. Select the
+version from the same ordered values used to build input schemas and always
+retain its response contract. Actual MCP calls now verify both named versions
+of POST and GET, forwarded bodies/query strings, decoded responses and rejected
+mismatched input. All 32 existing native/TypeScript transport comparisons also
+pass (`/private/tmp/fl-mcp-version-after.log`). Rust versioned APIs remain open;
+this repairs the TypeScript reference behavior. Checklist unchanged: 646/682.

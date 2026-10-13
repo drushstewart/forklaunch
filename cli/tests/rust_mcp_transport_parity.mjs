@@ -49,5 +49,5 @@ try{
    assert.deepEqual(await parse(left,native[index].contentType),await parse(right,actual[index].contentType));
   }else{assert.equal(native[index].contentType,actual[index].contentType);assert.deepEqual(left,right,`wire bytes ${index}`);}
  }
- console.log(`PASS ${cases.length} actual FastMCP + repository Zod/generator MCP calls against live HTTP, compared with native wire encoding`);
+ console.log(`PASS ${cases.length} actual FastMCP + repository Zod/generator MCP calls against live HTTP, compared with native wire encoding; named-version POST/GET and mismatched-input regressions pass`);
 }finally{rmSync(temporary,{recursive:true,force:true});}

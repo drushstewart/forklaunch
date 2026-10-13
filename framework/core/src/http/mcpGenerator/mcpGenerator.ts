@@ -195,10 +195,10 @@ export function generateMcpServer<
             let bodySchema;
             let responsesSchemas;
             if (route.contractDetails.versions) {
-              const version = route.contractDetails.versions[index];
+              const version = Object.values(route.contractDetails.versions)[index];
+              responsesSchemas = version.responses;
               if (version.body && schemaValidator.parse(inputSchema, args).ok) {
                 bodySchema = version.body;
-                responsesSchemas = version.responses;
               }
             } else {
               bodySchema = route.contractDetails.body;
