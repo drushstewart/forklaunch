@@ -914,7 +914,7 @@ require literal Rust clones, but their public request/response behavior does.
 - [ ] Complete broader Better Auth ORM/hooks/client/options coverage, typed/custom JWT/JWKS adapters and indexed storage/pagination; audit dynamic/encoded namespace semantics separately.
 - [ ] Validate generated-module init/change/sync/delete, contracts, SDKs and mixed-app operation for every added module family; update release/package documentation and compatibility fixtures.
 
-- [ ] Audit and support Rust/mixed relay session-ingest, including lifecycle and SDK interactions; this CLI surface has no separate published blueprint package.
+- [x] Support Rust/mixed relay session-ingest and app-claim hooks, route-scoped HMAC, encrypted atomic nonce/ticket consumption, browser session cookies and safe redirects. Actual TS ORM/native comparisons, PostgreSQL conformance, live HTTP/MCP, generated SDK calls/builds, relocation, preserved sync/reinit, rename and deletion pass; this CLI surface has no separate published blueprint package.
 - [x] Support captured storefront initialization, sync, rename/description updates and deletion in Rust/Node/Bun/mixed apps. Preserve static paths across Rust-to-mixed migration and keep captures outside Cargo/package/API generation; hosting remains a deployment concern.
 
 - [x] Audit all exported HTTP methods (including WebDAV/link/unlink/subscribe variants) and generated custom-router extension behavior inside built-in Rust modules; preserve actual mounted contracts and fail explicitly for unsupported combinations.

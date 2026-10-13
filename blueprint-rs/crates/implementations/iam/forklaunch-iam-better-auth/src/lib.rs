@@ -11,6 +11,7 @@ pub mod credentials;
 pub mod jwt;
 pub mod keyring;
 pub mod retention;
+pub mod relay;
 pub mod sessions;
 pub mod store;
 pub mod surfacing;

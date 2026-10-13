@@ -71,6 +71,13 @@ Runtime performance checks cover HTTP, typed validation, generated SDK calls,
 Redis, S3 and typed WebSockets. See [benchmark commands and measurement boundaries](../docs/adding-projects/rust-benchmarks.md)
 for optimized runs, optional infrastructure and JSON reports.
 
+`module_auth::HmacJwksAuth::with_hmac_keys_for_route` configures key IDs and
+secrets for one declared HMAC route's method and path. Its keys replace the
+router's default key policy only on that route. Empty policies, secrets and key
+IDs, duplicate IDs, and non-HMAC contracts are rejected. Keys remain server-side
+and are absent from contract artifacts. The generated Better Auth relay uses
+this mechanism for instance-ingest and platform-claim keys.
+
 ## Commands
 
 ```bash

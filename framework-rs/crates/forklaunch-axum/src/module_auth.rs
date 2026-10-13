@@ -10,6 +10,7 @@ use forklaunch_contract::{AuthConfig, RouteContract};
 use forklaunch_http::{Body, FrameworkRequest};
 use jsonwebtoken::{Algorithm, Validation};
 use std::{
+    collections::BTreeMap,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -27,6 +28,7 @@ pub struct HmacJwksAuth {
     validation: Validation,
     roles: RolesResolver,
     max_skew: Duration,
+    route_hmac_keys: BTreeMap<(String, String), BTreeMap<String, Vec<u8>>>,
 }
 
 impl HmacJwksAuth {
@@ -63,7 +65,35 @@ impl HmacJwksAuth {
                 })
             }),
             max_skew: Duration::from_secs(300),
+            route_hmac_keys: BTreeMap::new(),
         })
+    }
+
+    /// Replace the default HMAC key policy for one declared method and path.
+    /// Other routes retain their existing policy. Keys stay server-owned and
+    /// never enter exported contracts or SDK metadata.
+    /// # Errors
+    /// Rejects non-HMAC routes, empty/duplicate key IDs or empty secrets.
+    pub fn with_hmac_keys_for_route(
+        mut self,
+        route: &RouteContract,
+        keys: impl IntoIterator<Item = (String, Vec<u8>)>,
+    ) -> Result<Self, AuthError> {
+        if !matches!(route.auth, Some(AuthConfig::Hmac(_))) {
+            return Err(AuthError::InvalidCredentials);
+        }
+        let mut policy = BTreeMap::new();
+        for (id, secret) in keys {
+            if id.is_empty() || secret.is_empty() || policy.insert(id, secret).is_some() {
+                return Err(AuthError::InvalidCredentials);
+            }
+        }
+        if policy.is_empty() {
+            return Err(AuthError::InvalidCredentials);
+        }
+        self.route_hmac_keys
+            .insert((route.method.as_str().into(), route.path.clone()), policy);
+        Ok(self)
     }
 
     #[must_use]
@@ -98,21 +128,32 @@ impl HmacJwksAuth {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|_| AuthError::InvalidCredentials)?;
-            if authorization.key_id() != "default"
-                || !authorization.verify_at(
-                    &self.secret,
-                    request.method.as_str(),
-                    &request.path,
-                    body,
-                    i64::try_from(now.as_millis()).map_err(|_| AuthError::InvalidCredentials)?,
-                    self.max_skew,
-                )
+            let secret = if let Some(policy) = self
+                .route_hmac_keys
+                .get(&(contract.method.as_str().into(), contract.path.clone()))
             {
+                policy
+                    .get(authorization.key_id())
+                    .ok_or(AuthError::InvalidCredentials)?
+            } else if authorization.key_id() == "default" {
+                &self.secret
+            } else {
+                return Err(AuthError::InvalidCredentials);
+            };
+            if !authorization.verify_at(
+                secret,
+                request.method.as_str(),
+                &request.path,
+                body,
+                i64::try_from(now.as_millis()).map_err(|_| AuthError::InvalidCredentials)?,
+                self.max_skew,
+            ) {
                 return Err(AuthError::InvalidCredentials);
             }
+            let subject = format!("service:{}", authorization.key_id());
             return Ok(AuthenticatedSession::new(
-                Principal::new("service:default"),
-                serde_json::json!({"sub":"service:default"}),
+                Principal::new(&subject),
+                serde_json::json!({"sub":subject}),
             ));
         }
         let token = parse_bearer(header)
@@ -256,3 +297,6 @@ mod head_auth_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod route_keys;

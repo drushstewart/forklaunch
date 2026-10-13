@@ -994,6 +994,7 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    crate::relay::tests::exercise(Arc::new(other_store.clone())).await;
     crate::retention::tests::exercise(Arc::new(other_store.clone())).await;
     crate::compliance::tests::exercise(Arc::new(other_store.clone())).await;
     crate::compliance::tests::exercise_failures(Arc::new(other_store.clone())).await;

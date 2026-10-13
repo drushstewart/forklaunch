@@ -1,4 +1,4 @@
-//! Atomic persistence for the eleven configured Better Auth models.
+//! Atomic persistence for configured Better Auth models and optional relay handoffs.
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::future::Future;
@@ -23,6 +23,7 @@ pub enum Model {
     Team,
     TeamMember,
     OrganizationRole,
+    RelaySessionHandoff,
 }
 impl Model {
     #[must_use]
@@ -39,6 +40,7 @@ impl Model {
             Self::Team => "team",
             Self::TeamMember => "teamMember",
             Self::OrganizationRole => "organizationRole",
+            Self::RelaySessionHandoff => "relaySessionHandoff",
         }
     }
     const fn indexed_fields(self) -> &'static [&'static str] {
@@ -59,6 +61,7 @@ impl Model {
             Self::User => &["email", "subscription"],
             Self::Organization => &["slug"],
             Self::Session => &["token"],
+            Self::RelaySessionHandoff => &["nonce"],
             _ => &[],
         }
     }

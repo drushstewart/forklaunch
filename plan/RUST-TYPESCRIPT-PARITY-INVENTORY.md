@@ -2526,3 +2526,41 @@ URLs. The TS template now rejects ASCII controls before accepting root-relative
 paths, with real template/URL-parser regression coverage. Evidence:
 `fl-relay-redirect-before.log` fails and `fl-relay-redirect-after.log` passes.
 The native relay primitive applies the same guard.
+
+
+### Rust and mixed relay completion (2026-10-13)
+
+The Better Auth adapter now implements relay nonce claiming, five-minute one-time
+handoffs, application-owned token/owner and claim hooks, one-day session cookies,
+and root-relative redirect validation. Nonce claims commit before hooks and
+handoff claims commit before session minting. The new encrypted auth model shares
+existing RLS, audit and unique-index enforcement; migration 0005 permits it.
+HTTP/MCP ingest and claim contracts use route-scoped HMAC policies: instance keys
+cannot authorize unrelated routes. Browser handoffs remain outside SDK/MCP.
+
+`init module --language rust -m relay` extends the existing Better Auth service,
+including mixed applications, and creates preserved application hook source.
+Generated contracts include both relay operations. Dry-run, duplicate rejection,
+relocation, sync/reinit preservation, both SDK builds, live TypeScript SDK calls,
+HTTP/MCP startup and invocation, rename and deletion pass. Safe scaffold hooks
+redirect without login and decline claims until applications supply their policy.
+
+Validation receipts:
+- `fl-relay-full-tests.log`: 35 native tests pass, PostgreSQL test separately run.
+- `fl-relay-native-postgres.log`: full restricted PostgreSQL fixture passes,
+  including concurrent relay claims/redemptions and cookie authentication.
+- `fl-relay-route-keys-tests.log`: 41 framework unit + 2 integration tests pass.
+- `fl-relay-http-tests.log`: live HMAC, cookie login, claim-purpose ordering,
+  redirects, MCP invocation and graceful shutdown pass.
+- `fl-relay-comparison.log`: actual TS ORM/native default-hook, nonce uniqueness,
+  synchronized concurrent redemption, replay/unknown/expired and redirect cases.
+- `fl-relay-generated.log` and `fl-relay-generated-mixed.log`: complete generated
+  Rust/mixed lifecycle and HTTP/MCP checks; mixed fixture includes SDK calls.
+- `fl-relay-final-clippy.log` and `fl-relay-route-keys-clippy.log`: strict checks pass.
+- `fl-relay-package.log`: 886 embedded source/template files packaged.
+- `fl-relay-cli-tests.log`: all 1,078 CLI tests pass.
+
+Checklist: 649/682 (95.2%), 33 open. These are verified checklist counts, not an
+estimate that all remaining tasks have equal effort. Broader provider options,
+versioned routing, contract/schema conformance and deployment/publication gates
+remain open.

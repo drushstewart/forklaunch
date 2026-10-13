@@ -84,6 +84,9 @@ struct RustModuleTemplate {
 }
 
 pub(crate) fn generate_rust_module(matches: &ArgMatches) -> Result<()> {
+    if option(matches, "module").as_deref() == Some("relay") {
+        return super::relay::generate(matches);
+    }
     let kind = option(matches, "module")
         .as_deref()
         .and_then(BuiltinModule::from_variant)

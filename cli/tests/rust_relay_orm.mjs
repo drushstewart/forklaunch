@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { betterAuthOrm } from './fixtures/rust_better_auth_orm.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -55,7 +56,13 @@ try {
   const expired = em.create(RelaySessionHandoff,{nonce:'expired',ownerUserId:null,activeOrganizationId:null,redirectTo:'/safe',expiresAt:new Date(0),consumedAt:null});
   em.persist(expired);await em.flush();
   assert.equal(await service(orm.em.fork()).redeemTicket(expired.id),null);
-  console.log('PASS actual relay ORM: nonce uniqueness, synchronized concurrent one-time redemption, replay, unknown and expired tickets');
+  const native = JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'blueprint-rs/Cargo.toml'),'-p','forklaunch-iam-better-auth','--example','relay_parity'],{encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
+  assert.deepEqual(native, {
+    redirects: [null,'','https://foreign.test','//foreign.test','/\\foreign.test','/\t/foreign.test','/\n/foreign.test','/\r/foreign.test','/','/dashboard?q=1#part','/path with spaces','/%2F%2Fhost'].map(sanitizeRedirectPath),
+    duplicateNonce:true, concurrentRedemptions:redeemed.filter(Boolean).length,
+    redemption:redeemed.find(Boolean), replay:true,unknown:true,expired:true,
+  });
+  console.log('PASS actual TS/native relay ORM comparisons; actual relay ORM: nonce uniqueness, synchronized concurrent one-time redemption, replay, unknown and expired tickets');
 } finally {
   try { await orm.schema.drop({dropMigrationsTable:true,dropDb:false}); }
   finally { await orm.close(true); }

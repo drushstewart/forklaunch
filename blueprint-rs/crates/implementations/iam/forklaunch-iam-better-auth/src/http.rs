@@ -24,6 +24,8 @@ use zeroize::Zeroizing;
 mod account_tokens;
 #[cfg(feature = "application-http")]
 pub mod application;
+#[cfg(feature = "application-http")]
+pub mod relay;
 mod callback;
 mod credential;
 mod email;

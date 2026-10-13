@@ -760,3 +760,41 @@ MCP, self-JWKS, SDKs, persistence, shutdown and rename/delete. All 1,016 CLI tes
 and 751 packaged source checks pass. E2E CI installs the pinned client and reacts
 to changes in both the auth module and frontend factory. Broader custom client
 plugins/hooks, unified mixed SDK behavior and indexed storage remain open.
+
+## Managed-app relay
+
+Add relay to an existing generated Rust IAM service with
+`forklaunch init module --language rust --module relay --path <application>`.
+This also works in mixed applications. An optional positional service name
+selects a renamed Better Auth service; the default is `iam`. The command creates
+`src/relay_hooks.rs` and `RELAY.md` and adds relay contracts and startup wiring.
+Sync and module reinitialization preserve the application-owned hooks. Duplicate
+installation and ambiguous customized startup wiring fail explicitly.
+
+The hook receives provider tokens after the nonce is committed. Applications
+must securely persist those tokens and return an existing owner's user ID if
+login is intended. The generated default redirects home without signing in.
+An optional claim hook returns a product-specific claim URL; its default declines
+with 409. A failed hook does not make a consumed nonce reusable.
+
+The authenticated HTTP operations `POST /relay/session-ingest` and
+`POST /claim/mint` also appear in MCP discovery and generated SDKs. Ingest uses
+`INSTANCE_ID` (fallback `default`) and `INSTANCE_HMAC_KEY` (fallback
+`HMAC_SECRET_KEY`). Claim minting accepts internal key ID `default` and, when
+configured, instance-secret key ID `platform`. Route-specific HMAC policies do
+not authorize those keys on unrelated routes. Sign the exact request body using
+the normal ForkLaunch HMAC format.
+
+`GET /relay/handoff?ticket=...` is a browser-only redirect. A ticket expires after
+five minutes and is atomically consumed before minting the one-day Better Auth
+cookie. Unknown, expired, replayed, or failed redemptions redirect home without a
+new cookie. Redirects must be root-relative and contain no ASCII control bytes;
+protocol-relative and slash-backslash prefixes are rejected. The handoff record
+contains no provider tokens. Run migrations before starting an updated service:
+relay adds a model to the existing encrypted/RLS/audited auth store.
+
+For direct library integration, implement `relay::RelayHooks<S>`, configure
+route-scoped keys with `http::relay::configure_auth`, and use
+`AuthHttp::application_router_with_relay`. Include `http::relay::contracts()` in
+any separately exported contract registry. Custom hook business logic remains
+application-owned and must be tested with the application's provider policy.

@@ -183,7 +183,7 @@ async fn exchange(State(state): State<Redirects>, request: Request) -> Response 
 fn bad(message: &'static str) -> Response {
     (StatusCode::BAD_REQUEST, Html(message)).into_response()
 }
-fn redirect(location: &str, headers: &HeaderMap) -> Response {
+pub(crate) fn redirect(location: &str, headers: &HeaderMap) -> Response {
     let media = accept::preferred(headers);
     let body = match media {
         Some("text/html") => format!("<p>Found. Redirecting to {}</p>", escape_html(location)),

@@ -34,6 +34,7 @@ const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.to
 
 mod mixed;
 mod modules;
+mod relay;
 mod worker;
 pub(crate) use modules::generate_rust_module;
 

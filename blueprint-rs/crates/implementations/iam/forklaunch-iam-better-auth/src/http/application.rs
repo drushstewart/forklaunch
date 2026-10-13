@@ -20,7 +20,7 @@ use forklaunch_blueprint_core::{
 use forklaunch_core::ServiceInfo;
 use serde_json::{Value, json};
 use std::sync::Arc;
-mod redirects;
+pub(crate) mod redirects;
 
 /// Configured Better Auth application metadata, separate from the raw auth API.
 #[must_use]
