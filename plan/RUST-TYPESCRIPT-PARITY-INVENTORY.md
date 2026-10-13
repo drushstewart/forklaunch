@@ -1861,3 +1861,28 @@ Checklist remains **624/682 (91.5%), 58 open**. Binary messages, the five JSON
 Schema dialects and JSON string/null wire encoding are complete subparts of the
 external AsyncAPI task. Its event protocols, upgrade auth/parameters and
 traits/replies remain open; no full-parity claim is made.
+
+### BullMQ options audit and generated runtime validation (2026-10-12)
+
+Completed the [pinned BullMQ options audit](RUST-BULLMQ-OPTIONS-AUDIT.md), including
+producer/consumer mapping, retry and retention policies, waiting/active inspection,
+tenant prefixes and restricted Redis ACL behavior. Fixed missing event-stream
+metadata limits and `skipMetasUpdate`, enforced the Redis 5 minimum with a working
+`skipVersionCheck` for both queue and worker, and accepted zero attempts as one
+execution without retry, matching TypeScript.
+
+Validation: the full actual TS/native BullMQ interoperability fixture passed;
+focused options coverage passed for metadata defaults/custom/preserved settings,
+150-job event-stream trimming from both producers, zero attempts in both language
+directions, and ACL-denied INFO/HSET opt-outs. All 67 pinned protocol unit tests
+and all 12 actual TS/native scheduler scenarios passed; strict all-feature/all-target
+adapter Clippy passed. The rebuilt CLI
+included all 772 embedded package entries. A relocated generated BullMQ worker
+passed processing/retries, lifecycle transitions and graceful shutdown; its API
+passed real HTTP/MCP startup, initialization, discovery, health invocation,
+listener configuration and shutdown checks.
+
+Checklist: **625/682 (91.6%), 57 open**. Audit completion does not close the broader
+production-worker gate: custom scheduler strategies, BullMQ telemetry hooks,
+Cluster/Sentinel connections and full flow/parent interoperability remain explicit
+implementation requirements in the audit.

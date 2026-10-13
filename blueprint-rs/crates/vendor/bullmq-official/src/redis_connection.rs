@@ -86,6 +86,19 @@ struct Inner {
 }
 
 impl RedisConnection {
+    /// Enforce BullMQ's Redis 5 minimum unless explicitly disabled.
+    #[cfg(feature = "forklaunch-job-options")]
+    pub(crate) async fn validate_server_version(&self, skip: bool) -> Result<(), Error> {
+        if skip {
+            return Ok(());
+        }
+        let info: String = redis::cmd("INFO")
+            .arg("server")
+            .query_async(&mut self.managed_conn())
+            .await?;
+        validate_version_info(&info)
+    }
+
     /// Create a new connection from options.
     ///
     /// Besides the auto-reconnecting managed connection, this also opens the
@@ -554,8 +567,45 @@ impl BlockingRedisConnection {
     }
 }
 
+#[cfg(feature = "forklaunch-job-options")]
+fn validate_version_info(info: &str) -> Result<(), Error> {
+    let version = info
+        .lines()
+        .find_map(|line| line.strip_prefix("redis_version:"));
+    if version
+        .and_then(|version| version.split('.').next())
+        .and_then(|major| major.parse::<u64>().ok())
+        .is_some_and(|major| major >= 5)
+    {
+        Ok(())
+    } else {
+        Err(Error::InvalidConfig(
+            "BullMQ requires Redis version 5 or newer".into(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "forklaunch-job-options")]
+    #[test]
+    fn reported_redis_version_requires_supported_major() {
+        for version in ["5.0.0", "7.4.2", "8.0.0"] {
+            assert!(super::validate_version_info(&format!(
+                "# Server\r\nredis_version:{version}\r\n"
+            ))
+            .is_ok());
+        }
+        for info in [
+            "redis_version:4.9.0",
+            "redis_version:invalid",
+            "redis_version:",
+            "# Server\r\n",
+        ] {
+            assert!(super::validate_version_info(info).is_err());
+        }
+    }
+
     use super::build_client;
     use super::is_transient_connection_error;
     use super::{BlockingRedisConnection, ManagedConn, RedisConnection};

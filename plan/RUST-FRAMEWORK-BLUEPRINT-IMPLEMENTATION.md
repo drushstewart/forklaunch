@@ -871,7 +871,7 @@ require literal Rust clones, but their public request/response behavior does.
 - [x] Port TypeScript request-HMAC canonicalization and authorization headers with constant-time verification, normalized timestamps and optional clock-skew checks. Sixteen actual TypeScript signer/header-generator fixtures cover absent/text/buffer/raw-JSON/Unicode/timezone cases; atomic distributed nonce replay policy remains application-owned.
 - [x] Add CAC provider DTOs/traits, internal HMAC-declared lookup contracts and the free mock provider. Actual TypeScript provider conformance passes for descriptor/licensing, all existing mock codes, exact matching and unknown codes. The authenticated runtime and generated CAC module are now validated separately below.
 - [x] Port CAC code-set provider interfaces and the existing mock procedure-code provider, preserving descriptor/licensing metadata and lookup behavior; do not invent or bundle licensed clinical data. (`blueprint/interfaces/cac`, `blueprint/implementations/cac/base`, generated CAC module) Generated Rust/mixed modules now mount request-HMAC lookup and JWKS/system-role-protected empty-entity compliance routes, health and docs. Both SDKs, claim-policy failures, shared key caching, embedded-workspace upgrades, coexistence, source preservation, rename/sync/delete and source-archive compiler checks pass.
-- [ ] Audit BullMQ producer/consumer options, retry/retention behavior, waiting/active inspection and tenant Redis-prefix/ACL handling; cover missing Rust worker behavior and cross-language interoperability requirements explicitly. (`blueprint/implementations/worker/bullmq`)
+- [x] Audit BullMQ producer/consumer options, retry/retention behavior, waiting/active inspection and tenant Redis-prefix/ACL handling; cover missing Rust worker behavior and cross-language interoperability requirements explicitly. (`blueprint/implementations/worker/bullmq`)
 - [x] Match actual BullMQ interval/cron scheduler lifecycle in both directions, including three-iteration limits, failed/successful jobs and inspection/removal. Twelve scenarios reproduce and fix fetch-time scheduling and zero disabling the start limit, cover active cancellation and sequence continuity after preprocessor rejection, and run in CI. All 66 isolated protocol tests, strict adapter Clippy and all 752 packaged assets pass. Broader scheduler metadata/date/cron/update options remain separate gates.
 - [x] Preserve scheduler log/history/size metadata in templates, first jobs and subsequent iterations through a shared encoder. Twelve actual-library scheduler scenarios pass; the eight bidirectional lifecycle cases also verify options on every job, newest-two log retention and bounded failure history. All 66 protocol tests, strict adapter Clippy, 752 packaged assets and the rebuilt CLI pass. Creation timestamps and cron scheduled-time metadata now also pass every-iteration comparisons; all twelve scheduler scenarios, 66 protocol tests, strict adapter Clippy and the rebuilt CLI pass. Fresh generated-worker controls/lifecycle and the full companion service HTTP/MCP matrix pass. Date/other scheduler metadata remain open.
 - [x] Match BullMQ simple/TTL/delayed-replacement deduplication through actual TypeScript/native single/bulk producers and both consumers. Six scenarios cover cross-producer keys, latest delayed data, completion release and expiry. Four additional active-job keep-last scenarios pass both actual consumers with cross-producer submissions, newest-payload follow-up and release after completion or terminal failure. Repeat schedulers remain separate gates.
@@ -1831,3 +1831,28 @@ Checklist remains **624/682 (91.5%), 58 open**. Binary messages, the five JSON
 Schema dialects and JSON string/null wire encoding are complete subparts of the
 external AsyncAPI task. Its event protocols, upgrade auth/parameters and
 traits/replies remain open; no full-parity claim is made.
+
+### BullMQ options audit and generated runtime validation (2026-10-12)
+
+Completed the [pinned BullMQ options audit](RUST-BULLMQ-OPTIONS-AUDIT.md), including
+producer/consumer mapping, retry and retention policies, waiting/active inspection,
+tenant prefixes and restricted Redis ACL behavior. Fixed missing event-stream
+metadata limits and `skipMetasUpdate`, enforced the Redis 5 minimum with a working
+`skipVersionCheck` for both queue and worker, and accepted zero attempts as one
+execution without retry, matching TypeScript.
+
+Validation: the full actual TS/native BullMQ interoperability fixture passed;
+focused options coverage passed for metadata defaults/custom/preserved settings,
+150-job event-stream trimming from both producers, zero attempts in both language
+directions, and ACL-denied INFO/HSET opt-outs. All 67 pinned protocol unit tests
+and all 12 actual TS/native scheduler scenarios passed; strict all-feature/all-target
+adapter Clippy passed. The rebuilt CLI
+included all 772 embedded package entries. A relocated generated BullMQ worker
+passed processing/retries, lifecycle transitions and graceful shutdown; its API
+passed real HTTP/MCP startup, initialization, discovery, health invocation,
+listener configuration and shutdown checks.
+
+Checklist: **625/682 (91.6%), 57 open**. Audit completion does not close the broader
+production-worker gate: custom scheduler strategies, BullMQ telemetry hooks,
+Cluster/Sentinel connections and full flow/parent interoperability remain explicit
+implementation requirements in the audit.

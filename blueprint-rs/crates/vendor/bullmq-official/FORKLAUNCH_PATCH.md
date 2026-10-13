@@ -45,3 +45,16 @@ retain `prevMillis` for the scheduled instant; interval jobs omit it, matching
 the actual Node implementation. The bidirectional fixture checks timestamps
 against persisted creation time and cron metadata against each qualified job ID,
 in addition to diagnostic/size option and actual retention checks.
+
+
+Queue construction under `forklaunch-job-options` also preserves the TypeScript
+queue metadata options: `streams_max_len_events` defaults to 10,000 and
+`skip_metas_update` avoids initialization writes. Metadata includes the shared
+`version` field with the native implementation identity while preserving the
+historical native `library` field. Queue and worker construction enforce the
+reported Redis 5 minimum unless `skip_version_check` is enabled. This opt-out
+skips INFO entirely, matching pinned TypeScript behavior. The ForkLaunch wrapper
+propagates its queue setting to the worker. Live ACL-denied INFO/HSET fixtures
+check that these opt-outs work independently. Upstream behavior remains unchanged
+when the feature is disabled. Additional upstream option boundaries are recorded
+in `plan/RUST-BULLMQ-OPTIONS-AUDIT.md` at the repository root.

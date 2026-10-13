@@ -31,6 +31,73 @@ async function waitFor(check){const deadline=Date.now()+15000;while(Date.now()<d
 const handles=[];
 try{
  await transport.command('ACL','SETUSER',username,'reset','on',`>${password}`,'resetkeys','resetchannels',`~${prefix}:*`,`&${prefix}:*`,'+@all','-flushdb','-flushall','-acl','-config','-shutdown','-debug','-module','-migrate','-replicaof','-slaveof','-swapdb','-keys','-scan');
+ for(const nativeProduces of [false,true])for(const policy of ['default','custom','skip']){
+  const queueName=`metadata-${nativeProduces}-${policy}`,meta=`${prefix}:${queueName}:meta`;
+  await transport.command('HSET',meta,'opts.maxLenEvents','17','version','fixture-original');
+  const expected=policy==='skip'?17:policy==='custom'?37:10000;
+  if(nativeProduces){
+   const result=await native({mode:'metadata',queue:queueName,streamsMaxLenEvents:policy==='custom'?37:undefined,skipMetasUpdate:policy==='skip'});
+   assert.equal(result.maxLenEvents,expected);
+  }else{
+   const opts=options('fixed');opts.queueOptions.streams={events:{maxLen:policy==='custom'?37:10000}};opts.queueOptions.skipMetasUpdate=policy==='skip';
+   const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+   await producer.queue.getVersion();await producer.queue.close();handles.pop();
+  }
+  assert.equal(Number(await transport.command('HGET',meta,'opts.maxLenEvents')),expected);
+  const version=await transport.command('HGET',meta,'version');
+  assert.equal(version==='fixture-original',policy==='skip');
+ }
+ for(const nativeProduces of [false,true]){
+  const queueName=`stream-trim-${nativeProduces}`,events=Array.from({length:150},(_,index)=>({id:`event-${index}`}));
+  if(nativeProduces)await native({mode:'produce',queue:queueName,streamsMaxLenEvents:37,events});
+  else{
+   const opts=options('fixed');opts.queueOptions.streams={events:{maxLen:37}};
+   const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+   await producer.enqueueBatchJobs(events);await producer.queue.close();handles.pop();
+  }
+  // BullMQ trims on processing transitions, not on every enqueue.
+  const result=await native({mode:'consume',queue:queueName,streamsMaxLenEvents:37,expected:events.length});
+  assert.equal(result.completed,events.length);
+  // Redis trims approximately in radix-tree blocks, not at the exact limit.
+  const length=Number(await transport.command('XLEN',`${prefix}:${queueName}:events`));
+  assert.ok(length>=37&&length<200,`event stream was not bounded: ${length}`);
+ }
+ // A denied INFO proves skipVersionCheck reaches both queue and worker.
+ await transport.command('ACL','SETUSER',username,'-info');
+ try {
+  for(const consumer of [false,true]){
+   assert.deepEqual(await native({mode:'connectProbe',queue:`version-${consumer}`,consumer}),{error:'worker_tenant_isolation_error'});
+   assert.deepEqual(await native({mode:'connectProbe',queue:`version-${consumer}`,consumer,skipVersionCheck:true}),{ok:true});
+  }
+ } finally { await transport.command('ACL','SETUSER',username,'+info'); }
+ // Read-only queue construction must not sneak in a metadata HSET.
+ await transport.command('ACL','SETUSER',username,'-hset');
+ try {
+  assert.deepEqual(await native({mode:'connectProbe',queue:'read-only'}),{error:'worker_tenant_isolation_error'});
+  assert.deepEqual(await native({mode:'connectProbe',queue:'read-only',skipMetasUpdate:true}),{ok:true});
+  assert.equal(Number(await transport.command('EXISTS',`${prefix}:read-only:meta`)),0);
+ } finally { await transport.command('ACL','SETUSER',username,'+hset'); }
+ for(const nativeConsumes of [false,true]){
+  const queueName=`zero-attempts-${nativeConsumes}`,opts=options('fixed');opts.retries=0;
+  const event={id:'no-retry',failAttempts:10};
+  const producer=new BullMqWorkerProducer(queueName,opts);handles.push(()=>producer.queue.close());
+  if(nativeConsumes){
+   await producer.enqueueJob(event);
+   const result=await native({mode:'consume',queue:queueName,expected:1,retries:0});
+   assert.equal(result.failed,1);assert.equal(result.attempts.length,1);assert.equal(result.failures.length,1);
+  }else{
+   await native({mode:'produce',queue:queueName,events:[event],retries:0});
+   let attempts=0,failures=0;
+   const consumer=new BullMqWorkerConsumer(queueName,opts,async()=>{attempts++;throw new Error('fixture_failure');},()=>{failures++;});
+   handles.push(()=>consumer.close());await consumer.start();
+   await waitFor(async()=>await producer.queue.getFailedCount()===1&&failures===1);
+   await consumer.close();handles.pop();assert.equal(attempts,1);
+  }
+  const jobs=await producer.queue.getJobs(['failed']);assert.equal(jobs.length,1);assert.equal(jobs[0].opts.attempts,0);assert.equal(jobs[0].attemptsMade,1);
+  await producer.queue.close();handles.pop();
+ }
+ console.log('PASS actual TS/native queue metadata, zero-attempt policies and ACL-protected version/metadata options');
+ if(!process.env.FORKLAUNCH_TEST_BULLMQ_OPTIONS_ONLY){
  for(const backoffType of ['fixed','exponential']){
   const queueName=`native-to-ts-${backoffType}`;
   const events=[{id:'first',order:1},{id:'second',order:2,failAttempts:1},{id:'third',order:3,failAttempts:10}];
@@ -369,6 +436,7 @@ try{
  await assert.rejects(redisTransport(url).command('GET','outside-bullmq-fixture'));await assert.rejects(redisTransport(url).command('FLUSHDB'));
  assert.deepEqual(await native({mode:'consumeDenied',queue:'denied'},{REDIS_KEY_PREFIX:'foreign-bullmq-prefix:'}),{error:'worker_tenant_isolation_error'});
  console.log('PASS actual TS/native BullMQ wire interoperability: both producer/consumer directions, batches, fixed/exponential backoff, per-attempt failure callbacks, terminal failures, metadata defaults, retained failure reasons and bounded failure histories across immediate/delayed retries, simple/TTL/debounce/active keep-last deduplication, size limits, log retention, delay/priority/LIFO ordering, bounded concurrency, rate limiting, default/count/age-based bounded lazy retention, bidirectional stalled recovery and retained/removed preprocessor failure callbacks and start limits, removed-job/drain failure callbacks, duplicate event IDs, waiting/active inspection and restricted ACL/consumer fail-stop');
+ }
 }finally{
  for(const close of handles.reverse())await close();
  let cursor='0';do{const [next,keys]=await transport.command('SCAN',cursor,'MATCH',`${prefix}:*`,'COUNT',1000);if(keys.length)await transport.command('DEL',...keys);cursor=String(next);}while(cursor!=='0');

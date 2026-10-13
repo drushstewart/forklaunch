@@ -611,6 +611,9 @@ impl Worker {
         }
 
         let conn = RedisConnection::new_managed_only(&opts.connection).await?;
+        #[cfg(feature = "forklaunch-job-options")]
+        conn.validate_server_version(opts.skip_version_check)
+            .await?;
         let blocking_conn = BlockingRedisConnection::new_managed(&conn).await?;
         let keys = QueueKeys::new(queue_name, Some(&opts.prefix));
 

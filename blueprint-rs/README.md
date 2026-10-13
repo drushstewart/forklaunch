@@ -77,7 +77,7 @@ With both `postgres` and `worker` enabled, `PostgresEcommerceStore::transition_o
 
 Billing base services are available in `forklaunch_billing_base::services` with typed asynchronous interfaces in `forklaunch_billing_interface::services`. Plans and subscriptions are durable; checkout sessions, payment links and portal sessions use a configurable TTL cache independent of provider expiry, with optional database backups. The memory and PostgreSQL stores preserve TypeScript lifecycle differences: checkout completion retains backup status, payment completion removes backup rows, and explicit portal/checkout expiry removes only the cache entry. PostgreSQL requires a restricted runtime role, encrypts provider payloads and opaque session URIs, and commits plaintext reads with actor audits. Provider-ID lookup reads only indexed metadata. The [actual TS base comparison](../cli/tests/rust_billing_base_parity.mjs) covers 168 operations over generic mapper/cache/ORM boundaries. Configured Stripe mappers, real Stripe service wiring and generated billing HTTP/MCP modules remain tracked; the older root-level billing classes are reference scaffolds.
 
-BullMQ producers inherit configured job defaults while the wrapper overrides retry attempts/backoff and intentionally leaves job IDs auto-generated, matching TypeScript. Metadata includes log limits, stack-trace limits, timestamps and size limits. Actual cross-language fixtures exercise persisted options, oversized-job rejection, bounded log retention, delayed/priority/LIFO ordering and worker concurrency. Repeat/deduplication, rate limiting and further option behavior remain under audit.
+BullMQ producers inherit configured job defaults while the wrapper overrides retry attempts/backoff and intentionally leaves job IDs auto-generated, matching TypeScript. Metadata includes log limits, stack-trace limits, timestamps and size limits. Actual cross-language fixtures exercise persisted options, oversized-job rejection, bounded log retention, delayed/priority/LIFO ordering and worker concurrency. Repeat/deduplication and rate limiting have actual cross-language fixtures. The [options audit](../plan/RUST-BULLMQ-OPTIONS-AUDIT.md) maps the checked wrapper surface and records remaining upstream-option gaps.
 
 IAM directory parity now includes typed user/role/permission/organization CRUD interfaces, transactional memory and PostgreSQL stores, nested relationship hydration, encrypted sensitive fields, retained-key uniqueness claims and atomic actor audits. Generated IAM modules expose thirty configured directory operations over HTTP and MCP alongside the existing opaque session endpoints. Directory users and authentication identities remain separate, matching the configured TypeScript CRUD mapper's omission of passwords. Cookie/CSRF, JWT issuance, verification/reset, OAuth/OIDC, Better Auth and application-specific compliance integration remain separate gates. Base discovery returns 204; its system-role compliance routes return 404 under the configured all-`none` entity policy.
 
@@ -118,3 +118,13 @@ A subject field other than `id` must contain an explicit scalar string ID.
 These lookups use the directory store's bounded listing (currently 4,096 records
 for PostgreSQL); relation inference and scalable indexed traversal remain
 separate work. See the [executable example](crates/implementations/iam/forklaunch-iam-base/examples/directory_compliance.rs).
+
+
+BullMQ queue metadata options are available as
+`BullMqOptions.queue.streams_max_len_events` (default 10,000) and
+`skip_metas_update` (default false). Event stream trimming is approximate and uses
+the shared queue metadata. Skipping metadata updates supports constructing a
+read-only queue handle; subsequent job operations still need write permissions.
+Queue and worker construction check Redis's reported minimum version (5) unless
+`queue.skip_version_check` is true; the wrapper applies this setting to both.
+Native errors remain sanitized and startup/operation deadlines still apply.

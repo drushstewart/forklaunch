@@ -121,6 +121,9 @@ impl Queue {
         validate_queue_name(name)?;
         validate_prefix(&opts.prefix)?;
         let conn = RedisConnection::new_managed_only(&opts.connection).await?;
+        #[cfg(feature = "forklaunch-job-options")]
+        conn.validate_server_version(opts.skip_version_check)
+            .await?;
         let keys = QueueKeys::new(name, Some(&opts.prefix));
 
         let queue = Self {
@@ -130,7 +133,14 @@ impl Queue {
             default_job_options: opts.default_job_options,
         };
 
-        queue.update_meta().await?;
+        queue
+            .update_meta(
+                #[cfg(feature = "forklaunch-job-options")]
+                opts.skip_metas_update,
+                #[cfg(feature = "forklaunch-job-options")]
+                opts.streams_max_len_events,
+            )
+            .await?;
 
         Ok(queue)
     }
@@ -143,6 +153,9 @@ impl Queue {
     ) -> Result<Self, Error> {
         validate_queue_name(name)?;
         validate_prefix(&opts.prefix)?;
+        #[cfg(feature = "forklaunch-job-options")]
+        conn.validate_server_version(opts.skip_version_check)
+            .await?;
         let keys = QueueKeys::new(name, Some(&opts.prefix));
 
         let queue = Self {
@@ -152,7 +165,14 @@ impl Queue {
             default_job_options: opts.default_job_options,
         };
 
-        queue.update_meta().await?;
+        queue
+            .update_meta(
+                #[cfg(feature = "forklaunch-job-options")]
+                opts.skip_metas_update,
+                #[cfg(feature = "forklaunch-job-options")]
+                opts.streams_max_len_events,
+            )
+            .await?;
 
         Ok(queue)
     }
@@ -747,16 +767,27 @@ impl Queue {
     }
 
     /// Update queue metadata (version).
-    async fn update_meta(&self) -> Result<(), Error> {
+    async fn update_meta(
+        &self,
+        #[cfg(feature = "forklaunch-job-options")] skip: bool,
+        #[cfg(feature = "forklaunch-job-options")] max_len: u64,
+    ) -> Result<(), Error> {
+        #[cfg(feature = "forklaunch-job-options")]
+        if skip {
+            return Ok(());
+        }
         let mut conn = self.conn.managed_conn();
         let meta_key = self.keys.meta();
 
-        redis::cmd("HSET")
-            .arg(&meta_key)
-            .arg("library")
+        let mut command = redis::cmd("HSET");
+        command.arg(&meta_key).arg("library").arg(BULLMQ_VERSION);
+        #[cfg(feature = "forklaunch-job-options")]
+        command
+            .arg("version")
             .arg(BULLMQ_VERSION)
-            .query_async::<()>(&mut conn)
-            .await?;
+            .arg("opts.maxLenEvents")
+            .arg(max_len);
+        command.query_async::<()>(&mut conn).await?;
 
         Ok(())
     }

@@ -10,6 +10,11 @@ use std::{
 
 fn options(input: &Value) -> Result<BullMqOptions, Box<dyn std::error::Error>> {
     let mut options = BullMqOptions::new(&std::env::var("FORKLAUNCH_TEST_REDIS_URL")?);
+    if let Some(limit) = input["streamsMaxLenEvents"].as_u64() {
+        options.queue.streams_max_len_events = limit;
+    }
+    options.queue.skip_metas_update = input["skipMetasUpdate"] == true;
+    options.queue.skip_version_check = input["skipVersionCheck"] == true;
     if let Some(defaults) = input.get("defaultJobOptions") {
         options.queue.default_job_options = serde_json::from_value(defaults.clone())?;
     }
@@ -77,6 +82,39 @@ fn options(input: &Value) -> Result<BullMqOptions, Box<dyn std::error::Error>> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input: Value = serde_json::from_reader(std::io::stdin())?;
     let name = input["queue"].as_str().ok_or("Queue required")?;
+    if input["mode"] == "connectProbe" {
+        let result = if input["consumer"] == true {
+            match BullMqConsumer::connect(
+                name,
+                |_: protocol::Job, _token| async { Ok(Value::Null) },
+                options(&input)?,
+            )
+            .await
+            {
+                Ok(worker) => {
+                    worker.close().await?;
+                    Ok(())
+                }
+                Err(error) => Err(error),
+            }
+        } else {
+            match BullMqProducer::connect(name, options(&input)?).await {
+                Ok(queue) => {
+                    queue.close().await;
+                    Ok(())
+                }
+                Err(error) => Err(error),
+            }
+        };
+        println!(
+            "{}",
+            match result {
+                Ok(()) => json!({"ok":true}),
+                Err(error) => json!({"error":error.code}),
+            }
+        );
+        return Ok(());
+    }
     if input["mode"] == "consumeDenied" {
         let worker = BullMqConsumer::connect(
             name,
@@ -107,6 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             json!({"ids":ids,"events":producer.peek_events().await?})
         }
         "peek" => json!({"events":producer.peek_events().await?}),
+        "metadata" => json!({"maxLenEvents":producer.inner().get_meta().await?.max_len_events}),
         "produceRejected" => {
             let error = producer
                 .enqueue_job(input["event"].clone())

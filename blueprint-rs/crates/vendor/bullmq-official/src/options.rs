@@ -380,6 +380,12 @@ pub struct QueueOptions {
     pub default_job_options: JobOptions,
     /// Skip Redis version validation.
     pub skip_version_check: bool,
+    /// Approximate maximum length of the shared queue event stream.
+    #[cfg(feature = "forklaunch-job-options")]
+    pub streams_max_len_events: u64,
+    /// Do not write queue metadata during construction.
+    #[cfg(feature = "forklaunch-job-options")]
+    pub skip_metas_update: bool,
 }
 
 impl Default for QueueOptions {
@@ -389,6 +395,10 @@ impl Default for QueueOptions {
             prefix: "bull".to_string(),
             default_job_options: JobOptions::default(),
             skip_version_check: false,
+            #[cfg(feature = "forklaunch-job-options")]
+            streams_max_len_events: 10_000,
+            #[cfg(feature = "forklaunch-job-options")]
+            skip_metas_update: false,
         }
     }
 }

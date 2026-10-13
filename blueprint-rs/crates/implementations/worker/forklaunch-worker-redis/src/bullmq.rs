@@ -33,8 +33,7 @@ impl BullMqOptions {
         }
     }
     fn scoped(mut self) -> BlueprintResult<Self> {
-        if self.retries == 0
-            || self.operation_timeout.is_zero()
+        if self.operation_timeout.is_zero()
             || self.operation_timeout > Duration::from_secs(60)
             || self.close_timeout.is_zero()
             || self.close_timeout > Duration::from_secs(86400)
@@ -47,6 +46,7 @@ impl BullMqOptions {
         // TypeScript passes the same queue connection/prefix to its producer and worker.
         self.worker.connection = self.queue.connection.clone();
         self.worker.prefix = self.queue.prefix.clone();
+        self.worker.skip_version_check = self.queue.skip_version_check;
         self.worker.autorun = false;
         Ok(self)
     }
