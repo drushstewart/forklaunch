@@ -2020,3 +2020,24 @@ All twenty live HTTP outcomes, full OpenAPI snapshots, fifteen auth tests and
 strict auth/example Clippy checks pass. Documentation distinguishes the simple
 JWT helper from Better Auth's provider-specific signing and cookie/OIDC flows.
 Checklist: **630/682 (92.4%), 52 open**.
+
+
+### Six-surface runtime performance harness (2026-10-12)
+
+The optional `forklaunch-testing/benchmarks` example and `rust_benchmarks.mjs`
+measure typed JSON validation, contract-driven HTTP, generated TypeScript SDK
+calls, Redis SET/GET, S3 PUT/GET and typed WebSocket round trips. Every result is
+checked outside its timer. Warmups, sample distributions, build/compiler/runtime
+versions, source revision/dirty state and host metadata are recorded in JSON.
+Storage uses unique owned keys; missing infrastructure is explicitly skipped or
+rejected with `--require-infra`. The optimized profile is the default; CI runs a
+short debug smoke against its isolated Redis/MinIO and uploads the report without
+unstable latency thresholds. Documentation states the single-client, 1033-byte,
+unencrypted measurement boundaries and excludes production performance claims.
+
+All six paths passed 50 debug samples after ten warmups and 100 optimized samples
+after twenty warmups against live dedicated Redis/MinIO. Strict benchmark Clippy,
+workspace formatting and 861 packaged-source checks pass. Redis reported zero
+remaining keys; both owned infrastructure containers were removed after use.
+The generated benchmark example is included in the CLI source bundle.
+Checklist: **631/682 (92.5%), 51 open**.

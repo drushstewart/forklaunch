@@ -1464,7 +1464,23 @@ dependencies = [
 name = "forklaunch-testing"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "axum",
+ "forklaunch-axum",
+ "forklaunch-contract",
  "forklaunch-core",
+ "forklaunch-infrastructure-redis",
+ "forklaunch-infrastructure-s3",
+ "forklaunch-sdk-codegen",
+ "forklaunch-sdk-typescript",
+ "forklaunch-validation",
+ "forklaunch-ws",
+ "garde",
+ "reqwest",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

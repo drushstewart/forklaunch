@@ -39,6 +39,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
+      - 'cli/tests/rust_benchmarks.mjs'
       - 'cli/tests/fixtures/canonical-iam/**'
       - 'framework/core/src/http/openApiV3Generator/**'
       - 'cli/tests/rust_sdk_body_parity.mjs'
@@ -207,6 +208,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
+      - 'cli/tests/rust_benchmarks.mjs'
       - 'cli/tests/fixtures/canonical-iam/**'
       - 'framework/core/src/http/openApiV3Generator/**'
       - 'cli/tests/rust_sdk_body_parity.mjs'
@@ -385,13 +387,32 @@ jobs:
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/jsonschema/Cargo.toml --locked --lib --no-default-features --features idna -- --skip validator::tests::validate_ref
       - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-redis --all-features redis_backend -- --ignored
       - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --all-features s3_backend -- --ignored
-      - name: Remove isolated S3 storage
-        if: always()
-        run: docker rm -f forklaunch-rust-s3 || true
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @asyncapi/parser@3.6.3 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5 cross-fetch@4.1.0 zod@4.6.5 ts-deepmerge@8.0.0 ws@8.22.0 @tanstack/react-query@5.104.2 @tanstack/query-core@5.104.2 react@19.2.4 @types/react@19.3.0
+      - name: Smoke all six native runtime benchmarks
+        run: node cli/tests/rust_benchmarks.mjs --debug --require-infra
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_BENCH_ITERATIONS: '20'
+          FORKLAUNCH_BENCH_WARMUP: '5'
+          FORKLAUNCH_BENCH_REDIS_URL: redis://127.0.0.1:6379/
+          FORKLAUNCH_BENCH_S3: '1'
+          FORKLAUNCH_BENCH_CREATE_BUCKET: '1'
+          S3_URL: http://127.0.0.1:9000
+          S3_REGION: us-east-1
+          S3_BUCKET: forklaunch-bench
+          S3_ACCESS_KEY_ID: parity-test-access
+          S3_SECRET_ACCESS_KEY: parity-test-secret-only
+          FORKLAUNCH_BENCH_OUTPUT: ${{ runner.temp }}/rust-benchmark-smoke.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-benchmark-smoke
+          path: ${{ runner.temp }}/rust-benchmark-smoke.json
+      - name: Remove isolated S3 storage
+        if: always()
+        run: docker rm -f forklaunch-rust-s3 || true
       - run: node cli/tests/rust_redis_queue_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
