@@ -759,8 +759,11 @@ quoted strings and null, and canonical binary messages with
 2019-09 and 2020-12 with matching explicit `schemaFormat` and `$schema`
 declarations. Server receive/send operations become client outgoing/incoming
 messages. Inputs need explicit message selections, fixed channel paths and ws/wss
-servers. Upgrade authentication/parameters, traits/replies, resource-scoped or
-external references and other protocols remain unsupported. See the
+servers. Bounded message/operation traits and bundled payload resource references
+are supported, along with fixed same-channel operation replies. Reply messages
+populate the opposite send/receive direction; applications own correlation and
+reply deadlines. Dynamic/cross-channel replies, upgrade authentication/parameters,
+missing external resources and other protocols remain unsupported. See the
 [import profile and wire encoding details](../../framework-rs/README.md#typed-websocket-connections).
 
 Rust event schemas can be exported with `forklaunch_asyncapi::AsyncApiDocument::to_json()`, which returns `FrameworkResult<String>`. It groups messages by channel, emits AsyncAPI 3.0 send/receive operations, preserves inline payload/header schemas supplied through `SchemaRef::with_json_schema`, and rejects conflicting definitions or malformed schema JSON. Named payloads without supplied schemas stay unconstrained and retain their name as a title. Protocol metadata is retained in `x-forklaunch-protocol`; server endpoints and protocol bindings remain application configuration.

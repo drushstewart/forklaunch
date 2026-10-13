@@ -239,3 +239,12 @@ authorization. Cookie routes retain their dedicated verifier. Explicit response
 errors must contain public text; applications must not forward provider errors
 or secrets verbatim. Live TCP HTTP/MCP tests verify missing/malformed/denied
 credentials, successful typed sessions, subsequent role denial and shutdown.
+
+
+AsyncAPI fixed replies (2026-10-13): reply objects share offline pointer resolution
+and document bounds. Only the operation's own channel and its declared messages
+are accepted; runtime destinations and external references never initiate network
+fetches. Reply targets with unexpected fields, cycles, sibling references or
+ambiguous payloads are rejected. Invalid-reply CLI checks preserve both SDKs and
+the user-owned source document. This adds message-direction metadata, not automatic
+request correlation or authorization. Existing security/header restrictions apply.

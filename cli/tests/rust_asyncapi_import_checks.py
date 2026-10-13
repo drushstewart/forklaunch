@@ -71,6 +71,27 @@ elif '--rename' not in sys.argv:
                 assert artifact.read_bytes() == edited_input
         finally:
             artifact.write_bytes(original)
+    # Unsupported reply routing must fail before mutating either generated SDK.
+    for mutation in ['dynamic', 'foreign-message', 'cycle', 'missing-channel']:
+        invalid = json.loads(original)
+        reply = invalid['components']['replies']['response']
+        if mutation == 'dynamic':
+            reply['address'] = {'location': '$message.header#/replyTo'}
+        elif mutation == 'foreign-message':
+            reply['messages'] = [{'$ref': '#/components/messages/Reply'}]
+        elif mutation == 'cycle':
+            invalid['components']['replies']['response'] = {'$ref': '#/components/replies/response'}
+        else:
+            del reply['channel']
+        artifact.write_text(json.dumps(invalid))
+        edited_input = artifact.read_bytes()
+        try:
+            for flags in [[], ['--check']]:
+                run(generate() + flags, failure=True)
+                assert snapshot() == before
+                assert artifact.read_bytes() == edited_input
+        finally:
+            artifact.write_bytes(original)
     # Regenerating one language from native metadata must protect the other
     # language's imported document, including the shared default input path.
     socket = Path('.forklaunch/socket-contracts/realtime/socket-contract.json')

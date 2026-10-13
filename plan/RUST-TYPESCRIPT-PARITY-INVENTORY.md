@@ -4151,3 +4151,27 @@ HTTP/MCP startup/shutdown matrix; all 938 embedded assets are packaged. Logs:
 `/private/tmp/fl-common-openapi-{parity,tests,clippy,generated,package}.log`.
 Native embedded-parameter route matching and the remaining public-symbol audit
 stay open; checklist remains 657/682 (96.3%), 25 open.
+
+
+Same-channel AsyncAPI reply receipt (2026-10-13): server-view WebSocket imports
+now accept fixed same-channel operation replies, inline or via bounded local
+reply references. Replies populate the opposite message direction and retain
+existing schema/disjointness/media validation. Explicit nonempty message subsets
+must belong to the same root channel. Dynamic addresses, cross-channel routing,
+external/cyclic/sibling references, missing/foreign messages, overlapping schemas
+and oversized subsets fail before either SDK is changed. Stream clients expose
+send/receive; applications own correlation, ordering and reply deadlines.
+
+All 18 AsyncAPI tests pass, including eight JSON/binary/action/reference variants
+and twelve rejection mutations, as do strict all-target Clippy and all 1,101 CLI
+tests (`/private/tmp/fl-asyncapi-reply-cli-tests.log`). Generated
+relocated run `hsJ5Me` validates the document with the official parser, compiles
+strict Rust/TypeScript SDKs and exchanges real request/reply messages with a live
+peer. It checks invalid-reply output preservation, watch recovery, relocation,
+rename/delete ownership and both services' complete HTTP/MCP startup/shutdown
+matrices. All 938 embedded assets remain packaged. Logs:
+`/private/tmp/fl-asyncapi-reply-{tests,clippy,generated,package}.log`.
+The [AsyncAPI 3 reply model](https://www.asyncapi.com/docs/reference/specification/v3.0.0#operationReplyObject)
+remains broader than this fixed WebSocket profile: dynamic/cross-channel replies,
+automatic correlation, upgrade security/parameters, other protocols and event
+projects stay open. Checklist remains 657/682 (96.3%), 25 open.

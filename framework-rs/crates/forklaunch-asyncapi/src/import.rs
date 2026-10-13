@@ -24,11 +24,12 @@ struct Channel {
 /// Server receive/send operations become client outgoing/incoming contracts.
 /// JSON payloads use explicit JSON encoding and provably disjoint message
 /// schemas. Binary directions require one canonical string/binary payload with
-/// application/octet-stream media. Missing directions are forbidden.
+/// application/octet-stream media. Fixed same-channel replies populate the
+/// opposite direction. Missing directions are forbidden.
 ///
 /// # Errors
 /// Rejects unsupported protocols, media, upgrade parameters/authentication,
-/// replies/application headers, overlapping messages, invalid local
+/// dynamic/cross-channel replies, application headers, overlapping messages, invalid local
 /// references, unsupported resource scopes, mixed runtime dialects and bounded
 /// schema/output limits.
 pub fn import_server_websocket_asyncapi(
@@ -251,7 +252,7 @@ fn read_operations(
         let location = format!("/operations/{}", token(name));
         let (location, operation) = object_at(document, &location)?;
         let operation = traits::apply(document, &location, operation, false, budget)?;
-        reject_fields(&operation, &["reply", "security"])?;
+        reject_fields(&operation, &["security"])?;
         check_bindings(document, &operation)?;
         let channel_pointer = reference(
             operation
@@ -261,26 +262,59 @@ fn read_operations(
         let channel = channels
             .get_mut(&channel_pointer)
             .ok_or_else(|| invalid("Operation channel must reference a root channel"))?;
-        let messages = operation
-            .get("messages")
-            .and_then(Value::as_array)
-            .ok_or_else(|| invalid("Explicit operation message references are required"))?;
-        if messages.is_empty() || messages.len() > 64 {
-            return Err(invalid("Expected 1 through 64 operation messages"));
-        }
-        let direction = match text(&operation, "action")? {
-            "receive" => &mut channel.receive,
-            "send" => &mut channel.send,
+        let receive = match text(&operation, "action")? {
+            "receive" => true,
+            "send" => false,
             _ => return Err(invalid("Operation action must be send or receive")),
         };
-        for message in messages {
-            let pointer = reference(message)?;
-            if !channel.messages.contains_key(&pointer) {
+        assign_messages(channel, operation.get("messages"), receive)?;
+        if let Some(reply) = operation.get("reply") {
+            let reply = referenced_object(document, reply)?;
+            for field in reply.keys() {
+                if !field.starts_with("x-") && !matches!(field.as_str(), "channel" | "messages") {
+                    return Err(invalid(
+                        "Only fixed same-channel WebSocket replies without dynamic addresses are supported",
+                    ));
+                }
+            }
+            let reply_channel = reference(
+                reply
+                    .get("channel")
+                    .ok_or_else(|| invalid("Explicit reply channel reference is required"))?,
+            )?;
+            if reply_channel != channel_pointer {
                 return Err(invalid(
-                    "Operation messages must reference messages in its channel",
+                    "WebSocket replies must use the operation's own channel",
                 ));
             }
-            direction.insert(pointer);
+            assign_messages(channel, reply.get("messages"), !receive)?;
+        }
+    }
+    Ok(())
+}
+
+fn assign_messages(
+    channel: &mut Channel,
+    messages: Option<&Value>,
+    receive: bool,
+) -> FrameworkResult<()> {
+    let messages = messages
+        .and_then(Value::as_array)
+        .filter(|messages| !messages.is_empty() && messages.len() <= 64)
+        .ok_or_else(|| {
+            invalid("Expected 1 through 64 explicit operation/reply message references")
+        })?;
+    for message in messages {
+        let pointer = reference(message)?;
+        if !channel.messages.contains_key(&pointer) {
+            return Err(invalid(
+                "Operation/reply messages must reference messages in its channel",
+            ));
+        }
+        if receive {
+            channel.receive.insert(pointer);
+        } else {
+            channel.send.insert(pointer);
         }
     }
     Ok(())
@@ -387,7 +421,7 @@ fn check_bindings(document: &Value, value: &Map<String, Value>) -> FrameworkResu
     let Some(bindings) = value.get("bindings") else {
         return Ok(());
     };
-    let bindings = binding_object(document, bindings)?;
+    let bindings = referenced_object(document, bindings)?;
     for key in bindings.keys() {
         if key.starts_with("x-") {
             continue;
@@ -395,7 +429,7 @@ fn check_bindings(document: &Value, value: &Map<String, Value>) -> FrameworkResu
         if key != "ws" {
             return Err(invalid("Only WebSocket protocol bindings are supported"));
         }
-        let binding = binding_object(document, &bindings[key])?;
+        let binding = referenced_object(document, &bindings[key])?;
         for (key, value) in binding {
             if key.starts_with("x-") {
                 continue;
@@ -414,7 +448,7 @@ fn check_bindings(document: &Value, value: &Map<String, Value>) -> FrameworkResu
     Ok(())
 }
 
-fn binding_object<'a>(
+fn referenced_object<'a>(
     document: &'a Value,
     value: &'a Value,
 ) -> FrameworkResult<&'a Map<String, Value>> {
@@ -423,7 +457,7 @@ fn binding_object<'a>(
     }
     value
         .as_object()
-        .ok_or_else(|| invalid("AsyncAPI bindings must be objects"))
+        .ok_or_else(|| invalid("AsyncAPI referenced values must be objects"))
 }
 
 fn direction_schema(
@@ -735,6 +769,135 @@ mod tests {
                 "Reply":{"type":"object","required":["kind","accepted"],"properties":{"kind":{"const":"reply"},"accepted":{"type":"boolean"}},"additionalProperties":false}
             }}
         })
+    }
+
+    fn reply_document(receive: bool, referenced: bool) -> Value {
+        let mut input = document();
+        let (operation, removed, message) = if receive {
+            ("accept", "reply", "reply")
+        } else {
+            ("reply", "accept", "request")
+        };
+        input["operations"].as_object_mut().unwrap().remove(removed);
+        let reply = json!({
+            "channel":{"$ref":"#/channels/chat"},
+            "messages":[{"$ref":format!("#/channels/chat/messages/{message}")}]
+        });
+        if referenced {
+            input["components"]["replies"] = json!({"response":reply});
+            input["operations"][operation]["reply"] =
+                json!({"$ref":"#/components/replies/response"});
+        } else {
+            input["operations"][operation]["reply"] = reply;
+        }
+        input
+    }
+
+    #[test]
+    fn fixed_same_channel_replies_preserve_both_message_directions() {
+        for binary in [false, true] {
+            let with_media = |mut input: Value| {
+                if binary {
+                    input["defaultContentType"] = json!("application/octet-stream");
+                    for name in ["Request", "Reply"] {
+                        input["components"]["schemas"][name] =
+                            json!({"type":"string","format":"binary"});
+                    }
+                }
+                input
+            };
+            let expected = serde_json::to_value(
+                import_server_websocket_asyncapi(&with_media(document())).unwrap(),
+            )
+            .unwrap();
+            for receive in [false, true] {
+                for referenced in [false, true] {
+                    let input = with_media(reply_document(receive, referenced));
+                    let original = input.clone();
+                    let artifact = import_server_websocket_asyncapi(&input).unwrap();
+                    assert_eq!(serde_json::to_value(artifact).unwrap(), expected);
+                    assert_eq!(input, original);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn replies_reject_dynamic_foreign_ambiguous_and_unbounded_definitions() {
+        for mutation in [
+            "dynamic",
+            "other-channel",
+            "missing-channel",
+            "missing-messages",
+            "empty",
+            "too-many",
+            "foreign-message",
+            "external",
+            "cycle",
+            "sibling",
+            "overlap",
+            "wrong-target",
+        ] {
+            let mut input = reply_document(true, false);
+            match mutation {
+                "dynamic" => {
+                    input["operations"]["accept"]["reply"]["address"] =
+                        json!({"location":"$message.header#/replyTo"})
+                }
+                "other-channel" => {
+                    input["channels"]["other"] = input["channels"]["chat"].clone();
+                    input["channels"]["other"]["address"] = json!("/other");
+                    input["operations"]["accept"]["reply"]["channel"] =
+                        json!({"$ref":"#/channels/other"});
+                }
+                "missing-channel" => {
+                    input["operations"]["accept"]["reply"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("channel");
+                }
+                "missing-messages" => {
+                    input["operations"]["accept"]["reply"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("messages");
+                }
+                "empty" => input["operations"]["accept"]["reply"]["messages"] = json!([]),
+                "too-many" => {
+                    input["operations"]["accept"]["reply"]["messages"] =
+                        json!(vec![json!({"$ref":"#/channels/chat/messages/reply"}); 65])
+                }
+                "foreign-message" => {
+                    input["operations"]["accept"]["reply"]["messages"] =
+                        json!([{"$ref":"#/components/messages/Reply"}])
+                }
+                "external" => {
+                    input["operations"]["accept"]["reply"] =
+                        json!({"$ref":"https://example.invalid/reply"})
+                }
+                "cycle" => {
+                    input["operations"]["accept"]["reply"] =
+                        json!({"$ref":"#/operations/accept/reply"})
+                }
+                "sibling" => {
+                    input["operations"]["accept"]["reply"]["$ref"] =
+                        json!("#/components/replies/response")
+                }
+                "overlap" => {
+                    input["components"]["schemas"]["Reply"] =
+                        input["components"]["schemas"]["Request"].clone()
+                }
+                "wrong-target" => {
+                    input["operations"]["accept"]["reply"] =
+                        json!({"$ref":"#/components/messages/Reply"})
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                import_server_websocket_asyncapi(&input).is_err(),
+                "{mutation}"
+            );
+        }
     }
 
     #[test]

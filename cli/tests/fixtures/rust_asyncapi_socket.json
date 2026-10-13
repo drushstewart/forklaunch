@@ -50,23 +50,10 @@
         {
           "$ref": "#/components/operationTraits/socket"
         }
-      ]
-    },
-    "reply": {
-      "action": "send",
-      "channel": {
-        "$ref": "#/channels/chat"
-      },
-      "messages": [
-        {
-          "$ref": "#/channels/chat/messages/reply"
-        }
       ],
-      "traits": [
-        {
-          "$ref": "#/components/operationTraits/socket"
-        }
-      ]
+      "reply": {
+        "$ref": "#/components/replies/response"
+      }
     }
   },
   "components": {
@@ -177,6 +164,18 @@
           "ws": {}
         },
         "summary": "Inherited socket operation"
+      }
+    },
+    "replies": {
+      "response": {
+        "channel": {
+          "$ref": "#/channels/chat"
+        },
+        "messages": [
+          {
+            "$ref": "#/channels/chat/messages/reply"
+          }
+        ]
       }
     }
   }
