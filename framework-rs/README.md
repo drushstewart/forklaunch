@@ -63,6 +63,10 @@ session rejection remains 401. Native HTTP error bodies retain their structured
 JSON envelope; complete TypeScript error-envelope parity is still tracked.
 Better Auth JWT formats and provider/cookie/OIDC flows use their own adapter.
 
+The [engineering security review](../plan/RUST-SECURITY-REVIEW.md) records verified
+auth/crypto boundaries, fixed findings and the exact remaining dependency notices.
+The audit gate scans all three lockfiles and rejects unreviewed findings.
+
 Runtime performance checks cover HTTP, typed validation, generated SDK calls,
 Redis, S3 and typed WebSockets. See [benchmark commands and measurement boundaries](../docs/adding-projects/rust-benchmarks.md)
 for optimized runs, optional infrastructure and JSON reports.

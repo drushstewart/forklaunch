@@ -2058,3 +2058,27 @@ HTTP/MCP checks and 108 blueprint library tests also passed (five environment-ga
 tests were ignored); their owned generated workspace was removed.
 Checklist remains **631/682 (92.5%), 51 open**. Dependency and broader security
 review continue; this is a concrete finding/fix, not a completed security audit.
+
+
+### Engineering security review and advisory gate (2026-10-12)
+
+[RUST-SECURITY-REVIEW.md](RUST-SECURITY-REVIEW.md) records auth/JWT/HMAC, encryption,
+secrets, HTTP/MCP and generated SDK boundaries with concrete evidence and explicit
+application-owned controls. Removing the redundant AWS legacy Rustls connector
+removed four framework vulnerability findings (old h2 and webpki). Framework and
+blueprint lockfiles upgrade anyhow to 1.0.103. The CLI now aliases its YAML parser
+to serde_norway 0.9.42, removing the archived serde_yml/libyml implementations;
+all 1,076 CLI tests pass. S3 passes nineteen local and two live MinIO tests.
+
+The cargo-audit 0.22.2 gate retains three exact reviewed findings: AWS S3's LRU
+uses a non-panicking String key; the RSA crate performs generation/encoding while
+ring performs private signing; paste is a compile-time maintenance notice.
+All findings stay visible, with no scanner ignores or severity/platform filters.
+Changed versions/new advisories fail; offline tests exercise those failure paths.
+CI uploads current reports. The broad framework library run passes 245 tests
+(four ignored), and the rebuilt CLI again passes relocated HTTP/MCP startup,
+invocation/Origin rejection/shutdown and both SDKs against Rust/TypeScript via
+contract/OpenAPI artifacts. The owned generated workspace and MinIO container
+were removed. This completes the engineering review, not the separate remaining
+provider, deployment, scalability and implementation gates.
+Checklist: **632/682 (92.7%), 50 open**.

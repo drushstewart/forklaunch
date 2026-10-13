@@ -40,6 +40,10 @@ on:
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
+      - 'cli/tests/rust_security_audit.py'
+      - 'cli/tests/rust_security_audit_test.py'
+      - 'cli/tests/fixtures/rust_security_advisories.json'
+      - 'cli/Cargo.toml'
       - 'cli/tests/fixtures/canonical-iam/**'
       - 'framework/core/src/http/openApiV3Generator/**'
       - 'cli/tests/rust_sdk_body_parity.mjs'
@@ -209,6 +213,10 @@ on:
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
+      - 'cli/tests/rust_security_audit.py'
+      - 'cli/tests/rust_security_audit_test.py'
+      - 'cli/tests/fixtures/rust_security_advisories.json'
+      - 'cli/Cargo.toml'
       - 'cli/tests/fixtures/canonical-iam/**'
       - 'framework/core/src/http/openApiV3Generator/**'
       - 'cli/tests/rust_sdk_body_parity.mjs'
@@ -830,3 +838,23 @@ jobs:
       - name: Stop isolated Kafka-compatible broker
         if: always()
         run: docker rm -f forklaunch-rust-kafka-ci || true
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+      - run: cargo install cargo-audit --version 0.22.2 --locked
+      - run: cargo generate-lockfile --manifest-path cli/Cargo.toml
+      - run: python3 cli/tests/rust_security_audit_test.py
+      - run: python3 cli/tests/rust_security_audit.py
+        env:
+          FORKLAUNCH_SECURITY_REPORT: ${{ runner.temp }}/rust-security-review.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-security-review
+          path: ${{ runner.temp }}/rust-security-review.json
