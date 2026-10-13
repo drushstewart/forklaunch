@@ -18,7 +18,10 @@ impl<S: AuthStore> CredentialService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let mut accounts = Vec::new();
-        for row in tx.list(Model::Account).await? {
+        for row in
+            crate::store::find_all(&mut tx, Model::Account, "userId", text(&view.user, "id")?)
+                .await?
+        {
             if row["userId"] != view.user["id"] {
                 continue;
             }
@@ -76,12 +79,12 @@ impl<S: AuthStore> CredentialService<S> {
                 "Session is not fresh",
             ));
         }
-        let accounts: Vec<_> = tx
-            .list(Model::Account)
-            .await?
-            .into_iter()
-            .filter(|row| row["userId"] == view.user["id"])
-            .collect();
+        let accounts: Vec<_> =
+            crate::store::find_all(&mut tx, Model::Account, "userId", text(&view.user, "id")?)
+                .await?
+                .into_iter()
+                .filter(|row| row["userId"] == view.user["id"])
+                .collect();
         if accounts.len() == 1 {
             return Err(BlueprintError::new(
                 "FAILED_TO_UNLINK_LAST_ACCOUNT",

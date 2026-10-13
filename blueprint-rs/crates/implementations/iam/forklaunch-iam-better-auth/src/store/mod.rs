@@ -41,6 +41,19 @@ impl Model {
             Self::OrganizationRole => "organizationRole",
         }
     }
+    const fn indexed_fields(self) -> &'static [&'static str] {
+        match self {
+            Self::Session => &["userId", "activeOrganizationId"],
+            Self::Account => &["userId", "accountId", "providerId"],
+            Self::Member => &["userId", "organizationId"],
+            Self::OrganizationRole => &["organizationId", "role"],
+            Self::Team => &["organizationId"],
+            Self::TeamMember => &["userId", "teamId"],
+            Self::Invitation => &["organizationId", "email"],
+            Self::Verification => &["identifier"],
+            _ => &[],
+        }
+    }
     const fn unique_fields(self) -> &'static [&'static str] {
         match self {
             Self::User => &["email", "subscription"],
@@ -116,6 +129,18 @@ pub trait AuthTransaction: Send {
     fn list_page(
         &mut self,
         model: Model,
+        after: Option<AuthCursor>,
+        limit: usize,
+    ) -> impl Future<Output = BlueprintResult<AuthPage>> + Send;
+    /// Exact string-field matches in insertion order using nonunique indexes.
+    /// Supports declared relationship/provider fields; unsupported fields fail.
+    /// Null/missing/non-string values do not match. Keep the same transaction,
+    /// model, field and value while following a cursor. Limits are 1..=4096.
+    fn find_page(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
         after: Option<AuthCursor>,
         limit: usize,
     ) -> impl Future<Output = BlueprintResult<AuthPage>> + Send;
@@ -207,5 +232,25 @@ fn page(model: Model, mut rows: Vec<(u64, Value)>, limit: usize) -> AuthPage {
     AuthPage {
         records: rows.into_iter().map(|(_, row)| row).collect(),
         next,
+    }
+}
+
+/// Collects exact scoped matches for handlers whose contract returns all records.
+/// Storage reads are paged; memory consumption scales with the matching result.
+pub(crate) async fn find_all<T: AuthTransaction>(
+    tx: &mut T,
+    model: Model,
+    field: &str,
+    value: &str,
+) -> BlueprintResult<Vec<Value>> {
+    let mut rows = Vec::new();
+    let mut after = None;
+    loop {
+        let page = tx.find_page(model, field, value, after, 256).await?;
+        rows.extend(page.records);
+        after = page.next;
+        if after.is_none() {
+            return Ok(rows);
+        }
     }
 }

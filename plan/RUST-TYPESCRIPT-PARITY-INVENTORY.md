@@ -2318,3 +2318,31 @@ All 30 native tests, strict all-target Clippy and 63 actual Better Auth checks
 `fl-session-collections-postgres.log`, `fl-session-collections-clippy.log`,
 `fl-session-collections-parity.log`. Full indexed relationship traversal remains
 open; checklist unchanged at 646/682.
+
+### Encrypted relationship indexes and scoped collection pages
+
+Add transaction-scoped `find_page` with ordered memory indexes and forced-RLS
+PostgreSQL relationship blind indexes. Retained-key queries deduplicate matches
+and verify decrypted values/sequence before returning rows. Startup rebuilds
+legacy claims in bounded pages under the tenant write lock; migration 0003
+requires runtime table privileges and a coordinated index-aware writer rollout.
+Startup backfill cost remains proportional to stored records.
+
+Credential lookup, linked-account listing/removal, session collections and basic
+organization membership lookup/listing use these indexes. More than 4,096 users,
+accounts and sessions pass native and restricted-role PostgreSQL HTTP/MCP tests.
+Fixtures cover cursor deletion, replacement/removal, rollback, exact Unicode/case
+matching, invalid limits/fields, tenant isolation, legacy backfill, key rotation
+and transplanted index rejection. All 30 native tests and strict all-target
+Clippy pass. Actual TypeScript comparisons pass: 81 credential, 50 profile/account,
+134 organization and 48 session response/storage cases (63 session checks).
+
+The rebuilt CLI packages 867 Rust source/template files. Its relocated generated
+app passes both SDKs, eight frontend-client scenarios, HTTP/MCP startup and tool
+invocation, persistence/restart, source preservation, rename and delete. Logs:
+`/private/tmp/fl-auth-relations-tests-final.log`, `fl-auth-relations-clippy-final.log`,
+`fl-auth-relations-postgres-final.log`, `fl-auth-relations-accounts.log`,
+`fl-auth-relations-profiles.log`, `fl-auth-relations-organizations.log`,
+`fl-auth-relations-sessions.log`, `fl-auth-relations-package.log`,
+`fl-auth-relations-runtime.log`. Broader account/organization/provider/compliance
+callers still need migration; checklist remains **646/682 (94.7%), 36 open**.

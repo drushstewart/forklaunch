@@ -13,6 +13,7 @@ struct State {
     rows: BTreeMap<(Model, String), (u64, Value)>,
     sequence: u64,
     ordered: BTreeMap<(Model, u64), String>,
+    lookups: BTreeMap<(Model, &'static str, String, u64), String>,
     unique_values: BTreeMap<(Model, &'static str, String), String>,
 }
 #[derive(Clone, Default)]
@@ -58,10 +59,21 @@ impl MemoryAuthTransaction {
     }
     fn index_record(&mut self, model: Model, row: &Value) -> BlueprintResult<()> {
         let id = record_id(row)?;
+        let sequence = self
+            .pending
+            .rows
+            .get(&(model, id.to_owned()))
+            .map_or(self.pending.sequence, |(sequence, _)| *sequence);
         if let Some((_, previous)) = self.pending.rows.get(&(model, id.to_owned())) {
+            for key in lookup_keys(model, previous, sequence) {
+                self.pending.lookups.remove(&key);
+            }
             for key in unique_keys(model, previous) {
                 self.pending.unique_values.remove(&key);
             }
+        }
+        for key in lookup_keys(model, row, sequence) {
+            self.pending.lookups.insert(key, id.to_owned());
         }
         for key in unique_keys(model, row) {
             self.pending.unique_values.insert(key, id.to_owned());
@@ -77,6 +89,21 @@ fn unique_keys(model: Model, row: &Value) -> Vec<(Model, &'static str, String)> 
             row.get(*field)
                 .and_then(Value::as_str)
                 .map(|value| (model, *field, value.to_owned()))
+        })
+        .collect()
+}
+fn lookup_keys(
+    model: Model,
+    row: &Value,
+    sequence: u64,
+) -> Vec<(Model, &'static str, String, u64)> {
+    model
+        .indexed_fields()
+        .iter()
+        .filter_map(|field| {
+            row.get(*field)
+                .and_then(Value::as_str)
+                .map(|value| (model, *field, value.to_owned(), sequence))
         })
         .collect()
 }
@@ -150,6 +177,41 @@ impl AuthTransaction for MemoryAuthTransaction {
             .collect::<BlueprintResult<Vec<_>>>()?;
         Ok(super::page(model, rows, limit))
     }
+    async fn find_page(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+        after: Option<super::AuthCursor>,
+        limit: usize,
+    ) -> BlueprintResult<super::AuthPage> {
+        use std::ops::Bound::{Excluded, Included};
+        let after = super::page_start(model, after, limit)?;
+        let field = model
+            .indexed_fields()
+            .iter()
+            .copied()
+            .find(|candidate| *candidate == field)
+            .ok_or_else(invalid)?;
+        let rows = self
+            .pending
+            .lookups
+            .range((
+                Excluded((model, field, value.to_owned(), after)),
+                Included((model, field, value.to_owned(), u64::MAX)),
+            ))
+            .take(limit + 1)
+            .map(|((_, _, _, sequence), id)| {
+                let (_, row) = self
+                    .pending
+                    .rows
+                    .get(&(model, id.clone()))
+                    .ok_or_else(storage_error)?;
+                Ok((*sequence, row.clone()))
+            })
+            .collect::<BlueprintResult<Vec<_>>>()?;
+        Ok(super::page(model, rows, limit))
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let mut rows: Vec<_> = self
             .pending
@@ -200,6 +262,9 @@ impl AuthTransaction for MemoryAuthTransaction {
             self.pending.ordered.remove(&(model, sequence));
             for key in unique_keys(model, &row) {
                 self.pending.unique_values.remove(&key);
+            }
+            for key in lookup_keys(model, &row, sequence) {
+                self.pending.lookups.remove(&key);
             }
         }
         Ok(())

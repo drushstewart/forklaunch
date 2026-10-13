@@ -77,6 +77,7 @@ impl PostgresAuthStore {
         // same tenant write lock before exposing the store to authentication.
         // Duplicate/corrupt legacy tokens fail startup and roll back all claims.
         store.reindex_session_tokens().await?;
+        store.reindex_relationships().await?;
         Ok(store)
     }
     /// Rebuild token indexes for this trusted tenant in bounded pages. Call on
@@ -96,6 +97,36 @@ impl PostgresAuthStore {
             after = page.next;
             if after.is_none() {
                 break;
+            }
+        }
+        tx.commit().await
+    }
+    /// Rebuild encrypted relationship indexes under the tenant write lock.
+    /// Also runs on startup. All writers must support these indexes after rollout.
+    /// # Errors
+    /// Rejects corrupt encrypted records and database failures atomically.
+    pub async fn reindex_relationships(&self) -> BlueprintResult<()> {
+        let mut tx = self.begin(true).await?;
+        for model in [
+            Model::Session,
+            Model::Account,
+            Model::Member,
+            Model::OrganizationRole,
+            Model::Team,
+            Model::TeamMember,
+            Model::Invitation,
+            Model::Verification,
+        ] {
+            let mut after = None;
+            loop {
+                let page = tx.list_page(model, after, 256).await?;
+                for row in &page.records {
+                    tx.lookup_claims(model, row).await?;
+                }
+                after = page.next;
+                if after.is_none() {
+                    break;
+                }
             }
         }
         tx.commit().await
@@ -170,6 +201,35 @@ impl PostgresAuthTransaction<'_> {
         sqlx::query("INSERT INTO fl_better_auth.audit(id,tenant_id,model,record_id,actor_id,correlation_id,operation) VALUES($1,$2,$3,$4,$5,$6,$7)")
             .bind(uuid::Uuid::new_v4()).bind(self.store.tenant.id()).bind(model.as_str()).bind(id).bind(&self.store.audit.actor_id).bind(&self.store.audit.correlation_id).bind(operation)
             .execute(&mut *self.tx).await.map_err(db_error)?;
+        Ok(())
+    }
+    async fn lookup_claims(&mut self, model: Model, row: &Value) -> BlueprintResult<()> {
+        let id = record_id(row)?;
+        sqlx::query(
+            "DELETE FROM fl_better_auth.lookup_claims WHERE tenant_id=$1 AND model=$2 AND id=$3",
+        )
+        .bind(self.store.tenant.id())
+        .bind(model.as_str())
+        .bind(id)
+        .execute(&mut *self.tx)
+        .await
+        .map_err(db_error)?;
+        for field in model.indexed_fields() {
+            if let Some(value) = row.get(*field).and_then(Value::as_str) {
+                let indexes = self
+                    .store
+                    .encryptor
+                    .blind_indexes(
+                        &json!(["relationship", model.as_str(), field, value]).to_string(),
+                        self.store.tenant.id(),
+                    )
+                    .map_err(|_| storage_error())?;
+                // One statement stores all retained-key claims for this field.
+                sqlx::query("INSERT INTO fl_better_auth.lookup_claims(tenant_id,model,id,field,blind_index,sequence) SELECT tenant_id,model,id,$4,unnest($5::text[]),sequence FROM fl_better_auth.records WHERE tenant_id=$1 AND model=$2 AND id=$3")
+                    .bind(self.store.tenant.id()).bind(model.as_str()).bind(id).bind(field).bind(indexes)
+                    .execute(&mut *self.tx).await.map_err(db_error)?;
+            }
+        }
         Ok(())
     }
     async fn claims(&mut self, model: Model, row: &Value) -> BlueprintResult<()> {
@@ -286,6 +346,46 @@ impl AuthTransaction for PostgresAuthTransaction<'_> {
             .collect::<BlueprintResult<Vec<_>>>()?;
         Ok(super::page(model, rows, limit))
     }
+    async fn find_page(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+        after: Option<super::AuthCursor>,
+        limit: usize,
+    ) -> BlueprintResult<super::AuthPage> {
+        let after =
+            i64::try_from(super::page_start(model, after, limit)?).map_err(|_| invalid())?;
+        if !model.indexed_fields().contains(&field) {
+            return Err(invalid());
+        }
+        let indexes = self
+            .store
+            .encryptor
+            .blind_indexes(
+                &json!(["relationship", model.as_str(), field, value]).to_string(),
+                self.store.tenant.id(),
+            )
+            .map_err(|_| storage_error())?;
+        let rows: Vec<(i64, i64, String, String)> = sqlx::query_as(
+            "SELECT DISTINCT c.sequence,r.sequence,r.id,r.ciphertext FROM fl_better_auth.lookup_claims c JOIN fl_better_auth.records r ON r.tenant_id=c.tenant_id AND r.model=c.model AND r.id=c.id WHERE c.tenant_id=$1 AND c.model=$2 AND c.field=$3 AND c.blind_index=ANY($4) AND c.sequence>$5 ORDER BY c.sequence LIMIT $6"
+        ).bind(self.store.tenant.id()).bind(model.as_str()).bind(field).bind(indexes).bind(after)
+            .bind(i64::try_from(limit + 1).map_err(|_| invalid())?)
+            .fetch_all(&mut *self.tx).await.map_err(db_error)?;
+        let rows = rows
+            .into_iter()
+            .map(|(claimed_sequence, sequence, id, ciphertext)| {
+                let row = self.store.decode(model, &id, &ciphertext)?;
+                if claimed_sequence != sequence
+                    || row.get(field).and_then(Value::as_str) != Some(value)
+                {
+                    return Err(storage_error());
+                }
+                Ok((u64::try_from(sequence).map_err(|_| storage_error())?, row))
+            })
+            .collect::<BlueprintResult<Vec<_>>>()?;
+        Ok(super::page(model, rows, limit))
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let rows: Vec<(String,String)> = sqlx::query_as("SELECT id,ciphertext FROM fl_better_auth.records WHERE tenant_id=$1 AND model=$2 ORDER BY sequence LIMIT 4097")
             .bind(self.store.tenant.id()).bind(model.as_str()).fetch_all(&mut *self.tx).await.map_err(db_error)?;
@@ -312,6 +412,7 @@ impl AuthTransaction for PostgresAuthTransaction<'_> {
         .await
         .map_err(db_error)?;
         self.claims(model, &value).await?;
+        self.lookup_claims(model, &value).await?;
         self.audit(model, &id, "create").await
     }
     async fn replace(&mut self, model: Model, value: Value) -> BlueprintResult<()> {
@@ -325,6 +426,7 @@ impl AuthTransaction for PostgresAuthTransaction<'_> {
             return Err(not_found());
         }
         self.claims(model, &value).await?;
+        self.lookup_claims(model, &value).await?;
         self.audit(model, &id, "update").await
     }
     async fn delete(&mut self, model: Model, id: &str) -> BlueprintResult<()> {

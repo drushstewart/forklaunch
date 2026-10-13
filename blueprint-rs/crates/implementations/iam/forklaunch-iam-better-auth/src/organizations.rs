@@ -49,7 +49,10 @@ impl<S: AuthStore> OrganizationService<S> {
         let view = self.session(token, transient, now).await?;
         let mut tx = self.store.begin(false).await?;
         let mut organizations = Vec::new();
-        for member in tx.list(Model::Member).await? {
+        for member in
+            crate::store::find_all(&mut tx, Model::Member, "userId", text(&view.user, "id")?)
+                .await?
+        {
             if member["userId"] == view.user["id"] {
                 organizations.push(
                     tx.get(Model::Organization, text(&member, "organizationId")?)
@@ -105,8 +108,7 @@ async fn member<T: AuthTransaction>(
     user: &str,
     organization: &str,
 ) -> BlueprintResult<bool> {
-    Ok(tx
-        .list(Model::Member)
+    Ok(crate::store::find_all(tx, Model::Member, "userId", user)
         .await?
         .iter()
         .any(|row| row["userId"] == user && row["organizationId"] == organization))

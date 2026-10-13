@@ -254,11 +254,21 @@ async fn find_credential<T: AuthTransaction>(
     tx: &mut T,
     user_id: &str,
 ) -> BlueprintResult<Option<Value>> {
-    Ok(tx.list(Model::Account).await?.into_iter().find(|account| {
-        account["userId"] == user_id
-            && account["providerId"] == "credential"
-            && account["accountId"] == user_id
-    }))
+    let mut after = None;
+    loop {
+        let page = tx
+            .find_page(Model::Account, "userId", user_id, after, 256)
+            .await?;
+        if let Some(account) = page.records.into_iter().find(|account| {
+            account["providerId"] == "credential" && account["accountId"] == user_id
+        }) {
+            return Ok(Some(account));
+        }
+        after = page.next;
+        if after.is_none() {
+            return Ok(None);
+        }
+    }
 }
 pub(crate) fn validate_email(email: &str) -> BlueprintResult<()> {
     static EMAIL: OnceLock<Regex> = OnceLock::new();

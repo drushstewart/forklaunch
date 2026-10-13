@@ -66,6 +66,21 @@ impl<T: AuthTransaction> AuthTransaction for FaultTransaction<T> {
         }
         self.inner.list_page(model, after, limit).await
     }
+    async fn find_page(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+        after: Option<AuthCursor>,
+        limit: usize,
+    ) -> BlueprintResult<AuthPage> {
+        if self.read == Some(model) {
+            return Err(read_failure());
+        }
+        self.inner
+            .find_page(model, field, value, after, limit)
+            .await
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         if self.read == Some(model) {
             return Err(read_failure());

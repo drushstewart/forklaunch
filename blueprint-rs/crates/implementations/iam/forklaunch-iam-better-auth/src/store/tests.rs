@@ -148,6 +148,104 @@ async fn exercise_transactions<S: AuthStore>(store: &S) {
     tx.commit().await.unwrap();
 }
 
+async fn exercise_relationship_queries<S: AuthStore>(store: &S) {
+    let mut tx = store.begin(true).await.unwrap();
+    for index in 0..13 {
+        tx.insert(
+            Model::Account,
+            json!({"id":format!("relation-{index}"),"userId":"Quoted ' ☃","providerId":"external"}),
+        )
+        .await
+        .unwrap();
+    }
+    let first = tx
+        .find_page(Model::Account, "userId", "Quoted ' ☃", None, 5)
+        .await
+        .unwrap();
+    assert_eq!(first.records.len(), 5);
+    assert_eq!(first.records[4]["id"], "relation-4");
+    tx.delete(Model::Account, "relation-4").await.unwrap();
+    let second = tx
+        .find_page(Model::Account, "userId", "Quoted ' ☃", first.next, 5)
+        .await
+        .unwrap();
+    assert_eq!(second.records[0]["id"], "relation-5");
+    let last = tx
+        .find_page(Model::Account, "userId", "Quoted ' ☃", second.next, 5)
+        .await
+        .unwrap();
+    assert_eq!(last.records.len(), 3);
+    assert!(last.next.is_none());
+    assert!(
+        tx.find_page(Model::Member, "userId", "Quoted ' ☃", first.next, 5)
+            .await
+            .is_err()
+    );
+    assert!(
+        tx.find_page(Model::Account, "userId", "Quoted ' ☃", None, 0)
+            .await
+            .is_err()
+    );
+    assert!(
+        tx.find_page(Model::Account, "userId", "Quoted ' ☃", None, 4097)
+            .await
+            .is_err()
+    );
+    assert!(
+        tx.find_page(Model::Account, "password", "ignored", None, 5)
+            .await
+            .is_err()
+    );
+    assert!(
+        tx.find_page(Model::Account, "userId", "quoted ' ☃", None, 5)
+            .await
+            .unwrap()
+            .records
+            .is_empty()
+    );
+    tx.replace(
+        Model::Account,
+        json!({"id":"relation-0","userId":"replacement"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        tx.find_page(Model::Account, "userId", "Quoted ' ☃", None, 5)
+            .await
+            .unwrap()
+            .records[0]["id"],
+        "relation-1"
+    );
+    assert_eq!(
+        tx.find_page(Model::Account, "userId", "replacement", None, 5)
+            .await
+            .unwrap()
+            .records[0]["id"],
+        "relation-0"
+    );
+    tx.replace(Model::Account, json!({"id":"relation-0","userId":null}))
+        .await
+        .unwrap();
+    assert!(
+        tx.find_page(Model::Account, "userId", "replacement", None, 5)
+            .await
+            .unwrap()
+            .records
+            .is_empty()
+    );
+    // All inserted/updated/deleted rows, lookup claims and audits roll back.
+    drop(tx);
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(
+        tx.find_page(Model::Account, "userId", "Quoted ' ☃", None, 5)
+            .await
+            .unwrap()
+            .records
+            .is_empty()
+    );
+    tx.commit().await.unwrap();
+}
+
 async fn exercise_many<T: AuthTransaction>(tx: &mut T) {
     let ids = vec![
         "imported-4099".into(),
@@ -401,6 +499,7 @@ async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync:
     let mut tx = store.begin(true).await.unwrap();
     for index in 0..4100 {
         tx.insert(Model::User, json!({"id":format!("imported-{index}"),"email":format!("imported-{index}@fixture.test")})).await.unwrap();
+        tx.insert(Model::Account, json!({"id":format!("imported-account-{index}"),"userId":format!("imported-{index}"),"providerId":"external","accountId":format!("external-{index}")})).await.unwrap();
     }
     tx.insert(
         Model::Organization,
@@ -416,6 +515,14 @@ async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync:
         "bounded list must still fail explicitly"
     );
     exercise_many(&mut tx).await;
+    assert!(tx.list(Model::Account).await.is_err());
+    assert_eq!(
+        tx.find_page(Model::Account, "userId", "imported-4099", None, 1)
+            .await
+            .unwrap()
+            .records[0]["id"],
+        "imported-account-4099"
+    );
     assert_eq!(
         tx.find_unique(Model::User, "email", "imported-4099@fixture.test")
             .await
@@ -493,7 +600,9 @@ async fn memory_exact_lookups_and_credentials_exceed_the_model_scan_bound() {
 
 #[tokio::test]
 async fn memory_auth_transactions_are_atomic_unique_and_read_only() {
-    exercise_transactions(&memory::MemoryAuthStore::default()).await;
+    let store = memory::MemoryAuthStore::default();
+    exercise_transactions(&store).await;
+    exercise_relationship_queries(&store).await;
 }
 
 #[cfg(feature = "postgres")]
@@ -525,7 +634,7 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
         .execute(&owner)
         .await
         .unwrap();
-    sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_better_auth.records,fl_better_auth.unique_claims,fl_better_auth.audit TO {role}")).execute(&owner).await.unwrap();
+    sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_better_auth.records,fl_better_auth.unique_claims,fl_better_auth.lookup_claims,fl_better_auth.audit TO {role}")).execute(&owner).await.unwrap();
     sqlx::query(&format!(
         "GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_better_auth TO {role}"
     ))
@@ -568,6 +677,7 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .unwrap();
     assert!(store.with_audit_context(AuditContext::system("")).is_err());
     exercise_transactions(&store).await;
+    exercise_relationship_queries(&store).await;
     let other_store = PostgresAuthStore::new(
         pool.clone(),
         other.clone(),
@@ -583,6 +693,13 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
             .await
             .unwrap()
             .is_none()
+    );
+    assert!(
+        tx.find_page(Model::Account, "userId", "user-1", None, 1)
+            .await
+            .unwrap()
+            .records
+            .is_empty()
     );
     tx.insert(
         Model::User,
@@ -684,6 +801,21 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
         unscoped, 0,
         "tenant context must not leak between pooled transactions"
     );
+    let unscoped_lookups: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fl_better_auth.lookup_claims")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(unscoped_lookups, 0);
+    let stored_indexes: Vec<String> = sqlx::query_scalar(
+        "SELECT blind_index FROM fl_better_auth.lookup_claims WHERE tenant_id=$1",
+    )
+    .bind(tenant.id())
+    .fetch_all(&owner)
+    .await
+    .unwrap();
+    assert!(!stored_indexes.is_empty());
+    assert!(stored_indexes.iter().all(|index| !index.contains("user-1")));
     let rotated = PostgresAuthStore::new(
         pool.clone(),
         tenant.clone(),
@@ -698,6 +830,16 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .await
     .unwrap();
     let mut indexed = rotated.begin(false).await.unwrap();
+    let page = indexed
+        .find_page(Model::Account, "userId", "user-1", None, 1)
+        .await
+        .unwrap();
+    assert_eq!(page.records.len(), 1);
+    assert!(
+        page.next.is_none(),
+        "retained-key claims must not duplicate rows"
+    );
+    assert_eq!(page.records[0]["id"], "account-1");
     assert_eq!(
         indexed
             .find_unique(Model::User, "email", "private@fixture.test")
@@ -728,6 +870,11 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
         .execute(&owner)
         .await
         .unwrap();
+    sqlx::query("DELETE FROM fl_better_auth.lookup_claims WHERE tenant_id=$1")
+        .bind(bulk_tenant.id())
+        .execute(&owner)
+        .await
+        .unwrap();
     let reopened = PostgresAuthStore::new(
         pool.clone(),
         bulk_tenant.clone(),
@@ -747,7 +894,27 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     );
     indexed.commit().await.unwrap();
 
+    let mut indexed = reopened.begin(false).await.unwrap();
+    assert_eq!(
+        indexed
+            .find_page(Model::Account, "userId", "imported-4099", None, 1)
+            .await
+            .unwrap()
+            .records[0]["id"],
+        "imported-account-4099"
+    );
+    indexed.commit().await.unwrap();
     exercise_large_session_collections(Arc::new(reopened)).await;
+    sqlx::query("UPDATE fl_better_auth.lookup_claims SET id='imported-account-0',sequence=(SELECT sequence FROM fl_better_auth.records WHERE tenant_id=$1 AND model='account' AND id='imported-account-0') WHERE tenant_id=$1 AND model='account' AND field='userId' AND id='imported-account-4099'")
+        .bind(bulk_tenant.id()).execute(&owner).await.unwrap();
+    let mut indexed = bulk.begin(false).await.unwrap();
+    assert!(
+        indexed
+            .find_page(Model::Account, "userId", "imported-4099", None, 1)
+            .await
+            .is_err()
+    );
+    indexed.commit().await.unwrap();
 
     // A transplanted index must not authenticate a different valid encrypted row.
     let moved_indexes: Vec<String> = sqlx::query_scalar("UPDATE fl_better_auth.unique_claims SET id='imported-0' WHERE tenant_id=$1 AND model='user' AND field='email' AND id='imported-4099' RETURNING blind_index")

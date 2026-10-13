@@ -100,7 +100,15 @@ impl<S: AuthStore> SessionService<S> {
         let mut sessions = Vec::new();
         let mut after = None;
         loop {
-            let page = tx.list_page(Model::Session, after, 256).await?;
+            let page = tx
+                .find_page(
+                    Model::Session,
+                    "userId",
+                    field_text(&current.user, "id")?,
+                    after,
+                    256,
+                )
+                .await?;
             for session in page.records {
                 if session["userId"] == current.user["id"]
                     && field_time(&session, "expiresAt")? > now
@@ -175,7 +183,15 @@ impl<S: AuthStore> SessionService<S> {
         } else {
             let mut after = None;
             loop {
-                let page = tx.list_page(Model::Session, after, 256).await?;
+                let page = tx
+                    .find_page(
+                        Model::Session,
+                        "userId",
+                        field_text(&current.user, "id")?,
+                        after,
+                        256,
+                    )
+                    .await?;
                 for session in page.records {
                     if session["userId"] != current.user["id"] {
                         continue;

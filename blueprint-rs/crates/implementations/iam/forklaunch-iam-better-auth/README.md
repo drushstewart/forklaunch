@@ -53,8 +53,23 @@ table DML and sequence usage, without SUPERUSER/BYPASSRLS. Request-specific audi
 contexts require a nonempty correlation ID. Graph relationships and cascades
 belong to the auth service. Whole-model scans fail above 4096 records; callers
 can traverse insertion-ordered 256-record pages within a transaction. Exact
-user/organization/session unique-field lookups use indexes. Account and member
-query migration remains necessary for scalable deployments.
+user/organization/session unique-field lookups use indexes. `find_page` also
+supports nonunique relationship fields with case-sensitive string matching:
+user IDs on sessions/accounts/members, account/provider IDs, organization IDs,
+team IDs, invitation emails, role names and verification identifiers. PostgreSQL
+stores keyed blind indexes, including retained encryption keys; queries deduplicate
+rotated-key matches and recheck decrypted fields before returning rows. Memory
+maintains equivalent ordered indexes inside the transaction snapshot.
+
+Migration `0003_relation_indexes.sql` adds the forced-RLS `lookup_claims` table;
+grant the restricted runtime role its SELECT/INSERT/UPDATE/DELETE privileges.
+Opening the store rebuilds legacy relationship indexes in bounded pages under
+the tenant write lock; this startup cost scales with the existing dataset.
+Deploy index-aware writers together, since old binaries do not maintain these
+claims. `reindex_relationships` also supports trusted key-rotation/backfill work.
+Signup/signin, session collection operations, linked-account listing/removal and
+organization membership checks/listing now use scoped indexes. Other handlers
+still require query migration before claiming scalable production parity.
 
 `keyring::KeyRing` initializes keys atomically, selects the newest live key,
 restores private keys from storage, rotates keys through trusted operator calls,
@@ -76,9 +91,8 @@ session cookie headers/clearing and CSRF/Origin guards, including the generated
 CLI preset. Token reads, sign-out and single-session revocation use exact indexed
 lookups. Session lists and bulk revocation traverse bounded storage pages under
 one transaction, preserving insertion order, foreign-user isolation and expired
-session semantics beyond 4096 rows. Collection operations still scan the tenant's
-sessions; listing materializes the matching response array. User-scoped indexes
-remain necessary to reduce large-tenant latency.
+session semantics beyond 4096 rows. Collection pages use the user-ID index;
+listing still materializes the matching response array.
 
 `accounts::CredentialService` provides atomic native email signup/signin. Scrypt
 runs in a shared bounded blocking pool outside tenant write locks; concurrent
