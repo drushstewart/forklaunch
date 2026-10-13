@@ -103,6 +103,11 @@ fn append_message(
             "socket channel addresses must be nonempty and exclude query/fragment delimiters",
         ));
     }
+    if !entry.valid_binary_shape() {
+        return Err(invalid(
+            "Binary socket entries require the canonical binary shape",
+        ));
+    }
     let format = schema_format(&entry.shape);
     let mut location = vec!["channels", channel, "messages", name, "payload"];
     if format.is_some() {
@@ -113,7 +118,10 @@ fn append_message(
         Some(format) => json!({"schemaFormat":format,"schema":payload}),
         None => payload,
     };
-    let message = json!({"name":name,"payload":payload});
+    let mut message = json!({"name":name,"payload":payload});
+    if entry.binary {
+        message["contentType"] = json!("application/octet-stream");
+    }
     let channel = channels
         .entry(channel)
         .or_insert_with(|| json!({"address":channel,"messages":{}}));

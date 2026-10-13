@@ -19,6 +19,9 @@ pub struct AsyncApiEnrichment {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SocketSchemaEntry {
     pub shape: Value,
+    /// Explicit raw bytes; never inferred from a JSON Schema format annotation.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub binary: bool,
     #[serde(flatten)]
     pub enrichment: AsyncApiEnrichment,
 }
@@ -27,8 +30,22 @@ impl SocketSchemaEntry {
     pub fn new(shape: Value) -> Self {
         Self {
             shape,
+            binary: false,
             enrichment: AsyncApiEnrichment::default(),
         }
+    }
+    /// Raw bytes without JSON interpretation. Message byte limits still apply.
+    #[must_use]
+    pub fn binary() -> Self {
+        Self {
+            binary: true,
+            ..Self::new(serde_json::json!({"type":"string","format":"binary"}))
+        }
+    }
+    /// Reject contradictory schema assertions rather than silently discarding them.
+    #[must_use]
+    pub fn valid_binary_shape(&self) -> bool {
+        !self.binary || self.shape == serde_json::json!({"type":"string","format":"binary"})
     }
     /// Derive the same schema used by a framework-validated payload type.
     ///

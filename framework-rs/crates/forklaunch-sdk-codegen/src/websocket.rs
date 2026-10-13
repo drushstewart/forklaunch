@@ -11,6 +11,7 @@ use crate::{SchemaModels, compile_schema};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SocketPayloadPlan {
     pub schema: Value,
+    pub binary: bool,
     pub models: SchemaModels,
 }
 
@@ -40,24 +41,41 @@ impl SocketSdkPlan {
                 "Socket SDK path must be an absolute path without query/fragment/control characters"
             );
         }
+        if contract.close_reason.values().any(|entry| entry.binary) {
+            bail!("WebSocket close reasons must be UTF-8, not raw binary");
+        }
         Ok(Self {
             path: contract.path.clone(),
             incoming: collection("SocketIncoming", &contract.server_messages)?,
             outgoing: collection("SocketOutgoing", &contract.client_messages)?,
-            ping: payload(
-                "SocketPing",
-                contract.ping.as_ref().map(|entry| &entry.shape),
-            )?,
-            pong: payload(
-                "SocketPong",
-                contract.pong.as_ref().map(|entry| &entry.shape),
-            )?,
+            ping: payload("SocketPing", contract.ping.as_ref())?,
+            pong: payload("SocketPong", contract.pong.as_ref())?,
             close: collection("SocketClose", &contract.close_reason)?,
         })
     }
 }
 
-fn payload(name: &str, schema: Option<&Value>) -> Result<SocketPayloadPlan> {
+fn payload(name: &str, entry: Option<&SocketSchemaEntry>) -> Result<SocketPayloadPlan> {
+    if let Some(entry) = entry.filter(|entry| entry.binary) {
+        if !entry.valid_binary_shape() {
+            bail!("Binary socket entries require the canonical binary shape");
+        }
+        return Ok(SocketPayloadPlan {
+            schema: entry.shape.clone(),
+            binary: true,
+            models: SchemaModels {
+                rust_models: Vec::new(),
+                rust_aliases: vec![crate::RustTypeAliasTemplate {
+                    name: name.into(),
+                    target_type: "Vec<u8>".into(),
+                }],
+                rust_type: name.into(),
+                typescript_type: "Uint8Array".into(),
+                typescript_definitions: BTreeMap::new(),
+            },
+        });
+    }
+    let schema = entry.map(|entry| &entry.shape);
     let empty = json!({});
     let schema = schema.unwrap_or(&empty);
     // Validate constraints as well as the type graph before emitting source.
@@ -65,6 +83,7 @@ fn payload(name: &str, schema: Option<&Value>) -> Result<SocketPayloadPlan> {
     let models = compile_schema(name, schema)?;
     Ok(SocketPayloadPlan {
         schema: schema.clone(),
+        binary: false,
         models,
     })
 }
@@ -77,7 +96,10 @@ fn collection(
         bail!("Socket SDK message names must not be empty");
     }
     if entries.len() <= 1 {
-        return payload(name, entries.values().next().map(|entry| &entry.shape));
+        return payload(name, entries.values().next());
+    }
+    if entries.values().any(|entry| entry.binary) {
+        bail!("Binary socket directions require exactly one explicit message entry");
     }
     if entries.len() > 1024 {
         bail!("Socket message union exceeds 1024 alternatives");
@@ -118,7 +140,7 @@ fn collection(
     let mut dialect = None;
     for (index, entry) in entries.values().enumerate() {
         // Validate the standalone graph before rebasing its document-local refs.
-        let checked = payload(&format!("{name}Variant{index}"), Some(&entry.shape))?;
+        let checked = payload(&format!("{name}Variant{index}"), Some(entry))?;
         let current = checked
             .schema
             .get("$schema")
@@ -135,7 +157,7 @@ fn collection(
         schemas.push(serde_json::from_str::<Value>(&relocated)?);
     }
     let schema = json!({"$schema": dialect, "anyOf": schemas});
-    payload(name, Some(&schema))
+    payload(name, Some(&SocketSchemaEntry::new(schema)))
 }
 
 struct UnionBytes(usize);
@@ -155,6 +177,41 @@ impl std::io::Write for UnionBytes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary_metadata_is_explicit_and_rejects_ambiguous_constraints() {
+        let mut contract = SocketContract::new("/bytes")
+            .with_client_message("bytes", SocketSchemaEntry::binary())
+            .with_server_message("bytes", SocketSchemaEntry::binary());
+        contract.ping = Some(SocketSchemaEntry::binary());
+        contract.pong = Some(SocketSchemaEntry::binary());
+        let encoded = serde_json::to_vec(&contract).unwrap();
+        let decoded: SocketContract = serde_json::from_slice(&encoded).unwrap();
+        let plan = SocketSdkPlan::from_contract(&decoded).unwrap();
+        assert!(
+            plan.incoming.binary && plan.outgoing.binary && plan.ping.binary && plan.pong.binary
+        );
+        assert_eq!(plan.incoming.models.typescript_type, "Uint8Array");
+        assert_eq!(plan.outgoing.models.rust_aliases[0].target_type, "Vec<u8>");
+        let mut invalid = contract.clone();
+        invalid.client_messages.get_mut("bytes").unwrap().shape["minLength"] = json!(3);
+        assert!(SocketSdkPlan::from_contract(&invalid).is_err());
+        let mut invalid = contract.clone();
+        invalid
+            .close_reason
+            .insert("bytes".into(), SocketSchemaEntry::binary());
+        assert!(SocketSdkPlan::from_contract(&invalid).is_err());
+        let invalid =
+            contract.with_client_message("text", SocketSchemaEntry::new(json!({"type":"string"})));
+        assert!(SocketSdkPlan::from_contract(&invalid).is_err());
+        let contract = SocketContract::new("/text").with_client_message(
+            "text",
+            SocketSchemaEntry::new(json!({"type":"string","format":"binary"})),
+        );
+        let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+        assert!(!plan.outgoing.binary);
+        assert_eq!(plan.outgoing.models.typescript_type, "string");
+    }
 
     #[test]
     fn client_directions_rebase_standalone_recursive_alternatives_and_keep_literal_data() {

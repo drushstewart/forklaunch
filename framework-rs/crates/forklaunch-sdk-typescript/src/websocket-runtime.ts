@@ -362,24 +362,26 @@ function socketBytes(data: RawData): Buffer {
 }
 
 class SocketCodec<T> {
-  private readonly validate: ValidateFunction;
+  private readonly validate?: ValidateFunction;
   constructor(
     schema: AnySchema,
     private readonly limit: number,
+    private readonly binary = false,
   ) {
-    this.validate = socketValidator(schema);
+    if (!binary) this.validate = socketValidator(schema);
   }
   private check(value: unknown): T {
     socketJsonBounds(value, this.limit);
-    if (!this.validate(value))
+    if (!this.validate?.(value))
       throw new Error(
-        `Invalid WebSocket payload: ${JSON.stringify(this.validate.errors)}`,
+        `Invalid WebSocket payload: ${JSON.stringify(this.validate?.errors)}`,
       );
     return value as T;
   }
   decode(bytes: Buffer): T {
     if (bytes.length > this.limit)
       throw new Error('WebSocket payload byte limit');
+    if (this.binary) return Uint8Array.from(bytes) as T;
     const text = bytes.toString('utf8');
     let value: unknown;
     try {
@@ -390,6 +392,11 @@ class SocketCodec<T> {
     return this.check(value);
   }
   encode(value: T): Buffer {
+    if (this.binary) {
+      if (!(value instanceof Uint8Array)) throw new Error('Expected binary WebSocket Uint8Array');
+      if (value.byteLength > this.limit) throw new Error('WebSocket payload byte limit');
+      return Buffer.from(value);
+    }
     // Validate the serialized JSON projection, matching serde's outgoing values.
     socketJsonBounds(value, this.limit);
     const json = JSON.stringify(value);
@@ -445,6 +452,7 @@ class SocketRuntime<I, O, P, Q, C> implements AsyncIterable<
     url: string,
     schemas: SocketSchemaSet,
     options: SocketClientOptions,
+    binary: Partial<Record<keyof SocketSchemaSet, boolean>> = {},
   ) {
     const handshakeTimeoutMs = socketTimeout(
       options.handshakeTimeoutMs,
@@ -481,22 +489,27 @@ class SocketRuntime<I, O, P, Q, C> implements AsyncIterable<
     this.incoming = new SocketCodec(
       schemas.incoming,
       this.options.maxMessageBytes,
+      binary.incoming,
     );
     this.outgoing = new SocketCodec(
       schemas.outgoing,
       this.options.maxMessageBytes,
+      binary.outgoing,
     );
     this.pingCodec = new SocketCodec(
       schemas.ping,
       Math.min(125, this.options.maxMessageBytes),
+      binary.ping,
     );
     this.pongCodec = new SocketCodec(
       schemas.pong,
       Math.min(125, this.options.maxMessageBytes),
+      binary.pong,
     );
     this.closeCodec = new SocketCodec(
       schemas.close,
       Math.min(123, this.options.maxMessageBytes),
+      binary.close,
     );
     if (options.signal?.aborted) throw socketAbort();
     this.ws = new WebSocket(url, options.protocols ?? [], {

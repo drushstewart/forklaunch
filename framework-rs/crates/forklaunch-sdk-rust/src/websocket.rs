@@ -60,14 +60,19 @@ pub fn generate_rust_websocket_sdk_source(
         .into_iter()
         .zip(payloads)
     {
-        // A quoted JSON string is data, even when schema literals contain Rust delimiters.
-        let json = serde_json::to_string(&payload.schema)?;
-        let _ = writeln!(
-            source,
-            "let {name} = serde_json::from_str({json:?}).map_err(|error| PayloadError::Invalid(format!(\"embedded schema: {{error}}\")))?;"
-        );
+        if payload.binary {
+            let _ = writeln!(source, "let {name} = PayloadCodec::bytes();");
+        } else {
+            // A quoted JSON string is data, even when literals contain Rust delimiters.
+            let json = serde_json::to_string(&payload.schema)?;
+            let _ = writeln!(
+                source,
+                "let {name} = serde_json::from_str({json:?}).map_err(|error| PayloadError::Invalid(format!(\"embedded schema: {{error}}\")))?;"
+            );
+            let _ = writeln!(source, "let {name} = PayloadCodec::json_schema(&{name})?;");
+        }
     }
-    source.push_str("Ok(SocketSchemas::new(PayloadCodec::json_schema(&incoming)?, PayloadCodec::json_schema(&outgoing)?)\n.with_ping(PayloadCodec::json_schema(&ping)?)\n.with_pong(PayloadCodec::json_schema(&pong)?)\n.with_close(PayloadCodec::json_schema(&close)?))\n}\n");
+    source.push_str("Ok(SocketSchemas::new(incoming, outgoing)\n.with_ping(ping)\n.with_pong(pong)\n.with_close(close))\n}\n");
     source.push_str("pub async fn connect<R: IntoClientRequest + Unpin>(request: R, options: SocketOptions) -> Result<(Self, ClientHandshakeResponse), SocketError> {\nlet (socket, response) = transport::connect_with_response(request, Self::schemas()?, options).await?;\nOk((Self { socket }, response))\n}\n");
     source.push_str("pub fn from_socket(socket: SocketConnection) -> Self { Self { socket } }\npub fn socket(&mut self) -> &mut SocketConnection { &mut self.socket }\npub fn into_socket(self) -> SocketConnection { self.socket }\n");
     let _ = writeln!(

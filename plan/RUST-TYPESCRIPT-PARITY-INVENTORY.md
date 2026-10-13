@@ -1688,3 +1688,26 @@ logic remain at their existing boundaries. All 1,075 CLI tests pass
 (`/private/tmp/fl-shared-template-tests.log`).
 
 Checklist: **620/682 (90.9%), 62 open**.
+
+
+### Checked binary WebSocket metadata (2026-10-12)
+
+`SocketSchemaEntry::binary()` persists an explicit binary marker with a canonical
+schema. Checked plans emit byte codecs in both SDK languages, preserve invalid
+UTF-8/JSON-looking payloads, and publish `application/octet-stream` per message
+in AsyncAPI. JSON Schema format annotations alone do not opt into raw bytes.
+Ambiguous message unions, extra binary schema assertions and binary close
+reasons fail generation. Ping/pong may use binary codecs within protocol bounds.
+
+Validation: both generated SDKs compile and exchange ten actual binary messages
+with an isolated `ws` server, plus control frames and oversize rejection. Empty
+payloads, all byte values, invalid UTF-8 and JSON-looking bytes round-trip exactly.
+The existing TypeScript SDK suite passes 12,960 native and actual TypeScript/AJV
+codec comparisons and its authorization, cancellation, queue, control/close and
+malformed-peer checks. All 77 selected native tests, strict all-target/all-feature
+Clippy, rebuilt CLI and all 770 package entries pass. CI includes
+`cli/tests/rust_ws_binary_runtime.mjs`. Logs are
+`/private/tmp/fl-binary-socket-{runtime,json-regression,tests-final,clippy-final,package}.log`.
+
+Checklist: **621/682 (91.1%), 61 open**. External binary AsyncAPI imports remain
+separately scoped; this closes explicit native artifact metadata and generation.

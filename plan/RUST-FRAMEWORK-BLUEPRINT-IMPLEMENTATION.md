@@ -486,7 +486,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Align raw native JSON Schema codec resolution of encoded interior separators with actual AJV token decoding outside the checked SDK/export profile. An isolated, provenance-pinned resolver decodes each URI token once at lookup and registry-discovery boundaries, preserving internal pointers, literals, recursion and embedded resource IDs. Default upstream RFC behavior remains independently tested. Checked SDK/export/import profiles continue rejecting this ambiguous extension.
 - [x] Match actual AJV validation of constraints beside `$ref` in Drafts 4–7 through a separate isolated opt-in validator feature, preserving dialect-specific keywords and original schema documents. All five supported dialects pass 12,960 actual helper/AJV codec comparisons, including interior separators, invalid escapes, annotation targets, recursive and scoped resources, sibling constraints and unchanged literal assertions.
 - [x] Bundle explicitly referenced schemas stored inside const/enum/default/example data without mutating the original literal payload constraints. Share collision-checked copies and recursive edges with bounded common relocation, preserve embedded resource bases, retain idempotence, and validate full original output with independent AJV plus structural parser checks. Portable multi-socket fixtures compile both language models.
-- [ ] Carry explicit raw binary payload metadata through checked socket contracts and both generated clients.
+- [x] Carry explicit raw binary payload metadata through checked socket contracts and both generated clients. Canonical binary entries produce Rust `Vec<u8>`/TypeScript `Uint8Array` codecs and octet-stream AsyncAPI messages; live generated clients preserve arbitrary bytes and enforce message/control bounds. Reject mixed binary/JSON directions, contradictory schemas and binary close reasons. External AsyncAPI binary imports remain in the broader import task.
 - [x] Exercise and harden actual TypeScript automatic control-reply failures and abnormal closes with required pong/close schemas. (one error and 1008 before typed delivery, five-second unresponsive-peer close bound, preserved manual validation and explicit autoPong=false; live CI fixture and 110 unit/integration tests)
 - [x] Reject boolean `false` message schemas before typed delivery on actual TypeScript client and server sockets; preserve `true` decoding and absent-schema raw frames, with a reproduced live regression and outgoing validation checks.
 - [x] Generate Rust WebSocket clients. (`SocketSdkPlan`, `generate_rust_websocket_sdk_source`: typed directions/controls, recursive unions, retained upgrade responses, actual TypeScript server conformance, invalid peer rejection and warning-free recursive/empty consumer compilation)
@@ -1658,3 +1658,26 @@ logic remain at their existing boundaries. All 1,075 CLI tests pass
 (`/private/tmp/fl-shared-template-tests.log`).
 
 Checklist: **620/682 (90.9%), 62 open**.
+
+
+### Checked binary WebSocket metadata (2026-10-12)
+
+`SocketSchemaEntry::binary()` persists an explicit binary marker with a canonical
+schema. Checked plans emit byte codecs in both SDK languages, preserve invalid
+UTF-8/JSON-looking payloads, and publish `application/octet-stream` per message
+in AsyncAPI. JSON Schema format annotations alone do not opt into raw bytes.
+Ambiguous message unions, extra binary schema assertions and binary close
+reasons fail generation. Ping/pong may use binary codecs within protocol bounds.
+
+Validation: both generated SDKs compile and exchange ten actual binary messages
+with an isolated `ws` server, plus control frames and oversize rejection. Empty
+payloads, all byte values, invalid UTF-8 and JSON-looking bytes round-trip exactly.
+The existing TypeScript SDK suite passes 12,960 native and actual TypeScript/AJV
+codec comparisons and its authorization, cancellation, queue, control/close and
+malformed-peer checks. All 77 selected native tests, strict all-target/all-feature
+Clippy, rebuilt CLI and all 770 package entries pass. CI includes
+`cli/tests/rust_ws_binary_runtime.mjs`. Logs are
+`/private/tmp/fl-binary-socket-{runtime,json-regression,tests-final,clippy-final,package}.log`.
+
+Checklist: **621/682 (91.1%), 61 open**. External binary AsyncAPI imports remain
+separately scoped; this closes explicit native artifact metadata and generation.
