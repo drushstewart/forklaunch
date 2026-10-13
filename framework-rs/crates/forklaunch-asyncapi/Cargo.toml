@@ -11,6 +11,7 @@ default = []
 import = ["forklaunch-ws/json-schema"]
 
 [dependencies]
+forklaunch-sdk-codegen = { path = "../forklaunch-sdk-codegen" }
 forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-contract = { path = "../forklaunch-contract", features = ["json-schema"] }
 forklaunch-ws = { path = "../forklaunch-ws" }

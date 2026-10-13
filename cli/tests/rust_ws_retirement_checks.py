@@ -72,7 +72,7 @@ try:
         watch = subprocess.Popen([cli, 'sdk', 'watch', '--path', '.', '--from', 'socket-contract', '--target', 'all', '--service', 'realtime', '--interval-ms', '100'], stdout=log, stderr=log)
         try:
             deadline = time.monotonic() + 30
-            while b'Watching Rust' not in os.pread(log.fileno(), 1024 * 1024, 0):
+            while b'Watching socket-contract artifacts' not in os.pread(log.fileno(), 1024 * 1024, 0):
                 assert time.monotonic() < deadline and watch.poll() is None, os.pread(log.fileno(), 1024 * 1024, 0)
                 time.sleep(0.1)
             # Watch initialization regenerates active source; edit it again

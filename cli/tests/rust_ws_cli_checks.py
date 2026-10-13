@@ -126,12 +126,12 @@ try:
         try:
             ready = time.monotonic() + 30
             while time.monotonic() < ready:
-                if b'Watching Rust' in os.pread(log.fileno(), 1024 * 1024, 0):
+                if b'Watching socket-contract artifacts' in os.pread(log.fileno(), 1024 * 1024, 0):
                     break
                 assert watch.poll() is None, 'Socket watch stopped before initialization'
                 time.sleep(0.1)
             else:
-                raise AssertionError('Socket watch did not initialize')
+                raise AssertionError('Socket watch did not initialize: ' + os.pread(log.fileno(), 1024 * 1024, 0).decode(errors='replace'))
             manifest.write_text(custom_manifest + '\n[temporarily invalid')
             rejected_manifest = time.monotonic() + 30
             while time.monotonic() < rejected_manifest:

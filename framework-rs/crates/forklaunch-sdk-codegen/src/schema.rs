@@ -90,6 +90,20 @@ pub(crate) fn bundle(
     bundle_with_resource_policy(schema, document, budget, true)
 }
 
+/// Eliminate resource scopes before placing a standalone schema into a union.
+/// Resource-free schemas retain their original annotations and pointer layout.
+#[allow(dead_code)] // Shared CLI module only uses model generation.
+pub(crate) fn scoped_runtime_schema(schema: &Value) -> Result<Value> {
+    let mut budget = ExpansionBudget::default();
+    let resources = resources::Resources::index(schema, &mut budget)?;
+    if resources.needs_runtime_bundle() {
+        resources.check_runtime_dialects()?;
+        bundle(schema, schema, &mut budget)
+    } else {
+        clone_literal(schema, &mut budget)
+    }
+}
+
 pub(crate) fn bundle_with_resource_policy(
     schema: &Value,
     document: &Value,

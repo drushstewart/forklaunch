@@ -82,17 +82,13 @@ fn payload(name: &str, entry: Option<&SocketSchemaEntry>) -> Result<SocketPayloa
     let schema = schema.unwrap_or(&empty);
     // Validate constraints as well as the type graph before emitting source.
     PayloadCodec::<Value>::json_schema(schema).context("Invalid socket payload schema")?;
-    // Socket unions still rebase document-local pointers. Resource-aware union
-    // relocation is a separate profile; do not widen it with HTTP model support.
-    crate::schema::bundle_with_resource_policy(
-        schema,
-        schema,
-        &mut crate::schema::ExpansionBudget::default(),
-        false,
-    )?;
     let models = compile_schema(name, schema)?;
+    // Resolve standalone resource scopes before union relocation so separate
+    // messages may safely reuse IDs and dynamic anchor names.
+    let schema = crate::schema::scoped_runtime_schema(schema)?;
+    PayloadCodec::<Value>::json_schema(&schema).context("Invalid bundled socket payload schema")?;
     Ok(SocketPayloadPlan {
-        schema: schema.clone(),
+        schema,
         binary: false,
         json_encoding: entry.is_some_and(|entry| entry.json_encoding),
         models,
@@ -197,6 +193,57 @@ impl std::io::Write for UnionBytes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resource_unions_isolate_duplicate_ids_and_recursive_bindings() {
+        for (dialect, anchor, reference) in [
+            (
+                "https://json-schema.org/draft/2020-12/schema",
+                "$dynamicAnchor",
+                "$dynamicRef",
+            ),
+            (
+                "https://json-schema.org/draft/2019-09/schema",
+                "$recursiveAnchor",
+                "$recursiveRef",
+            ),
+            ("http://json-schema.org/draft-07/schema#", "", "$ref"),
+        ] {
+            let mut contract = SocketContract::new("/scopes");
+            for (name, kind) in [("text", "string"), ("count", "integer")] {
+                let mut schema = json!({"$schema":dialect, "$id":"https://schemas.test/shared", "type":"object", "additionalProperties":false,
+                    "required":["value"], "properties":{"value":{"type":kind}, "next":{reference:if reference == "$dynamicRef" {"#node"} else {"#"}}},
+                    "examples":[{"$id":"literal", "$ref":"literal"}]});
+                if anchor == "$dynamicAnchor" {
+                    schema[anchor] = json!("node");
+                }
+                if anchor == "$recursiveAnchor" {
+                    schema[anchor] = json!(true);
+                }
+                contract = contract.with_server_message(name, SocketSchemaEntry::json(schema));
+            }
+            let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+            let codec = PayloadCodec::<Value>::json_schema(&plan.incoming.schema).unwrap();
+            for value in [
+                json!({"value":"a", "next":{"value":"b"}}),
+                json!({"value":1, "next":{"value":2}}),
+            ] {
+                assert!(codec.decode(&serde_json::to_vec(&value).unwrap()).is_ok());
+            }
+            for value in [
+                json!({"value":"a", "next":{"value":2}}),
+                json!({"value":1, "next":{"value":"b"}}),
+                json!({"next":{}}),
+            ] {
+                assert!(codec.decode(&serde_json::to_vec(&value).unwrap()).is_err());
+            }
+            assert!(plan.incoming.schema["anyOf"][0].get("$id").is_none());
+            assert_eq!(
+                plan.incoming.schema["anyOf"][0]["examples"][0]["$ref"],
+                "literal"
+            );
+        }
+    }
 
     #[test]
     fn json_encoding_is_preserved_and_mixed_encodings_are_rejected() {
@@ -321,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn draft_four_models_ignore_later_keywords_and_reject_legacy_resource_ids() {
+    fn draft_four_models_ignore_later_keywords_and_accept_legacy_resource_ids() {
         let schema = json!({"$schema":"http://json-schema.org/draft-04/schema#","type":"object","required":["value"],"properties":{"value":{"type":"string","const":"ignored"}},"const":{"literal":"annotation"}});
         let contract = SocketContract::new("/legacy")
             .with_server_message("legacy", SocketSchemaEntry::new(schema.clone()));
@@ -339,7 +386,7 @@ mod tests {
         ] {
             let contract = SocketContract::new("/legacy")
                 .with_server_message("legacy", SocketSchemaEntry::new(schema));
-            assert!(SocketSdkPlan::from_contract(&contract).is_err());
+            assert!(SocketSdkPlan::from_contract(&contract).is_ok());
         }
     }
 
@@ -380,7 +427,8 @@ mod tests {
         for schema in [
             json!({"type":"string","minLength":-1}),
             json!({"$ref":"#/missing"}),
-            json!({"$id":"https://example.test/schema","type":"string"}),
+            json!({"$id":"https://example.test/schema","$ref":"unbundled"}),
+            json!({"$schema":"https://json-schema.org/draft/2020-12/schema", "$id":"https://schemas.test/root", "type":"object", "properties":{"legacy":{"$schema":"http://json-schema.org/draft-04/schema#", "id":"legacy", "type":"number", "minimum":1, "exclusiveMinimum":true}}}),
         ] {
             let contract = SocketContract::new("/chat")
                 .with_client_message("input", SocketSchemaEntry::new(schema));

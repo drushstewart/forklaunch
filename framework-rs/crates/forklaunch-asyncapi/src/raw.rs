@@ -149,7 +149,9 @@ fn schema_format(schema: &Value) -> Option<String> {
         .map(|version| format!("application/schema+json;version={version}"))
 }
 fn embedded_schema(schema: &Value, location: &[&str]) -> FrameworkResult<Value> {
-    let bundled = forklaunch_contract::bundle_literal_schema_references_unscoped(schema)
+    let scoped = forklaunch_sdk_codegen::bundle_schema_resources(schema)
+        .map_err(|error| invalid(&format!("socket resource scope: {error}")))?;
+    let bundled = forklaunch_contract::bundle_literal_schema_references_unscoped(&scoped)
         .map_err(|error| invalid(error.message()))?;
     let mut normalized = bundled.clone();
     let draft4 = schema
@@ -478,9 +480,13 @@ mod tests {
             true
         );
         let scoped=SocketContract::new("/legacy").with_client_message("legacy",SocketSchemaEntry::new(json!({"$schema":"http://json-schema.org/draft-04/schema#","id":"https://example.test/schema","type":"string"})));
-        assert!(
-            generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Legacy", "1"), &scoped).is_err()
-        );
+        let document: Value = serde_json::from_str(
+            &generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Legacy", "1"), &scoped).unwrap(),
+        )
+        .unwrap();
+        let schema = &document["channels"]["legacy"]["messages"]["legacy"]["payload"]["schema"];
+        assert_eq!(schema["type"], "string");
+        assert!(schema.get("id").is_none());
     }
 
     #[test]
@@ -517,8 +523,8 @@ mod tests {
             json!(42),
             json!({"$ref":"#/missing"}),
             json!({"$ref":"https://example.com/schema"}),
-            json!({"$id":"urn:example:resource"}),
-            json!({"$anchor":"named"}),
+            json!({"$id":"urn:example:resource","$ref":"https://example.com/missing"}),
+            json!({"$anchor":"invalid anchor"}),
             json!({"$ref":"#anchor"}),
             json!({"anyOf":{}}),
             json!({"properties":{"invalid":42}}),

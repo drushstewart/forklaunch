@@ -2713,3 +2713,43 @@ Five committed dynamic fixtures and the completed recursive fixture were cleaned
 up (182 generated workspaces removed cumulatively). Checklist remains
 **651/682 (95.5%), 31 open**; remaining resource work includes legacy fragment
 IDs and resource-aware socket unions.
+
+
+### 2026-10-13 — Resource-aware socket unions and raw AsyncAPI export
+
+Socket plans now resolve each standalone resource graph before combining message
+schemas. Two messages can reuse the same `$id` and anchor names without sharing
+recursive bindings. The public `bundle_schema_resources` operation is shared
+with raw AsyncAPI export, which resolves resource scopes before document-pointer
+relocation. Resource-free schemas retain their original annotation/pointer
+layout. Both workspace locks record the AsyncAPI → SDK-codegen dependency.
+
+`rust_ws_resources_runtime.mjs` generates strict TypeScript and Rust consumers
+for static, Draft-4, 2020-12 dynamic and 2019-09 recursive unions. Both clients
+complete 16 live roundtrips; malformed recursive cross-variant values and
+constraint-invalid outgoing values fail. The emitted AsyncAPI document passes
+the official schema with format validation. CI runs the fixture. Runtime
+bundling explicitly requires one dialect per standalone message: model-only
+HTTP imports can preserve mixed embedded dialects, but runtime translation of
+mixed-dialect constraints remains open.
+
+Validation: 27 AsyncAPI, 32 shared compiler, 5 Rust generator, 8 TypeScript
+generator and 1,088 CLI tests pass; strict native clippy, framework formatting,
+all-feature API docs, 890 packaged sources and security audit pass with no
+unexpected advisories. Existing metadata checks retain 34 actual TypeScript/native
+comparisons, 63 parser documents with 11 known limitations, and six dictionary
+alias comparisons. Generated TypeScript regression retains both module formats,
+13,908 native/TypeScript codec comparisons and full live transport controls.
+
+A rebuilt CLI passes relocated generation/check/watch, invalid edit recovery,
+staging, ownership/containment, retirement, strict consumers, actual TypeScript
+socket peer roundtrips, service rename/delete, and generated HTTP/MCP startup,
+discovery, invocation and shutdown before/after rename. Two stale readiness
+assertions were updated to the watch banner already merged from main. The first
+live-client invocation omitted the parser environment variable; validation
+resumed at that step with the fixture dependency set and all remaining lifecycle
+checks passed. Evidence: `fl-socket-resource-{runtime,tests,clippy,cli-tests,metadata,ts-regression,cli-runtime,cli-resume,docs,format,package,audit}.log`.
+
+Checklist remains **651/682 (95.5%), 31 open**. The resource gate still covers
+legacy ID fragments and mixed runtime/import constraints. Completed socket
+fixtures are cleaned after committing the source change.

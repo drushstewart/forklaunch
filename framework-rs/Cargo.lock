@@ -1195,6 +1195,7 @@ version = "0.1.0"
 dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
+ "forklaunch-sdk-codegen",
  "forklaunch-ws",
  "percent-encoding",
  "serde_json",

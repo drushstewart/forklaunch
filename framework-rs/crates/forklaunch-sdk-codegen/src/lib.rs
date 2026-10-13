@@ -12,6 +12,17 @@ pub use models::{
     render_rust_models,
 };
 
+/// Resolve bundled resource IDs and dynamic scopes into document-local references.
+/// Resource-free schemas retain their original annotations and pointer layout.
+/// This prepares standalone schemas for relocation into another document.
+///
+/// # Errors
+/// Rejects mixed runtime dialects, unsupported scopes, missing resources, unguarded recursion and
+/// schema expansion limits. No network or file retrieval occurs.
+pub fn bundle_schema_resources(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    schema::scoped_runtime_schema(value)
+}
+
 /// A bounded schema graph compiled into both client languages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchemaModels {

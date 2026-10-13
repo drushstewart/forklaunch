@@ -15,6 +15,7 @@ pub(super) struct Resources {
     default_dialect: String,
     default_base: String,
     has_ids: bool,
+    scope_keywords: bool,
     roots: BTreeMap<String, String>,
     anchors: BTreeMap<String, String>,
     dynamic: BTreeMap<String, Bindings>,
@@ -38,6 +39,7 @@ impl Resources {
             default_dialect: dialect.into(),
             default_base: ROOT.into(),
             has_ids: false,
+            scope_keywords: false,
             roots: BTreeMap::from([(ROOT.into(), String::new())]),
             anchors: BTreeMap::new(),
             dynamic: BTreeMap::new(),
@@ -65,6 +67,15 @@ impl Resources {
             }
             if let Some(object) = value.as_object() {
                 if schema {
+                    result.scope_keywords |= [
+                        "$anchor",
+                        "$dynamicAnchor",
+                        "$dynamicRef",
+                        "$recursiveAnchor",
+                        "$recursiveRef",
+                    ]
+                    .iter()
+                    .any(|keyword| object.contains_key(*keyword));
                     if let Some(declared) = object.get("$schema") {
                         let declared = declared
                             .as_str()
@@ -279,6 +290,31 @@ impl Resources {
             );
         }
         Ok(())
+    }
+
+    pub(super) fn check_runtime_dialects(&self) -> Result<()> {
+        fn dialect(value: &str) -> &str {
+            if value.is_empty() {
+                return "draft-07";
+            }
+            ["draft-04", "draft-06", "draft-07", "2019-09", "2020-12"]
+                .into_iter()
+                .find(|draft| value.contains(draft))
+                .unwrap_or(value)
+        }
+        let expected = dialect(&self.default_dialect);
+        if self
+            .dialects
+            .values()
+            .any(|value| dialect(value) != expected)
+        {
+            bail!("Runtime resource bundling requires one JSON Schema dialect");
+        }
+        Ok(())
+    }
+
+    pub(super) fn needs_runtime_bundle(&self) -> bool {
+        self.has_ids || self.scope_keywords
     }
 
     pub(super) fn bindings(
