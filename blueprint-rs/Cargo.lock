@@ -1145,7 +1145,10 @@ name = "forklaunch-contract"
 version = "0.1.0"
 dependencies = [
  "forklaunch-common",
+ "forklaunch-jsonschema-protocol",
+ "indexmap",
  "percent-encoding",
+ "regex",
  "serde",
  "serde_json",
 ]
@@ -1619,8 +1622,6 @@ version = "0.1.0"
 dependencies = [
  "forklaunch-common",
  "forklaunch-contract",
- "forklaunch-jsonschema-protocol",
- "regex",
  "serde",
  "serde_json",
 ]

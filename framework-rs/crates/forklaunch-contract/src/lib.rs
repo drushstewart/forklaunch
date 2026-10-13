@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "schema-validation")]
+pub mod schema_validation;
+
 #[cfg(feature = "json-schema")]
 mod schema;
 #[cfg(feature = "json-schema")]
@@ -651,7 +654,7 @@ pub struct RouteContract {
     pub access: AccessLevel,
     pub request: RequestContract,
     pub responses: Vec<ResponseContract>,
-    pub versions: BTreeMap<String, VersionedContract>,
+    pub versions: indexmap::IndexMap<String, VersionedContract>,
     pub auth: Option<AuthConfig>,
     pub rbac: Option<RbacConfig>,
     pub options: RouteOptions,
@@ -912,7 +915,7 @@ impl RouteContract {
             access: AccessLevel::Public,
             request: RequestContract::default(),
             responses: Vec::new(),
-            versions: BTreeMap::new(),
+            versions: indexmap::IndexMap::new(),
             auth: None,
             rbac: None,
             options: RouteOptions::default(),
@@ -986,9 +989,36 @@ impl RouteContract {
         self
     }
 
+    /// Project a version while retaining route/auth metadata and common params.
+    #[must_use]
+    pub fn for_version(&self, version: &str) -> Option<Self> {
+        let selected = self.versions.get(version)?;
+        let mut route = self.clone();
+        route.request = selected.request.clone();
+        route.request.params.clone_from(&self.request.params);
+        route.responses.clone_from(&selected.responses);
+        route.versions.clear();
+        Some(route)
+    }
+
     #[must_use]
     pub fn with_version(mut self, version: VersionedContract) -> Self {
         self.versions.insert(version.version.clone(), version);
+        // JavaScript Object.entries enumerates canonical array-index keys first,
+        // then other strings in declaration order. Semantic versions stay ordered.
+        self.versions.sort_by(|left, _, right, _| {
+            let index = |key: &str| {
+                key.parse::<u32>()
+                    .ok()
+                    .filter(|value| *value != u32::MAX && value.to_string() == key)
+            };
+            match (index(left), index(right)) {
+                (Some(a), Some(b)) => a.cmp(&b),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            }
+        });
         self
     }
 

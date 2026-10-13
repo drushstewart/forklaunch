@@ -489,3 +489,25 @@ validation with independent AJV engines. Its receipt records AJV's existing
 Run
 `cli/tests/rust_schema_resources_runtime.sh` for live recursive Rust/TypeScript
 SDK checks from contract and OpenAPI artifacts, including HTTP/MCP startup.
+
+## Versioned HTTP request selection
+
+`RouteContract::with_version` retains declaration order, including JavaScript's
+canonical integer-key enumeration rules. For versioned JSON routes, the local
+router and Axum match each declared request and select the last successful one.
+They check response status against that version's responses. Common route
+parameters and auth policy remain shared. Live routers compile embedded schemas
+at construction through the same bounded, offline validator as socket codecs.
+Invalid version schemas fail during router construction.
+
+Local handlers read `FrameworkRequest.version`; Axum handlers can extract
+`Extension<forklaunch_http::SelectedVersion>`. This contains `version` and
+`matched_versions`. MCP exposes each version as `operation [v<version>]` when
+there is more than one version, with its own input/output schema; calls still go
+through normal HTTP selection and authentication. Calling an earlier tool with
+an overlapping request can therefore select a later HTTP version, matching the
+TypeScript implementation.
+
+`cli/tests/rust_versioned_api_parity.mjs` executes the actual TypeScript parser
+and compares its selections with Rust. Versioned OpenAPI/SDK projections and
+remaining non-JSON media/coercion cases are still tracked as incomplete.

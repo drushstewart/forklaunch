@@ -75,11 +75,30 @@ pub fn tool_names(registry: &ContractRegistry) -> Vec<String> {
 /// Routes opt out by setting `options.mcp = false`.
 #[must_use]
 pub fn mcp_tools(registry: &ContractRegistry) -> Vec<McpToolDefinition> {
+    mcp_routes(registry).iter().map(tool_from_route).collect()
+}
+
+fn mcp_routes(registry: &ContractRegistry) -> Vec<RouteContract> {
     registry
         .routes()
         .iter()
         .filter(|route| route.options.mcp)
-        .map(tool_from_route)
+        .flat_map(|route| {
+            if route.versions.is_empty() {
+                return vec![route.clone()];
+            }
+            route
+                .versions
+                .keys()
+                .map(|version| {
+                    let mut selected = route.for_version(version).expect("indexed version");
+                    if route.versions.len() > 1 {
+                        selected.operation_name = format!("{} [v{version}]", route.operation_name);
+                    }
+                    selected
+                })
+                .collect()
+        })
         .collect()
 }
 
@@ -263,6 +282,45 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn versioned_tools_keep_declaration_order_and_distinct_input_output_schemas() {
+        use forklaunch_contract::{RequestContract, ResponseContract, VersionedContract};
+        let mut route = RouteContract::post("Versioned", "Versioned", "/versioned/:id")
+            .with_param(FieldContract::required("id", "Id"));
+        for (version, kind, status) in [("z-first", "string", 201), ("a-last", "integer", 202)] {
+            let mut body = BodyContract::json("Input");
+            body.schema = body
+                .schema
+                .with_json_schema(format!(r#"{{"type":"{kind}"}}"#));
+            route = route.with_version(VersionedContract {
+                version: version.into(),
+                request: RequestContract::default().with_body(body.clone()),
+                responses: vec![ResponseContract::new(status, Some(body))],
+            });
+        }
+        let mut registry = ContractRegistry::new();
+        registry.register(route);
+        let definitions = mcp_tools(&registry);
+        assert_eq!(
+            definitions
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["versioned [vz-first]", "versioned [va-last]"]
+        );
+        for (tool, kind) in definitions.iter().zip(["string", "integer"]) {
+            assert!(
+                tool.input_schema_json
+                    .contains(&format!(r#""type":"{kind}""#))
+            );
+            assert!(tool.input_schema_json.contains("params"));
+            assert!(tool.output_schema_json.as_ref().unwrap().contains(kind));
+        }
+        let routes = mcp_routes(&registry);
+        assert_eq!(routes[0].responses[0].status_code, 201);
+        assert_eq!(routes[1].responses[0].status_code, 202);
+    }
 
     #[test]
     fn maps_routes_to_mcp_tool_definitions() {

@@ -1,7 +1,7 @@
 //! Streamable HTTP MCP transport using the official Rust SDK. Tool execution
 //! stays inside the supplied HTTP router, preserving its validation, auth,
 //! tenant binding, telemetry and handlers without making loopback requests.
-use crate::{AllowAllAuth, McpAuthCallback, mcp_tools};
+use crate::{AllowAllAuth, McpAuthCallback, mcp_routes, mcp_tools};
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -135,10 +135,7 @@ pub fn http_transport(
         return Err("MCP endpoint conflicts with an HTTP route".into());
     }
     let mut tools = BTreeMap::new();
-    for (definition, route) in mcp_tools(registry)
-        .into_iter()
-        .zip(registry.routes().iter().filter(|r| r.options.mcp))
-    {
+    for (definition, route) in mcp_tools(registry).into_iter().zip(mcp_routes(registry)) {
         let mut tool: Tool =
             serde_json::from_str(&definition.to_json()).map_err(|_| "Invalid MCP tool schema")?;
         // MCP structured outputs must be objects. Array/scalar HTTP bodies are
@@ -159,10 +156,7 @@ pub fn http_transport(
             tool.output_schema = None;
         }
         if tools
-            .insert(
-                definition.name,
-                (tool, ToolBinding::Http(Box::new(route.clone()))),
-            )
+            .insert(definition.name, (tool, ToolBinding::Http(Box::new(route))))
             .is_some()
         {
             return Err("Duplicate MCP tool name".into());

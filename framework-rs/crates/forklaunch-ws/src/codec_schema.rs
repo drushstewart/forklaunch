@@ -4,91 +4,9 @@ use serde_json::Value;
 use std::sync::Arc;
 
 pub(crate) fn compile(schema: &Value) -> Result<Arc<JsonValidator>, PayloadError> {
-    schema_budget(schema)?;
-    // Match the TypeScript AJV full-format profile: email domains
-    // require a dot, rather than accepting local-only mailboxes.
-    let email = regex::Regex::new(r"(?i)^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
-        .expect("static email pattern");
-    let uuid =
-        regex::Regex::new(r"(?i)^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$")
-            .expect("static UUID pattern");
-    let mut options = jsonschema::options()
-        .with_format("email", move |value| email.is_match(value))
-        .with_format("uuid", move |value| uuid.is_match(value))
-        .with_retriever(NoResources)
-        .should_validate_formats(true)
-        .with_pattern_options(
-            jsonschema::PatternOptions::fancy_regex()
-                .backtrack_limit(100_000)
-                .size_limit(1024 * 1024)
-                .dfa_size_limit(1024 * 1024),
-        );
-    if schema.get("$schema").is_none() {
-        options = options.with_draft(jsonschema::Draft::Draft7);
-    }
-    // The isolated validator dependency opts into AJV fragment-token decoding
-    // and older-draft $ref sibling constraints without rewriting schema data.
-    let validator = options
-        .build(schema)
-        .map_err(|error| PayloadError::Invalid(format!("invalid socket schema: {error}")))?;
-    Ok(Arc::new(move |value| {
-        validator.validate(value).map_err(|error| error.to_string())
-    }))
+    forklaunch_contract::schema_validation::compile(schema)
+        .map_err(|error| PayloadError::Invalid(error.replace("JSON schema", "socket schema")))
 }
-struct NoResources;
-impl jsonschema::Retrieve for NoResources {
-    fn retrieve(
-        &self,
-        _uri: &jsonschema::Uri<String>,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        Err("socket schema resource retrieval is disabled".into())
-    }
-}
-fn schema_budget(schema: &Value) -> Result<(), PayloadError> {
-    let mut pending = vec![(schema, 0)];
-    let mut remaining = 100_000_usize;
-    while let Some((value, depth)) = pending.pop() {
-        if depth > 64 || remaining == 0 {
-            return Err(PayloadError::Invalid(
-                "socket schema exceeds depth/node limits".into(),
-            ));
-        }
-        remaining -= 1;
-        let children = match value {
-            Value::Array(values) => values.len(),
-            Value::Object(values) => values.len(),
-            _ => 0,
-        };
-        if children > remaining.saturating_sub(pending.len()) {
-            return Err(PayloadError::Invalid(
-                "socket schema exceeds node limit".into(),
-            ));
-        }
-        match value {
-            Value::Array(values) => pending.extend(values.iter().map(|value| (value, depth + 1))),
-            Value::Object(values) => {
-                pending.extend(values.values().map(|value| (value, depth + 1)));
-            }
-            _ => {}
-        }
-    }
-    serde_json::to_writer(&mut SchemaBytes(32 * 1024 * 1024), schema)
-        .map_err(|_| PayloadError::Invalid("socket schema exceeds 32 MiB".into()))
-}
-struct SchemaBytes(usize);
-impl std::io::Write for SchemaBytes {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0 = self
-            .0
-            .checked_sub(bytes.len())
-            .ok_or_else(|| std::io::Error::other("schema byte limit"))?;
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -136,6 +136,8 @@ impl RouterConfig {
 }
 
 mod internal;
+#[cfg(test)]
+mod versioning_tests;
 
 /// A contract-aware wrapper around [`axum::Router`].
 pub struct ForkLaunchRouter {
@@ -689,6 +691,7 @@ fn docs_handler(html: String) -> MethodRouter {
 /// Indexed contracts used by the validation middleware.
 struct ValidationState {
     routes: HashMap<String, RouteContract>,
+    versions: HashMap<String, forklaunch_http::VersionedRoutePlan>,
     body_limit: usize,
     authenticator: Option<Authenticator>,
     telemetry: OpenTelemetryCollector,
@@ -706,8 +709,20 @@ impl ValidationState {
             .iter()
             .map(|route| (route_key(route.method, &route.openapi_path), route.clone()))
             .collect();
+        let versions = registry
+            .routes()
+            .iter()
+            .map(|route| {
+                (
+                    route_key(route.method, &route.openapi_path),
+                    forklaunch_http::VersionedRoutePlan::compile(route)
+                        .expect("invalid versioned route schema"),
+                )
+            })
+            .collect();
         Self {
             routes,
+            versions,
             body_limit,
             authenticator,
             telemetry,
@@ -843,11 +858,18 @@ async fn validate_contract(
             }
         }
     }
-    let errors = if contract.options.request_validation == ValidationMode::Error {
-        validate_framework_request(&contract, &framework_request)
-    } else {
-        Vec::new()
-    };
+    let version_plan = &state.versions[&route_key(contract.method, &contract.openapi_path)];
+    let contract =
+        match select_contract_version(version_plan, contract, &mut parts, &framework_request) {
+            Ok(contract) => contract,
+            Err(errors) => {
+                return framework_response_to_axum(validation_error_response(
+                    &errors,
+                    &framework_request.context.correlation_id,
+                ));
+            }
+        };
+    let errors = validate_framework_request(&contract, &framework_request);
     if !errors.is_empty() {
         let correlation_id = framework_request.context.correlation_id.clone();
         return framework_response_to_axum(validation_error_response(&errors, &correlation_id));
@@ -858,6 +880,22 @@ async fn validate_contract(
         .run(Request::from_parts(parts, AxumBody::from(bytes)))
         .await;
     validate_response_status(&contract, response, &correlation_id)
+}
+
+fn select_contract_version(
+    plan: &forklaunch_http::VersionedRoutePlan,
+    contract: RouteContract,
+    parts: &mut Parts,
+    request: &FrameworkRequest,
+) -> Result<RouteContract, Vec<forklaunch_http::ContractValidationError>> {
+    match plan.select(request) {
+        Ok(Some((selected, version))) => {
+            parts.extensions.insert(version);
+            Ok(selected)
+        }
+        Err(errors) if contract.options.request_validation == ValidationMode::Error => Err(errors),
+        Ok(None) | Err(_) => Ok(contract),
+    }
 }
 
 /// Enforces that handlers only return status codes documented in the contract.
@@ -940,6 +978,10 @@ fn build_framework_request(
         };
     }
 
+    request.version = parts
+        .extensions
+        .get::<forklaunch_http::SelectedVersion>()
+        .cloned();
     request.session = parts
         .extensions
         .get::<AuthenticatedSession>()

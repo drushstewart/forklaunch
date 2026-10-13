@@ -3051,3 +3051,37 @@ Evidence: `fl-schema-mixed-{sockets,http,types,codecs,units,cli-final,clippy-fin
 The resource-import gate is complete for the documented offline profiles.
 Checklist: **652/682 (95.6%), 30 open**. Broader validation/emitter, provider,
 module, deployment and publishing gates remain open.
+
+### 2026-10-13 — Ordered HTTP version selection and MCP projections
+
+Rust version declarations now retain insertion order and JavaScript's canonical
+integer-key enumeration order. `RouteContract::for_version` projects request
+and response metadata while preserving common params, path and auth settings.
+Local and live Axum routers compile reusable version plans at construction,
+choose the last matching request and validate the selected response status.
+Handlers receive the selected version and every matching name. Embedded JSON
+schemas use the bounded/offline validator moved from the socket codec into the
+optional contract schema-validation module; socket diagnostics remain compatible.
+The metadata-only Axum adapter also selects versions and remains compatible with
+callers mutating its public application registry.
+
+MCP exports one tool per version with independent input/output schemas and
+version-qualified names for multiple declarations. Transport bindings project
+versions alongside tool definitions, preserving route authentication and regular
+HTTP matching. A call through an earlier tool can select a later overlapping
+HTTP version, as in TypeScript.
+
+Validation: 35 actual TypeScript-parser/native selection cases cover overlaps,
+rejection, declaration order and canonical/noncanonical integer keys. A live
+loopback service passes HTTP requests, MCP initialization, discovery and both
+versioned calls, then graceful shutdown. All 134 affected native library tests
+(55 Axum, 20 contract, 22 HTTP, 19 MCP, 18 socket), 1,096 CLI tests and strict
+clippy pass; the blueprint sample compiles. Evidence:
+`fl-version-{actual-parity,live-tests,units,cli,clippy,blueprint}.log`.
+All 13,908 generated/actual TypeScript/native codec comparisons and the generated
+live TypeScript socket suite pass after sharing the validator. Strict docs and
+894 embedded package sources pass (`fl-version-{codecs,docs,package}.log`).
+
+Checklist stays **652/682 (95.6%), 30 open**. This is the runtime/MCP portion of
+versioning; OpenAPI export, SDK projections and non-JSON media/coercion coverage
+still prevent closing the versioned-API gate.

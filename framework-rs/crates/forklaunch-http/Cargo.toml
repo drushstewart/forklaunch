@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 forklaunch-common = { path = "../forklaunch-common" }
-forklaunch-contract = { path = "../forklaunch-contract" }
+forklaunch-contract = { path = "../forklaunch-contract", features = ["schema-validation"] }
 forklaunch-core = { path = "../forklaunch-core" }
 
 serde_json = "=1.0.151"

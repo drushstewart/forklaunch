@@ -82,6 +82,35 @@ impl AxumApplication {
 
             if let Some(params) = match_path(&route.path, &request.path) {
                 request.params = params;
+                // This metadata adapter permits callers to mutate its public registry.
+                // Live Axum/LocalRouter transports cache plans at registration instead.
+                let selection = forklaunch_http::VersionedRoutePlan::compile(route)
+                    .map_err(|_| {
+                        vec![ContractValidationError::new(
+                            forklaunch_http::ContractValidationLocation::Body,
+                            "invalid versioned route schema",
+                        )]
+                    })
+                    .and_then(|plan| plan.select(&request));
+                let selected = match selection {
+                    Ok(Some((selected, version))) => {
+                        request.version = Some(version);
+                        Some(selected)
+                    }
+                    Err(validation_errors)
+                        if route.options.request_validation
+                            == forklaunch_contract::ValidationMode::Error =>
+                    {
+                        return AxumPreparedRequest {
+                            operation_name: Some(route.operation_name.clone()),
+                            request,
+                            validation_errors,
+                        };
+                    }
+                    Ok(None) | Err(_) => None,
+                };
+                let route = selected.as_ref().unwrap_or(route);
+
                 if route.request.body.as_ref().is_some_and(|body| {
                     matches!(
                         body.kind,

@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 pub mod sse;
+pub mod versioning;
+pub use versioning::{SelectedVersion, VersionedRoutePlan};
 
 use std::{
     collections::BTreeMap,
@@ -101,6 +103,8 @@ pub struct FrameworkRequest {
     pub body: Body,
     /// Verified session claims populated by authentication middleware.
     pub session: Option<serde_json::Value>,
+    /// Last matching contract version and all matching declarations.
+    pub version: Option<SelectedVersion>,
 }
 
 impl FrameworkRequest {
@@ -115,6 +119,7 @@ impl FrameworkRequest {
             headers: Headers::new(),
             body: Body::Empty,
             session: None,
+            version: None,
         }
     }
 
@@ -387,12 +392,17 @@ impl LocalRouter {
         Self::default()
     }
 
+    /// # Panics
+    /// Panics if a version has an invalid embedded JSON Schema.
     pub fn register(
         &mut self,
         contract: RouteContract,
         handler: impl LocalHandler + 'static,
     ) -> &mut Self {
+        let versions =
+            VersionedRoutePlan::compile(&contract).expect("invalid versioned route schema");
         self.routes.push(LocalRoute {
+            versions,
             contract,
             handler: Box::new(handler),
         });
@@ -419,7 +429,23 @@ impl LocalRouter {
 
             if let Some(params) = match_path(&route.contract.path, &request.path) {
                 request.params = params;
-                let request_errors = validate_framework_request(&route.contract, &request);
+                let selected = route.versions.select(&request);
+                let contract = match selected {
+                    Ok(Some((contract, version))) => {
+                        request.version = Some(version);
+                        contract
+                    }
+                    Err(errors)
+                        if route.contract.options.request_validation == ValidationMode::Error =>
+                    {
+                        return Ok(validation_error_response(
+                            &errors,
+                            &request.context.correlation_id,
+                        ));
+                    }
+                    Ok(None) | Err(_) => route.contract.clone(),
+                };
+                let request_errors = validate_framework_request(&contract, &request);
                 if !request_errors.is_empty() {
                     return Ok(validation_error_response(
                         &request_errors,
@@ -429,7 +455,7 @@ impl LocalRouter {
                 let correlation_id = request.context.correlation_id.clone();
                 let head = request.method == HttpMethod::Head;
                 let mut response = route.handler.call(request)?;
-                let response_errors = validate_framework_response(&route.contract, &response);
+                let response_errors = validate_framework_response(&contract, &response);
                 if !response_errors.is_empty() {
                     return Ok(validation_error_response(&response_errors, &correlation_id));
                 }
@@ -455,24 +481,31 @@ pub fn validate_framework_request(
         return Vec::new();
     }
 
+    validate_request_fields(&contract.request, request)
+}
+
+fn validate_request_fields(
+    contract: &forklaunch_contract::RequestContract,
+    request: &FrameworkRequest,
+) -> Vec<ContractValidationError> {
     let mut errors = Vec::new();
     validate_required_fields(
         ContractValidationLocation::PathParameter,
         "missing required path parameter",
-        &contract.request.params,
+        &contract.params,
         &request.params,
         &mut errors,
     );
     validate_required_fields(
         ContractValidationLocation::Query,
         "missing required query field",
-        &contract.request.query,
+        &contract.query,
         &request.query,
         &mut errors,
     );
-    validate_required_headers(&contract.request.headers, &request.headers, &mut errors);
+    validate_required_headers(&contract.headers, &request.headers, &mut errors);
 
-    if let Some(body) = &contract.request.body {
+    if let Some(body) = &contract.body {
         if request.body.is_empty() {
             errors.push(ContractValidationError::new(
                 ContractValidationLocation::Body,
@@ -608,6 +641,7 @@ pub fn validation_error_response(
 }
 
 struct LocalRoute {
+    versions: VersionedRoutePlan,
     contract: RouteContract,
     handler: Box<dyn LocalHandler>,
 }

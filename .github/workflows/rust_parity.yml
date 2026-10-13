@@ -159,6 +159,7 @@ on:
       - 'cli/tests/rust_actual_validator_fixture.mjs'
       - 'cli/tests/rust_schema_dynamic_parity.mjs'
       - 'cli/tests/rust_schema_mixed_parity.mjs'
+      - 'cli/tests/rust_versioned_api_parity.mjs'
       - 'cli/tests/rust_schema_types_parity.mjs'
       - 'cli/tests/rust_ws_resources_runtime.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
@@ -346,6 +347,7 @@ on:
       - 'cli/tests/rust_actual_validator_fixture.mjs'
       - 'cli/tests/rust_schema_dynamic_parity.mjs'
       - 'cli/tests/rust_schema_mixed_parity.mjs'
+      - 'cli/tests/rust_versioned_api_parity.mjs'
       - 'cli/tests/rust_schema_types_parity.mjs'
       - 'cli/tests/rust_ws_resources_runtime.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
@@ -519,6 +521,10 @@ jobs:
       - run: node cli/tests/rust_schema_types_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_versioned_api_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_schema_mixed_parity.mjs
         env:
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
