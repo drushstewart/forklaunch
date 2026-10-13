@@ -2946,3 +2946,40 @@ The first generated attempt exposed a fixture assertion that assumed one
 reference keyword; the assertion now checks both and the complete rerun passes.
 Checklist remains **651/682 (95.5%), 31 open**. Multiple-reference composition is
 no longer a remaining schema-profile boundary.
+
+### 2026-10-13 — Legacy URI/path plus named-fragment IDs
+
+Draft-4/6/7 IDs such as `nodes#Word` now resolve as exact offline aliases in the
+shared graph and native codec. Distinct aliases on one path retain independent
+cached targets. Recursive aliases and nested fragment-only IDs work through
+borrowed and owned registries. An alias does not invent the bare `nodes`
+resource or a JSON-pointer base; those missing targets still fail explicitly.
+Modern nonempty ID fragments and duplicate aliases remain rejected.
+
+Native support uses the opt-in `forklaunch-legacy-fragment-ids` vendor feature,
+forwarded through jsonschema and enabled by the codec. Registry retrieval skips
+already indexed exact aliases, and validator cache identity preserves their full
+URIs. Upstream defaults remain unchanged. CI and both vendor provenance files
+record the feature and dedicated regressions.
+
+Validation: 144 original/bundled native cases, 131 independent default-mode AJV
+agreements, the same nine recorded AJV behavior differences/four unsupported URI
+cases, and 12 additional allErrors-mode comparisons; 152 resolver compatibility
+tests, 1,987 validator compatibility tests, 1,992 default validator tests and the
+isolated legacy-feature regression. Async retrieval feature compilation passes.
+The generated matrix covers 26 clients per language and 78 live socket
+roundtrips, including external AsyncAPI imports. All three new generated HTTP
+modes (`uri4`, `uri6`, `uri7`) pass typed recursive SDKs from both artifact
+formats/native generators plus HTTP/MCP startup, discovery, invocation, Origin
+rejection and shutdown. The 13,908 actual TypeScript/native codec comparisons,
+native affected suites (27 AsyncAPI, 38 shared compiler, five Rust SDK, eight
+TypeScript SDK, 18 codecs and seven transports), 1,094 CLI tests, strict
+clippy/docs, formatting and 890 packaged sources pass.
+Evidence: `fl-schema-uri-fragment-{parity,referencing,vendor,default,isolated,async,sockets,typescript,unit,cli,clippy,docs,package,generated-uri4,generated-uri6,generated-uri7}.log`.
+
+Checklist remains **651/682 (95.5%), 31 open**. The resource gate now identifies
+mixed runtime dialects and AJV-permissive legacy fragment spellings as remaining
+work: an additional direct AJV probe accepts pointer-shaped, digit-leading and
+underscore-leading legacy IDs that the shared compiler still rejects. This
+receipt covers named fragments within the existing profile; it does not claim
+those broader spellings are implemented.

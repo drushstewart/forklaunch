@@ -28,6 +28,7 @@ repository = "https://github.com/Stranger6667/jsonschema"
 resolver = "3"
 
 [features]
+forklaunch-legacy-fragment-ids = []
 forklaunch-ajv-ref-siblings = []
 forklaunch-ajv-pointer-decoding = []
 forklaunch-static-anchor-resolution = []

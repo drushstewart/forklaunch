@@ -14,7 +14,7 @@ validation = ["dep:forklaunch-validation"]
 
 [dependencies]
 regex = { version = "1", optional = true }
-jsonschema = { package = "forklaunch-jsonschema-protocol", version = "0.1.0", path = "../vendor/jsonschema", default-features = false, features = ["idna", "forklaunch-ajv-pointer-decoding", "forklaunch-ajv-ref-siblings", "forklaunch-static-anchor-resolution"], optional = true }
+jsonschema = { package = "forklaunch-jsonschema-protocol", version = "0.1.0", path = "../vendor/jsonschema", default-features = false, features = ["idna", "forklaunch-ajv-pointer-decoding", "forklaunch-ajv-ref-siblings", "forklaunch-static-anchor-resolution", "forklaunch-legacy-fragment-ids"], optional = true }
 forklaunch-common = { path = "../forklaunch-common" }
 forklaunch-contract = { path = "../forklaunch-contract" }
 serde_json = { version = "=1.0.151", features = ["raw_value"] }

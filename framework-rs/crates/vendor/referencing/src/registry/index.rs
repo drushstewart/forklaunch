@@ -57,6 +57,16 @@ impl<'a> Index<'a> {
         }
         let anchors = self.anchors.get_or_insert_default(Arc::clone(key));
         for anchor in draft.anchors(contents) {
+            #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+            if key.has_fragment() && matches!(draft, Draft::Draft4 | Draft::Draft6 | Draft::Draft7)
+            {
+                let mut fragment = crate::uri::EncodedBuffer::new();
+                fragment.encode_str::<fluent_uri::pct_enc::encoder::Fragment>(anchor.name());
+                self.resources.insert(
+                    Arc::new(key.with_fragment(Some(fragment.as_estr()))),
+                    IndexedResource::Borrowed(ResourceRef::new(contents, draft)),
+                );
+            }
             anchors.insert(
                 anchor.name().to_string().into_boxed_str(),
                 IndexedAnchor::Borrowed(anchor),
@@ -91,6 +101,20 @@ impl<'a> Index<'a> {
                 Anchor::Default { name, .. } => (name, AnchorKind::Default),
                 Anchor::Dynamic { name, .. } => (name, AnchorKind::Dynamic),
             };
+            #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+            if key.has_fragment() && matches!(draft, Draft::Draft4 | Draft::Draft6 | Draft::Draft7)
+            {
+                let mut fragment = crate::uri::EncodedBuffer::new();
+                fragment.encode_str::<fluent_uri::pct_enc::encoder::Fragment>(name);
+                self.resources.insert(
+                    Arc::new(key.with_fragment(Some(fragment.as_estr()))),
+                    IndexedResource::Owned {
+                        document: Arc::clone(document),
+                        pointer: pointer.clone(),
+                        draft,
+                    },
+                );
+            }
             let name = name.to_string().into_boxed_str();
             anchors.insert(
                 name.clone(),

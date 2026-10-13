@@ -210,6 +210,14 @@ fn named_target_base<F: Json>(
     resolved: &Resolved<'_>,
 ) -> Result<Location, referencing::Error> {
     let resolver = resolved.resolver();
+    #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+    if resolver
+        .base_uri()
+        .fragment()
+        .is_some_and(|fragment| !fragment.as_str().is_empty())
+    {
+        return Ok(Location::new());
+    }
     let resource = resolver.lookup("")?;
     Ok(ctx
         .anchor_location(resource.contents(), resolved.contents())
@@ -320,7 +328,15 @@ fn compile_reference_validator<'a, F: Json>(
     // Static and dynamic references with the same lexical URI may resolve to
     // different resources. Cache the actual target identity, not that shared URI.
     #[cfg(feature = "forklaunch-static-anchor-resolution")]
-    let alias = if is_named(&alias) {
+    let alias = if cfg!(feature = "forklaunch-legacy-fragment-ids")
+        && resolved
+            .resolver()
+            .base_uri()
+            .fragment()
+            .is_some_and(|fragment| !fragment.as_str().is_empty())
+    {
+        resolved.resolver().base_uri()
+    } else if is_named(&alias) {
         let mut fragment = uri::EncodedBuffer::new();
         fragment.encode_str::<uri::Path>(ref_target_base.as_str());
         Arc::new(
@@ -2720,5 +2736,42 @@ mod forklaunch_static_anchor_tests {
         assert!(validator.is_valid(&json!({"value":"a","next":{"child":{"value":"b"}}})));
         assert!(!validator.is_valid(&json!({"value":"a","next":{"static":{"value":"b"}}})));
         assert!(!validator.is_valid(&json!({"value":"a","next":{"child":{}}})));
+    }
+}
+
+#[cfg(all(test, feature = "forklaunch-legacy-fragment-ids"))]
+mod forklaunch_legacy_uri_fragment_tests {
+    use serde_json::json;
+    #[test]
+    fn exact_legacy_aliases_keep_distinct_cached_targets_and_nested_anchors() {
+        for draft in [
+            crate::Draft::Draft4,
+            crate::Draft::Draft6,
+            crate::Draft::Draft7,
+        ] {
+            let id = if draft == crate::Draft::Draft4 {
+                "id"
+            } else {
+                "$id"
+            };
+            let schema = json!({id:"https://aliases.test/root","type":"object","properties":{
+                "word":{"$ref":"other#Word"},"count":{"$ref":"other#Count"},"leaf":{"$ref":"other#Leaf"}},"definitions":{
+                "Word":{id:"other#Word","type":"object","properties":{"value":{"type":"string"},"next":{"$ref":"#Word"},"leaf":{"$ref":"#Leaf"}},"definitions":{"Leaf":{id:"#Leaf","type":"boolean"}}},
+                "Count":{id:"other#Count","type":"integer"}
+            }});
+            let validator = crate::options().with_draft(draft).build(&schema).unwrap();
+            assert!(validator.is_valid(
+                &json!({"word":{"value":"a","next":{"value":"b"},"leaf":true},"count":1})
+            ));
+            for value in [
+                json!({"word":{"value":1}}),
+                json!({"word":{"next":{"value":1}}}),
+                json!({"word":{"leaf":1}}),
+                json!({"leaf":1}),
+                json!({"count":"bad"}),
+            ] {
+                assert!(!validator.is_valid(&value));
+            }
+        }
     }
 }

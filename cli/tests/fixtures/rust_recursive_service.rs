@@ -22,7 +22,7 @@ fn body(name: &str, schema: &str) -> BodyContract {
         if mode == "siblings" && name == "Mutual" {
             value["minProperties"] = json!(1);
         }
-        if let Some(draft) = mode.strip_prefix("fragment") {
+        if let Some(draft) = mode.strip_prefix("fragment").or_else(|| mode.strip_prefix("uri")) {
             value["$schema"] = json!(format!("http://json-schema.org/draft-0{draft}/schema#"));
             let id = if draft == "4" { "id" } else { "$id" };
             if draft == "4" { value["id"] = value.as_object_mut().unwrap().remove("$id").unwrap(); }
@@ -36,6 +36,11 @@ fn body(name: &str, schema: &str) -> BodyContract {
                 }
                 value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("#MutualB");
                 value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("#MutualA");
+                if mode.starts_with("uri") {
+                    value["$ref"] = json!("nodes#MutualA");
+                    value["$defs"]["A"][id] = json!("nodes#MutualA");
+                    value["$defs"]["B"][id] = json!("nodes#MutualB");
+                }
             }
         }
         if mode == "dynamic" && name == "Tree" {

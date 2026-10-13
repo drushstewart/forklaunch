@@ -59,3 +59,15 @@ therefore do not apply to this opt-in profile: the three
 and `custom_meta_schema_preserves_underlying_draft_behavior`. CI skips those
 only in the compatibility profile, in addition to the archive-missing fixture
 noted above. The default profile still runs every one of these assertions.
+
+The optional `forklaunch-legacy-fragment-ids` feature resolves Draft-4/6/7 IDs
+combining a URI/path with a named fragment as exact bundled aliases, matching
+AJV. It does not invent a bare resource or a JSON-pointer base for those aliases.
+Nested fragment-only IDs retain the enclosing lexical URI. Borrowed and owned
+registries register those aliases, and the retrieval pass recognizes already
+indexed exact targets without fetching their fragmentless URI. Native codecs
+opt in through jsonschema's forwarded feature. Named-reference compilation and
+cache identity preserve distinct full alias URIs, including aliases sharing a
+path. Feature-gated resolver/validator regressions cover recursion, nested
+anchors, distinct cached targets and unavailable bare/pointer resources.
+Default upstream behavior remains unchanged.

@@ -13,7 +13,7 @@ const deps=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDE
 const {WebSocketServer}=deps('ws');
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-resources-'));
 const env={...process.env,CARGO_INCREMENTAL:'0',CARGO_TARGET_DIR:path.resolve(root,process.env.CARGO_TARGET_DIR??'framework-rs/target')};
-const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7','siblings','composed2020','composed2019'];
+const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7','siblings','composed2020','composed2019','uri4','uri6','uri7'];
 const sockets=new Set();
 let server,child;
 try {
@@ -35,12 +35,13 @@ try {
     schema.properties.next={$ref:'#/$defs/Next',[modern?'$dynamicRef':'$recursiveRef']:modern?'#node':'#'};
     schema.$defs={Next:{type:'object',not:{required:['value'],properties:{value:{enum:['blocked',9]}}}}};
    }
-   if(mode.startsWith('fragment')) {
+   if(mode.startsWith('fragment') || mode.startsWith('uri')) {
     const draft=mode.at(-1), id=draft==='4'?'id':'$id';
     schema.properties.next={$ref:'#Node:v1'};
     delete schema.$id;delete schema.$schema;
-    schema[id]='#Node:v1';
-    schema={$schema:`http://json-schema.org/draft-0${draft}/schema#`,[id]:'https://schemas.fixture.test/reused',$ref:'#Node:v1',definitions:{Node:schema}};
+    const identity=mode.startsWith('uri')?'nodes#Node:v1':'#Node:v1';
+    schema[id]=identity;
+    schema={$schema:`http://json-schema.org/draft-0${draft}/schema#`,[id]:'https://schemas.fixture.test/reused',$ref:identity,definitions:{Node:schema}};
    }
    if(mode==='siblings') {
     schema.properties.value={$ref:'#/definitions/Value',...(type==='string'?{minLength:1}:{minimum:1})};

@@ -36,6 +36,7 @@ resolver = "3"
 all-features = true
 
 [features]
+forklaunch-legacy-fragment-ids = ["referencing/forklaunch-legacy-fragment-ids"]
 forklaunch-ajv-pointer-decoding = ["referencing/forklaunch-ajv-pointer-decoding"]
 forklaunch-ajv-ref-siblings = ["referencing/forklaunch-ajv-ref-siblings"]
 forklaunch-static-anchor-resolution = ["referencing/forklaunch-static-anchor-resolution"]

@@ -105,10 +105,16 @@ impl Resources {
                                 || ["draft-04", "draft-06", "draft-07"]
                                     .iter()
                                     .any(|draft| dialect.contains(draft));
-                            if !legacy || !id.starts_with('#') {
-                                bail!("Only legacy fragment-only schema IDs are supported");
+                            if !legacy {
+                                bail!("Nonempty schema ID fragments require a legacy dialect");
                             }
-                            validate_anchor(anchor, true)?;
+                            let anchor = anchor.to_owned();
+                            validate_anchor(&anchor, true)?;
+                            if !id.starts_with('#') {
+                                let mut scope = uri.clone();
+                                scope.set_fragment(None);
+                                base = scope.into();
+                            }
                             budget.bytes = budget
                                 .bytes
                                 .checked_sub(base.len() + anchor.len() + pointer.len())
@@ -421,19 +427,20 @@ impl Resources {
         let mut uri = resolve(base, reference)?;
         let fragment = uri.fragment().unwrap_or("").to_owned();
         uri.set_fragment(None);
-        let root = self.roots.get(uri.as_str()).context("Schema resource is not bundled in the document; SDK generation does not fetch remote schemas")?;
         if fragment.contains("%2F") || fragment.contains("%2f") {
             bail!(
                 "Checked schemas require literal JSON-pointer separators; escape slash tokens with ~1"
             );
         }
         if let Some(pointer) = super::document_pointer(&format!("#{fragment}")) {
+            let root = self.roots.get(uri.as_str()).context("Schema resource is not bundled in the document; SDK generation does not fetch remote schemas")?;
             return Ok(format!("{root}{pointer}"));
         }
         let fragment = percent_encoding::percent_decode_str(&fragment)
             .decode_utf8()
             .context("Schema reference fragment must be UTF-8")?;
         if fragment.is_empty() || fragment.starts_with('/') {
+            let root = self.roots.get(uri.as_str()).context("Schema resource is not bundled in the document; SDK generation does not fetch remote schemas")?;
             Ok(format!("{root}{fragment}"))
         } else {
             self.anchors
@@ -557,9 +564,31 @@ mod tests {
             assert_eq!(compiled["properties"]["second"]["type"], "integer");
             assert!(compiled["properties"]["first"]["$ref"].is_string());
         }
-        for id in ["#1invalid", "#_invalid", "#/pointer", "other#name"] {
+        for id in ["#1invalid", "#_invalid", "#/pointer"] {
             let schema = json!({"$schema":"http://json-schema.org/draft-07/schema#", "$id":id,"type":"string"});
             assert!(normalize(&schema, "Invalid").is_err());
+        }
+    }
+
+    #[test]
+    fn uri_fragment_ids_do_not_define_bare_resources() {
+        for reference in ["other", "other#/properties/value", "missing#Word"] {
+            let schema = json!({"$schema":"http://json-schema.org/draft-07/schema#", "$id":"https://aliases.test/root", "$ref":reference, "definitions":{"Word":{"$id":"other#Word","type":"string"}}});
+            assert!(normalize(&schema, "Missing").is_err());
+        }
+        let schema = json!({"$schema":"http://json-schema.org/draft-07/schema#", "$id":"https://aliases.test/root", "definitions":{"A":{"$id":"other#Word"},"B":{"$id":"other#Word"}}});
+        assert!(normalize(&schema, "Duplicate").is_err());
+        for dialect in [
+            "https://json-schema.org/draft/2019-09/schema",
+            "https://json-schema.org/draft/2020-12/schema",
+        ] {
+            assert!(
+                normalize(
+                    &json!({"$schema":dialect,"$id":"https://aliases.test/other#Word"}),
+                    "Modern"
+                )
+                .is_err()
+            );
         }
     }
 
@@ -677,7 +706,7 @@ mod tests {
         for schema in [
             json!({"$id":12,"type":"string"}),
             json!({"$id":"https://schemas.test/has space","type":"string"}),
-            json!({"$id":"https://schemas.test/root#anchor","type":"string"}),
+            json!({"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://schemas.test/root#anchor","type":"string"}),
             json!({"$id":"https://schemas.test/root","$ref":"https://remote.test/missing"}),
             json!({"$id":"https://schemas.test/root","$ref":"same","$defs":{"A":{"$id":"same","type":"string"},"B":{"$id":"same","type":"number"}}}),
             json!({"$id":"https://schemas.test/root","$dynamicRef":"#Node","$dynamicAnchor":"Node"}),

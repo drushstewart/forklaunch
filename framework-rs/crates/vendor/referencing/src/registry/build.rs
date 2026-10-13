@@ -557,6 +557,10 @@ fn fetch_external_resources<'a>(
     retriever: &dyn Retrieve,
 ) -> Result<(), Error> {
     for (original, uri, kind) in state.crawl.external.drain() {
+        #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+        if known_resources.contains(&uri) || state.index.resources.get(&uri).is_some() {
+            continue;
+        }
         let mut fragmentless = uri.clone();
         fragmentless.set_fragment(None);
         if !known_resources.contains(&fragmentless) {
@@ -606,6 +610,10 @@ async fn fetch_external_resources_async<'a>(
 
     let mut grouped = ExternalRefsByBase::new();
     for (original, uri, kind) in state.crawl.external.drain() {
+        #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+        if known_resources.contains(&uri) || state.index.resources.get(&uri).is_some() {
+            continue;
+        }
         let mut fragmentless = uri.clone();
         fragmentless.set_fragment(None);
         if !known_resources.contains(&fragmentless) {
@@ -1413,6 +1421,39 @@ mod tests {
     use crate::{
         registry::SPECIFICATIONS, uri::from_str, Anchor, Draft, Registry, Resource, Retrieve,
     };
+
+    #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+    #[test]
+    fn legacy_uri_fragment_aliases_are_exact_and_do_not_invent_resource_roots() {
+        for draft in [Draft::Draft4, Draft::Draft6, Draft::Draft7] {
+            let id = if draft == Draft::Draft4 { "id" } else { "$id" };
+            let resource = draft.create_resource(json!({id:"https://aliases.test/root", "definitions":{
+                "Word":{id:"other#Word","type":"object","definitions":{"Leaf":{id:"#Leaf","type":"boolean"}}},
+                "Count":{id:"other#Count","type":"integer"}
+            }}));
+            for owned in [false, true] {
+                let builder = if owned {
+                    Registry::new().add("https://aliases.test/root", resource.clone())
+                } else {
+                    Registry::new().add("https://aliases.test/root", &resource)
+                };
+                let registry = builder.unwrap().prepare().unwrap();
+                let resolver = registry.resolver(from_str("https://aliases.test/root").unwrap());
+                let word = resolver.lookup("other#Word").unwrap();
+                assert_eq!(word.contents()["type"], "object");
+                assert_eq!(
+                    resolver.lookup("other#Count").unwrap().contents()["type"],
+                    "integer"
+                );
+                assert_eq!(
+                    word.resolver().lookup("#Leaf").unwrap().contents()["type"],
+                    "boolean"
+                );
+                assert!(resolver.lookup("other").is_err());
+                assert!(word.resolver().lookup("#/definitions/Leaf").is_err());
+            }
+        }
+    }
 
     #[test]
     fn test_invalid_uri_on_registry_creation() {

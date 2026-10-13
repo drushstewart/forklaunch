@@ -78,8 +78,44 @@ impl<'r> Resolver<'r> {
     }
 
     fn lookup_with_mode(&self, reference: &str, dynamic: bool) -> Result<Resolved<'r>, Error> {
+        #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+        {
+            let exact = self
+                .registry
+                .resolve_uri(&self.base_uri.borrow(), reference)?;
+            if exact
+                .fragment()
+                .is_some_and(|fragment| !fragment.as_str().is_empty())
+            {
+                if let Some(resource) = self.registry.resource_by_uri(&exact) {
+                    if matches!(
+                        resource.draft(),
+                        Draft::Draft4 | Draft::Draft6 | Draft::Draft7
+                    ) && resource
+                        .contents()
+                        .get(if resource.draft() == Draft::Draft4 {
+                            "id"
+                        } else {
+                            "$id"
+                        })
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| id.contains('#'))
+                    {
+                        return Ok(Resolved::new(
+                            resource.contents(),
+                            self.evolve(exact),
+                            resource.draft(),
+                        ));
+                    }
+                }
+            }
+        }
         let (uri, fragment) = if let Some(reference) = reference.strip_prefix('#') {
-            (self.base_uri.clone(), reference)
+            #[cfg(feature = "forklaunch-legacy-fragment-ids")]
+            let base = Arc::new(self.base_uri.with_fragment(None));
+            #[cfg(not(feature = "forklaunch-legacy-fragment-ids"))]
+            let base = self.base_uri.clone();
+            (base, reference)
         } else {
             let (uri, fragment) = if let Some((uri, fragment)) = reference.rsplit_once('#') {
                 (uri, fragment)
