@@ -19,6 +19,19 @@ p=Path('crates/trees/src/main.rs');s=p.read_text().replace('router(state).serve_
 PYTHON
 cargo build -p trees
 "$CLI" openapi export --path .
+if [ "${FORKLAUNCH_TEST_COMPONENT_NAMES:-}" = 1 ]; then
+    python3 - <<'PYTHON'
+import json,re
+from pathlib import Path
+document=json.loads(Path('.forklaunch/openapi/trees/openapi.json').read_text())
+components=document['components']['schemas']
+assert all(re.fullmatch(r'[a-zA-Z0-9._-]+',name) for name in components)
+encoded=[name for name in components if name.startswith('_fl_encoded_')]
+assert len(encoded)==4, encoded
+assert len({document['paths'][path]['get']['responses']['200']['content']['application/json']['schema']['$ref'] for path in ['/trees','/forests','/choices','/mutual']})==4
+print('PASS valid and collision-safe component names in the generated OpenAPI document')
+PYTHON
+fi
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug/trees"))')"
 node "$SCRIPT_DIR/rust_mcp_service_startup.mjs" "$BINARY"
 for artifact in contract openapi; do

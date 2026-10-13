@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(test)]
+mod component_tests;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
@@ -439,9 +442,29 @@ fn schema_ref_json(schema: &SchemaRef) -> String {
         "$ref",
         json_string(&format!(
             "#/components/schemas/{}",
-            schema.name.replace('~', "~0").replace('/', "~1")
+            component_schema_name(&schema.name)
         )),
     )])
+}
+
+// OpenAPI component keys are narrower than contract schema display names.
+// Reserve the encoding prefix too, so a literal name cannot collide with an
+// encoded name. Existing ordinary component names stay byte-for-byte stable.
+fn component_schema_name(name: &str) -> String {
+    const PREFIX: &str = "_fl_encoded_";
+    if !name.is_empty()
+        && !name.starts_with(PREFIX)
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+    {
+        return name.to_owned();
+    }
+    let mut encoded = String::from(PREFIX);
+    for byte in name.bytes() {
+        write!(encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    encoded
 }
 
 fn components_json(routes: &[&RouteContract]) -> String {
@@ -499,13 +522,14 @@ fn collect_body_schema(body: &BodyContract, schemas: &mut BTreeMap<String, Strin
 }
 
 fn collect_schema_ref(schema: &SchemaRef, schemas: &mut BTreeMap<String, String>) {
-    schemas.entry(schema.name.clone()).or_insert_with(|| {
+    let component_name = component_schema_name(&schema.name);
+    schemas.entry(component_name.clone()).or_insert_with(|| {
         schema.json_schema.as_ref().map_or_else(
             || default_schema_json(&schema.name),
             |value| {
                 forklaunch_contract::relocate_schema_json(
                     value,
-                    &["components", "schemas", &schema.name],
+                    &["components", "schemas", &component_name],
                 )
             },
         )

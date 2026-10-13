@@ -95,6 +95,15 @@ fn body(name: &str, schema: &str) -> BodyContract {
         }
         value.to_string()
     } else { schema.to_owned() };
+    let name = if std::env::var("FORKLAUNCH_TEST_COMPONENT_NAMES").as_deref() == Ok("1") {
+        match name {
+            "Tree" => "A B",
+            "Forest" => "_fl_encoded_412042",
+            "Choice" => "Vec<String>",
+            "Mutual" => "Mutual /~水%",
+            name => name,
+        }
+    } else { name };
     BodyContract {
         kind: BodyKind::Json,
         schema: SchemaRef::named(name).with_json_schema(schema),

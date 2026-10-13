@@ -3844,3 +3844,23 @@ callbacks. Later query-name changes pass the final all-module matrix and the
 Checklist: 657/682 complete (96.3%), 25 open. Cleanup removed 17.5 GiB of inactive
 port-owned test executables older than 24 hours; active builds and other worktrees
 were preserved.
+
+
+General OpenAPI component-name receipt (2026-10-13): the exporter now maps
+arbitrary contract schema names to valid, collision-safe OpenAPI component keys.
+Ordinary names remain unchanged; empty names, characters outside the OpenAPI
+component alphabet and the reserved `_fl_encoded_` prefix use UTF-8 hexadecimal
+encoding. The reserved-prefix case prevents a user name from colliding with an
+encoded key. Both route references and relocated recursive schema references
+use the mapped key; schema titles and literal annotations remain unchanged.
+
+All eight OpenAPI tests and strict all-feature/all-target clippy pass, covering
+spaces, generic syntax, Unicode, slash/tilde/percent, empty names, literal-prefix
+collisions, recursive roots and definitions. Generated run `XjdxFB` exercises
+unusual names through both CLI artifact imports, both native SDK generators,
+strict Rust/TypeScript consumers, live recursive requests/responses and HTTP/MCP
+startup/discovery/invocation/shutdown. The fixture is in E2E CI. All 920 embedded
+assets are packaged. Logs:
+`/private/tmp/fl-component-names-{tests,clippy,generated,package}.log`.
+The broader schema/emitter conformance gate remains open; checklist stays
+657/682 (96.3%), 25 open.

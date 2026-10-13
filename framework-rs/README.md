@@ -515,6 +515,15 @@ Draft 4/6/7 schemas do not gain modern `$anchor` semantics. Resource `$id`,
 external retrieval and dynamic references remain unsupported in SDK imports;
 checked AsyncAPI payload imports retain their separate conservative profile.
 
+OpenAPI export keeps ordinary schema component names unchanged. Empty names,
+names containing characters outside `[a-zA-Z0-9._-]`, and names beginning with
+the reserved `_fl_encoded_` prefix become that prefix followed by the UTF-8
+bytes in hexadecimal. Reserving the prefix prevents collisions with literal
+names. Exported references and embedded recursive references use the same key;
+contract names and schema annotations retain their original values.
+`rust_component_names_runtime.sh` exercises these names with both artifact
+imports, both live SDKs, native generators and HTTP/MCP startup.
+
 `cli/tests/rust_mcp_transport_parity.mjs` runs 32 calls through the real pinned
 FastMCP server, repository Zod validator/generator and official MCP client, then
 compares live HTTP body bytes with the native MCP encoder. Set
