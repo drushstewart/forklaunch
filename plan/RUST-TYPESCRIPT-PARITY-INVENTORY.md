@@ -1755,3 +1755,32 @@ and the generated shell fixture. Logs:
 Checklist: **623/682 (91.3%), 59 open**. This verifies telemetry presence and
 lifecycle behavior; it does not claim identical TypeScript metric names or
 vendor-specific telemetry configuration.
+
+
+### SSE emission and validation checkpoint (2026-10-12)
+
+The optional `forklaunch-axum/sse` helper emits bounded `SseFrame<T>` streams.
+`respond` validates typed data with garde; `respond_with` accepts whole-envelope
+validation. Every-event validation is the default; explicit first-event mode
+matches the actual TypeScript emitter's validation frequency. The first event
+is prepared before headers, later errors terminate the body, and cancellation
+drops producers without background tasks or prefetch queues. IDs and wire byte
+limits are checked in both modes. Standard multiline framing and sanitized errors
+are intentional differences from TypeScript's raw interpolation/error detail.
+Applications supply validators matching their contracts; arbitrary contract JSON
+Schema is not automatically applied by this helper.
+
+Validation passed: 46 all-feature Axum tests, including six SSE tests for typed
+validation, first/later errors, exact Unicode/escaped-string byte limits and
+cancellation before the first event or while awaiting subsequent events; strict
+all-target/all-feature Clippy; 16 frames compared with the actual TypeScript
+emitter plus real Zod response validation and empty-stream behavior. The relocated
+generated service passes both SDKs, contract/OpenAPI artifacts, native/imported
+fetch, stream failures and resource release, with real HTTP/MCP startup and
+shutdown. The final CLI rebuild and all 772 package entries pass. The generated
+runtime run preceded the final escaped-string accounting fix; final unit tests
+cover that boundary. CI runs the emitter conformance and generated runtime tests.
+Logs: `/private/tmp/fl-sse-emitter-{tests-final,clippy-final,parity-final,generated,cli-build-final,package}.log`.
+
+Checklist: **624/682 (91.5%), 58 open**. The broader schema-constraint,
+multipart, resource-scope and external AsyncAPI tasks remain open.

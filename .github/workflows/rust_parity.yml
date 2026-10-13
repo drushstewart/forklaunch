@@ -39,6 +39,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_sdk_body_parity.mjs'
       - 'cli/tests/rust_sse_parity.mjs'
+      - 'cli/tests/rust_sse_emitter_parity.mjs'
       - 'cli/tests/rust_ws_payload_parity.mjs'
       - 'cli/tests/rust_ws_jsonschema_parity.mjs'
       - 'cli/tests/rust_ws_runtime.mjs'
@@ -200,6 +201,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_sdk_body_parity.mjs'
       - 'cli/tests/rust_sse_parity.mjs'
+      - 'cli/tests/rust_sse_emitter_parity.mjs'
       - 'cli/tests/rust_ws_payload_parity.mjs'
       - 'cli/tests/rust_ws_jsonschema_parity.mjs'
       - 'cli/tests/rust_ws_runtime.mjs'
@@ -435,6 +437,10 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_ws_runtime.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_sse_emitter_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

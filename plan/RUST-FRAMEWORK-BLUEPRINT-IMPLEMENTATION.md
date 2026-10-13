@@ -332,7 +332,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Generate bounded, pull-driven SSE response clients from both contract and OpenAPI artifacts, with typed Rust envelopes, iterator/abort/drop cancellation, auth before work, standard framing, terminal errors and live HTTP/MCP startup/shutdown verification.
 - [x] Generate framework-native Rust HTTP clients with typed status decoding, guarded recursive models, Serde presence rules and bounded SSE through the shared CLI compiler/template; validate live presence, recursion and SSE with HTTP/MCP startup/shutdown.
 - [x] Generate framework-native TypeScript typed HTTP/status/business-error responses, request schemas, omission/null models and bounded SSE using the shared CLI compiler/runtime; validate actual media/status handling and live presence/recursive/SSE clients with HTTP/MCP startup/shutdown.
-- [ ] Complete remaining SSE emitter/helper/schema-validation conformance against TypeScript.
+- [x] Complete remaining SSE emitter/helper/schema-validation conformance against TypeScript. Explicit first-event compatibility and stricter default validation/framing are documented below.
 - [x] Support empty success bodies, including 204/205 and HEAD, with TypeScript `undefined` and Rust `()`; preserve explicit JSON null and validate both artifact sources against live Rust and compiled TypeScript servers.
 - [x] Preserve every explicit 2xx response in TypeScript discriminated unions and Rust status enums, including distinct typed JSON models and 204/205 variants. Validate both SDKs and artifact sources against live Rust and compiled TypeScript servers; reject duplicate status/model names before generation, and avoid inventing success responses for error-only contracts.
 - [x] Preserve declared business-error payloads and media types in CLI SDK imports and clients, overriding default error status types with contract-specific JSON/text/binary shapes. Schema-free JSON uses unknown/serde_json::Value.
@@ -1725,3 +1725,32 @@ and the generated shell fixture. Logs:
 Checklist: **623/682 (91.3%), 59 open**. This verifies telemetry presence and
 lifecycle behavior; it does not claim identical TypeScript metric names or
 vendor-specific telemetry configuration.
+
+
+### SSE emission and validation checkpoint (2026-10-12)
+
+The optional `forklaunch-axum/sse` helper emits bounded `SseFrame<T>` streams.
+`respond` validates typed data with garde; `respond_with` accepts whole-envelope
+validation. Every-event validation is the default; explicit first-event mode
+matches the actual TypeScript emitter's validation frequency. The first event
+is prepared before headers, later errors terminate the body, and cancellation
+drops producers without background tasks or prefetch queues. IDs and wire byte
+limits are checked in both modes. Standard multiline framing and sanitized errors
+are intentional differences from TypeScript's raw interpolation/error detail.
+Applications supply validators matching their contracts; arbitrary contract JSON
+Schema is not automatically applied by this helper.
+
+Validation passed: 46 all-feature Axum tests, including six SSE tests for typed
+validation, first/later errors, exact Unicode/escaped-string byte limits and
+cancellation before the first event or while awaiting subsequent events; strict
+all-target/all-feature Clippy; 16 frames compared with the actual TypeScript
+emitter plus real Zod response validation and empty-stream behavior. The relocated
+generated service passes both SDKs, contract/OpenAPI artifacts, native/imported
+fetch, stream failures and resource release, with real HTTP/MCP startup and
+shutdown. The final CLI rebuild and all 772 package entries pass. The generated
+runtime run preceded the final escaped-string accounting fix; final unit tests
+cover that boundary. CI runs the emitter conformance and generated runtime tests.
+Logs: `/private/tmp/fl-sse-emitter-{tests-final,clippy-final,parity-final,generated,cli-build-final,package}.log`.
+
+Checklist: **624/682 (91.5%), 58 open**. The broader schema-constraint,
+multipart, resource-scope and external AsyncAPI tasks remain open.

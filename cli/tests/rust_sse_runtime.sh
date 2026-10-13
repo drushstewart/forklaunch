@@ -20,6 +20,7 @@ python3 - <<'PYTHON'
 from pathlib import Path
 p=Path('crates/streams/Cargo.toml')
 s=p.read_text().replace('[dependencies]\n','[dependencies]\nserde_json = "1"\nfutures-util = "0.3"\nforklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth" }\n')
+s=s.replace('features = ["mcp"]', 'features = ["mcp", "sse"]')
 p.write_text(s)
 p=Path('crates/streams/src/lib.rs');s=p.read_text();s='pub mod sse_fixture;\n'+s
 s=s.replace('for contract in routes::contracts() {','for contract in routes::contracts().into_iter().chain(sse_fixture::contracts()) {')

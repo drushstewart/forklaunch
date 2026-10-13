@@ -34,6 +34,21 @@ pub fn register(router: ForkLaunchRouter) -> ForkLaunchRouter {
             drop(active);
             return Response::builder().header("content-type", "application/json").body(Body::from("{}")).unwrap();
         }
+        if matches!(mode.as_str(), "finite" | "slow" | "broken") {
+            let source = futures_util::stream::unfold((0, mode, active), |(position, mode, active)| async move {
+                if position >= 2 {
+                    if mode == "slow" { std::future::pending::<()>().await; }
+                    if mode == "broken" && position == 2 {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        return Some((Err(std::io::Error::other("owned fixture stream failure")), (position+1, mode, active)));
+                    }
+                    return None;
+                }
+                let data = if position == 0 { serde_json::json!({"label":"水 🦀"}) } else { serde_json::json!(2) };
+                Some((Ok(forklaunch_axum::sse::SseFrame::new("first", data)), (position+1, mode, active)))
+            });
+            return forklaunch_axum::sse::respond_with(source, forklaunch_axum::sse::SseOptions::default(), |_| true).await.unwrap();
+        }
         let bytes = match mode.as_str() {
             "oversize" => format!("data: \"{}\"\n\n", "x".repeat(4096)).into_bytes(),
             "late-oversize" => format!("data: {{\"label\":\"水 🦀\"}}\n\ndata: \"{}\"\n\n", "x".repeat(4096)).into_bytes(),

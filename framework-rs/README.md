@@ -80,6 +80,35 @@ Transport authentication still gates every request. Manually bound handlers must
 
 Generated services call `ForkLaunchRouter::serve_with_default_mcp(listener, shutdown)`. MCP shares the HTTP listener by default. Set `MCP_LISTENER=separate` to use a second listener with the TypeScript HTTP-port-plus-2000 fallback, or set `MCP_PORT`/`MCP_HOST` to select a separate listener explicitly. Port `0` supports ephemeral binds. Only MCP is exposed on the second listener; tool calls still invoke authenticated HTTP handlers internally. Both listeners bind before serving, then drain together on shutdown with a 30-second bound. `into_routers_with_mcp(options)` supplies separate routers for custom orchestration.
 
+## Server-sent events
+
+Enable `forklaunch-axum`'s `sse` feature and pass a stream of
+`Result<SseFrame<T>, E>` to `sse::respond(stream, SseOptions::default())`.
+`T` implements `FrameworkSchema`; its garde rules validate each payload.
+Use `respond_with(stream, options, validator)` for whole-envelope validation.
+The application supplies the typed model or validator matching its route contract;
+the helper does not infer validation rules from arbitrary contract JSON Schema.
+
+The default `SseValidation::EveryEvent` validates every event. Explicit
+`FirstEvent` matches the TypeScript emitter's first-event-only schema validation.
+The helper awaits one event before returning headers, allowing first-event errors
+to become sanitized HTTP 500 responses. Later failures terminate the body.
+An empty source returns an empty successful SSE response. No producer task or
+unbounded queue is created, and cancellation drops the source even while awaiting
+the first or next event.
+
+`max_event_bytes` defaults to 1 MiB and bounds each encoded wire frame in either
+validation mode. String data is emitted as text; other serializable data uses
+JSON. Multiline text receives an SSE `data:` prefix on each line. IDs containing
+CR, LF or NUL are rejected in either mode. These framing safeguards intentionally
+remain stricter than TypeScript's raw field interpolation.
+
+`rust_sse_emitter_parity.mjs` executes the actual TypeScript response parser and
+emitter with Zod schemas, compares 16 frames, and verifies first-event validation
+and empty-source behavior. `rust_sse_runtime.sh` uses this helper in a relocated
+generated service and exercises both generated SDKs, stream failures, cancellation,
+resource release, and HTTP/MCP startup and shutdown.
+
 ## Typed WebSocket connections
 
 Enable `forklaunch-ws` features `transport` and optionally `validation`. `transport::TypedWebSocketServer::bind(address, schemas, options)` owns a TCP listener; `accept_with(callback)` authorizes upgrade headers before accepting a connection. `transport::connect(request, schemas.reversed(), options)` accepts a URL or tungstenite request with caller headers/subprotocols and supports TLS with WebPKI roots. Applications own connection tasks and shutdown.
@@ -133,7 +162,7 @@ The CLI runs the checked generators from the application's bundled Rust framewor
 
 `rust_ws_sdk_runtime.mjs` compiles normal, recursive and empty native clients with warnings denied, exercises the normal client against the actual TypeScript server, and verifies malformed peer payloads close with 1008 before delivery.
 
-`rust_ws_metadata_parity.mjs` compares 34 documents with the actual TypeScript generator and validates all against the official AsyncAPI JSON Schema. Parser 3.6.3 also accepts 63 documents; eleven cases expose its percent/prototype map-key and literal `$ref` limitations, so those retain direct specification-schema and pointer/AJV checks. Recursive structural schemas and explicitly referenced legacy annotation storage additionally pass the parser without changing unreferenced literal data. Schema traversal follows reachable local pointers exactly once, decodes percent escapes once, and enforces 64-step/100,000-location bounds. Checked exports now bundle schemas referenced from active const/enum/default/example data into collision-checked definitions, preserving the original literal values and recursive references. Copying and final output share 64-level, 100,000-node and 32 MiB bounds; repeated bundling is stable. The same relocation helper protects OpenAPI/MCP schemas and generated socket unions, preserving embedded resource bases. Checked socket export rejects references to entire schema dictionaries until separate schema/literal interpretation contexts can be bundled safely. Declared Draft 4/6/2019-09/2020-12 payloads use AsyncAPI Multi Format Schema Objects; the parser accepts these custom formats but leaves their schema validation to the independently checked native/codecs. This preserves older boolean exclusive bounds and avoids imposing Draft 7 semantics.
+`rust_ws_metadata_parity.mjs` compares 34 documents with the actual TypeScript generator and validates all against the official AsyncAPI JSON Schema. Parser 3.6.3 also accepts 63 documents; eleven cases expose its percent/prototype map-key and literal `$ref` limitations, so those retain direct specification-schema and pointer/AJV checks. Recursive structural schemas and explicitly referenced legacy annotation storage additionally pass the parser without changing unreferenced literal data. Schema traversal follows reachable local pointers exactly once, decodes percent escapes once, and enforces 64-step/100,000-location bounds. Checked exports now bundle schemas referenced from active const/enum/default/example data into collision-checked definitions, preserving the original literal values and recursive references. Copying and final output share 64-level, 100,000-node and 32 MiB bounds; repeated bundling is stable. The same relocation helper protects OpenAPI/MCP schemas and generated socket unions, preserving embedded resource bases. Checked unscoped socket export bundles references to entire schema dictionaries in separate schema/literal interpretation contexts; resource-preserving relocation retains its conservative alias restrictions. Declared Draft 4/6/2019-09/2020-12 payloads use AsyncAPI Multi Format Schema Objects; the parser accepts these custom formats but leaves their schema validation to the independently checked native/codecs. This preserves older boolean exclusive bounds and avoids imposing Draft 7 semantics.
 
 `forklaunch_contract::bundle_document_schema(&document, "/components/schemas/Message")` extracts a standalone JSON Schema from a containing document. It bundles transitive local references, including recursive and literal-data targets, into collision-checked definitions. It preserves literal values and rejects missing/external references and active resource IDs/dynamic scope under shared copy/output limits. Dictionary references use separate interpretation contexts: a property named `const` can remain a schema in the original dictionary and literal data in a referenced copy. Recursive edges are rebased without rewriting annotation data. Checked socket unions use this unscoped bundling path; resource-preserving relocation still rejects ambiguous dictionary aliases. This provides schema extraction for the checked AsyncAPI importer; operation roles are explicit.
 

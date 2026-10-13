@@ -12,6 +12,8 @@ mod mcp_runtime;
 pub mod router;
 #[cfg(feature = "adapter")]
 pub mod session;
+#[cfg(feature = "sse")]
+pub mod sse;
 #[cfg(feature = "websocket")]
 pub mod websocket;
 
