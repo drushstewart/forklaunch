@@ -3805,3 +3805,42 @@ configured PostgreSQL test remains ignored in this run. Strict all-feature/
 all-target billing clippy passes. Logs:
 `/private/tmp/fl-billing-cursor-{tests,clippy}.log`. This does not close the broader
 billing reconciliation gate.
+
+
+All-module lifecycle receipt (2026-10-13): `rust_module_lifecycle.sh` now checks
+all eight built-in variants together in a relocated mixed app with a TypeScript
+library: iam-base, iam-better-auth, cac-base, messaging-base, messaging-twilio,
+ecommerce-stripe, billing-base and billing-stripe. Run `smv1a8ho` passes repeated
+initialization, sync, preserved user source/package metadata, rename, variant
+ownership, OpenAPI component naming, Rust/TypeScript compilation from both
+OpenAPI and native contracts, SDK drift checks and deletion of contracts/SDKs/
+registrations. The TypeScript library survives byte-for-byte and the final empty
+Cargo workspace remains valid. The fixture is included in E2E CI and documented
+in the blueprint workspace guide. Earlier family runtime receipts cover live
+HTTP/MCP, encrypted storage and providers; relay/storefront have their own
+checked lifecycle fixtures. This closes the combined module lifecycle gate,
+not the remaining deployment or provider behavior gates.
+
+The fresh source-archive installer first exposed invalid Better Auth response
+component names (`Surface User Roles`/`Surface User Permissions`). Native module
+contracts now use `SurfaceUserRoles`/`SurfaceUserPermissions`, preserving actual
+TS operation names and response shapes. Five actual TS contracts/nine response
+schemas and strict all-feature Better Auth clippy pass. The component-name audit
+also replaces explicit `Vec<String>` query schema names in IAM/ecommerce/billing
+with `StringArray`, preserving wire arrays. Six interface tests and strict
+all-feature/all-target clippy pass. Component keys follow the
+[OpenAPI 3.1 naming rule](https://spec.openapis.org/oas/v3.1.0.html#components-object).
+
+Archive run `A9tzbZ` includes the Better Auth correction and passes installation,
+portable module/worker compilation, both SDK import paths/native generators,
+HTTP/MCP startup/listener/shutdown checks and all five managed capability
+callbacks. Later query-name changes pass the final all-module matrix and the
+919-asset source-package check. Logs:
+`/private/tmp/fl-parity-packaged-install-final.log`,
+`/private/tmp/fl-module-matrix-final.log`,
+`/private/tmp/fl-module-interface-{tests,clippy}.log`,
+`/private/tmp/fl-auth-component-{parity,clippy}.log`,
+`/private/tmp/fl-module-matrix-package.log`.
+Checklist: 657/682 complete (96.3%), 25 open. Cleanup removed 17.5 GiB of inactive
+port-owned test executables older than 24 hours; active builds and other worktrees
+were preserved.

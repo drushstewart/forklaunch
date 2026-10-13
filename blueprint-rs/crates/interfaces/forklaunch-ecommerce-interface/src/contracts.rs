@@ -51,7 +51,7 @@ fn query<T: JsonSchema>(mut route: RouteContract) -> RouteContract {
     route
 }
 fn ids(route: RouteContract) -> RouteContract {
-    let mut field = FieldContract::optional("ids", "Vec<String>");
+    let mut field = FieldContract::optional("ids", "StringArray");
     field.schema.json_schema = Some(r#"{"type":"array","items":{"type":"string"}}"#.into());
     route.with_query(field)
 }

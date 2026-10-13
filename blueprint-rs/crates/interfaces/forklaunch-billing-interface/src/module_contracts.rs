@@ -206,7 +206,7 @@ pub fn registry(stripe: bool) -> ContractRegistry {
                 HmacAuth::new().with_header_name("authorization"),
             ))
             .with_query({
-                let mut field = FieldContract::optional("ids", "Vec<String>");
+                let mut field = FieldContract::optional("ids", "StringArray");
                 field.schema.json_schema =
                     Some(r#"{"type":"array","items":{"type":"string"}}"#.into());
                 field
@@ -287,7 +287,7 @@ pub fn registry(stripe: bool) -> ContractRegistry {
                 HmacAuth::new().with_header_name("authorization"),
             ))
             .with_query({
-                let mut field = FieldContract::optional("ids", "Vec<String>");
+                let mut field = FieldContract::optional("ids", "StringArray");
                 field.schema.json_schema =
                     Some(r#"{"type":"array","items":{"type":"string"}}"#.into());
                 field
@@ -629,7 +629,7 @@ pub fn registry(stripe: bool) -> ContractRegistry {
                 HmacAuth::new().with_header_name("authorization"),
             ))
             .with_query({
-                let mut field = FieldContract::optional("ids", "Vec<String>");
+                let mut field = FieldContract::optional("ids", "StringArray");
                 field.schema.json_schema =
                     Some(r#"{"type":"array","items":{"type":"string"}}"#.into());
                 field

@@ -192,7 +192,7 @@ fn id_field() -> FieldContract {
     field
 }
 fn ids_field() -> FieldContract {
-    let mut field = FieldContract::required("ids", "Vec<String>");
+    let mut field = FieldContract::required("ids", "StringArray");
     field.schema.json_schema =
         Some(json!({"type":"array","items":{"type":"string","format":"uuid"}}).to_string());
     field

@@ -1,6 +1,6 @@
 # Rust Framework And Blueprint Implementation Plan
 
-Current verified progress (2026-10-13): **656/682 checklist items (96.2%), 26 open**.
+Current verified progress (2026-10-13): **657/682 checklist items (96.3%), 25 open**.
 The unchecked boxes below are the remaining gates; detailed validation receipts
 are in [the parity inventory](RUST-TYPESCRIPT-PARITY-INVENTORY.md).
 
@@ -916,7 +916,7 @@ require literal Rust clones, but their public request/response behavior does.
 - [x] Port both custom Better Auth callback helpers: 92 actual Express/TS HTTP/HTTPS comparisons, independently verified JWTs, cookie clearing, script escaping, duplicate queries, Accept/HEAD, corrupt keys and expiry pass. Fresh generated PostgreSQL HTTP/MCP/lifecycle, 27 native tests, strict feature-matrix clippy, prior callback/raw HTTP regressions and 749 packaged sources pass.
 - [x] Add additional Scalar sources and default/custom/root auth namespaces across HTTP/MCP, helpers, docs, Google/reset callbacks, generated configuration and default self-JWKS.
 - [ ] Complete broader Better Auth ORM/hooks/client/options coverage, typed/custom JWT/JWKS adapters and indexed storage/pagination; audit dynamic/encoded namespace semantics separately.
-- [ ] Validate generated-module init/change/sync/delete, contracts, SDKs and mixed-app operation for every added module family; update release/package documentation and compatibility fixtures.
+- [x] Validate generated-module init/change/sync/delete, contracts, SDKs and mixed-app operation for every added module family. The eight-variant mixed-app matrix preserves a TypeScript library and user code, validates component names, compiles both SDKs from OpenAPI/contracts and checks rename/deletion ownership. Family runtime receipts cover HTTP/MCP/storage/provider behavior; relay and captured storefront lifecycle have separate fixtures below. Archive installation, documentation and CI coverage are updated; deployment/provider completeness stays in its own gates.
 
 - [x] Support Rust/mixed relay session-ingest and app-claim hooks, route-scoped HMAC, encrypted atomic nonce/ticket consumption, browser session cookies and safe redirects. Actual TS ORM/native comparisons, PostgreSQL conformance, live HTTP/MCP, generated SDK calls/builds, relocation, preserved sync/reinit, rename and deletion pass; this CLI surface has no separate published blueprint package.
 - [x] Support captured storefront initialization, sync, rename/description updates and deletion in Rust/Node/Bun/mixed apps. Preserve static paths across Rust-to-mixed migration and keep captures outside Cargo/package/API generation; hosting remains a deployment concern.

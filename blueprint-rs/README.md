@@ -19,6 +19,14 @@ cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 ```
 
+From the repository root, `bash cli/tests/rust_module_lifecycle.sh` exercises all
+eight built-in Rust module variants in a relocated mixed application with a
+TypeScript library. It checks idempotent initialization, sync, rename, user-source
+preservation, both SDK compilers and deletion of generated artifacts. Set
+`FORKLAUNCH_CLI` to a built CLI and `TSC_BIN` to the TypeScript compiler. The
+family-specific runtime fixtures separately check HTTP/MCP, storage and provider
+behavior; this lifecycle fixture does not require live external services.
+
 ## Package Policy
 
 - Interface crates define contracts and traits.

@@ -71,7 +71,7 @@ pub fn registry(name: &str, version: &str) -> ContractRegistry {
                 .with_access(AccessLevel::Internal)
                 .with_auth(AuthConfig::Hmac(HmacAuth::new().with_header_name("authorization")))
                 .with_param(parameter)
-                .with_response(200, Some(body(name, &json!({
+                .with_response(200, Some(body(&name.replace(' ', ""), &json!({
                     "type":"array", "items":{"type":"object", "required":[field], "properties":{field:{"type":"string"}}}
                 }))))
                 .with_response(500, Some(text())),

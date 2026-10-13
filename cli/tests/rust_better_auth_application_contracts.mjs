@@ -130,6 +130,8 @@ for (const route of captured) {
       ]);
   }
   for (const response of actual.responses) {
+    assert.match(response.body.schema.name, /^[a-zA-Z0-9._-]+$/,
+      `${route.options.name}: response component name must be valid in OpenAPI`);
     const schema = source.validator.openapi(
       route.options.responses[response.statusCode]
     );
