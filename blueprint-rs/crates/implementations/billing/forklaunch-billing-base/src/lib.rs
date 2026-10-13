@@ -71,7 +71,8 @@ impl BillingService for InMemoryBillingService {
             .cursor
             .as_ref()
             .and_then(|cursor| cursor.parse::<usize>().ok())
-            .unwrap_or(0);
+            .unwrap_or(0)
+            .min(self.customers.len());
         let end = start
             .saturating_add(request.limit)
             .min(self.customers.len());
@@ -167,6 +168,34 @@ mod tests {
             1
         );
         assert!(checkout.url.contains("customer_1/pro"));
+    }
+
+    #[test]
+    fn customer_pagination_handles_cursors_beyond_the_end() {
+        for customers in [
+            vec![],
+            vec![Customer::new("customer_1", "test@example.com")],
+        ] {
+            let service = InMemoryBillingService::new(customers);
+            for cursor in ["1".to_owned(), "2".to_owned(), usize::MAX.to_string()] {
+                let page = service
+                    .list_customers(PageRequest::first_page(usize::MAX).after(cursor))
+                    .expect("out-of-range cursor should return an empty terminal page");
+                assert!(page.items.is_empty());
+                assert!(!page.has_more());
+            }
+        }
+        let service = InMemoryBillingService::new(vec![
+            Customer::new("first", "first@example.com"),
+            Customer::new("second", "second@example.com"),
+        ]);
+        let first = service.list_customers(PageRequest::first_page(1)).unwrap();
+        assert_eq!(first.items[0].id, "first");
+        let last = service
+            .list_customers(PageRequest::first_page(usize::MAX).after(first.next_cursor.unwrap()))
+            .unwrap();
+        assert_eq!(last.items[0].id, "second");
+        assert!(!last.has_more());
     }
 
     #[test]

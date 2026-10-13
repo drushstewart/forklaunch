@@ -3794,3 +3794,14 @@ All 919 embedded assets are packaged. Logs:
 `/private/tmp/fl-oidc-refresh-{tests,clippy,generated,package}.log`.
 Automatic key refresh and account/session provisioning remain open; the broader
 provider gate stays open. Checklist remains 656/682 (96.2%), 26 open.
+
+
+Reference billing pagination regression (2026-10-13): clamp numeric customer
+cursors to the stored collection length before slicing, matching the existing
+reference IAM pagination behavior. Empty collections, terminal/beyond-end cursors,
+maximum integer cursors/limits and normal multi-page traversal are covered.
+The three billing unit tests and portable persistence test pass; the separately
+configured PostgreSQL test remains ignored in this run. Strict all-feature/
+all-target billing clippy passes. Logs:
+`/private/tmp/fl-billing-cursor-{tests,clippy}.log`. This does not close the broader
+billing reconciliation gate.
