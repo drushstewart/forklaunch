@@ -179,16 +179,18 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 
 ### Auth Evaluation Checklist
 
-- [ ] Maintenance activity and release cadence.
-- [ ] Security posture and dependency risk.
-- [ ] Password hashing defaults and upgrade strategy.
-- [ ] Session storage model and CSRF behavior.
-- [ ] OAuth/OIDC provider coverage.
-- [ ] Multi-tenant organization support.
-- [ ] Role, permission, scope, and feature entitlement integration.
-- [ ] WebAuthn/passkey support path.
-- [ ] Framework independence from Axum.
-- [ ] Fit with generated OpenAPI, SDKs, and MCP auth boundaries.
+Completed candidate-selection review: [Rust auth evaluation](RUST-AUTH-FRAMEWORK-EVALUATION.md). These are evaluation results, not implementation claims; cookie/OIDC/adapters remain separate open tasks.
+
+- [x] Maintenance activity and release cadence.
+- [x] Security posture and dependency risk.
+- [x] Password hashing defaults and upgrade strategy.
+- [x] Session storage model and CSRF behavior.
+- [x] OAuth/OIDC provider coverage.
+- [x] Multi-tenant organization support.
+- [x] Role, permission, scope, and feature entitlement integration.
+- [x] WebAuthn/passkey support path.
+- [x] Framework independence from Axum.
+- [x] Fit with generated OpenAPI, SDKs, and MCP auth boundaries.
 
 ## Phase 0 - Contract Shape And Compatibility
 

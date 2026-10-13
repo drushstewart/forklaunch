@@ -2140,3 +2140,24 @@ include the preceding diagnostic redaction and the new response runtime. Owned
 generated workspaces were removed. Together with typed extraction, this closes
 the multipart runtime/SDK checkbox. Broad MIME/MCP/schema conformance stays open.
 Checklist: **633/682 (92.8%), 49 open**.
+
+
+### Authentication framework candidate evaluation (2026-10-12)
+
+[RUST-AUTH-FRAMEWORK-EVALUATION.md](RUST-AUTH-FRAMEWORK-EVALUATION.md) completes
+the ten selection criteria with official release metadata and hashes of inspected
+release sources. It covers maintenance/dependencies, password upgrades,
+session/CSRF storage, OAuth/OIDC, tenant and entitlement boundaries, passkeys,
+framework independence and contract/SDK/MCP integration. It selects narrow
+tower-sessions, openidconnect/oauth2 and later webauthn-rs adapters while keeping
+ForkLaunch IAM and policy ownership. Higher-level framework adoption is deferred.
+The review records the tower-sessions/axum-login maintenance request, rs-auth
+account-linking/verified-email and state-store concerns, and explicit integration
+acceptance conditions. This is a source spot-review, not an audit certification
+or completed provider/cookie integration. No production dependency changed.
+All 24 non-registry source links returned HTTP 200; twelve registry metadata
+links point to the successfully fetched official API (the HTML /versions route
+returned 404). The evidence JSON parses and local document links resolve. Owned
+downloaded review sources were removed after recording hashes.
+Checklist: **643/682 (94.3%), 39 open**. The ten new completions are evaluation
+tasks; the percentage measures checklist completion, not runtime feature weight.
