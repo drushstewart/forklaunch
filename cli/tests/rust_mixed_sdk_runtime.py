@@ -54,6 +54,8 @@ def start(*args):
 try:
     cli('init', 'application', 'mixed-sdk', '--language', 'rust', '-D', 'Mixed SDK', '-A', 'ForkLaunch', '-L', 'MIT')
     cli('init', 'service', 'native-api', '--language', 'rust', '-D', 'Native API')
+    refused = subprocess.run([str(binary), 'sdk', 'mode', '-t', 'live', '--path', str(app)], cwd=root, env=env, capture_output=True, text=True, timeout=30)
+    assert refused.returncode != 0 and 'requires a TypeScript project' in refused.stderr + refused.stdout
     tools = root / 'tools'
     tools.mkdir()
     (tools / 'package.json').write_text('{"private":true}')
@@ -117,6 +119,45 @@ if(process.env.FORKLAUNCH_MODE==='openapi') {
     app = relocated
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract')
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
+    # Mixed live mode resolves TS source directly while preserving Rust artifacts
+    # and shared orchestration; generated mode restores declaration resolution.
+    ts = app / 'services/typescript-api'
+    package = ts / 'package.json'
+    package.write_text(json.dumps({'name':'typescript-api','private':True,'type':'module','main':'index.ts'}))
+    (ts / 'index.ts').write_text("export type LiveProfile = { source: 'live' };\n")
+    (ts / 'index.d.ts').write_text("export type LiveProfile = { source: 'generated' };\n")
+    (tools / 'node_modules/typescript-api').symlink_to(ts, target_is_directory=True)
+    (app / 'node_modules').symlink_to(tools / 'node_modules', target_is_directory=True)
+    (app / 'tsconfig.json').write_text('{"compilerOptions":{"strict":true},"references":[]}')
+    (app / '.vscode').mkdir(exist_ok=True)
+    (app / '.vscode/tasks.json').write_text('{"version":"2.0.0","tasks":[{"label":"Owned Cargo task","command":"cargo check","type":"shell"}]}')
+    native_package = app / 'services/native-api/package.json'
+    native_package.parent.mkdir(parents=True, exist_ok=True)
+    native_package.write_text('{"types":"native-sentinel.d.ts"}')
+    protected_paths = [app/'tsconfig.json',app/'.vscode/tasks.json',app/'Cargo.toml',native_package,app/'sdks/typescript/src/index.ts']
+    protected = {path:path.read_bytes() for path in protected_paths}
+    def check_live_type(marker):
+        consumer = app/'live-import.mts'
+        consumer.write_text("import type {LiveProfile} from 'typescript-api';\nconst value:LiveProfile={source:"+json.dumps(marker)+"}; void value;\n")
+        run(tools/'node_modules/.bin/tsc','--noEmit','--strict','--skipLibCheck','--target','ES2022','--module','NodeNext','--moduleResolution','NodeNext','live-import.mts')
+    cli('sdk','mode','-t','generated')
+    assert json.loads(package.read_text())['types']=='index.d.ts'
+    check_live_type('generated')
+    original_package = package.read_bytes()
+    cli('sdk','mode','-t','live','--dryrun')
+    assert package.read_bytes()==original_package
+    cli('sdk','mode','-t','live')
+    assert json.loads(package.read_text()).get('types') is None
+    check_live_type('live')
+    (ts/'index.ts').write_text("export type LiveProfile = { source: 'updated' };\n")
+    check_live_type('updated')
+    cli('sdk','mode','-t','generated')
+    check_live_type('generated')
+    cli('sdk','mode','-t','live')
+    check_live_type('updated')
+    for path,content in protected.items():
+        assert path.read_bytes()==content, path
+    print('PASS mixed live TS imports follow source edits, generated mode restores declarations, dry-run and native artifacts are preserved',flush=True)
     # Watch both the manifest and a relocated TS export even in contract mode.
     sdk_source = app / 'sdks/typescript/src/index.ts'
     manifest = app / '.forklaunch/manifest.toml'

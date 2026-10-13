@@ -671,3 +671,12 @@ represent array holes; it is not silently converted to null. A removed root is
 an absent parsed body, so callers must use an appropriate optional-body contract
 and handler; `VersionedBody<T>` requires a present value. Broader undefined/default
 and sparse-array validation semantics remain open. Traversal is depth-bounded.
+
+
+In a mixed application, `forklaunch sdk mode -t live` switches registered
+TypeScript packages to source resolution. Rust services continue using generated
+contract SDKs. `-t generated` restores the TypeScript declaration entry points.
+Both modes preserve mixed-workspace Cargo, root TypeScript and editor task
+configuration. Pure Rust applications require generated SDKs; declare a project's
+`metadata.language = "typescript"` when attaching TypeScript source to a Rust
+workspace. Existing TypeScript-only Node/Bun mode behavior is retained.

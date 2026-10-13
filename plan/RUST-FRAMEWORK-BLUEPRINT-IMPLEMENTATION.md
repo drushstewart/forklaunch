@@ -1,5 +1,9 @@
 # Rust Framework And Blueprint Implementation Plan
 
+Current verified progress (2026-10-13): **653/682 checklist items (95.7%), 29 open**.
+The unchecked boxes below are the remaining gates; detailed validation receipts
+are in [the parity inventory](RUST-TYPESCRIPT-PARITY-INVENTORY.md).
+
 ## Purpose
 
 Build a Rust-native ForkLaunch stack with two new workspaces:
@@ -387,7 +391,7 @@ Requirements:
 
 - [x] The generated SDK exports the same service/module shape that live TypeScript SDK mode would expose.
 - [x] The generated SDK uses network calls under the hood for Rust services.
-- [ ] The generated SDK may use direct live imports for TypeScript services in live mode.
+- [x] Support direct live imports for TypeScript services in mixed-app SDK live mode. Source edits are visible immediately; generated mode restores declaration resolution. Rust SDK artifacts, Cargo configuration and shared editor/build files remain intact. Pure Rust apps reject live mode. Node/Bun regression and mixed HTTP/MCP/SDK lifecycle fixtures pass (2026-10-13).
 - [x] Mixed apps import one generated HTTP SDK surface for TypeScript and Rust services, validated by strict consumers and live calls in both client languages.
 - [x] A Rust contract change requires regenerating the TypeScript SDK.
 - [x] Regeneration should be deterministic so changed contracts produce reviewable diffs.

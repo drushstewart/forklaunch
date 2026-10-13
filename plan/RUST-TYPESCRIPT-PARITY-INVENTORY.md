@@ -3531,3 +3531,25 @@ JavaScript holes. Mutable reviver holders/source context, broader undefined/defa
 validation and non-body transformations remain open. Root deletion is an absent
 parsed value and requires a compatible contract/handler; the typed required-body
 extractor requires a present value. Checklist **652/682 (95.6%), 30 open**.
+
+
+### Mixed-app live TypeScript SDK imports (2026-10-13)
+
+Live SDK mode now accepts a mixed workspace containing registered TypeScript
+projects, removes only their declaration entry points, and leaves native package
+metadata and generated SDKs intact. Generated mode restores declaration resolution
+without parsing Tokio as a JavaScript runtime. Shared root tsconfig/editor tasks
+remain application-owned in hybrid workspaces. Pure Rust live mode fails before
+mutation. Legacy TypeScript-only Node/Bun behavior is covered by a regression test.
+
+Fresh relocated `rust-mixed-sdk-runtime/run.77wpkisb` proves strict TypeScript
+package imports observe source edits immediately, generated/live round trips,
+dry-run preservation, unchanged native artifacts and shared configuration. The
+same fixture passes SDK watch recovery, service lifecycle preservation, native
+HTTP/MCP startup/endpoint modes/Origin rejection/graceful shutdown, and both SDKs
+calling real native and tsx HTTP services. All **1,100 CLI tests pass**. Receipts:
+`/private/tmp/fl-live-sdk-{generated,tests,cli-all}.log`.
+
+This closes the direct live TypeScript import gate: **653/682 (95.7%), 29 open**.
+It does not make Rust source directly importable from TypeScript; native services
+continue using their generated contract clients.

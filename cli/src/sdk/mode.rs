@@ -12,7 +12,7 @@ use crate::{
     },
     core::{
         command::command,
-        manifest::application::ApplicationManifestData,
+        manifest::{ProjectEntry, application::ApplicationManifestData},
         package_json::project_package_json::ProjectPackageJson,
         removal_template::{RemovalTemplate, remove_template_files},
         rendered_template::{RenderedTemplate, RenderedTemplatesCache, write_rendered_templates},
@@ -36,26 +36,29 @@ pub(crate) fn apply_generated_sdk_mode_setup(
     manifest_data: &ApplicationManifestData,
     rendered_templates_cache: &mut RenderedTemplatesCache,
 ) -> Result<()> {
-    if let Some(root_tsconfig) = generate_root_tsconfig(app_root_path, manifest_data)? {
-        rendered_templates_cache.insert(
-            app_root_path.join("tsconfig.json").to_string_lossy(),
-            root_tsconfig,
-        );
-    }
+    // Hybrid workspaces own Cargo/TypeScript orchestration together. Mode changes
+    // affect TS package resolution, not their shared build/editor configuration.
+    if !has_native_workspace(manifest_data) {
+        if let Some(root_tsconfig) = generate_root_tsconfig(app_root_path, manifest_data)? {
+            rendered_templates_cache.insert(
+                app_root_path.join("tsconfig.json").to_string_lossy(),
+                root_tsconfig,
+            );
+        }
 
-    if let Some(vscode_tasks) = generate_vscode_tasks(app_root_path, manifest_data)? {
-        rendered_templates_cache.insert(
-            app_root_path
-                .join(".vscode")
-                .join("tasks.json")
-                .to_string_lossy(),
-            vscode_tasks,
-        );
+        if let Some(vscode_tasks) = generate_vscode_tasks(app_root_path, manifest_data)? {
+            rendered_templates_cache.insert(
+                app_root_path
+                    .join(".vscode")
+                    .join("tasks.json")
+                    .to_string_lossy(),
+                vscode_tasks,
+            );
+        }
     }
-
     let modules_path = app_root_path.join(manifest_data.modules_path.clone());
     for project in &manifest_data.projects {
-        if project.name == "client-sdk" {
+        if project.name == "client-sdk" || !is_typescript_project(manifest_data, project) {
             continue;
         }
 
@@ -105,17 +108,19 @@ fn use_live_sdk_mode(
 
     let mut removal_templates = vec![];
 
-    removal_templates.push(RemovalTemplate {
-        path: app_root_path.join("tsconfig.json"),
-    });
+    if !has_native_workspace(manifest_data) {
+        removal_templates.push(RemovalTemplate {
+            path: app_root_path.join("tsconfig.json"),
+        });
 
-    removal_templates.push(RemovalTemplate {
-        path: app_root_path.join(".vscode").join("tasks.json"),
-    });
+        removal_templates.push(RemovalTemplate {
+            path: app_root_path.join(".vscode").join("tasks.json"),
+        });
+    }
 
     let modules_path = app_root_path.join(manifest_data.modules_path.clone());
     for project in &manifest_data.projects {
-        if project.name == "client-sdk" {
+        if project.name == "client-sdk" || !is_typescript_project(manifest_data, project) {
             continue;
         }
 
@@ -142,28 +147,55 @@ fn use_live_sdk_mode(
     Ok(removal_templates)
 }
 
-fn ensure_live_sdk_mode_supported(manifest_data: &ApplicationManifestData) -> Result<()> {
-    let app_language = manifest_data
-        .language
-        .as_deref()
-        .or(manifest_data.application_language.as_deref());
-    let app_uses_rust = matches!(app_language, Some("rust" | "mixed"))
-        || manifest_data.runtime == "tokio"
-        || manifest_data.cargo_workspace.is_some();
-    let has_rust_project = manifest_data.projects.iter().any(|project| {
-        project
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.language.as_deref())
-            == Some("rust")
-    });
+fn has_native_workspace(manifest: &ApplicationManifestData) -> bool {
+    matches!(
+        manifest
+            .language
+            .as_deref()
+            .or(manifest.application_language.as_deref()),
+        Some("rust" | "mixed")
+    ) || manifest.runtime == "tokio"
+        || manifest.cargo_workspace.is_some()
+        || manifest.projects.iter().any(|project| {
+            project
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.language.as_deref())
+                == Some("rust")
+        })
+}
 
-    if app_uses_rust || has_rust_project {
+fn is_typescript_project(manifest: &ApplicationManifestData, project: &ProjectEntry) -> bool {
+    match project
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.language.as_deref())
+    {
+        Some("rust") => false,
+        Some("typescript") => true,
+        _ => {
+            !matches!(
+                manifest
+                    .language
+                    .as_deref()
+                    .or(manifest.application_language.as_deref()),
+                Some("rust" | "mixed")
+            ) && manifest.runtime != "tokio"
+        }
+    }
+}
+
+fn ensure_live_sdk_mode_supported(manifest: &ApplicationManifestData) -> Result<()> {
+    if has_native_workspace(manifest)
+        && !manifest
+            .projects
+            .iter()
+            .any(|project| project.name != "client-sdk" && is_typescript_project(manifest, project))
+    {
         bail!(
-            "Live SDK mode is only supported for TypeScript projects. Rust services require generated SDK mode from contract artifacts."
+            "Live SDK mode requires a TypeScript project. Rust services retain generated SDKs from contract artifacts."
         );
     }
-
     Ok(())
 }
 
@@ -235,5 +267,48 @@ impl CliCommand for ModeCommand {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn legacy_typescript_modes_keep_package_and_configuration_behavior() {
+        for runtime in ["node", "bun"] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().to_path_buf();
+            let manifest: ApplicationManifestData = serde_json::from_value(json!({
+                "id":"fixture","cli_version":"0.0.0","app_name":"fixture",
+                "app_description":"fixture","linter":"eslint","formatter":"prettier",
+                "validator":"zod","http_framework":"express","author":"fixture","license":"MIT",
+                "project_peer_topology":{},"runtime":runtime,"modules_path":"modules",
+                "projects":[{"type":"Service","name":"api","description":"fixture"}]
+            }))
+            .unwrap();
+            let package = path.join("modules/api/package.json");
+            std::fs::create_dir_all(package.parent().unwrap()).unwrap();
+            std::fs::write(&package, r#"{"name":"api","types":"index.d.ts"}"#).unwrap();
+            let mut cache = RenderedTemplatesCache::new();
+            let removals = use_live_sdk_mode(&path, &manifest, &mut cache).unwrap();
+            assert_eq!(removals.len(), 2);
+            let value: serde_json::Value =
+                serde_json::from_str(&cache.get(&package).unwrap().unwrap().content).unwrap();
+            assert!(value.get("types").is_none_or(serde_json::Value::is_null));
+            apply_generated_sdk_mode_setup(&path, &manifest, &mut cache).unwrap();
+            assert!(cache.get(path.join("tsconfig.json")).unwrap().is_some());
+            assert!(
+                cache
+                    .get(path.join(".vscode/tasks.json"))
+                    .unwrap()
+                    .is_some()
+            );
+            let value: serde_json::Value =
+                serde_json::from_str(&cache.get(&package).unwrap().unwrap().content).unwrap();
+            assert_eq!(value["types"], "index.d.ts");
+        }
     }
 }

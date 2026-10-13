@@ -202,7 +202,7 @@ if (
     echo "[FAIL] Rust apps should reject live SDK mode"
     exit 1
 fi
-grep -q 'Live SDK mode is only supported for TypeScript projects' rust-app/live-mode.log
+grep -q 'Live SDK mode requires a TypeScript project' rust-app/live-mode.log
 
 echo "[INFO] Generated Rust crates:"
 find rust-app/crates -mindepth 2 -maxdepth 2 -name Cargo.toml | sort
