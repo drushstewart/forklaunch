@@ -123,8 +123,13 @@ and the first two colon-delimited fields. Thus `user:pass:extra` checks password
 opt-in and does not change that default. A trusted synchronous callback must
 verify the parsed username/password before the function returns a principal.
 Missing/malformed credentials return 401 and denied login returns 403, with the
-TypeScript public messages. Async/custom decoders and session-schema validation
-remain separate integration responsibilities.
+TypeScript public messages. `basic::verify_basic_resource` instead awaits a
+trusted async decoder with the unchanged first token, including an empty token.
+It bypasses base64/login parsing, rejects null claims and preserves other JSON
+claims. The decoder must actually verify credentials; applications validate the
+session and bind its principal before returning an `AuthenticatedSession`.
+Explicit decoder errors must contain public text. Cancellation drops the decoder
+future without retrying it. Session-schema validation remains application-owned.
 
 Use `RouterConfig::with_response_authenticator` when credential verification
 needs explicit `ErrorResponse` statuses/messages, including this Basic verifier.

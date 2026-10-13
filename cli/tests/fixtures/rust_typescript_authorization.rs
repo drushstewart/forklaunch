@@ -1,7 +1,10 @@
 use axum::{Extension, Json};
 use forklaunch_auth::{
     AuthError, parse_bearer,
-    typescript::{TypeScriptRbacPolicy, basic::verify_basic},
+    typescript::{
+        TypeScriptRbacPolicy,
+        basic::{verify_basic, verify_basic_resource},
+    },
     verify_jwt_hs256,
 };
 use forklaunch_axum::{ForkLaunchRouter, RouterConfig, session::AuthenticatedSession};
@@ -10,33 +13,60 @@ use forklaunch_http::{ErrorKind, ErrorResponse};
 use serde_json::{Value, json};
 const SECRET: &[u8] = b"fixture-only-session-authorization-key";
 pub fn contracts() -> Vec<RouteContract> {
-    ["permissions", "scope", "features", "unconfigured", "basic"]
-        .into_iter()
-        .map(|name| {
-            RouteContract::get(
-                format!("Check {name}"),
-                "Session authorization fixture",
-                format!("/policy/{name}"),
-            )
-            .with_auth(if name == "basic" {
-                AuthConfig::basic()
-            } else {
-                AuthConfig::jwt(JwtAuthConfig::SignatureKey)
-            })
-            .with_access(
-                if name == "scope" || name == "features" || name == "basic" {
-                    AccessLevel::Authenticated
-                } else {
-                    AccessLevel::Protected
-                },
-            )
-            .with_response(200, Some(BodyContract::json("PolicyResponse")))
+    [
+        "permissions",
+        "scope",
+        "features",
+        "unconfigured",
+        "basic",
+        "resource",
+    ]
+    .into_iter()
+    .map(|name| {
+        RouteContract::get(
+            format!("Check {name}"),
+            "Session authorization fixture",
+            format!("/policy/{name}"),
+        )
+        .with_auth(if name == "basic" || name == "resource" {
+            AuthConfig::basic()
+        } else {
+            AuthConfig::jwt(JwtAuthConfig::SignatureKey)
         })
-        .collect()
+        .with_access(
+            if name == "scope" || name == "features" || name == "basic" {
+                AccessLevel::Authenticated
+            } else {
+                AccessLevel::Protected
+            },
+        )
+        .with_response(200, Some(BodyContract::json("PolicyResponse")))
+    })
+    .collect()
 }
 pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
     let config = RouterConfig::default()
         .with_response_authenticator(|request, contract| async move {
+            if contract.operation_name == "checkResource" {
+                let claims = verify_basic_resource(
+                    request.headers.get("authorization").map(String::as_str),
+                    None,
+                    |token| async move {
+                        tokio::task::yield_now().await;
+                        Ok(match token {
+                            "owned-opaque-token" => json!({"sub":"resource-user", "role":"admin", "team":"verified-team"}),
+                            "owned-reader-token" => json!({"sub":"resource-user", "role":"reader", "team":"verified-team"}),
+                            "owned-invalid-session" => json!({"sub":42}),
+                            _ => Value::Null,
+                        })
+                    },
+                ).await?;
+                let subject = claims.get("sub").and_then(Value::as_str)
+                    .ok_or_else(|| ErrorResponse::new(ErrorKind::Validation, "invalid session"))?;
+                let mut principal = forklaunch_auth::Principal::new(subject);
+                principal.roles = claims.get("role").and_then(Value::as_str).map(|role| vec![role.into()]).unwrap_or_default();
+                return Ok(AuthenticatedSession::new(principal, claims));
+            }
             if contract.operation_name == "checkBasic" {
                 let principal = verify_basic(
                     request.headers.get("authorization").map(String::as_str),
@@ -56,6 +86,10 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
         })
         .with_authorizer(|session, contract| {
             let policy = match contract.operation_name.as_str() {
+                "checkResource" => TypeScriptRbacPolicy {
+                    allowed_roles: Some(vec!["admin".into()]),
+                    ..Default::default()
+                },
                 "checkPermissions" => TypeScriptRbacPolicy {
                     allowed_permissions: Some(vec!["read".into()]),
                     allowed_roles: Some(vec!["admin".into()]),
@@ -80,6 +114,11 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
         router = router.get(
             contract,
             |Extension(session): Extension<AuthenticatedSession>| async move {
+                if let Some(team) = session.claims.get("team") {
+                    return Json::<Value>(
+                        json!({"subject":session.principal.subject, "team":team}),
+                    );
+                }
                 Json::<Value>(json!({"subject":session.principal.subject}))
             },
         );

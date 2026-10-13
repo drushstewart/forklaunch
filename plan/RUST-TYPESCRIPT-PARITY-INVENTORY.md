@@ -4196,3 +4196,25 @@ discovery, invocation and shutdown matrix. All 939 embedded assets are packaged.
 Logs: `/private/tmp/fl-oidc-key-refresh-{tests,clippy,generated,package}.log`.
 Account/session provisioning and broader provider/options coverage remain open.
 Checklist remains 657/682 (96.3%), 25 open.
+
+
+Basic async resource decoder receipt (2026-10-13): the opt-in
+`typescript::basic::verify_basic_resource` verifies through a trusted async
+callback instead of synchronous username/password login. Exact prefix and first
+space-token behavior precede the callback; its token is passed unchanged. Null
+claims return the TypeScript 403, while other JSON claims are preserved for
+application-owned session validation and principal binding. Callback errors are
+explicit public responses. Cancellation drops the callback without retries.
+
+All 30 auth tests and strict all-feature/all-target Clippy pass. The actual-source
+Basic comparison fixture now checks 1,067 cases, including 252 async resource
+cases covering prefix errors, empty/opaque tokens, decoder precedence and JSON
+claim shapes. Generated relocated run `6W7xXG` compiles both SDKs, passes vendored
+OIDC wire tests and verifies Basic resource login, invalid sessions, role denials
+and trusted claim propagation over both HTTP and MCP. Its complete listener and
+startup/shutdown matrix passes. The wire fixture accounts for Fetch trimming a
+trailing Authorization space; direct middleware comparisons retain empty-token
+coverage. All 939 embedded assets remain packaged. Logs:
+`/private/tmp/fl-basic-resource-{tests,parity,clippy,generated,runtime,startup,package}.log`.
+Session schemas, broader callbacks and error envelopes remain open; checklist is
+657/682 (96.3%), 25 open.

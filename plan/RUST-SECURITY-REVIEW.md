@@ -254,3 +254,15 @@ fetches. Reply targets with unexpected fields, cycles, sibling references or
 ambiguous payloads are rejected. Invalid-reply CLI checks preserve both SDKs and
 the user-owned source document. This adds message-direction metadata, not automatic
 request correlation or authorization. Existing security/header restrictions apply.
+
+
+Basic custom resource verification review (2026-10-13): the opt-in async decoder
+receives the first raw token only after exact prefix/header checks. It supersedes
+base64 parsing and synchronous login, so the application callback must verify the
+credential, not merely decode it. Null claims reject authentication. Other JSON
+claims are preserved as in TypeScript; applications validate their shape and bind
+the principal before creating an authenticated session. Explicit callback errors
+must contain public text. Cancellation drops the callback future without retries.
+The generated fixture verifies credentials before session shape/role checks and
+never authorizes malformed or null sessions. Native structured error envelopes
+remain unchanged; TypeScript response-body equivalence is not claimed here.
