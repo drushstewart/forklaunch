@@ -31,5 +31,23 @@ envelopes and broader access-level validation are separate auth/error parity wor
 The runner also exercises the actual TypeScript OpenAPI emitter with default,
 explicit and custom JWT headers plus Basic auth: security references must resolve,
 non-OAuth scope lists must be empty and path parameters must be required.
-Whole-document OpenAPI normalization, multipart, streaming, other auth modes,
+Full OpenAPI equivalence, multipart, streaming, other auth modes,
 MCP conformance and production IAM persistence remain separate checklist items.
+
+## OpenAPI snapshots
+
+The paired runner checks committed key-sorted full documents, then compares
+normalized operation sets, parameters, security requirements and successful
+response schemas. Normalization resolves local schema references, sorts sets,
+removes schema annotations and equates unconstrained disjoint primitive unions
+with type arrays. Validation constraints and response contracts remain visible.
+Ten differing error-response entries are separately pinned in
+`openapi-differences.json`: TypeScript's implicit error responses and its null
+schema for the explicit empty 404 differ from native documents. Snapshot coverage
+does not establish full error/document parity. The TypeScript fixture accepts
+optional nullable DTO fields and integer limits, matching the native contracts.
+
+To intentionally update snapshots, run the same command with
+`UPDATE_CANONICAL_OPENAPI=1`, review all three JSON files, then run without that
+variable to verify. `FORKLAUNCH_TEST_OPENAPI_OUTPUT` optionally writes raw documents
+to a chosen directory for inspection.

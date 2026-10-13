@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {normalizeOpenApi,sortKeys} from './fixtures/canonical-iam/normalize_openapi.mjs';
 import {spawn,spawnSync} from 'node:child_process';
 import {cpSync,mkdirSync,mkdtempSync,readFileSync,writeFileSync,symlinkSync,rmSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -76,6 +77,7 @@ try{
    if(body!==undefined)assert.deepEqual(text?JSON.parse(text):'',body,`${name} ${path}`);
   }
  }
+ const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);
   const document=await response.json();const spec=document.latest??document;
@@ -83,12 +85,33 @@ try{
    mkdirSync(process.env.FORKLAUNCH_TEST_OPENAPI_OUTPUT,{recursive:true});
    writeFileSync(join(process.env.FORKLAUNCH_TEST_OPENAPI_OUTPUT,url===ts?'typescript.json':'rust.json'),JSON.stringify(spec,null,2)+'\n');
   }
+  const name=url===ts?'typescript':'rust';
+  const snapshot=JSON.stringify(sortKeys(spec),null,2)+'\n';
+  const snapshotPath=join(fixture,`${name}.openapi.json`);
+  if(process.env.UPDATE_CANONICAL_OPENAPI==='1')writeFileSync(snapshotPath,snapshot);
+  assert.equal(snapshot,readFileSync(snapshotPath,'utf8'),`${name} OpenAPI snapshot drift`);
+  normalized.push(normalizeOpenApi(spec));
   assert.ok(spec.paths['/users']);assert.ok(spec.paths['/users/{id}']);
   assert.equal(spec.paths['/users/{id}'].get.parameters.find(parameter=>parameter.in==='path').required,true);
   for(const item of Object.values(spec.paths))for(const operation of Object.values(item))
    for(const requirement of operation.security??[])for(const name of Object.keys(requirement))
     assert.ok(spec.components.securitySchemes[name],`unresolved security scheme ${name}`);
  }
+ assert.deepEqual(Object.keys(normalized[0]),Object.keys(normalized[1]));
+ const differences=[];
+ for(const operation of Object.keys(normalized[0])){
+  for(const field of ['parameters','security'])assert.deepEqual(normalized[0][operation][field],normalized[1][operation][field],`${operation} ${field}`);
+  assert.deepEqual(normalized[0][operation].responses['200'],normalized[1][operation].responses['200'],`${operation} success schema`);
+  const left=normalized[0][operation].responses,right=normalized[1][operation].responses;
+  for(const status of [...new Set([...Object.keys(left),...Object.keys(right)])].sort()){
+   if(JSON.stringify(left[status])!==JSON.stringify(right[status]))differences.push({operation,status,typescript:left[status]??null,rust:right[status]??null});
+  }
+ }
+ const differenceSnapshot=JSON.stringify(differences,null,2)+'\n';
+ const differencePath=join(fixture,'openapi-differences.json');
+ if(process.env.UPDATE_CANONICAL_OPENAPI==='1')writeFileSync(differencePath,differenceSnapshot);
+ assert.equal(differenceSnapshot,readFileSync(differencePath,'utf8'),'remaining OpenAPI response differences changed');
+ console.log(`PASS normalized OpenAPI parameters/security/success schemas; ${differences.length} explicit error-response document differences retained`);
  console.log(`PASS canonical actual TypeScript/Rust IAM services: ${cases.length*2} live HTTP outcomes and both OpenAPI endpoints; 3 known rejected-JWT status differences remain`);
 }finally{
  for(const child of children){

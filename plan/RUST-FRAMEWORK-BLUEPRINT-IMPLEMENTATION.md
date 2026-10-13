@@ -789,7 +789,7 @@ Current CLI structure to build on:
 
 - [x] Build a canonical contract fixture service in TypeScript. (`cli/tests/fixtures/canonical-iam/service.ts` bundles actual repository Express/core/Zod sources; the live paired runner checks 18 HTTP outcomes and both OpenAPI endpoints, explicitly retaining three rejected-JWT status differences.)
 - [x] Build the same canonical contract fixture service in Rust. (`forklaunch-blueprint-sample-service::iam_router` — runnable, contract-driven, serves OpenAPI)
-- [ ] Snapshot OpenAPI outputs and compare normalized output.
+- [x] Snapshot OpenAPI outputs and compare normalized output. (`rust_canonical_http_parity.mjs` pins both actual full documents, compares normalized parameters/security/success schemas and pins ten remaining error-response document differences. This completes the comparison harness; full error/document equivalence remains in the error-parity gate.)
 - [x] Snapshot AsyncAPI outputs and compare normalized output. (`rust_ws_metadata_parity.mjs` compares 34 actual TypeScript/native WebSocket documents, then checks committed key-normalized snapshots; official schema/parser and payload/reference checks also pass. Broader external AsyncAPI protocols remain separately tracked.)
 - [x] Run generated TypeScript SDK against the Rust service. (`cli/tests/rust_http_runtime.sh`; relocated app, live HTTP, graceful shutdown verified)
 - [x] Run generated Rust SDK against the compiled TypeScript HTTP wire fixture, including typed JSON, statuses, text/binary uploads and multipart files through both contract and OpenAPI generation. Full TypeScript framework service conformance remains separate.
@@ -1945,3 +1945,19 @@ All eight IAM-interface/sample-service library tests and the eighteen live
 HTTP outcomes pass. The three rejected-JWT status differences remain explicit;
 whole-document OpenAPI and broad auth/error conformance remain open.
 Checklist remains **628/682 (92.1%), 54 open**.
+
+
+### Canonical whole-document snapshots and normalized comparison (2026-10-12)
+
+Both real service OpenAPI documents now have committed, key-sorted snapshots.
+The live comparison resolves local schema references and normalizes schema
+annotations, set ordering and disjoint primitive unions. Operation sets,
+parameters, security requirements and successful response schemas match.
+Ten remaining error-response entries are pinned separately in
+`cli/tests/fixtures/canonical-iam/openapi-differences.json`; the comparison cannot
+silently discard them or accept new differences. The fixture's optional nullable
+DTO fields and integer query limit now match the native sample's published types.
+Snapshot creation and a separate ordinary verification run pass alongside all
+eighteen live HTTP checks. This closes the snapshot/comparison harness task,
+not full document/error parity or the three rejected-JWT status differences.
+Checklist: **629/682 (92.2%), 53 open**.

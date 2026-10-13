@@ -1975,3 +1975,19 @@ All eight IAM-interface/sample-service library tests and the eighteen live
 HTTP outcomes pass. The three rejected-JWT status differences remain explicit;
 whole-document OpenAPI and broad auth/error conformance remain open.
 Checklist remains **628/682 (92.1%), 54 open**.
+
+
+### Canonical whole-document snapshots and normalized comparison (2026-10-12)
+
+Both real service OpenAPI documents now have committed, key-sorted snapshots.
+The live comparison resolves local schema references and normalizes schema
+annotations, set ordering and disjoint primitive unions. Operation sets,
+parameters, security requirements and successful response schemas match.
+Ten remaining error-response entries are pinned separately in
+`cli/tests/fixtures/canonical-iam/openapi-differences.json`; the comparison cannot
+silently discard them or accept new differences. The fixture's optional nullable
+DTO fields and integer query limit now match the native sample's published types.
+Snapshot creation and a separate ordinary verification run pass alongside all
+eighteen live HTTP checks. This closes the snapshot/comparison harness task,
+not full document/error parity or the three rejected-JWT status differences.
+Checklist: **629/682 (92.2%), 53 open**.

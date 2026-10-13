@@ -1,0 +1,122 @@
+[
+  {
+    "operation": "GET /users",
+    "status": "400",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  },
+  {
+    "operation": "GET /users",
+    "status": "401",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  },
+  {
+    "operation": "GET /users",
+    "status": "403",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  },
+  {
+    "operation": "GET /users",
+    "status": "404",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  },
+  {
+    "operation": "GET /users",
+    "status": "500",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  },
+  {
+    "operation": "GET /users/{id}",
+    "status": "400",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  },
+  {
+    "operation": "GET /users/{id}",
+    "status": "401",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  },
+  {
+    "operation": "GET /users/{id}",
+    "status": "403",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  },
+  {
+    "operation": "GET /users/{id}",
+    "status": "404",
+    "typescript": {
+      "application/json": {
+        "type": [
+          "null"
+        ]
+      }
+    },
+    "rust": {}
+  },
+  {
+    "operation": "GET /users/{id}",
+    "status": "500",
+    "typescript": {
+      "text/plain": {
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "rust": null
+  }
+]
