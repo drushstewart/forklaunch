@@ -52,6 +52,18 @@ pub(crate) fn ts_type_from_schema_name(name: &str) -> String {
 }
 
 pub(crate) fn ts_type_from_schema(schema: &JsonValue) -> String {
+    if let Some(allowed) = schema.as_bool() {
+        return if allowed { "unknown" } else { "never" }.into();
+    }
+    if let Some(parts) = schema.get("allOf").and_then(JsonValue::as_array) {
+        let mut base = schema.clone();
+        base.as_object_mut().unwrap().remove("allOf");
+        return std::iter::once(&base)
+            .chain(parts)
+            .map(|part| format!("({})", ts_type_from_schema(part)))
+            .collect::<Vec<_>>()
+            .join(" & ");
+    }
     if let Some(name) = schema
         .get(super::schema::REFERENCE)
         .and_then(JsonValue::as_str)
@@ -105,12 +117,7 @@ pub(crate) fn ts_type_from_schema(schema: &JsonValue) -> String {
 
     match schema_type(schema) {
         Some("object") => ts_object_type(schema),
-        Some("array") => {
-            let item_type = schema
-                .get("items")
-                .map_or_else(|| "unknown".to_string(), ts_type_from_schema);
-            format!("Array<{item_type}>")
-        }
+        Some("array") => ts_array_type(schema),
         Some("integer" | "number") => "number".to_string(),
         Some("string") => "string".to_string(),
         Some("boolean") => "boolean".to_string(),
@@ -118,6 +125,51 @@ pub(crate) fn ts_type_from_schema(schema: &JsonValue) -> String {
         _ if schema.get("properties").is_some() => ts_object_type(schema),
         _ => "unknown".to_string(),
     }
+}
+
+fn ts_array_type(schema: &JsonValue) -> String {
+    if let Some(prefix) = schema
+        .get("prefixItems")
+        .or_else(|| schema.get("items").filter(|items| items.is_array()))
+        .and_then(JsonValue::as_array)
+    {
+        let tail = if schema.get("prefixItems").is_some() {
+            schema.get("items")
+        } else {
+            schema.get("additionalItems")
+        };
+        let minimum = schema
+            .get("minItems")
+            .and_then(JsonValue::as_u64)
+            .unwrap_or(0);
+        let maximum = schema
+            .get("maxItems")
+            .and_then(JsonValue::as_u64)
+            .unwrap_or(u64::MAX);
+        let mut fields = prefix
+            .iter()
+            .enumerate()
+            .take_while(|(index, _)| (*index as u64) < maximum)
+            .map(|(index, item)| {
+                format!(
+                    "item{index}{}: {}",
+                    if (index as u64) < minimum { "" } else { "?" },
+                    ts_type_from_schema(item)
+                )
+            })
+            .collect::<Vec<_>>();
+        if maximum > prefix.len() as u64 && tail != Some(&JsonValue::Bool(false)) {
+            fields.push(format!(
+                "...rest: Array<{}>",
+                tail.map_or_else(|| "unknown".into(), ts_type_from_schema)
+            ));
+        }
+        return format!("[{}]", fields.join(", "));
+    }
+    let item_type = schema
+        .get("items")
+        .map_or_else(|| "unknown".to_string(), ts_type_from_schema);
+    format!("Array<{item_type}>")
 }
 
 pub(crate) fn ts_object_type(schema: &JsonValue) -> String {
@@ -193,7 +245,26 @@ pub(crate) fn ts_literal_type(value: &JsonValue) -> String {
     if value.is_null() {
         return "null".to_string();
     }
-    "unknown".to_string()
+    match value {
+        JsonValue::Array(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(ts_literal_type)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        JsonValue::Object(values) if values.is_empty() => "Record<string, never>".into(),
+        JsonValue::Object(values) => format!(
+            "{{ {} }}",
+            values
+                .iter()
+                .map(|(key, value)| format!("{}: {}", ts_property_key(key), ts_literal_type(value)))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        _ => "unknown".into(),
+    }
 }
 
 pub(crate) fn ts_property_key(name: &str) -> String {

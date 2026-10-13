@@ -2865,3 +2865,24 @@ from contract/OpenAPI artifacts and native generators.
 Evidence: `fl-schema-applicators-{unit,contract,ajv,typescript,annotations,sockets,metadata,cli,clippy,docs,package,generated}.log`.
 Checklist remains **651/682 (95.5%), 31 open**: this advances the broader schema
 constraint/resource gates without prematurely closing their remaining work.
+
+### 2026-10-13 — TypeScript literal, tuple and intersection models
+
+The shared native/CLI emitter now represents boolean false schemas as `never`,
+object/array constants and enum members as literal types, legacy/2020 tuple
+positions with required/optional slots and constrained tails, and `allOf` as
+intersections including constraints on the containing schema. Empty object
+constants reject primitive/array values. Runtime validators remain responsible
+for constraints that TypeScript cannot express, including numeric bounds and
+arbitrary array lengths; Rust heterogeneous arrays retain lossless JSON values.
+
+New CI fixture `rust_schema_types_parity.mjs` compiles actual emitter output:
+12 schemas, 20 accepted values and 32 statically rejected values. Each expected
+result also matches native validation of the original and bundled schemas.
+The existing 75-case resource fixture, 13,908 actual TypeScript/native codec
+comparisons, live generated client suite, native SDK unit suites and all 1,093
+CLI tests pass. Strict clippy/docs, formatting and 890 packaged sources pass.
+Evidence: `fl-schema-types-{static,resources,runtime,unit,cli,clippy,docs,package}.log`.
+The prior completed generated service workspace was removed (197 cumulative).
+Checklist remains **651/682 (95.5%), 31 open**; broader constraint/emitter parity
+still includes reference siblings and remaining model/runtime boundaries.

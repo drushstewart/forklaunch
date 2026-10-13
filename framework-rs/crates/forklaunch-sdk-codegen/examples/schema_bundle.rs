@@ -15,7 +15,8 @@ fn main() -> anyhow::Result<()> {
         let cases = entry["cases"].as_array().unwrap();
         let original_results = cases.iter().map(|case| original.decode(&serde_json::to_vec(&case[0]).unwrap()).is_ok()).collect::<Vec<_>>();
         let compiled_results = cases.iter().map(|case| compiled.decode(&serde_json::to_vec(&case[0]).unwrap()).is_ok()).collect::<Vec<_>>();
-        Ok(serde_json::json!({"schema":bundled,"original":original_results,"compiled":compiled_results}))
+        let models = forklaunch_sdk_codegen::compile_schema("Fixture", input)?;
+        Ok(serde_json::json!({"schema":bundled,"original":original_results,"compiled":compiled_results,"typescript":models.typescript_type,"definitions":models.typescript_definitions}))
     }).collect::<anyhow::Result<Vec<_>>>()?;
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
