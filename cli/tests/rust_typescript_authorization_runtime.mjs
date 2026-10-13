@@ -11,7 +11,7 @@ let errors='';server.stderr.on('data',chunk=>errors+=chunk);
 const timer=setTimeout(()=>server.kill('SIGKILL'),60000);
 try {
  const base=await new Promise((resolve,reject)=>{let output='';server.stdout.on('data',chunk=>{output+=chunk;const match=output.match(/listening on (http:\/\/[^\s]+)/);if(match)resolve(match[1]);});server.once('exit',()=>reject(Error(errors)));});
- await probeMcp(base,['checkPermissions','checkScope','checkFeatures','checkUnconfigured','checkBasic','checkResource','checkJwtResource']);
+ await probeMcp(base,['checkPermissions','checkScope','checkFeatures','checkUnconfigured','checkBasic','checkResource','checkJwtResource','checkHmac']);
  const cases=[
   ['permissions',{permissions:['read']},200],['permissions',{roles:['admin']},403],
   ['scope',{scopes:['team']},200],['scope',{scopes:['admin']},403],['scope',{scopes:['team','unknown']},403],
@@ -68,6 +68,18 @@ try {
   assert.ok(!JSON.stringify(result).includes('private verification details'));
   if(status===200){assert.deepEqual(body,{subject:'fixture-subject',team:'jwt-verified-team'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
  }
+ const hmac=(key='peer',secret='fixture-hmac-secret',timestamp=new Date().toISOString())=>{
+  const nonce='fixture-hmac-nonce';
+  const signature=createHmac('sha256',secret).update(`GET\n/policy/hmac\nundefined${timestamp}\n${nonce}`).digest('base64');
+  return `HMAC keyId=${key} ts=${timestamp} nonce=${nonce} signature=${signature}`;
+ };
+ for(const [credential,status] of [[null,401],['HMAC keyId=peer',403],['HMAC keyId=peer ts= nonce=n signature=s',401],[hmac('unknown'),403],[hmac('peer','wrong-secret'),403],[hmac('peer','fixture-hmac-secret','2000-01-01T00:00:00.000Z'),403],[hmac()+' ignored',200]]) {
+  const headers=credential===null?{}:{authorization:credential};
+  const response=await fetch(`${base}/policy/hmac`,{headers});assert.equal(response.status,status,'HMAC verifier');
+  const body=await response.json();
+  const result=await mcpRpc(base,'tools/call',{name:'checkHmac',arguments:{}},headers);assert.equal(result.isError,status!==200);
+  if(status===200){assert.deepEqual(body,{subject:'trusted-peer'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
+ }
  server.kill('SIGTERM');const [code,signal]=await exited;assert.equal(code,0,`${signal}: ${errors}`);
- console.log('PASS generated verified-session authorization: HTTP/MCP Basic login and async Basic/JWT resource verification, permissions, exact scopes, subscriptions, features, missing policies, rejected credentials and graceful shutdown');
+ console.log('PASS generated verified-session authorization: HTTP/MCP Basic login and async Basic/JWT resource verification, HMAC signatures/freshness, permissions, exact scopes, subscriptions, features, missing policies, rejected credentials and graceful shutdown');
 } finally {clearTimeout(timer);if(server.exitCode===null&&!server.signalCode){server.kill('SIGKILL');await exited.catch(()=>{});}}

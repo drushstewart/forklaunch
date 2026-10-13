@@ -290,3 +290,16 @@ metadata is withdrawn when sync detects unsupported custom/legacy entry points;
 platform argv selection requires an explicit compatible native worker role and
 never invokes a shell. Real Redis tests verify publication scope, two-consumer
 fanout without an extra subscriber, storage-independent startup and shutdown.
+
+
+HMAC compatibility dispatch review (2026-10-13): the opt-in adapter parses the
+first four header components, preserves embedded equals, ignores suffix components
+and selects an operator-owned dictionary key before awaiting a trusted verifier.
+It returns no session/principal and hides all credential material in Debug.
+The callback must reject absent keys and verify method/path/raw body; timestamp
+text remains raw, and freshness plus atomic replay policy remain application-owned.
+No legacy JavaScript Date parser is introduced. The generated fixture uses the
+existing strict RFC3339 verifier with a 60-second skew limit and rejects missing
+keys, invalid signatures and expired credentials on HTTP and MCP. Error messages
+from custom callbacks must be explicitly public; native structured envelopes and
+strict request-HMAC APIs remain unchanged.

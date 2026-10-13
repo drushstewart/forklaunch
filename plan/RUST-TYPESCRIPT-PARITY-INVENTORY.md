@@ -4272,3 +4272,23 @@ tests and the full deployment-worker type check. Logs:
 `/private/tmp/fl-platform-worker-role-{generated-tests,schema,worker-types}.log`.
 Actual AWS tasks/load balancers/scaling, migration jobs and tenant/runtime-role
 provisioning remain unverified. Checklist remains 657/682 (96.3%), 25 open.
+
+
+HMAC header/verifier-dispatch receipt (2026-10-13):
+`typescript::hmac::verify_hmac` adds opt-in TypeScript error ordering, exact prefix,
+first-four-component parsing, embedded-equals preservation, ignored suffixes,
+configured key lookup and trusted async verification. Missing keys reach the
+verifier as absent and must reject there. Successful verification creates no
+session or principal. Timestamp text is raw; JavaScript Date conversion, signing,
+freshness and replay policy are explicitly outside this dispatch adapter.
+
+The actual middleware dispatch fixture checks 1,320 header/config/verifier cases;
+16 existing actual createHmacToken/header-generator comparisons also pass. All 34
+auth tests and strict all-feature/all-target Clippy pass. Generated relocated auth
+run `inFisa` compiles both SDKs and verifies real HMAC signatures and 60-second skew,
+missing keys, malformed credentials and invalid/expired signatures on HTTP/MCP,
+alongside Basic/JWT/RBAC and the complete startup/discovery/invocation/shutdown
+matrix. All 942 embedded assets are packaged. The dispatch fixture runs in CI.
+Logs: `/private/tmp/fl-typescript-hmac-{parity,signatures,tests,clippy,generated,package}.log`.
+Remaining session/callback/date and error-envelope boundaries remain open;
+checklist remains 657/682 (96.3%), 25 open.

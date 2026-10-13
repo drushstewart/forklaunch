@@ -137,6 +137,16 @@ rejects all falsy JSON results and converts callback failures to the TypeScript
 403 without exposing their details. It does not verify signatures itself: supply
 a real credential verifier and validate/bind the returned session before use.
 
+`typescript::hmac::verify_hmac` provides opt-in TypeScript header/error ordering
+and trusted async verifier dispatch. It preserves the first four components and
+embedded equals, ignores extra components, and selects a configured key. The
+callback receives raw timestamp text (not a JavaScript Date), optional secret,
+nonce and signature. It must reject unknown keys and verify the request method,
+path and raw body; freshness and atomic replay protection remain explicit policy.
+The existing strict `request_hmac::HmacAuthorization` can verify the normal
+RFC3339 signing profile. Legacy JavaScript date parsing is not implemented by
+this adapter. Successful HMAC verification returns no session or principal.
+
 Use `RouterConfig::with_response_authenticator` when credential verification
 needs explicit `ErrorResponse` statuses/messages, including this Basic verifier.
 It returns an `AuthenticatedSession` only after verification; normal RBAC or a

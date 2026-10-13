@@ -1,5 +1,6 @@
 //! Opt-in TypeScript credential parsing and verified-session authorization.
 pub mod basic;
+pub mod hmac;
 pub mod jwt;
 use crate::Principal;
 use forklaunch_contract::AccessLevel;

@@ -4,6 +4,7 @@ use forklaunch_auth::{
     typescript::{
         TypeScriptRbacPolicy,
         basic::{verify_basic, verify_basic_resource},
+        hmac::verify_hmac,
         jwt::verify_jwt_resource,
     },
     verify_jwt_hs256,
@@ -22,6 +23,7 @@ pub fn contracts() -> Vec<RouteContract> {
         "basic",
         "resource",
         "jwt-resource",
+        "hmac",
     ]
     .into_iter()
     .map(|name| {
@@ -30,18 +32,20 @@ pub fn contracts() -> Vec<RouteContract> {
             "Session authorization fixture",
             format!("/policy/{name}"),
         )
-        .with_auth(if name == "basic" || name == "resource" {
+        .with_auth(if name == "hmac" {
+            AuthConfig::hmac()
+        } else if name == "basic" || name == "resource" {
             AuthConfig::basic()
         } else {
             AuthConfig::jwt(JwtAuthConfig::SignatureKey)
         })
-        .with_access(
-            if name == "scope" || name == "features" || name == "basic" {
-                AccessLevel::Authenticated
-            } else {
-                AccessLevel::Protected
-            },
-        )
+        .with_access(if name == "hmac" {
+            AccessLevel::Internal
+        } else if name == "scope" || name == "features" || name == "basic" {
+            AccessLevel::Authenticated
+        } else {
+            AccessLevel::Protected
+        })
         .with_response(200, Some(BodyContract::json("PolicyResponse")))
     })
     .collect()
@@ -49,6 +53,25 @@ pub fn contracts() -> Vec<RouteContract> {
 pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
     let config = RouterConfig::default()
         .with_response_authenticator(|request, contract| async move {
+            if contract.operation_name == "checkHmac" {
+                use forklaunch_auth::request_hmac::{HmacAuthorization, SignedBody};
+                let keys = std::collections::BTreeMap::from([("peer".to_owned(), "fixture-hmac-secret".to_owned())]);
+                verify_hmac(request.headers.get("authorization").map(String::as_str), None, Some(&keys), |credential| async move {
+                    let Some(secret) = credential.secret_key else { return Ok(false); };
+                    let wire = format!("HMAC keyId={} ts={} nonce={} signature={}", credential.key_id, credential.timestamp, credential.nonce, credential.signature);
+                    let Ok(parsed) = HmacAuthorization::parse(&wire) else { return Ok(false); };
+                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                        .map_err(|_| ErrorResponse::new(ErrorKind::Internal, "clock unavailable"))?;
+                    let body = match &request.body {
+                        forklaunch_http::Body::Empty => SignedBody::Absent,
+                        forklaunch_http::Body::Text(text) => SignedBody::Text(text),
+                        forklaunch_http::Body::Binary(bytes) => SignedBody::Bytes(bytes),
+                    };
+                    Ok(parsed.verify_at(secret.as_bytes(), request.method.as_str(), &request.path, body,
+                        i64::try_from(now.as_millis()).unwrap_or(i64::MAX), std::time::Duration::from_secs(60)))
+                }).await?;
+                return Ok(AuthenticatedSession::new(forklaunch_auth::Principal::new("trusted-peer"), Value::Null));
+            }
             if contract.operation_name == "checkJwtResource" {
                 let claims = verify_jwt_resource(
                     request.headers.get("authorization").map(String::as_str),
@@ -106,6 +129,7 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
             Ok(AuthenticatedSession::new(principal, json!({})))
         })
         .with_authorizer(|session, contract| {
+            if contract.operation_name == "checkHmac" { return Ok(()); }
             let policy = match contract.operation_name.as_str() {
                 "checkResource" | "checkJwtResource" => TypeScriptRbacPolicy {
                     allowed_roles: Some(vec!["admin".into()]),
