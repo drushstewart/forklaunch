@@ -94,6 +94,8 @@ if (rateLimit) {
   for (const time of [180000, 181000, 181001, 183999, 184000])
     add(time, '192.0.2.41');
   for (let i = 0; i < 10; i++) add(190000, '192.0.2.42', '/sign-up/email');
+  for (const route of ['/sign-in/deep/missing', '/sign-up/deep/missing', '/sign-in/e', '/sign-in/eX', '/sign-in/email/', '/sign-in/email?x=1'])
+    for (let i = 0; i < 5; i++) add(200000, '192.0.2.43', route);
 }
 const RealDate = Date;
 const expected = [];
@@ -184,20 +186,22 @@ console.log(
 
 // Keep customization conformance in the standard regression entry point.
 if (!rateLimit) {
-  const configured = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
-    cwd: root,
-    env: {
-      ...process.env,
-      FORKLAUNCH_AUTH_RATE_LIMIT: JSON.stringify({
-        window: 7, max: 2,
-        customRules: {
-          '/sign-in/email': { window: 3, max: 2 },
-          '/sign-up/email': false,
-        },
-      }),
-    },
-    encoding: 'utf8',
-  });
-  assert.equal(configured.status, 0, configured.stderr + configured.stdout);
-  process.stdout.write(configured.stdout);
+  const configs = [
+    { '/sign-in/email': { window: 3, max: 2 }, '/sign-up/email': false },
+    { '/sign-in/*': { window: 4, max: 1 }, '/sign-in/email': false, '/sign-up/**': false },
+    { '/sign-in/email': false, '/sign-in/*': { window: 4, max: 1 }, '/**': { window: 2, max: 2 } },
+    { '/sign-in/e*?': { window: 3, max: 1 }, '/sign-in/**': false, '/sign-up/*': { window: 8, max: 2 } },
+  ];
+  for (const customRules of configs) {
+    const configured = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
+      cwd: root,
+      env: {
+        ...process.env,
+        FORKLAUNCH_AUTH_RATE_LIMIT: JSON.stringify({ window: 7, max: 2, customRules }),
+      },
+      encoding: 'utf8',
+    });
+    assert.equal(configured.status, 0, configured.stderr + configured.stdout);
+    process.stdout.write(configured.stdout);
+  }
 }

@@ -131,8 +131,22 @@ fn decode_component(value: &str) -> String {
 // Port of Better Auth's default wildcard matcher: slash/backslash separators,
 // segment-local */?, whole-segment **, escapes and optional trailing separators.
 fn glob(pattern: &str, sample: &str) -> bool {
+    CompiledGlob::new(pattern).is_ok_and(|pattern| pattern.matches(sample))
+}
+
+/// Precompiled Better Auth wildcard semantics, shared by trusted configuration.
+#[derive(Clone, Debug)]
+pub(crate) struct CompiledGlob(Regex);
+impl CompiledGlob {
+    pub(crate) fn new(pattern: &str) -> Result<Self, regex::Error> {
+        compile_glob(pattern).map(Self)
+    }
+    pub(crate) fn matches(&self, sample: &str) -> bool {
+        self.0.is_match(&utf16_symbols(sample))
+    }
+}
+fn compile_glob(pattern: &str) -> Result<Regex, regex::Error> {
     let pattern = utf16_symbols(pattern);
-    let sample = utf16_symbols(sample);
     let separator = r"[/\\]+?";
     let wildcard = r"[^/\\]";
     let segments: Vec<_> = pattern.split('/').collect();
@@ -174,7 +188,7 @@ fn glob(pattern: &str, sample: &str) -> bool {
         expression.push_str(current_separator);
     }
     expression.push_str(r"\z");
-    Regex::new(&expression).is_ok_and(|regex| regex.is_match(&sample))
+    Regex::new(&expression)
 }
 
 // JavaScript regular expressions without the Unicode flag consume UTF-16 units.

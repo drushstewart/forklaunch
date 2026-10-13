@@ -68,9 +68,12 @@ Better Auth JWT formats and provider/cookie/OIDC flows use their own adapter.
 `AuthRateLimitRule::new(window_seconds, max)` default and `with_exact_path`
 overrides relative to the auth mount. An override of `None` disables that endpoint's
 limit. Built-in sensitive-endpoint limits take precedence over the default;
-exact overrides take precedence over both. `with_rate_limiting` controls enablement
-separately (production by default). Wildcards, dynamic callbacks and external rate
-limit storage remain unsupported by this configuration API.
+custom overrides take precedence over both. `with_path_pattern` adds wildcard
+rules (`*` within a path segment, whole `**` across segments). The first registered
+matching custom rule wins, including when exact and wildcard rules overlap;
+replacing a rule retains its position. Patterns compile at configuration time.
+`with_rate_limiting` controls enablement separately (production by default).
+Dynamic callbacks and external rate limit storage remain unsupported by this API.
 
 The [engineering security review](../plan/RUST-SECURITY-REVIEW.md) records verified
 auth/crypto boundaries, fixed findings and the exact remaining dependency notices.

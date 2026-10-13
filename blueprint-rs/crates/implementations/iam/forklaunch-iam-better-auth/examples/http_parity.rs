@@ -57,7 +57,7 @@ async fn main() {
         let mut options = AuthRateLimitOptions::default().with_default(rule(&config));
         for (path, value) in config["customRules"].as_object().unwrap() {
             options = options
-                .with_exact_path(
+                .with_path_pattern(
                     path,
                     if value == &serde_json::Value::Bool(false) {
                         None

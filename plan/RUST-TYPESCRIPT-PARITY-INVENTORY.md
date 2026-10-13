@@ -3572,3 +3572,18 @@ clippy passes, and fresh generated run `cK6KDS` passes against restricted-role
 PostgreSQL. Eight actual frontend client scenarios, both generated SDKs,
 HTTP/MCP shared/separate/disabled listeners, Origin rejection, restart/shutdown,
 relocation, preservation, rename and deletion all pass.
+
+
+Better Auth rate-limit wildcard rules now match upstream first-match insertion
+order, including wildcard-before-exact and exact-before-wildcard precedence,
+endpoint disablement, `*` segment boundaries, whole-segment `**`, and `?` within
+wildcard patterns. Replacing a configured pattern preserves its original order.
+The shared trusted-origin wildcard compiler is reused and compiled once per
+configured rule. The standard rate-limit fixture now passes 969 actual HTTP
+comparisons across default, exact and three wildcard profiles; all 2,822 actual
+trusted-origin/callback/CSRF comparisons remain green. Dynamic callbacks and
+external storage remain open under the existing customization gate.
+
+Wildcard validation receipt: 37 portable native auth tests and strict all-feature,
+all-target clippy pass, including live HTTP/MCP startup/shutdown and concurrent
+rate limiting. The PostgreSQL-specific unit test remains explicitly ignored.

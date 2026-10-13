@@ -1,6 +1,6 @@
 //! Configured Better Auth process-local rolling idle-window rate limits.
 use super::{AuthHttp, failure, request::client_ip};
-use crate::store::AuthStore;
+use crate::{origins::CompiledGlob, store::AuthStore};
 use axum::{
     body::Body,
     extract::{Request, State},
@@ -47,11 +47,17 @@ impl AuthRateLimitRule {
     }
 }
 /// Process-local limits with Better Auth's built-in sensitive-endpoint rules.
-/// Exact-path overrides take precedence over both sensitive and default rules.
+/// The first matching custom rule takes precedence over sensitive and default rules.
 #[derive(Clone, Debug)]
 pub struct AuthRateLimitOptions {
     default: AuthRateLimitRule,
-    overrides: HashMap<String, Option<AuthRateLimitRule>>,
+    overrides: Vec<PathRule>,
+}
+#[derive(Clone, Debug)]
+struct PathRule {
+    path: String,
+    pattern: Option<CompiledGlob>,
+    rule: Option<AuthRateLimitRule>,
 }
 impl Default for AuthRateLimitOptions {
     fn default() -> Self {
@@ -60,7 +66,7 @@ impl Default for AuthRateLimitOptions {
                 window_seconds: 10,
                 max: 100,
             },
-            overrides: HashMap::new(),
+            overrides: Vec::new(),
         }
     }
 }
@@ -90,12 +96,64 @@ impl AuthRateLimitOptions {
                 "Expected a canonical exact auth path",
             ));
         }
-        self.overrides.insert(path, rule);
+        self.insert(PathRule {
+            path,
+            pattern: None,
+            rule,
+        });
         Ok(self)
     }
+    /// Registers a Better Auth wildcard rule in first-match insertion order.
+    /// `*` matches within a segment; a whole `**` segment spans path segments.
+    /// Patterns containing `*` also interpret `?` and backslash escapes.
+    /// Replacing an existing pattern retains its original position.
+    ///
+    /// # Errors
+    /// Rejects non-auth-relative, encoded, fragment-bearing or oversized patterns.
+    pub fn with_path_pattern(
+        mut self,
+        path: impl Into<String>,
+        rule: Option<AuthRateLimitRule>,
+    ) -> BlueprintResult<Self> {
+        let path = path.into();
+        if !path.contains('*') {
+            return self.with_exact_path(path, rule);
+        }
+        if !path.starts_with('/') || path.contains(['%', '#']) || path.len() > 4096 {
+            return Err(BlueprintError::new(
+                "invalid_rate_limit_path",
+                "Expected an auth-relative wildcard pattern",
+            ));
+        }
+        let pattern = CompiledGlob::new(&path).map_err(|_| {
+            BlueprintError::new("invalid_rate_limit_path", "Invalid auth wildcard pattern")
+        })?;
+        self.insert(PathRule {
+            path,
+            pattern: Some(pattern),
+            rule,
+        });
+        Ok(self)
+    }
+    fn insert(&mut self, rule: PathRule) {
+        if let Some(existing) = self
+            .overrides
+            .iter_mut()
+            .find(|existing| existing.path == rule.path)
+        {
+            *existing = rule;
+        } else {
+            self.overrides.push(rule);
+        }
+    }
     fn for_path(&self, path: &str) -> Option<Rule> {
-        if let Some(rule) = self.overrides.get(path) {
-            return rule.map(AuthRateLimitRule::rule);
+        if let Some(entry) = self.overrides.iter().find(|entry| {
+            entry
+                .pattern
+                .as_ref()
+                .map_or_else(|| entry.path == path, |pattern| pattern.matches(path))
+        }) {
+            return entry.rule.map(AuthRateLimitRule::rule);
         }
         Some(Rule::special(path).unwrap_or_else(|| self.default.rule()))
     }
@@ -342,6 +400,38 @@ mod tests {
             60_000
         );
         assert!(options.for_path("/sign-up/email").is_none());
+    }
+    #[test]
+    fn wildcard_first_match_replacement_and_segment_boundaries() {
+        let rule = AuthRateLimitRule::new(8, 2).unwrap();
+        let options = AuthRateLimitOptions::default()
+            .with_path_pattern("/sign-in/*", Some(rule))
+            .unwrap()
+            .with_exact_path("/sign-in/email", None)
+            .unwrap();
+        assert_eq!(options.for_path("/sign-in/email").unwrap().max, 2);
+        assert_eq!(options.for_path("/sign-in/deep/missing").unwrap().max, 3);
+        let options = options
+            .with_path_pattern("/sign-in/*", None)
+            .unwrap()
+            .with_path_pattern("/sign-in/**", Some(rule))
+            .unwrap();
+        assert!(options.for_path("/sign-in/email").is_none());
+        assert_eq!(options.for_path("/sign-in/deep/missing").unwrap().max, 2);
+        let options = AuthRateLimitOptions::default()
+            .with_exact_path("/sign-in/email", None)
+            .unwrap()
+            .with_path_pattern("/**", Some(rule))
+            .unwrap();
+        assert!(options.for_path("/sign-in/email").is_none());
+        assert_eq!(options.for_path("/ok").unwrap().max, 2);
+        for path in ["sign-in/*", "/%73ign-in/*", "/sign-in/*#x"] {
+            assert!(
+                AuthRateLimitOptions::default()
+                    .with_path_pattern(path, None)
+                    .is_err()
+            );
+        }
     }
     #[test]
     fn rolling_expiry_denials_and_insertion_eviction_keep_indexes_bounded() {
