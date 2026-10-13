@@ -1961,3 +1961,18 @@ Snapshot creation and a separate ordinary verification run pass alongside all
 eighteen live HTTP checks. This closes the snapshot/comparison harness task,
 not full document/error parity or the three rejected-JWT status differences.
 Checklist: **629/682 (92.2%), 53 open**.
+
+
+### Canonical rejected-JWT status alignment (2026-10-12)
+
+Declared JWT routes now return 403 for presented but rejected credentials,
+matching actual TypeScript behavior for malformed, expired and forged JWTs.
+Missing credentials remain 401. The mapping is applied at the native HTTP
+contract boundary; opaque bearer sessions and application-owned authenticators
+without JWT metadata retain their 401 behavior. Error envelopes remain native
+JSON and are still a separate parity task. A nine-case middleware regression
+checks JWT versus opaque/untyped auth, missing/invalid/forbidden failures and
+correlation IDs. All 58 auth/Axum library tests, strict all-feature/all-target
+Clippy, the eighteen actual-framework HTTP outcomes and OpenAPI snapshots pass.
+The canonical fixture has no remaining rejected-JWT status exceptions.
+Checklist remains **629/682 (92.2%), 53 open**.

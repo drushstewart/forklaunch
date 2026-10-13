@@ -28,7 +28,7 @@ use axum::{
 use forklaunch_auth::{AuthError, authorize};
 use forklaunch_common::{join_base_path, sanitize_path_slashes};
 use forklaunch_contract::{
-    AccessLevel, BodyKind, ContractRegistry, HttpMethod, RouteContract, ValidationMode,
+    AccessLevel, AuthConfig, BodyKind, ContractRegistry, HttpMethod, RouteContract, ValidationMode,
 };
 use forklaunch_core::{ServiceInfo, telemetry::OpenTelemetryCollector};
 use forklaunch_http::{
@@ -805,9 +805,17 @@ async fn validate_contract(
                     &framework_request.context.correlation_id,
                 );
                 tracing::warn!(operation = %contract.operation_name, correlation_id = %framework_request.context.correlation_id, "request authentication or authorization failed");
+                // The TypeScript JWT middleware returns 403 for presented but
+                // rejected tokens. Opaque sessions retain their 401 semantics.
+                let response = if error == AuthError::InvalidCredentials
+                    && matches!(contract.auth, Some(AuthConfig::Jwt(_)))
+                {
+                    ErrorResponse::new(ErrorKind::Forbidden, "invalid credentials")
+                } else {
+                    error.to_error_response()
+                };
                 return framework_response_to_axum(
-                    error
-                        .to_error_response()
+                    response
                         .with_correlation_id(framework_request.context.correlation_id)
                         .to_response(),
                 );

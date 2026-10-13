@@ -23,10 +23,9 @@ and removes its owned temporary source bundle even on failure.
 
 The sample list handler intentionally ignores pagination (matching the existing
 Rust sample); this fixture does not claim pagination conformance. Rejected auth
-checks assert each implementation's exact status: missing credentials return 401
-in both; malformed, expired and forged JWTs return TypeScript 403 versus Rust 401.
-These three known differences are explicit regression expectations, not equivalence
-claims. Both services now use `authenticated` for JWT-only contracts. Framework error
+checks assert matching statuses: missing credentials return 401; malformed,
+expired and forged JWTs return 403 in both frameworks. Native opaque-session
+rejections keep their existing 401 status; this change applies to JWT contracts. Both services now use `authenticated` for JWT-only contracts. Framework error
 envelopes and broader access-level validation are separate auth/error parity work.
 The runner also exercises the actual TypeScript OpenAPI emitter with default,
 explicit and custom JWT headers plus Basic auth: security references must resolve,

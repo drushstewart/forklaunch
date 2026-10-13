@@ -65,15 +65,13 @@ try{
   ['/users/user_1',token,200,users[0]],['/users/user_2',token,200,users[1]],
   ['/users',token,200,{items:users,next_cursor:null}],
   ['/users?limit=2&cursor=user_1',token,200,{items:users,next_cursor:null}],
-  ['/users/missing',token,404,''],['/users',undefined,401],['/users','invalid',401],
-  ['/users',expired,401],['/users',forged,401]
+  ['/users/missing',token,404,''],['/users',undefined,401],['/users','invalid',403],
+  ['/users',expired,403],['/users',forged,403]
  ];
  for(const [path,bearer,status,body] of cases){
   for(const [name,url] of [['TypeScript',ts],['Rust',rust]]){
    const response=await fetch(url+path,{headers:bearer?{authorization:`Bearer ${bearer}`}:{},signal:AbortSignal.timeout(5000)});
-   const text=await response.text();// Known auth drift is explicit: TS rejects invalid JWTs with 403, native with 401.
-   const expectedStatus=name==='TypeScript'&&status===401&&bearer!==undefined?403:status;
-   assert.equal(response.status,expectedStatus,`${name} ${path}: ${text}`);
+   const text=await response.text();assert.equal(response.status,status,`${name} ${path}: ${text}`);
    if(body!==undefined)assert.deepEqual(text?JSON.parse(text):'',body,`${name} ${path}`);
   }
  }
@@ -112,7 +110,7 @@ try{
  if(process.env.UPDATE_CANONICAL_OPENAPI==='1')writeFileSync(differencePath,differenceSnapshot);
  assert.equal(differenceSnapshot,readFileSync(differencePath,'utf8'),'remaining OpenAPI response differences changed');
  console.log(`PASS normalized OpenAPI parameters/security/success schemas; ${differences.length} explicit error-response document differences retained`);
- console.log(`PASS canonical actual TypeScript/Rust IAM services: ${cases.length*2} live HTTP outcomes and both OpenAPI endpoints; 3 known rejected-JWT status differences remain`);
+ console.log(`PASS canonical actual TypeScript/Rust IAM services: ${cases.length*2} live HTTP outcomes and both OpenAPI endpoints; rejected-JWT statuses match`);
 }finally{
  for(const child of children){
   if(child.exitCode!==null||child.signalCode!==null)continue;

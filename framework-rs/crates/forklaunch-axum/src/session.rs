@@ -211,6 +211,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejected_jwt_status_matches_typescript_without_changing_opaque_sessions() {
+        use forklaunch_contract::{AuthConfig, JwtAuthConfig};
+        for auth in [
+            None,
+            Some(AuthConfig::bearer()),
+            Some(AuthConfig::jwt(JwtAuthConfig::SignatureKey)),
+        ] {
+            for error in [
+                AuthError::MissingCredentials,
+                AuthError::InvalidCredentials,
+                AuthError::Forbidden("insufficient role".into()),
+            ] {
+                let expected = if matches!(error, AuthError::Forbidden(_))
+                    || (error == AuthError::InvalidCredentials
+                        && matches!(auth, Some(AuthConfig::Jwt(_))))
+                {
+                    StatusCode::FORBIDDEN
+                } else {
+                    StatusCode::UNAUTHORIZED
+                };
+                let mut contract = RouteContract::get("Secure", "Secure", "/secure")
+                    .with_access(AccessLevel::Authenticated)
+                    .with_response(200, None);
+                contract.auth = auth.clone();
+                let config = RouterConfig::default().with_authenticator(move |_, _| {
+                    let error = error.clone();
+                    async move { Err(error) }
+                });
+                let router = ForkLaunchRouter::anonymous()
+                    .with_config(config)
+                    .get(contract, || async { StatusCode::OK })
+                    .into_router();
+                let response = router
+                    .oneshot(
+                        Request::builder()
+                            .uri("/secure")
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), expected);
+                let body = to_bytes(response.into_body(), 65536).await.unwrap();
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert!(body["correlationId"].is_string());
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn signed_jwt_verifies_before_grants_are_accepted() {
         let config = RouterConfig::default().with_authenticator(|request, _| async move {
             let token = request
