@@ -13,7 +13,7 @@ const deps=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDE
 const {WebSocketServer}=deps('ws');
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-resources-'));
 const env={...process.env,CARGO_INCREMENTAL:'0',CARGO_TARGET_DIR:path.resolve(root,process.env.CARGO_TARGET_DIR??'framework-rs/target')};
-const modes=['plain','legacy','dynamic','recursive'];
+const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7'];
 const sockets=new Set();
 let server,child;
 try {
@@ -24,10 +24,17 @@ try {
  for(const mode of modes) {
   const entries={};
   for(const [name,type] of [['text','string'],['count','integer']]) {
-   const schema={$schema:mode==='legacy'?'http://json-schema.org/draft-04/schema#':mode==='recursive'?'https://json-schema.org/draft/2019-09/schema':mode==='dynamic'?'https://json-schema.org/draft/2020-12/schema':'http://json-schema.org/draft-07/schema#',
+   let schema={$schema:mode==='legacy'?'http://json-schema.org/draft-04/schema#':mode==='recursive'?'https://json-schema.org/draft/2019-09/schema':mode==='dynamic'?'https://json-schema.org/draft/2020-12/schema':'http://json-schema.org/draft-07/schema#',
     [mode==='legacy'?'id':'$id']:'https://schemas.fixture.test/reused',type:'object',additionalProperties:false,required:['value'],properties:{value:{type,...(type==='string'?{minLength:1}:{minimum:1})},next:{$ref:'#'}}};
    if(mode==='dynamic') {schema.$dynamicAnchor='node';schema.properties.next={$dynamicRef:'#node'};}
    if(mode==='recursive') {schema.$recursiveAnchor=true;schema.properties.next={$recursiveRef:'#'};}
+   if(mode.startsWith('fragment')) {
+    const draft=mode.at(-1), id=draft==='4'?'id':'$id';
+    schema.properties.next={$ref:'#Node:v1'};
+    delete schema.$id;delete schema.$schema;
+    schema[id]='#Node:v1';
+    schema={$schema:`http://json-schema.org/draft-0${draft}/schema#`,[id]:'https://schemas.fixture.test/reused',$ref:'#Node:v1',definitions:{Node:schema}};
+   }
    entries[name]={shape:schema,jsonEncoding:true,channel:`/${mode}`};
   }
   artifact.sockets[mode]={path:`/${mode}`,clientMessages:entries,serverMessages:entries};
@@ -80,8 +87,8 @@ client.close(1000,None).await.unwrap();
  child=spawn(path.join(env.CARGO_TARGET_DIR,'debug/forklaunch-resource-socket-fixture'),[url],{stdio:'inherit'});
  const timer=setTimeout(()=>child.kill('SIGKILL'),20000);
  try {const [code]=await once(child,'exit');assert.equal(code,0);} finally {clearTimeout(timer);}
- assert.equal(messages,16);
- console.log('PASS duplicate resource IDs, static/legacy/dynamic/recursive unions, both typed SDKs and 16 live socket roundtrips');
+ assert.equal(messages,modes.length*4);
+ console.log(`PASS duplicate resource IDs, static/legacy/dynamic/recursive/fragment unions, both typed SDKs and ${messages} live socket roundtrips`);
 } finally {
  if(child?.exitCode===null) child.kill('SIGKILL');
  for(const socket of sockets) socket.terminate();

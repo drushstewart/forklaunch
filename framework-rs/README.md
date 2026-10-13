@@ -447,7 +447,10 @@ the lower-level exact multipart-framing fixture.
 The shared SDK compiler resolves `$id` resources already bundled in a schema
 or OpenAPI document. Relative IDs and references resolve against their lexical
 base; pointer fragments address the selected resource, and `$anchor` names are
-scoped to that resource. Draft-4 `id` and embedded resources using different
+scoped to that resource. Legacy Draft-4/6/7 fragment-only IDs (`#Node`) also
+define scoped anchors, including recursive aliases; IDs beside legacy `$ref`
+retain AJV-compatible scope in both the compiler and native codecs.
+Draft-4 `id` and embedded resources using different
 schema drafts retain their own keyword rules; legacy `const`/conditional
 annotations do not become modern constraints. Recursive URI/pointer aliases
 retain one model identity. Explicit 2020-12 resources support `$dynamicAnchor`
@@ -463,7 +466,8 @@ interpreted as resource declarations. The same depth/node/byte budgets apply to
 the resource index and model graph.
 
 This profile rejects duplicate IDs, missing resources, malformed IDs, nonempty
-ID fragments, non-root recursive anchors, non-`#` recursive references,
+modern ID fragments, legacy IDs combining a path/URI with a fragment, non-root
+recursive anchors, non-`#` recursive references,
 and resource-aware references into literal data/schema dictionaries. WebSocket
 SDK unions and raw AsyncAPI export resolve each standalone resource graph before
 relocation; resource-free schemas retain their original annotation/pointer layout.

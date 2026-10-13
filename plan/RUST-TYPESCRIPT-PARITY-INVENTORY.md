@@ -2753,3 +2753,47 @@ checks passed. Evidence: `fl-socket-resource-{runtime,tests,clippy,cli-tests,met
 Checklist remains **651/682 (95.5%), 31 open**. The resource gate still covers
 legacy ID fragments and mixed runtime/import constraints. Completed socket
 fixtures are cleaned after committing the source change.
+
+
+### 2026-10-13 — Legacy fragment anchors and AJV-compatible ID siblings
+
+The shared resource index resolves Draft-4 `id` and Draft-6/7 `$id` fragment-only
+anchors without replacing their enclosing resource root. Recursive aliases,
+colon-bearing legacy names and identical anchor names in different resources
+remain distinct. Static anchor grammar now follows the declared 2019-09 or
+2020-12 dialect. Malformed names and modern fragment IDs fail explicitly.
+Legacy IDs combining a URI/path and nonempty fragment remain outside this
+profile; this batch implements the defined fragment-only form from
+[Draft 7 §8.2.3](https://json-schema.org/draft-07/draft-handrews-json-schema-01#rfc.section.8.2.3).
+
+An additional relative-base fixture found that the native resolver ignored IDs
+beside legacy `$ref` while AJV applied them. The existing opt-in
+`forklaunch-ajv-ref-siblings` feature now forwards to referencing and retains
+those ID scopes. Default upstream behavior is unchanged. All six new sibling
+scope cases agree with actual AJV. The combined fixture passes 57 native/original
+and compiled cases: 48 independent AJV agreements, the five previously recorded
+AJV scope/anchor differences and four unsupported AJV URI cases.
+
+Validation: all eight generated resource variants (static, legacy, mixed,
+dynamic, recursive, fragment4/6/7) pass both SDK languages, both artifact
+formats, both native generators, strict Rust consumer lint and live HTTP/MCP
+startup, discovery, calls and shutdown. Seven socket variants pass both typed
+clients and 28 live roundtrips; raw AsyncAPI passes its official schema. The
+broader actual TypeScript/native codec fixture still passes 13,908 cases.
+All 34 shared compiler, 27 AsyncAPI, 5 Rust SDK, 8 TypeScript SDK, 18 codec,
+7 transport and 1,090 CLI tests pass. Strict native lint, formatting, API docs,
+890 packaged sources and security audit pass with no unexpected advisories.
+
+Vendor validation: 151 referencing compatibility tests and all 1,992 available
+default validator tests pass. The combined compatibility suite passes 1,986
+checks; seven default-profile assertions explicitly require ignored legacy
+siblings and are skipped only for that opt-in profile. They still run in the
+default suite. Both profiles omit the previously documented test whose Git
+submodule fixture is absent from the published archive. CI/provenance record
+the exact exclusions; the unfiltered compatibility differences are preserved in
+`fl-legacy-fragment-vendor-profile-differences.log`.
+Evidence: `fl-legacy-fragment-{ajv,socket,codec,unit,final-unit,clippy,cli-tests,all-generated,referencing,vendor,vendor-default,docs,format,package,audit}.log`.
+
+Checklist remains **651/682 (95.5%), 31 open**, with the remaining resource
+boundaries now stated directly on the checklist. Eleven owned generated
+fixtures from this batch are removed after commit (195 cumulative).

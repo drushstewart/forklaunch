@@ -418,8 +418,19 @@ jobs:
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib --features forklaunch-ajv-pointer-decoding
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/jsonschema/Cargo.toml --locked --lib --no-default-features --features idna -- --skip validator::tests::validate_ref
-      - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib --features forklaunch-static-anchor-resolution
+      - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib --features 'forklaunch-static-anchor-resolution forklaunch-ajv-ref-siblings'
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/jsonschema/Cargo.toml --locked --lib --no-default-features --features 'idna forklaunch-static-anchor-resolution' -- --skip validator::tests::validate_ref
+      - name: AJV sibling compatibility profile (default-profile assertions run above)
+        run: >-
+          CARGO_TARGET_DIR=framework-rs/target cargo test
+          --manifest-path framework-rs/crates/vendor/jsonschema/Cargo.toml --locked --lib
+          --no-default-features --features 'idna forklaunch-ajv-ref-siblings forklaunch-static-anchor-resolution' --
+          --skip validator::tests::validate_ref
+          --skip evaluation::tests::ref_siblings_produce_no_annotations
+          --skip keywords::discriminator::tests::draft7_ignores_pins_beside_a_reference
+          --skip keywords::discriminator::tests::unpinned_value_is_not_dispatched::test_case_3_const_beside_a_reference_in_draft_7
+          --skip tests::absolute_keyword_location_in_nested_resource::test_case_10_draft_7_id_beside_ref_names_no_resource
+          --skip tests::custom_meta_schema_preserves_underlying_draft_behavior
       - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-redis --all-features redis_backend -- --ignored
       - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --all-features s3_backend -- --ignored
       - uses: actions/setup-node@v4

@@ -19,6 +19,22 @@ fn body(name: &str, schema: &str) -> BodyContract {
             value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("b#MutualB");
             value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("a#MutualA");
         }
+        if let Some(draft) = mode.strip_prefix("fragment") {
+            value["$schema"] = json!(format!("http://json-schema.org/draft-0{draft}/schema#"));
+            let id = if draft == "4" { "id" } else { "$id" };
+            if draft == "4" { value["id"] = value.as_object_mut().unwrap().remove("$id").unwrap(); }
+            if name == "Mutual" {
+                value["$ref"] = json!("#MutualA");
+                for (key, anchor) in [("A", "#MutualA"), ("B", "#MutualB")] {
+                    let child = &mut value["$defs"][key];
+                    child.as_object_mut().unwrap().remove("$anchor");
+                    child.as_object_mut().unwrap().remove("$id");
+                    child[id] = json!(anchor);
+                }
+                value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("#MutualB");
+                value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("#MutualA");
+            }
+        }
         if mode == "dynamic" && name == "Tree" {
             value["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
             value["$dynamicAnchor"] = json!("node");

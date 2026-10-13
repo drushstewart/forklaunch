@@ -96,16 +96,37 @@ impl Resources {
                             .checked_sub(id.len())
                             .context("SDK schema resource index exceeds 32 MiB")?;
                         let uri = resolve(&base, id)?;
-                        if uri.fragment().is_some_and(|fragment| !fragment.is_empty()) {
-                            bail!("Schema resource IDs with nonempty fragments are unsupported");
-                        }
-                        let mut uri = uri;
-                        uri.set_fragment(None);
-                        base = uri.into();
-                        if let Some(previous) = result.roots.insert(base.clone(), pointer.clone())
-                            && previous != pointer
+                        if let Some(anchor) = uri.fragment().filter(|fragment| !fragment.is_empty())
                         {
-                            bail!("Duplicate schema resource ID");
+                            let legacy = dialect.is_empty()
+                                || ["draft-04", "draft-06", "draft-07"]
+                                    .iter()
+                                    .any(|draft| dialect.contains(draft));
+                            if !legacy || !id.starts_with('#') {
+                                bail!("Only legacy fragment-only schema IDs are supported");
+                            }
+                            validate_anchor(anchor, true)?;
+                            budget.bytes = budget
+                                .bytes
+                                .checked_sub(base.len() + anchor.len() + pointer.len())
+                                .context("SDK schema resource index exceeds 32 MiB")?;
+                            if result
+                                .anchors
+                                .insert(format!("{base}#{anchor}"), pointer.clone())
+                                .is_some()
+                            {
+                                bail!("Duplicate schema anchor");
+                            }
+                        } else {
+                            let mut uri = uri;
+                            uri.set_fragment(None);
+                            base = uri.into();
+                            if let Some(previous) =
+                                result.roots.insert(base.clone(), pointer.clone())
+                                && previous != pointer
+                            {
+                                bail!("Duplicate schema resource ID");
+                            }
                         }
                     }
                     if pointer.is_empty() {
@@ -146,14 +167,7 @@ impl Resources {
                             }
                             let anchor =
                                 anchor.as_str().context("Schema anchor must be a string")?;
-                            let mut bytes = anchor.bytes();
-                            if !bytes
-                                .next()
-                                .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
-                                || !bytes.all(|b| b.is_ascii_alphanumeric() || b"-._".contains(&b))
-                            {
-                                bail!("Invalid schema anchor name");
-                            }
+                            validate_anchor(anchor, dialect.contains("2019-09"))?;
                             budget.bytes = budget
                                 .bytes
                                 .checked_sub(base.len() + anchor.len() + pointer.len())
@@ -436,6 +450,18 @@ impl Resources {
         }
     }
 }
+fn validate_anchor(anchor: &str, legacy: bool) -> Result<()> {
+    let mut bytes = anchor.bytes();
+    if !bytes
+        .next()
+        .is_some_and(|b| b.is_ascii_alphabetic() || (!legacy && b == b'_'))
+        || !bytes.all(|b| b.is_ascii_alphanumeric() || b"-._".contains(&b) || (legacy && b == b':'))
+    {
+        bail!("Invalid schema anchor name");
+    }
+    Ok(())
+}
+
 fn escape(value: &str) -> String {
     value.replace('~', "~0").replace('/', "~1")
 }
@@ -456,6 +482,42 @@ fn resolve(base: &str, reference: &str) -> Result<Url> {
 mod tests {
     use super::super::{DEFINITIONS, ExpansionBudget, REFERENCE, bundle, normalize};
     use serde_json::json;
+
+    #[test]
+    fn static_anchor_names_follow_the_declared_dialect() {
+        for (draft, anchor, valid) in [
+            ("2019-09", "Node:v1", true),
+            ("2019-09", "_Node", false),
+            ("2020-12", "_Node", true),
+            ("2020-12", "Node:v1", false),
+        ] {
+            let schema = json!({"$schema":format!("https://json-schema.org/draft/{draft}/schema"),
+                "$ref":format!("#{anchor}"), "$defs":{"Value":{"$anchor":anchor,"type":"string"}}});
+            assert_eq!(normalize(&schema, "Anchor").is_ok(), valid);
+        }
+    }
+
+    #[test]
+    fn legacy_fragment_ids_preserve_resource_roots_and_scoped_aliases() {
+        for (dialect, id) in [
+            ("http://json-schema.org/draft-04/schema#", "id"),
+            ("http://json-schema.org/draft-06/schema#", "$id"),
+            ("http://json-schema.org/draft-07/schema#", "$id"),
+        ] {
+            let schema = json!({"$schema":dialect, id:"https://schemas.test/root", "type":"object", "properties":{
+                "first":{"$ref":"#Node:v1"}, "second":{"$ref":"other#Node:v1"}}, "definitions":{
+                "Root":{"type":"object", id:"#Node:v1", "properties":{"label":{"type":"string"},"next":{"$ref":"#Node:v1"}}},
+                "Other":{id:"other", "type":"object", "properties":{"value":{"$ref":"#Node:v1"}}, "definitions":{"Value":{id:"#Node:v1","type":"integer"}}}
+            }});
+            let compiled = bundle(&schema, &schema, &mut ExpansionBudget::default()).unwrap();
+            assert_eq!(compiled["properties"]["second"]["type"], "integer");
+            assert!(compiled["properties"]["first"]["$ref"].is_string());
+        }
+        for id in ["#1invalid", "#_invalid", "#/pointer", "other#name"] {
+            let schema = json!({"$schema":"http://json-schema.org/draft-07/schema#", "$id":id,"type":"string"});
+            assert!(normalize(&schema, "Invalid").is_err());
+        }
+    }
 
     #[test]
     fn recursive_resource_roots_and_profile_boundaries() {

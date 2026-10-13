@@ -342,7 +342,7 @@ Completed candidate-selection review: [Rust auth evaluation](RUST-AUTH-FRAMEWORK
 - [x] Share the bounded local schema graph/model compiler between CLI and both framework-native HTTP generators.
 - [x] Bring the framework-native TypeScript generator to guarded recursive model parity through the shared bounded compiler and strict/live recursive fixtures.
 - [ ] Complete remaining schema-constraint/emitter conformance.
-- [ ] Resolve schema resource IDs, anchors and dynamic references in SDK imports.
+- [ ] Resolve schema resource IDs, anchors and dynamic references in SDK imports. Bundled HTTP resources, static/dynamic anchors, 2019-09 recursive roots, legacy fragment-only IDs, socket unions and raw AsyncAPI relocation are implemented. Remaining boundaries include external AsyncAPI resource imports, mixed-dialect runtime translation and legacy IDs combining a URI/path with a fragment; see the dated resource receipts in the parity inventory.
 - [x] Preserve Rust model omission versus explicit null and reject missing required nullable fields, with 95 actual TypeScript validator cases through both SDK artifact formats and live Rust/TypeScript HTTP and MCP.
 - [x] Add contract snapshot tests to ensure generated SDKs stay stable. (`client-sdk::tests::sdk_generation_is_deterministic`)
 

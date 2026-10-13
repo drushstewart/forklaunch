@@ -43,3 +43,19 @@ upstream identity to preserve embedded-resource and recursive-reference behavior
 A feature-gated regression covers static and dynamic references to the same
 anchor; the full upstream library suite also runs with the feature enabled.
 Default feature behavior remains unchanged.
+
+The `forklaunch-ajv-ref-siblings` feature also preserves legacy `id`/`$id`
+scopes beside `$ref`, matching AJV in Drafts 4–7. It now forwards to referencing;
+default upstream resolution still ignores these IDs. Six actual AJV/native
+cases distinguish sibling IDs that change a relative-reference base. The
+referencing compatibility suite passes 151 tests.
+
+The combined JSON Schema compatibility profile passes 1,986 library tests.
+Seven upstream assertions intentionally require ignored legacy siblings and
+therefore do not apply to this opt-in profile: the three
+`ref_siblings_produce_no_annotations` cases, `draft7_ignores_pins_beside_a_reference`,
+`unpinned_value_is_not_dispatched::test_case_3_const_beside_a_reference_in_draft_7`,
+`absolute_keyword_location_in_nested_resource::test_case_10_draft_7_id_beside_ref_names_no_resource`,
+and `custom_meta_schema_preserves_underlying_draft_behavior`. CI skips those
+only in the compatibility profile, in addition to the archive-missing fixture
+noted above. The default profile still runs every one of these assertions.

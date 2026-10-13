@@ -8,6 +8,8 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const require=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES ?? root,'package.json'));
 const Ajv=require('ajv/dist/2020').default;
 const Ajv2019=require('ajv/dist/2019').default;
+const AjvLegacy=require('ajv').default;
+const AjvDraft4=require('ajv-draft-04').default;
 const node=(id,type)=>({$id:id,$dynamicAnchor:'node',type:'object',additionalProperties:false,required:['value'],properties:{value:{type},next:{$ref:'base'}}});
 const schema={
  $schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/root',type:'object',additionalProperties:false,
@@ -39,16 +41,28 @@ const fixtures=[
 const recursiveSchema=JSON.parse(JSON.stringify(schema).replaceAll('2020-12','2019-09').replaceAll('"$dynamicAnchor":"node"','"$recursiveAnchor":true').replaceAll('"$dynamicRef":"#node"','"$recursiveRef":"#"').replaceAll('"$ref":"#node"','"$ref":"#"'));
 fixtures.push({schema:recursiveSchema,cases:fixtures[0].cases});
 fixtures.push({schema:{$schema:'https://json-schema.org/draft/2019-09/schema',$recursiveAnchor:true,type:'object',additionalProperties:false,properties:{next:{$ref:'#/$defs/Base'}},$defs:{Base:{$id:'https://schema.fixture.test/nonrecursive',$recursiveAnchor:false,type:'object',additionalProperties:false,properties:{child:{$recursiveRef:'#'}}}}},cases:[[{next:{child:{}}},true],[{next:{child:{next:{}}}},false,true]]});
+for(const [draft,id] of [['04','id'],['06','$id'],['07','$id']]) {
+ fixtures.push({schema:{$schema:`http://json-schema.org/draft-${draft}/schema#`,[id]:'https://schema.fixture.test/sibling/',type:'object',properties:{value:{[id]:'other/',$ref:'real'}},definitions:{First:{[id]:'real',type:'string'},Second:{[id]:'other/real',type:'integer'}}},cases:[[{value:'text'},false],[{value:1},true]]});
+ fixtures.push({schema:{$schema:`http://json-schema.org/draft-${draft}/schema#`,[id]:'https://schema.fixture.test/legacy',type:'object',properties:{first:{$ref:'#Node:v1'},second:{$ref:'other#Node:v1'}},definitions:{
+  Node:{[id]:'#Node:v1',type:'object',required:['label'],properties:{label:{type:'string'},next:{$ref:'#Node:v1'}}},
+  Other:{[id]:'other',definitions:{Value:{[id]:'#Node:v1',type:'integer'}}}
+ },examples:[{[id]:'#Node:v1'}]},cases:[
+  [{},true],[{first:{label:'a',next:{label:'b'}},second:1},true],
+  [{first:{label:1}},false],[{first:{label:'a',next:{label:1}}},false],[{second:'value'},false]
+ ]});
+}
 const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0, differences=0, unsupported=0;
 for(let i=0;i<fixtures.length;i++) {
  let original;
- const Validator=fixtures[i].schema.$schema.includes("2019-09") ? Ajv2019 : Ajv;
+ const dialect=fixtures[i].schema.$schema;
+ const Validator=dialect.includes('2019-09')?Ajv2019:dialect.includes('2020-12')?Ajv:dialect.includes('draft-04')?AjvDraft4:AjvLegacy;
+ const validator=()=>{const value=new Validator({strict:false});if(dialect.includes('draft-06'))value.addMetaSchema(require('ajv/dist/refs/json-schema-draft-06.json'));return value;};
  if(fixtures[i].ajvUnsupported) {
-  assert.throws(()=>new Validator({strict:false}).compile(fixtures[i].schema),/only supports hash fragment reference/);
+  assert.throws(()=>validator().compile(fixtures[i].schema),/only supports hash fragment reference/);
   unsupported+=fixtures[i].cases.length;
- } else { original=new Validator({strict:false}).compile(fixtures[i].schema); }
- const compiled=new Validator({strict:false}).compile(bundled[i].schema);
+ } else { original=validator().compile(fixtures[i].schema); }
+ const compiled=validator().compile(bundled[i].schema);
  for(const [index,[value,valid,ajvValid=valid]]of fixtures[i].cases.entries()) {
   assert.equal(bundled[i].original[index],valid,`Native original ${i}/${index}`);
   assert.equal(bundled[i].compiled[index],valid,`Native compiled ${i}/${index}`);

@@ -37,7 +37,7 @@ all-features = true
 
 [features]
 forklaunch-ajv-pointer-decoding = ["referencing/forklaunch-ajv-pointer-decoding"]
-forklaunch-ajv-ref-siblings = []
+forklaunch-ajv-ref-siblings = ["referencing/forklaunch-ajv-ref-siblings"]
 forklaunch-static-anchor-resolution = ["referencing/forklaunch-static-anchor-resolution"]
 arbitrary-precision = [
     "serde_json/arbitrary_precision",
