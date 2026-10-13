@@ -1711,3 +1711,25 @@ Clippy, rebuilt CLI and all 770 package entries pass. CI includes
 
 Checklist: **621/682 (91.1%), 61 open**. External binary AsyncAPI imports remain
 separately scoped; this closes explicit native artifact metadata and generation.
+
+
+### Context-aware schema dictionary bundling (2026-10-12)
+
+Checked unscoped schema bundling now traverses each referenced dictionary in a
+separate interpretation context. It copies targets into collision-checked
+schema definitions and rewrites only structural schema locations, preserving
+literal `const`/annotation data even when the same source value is also a schema.
+Recursive targets, nested contexts and document extraction use bounded shared
+copies; missing references, active resources and invalid targets fail explicitly.
+Socket union relocation now selects the checked unscoped helper.
+
+Validation passed: 34 existing actual TypeScript/native metadata snapshots,
+six original/exported AJV alias comparisons, native recursive/union constraint
+checks, 74 selected framework tests, strict all-feature/all-target Clippy,
+generated Rust consumers with warnings denied, and strict TypeScript ESM/CJS
+consumers with runtime alias-union validation. CLI rebuild and all 770 package
+entries pass. Logs: `/private/tmp/fl-schema-context-{metadata,tests-final,rust-sdk,ts-sdk-final,clippy,package}.log`.
+
+Checklist: **622/682 (91.2%), 60 open**. General resource IDs/anchors/dynamic
+resolution remain open; resource-preserving relocation still rejects aliases
+whose scope cannot be safely resolved.

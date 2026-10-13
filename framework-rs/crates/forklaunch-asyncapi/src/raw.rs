@@ -265,6 +265,34 @@ mod tests {
         }
     }
     #[test]
+    fn dictionary_targets_keep_contextual_assertions_after_export() {
+        let shape = json!({"type":"object","required":["item","const"],"properties":{"item":{"$ref":"#/properties"},"const":{"$ref":"#/definitions/Value"}},"definitions":{"Value":{"type":"string"}}});
+        let contract = SocketContract::new("/dictionary")
+            .with_client_message("request", SocketSchemaEntry::new(shape.clone()));
+        let document: Value = serde_json::from_str(
+            &generate_raw_socket_asyncapi_json(&AsyncApiInfo::new("Dictionary", "1"), &contract)
+                .unwrap(),
+        )
+        .unwrap();
+        let payload = &document["channels"]["request"]["messages"]["request"]["payload"];
+        let reference = payload["properties"]["item"]["$ref"].as_str().unwrap();
+        let pointer = percent_encoding::percent_decode_str(&reference[1..])
+            .decode_utf8()
+            .unwrap();
+        assert_eq!(
+            document.pointer(&pointer).unwrap()["const"],
+            shape["properties"]["const"]
+        );
+        if let Ok(output) = std::env::var("FORKLAUNCH_TEST_RAW_SOCKET_REFERENCES") {
+            std::fs::write(
+                format!("{output}.dictionary.json"),
+                json!({"original":shape,"document":document}).to_string(),
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
     fn references_into_literal_assertions_bundle_without_changing_payload_constraints() {
         let shape = json!({"type":"object","required":["item"],"properties":{"item":{"$ref":"#/definitions/Storage/const"}},"definitions":{"Storage":{"const":{"allOf":[{"$ref":"#/definitions/Value"}]}},"Value":{"type":"string","minLength":2}},"default":{"$ref":"literal default"}});
         let contract = SocketContract::new("/literal")

@@ -1,10 +1,12 @@
 //! Copy referenced schemas out of literal data before rewriting schema edges.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use forklaunch_common::{FrameworkError, FrameworkResult};
 use serde_json::{Map, Value};
 
-use super::schema::{SchemaGraph, local_pointer, schema_graph, schema_graph_from};
+use super::schema::{
+    SchemaGraph, local_pointer, schema_context_from, schema_graph, schema_graph_from,
+};
 
 /// Bundle local schema targets stored inside literal assertions or annotations.
 /// Original const/enum/default/example values remain byte-for-byte JSON values.
@@ -25,7 +27,7 @@ pub fn bundle_literal_schema_references_unscoped(root: &Value) -> FrameworkResul
 ///
 /// # Errors
 /// Rejects missing/non-schema targets, external references, resource IDs,
-/// anchors/dynamic scope, dictionary aliases, and shared depth/node/byte limits.
+/// anchors/dynamic scope, and shared depth/node/byte limits.
 pub fn bundle_document_schema(document: &Value, location: &str) -> FrameworkResult<Value> {
     let mut budget = CopyBudget::default();
     budget.check(document)?;
@@ -33,7 +35,12 @@ pub fn bundle_document_schema(document: &Value, location: &str) -> FrameworkResu
         .pointer(location)
         .ok_or_else(|| invalid("document schema location is missing"))?;
     let output = budget.copy(schema)?;
-    let graph = schema_graph_from(document, location, false)?;
+    let graph = match schema_graph_from(document, location, false) {
+        Err(error) if error.code() == "schema_container_reference_unsupported" => {
+            return bundle_contexts(document, location, output, budget);
+        }
+        result => result?,
+    };
     validate_document_nodes(document, schema, &graph)?;
     let targets = graph.reference_targets.iter().cloned().collect::<Vec<_>>();
     if targets.is_empty() {
@@ -95,7 +102,15 @@ pub(super) fn bundle_with_resource_policy(
 ) -> FrameworkResult<Value> {
     let mut budget = CopyBudget::default();
     let output = budget.copy(root)?;
-    let graph = schema_graph(root, preserve_resource_bases)?;
+    let graph = match schema_graph(root, preserve_resource_bases) {
+        Err(error)
+            if !preserve_resource_bases
+                && error.code() == "schema_container_reference_unsupported" =>
+        {
+            return bundle_contexts(root, "", output, budget);
+        }
+        result => result?,
+    };
     let targets: Vec<_> = graph
         .reference_targets
         .iter()
@@ -106,6 +121,70 @@ pub(super) fn bundle_with_resource_policy(
     }
     let targets = targets.into_iter().cloned().collect();
     bundle_graph(root, "", output, graph, targets, budget)
+}
+
+// A dictionary can also be a referenced schema. Its property named `const`, for
+// example, is a schema in the dictionary context but literal data in the schema
+// context. Traverse each reference target independently and rewrite only that
+// context's structural schema locations. Never rewrite the original JSON data.
+fn bundle_contexts(
+    root: &Value,
+    scope: &str,
+    mut output: Value,
+    mut budget: CopyBudget,
+) -> FrameworkResult<Value> {
+    let dialect = root
+        .pointer(scope)
+        .ok_or_else(|| invalid("schema scope is missing"))?;
+    let definitions = output
+        .as_object_mut()
+        .ok_or_else(|| invalid("schema root must be an object"))?
+        .entry("definitions")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| invalid("schema definitions must be an object"))?;
+    let mut copies = BTreeMap::from([(scope.to_owned(), String::new())]);
+    let mut pending = VecDeque::from([scope.to_owned()]);
+    let mut contexts = Vec::new();
+    let mut index = 0;
+    while let Some(source) = pending.pop_front() {
+        let graph = schema_context_from(root, &source, dialect)?;
+        validate_document_nodes(root, dialect, &graph)?;
+        for target in &graph.reference_targets {
+            if copies.contains_key(target) {
+                continue;
+            }
+            let name = loop {
+                let name = format!("ForklaunchContext{index}");
+                index += 1;
+                if !definitions.contains_key(&name) {
+                    break name;
+                }
+            };
+            let value = root
+                .pointer(target)
+                .ok_or_else(|| invalid("schema target missing"))?;
+            if !value.is_object() && !value.is_boolean() {
+                return Err(invalid("schema targets must be objects or booleans"));
+            }
+            definitions.insert(name.clone(), budget.copy(value)?);
+            copies.insert(target.clone(), format!("/definitions/{name}"));
+            pending.push_back(target.clone());
+        }
+        contexts.push((source, graph.locations));
+    }
+    for (source, locations) in contexts {
+        let destination = &copies[&source];
+        for location in locations {
+            rewrite_reference(
+                &mut output,
+                &format!("{destination}{}", &location[source.len()..]),
+                &copies,
+            )?;
+        }
+    }
+    CopyBudget::default().check(&output)?;
+    Ok(output)
 }
 
 fn bundle_graph(
@@ -332,18 +411,58 @@ mod tests {
     }
 
     #[test]
-    fn dictionary_aliases_cannot_change_simultaneous_schema_and_literal_roles() {
-        let schema = json!({"type":"object","properties":{"item":{"$ref":"#/properties"},"const":{"$ref":"#/definitions/Value"}},"definitions":{"Value":{"type":"string"}}});
-        assert!(
-            bundle_literal_schema_references_unscoped(&schema)
-                .unwrap_err()
-                .message()
-                .contains("dictionaries")
-        );
+    fn dictionary_aliases_preserve_simultaneous_schema_and_literal_roles() {
+        let schema = json!({"type":"object","properties":{"item":{"$ref":"#/properties"},"const":{"$ref":"#/definitions/Value"}},"definitions":{"Value":{"type":"string"},"ForklaunchContext0":{"type":"boolean"}}});
+        let output = bundle_literal_schema_references_unscoped(&schema).unwrap();
+        let target = local_pointer(output["properties"]["item"]["$ref"].as_str().unwrap()).unwrap();
+        let alias = output.pointer(&target).unwrap();
+        assert_eq!(alias["const"], schema["properties"]["const"]);
+        assert_ne!(output["properties"]["const"], schema["properties"]["const"]);
         assert_eq!(
-            super::super::schema::relocate_schema_json(&schema.to_string(), &["payload"]),
-            schema.to_string()
+            output["definitions"]["ForklaunchContext0"],
+            schema["definitions"]["ForklaunchContext0"]
         );
+        assert!(super::super::schema::schema_locations(&output, false).is_ok());
+        assert_eq!(
+            bundle_literal_schema_references_unscoped(&output).unwrap(),
+            output
+        );
+        let relocated: Value = serde_json::from_str(
+            &super::super::schema::relocate_schema_json_unscoped(&schema.to_string(), &["payload"]),
+        )
+        .unwrap();
+        assert_eq!(relocated.pointer(&target).unwrap()["const"], alias["const"]);
+        let document = json!({"payload":schema});
+        // Document pointers are absolute, so use an equivalent namespaced graph.
+        let document: Value = serde_json::from_str(
+            &document
+                .to_string()
+                .replace("#/properties", "#/payload/properties")
+                .replace("#/definitions", "#/payload/definitions"),
+        )
+        .unwrap();
+        let extracted = bundle_document_schema(&document, "/payload").unwrap();
+        assert!(super::super::schema::schema_locations(&extracted, false).is_ok());
+    }
+
+    #[test]
+    fn dictionary_contexts_rebase_recursive_edges_without_touching_annotations() {
+        let schema = json!({"type":"object","properties":{"item":{"$ref":"#/properties"},"properties":{"next":{"$ref":"#/properties"}}}});
+        let output = bundle_literal_schema_references_unscoped(&schema).unwrap();
+        let target = local_pointer(output["properties"]["item"]["$ref"].as_str().unwrap()).unwrap();
+        let alias = output.pointer(&target).unwrap();
+        assert_eq!(alias["properties"]["next"]["$ref"], format!("#{target}"));
+        assert_eq!(
+            output["properties"]["properties"]["next"],
+            schema["properties"]["properties"]["next"]
+        );
+        assert!(super::super::schema::schema_locations(&output, false).is_ok());
+        let resource =
+            json!({"properties":{"item":{"$ref":"#/properties"},"$id":{"const":"scope"}}});
+        assert!(bundle_literal_schema_references_unscoped(&resource).is_err());
+        let missing =
+            json!({"properties":{"item":{"$ref":"#/properties"},"other":{"$ref":"#/missing"}}});
+        assert!(bundle_literal_schema_references_unscoped(&missing).is_err());
     }
 
     #[test]

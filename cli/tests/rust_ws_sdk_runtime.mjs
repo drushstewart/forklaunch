@@ -128,7 +128,7 @@ async fn main() {
     ['build', '--quiet', '--manifest-path', path.join(temporary, 'Cargo.toml')],
     { cwd: root, env, stdio: 'inherit', timeout: 300000 },
   );
-  for (const suffix of ['recursive', 'empty']) {
+  for (const suffix of ['recursive', 'empty', 'dictionary']) {
     const directory = path.join(temporary, suffix);
     await mkdir(directory);
     const manifest = (
@@ -160,7 +160,7 @@ async fn main() {
   }
   if (process.argv.includes('--compile-only')) {
     console.log(
-      'PASS generated native WebSocket consumers: normal, recursive and empty clients compile with warnings denied',
+      'PASS generated native WebSocket consumers: normal, recursive, empty and dictionary clients compile with warnings denied',
     );
   } else {
     const {

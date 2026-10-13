@@ -481,7 +481,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Follow explicit local schema references into legacy annotation storage during relocation and checked AsyncAPI export, including nested/recursive edges and once-decoded percent-encoded pointers. Preserve unreferenced literals and embedded resource bases, bound traversal to 64 steps/100,000 locations, and independently validate exported payload constraints with AJV and the official schema/parser.
 - [x] Decode URI fragments once in shared SDK model graphs and CLI OpenAPI reference objects; canonicalize equivalent recursive edges and URI-encode relocated pointers after JSON-pointer token escaping. Exercise Unicode/slash/tilde/percent definition names in both native generators and portable CLI socket artifacts.
 - [x] Extract standalone schemas from containing documents with transitive/recursive local reference copies, original literal data, UTF-8/percent pointer handling, collision-checked definitions and shared copy/output limits. Reject external/missing targets, resource IDs/dynamic scope and dictionary aliases; this is the schema foundation for external AsyncAPI input, whose transport/direction integration remains open.
-- [ ] Bundle schema-dictionary aliases with separate interpretation contexts when the same value acts as both a schema and literal assertion data. Checked socket exports currently reject these references to preserve constraints.
+- [x] Bundle schema-dictionary aliases with separate interpretation contexts when the same value acts as both a schema and literal assertion data. Checked unscoped exports, document extraction and socket unions preserve literal assertions and recursive edges under shared copy budgets. Actual AJV comparisons, generated Rust/TypeScript consumers, native validation and strict Clippy pass. Resource-preserving relocation remains conservative; general resource resolution is a separate task.
 - [x] Align checked schema reference profiles by rejecting encoded pointer separators before model/artifact generation. Preserve literal assertion/annotation data, percent-encoded names and general OpenAPI reference-object URI decoding. Actual/native/generated codec comparisons include rejected leading separators; imported SDK validation checks no-write behavior.
 - [x] Align raw native JSON Schema codec resolution of encoded interior separators with actual AJV token decoding outside the checked SDK/export profile. An isolated, provenance-pinned resolver decodes each URI token once at lookup and registry-discovery boundaries, preserving internal pointers, literals, recursion and embedded resource IDs. Default upstream RFC behavior remains independently tested. Checked SDK/export/import profiles continue rejecting this ambiguous extension.
 - [x] Match actual AJV validation of constraints beside `$ref` in Drafts 4–7 through a separate isolated opt-in validator feature, preserving dialect-specific keywords and original schema documents. All five supported dialects pass 12,960 actual helper/AJV codec comparisons, including interior separators, invalid escapes, annotation targets, recursive and scoped resources, sibling constraints and unchanged literal assertions.
@@ -1681,3 +1681,25 @@ Clippy, rebuilt CLI and all 770 package entries pass. CI includes
 
 Checklist: **621/682 (91.1%), 61 open**. External binary AsyncAPI imports remain
 separately scoped; this closes explicit native artifact metadata and generation.
+
+
+### Context-aware schema dictionary bundling (2026-10-12)
+
+Checked unscoped schema bundling now traverses each referenced dictionary in a
+separate interpretation context. It copies targets into collision-checked
+schema definitions and rewrites only structural schema locations, preserving
+literal `const`/annotation data even when the same source value is also a schema.
+Recursive targets, nested contexts and document extraction use bounded shared
+copies; missing references, active resources and invalid targets fail explicitly.
+Socket union relocation now selects the checked unscoped helper.
+
+Validation passed: 34 existing actual TypeScript/native metadata snapshots,
+six original/exported AJV alias comparisons, native recursive/union constraint
+checks, 74 selected framework tests, strict all-feature/all-target Clippy,
+generated Rust consumers with warnings denied, and strict TypeScript ESM/CJS
+consumers with runtime alias-union validation. CLI rebuild and all 770 package
+entries pass. Logs: `/private/tmp/fl-schema-context-{metadata,tests-final,rust-sdk,ts-sdk-final,clippy,package}.log`.
+
+Checklist: **622/682 (91.2%), 60 open**. General resource IDs/anchors/dynamic
+resolution remain open; resource-preserving relocation still rejects aliases
+whose scope cannot be safely resolved.

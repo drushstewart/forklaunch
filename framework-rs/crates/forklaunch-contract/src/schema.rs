@@ -167,6 +167,25 @@ pub(super) fn schema_graph_from(
     preserve_resource_bases: bool,
 ) -> FrameworkResult<SchemaGraph> {
     let dialect = schema_node(root, start, 0)?;
+    collect_schema_graph(root, start, preserve_resource_bases, true, dialect)
+}
+
+/// Traverse one interpretation context without following references into others.
+pub(super) fn schema_context_from(
+    root: &Value,
+    start: &str,
+    dialect: &Value,
+) -> FrameworkResult<SchemaGraph> {
+    collect_schema_graph(root, start, false, false, dialect)
+}
+
+fn collect_schema_graph(
+    root: &Value,
+    start: &str,
+    preserve_resource_bases: bool,
+    follow_references: bool,
+    dialect: &Value,
+) -> FrameworkResult<SchemaGraph> {
     let mut queue = VecDeque::from([(start.to_owned(), 0)]);
     let mut seen = BTreeSet::from([start.to_owned()]);
     let mut locations = Vec::new();
@@ -195,7 +214,9 @@ pub(super) fn schema_graph_from(
             && root.pointer(&pointer).is_some()
         {
             reference_targets.insert(pointer.clone());
-            enqueue(&mut queue, &mut seen, pointer, depth + 1)?;
+            if follow_references {
+                enqueue(&mut queue, &mut seen, pointer, depth + 1)?;
+            }
         }
         for (key, child) in object {
             if matches!(key.as_str(), "enum" | "const" | "default" | "examples")
@@ -256,7 +277,9 @@ pub(super) fn schema_graph_from(
             }
         }
     }
-    reject_container_targets(&reference_targets, &containers)?;
+    if follow_references {
+        reject_container_targets(&reference_targets, &containers)?;
+    }
     Ok(SchemaGraph {
         locations,
         literal_ranges,

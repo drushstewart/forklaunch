@@ -105,5 +105,14 @@ try{
  assert.equal(literalPayload({item:'x'}),false);
  assert.equal(literalPayload({item:42}),false);
  assert.deepEqual(literal.channels.request.messages.request.payload.definitions.Storage.const,{allOf:[{$ref:'#/definitions/Value'}]});
+ const dictionary=JSON.parse(await readFile(references+'.dictionary.json','utf8'));
+ const originalDictionary=new Ajv({strict:false}).compile(dictionary.original);
+ const dictionaryEngine=new Ajv({strict:false});dictionaryEngine.addSchema(dictionary.document,'dictionary');
+ const exportedDictionary=dictionaryEngine.compile({$ref:'dictionary#/channels/request/messages/request/payload'});
+ const dictionaryValues=[{item:{$ref:'#/definitions/Value'},const:'ok'},{item:{$ref:'#/definitions/Value'},const:1},{item:'wrong',const:'ok'},{item:{$ref:'#/definitions/Value',extra:1},const:'ok'},{const:'ok'},null];
+ for(const value of dictionaryValues) assert.equal(exportedDictionary(value),originalDictionary(value),JSON.stringify(value));
+ assert.equal(exportedDictionary(dictionaryValues[0]),true);
+ assert.deepEqual(dictionaryValues.slice(1).map(value=>exportedDictionary(value)),[false,false,false,false,false]);
+ console.log('PASS schema dictionary aliases retain separate schema/literal contexts: six original/exported AJV comparisons');
  console.log(`PASS ${cases.length} actual TypeScript/native raw socket metadata documents: channel fan-out, singular/plural precedence, directions, controls, escaped/special names, official AsyncAPI JSON Schema, ${parsed} parser documents (${parserLimitations} known parser limitations), recursive schema relocation and payload validation`);
 }finally{await rm(temporary,{recursive:true,force:true});}

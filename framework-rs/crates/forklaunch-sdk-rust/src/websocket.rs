@@ -200,6 +200,9 @@ mod tests {
                 .with_server_message("text", SocketSchemaEntry::new(json!({"type":"string"})))
                 .with_client_message("accepted", SocketSchemaEntry::new(json!({"type":"boolean"})));
             for (suffix, contract) in [
+                ("dictionary", SocketContract::new("/dictionary")
+                    .with_server_message("dictionary", SocketSchemaEntry::new(json!({"type":"object","required":["item","const"],"properties":{"item":{"$ref":"#/properties"},"const":{"$ref":"#/definitions/Value"}},"definitions":{"Value":{"type":"string"}}})))
+                    .with_server_message("number", SocketSchemaEntry::new(json!({"type":"integer"})))),
                 ("recursive", recursive),
                 ("empty", SocketContract::new("/empty")),
             ] {

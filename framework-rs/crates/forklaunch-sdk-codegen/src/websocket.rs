@@ -150,7 +150,7 @@ fn collection(
             bail!("Socket message unions must use one JSON Schema dialect");
         }
         dialect = Some(current.to_owned());
-        let relocated = forklaunch_contract::relocate_schema_json(
+        let relocated = forklaunch_contract::relocate_schema_json_unscoped(
             &checked.schema.to_string(),
             &["anyOf", &index.to_string()],
         );
@@ -211,6 +211,28 @@ mod tests {
         let plan = SocketSdkPlan::from_contract(&contract).unwrap();
         assert!(!plan.outgoing.binary);
         assert_eq!(plan.outgoing.models.typescript_type, "string");
+    }
+
+    #[test]
+    fn dictionary_aliases_keep_assertions_inside_relocated_message_unions() {
+        let shape = json!({"type":"object","required":["item","const"],"properties":{"item":{"$ref":"#/properties"},"const":{"$ref":"#/definitions/Value"}},"definitions":{"Value":{"type":"string"}}});
+        let contract = SocketContract::new("/dictionary")
+            .with_server_message("dictionary", SocketSchemaEntry::new(shape))
+            .with_server_message("number", SocketSchemaEntry::new(json!({"type":"integer"})));
+        let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+        let codec = PayloadCodec::<Value>::json_schema(&plan.incoming.schema).unwrap();
+        assert!(
+            codec
+                .decode(br##"{"item":{"$ref":"#/definitions/Value"},"const":"ok"}"##)
+                .is_ok()
+        );
+        assert!(codec.decode(b"42").is_ok());
+        for invalid in [
+            br##"{"item":{"$ref":"#/definitions/Value"},"const":42}"##.as_slice(),
+            br#"{"item":"wrong","const":"ok"}"#,
+        ] {
+            assert!(codec.decode(invalid).is_err());
+        }
     }
 
     #[test]

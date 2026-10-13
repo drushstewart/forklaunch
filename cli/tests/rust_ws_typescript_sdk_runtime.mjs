@@ -123,15 +123,20 @@ try {
     path.join(temporary, 'src/native.ts'),
     await readFile(path.join(temporary, 'src/generated.ts.native')),
   );
-  for (const suffix of ['recursive', 'empty', 'draft6', 'draft4'])
+  for (const suffix of ['recursive', 'empty', 'draft6', 'draft4', 'dictionary'])
     await writeFile(
       path.join(temporary, `src/${suffix}.ts`),
-      await readFile(path.join(temporary, `src/generated.ts.${suffix}`)),
+      (await readFile(path.join(temporary, `src/generated.ts.${suffix}`), 'utf8')) +
+        (suffix === 'dictionary' ? '\nexport { generatedSocketSchemas };\n' : ''),
     );
   await writeFile(
     path.join(temporary, 'src/typed-usage.ts'),
     `
 import { ForkLaunchSocketClient } from './generated.js';
+import type { SocketIncoming as Dictionary } from './dictionary.js';
+export const dictionary: Dictionary = { item: { '$ref': '#/definitions/Value' }, const: 'ok' };
+// @ts-expect-error Referenced property types survive contextual bundling.
+export const invalidDictionary: Dictionary = { item: { '$ref': '#/definitions/Value' }, const: 1 };
 import type { SocketIncoming as Tree } from './recursive.js';
 import type { SocketIncoming as DraftFour } from './draft4.js';
 export const draftFour: DraftFour = 'not the ignored const';
@@ -313,9 +318,18 @@ export async function types(client: ForkLaunchSocketClient) {
   const literal = JSON.parse('{"properties":{"__proto__":{"type":"string"}}}');
   const literalCodec = new SocketCodec({ const: literal }, 4096);
   assert.doesNotThrow(() => literalCodec.encode(literal));
+  const { generatedSocketSchemas: dictionarySchemas } = await import(pathToFileURL(path.join(temporary, 'compiled/dictionary.js')));
+  for (const Codec of [SocketCodec, commonjs.SocketCodec]) {
+    const dictionaryCodec = new Codec(dictionarySchemas.incoming, 4096);
+    const value = {item:{$ref:'#/definitions/Value'},const:'ok'};
+    assert.deepEqual(dictionaryCodec.decode(dictionaryCodec.encode(value)),value);
+    assert.equal(dictionaryCodec.decode(dictionaryCodec.encode(42)),42);
+    assert.throws(()=>dictionaryCodec.encode({...value,const:1}));
+    assert.throws(()=>dictionaryCodec.encode({...value,item:'wrong'}));
+  }
   if (compileOnly) {
     console.log(
-      'PASS generated TypeScript WebSocket consumers: strict ESM/CommonJS declarations, normal/recursive/empty clients and prototype/reference-safe codecs',
+      'PASS generated TypeScript WebSocket consumers: strict ESM/CommonJS declarations, normal/recursive/empty/dictionary clients and prototype/reference-safe codecs',
     );
   } else {
     execFileSync(
