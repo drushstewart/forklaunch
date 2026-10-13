@@ -3,7 +3,7 @@
 pub mod sse;
 pub mod versioning;
 pub use versioning::{
-    MultipartLimits, SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry,
+    BodyParserHooks, MultipartLimits, SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry,
     VersionedRoutePlan,
 };
 
@@ -332,6 +332,7 @@ pub enum ContractValidationLocation {
     BodyParser,
     BodySize,
     BodyEncoding,
+    BodyVerification,
     BodyParserConfiguration,
     ResponseStatus,
 }
@@ -352,6 +353,7 @@ impl ContractValidationError {
             ContractValidationLocation::BodyParser
                 | ContractValidationLocation::BodySize
                 | ContractValidationLocation::BodyEncoding
+                | ContractValidationLocation::BodyVerification
                 | ContractValidationLocation::BodyParserConfiguration
         )
     }
@@ -709,6 +711,11 @@ pub fn validation_error_response(
         .any(|error| error.location == ContractValidationLocation::BodyEncoding)
     {
         ErrorKind::UnsupportedMediaType
+    } else if errors
+        .iter()
+        .any(|error| error.location == ContractValidationLocation::BodyVerification)
+    {
+        ErrorKind::Forbidden
     } else {
         ErrorKind::Validation
     };

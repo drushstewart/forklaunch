@@ -3484,3 +3484,25 @@ Runtime callbacks are explicit native code, not serialized JavaScript. Parser
 verify/reviver, missing-body defaults, non-body transformations and the documented
 codec/string representation boundaries remain open. Checklist **652/682 (95.6%),
 30 open**; this completes a portion of the broad versioning gate.
+
+### Shared body-parser verification callbacks (2026-10-13)
+
+`BodyParserHooks::with_verify` and `insert_parser` provide native verification of
+bounded, decompressed bytes before character decoding/parsing. Callbacks receive
+request metadata and the charset (absent for raw/file). They run once across all
+versions, including empty bodies; size/encoding errors take precedence. Failure
+returns a fixed 403 under Error/Warning/None validation modes without leaking
+callback details. Multipart/SSE registrations are rejected. Runtime hooks remain
+native/read-only and are not serialized as JavaScript functions.
+
+Validation: **484 actual TypeScript/native parser comparisons** (80 new verify
+cases), including all four parsers, gzip/deflate/Brotli, UTF-16, empty bodies,
+strict/invalid JSON and bounded-byte precedence. 24 contract, 31 HTTP, 64 Axum
+and three integration tests pass, including once-only direct/local adapter calls
+under every validation mode. Strict Clippy and 908 package files pass. Fresh
+`run.9eT6Uy` passes generated HTTP/MCP verification, compressed success/rejection,
+private-error omission, both typed SDKs across three artifact forms/native
+generators, startup/discovery/Origin rejection and graceful shutdown.
+Receipts: `/private/tmp/fl-parser-hooks-{actual,native,clippy,package,generated}.log`.
+Checklist remains **652/682 (95.6%), 30 open**. JSON reviver and non-body/missing-body
+transformation semantics remain in the broad versioning gate.

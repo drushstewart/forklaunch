@@ -540,3 +540,81 @@ fn metadata_adapter_delivers_transformed_body_and_keeps_wire_bytes() {
         json!({"result":42})
     );
 }
+
+#[tokio::test]
+async fn parser_verification_is_once_only_and_fatal_in_all_validation_modes() {
+    use forklaunch_http::{BodyParserHooks, VersionBodyHooksRegistry};
+    for mode in [
+        ValidationMode::Error,
+        ValidationMode::Warning,
+        ValidationMode::None,
+    ] {
+        for local in [false, true] {
+            let mut contract = RouteContract::post("Verify", "Verify", "/verify");
+            contract.options.request_validation = mode;
+            contract.options.body_parser.json_wire.limit_bytes = 2;
+            for version in ["first", "last"] {
+                contract = contract.with_version(VersionedContract {
+                    version: version.into(),
+                    request: RequestContract::default().with_body(BodyContract::json("Input")),
+                    responses: vec![ResponseContract::new(200, None)],
+                });
+            }
+            let count = Arc::new(AtomicU64::new(0));
+            let calls = count.clone();
+            let mut hooks = VersionBodyHooksRegistry::default();
+            hooks
+                .insert_parser(
+                    &contract,
+                    BodyParserHooks::default().with_verify(move |request, bytes, charset| {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(charset, Some("utf-8"));
+                        if request.headers.get("x-deny").map(String::as_str) == Some("yes") {
+                            return Err("private verification detail".into());
+                        }
+                        assert_eq!(bytes, b"{}");
+                        Ok(())
+                    }),
+                )
+                .unwrap();
+            let service = ServiceInfo::new("verify", "1");
+            let router = if local {
+                let mut handlers = LocalRouter::new();
+                handlers.register_with_body_hooks(
+                    contract.clone(),
+                    &hooks,
+                    |_: FrameworkRequest| Ok(FrameworkResponse::new(200)),
+                );
+                ForkLaunchRouter::from_local_router(service, [contract], handlers)
+            } else {
+                ForkLaunchRouter::new(service)
+                    .with_version_body_hooks(hooks)
+                    .post(contract, || async { StatusCode::OK })
+            }
+            .into_router();
+            for (body, deny, expected) in
+                [("{}", "no", 200), ("{", "yes", 403), ("{} ", "yes", 413)]
+            {
+                let response = router
+                    .clone()
+                    .oneshot(
+                        Request::post("/verify")
+                            .header("content-type", "application/json")
+                            .header("x-deny", deny)
+                            .body(Body::from(body))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status().as_u16(),
+                    expected,
+                    "{mode:?}, local={local}"
+                );
+                let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+                assert!(!String::from_utf8_lossy(&bytes).contains("private verification detail"));
+            }
+            assert_eq!(count.load(Ordering::SeqCst), 2);
+        }
+    }
+}

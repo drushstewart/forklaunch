@@ -642,5 +642,16 @@ Runtime callbacks are not serialized into contracts or SDKs. Export schemas that
 describe accepted wire input and explicit response schemas; attach native
 callbacks when constructing the server. This supports native equivalents of body
 preprocessing/transformation, without interpreting JavaScript functions. Missing
-body defaults, query/parameter/header transformations and body-parser verify or
-JSON reviver callbacks remain separate work.
+body defaults, query/parameter/header transformations and JSON reviver callbacks remain separate work.
+
+
+`BodyParserHooks::with_verify` adds verification for the shared JSON, text,
+URL-encoded or raw/file parser. Register it with
+`VersionBodyHooksRegistry::insert_parser(&route, hooks)` alongside version hooks.
+The callback receives the original framework request, bounded decompressed bytes,
+and the selected charset (`None` for raw/file bodies). It runs once before
+character decoding and parsing, including for empty bodies. Encoding and size
+checks run first. A verification error returns a fixed 403 without exposing the
+callback's error text, even when schema validation is disabled. Multipart and
+SSE are outside this body-parser verification API. The callback is read-only;
+it does not expose Express's mutable request/response objects.

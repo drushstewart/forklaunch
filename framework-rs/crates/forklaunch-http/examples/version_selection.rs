@@ -32,6 +32,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     plan.with_body_hooks(version["name"].as_str().unwrap(), fixture_hooks(mode))?;
             }
         }
+        if let Some(verify) = fixture.get("verify") {
+            plan = plan.with_parser_hooks(fixture_parser_hooks(verify))?;
+        }
         let mut cases = Vec::new();
         for case in fixture["cases"].as_array().unwrap() {
             let request = FrameworkRequest::new(
@@ -231,4 +234,15 @@ fn fixture_versions(mut contract: RouteContract, fixture: &Value) -> RouteContra
         });
     }
     contract
+}
+
+fn fixture_parser_hooks(verify: &Value) -> forklaunch_http::BodyParserHooks {
+    let verify = verify.clone();
+    forklaunch_http::BodyParserHooks::default().with_verify(move |_, bytes, charset| {
+        let received = json!({"bytes":bytes,"charset":charset});
+        if verify["reject"] == true || received != verify["expected"] {
+            return Err("verification rejected".into());
+        }
+        Ok(())
+    })
 }

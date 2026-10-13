@@ -92,8 +92,30 @@ for(const charset of ['utf-8','iso-8859-1']) for(const charsetSentinel of [false
  ]) cases.push(['form',Buffer.from(value),charset,{urlencoded:{charsetSentinel,interpretNumericEntities}}]);
 }
 cases.push(['form',Buffer.from('utf8=%E2%9C%93&a=b&c=d'),undefined,{urlencoded:{charsetSentinel:true,parameterLimit:2}}]);
+for(const kind of ['json','text','form','file']) {
+ const parser=kind==='form'?'urlencoded':kind==='file'?'raw':kind;
+ const bytes=Buffer.from(kind==='json'?' {"value":"水"}':kind==='form'?'value=%E6%B0%B4':'water 水');
+ for(const encoding of [undefined,'gzip','deflate','br']) for(const reject of [false,true]) {
+  const wire=encoding?compressors[encoding](bytes):bytes;
+  const verify={reject,expected:{bytes:[...bytes],charset:kind==='file'?null:'utf-8'}};
+  cases.push([kind,wire,undefined,undefined,encoding,verify]);
+  cases.push([kind,wire,undefined,{[parser]:{limit:bytes.length-1}},encoding,verify]);
+ }
+ for(const reject of [false,true]) {
+  const bytes=Buffer.alloc(0);
+  cases.push([kind,bytes,undefined,undefined,undefined,{reject,expected:{bytes:[],charset:kind==='file'?null:'utf-8'}}]);
+ }
+}
+for(const value of ['{','true']) for(const reject of [false,true]) {
+ const bytes=Buffer.from(value);
+ cases.push(['json',bytes,undefined,undefined,undefined,{reject,expected:{bytes:[...bytes],charset:'utf-8'}}]);
+}
+for(const kind of ['json','text']) for(const reject of [false,true]) {
+ const bytes=Buffer.from(kind==='json'?'\ufeff{"value":"水"}':'\ufeff水','utf16le');
+ cases.push([kind,gzipSync(bytes),'utf-16le',undefined,'gzip',{reject,expected:{bytes:[...bytes],charset:'utf-16le'}}]);
+}
 const fixtures=[],expected=[];
-for(const [kind,bytes,charset,parserOptions,contentEncoding] of cases) {
+for(const [kind,bytes,charset,parserOptions,contentEncoding,verify] of cases) {
  const req=Readable.from([bytes]);
  const contentType=(kind==='json'?'application/json':kind==='form'?'application/x-www-form-urlencoded':kind==='file'?'application/octet-stream':'text/plain')+(charset?`; charset=${charset}`:'');
  req.headers={'content-type':contentType,'content-length':String(bytes.length),...(contentEncoding?{'content-encoding':contentEncoding}:{})};
@@ -101,7 +123,12 @@ for(const [kind,bytes,charset,parserOptions,contentEncoding] of cases) {
  let failure;
  await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(Error('parser deadline')),5000);
-  contentParse(parserOptions)(req,{},error=>{clearTimeout(timer);error?reject(error):resolve();});
+  const parser=kind==='form'?'urlencoded':kind==='file'?'raw':kind;
+  const options=verify?{...parserOptions,[parser]:{...parserOptions?.[parser],verify(_req,_res,buf,encoding){
+   assert.deepEqual({bytes:[...buf],charset:encoding},verify.expected);
+   if(verify.reject)throw Error('private verification detail');
+  }}}:parserOptions;
+  contentParse(options)(req,{},error=>{clearTimeout(timer);error?reject(error):resolve();});
  }).catch(error=>{failure=error;});
  const versions=[{name:'fallback',schema:true}];
  if(failure) expected.push([{status:failure.status}]);
@@ -111,7 +138,7 @@ for(const [kind,bytes,charset,parserOptions,contentEncoding] of cases) {
   versions.push({name:'exact',schema:{...(kind==='file'?{type:'array'}:{}),const:body}});
   expected.push([{version:'exact',matched:['fallback','exact'],status:200,body}]);
  }
- fixtures.push({kind,contentType,contentEncoding,parserOptions,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
+ fixtures.push({kind,contentType,contentEncoding,parserOptions,verify,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
 }
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000,maxBuffer:32*1024*1024}));
 for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],`${cases[i][0]} ${cases[i][2]} ${cases[i][4]} ${cases[i][1].subarray(0,64).toString('hex')}`);

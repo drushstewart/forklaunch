@@ -101,6 +101,14 @@ try {
   const result=await mcpRpc(base,'tools/call',{name:`writeTransform [v${version}]`,arguments:{body:{value}}});
   assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{value:expected});
  }
+ for(const [body,encoding] of [[JSON.stringify({value:'wire-deny'}),undefined],[gzipSync(Buffer.from(JSON.stringify({value:'wire-deny'}))),'gzip']]) {
+  const response=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json',...(encoding?{'content-encoding':encoding}:{})},body});
+  assert.equal(response.status,403);assert.ok(!(await response.text()).includes('private verification detail'));
+ }
+ const verified=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json','content-encoding':'gzip'},body:gzipSync(Buffer.from(JSON.stringify({value:' ab '})))});
+ assert.equal(verified.status,202);assert.deepEqual(await verified.json(),{value:'ab!'});
+ const verifyMcp=await mcpRpc(base,'tools/call',{name:'writeTransform [vv2]',arguments:{body:{value:'wire-deny'}}});
+ assert.equal(verifyMcp.isError,true);assert.ok(!JSON.stringify(verifyMcp).includes('private verification detail'));
  for(const value of ['deny',' ']) {
   const response=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({value})});
   assert.equal(response.status,400);

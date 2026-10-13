@@ -11,7 +11,10 @@ use serde_json::Value;
 use std::{borrow::Cow, sync::Arc};
 #[path = "versioning_hooks.rs"]
 mod hooks;
+#[path = "versioning_parser_hooks.rs"]
+mod parser_hooks;
 pub use hooks::{VersionBodyHooks, VersionBodyHooksRegistry};
+pub use parser_hooks::BodyParserHooks;
 #[path = "versioning_charset.rs"]
 mod charset;
 #[path = "versioning_form.rs"]
@@ -58,6 +61,7 @@ enum BodyValidator {
 pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
     parsers: forklaunch_contract::BodyParserOptions,
+    parser_hooks: BodyParserHooks,
 }
 impl std::fmt::Debug for VersionedRoutePlan {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -65,6 +69,7 @@ impl std::fmt::Debug for VersionedRoutePlan {
             .debug_struct("VersionedRoutePlan")
             .field("variant_count", &self.variants.len())
             .field("parsers", &self.parsers)
+            .field("parser_hooks", &self.parser_hooks)
             .finish()
     }
 }
@@ -127,7 +132,27 @@ impl VersionedRoutePlan {
                 hooks: VersionBodyHooks::default(),
             });
         }
-        Ok(Self { variants, parsers })
+        Ok(Self {
+            variants,
+            parsers,
+            parser_hooks: BodyParserHooks::default(),
+        })
+    }
+
+    /// Install callbacks for the shared body parser.
+    /// # Errors
+    /// Rejects routes without a supported body parser.
+    pub fn with_parser_hooks(mut self, hooks: BodyParserHooks) -> Result<Self, String> {
+        let body = self
+            .variants
+            .first()
+            .and_then(|variant| variant.route.request.body.as_ref())
+            .ok_or("Parser hooks require a declared body")?;
+        if matches!(body.kind, BodyKind::Multipart | BodyKind::ServerSentEvent) {
+            return Err("This body kind does not use body-parser verification".into());
+        }
+        self.parser_hooks = hooks;
+        Ok(self)
     }
 
     /// # Errors
@@ -266,6 +291,14 @@ impl VersionedRoutePlan {
             std::borrow::Cow::Borrowed(bytes)
         };
         let bytes = decoded.as_ref();
+        if wire_options.is_some() {
+            let encoding = if matches!(body.kind, BodyKind::File | BodyKind::Binary) {
+                None
+            } else {
+                Some(charset.as_str())
+            };
+            self.parser_hooks.verify(request, bytes, encoding)?;
+        }
         let value = match body.kind {
             BodyKind::Json | BodyKind::Unknown => {
                 parse_json_body(bytes, &charset, self.parsers.json_strict)?

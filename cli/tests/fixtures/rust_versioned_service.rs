@@ -72,6 +72,13 @@ pub fn contracts() -> Vec<RouteContract> {
 }
 pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
     let mut hooks=forklaunch_http::VersionBodyHooksRegistry::default();
+    hooks.insert_parser(&contracts()[6],forklaunch_http::BodyParserHooks::default().with_verify(|request,bytes,encoding| {
+        if encoding!=Some("utf-8") { return Err("unexpected encoding".into()); }
+        if request.headers.get("x-reject-body").map(String::as_str)==Some("yes") || bytes.windows(9).any(|window|window==b"wire-deny") {
+            return Err("private verification detail".into());
+        }
+        Ok(())
+    })).unwrap();
     for version in ["v1","v2"] {
         hooks.insert(&contracts()[6],version,forklaunch_http::VersionBodyHooks::default()
             .with_preprocess(|body| {
