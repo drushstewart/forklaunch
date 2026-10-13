@@ -110,3 +110,15 @@ versions, filters and scanner failures are rejected. CI publishes the audit
 report. The full auth/provider release review remains coupled to the open
 provider, storage scalability, multipart/MCP, mixed-app and deployment tasks;
 this engineering review does not mark those implementation gates complete.
+
+
+Verified-session policy extension (2026-10-13): the optional router authorizer
+runs only after credential verification and grant enrichment. Missing/rejected
+credentials never invoke it; an authorizer denial prevents handler dispatch and
+retains correlation/telemetry handling. Installing it explicitly replaces native
+RBAC for authenticated routes, so the application owns the full route policy.
+The TypeScript compatibility policy intentionally uses permission-before-role
+precedence and exact scopes rather than native cumulative checks/hierarchy
+implication. It is opt-in; native defaults are preserved. The 1,495 actual-source
+policy comparisons and generated signed-JWT HTTP/MCP acceptance/rejection cases
+cover this boundary. No dependency changes are introduced.

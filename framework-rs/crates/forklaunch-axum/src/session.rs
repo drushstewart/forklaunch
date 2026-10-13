@@ -29,6 +29,13 @@ pub type AuthenticationFuture =
 pub type Authenticator =
     Arc<dyn Fn(FrameworkRequest, RouteContract) -> AuthenticationFuture + Send + Sync>;
 
+/// Application-owned authorization for an already verified, enriched session.
+pub type Authorizer = Arc<
+    dyn Fn(&AuthenticatedSession, &RouteContract) -> Result<(), forklaunch_http::ErrorResponse>
+        + Send
+        + Sync,
+>;
+
 /// Extracts typed, verified session claims; client headers cannot populate it.
 #[derive(Debug)]
 pub struct Session<T>(pub T);
@@ -84,6 +91,65 @@ mod tests {
             )
             .with_config(config)
             .into_router()
+    }
+
+    #[tokio::test]
+    async fn custom_authorizer_runs_only_after_verification_and_overrides_native_rbac() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = calls.clone();
+        let config = RouterConfig::default()
+            .with_authenticator(|request, _| async move {
+                match request.headers.get("authorization").map(String::as_str) {
+                    Some("verified") => Ok(AuthenticatedSession::new(
+                        Principal {
+                            permissions: vec!["read".into()],
+                            ..Principal::new("allowed")
+                        },
+                        serde_json::json!({"sub":"allowed"}),
+                    )),
+                    Some("verified-denied") => Ok(AuthenticatedSession::new(
+                        Principal::new("denied"),
+                        serde_json::json!({"sub":"denied"}),
+                    )),
+                    _ => Err(AuthError::MissingCredentials),
+                }
+            })
+            .with_authorizer(move |session, contract| {
+                observed.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(contract.operation_name, "profile");
+                forklaunch_auth::typescript::TypeScriptRbacPolicy {
+                    allowed_permissions: Some(vec!["read".into()]),
+                    allowed_roles: Some(vec!["admin".into()]),
+                    ..Default::default()
+                }
+                .authorize(&session.principal, Some(contract.access))
+            });
+        let router = app(config);
+        for (authorization, status, count) in [
+            ("missing", 401, 0),
+            ("verified", 200, 1),
+            ("verified-denied", 403, 2),
+        ] {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::get("/profile")
+                        .header("authorization", authorization)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status().as_u16(), status);
+            assert_eq!(calls.load(Ordering::SeqCst), count);
+            let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+            if status == 403 {
+                assert!(
+                    String::from_utf8_lossy(&bytes).contains("Invalid Authorization permissions.")
+                );
+            }
+        }
     }
 
     #[cfg(not(feature = "cookie-session"))]

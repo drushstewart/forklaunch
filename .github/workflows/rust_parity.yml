@@ -194,6 +194,9 @@ on:
       - 'cli/tests/rust_mcp_probe.mjs'
       - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
+      - 'cli/tests/rust_typescript_rbac_parity.mjs'
+      - 'cli/tests/rust_typescript_authorization_runtime*'
+      - 'cli/tests/fixtures/rust_typescript_authorization.rs'
       - '.github/workflows/rust_parity.yml'
   push:
     branches: [main, rohin/rust-framework]
@@ -389,6 +392,9 @@ on:
       - 'cli/tests/rust_mcp_probe.mjs'
       - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_request_hmac_parity.mjs'
+      - 'cli/tests/rust_typescript_rbac_parity.mjs'
+      - 'cli/tests/rust_typescript_authorization_runtime*'
+      - 'cli/tests/fixtures/rust_typescript_authorization.rs'
       - '.github/workflows/rust_parity.yml'
 
 jobs:
@@ -604,6 +610,13 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_s3_post_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_typescript_rbac_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: bash cli/tests/rust_typescript_authorization_runtime.sh
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_request_hmac_parity.mjs

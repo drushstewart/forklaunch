@@ -64,6 +64,31 @@ return 401 for missing credentials and 403 for invalid tokens. Opaque bearer
 session rejection remains 401. Native HTTP error bodies retain their structured
 JSON envelope; complete TypeScript error-envelope parity is still tracked.
 Better Auth JWT formats and provider/cookie/OIDC flows use their own adapter.
+
+`forklaunch_auth::typescript::TypeScriptRbacPolicy` is an explicit compatibility
+policy for verified, server-enriched JWT/Basic sessions. It preserves omitted
+versus empty rule sets, permission-before-role precedence, access-level bypass
+of those checks, exact scope membership, and subscription-before-feature checks.
+The `scopeHeirarchy` wire spelling matches TypeScript; `scopeHierarchy` is also
+accepted when deserializing native configuration. A protected policy with no
+configured permission/role checks returns 401. Its errors retain the upstream
+status and public message; the native HTTP response remains a JSON envelope.
+Applications resolve grants before invoking this policy. HMAC routes have no
+session and bypass the session policy in TypeScript.
+
+`RouterConfig::with_authorizer` replaces native RBAC with an application-owned
+callback over the verified session and declared contract. Authentication still
+runs first. Async grant resolution belongs in `with_authenticator`; the returned
+principal must contain trusted grants. The authorizer owns policy for all
+routes requiring authentication, including mounted routes. For example, select
+an application policy by operation and call
+`policy.authorize(&session.principal, Some(contract.access))`. Configure route
+access/auth explicitly. Public routing/credential behavior is still determined
+by the router's contracts; the session policy does not change credential parsing
+or session validation. Without an authorizer, existing native RBAC behavior stays
+in effect. The 1,495-case actual TypeScript fixture covers session-policy results;
+credential transports and full error-envelope conformance remain separate gates.
+
 `AuthHttp::with_rate_limit_options` accepts `AuthRateLimitOptions` with a positive
 `AuthRateLimitRule::new(window_seconds, max)` default and `with_exact_path`
 overrides relative to the auth mount. An override of `None` disables that endpoint's

@@ -14,7 +14,7 @@ use std::{
     },
 };
 
-use crate::session::{AuthenticatedSession, Authenticator};
+use crate::session::{AuthenticatedSession, Authenticator, Authorizer};
 use axum::{
     Router,
     body::{Body as AxumBody, to_bytes},
@@ -82,6 +82,8 @@ pub struct RouterConfig {
     pub cors: Option<CorsLayer>,
     /// Credential verifier for routes requiring authentication. Missing verifiers fail closed.
     pub authenticator: Option<Authenticator>,
+    /// Optional replacement for native RBAC, invoked only after authentication.
+    pub authorizer: Option<Authorizer>,
     /// Inject a configured collector to export HTTP traces and metrics.
     pub telemetry: Option<OpenTelemetryCollector>,
 }
@@ -105,6 +107,7 @@ impl Default for RouterConfig {
             servers: Vec::new(),
             cors: None,
             authenticator: None,
+            authorizer: None,
             telemetry: None,
         }
     }
@@ -123,6 +126,23 @@ impl RouterConfig {
         self.authenticator = Some(Arc::new(move |request, contract| {
             Box::pin(verifier(request, contract))
         }));
+        self
+    }
+
+    /// Replace native RBAC checks with an application-owned policy for verified
+    /// sessions. Credential verification still runs first and fails closed.
+    /// Resolve any async grants in the authenticator before returning a session.
+    /// This callback owns authorization for every authenticated route, including
+    /// mounted routes; it must enforce the declared contract's access policy.
+    #[must_use]
+    pub fn with_authorizer(
+        mut self,
+        authorizer: impl Fn(&AuthenticatedSession, &RouteContract) -> Result<(), ErrorResponse>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.authorizer = Some(Arc::new(authorizer));
         self
     }
 
@@ -532,6 +552,7 @@ impl ForkLaunchRouter {
             &registry,
             config.body_limit,
             config.authenticator,
+            config.authorizer,
             telemetry.clone(),
             &config.version_body_hooks,
             local_validation,
@@ -738,6 +759,7 @@ struct ValidationState {
     local_validation: HashSet<String>,
     body_limit: usize,
     authenticator: Option<Authenticator>,
+    authorizer: Option<Authorizer>,
     telemetry: OpenTelemetryCollector,
 }
 
@@ -746,6 +768,7 @@ impl ValidationState {
         registry: &ContractRegistry,
         body_limit: usize,
         authenticator: Option<Authenticator>,
+        authorizer: Option<Authorizer>,
         telemetry: OpenTelemetryCollector,
         hooks: &forklaunch_http::VersionBodyHooksRegistry,
         local_validation: HashSet<String>,
@@ -776,6 +799,7 @@ impl ValidationState {
             local_validation,
             body_limit,
             authenticator,
+            authorizer,
             telemetry,
         }
     }
@@ -845,6 +869,16 @@ async fn authenticate_contract(
     }
 }
 
+fn authentication_error(contract: &RouteContract, error: &AuthError) -> ErrorResponse {
+    // Presented but rejected JWTs match TypeScript's 403; opaque sessions keep 401.
+    if *error == AuthError::InvalidCredentials && matches!(contract.auth, Some(AuthConfig::Jwt(_)))
+    {
+        ErrorResponse::new(ErrorKind::Forbidden, "invalid credentials")
+    } else {
+        error.to_error_response()
+    }
+}
+
 async fn validate_contract(
     State(state): State<Arc<ValidationState>>,
     request: Request,
@@ -885,12 +919,17 @@ async fn validate_contract(
     if requires_auth {
         let authenticated =
             authenticate_contract(&state, &contract, &parts, &framework_request).await;
-        let result = authenticated.and_then(|session| {
-            if let Some(rbac) = &contract.rbac {
-                authorize(&session.principal, rbac)?;
-            }
-            Ok(session)
-        });
+        let result = authenticated
+            .map_err(|error| authentication_error(&contract, &error))
+            .and_then(|session| {
+                if let Some(authorizer) = &state.authorizer {
+                    authorizer(&session, &contract)?;
+                } else if let Some(rbac) = &contract.rbac {
+                    authorize(&session.principal, rbac)
+                        .map_err(|error| error.to_error_response())?;
+                }
+                Ok(session)
+            });
         match result {
             Ok(session) => {
                 parts.extensions.insert(session);
@@ -901,15 +940,7 @@ async fn validate_contract(
                     &framework_request.context.correlation_id,
                 );
                 tracing::warn!(operation = %contract.operation_name, correlation_id = %framework_request.context.correlation_id, "request authentication or authorization failed");
-                // The TypeScript JWT middleware returns 403 for presented but
-                // rejected tokens. Opaque sessions retain their 401 semantics.
-                let response = if error == AuthError::InvalidCredentials
-                    && matches!(contract.auth, Some(AuthConfig::Jwt(_)))
-                {
-                    ErrorResponse::new(ErrorKind::Forbidden, "invalid credentials")
-                } else {
-                    error.to_error_response()
-                };
+                let response = error;
                 return framework_response_to_axum(
                     response
                         .with_correlation_id(framework_request.context.correlation_id)

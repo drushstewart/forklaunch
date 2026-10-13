@@ -3719,3 +3719,27 @@ media/parser/verify/reviver cases; listener startup and graceful shutdown.
 Logs: `/private/tmp/fl-optional-body-{parity,tests,clippy,generated}.log`.
 Sparse arrays, mutable reviver holders/source context and broader non-body
 transformations remain open. Checklist remains 655/682 complete, 27 open.
+
+
+TypeScript verified-session authorization receipt (2026-10-13):
+`forklaunch_auth::typescript::TypeScriptRbacPolicy` provides explicit compatibility
+with the actual middleware's omitted/empty rule sets, permission-before-role
+precedence, access-dependent checks, exact scope membership, and subscription
+before feature checks. Native RBAC retains its existing semantics. The new
+`RouterConfig::with_authorizer` callback replaces native RBAC only when explicitly
+configured, receives an already verified/enriched session, and cannot run after
+failed credential verification. Async grant resolution remains in the verifier.
+The policy does not replace credential parsing, session-schema validation,
+missing surfacing callbacks, public route dispatch or HMAC's sessionless path.
+
+All 1,495 actual repository middleware session-policy comparisons pass. The
+fixture substitutes credential verification and telemetry only; the actual
+middleware and its authorization guards evaluate every policy. Native validation
+passes 16 auth tests, 66 Axum tests and three integration tests, plus strict
+all-feature/all-target clippy. Fresh generated `WQrswi` verifies signed JWTs and
+runs permissions, exact/unknown scopes, subscriptions/features, missing policy
+and rejected credentials over HTTP/MCP, compiles both SDKs and passes the full
+listener/startup/shutdown matrix. All 915 current embedded source assets are
+packaged. CI runs both the actual-source comparison and generated runtime.
+Logs: `/private/tmp/fl-ts-rbac-{parity,tests,clippy,generated,package}.log`.
+Broader auth transport/session and error-envelope parity remain open.

@@ -802,7 +802,7 @@ Current CLI structure to build on:
 - [x] Add CLI tests that generate Rust TypeScript/Rust SDKs and typecheck the generated TypeScript SDK entrypoint.
 - [x] Add CLI tests that assert generated Rust and TypeScript SDK model shapes come from Rust contract schemas.
 - [ ] Test validation parity for params, query, headers, body, multipart, binary, SSE, and WebSockets.
-- [ ] Test auth parity for JWT, JWKS, Basic, HMAC, roles, permissions, and scopes.
+- [ ] Test auth parity for JWT, JWKS, Basic, HMAC, roles, permissions, and scopes. An opt-in verified-session TypeScript policy now matches 1,495 actual middleware cases for access, set presence, permission/role precedence, exact scopes, features and subscriptions. Generated signed-JWT HTTP/MCP cases pass; broader credential parsing, callback/session validation and error-envelope differences remain open.
 - [ ] Test error response parity.
 - [x] Test telemetry presence where feasible. A relocated generated service passes HTTP/MCP startup and real OTLP trace/log/metric export on SIGTERM, W3C parent/correlation propagation, status/size/duration instruments, zero active requests and bounded metric dimensions. Native middleware covers auth failures, unmatched routes, streaming completion/cancellation/errors and HEAD; JSON/protobuf exporter fixtures cover headers/resources/opt-out/configuration errors.
 

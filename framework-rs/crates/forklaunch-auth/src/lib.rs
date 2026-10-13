@@ -19,6 +19,9 @@ use subtle::ConstantTimeEq;
 
 pub mod jwt;
 
+/// Explicit compatibility policy for verified TypeScript-style sessions.
+pub mod typescript;
+
 /// TypeScript-compatible service-to-service request signatures.
 pub mod request_hmac;
 
