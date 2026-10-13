@@ -77,8 +77,10 @@ guards and application role/permission surfacing also use scoped relationship
 queries. Stored legacy non-string organization values retain JSON equality through
 a paged fallback; valid string relationships use indexes. Team reads/mutations,
 membership-key/pair lookup and invitation listing/creation also use scoped indexes.
-Remaining provider/verification/compliance handlers still require migration before
-claiming scalable production parity.
+Provider identity, password/reset and compliance account queries use scoped
+indexes. OAuth state and reset callback expiration cleanup traverse keyset pages,
+preserving global cleanup and one-time token semantics. Keyring and retention
+scans still require migration before claiming scalable production parity.
 
 `keyring::KeyRing` initializes keys atomically, selects the newest live key,
 restores private keys from storage, rotates keys through trusted operator calls,

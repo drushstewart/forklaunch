@@ -188,8 +188,7 @@ async fn selected<T: AuthTransaction>(
     if model == Model::Jwks {
         return Ok(tx.get(model, user).await?.into_iter().collect());
     }
-    Ok(tx
-        .list(model)
+    Ok(crate::store::find_all(tx, model, "userId", user)
         .await?
         .into_iter()
         .filter(|row| row.get("userId").and_then(Value::as_str) == Some(user))

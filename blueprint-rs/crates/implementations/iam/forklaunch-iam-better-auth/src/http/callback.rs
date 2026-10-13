@@ -41,15 +41,23 @@ async fn reset_response<S: AuthStore + 'static>(
     if !token.is_empty() && !callback.is_empty() {
         let mut tx = app.store.begin(true).await?;
         let mut latest: Option<(DateTime<Utc>, Value)> = None;
-        for row in tx.list(Model::Verification).await? {
-            if row["identifier"].as_str() == Some(&format!("reset-password:{token}")) {
-                let created = time(&row, "createdAt")?;
-                if latest.as_ref().is_none_or(|(best, _)| created > *best) {
-                    latest = Some((created, row.clone()));
+        let mut after = None;
+        loop {
+            let page = tx.list_page(Model::Verification, after, 256).await?;
+            for row in page.records {
+                if row["identifier"].as_str() == Some(&format!("reset-password:{token}")) {
+                    let created = time(&row, "createdAt")?;
+                    if latest.as_ref().is_none_or(|(best, _)| created > *best) {
+                        latest = Some((created, row.clone()));
+                    }
+                }
+                if time(&row, "expiresAt")? < (app.clock)() {
+                    tx.delete(Model::Verification, text(&row, "id")?).await?;
                 }
             }
-            if time(&row, "expiresAt")? < (app.clock)() {
-                tx.delete(Model::Verification, text(&row, "id")?).await?;
+            after = page.next;
+            if after.is_none() {
+                break;
             }
         }
         tx.commit().await?;

@@ -97,7 +97,8 @@ impl<S: AuthStore> StateService<S> {
             ));
         }
         let mut tx = self.store.begin(true).await?;
-        let rows = tx.list(Model::Verification).await?;
+        let rows =
+            crate::store::find_all(&mut tx, Model::Verification, "identifier", state).await?;
         let mut selected: Option<(DateTime<Utc>, Value)> = None;
         for row in &rows {
             if row["identifier"] == state {
@@ -107,9 +108,17 @@ impl<S: AuthStore> StateService<S> {
                 }
             }
         }
-        for row in &rows {
-            if time(row, "expiresAt")? < now {
-                tx.delete(Model::Verification, text(row, "id")?).await?;
+        let mut after = None;
+        loop {
+            let page = tx.list_page(Model::Verification, after, 256).await?;
+            for row in page.records {
+                if time(&row, "expiresAt")? < now {
+                    tx.delete(Model::Verification, text(&row, "id")?).await?;
+                }
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
             }
         }
         let validation = selected.as_ref().map_or_else(

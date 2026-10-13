@@ -25,7 +25,9 @@ impl<S: AuthStore> CredentialService<S> {
         let identifier = format!("reset-password:{token}");
         let mut tx = self.store.begin(true).await?;
         let mut latest: Option<(DateTime<Utc>, Value)> = None;
-        for row in tx.list(Model::Verification).await? {
+        for row in
+            crate::store::find_all(&mut tx, Model::Verification, "identifier", &identifier).await?
+        {
             if row["identifier"].as_str() != Some(&identifier) {
                 continue;
             }
@@ -58,7 +60,9 @@ impl<S: AuthStore> CredentialService<S> {
         let account = super::find_credential(&mut tx, &user_id).await?;
         let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
         if account.is_some() {
-            for mut row in tx.list(Model::Account).await? {
+            for mut row in
+                crate::store::find_all(&mut tx, Model::Account, "userId", &user_id).await?
+            {
                 if row["userId"] == user_id
                     && row["providerId"] == "credential"
                     && row["accountId"] == user_id

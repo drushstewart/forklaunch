@@ -143,7 +143,9 @@ impl<S: AuthStore> CredentialService<S> {
         account["updatedAt"] = json!(now.to_rfc3339_opts(SecondsFormat::Millis, true));
         tx.replace(Model::Account, account).await?;
         let session = if input.revoke_other_sessions {
-            for session in tx.list(Model::Session).await? {
+            for session in
+                crate::store::find_all(&mut tx, Model::Session, "userId", user_id).await?
+            {
                 if session["userId"] == user_id {
                     tx.delete(Model::Session, text(&session, "id")?).await?;
                 }

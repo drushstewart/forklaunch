@@ -509,6 +509,13 @@ fn clear(cookie: SessionCookie, headers: &mut HeaderMap) -> BlueprintResult<()> 
     Ok(())
 }
 fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
+    if error.code == "INVALID_TOKEN" && path == "/reset-password" {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"code":error.code,"message":error.message})),
+        )
+            .into_response();
+    }
     if error.code == "USER_IS_NOT_A_MEMBER_OF_THE_TEAM" && path == "/organization/set-active-team" {
         return (
             StatusCode::FORBIDDEN,

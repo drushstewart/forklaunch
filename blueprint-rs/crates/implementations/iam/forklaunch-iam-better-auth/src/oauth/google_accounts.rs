@@ -44,8 +44,7 @@ impl<S: AuthStore> GoogleAccounts<S> {
             .get(Model::User, user_id)
             .await?
             .ok_or_else(|| error("UNAUTHORIZED", "Unauthorized"))?;
-        let existing = tx
-            .list(Model::Account)
+        let existing = crate::store::find_all(&mut tx, Model::Account, "accountId", &subject)
             .await?
             .into_iter()
             .find(|row| row["providerId"] == "google" && row["accountId"] == subject);
@@ -105,8 +104,7 @@ impl<S: AuthStore> GoogleAccounts<S> {
         if tx.get(Model::User, user_id).await?.is_none() {
             return Err(error("unable_to_link_account", "Unable to link account"));
         }
-        let existing = tx
-            .list(Model::Account)
+        let existing = crate::store::find_all(&mut tx, Model::Account, "accountId", &subject)
             .await?
             .into_iter()
             .find(|row| row["providerId"] == "google" && row["accountId"] == subject);
@@ -164,8 +162,7 @@ impl<S: AuthStore> GoogleAccounts<S> {
             .cloned()
             .unwrap_or(json!(false));
         let mut tx = self.store.begin(true).await?;
-        let existing = tx
-            .list(Model::Account)
+        let existing = crate::store::find_all(&mut tx, Model::Account, "accountId", &subject)
             .await?
             .into_iter()
             .find(|row| row["providerId"] == "google" && row["accountId"] == subject);

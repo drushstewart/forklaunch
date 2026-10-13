@@ -505,6 +505,7 @@ async fn seed_large_directory<S: AuthStore>(store: &S) {
         tx.insert(Model::Team, json!({"id":format!("imported-team-{index}"),"organizationId":"foreign-large-org","name":"Foreign team"})).await.unwrap();
         tx.insert(Model::TeamMember, json!({"id":format!("imported-team-member-{index}"),"teamId":format!("imported-team-{index}"),"userId":format!("imported-{index}"),"membershipKey":format!("foreign-key-{index}")})).await.unwrap();
         tx.insert(Model::Invitation, json!({"id":format!("imported-invitation-{index}"),"organizationId":"foreign-large-org","email":format!("imported-{index}@fixture.test"),"status":"pending"})).await.unwrap();
+        tx.insert(Model::Verification, json!({"id":format!("imported-verification-{index}"),"identifier":format!("foreign-state-{index}"),"value":"{}","createdAt":"2027-01-01T00:00:00Z","expiresAt":"2030-01-01T00:00:00Z"})).await.unwrap();
     }
     tx.insert(
         Model::Organization,
@@ -605,8 +606,114 @@ async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync:
             .is_none()
     );
     tx.commit().await.unwrap();
+    exercise_large_account_queries(
+        store.clone(),
+        login.user["id"].as_str().unwrap(),
+        login.user["email"].as_str().unwrap(),
+        now,
+    )
+    .await;
     #[cfg(feature = "http")]
     crate::http::tests::exercise_http(store).await;
+}
+
+async fn exercise_large_account_queries<S: AuthStore>(
+    store: std::sync::Arc<S>,
+    user: &str,
+    email: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) {
+    crate::oauth::google_accounts::GoogleAccounts::new(store.clone())
+        .link_direct_verified(
+            &json!({"sub":"large-google-subject","email":email,"email_verified":true}),
+            &json!({"accessToken":"private-large-token"}),
+            user,
+            now,
+        )
+        .await
+        .unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::Verification, json!({"id":"large-reset","identifier":"reset-password:large-reset-token","value":user,"createdAt":now.to_rfc3339(),"expiresAt":(now+chrono::Duration::minutes(10)).to_rfc3339()})).await.unwrap();
+    tx.insert(Model::Verification, json!({"id":"large-expired-state","identifier":"foreign-expired-state","value":"{}","createdAt":"2020-01-01T00:00:00Z","expiresAt":"2020-01-02T00:00:00Z"})).await.unwrap();
+    tx.commit().await.unwrap();
+    crate::accounts::CredentialService::new(store.clone())
+        .reset_password("large-reset-token", "replacement-test-password".into(), now)
+        .await
+        .unwrap();
+    exercise_large_oauth_state(store.clone(), now).await;
+    let compliance = crate::compliance::ComplianceService::new(store.clone());
+    let exported = compliance.export(user).await.unwrap();
+    assert!(exported.failures.is_empty());
+    assert_eq!(exported.entities["Account"].len(), 2);
+    assert!(
+        !serde_json::to_string(&exported)
+            .unwrap()
+            .contains("private-large-token")
+    );
+    let erased = compliance.erase(user).await.unwrap();
+    assert!(erased.failures.is_empty());
+    assert_eq!(erased.records_deleted, 2);
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(
+        tx.get(Model::Account, "imported-account-4099")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        tx.get(Model::Verification, "large-reset")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        tx.get(Model::Verification, "large-expired-state")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        tx.get(Model::Verification, "imported-verification-4099")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    tx.commit().await.unwrap();
+}
+
+async fn exercise_large_oauth_state<S: AuthStore>(
+    store: std::sync::Arc<S>,
+    now: chrono::DateTime<chrono::Utc>,
+) {
+    let states = crate::oauth::state::StateService::new(store, vec![7; 32], false).unwrap();
+    let grant = states
+        .generate(json!({"callbackURL":"https://fixture.test/signed-in"}), now)
+        .await
+        .unwrap();
+    let cookie = grant.set_cookie.split(';').next().unwrap();
+    assert_eq!(
+        states
+            .consume(&grant.state, None, now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "state_security_mismatch"
+    );
+    let consumed = states
+        .consume(&grant.state, Some(cookie), now)
+        .await
+        .unwrap();
+    assert_eq!(consumed.data["oauthState"], grant.state);
+    assert_eq!(
+        states
+            .consume(&grant.state, Some(cookie), now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "state_mismatch"
+    );
 }
 
 async fn exercise_large_organization_queries<S: AuthStore>(

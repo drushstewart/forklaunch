@@ -2398,3 +2398,21 @@ of build outputs were removed only where dependency files traced them to already
 deleted, validated generated workspaces (`fl-orphan-generated-artifacts.json`).
 Provider/password, verification, keyring and compliance/retention traversal
 remain open. Checklist stays **646/682 (94.7%), 36 open**.
+
+
+### Provider, verification and compliance collection migration
+
+Google account resolution, password updates/revocation, reset tokens and account
+compliance now use relationship indexes. OAuth state consumption and reset
+callback cleanup preserve global expiration behavior using 256-row keyset pages.
+Memory and restricted PostgreSQL fixtures include 4,100 foreign verification
+records, account ownership, one-time state/cookie correlation, token reset,
+export redaction and scoped erasure. The PostgreSQL run passed in 258.90 seconds;
+all 31 portable auth tests and strict all-feature/all-target Clippy passed.
+Actual account, OAuth state, Google account/callback/HTTP/token and callback
+comparisons passed. The password-reset fixture exposed an existing response
+mismatch: invalid reset tokens returned 401 instead of 400. The route-specific
+mapping now matches all 44 actual HTTP/storage comparisons; the live HTTP/MCP
+regression also verifies replay rejection. All 14 encrypted-ORM/native compliance
+comparisons passed. Evidence: `/private/tmp/fl-auth-provider-index-*.log`.
+Keyring and retention scans remain open; checklist stays 646/682 (94.7%).

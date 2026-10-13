@@ -277,6 +277,17 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
         .await
         .unwrap();
     assert_eq!(reset.status(), StatusCode::OK);
+    let replay = client
+        .post(format!("{base}/api/auth/reset-password"))
+        .json(&json!({"token":"http-token", "newPassword":"http-reset-password"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        replay.json::<Value>().await.unwrap(),
+        json!({"code":"INVALID_TOKEN","message":"Invalid token"})
+    );
     let verified = client
         .post(format!("{base}/api/auth/verify-password"))
         .header("cookie", &signed)
