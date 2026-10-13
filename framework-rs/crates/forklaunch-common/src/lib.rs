@@ -2,6 +2,14 @@
 
 use std::{error::Error, fmt};
 
+mod naming;
+pub use naming::{
+    TransformationInfo, capitalize, get_transformation_info, hash_string, is_valid_identifier,
+    remove_leading_numbers, remove_leading_separators, remove_non_alphanumeric,
+    split_by_separators, to_camel_case_identifier, to_pretty_camel_case, to_valid_identifier,
+    uncapitalize,
+};
+
 /// Shared result type for framework crates that do not need a domain-specific error.
 pub type FrameworkResult<T> = Result<T, FrameworkError>;
 
@@ -88,29 +96,6 @@ pub fn open_api_compliant_path(path: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
-}
-
-/// Converts a name into the same broad shape as the TypeScript SDK operation names.
-#[must_use]
-pub fn to_pretty_camel_case(input: &str) -> String {
-    let mut output = String::new();
-    for (index, part) in input
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|part| !part.is_empty())
-        .enumerate()
-    {
-        let lower = part.to_ascii_lowercase();
-        if index == 0 {
-            output.push_str(&lower);
-        } else {
-            let mut chars = lower.chars();
-            if let Some(first) = chars.next() {
-                output.push(first.to_ascii_uppercase());
-                output.push_str(chars.as_str());
-            }
-        }
-    }
-    output
 }
 
 /// Converts arbitrary text into a conservative Rust/TypeScript-safe identifier.

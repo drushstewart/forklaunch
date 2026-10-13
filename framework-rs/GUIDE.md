@@ -10,7 +10,7 @@ a feature makes its API available but does not configure credentials or start a 
 
 | Crate | Responsibility | Optional features and defaults |
 | --- | --- | --- |
-| [forklaunch-common](crates/forklaunch-common/src/lib.rs) | Shared environment and utility types. | —; default: none |
+| [forklaunch-common](crates/forklaunch-common/src/lib.rs) | Path, naming, UTF-16 string hash, JSON formatting and error utilities. | —; default: none |
 | [forklaunch-contract](crates/forklaunch-contract/src/lib.rs) | Route, schema, authentication, service and socket metadata; contract artifacts. | `json-schema`; default: none |
 | [forklaunch-contract-macros](crates/forklaunch-contract-macros/src/lib.rs) | Attribute/derive macros for contract declarations. | —; default: none |
 | [forklaunch-core](crates/forklaunch-core/src/lib.rs) | Runtime/service configuration, persistence/compliance and telemetry. | `otlp`, `postgres`, `encryption`; default: none |
@@ -120,6 +120,17 @@ Use the exact reviewed dependency exceptions in the
 [security review](../plan/RUST-SECURITY-REVIEW.md), not blanket audit suppression.
 
 ## Contracts, clients and upgrades
+
+`forklaunch_common` provides the twelve string-input naming/hash helpers exported
+by TypeScript's common package, including transformation diagnostics. Camel-case
+conversion uses the exact separator set, removes other punctuation, strips leading
+numbers, and falls back to the original input when conversion is empty. This also
+corrects generated operation names: `foo!bar` becomes `foobar`, and `123alpha`
+becomes `alpha`. Regenerate clients when names use these edge cases.
+`capitalize`/`uncapitalize` follow JavaScript's first UTF-16 code-unit behavior;
+`hash_string` uses wrapping signed 32-bit arithmetic over UTF-16 units and must not
+be used for security decisions. Inputs are Rust UTF-8 strings; JavaScript non-string
+coercion and isolated surrogate code units are outside this typed boundary.
 
 [Export and SDK commands](../docs/adding-projects/rust.md#export-contracts-and-sdks)
 cover contract/OpenAPI imports, both client languages and mixed applications.

@@ -15,7 +15,7 @@ proof that TypeScript and Rust producers/consumers can exchange jobs.
 | Source package | Rust implementation | Remaining scope / evidence |
 | --- | --- | --- |
 | [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Native builds and mixed Node/Bun Compose orchestration pass live HTTP/MCP, source reload and shutdown fixtures; automatic contract/SDK refresh remains. |
-| [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Shared names, paths, errors and JSON helpers; audit all utility exports individually. |
+| [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Twelve public naming/hash exports now have direct Rust equivalents and 7,092 actual-source comparisons; operation naming uses the TypeScript separator, cleanup, prefix and fallback semantics. Path normalization, other utilities and JavaScript-only value/type boundaries remain under symbol audit. |
 | [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-core-macros, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption, explicit compliance metadata derives and an optional MCP HTTP server exist; Bounded tenant-scoped retention hooks exist; generic SQL entity/compliance/retention adapters and full auth/streaming conformance remain. |
 | [`@forklaunch/e2e-tests`](../framework/e2e-tests/package.json) (generated/private) | Rust wire/runtime suites | Actual TypeScript framework service conformance remains beyond the plain Node wire fixtures. |
 | [`@forklaunch/express`](../framework/express/package.json) | forklaunch-axum | Equivalent HTTP behavior is the target; multipart/SSE and full validation/auth/error fixtures remain. |
@@ -4017,3 +4017,40 @@ startup/discovery/invocation, restart and rename/delete. All 934 embedded assets
 are packaged. Logs:
 `/private/tmp/fl-external-jwt-{tests,all-tests,clippy,parity,http-regression,generated,package}.log`.
 Checklist remains 657/682 (96.3%), 25 open; broader auth adapters/options remain.
+
+
+Common naming/hash symbol receipt (2026-10-13): the following public TypeScript
+exports map directly to `forklaunch_common` string-input APIs. One actual-source
+fixture executes 591 inputs across all twelve exports (7,092 comparisons), covering
+separator versus stripped punctuation, numeric prefixes, original-input fallback,
+Unicode case conversion, UTF-16 leading-surrogate behavior and signed hash overflow.
+
+| TypeScript export | Rust export |
+| --- | --- |
+| `removeLeadingSeparators` | `remove_leading_separators` |
+| `splitBySeparators` | `split_by_separators` |
+| `removeNonAlphanumeric` | `remove_non_alphanumeric` |
+| `removeLeadingNumbers` | `remove_leading_numbers` |
+| `capitalize` | `capitalize` |
+| `uncapitalize` | `uncapitalize` |
+| `toCamelCaseIdentifier` | `to_camel_case_identifier` |
+| `toPrettyCamelCase` | `to_pretty_camel_case` |
+| `toValidIdentifier` | `to_valid_identifier` |
+| `isValidIdentifier` | `is_valid_identifier` |
+| `getTransformationInfo` | `get_transformation_info` / `TransformationInfo` |
+| `hashString` | `hash_string` |
+
+Operation names now use the actual TS transformation: `foo!bar` becomes `foobar`
+instead of `fooBar`, leading numbers are removed, and empty conversions retain the
+original string. Clients using affected names need regeneration. Rust string inputs
+do not represent isolated JavaScript surrogate code units or non-string coercions.
+The hash is non-cryptographic and adds no security primitive.
+
+All 98 affected common/contract/macro/OpenAPI/SDK tests and strict all-target Clippy
+pass. Generated run `ftABml` validates both SDKs from both artifact formats against
+Rust and TypeScript HTTP services, HTTP/MCP startup/discovery/invocation/shutdown
+and both native multipart SDKs. Packaging caught and fixed a missing common-example
+template link; all 936 embedded assets are included. Logs:
+`/private/tmp/fl-common-naming-{parity,tests,clippy,generated,package}.log`.
+Remaining utility/symbol and transport boundaries stay open; checklist is still
+657/682 (96.3%), 25 open.
