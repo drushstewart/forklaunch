@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust mcp APIs and runtime support"
 name = "forklaunch-mcp"
 version.workspace = true
 edition.workspace = true
@@ -11,8 +12,8 @@ default = []
 rmcp-server = ["dep:rmcp", "dep:axum", "dep:tokio", "dep:tower", "dep:percent-encoding", "dep:form_urlencoded", "dep:base64", "dep:serde", "dep:forklaunch-validation"]
 
 [dependencies]
-forklaunch-common = { path = "../forklaunch-common" }
-forklaunch-contract = { path = "../forklaunch-contract", features = ["json-schema"] }
+forklaunch-common = { version = "0.1.0", path = "../forklaunch-common" }
+forklaunch-contract = { version = "0.1.0", path = "../forklaunch-contract", features = ["json-schema"] }
 
 rmcp = { version = "3.5.1", default-features = false, features = ["server", "transport-streamable-http-server"], optional = true }
 axum = { version = "0.8", optional = true }
@@ -25,7 +26,7 @@ form_urlencoded = { version = "1", optional = true }
 base64 = { version = "0.22", optional = true }
 
 serde = { version = "1", optional = true }
-forklaunch-validation = { path = "../forklaunch-validation", optional = true }
+forklaunch-validation = { version = "0.1.0", path = "../forklaunch-validation", optional = true }
 
 [dev-dependencies]
 axum = { version = "0.8", features = ["multipart"] }

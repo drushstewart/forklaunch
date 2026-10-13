@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust core APIs and runtime support"
 name = "forklaunch-core"
 version.workspace = true
 edition.workspace = true
@@ -13,9 +14,9 @@ postgres = ["dep:sqlx"]
 encryption = ["dep:aes-gcm", "dep:hkdf", "dep:hmac", "dep:sha2", "dep:base64", "dep:rand_core", "dep:zeroize", "dep:serde", "dep:serde_json"]
 
 [dependencies]
-forklaunch-common = { path = "../forklaunch-common" }
-forklaunch-contract = { path = "../forklaunch-contract" }
-forklaunch-core-macros = { path = "../forklaunch-core-macros" }
+forklaunch-common = { version = "0.1.0", path = "../forklaunch-common" }
+forklaunch-contract = { version = "0.1.0", path = "../forklaunch-contract" }
+forklaunch-core-macros = { version = "0.1.0", path = "../forklaunch-core-macros" }
 
 opentelemetry = { version = "0.31", features = ["metrics", "trace"] }
 tracing = "0.1"

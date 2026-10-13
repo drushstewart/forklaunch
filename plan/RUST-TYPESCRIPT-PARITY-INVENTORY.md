@@ -3923,6 +3923,9 @@ Outbound provider/local-write recovery and remaining mapper decisions stay open;
 checklist remains 657/682 (96.3%), 25 open.
 
 
+
+
+
 Verified PayPal capture recovery receipt (2026-10-13): `PaypalOrderReader` and
 `PaypalClient::retrieve_order_details` add authenticated bounded order retrieval.
 `PaypalPaymentService::reconcile_captured_payment` verifies completed/final capture
@@ -4292,3 +4295,30 @@ matrix. All 942 embedded assets are packaged. The dispatch fixture runs in CI.
 Logs: `/private/tmp/fl-typescript-hmac-{parity,signatures,tests,clippy,generated,package}.log`.
 Remaining session/callback/date and error-envelope boundaries remain open;
 checklist remains 657/682 (96.3%), 25 open.
+
+
+Crate release pipeline receipt (2026-10-13): all 49 public framework, blueprint
+and protocol-fork crates now package with versioned internal dependencies. Three
+sample crates explicitly disable publication. `scripts/rust_release.py` validates
+the complete publication graph and packages the crates plus the pinned literal-key
+Serde JSON patch as a separate checksummed artifact. A loopback sparse registry
+stages copies with owned dependency registry metadata rewritten; original source
+files and release archives remain unchanged. External dependencies use crates.io.
+
+A separate consumer installs all 49 crates from that registry, applies only the
+extracted parser artifact as a root path patch, and compiles defaults plus Axum MCP
+(protocol-fork defaults disabled). Literal JSON marker-key roundtrips and the full
+HTTP/MCP listener/startup/discovery/invocation/Origin/shutdown matrix pass. Nine
+regression tests cover graph order, private/unpublishable dependencies, source and
+archive integrity, live sparse index metadata and clean commit/tag/receipt/upload
+boundaries. The manual publishing workflow defaults to validation only; uploads
+require an explicit input, matching versioned tag, clean checkout, successful
+receipt and configured credentials. Required parser assets are preserved on an
+existing public GitHub release before sequential Cargo uploads.
+
+Logs: `/private/tmp/fl-rust-{registry-prepare,registry-verify,registry-startup,release-tests,release-package}.log`.
+All 1,101 CLI tests pass, and all 942 embedded CLI assets remain packaged.
+CLI log: `/private/tmp/fl-rust-release-cli-tests.log`. Local validation ran on macOS; the
+new Linux workflow has not been executed here. No public crate or GitHub release
+was uploaded. Optional adapter runtime checks, public publication/installation and
+AWS deployment remain separate gates. Checklist: **658/682 (96.5%), 24 open**.

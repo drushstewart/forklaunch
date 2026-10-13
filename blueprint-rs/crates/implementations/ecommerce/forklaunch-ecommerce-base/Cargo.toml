@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust ecommerce base APIs and runtime support"
 name = "forklaunch-ecommerce-base"
 version.workspace = true
 edition.workspace = true
@@ -12,10 +13,10 @@ worker = ["dep:forklaunch-worker-interface", "dep:forklaunch-worker-database"]
 postgres = ["forklaunch-core/postgres", "forklaunch-core/encryption", "dep:sqlx", "forklaunch-worker-database?/postgres"]
 
 [dependencies]
-forklaunch-worker-interface = { path = "../../../interfaces/forklaunch-worker-interface", optional = true }
-forklaunch-worker-database = { path = "../../worker/forklaunch-worker-database", features = ["runtime"], optional = true }
-forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
-forklaunch-ecommerce-interface = { path = "../../../interfaces/forklaunch-ecommerce-interface" }
+forklaunch-worker-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-worker-interface", optional = true }
+forklaunch-worker-database = { version = "0.1.0", path = "../../worker/forklaunch-worker-database", features = ["runtime"], optional = true }
+forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
+forklaunch-ecommerce-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-ecommerce-interface" }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { version = "1", features = ["derive"] }
@@ -24,11 +25,11 @@ zeroize = "1"
 regex = "1"
 tokio = { version = "1", features = ["time"] }
 tracing = "0.1"
-forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core" }
+forklaunch-core = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-core" }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros"], optional = true }
 
 [dev-dependencies]
-forklaunch-worker-database = { path = "../../worker/forklaunch-worker-database", features = ["runtime", "postgres"] }
+forklaunch-worker-database = { version = "0.1.0", path = "../../worker/forklaunch-worker-database", features = ["runtime", "postgres"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 
 [lints]

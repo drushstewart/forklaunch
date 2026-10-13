@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust iam better auth APIs and runtime support"
 name = "forklaunch-iam-better-auth"
 version.workspace = true
 edition.workspace = true
@@ -13,13 +14,13 @@ postgres = ["dep:sqlx", "dep:forklaunch-core", "forklaunch-core/postgres", "fork
 application-http = ["http", "dep:forklaunch-axum", "dep:forklaunch-auth", "dep:forklaunch-core", "dep:tower"]
 
 [dependencies]
-forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["mcp", "remote-jwks"], optional = true }
-forklaunch-auth = { path = "../../../../../framework-rs/crates/forklaunch-auth", optional = true }
+forklaunch-axum = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["mcp", "remote-jwks"], optional = true }
+forklaunch-auth = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-auth", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 axum = { version = "0.8", optional = true }
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 tower = { version = "0.5", features = ["util"], optional = true }
-forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
+forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
 base64 = "0.22"
 hex = "0.4"
 hmac = "0.12"
@@ -41,16 +42,16 @@ tokio = { version = "1", default-features = false, features = ["sync", "rt"] }
 serde = { version = "1", features = ["derive"] }
 regex = "1"
 url = "2"
-forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", optional = true }
+forklaunch-core = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-core", optional = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros", "uuid"], optional = true }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
-forklaunch-axum = { path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["mcp"] }
-forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core" }
-forklaunch-contract = { path = "../../../../../framework-rs/crates/forklaunch-contract" }
+forklaunch-axum = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["mcp"] }
+forklaunch-core = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-core" }
+forklaunch-contract = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-contract" }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 

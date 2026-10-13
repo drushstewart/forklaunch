@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust worker redis APIs and runtime support"
 name = "forklaunch-worker-redis"
 version.workspace = true
 edition.workspace = true
@@ -12,11 +13,11 @@ bullmq = ["dep:bullmq", "redis-client"]
 redis-client = ["dep:redis", "dep:serde", "dep:serde_json", "dep:tokio", "dep:uuid", "dep:forklaunch-core", "dep:futures-util"]
 
 [dependencies]
-forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
-forklaunch-worker-interface = { path = "../../../interfaces/forklaunch-worker-interface" }
+forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
+forklaunch-worker-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-worker-interface" }
 bullmq = { package = "forklaunch-bullmq-protocol", version = "=0.1.0", path = "../../../vendor/bullmq-official", features = ["forklaunch-outcome-data", "forklaunch-job-options"], optional = true }
 
-forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", optional = true }
+forklaunch-core = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-core", optional = true }
 redis = { version = "0.32", default-features = false, features = ["tokio-rustls-comp", "tls-rustls-webpki-roots", "connection-manager", "script"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
@@ -29,7 +30,7 @@ futures-util = { version = "0.3", default-features = false, features = ["std"], 
 axum = "0.8"
 tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }
-forklaunch-worker-database = { path = "../forklaunch-worker-database", features = ["runtime", "http-control"] }
+forklaunch-worker-database = { version = "0.1.0", path = "../forklaunch-worker-database", features = ["runtime", "http-control"] }
 
 [lints]
 workspace = true

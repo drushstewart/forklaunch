@@ -1,0 +1,99 @@
+name: Rust Crate Release
+
+on:
+  pull_request:
+    paths:
+      - 'framework-rs/**'
+      - 'blueprint-rs/**'
+      - 'scripts/rust_release.py'
+      - 'scripts/rust_registry.py'
+      - 'scripts/rust_registry_smoke.rs'
+      - 'scripts/test_rust_release.py'
+      - 'cli/tests/rust_mcp_service_startup.mjs'
+      - 'cli/tests/rust_mcp_probe.mjs'
+      - '.github/workflows/rust_release.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Upload to crates.io (select an existing rust-vVERSION tag and public GitHub release)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-crate-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_BUILD_JOBS: '2'
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test release graph, integrity, registry and upload boundaries
+        run: python3 -m unittest discover -s scripts -p test_rust_release.py -v
+      - name: Package public crates and required parser patch
+        run: python3 scripts/rust_release.py prepare --output "$RUNNER_TEMP/rust-release"
+      - name: Install registry crates, build service and verify HTTP/MCP startup
+        run: python3 scripts/rust_release.py verify --output "$RUNNER_TEMP/rust-release" --target-dir "$RUNNER_TEMP/rust-release-target"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-crate-release-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/rust-release/release.json
+            ${{ runner.temp }}/rust-release/verification.json
+            ${{ runner.temp }}/rust-release/serde_json-*-forklaunch-literal-keys.tar.gz
+            ${{ runner.temp }}/rust-release/cargo-target/package/*.crate
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: rust-crate-release-${{ github.sha }}
+          path: ${{ runner.temp }}/rust-release
+      - name: Validate exact tagged checkout and verification receipt
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$GITHUB_REF_TYPE" = tag
+          python3 scripts/rust_release.py publish --output "$RUNNER_TEMP/rust-release" --tag "$RELEASE_TAG"
+      - name: Preserve required parser patch and verification on existing public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/rust-release/"serde_json-*-forklaunch-literal-keys.tar.gz "$RUNNER_TEMP/rust-release/release.json" "$RUNNER_TEMP/rust-release/verification.json"
+      - name: Publish crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/rust_release.py publish --output "$RUNNER_TEMP/rust-release" --tag "$RELEASE_TAG" --upload

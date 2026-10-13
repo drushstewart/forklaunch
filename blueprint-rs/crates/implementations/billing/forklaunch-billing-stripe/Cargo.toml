@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust billing stripe APIs and runtime support"
 name = "forklaunch-billing-stripe"
 version.workspace = true
 edition.workspace = true
@@ -11,10 +12,10 @@ default = []
 stripe-client = []
 
 [dependencies]
-forklaunch-billing-base = { path = "../forklaunch-billing-base" }
+forklaunch-billing-base = { version = "0.1.0", path = "../forklaunch-billing-base" }
 chrono = "0.4"
-forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core", features = ["provider-http", "stripe-webhook", "instance-gateway"] }
-forklaunch-billing-interface = { path = "../../../interfaces/forklaunch-billing-interface" }
+forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core", features = ["provider-http", "stripe-webhook", "instance-gateway"] }
+forklaunch-billing-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-billing-interface" }
 
 hmac = "0.12"
 sha2 = "0.10"
@@ -26,7 +27,7 @@ serde = { version = "1", features = ["derive"] }
 zeroize = "1"
 
 [dev-dependencies]
-forklaunch-auth = { path = "../../../../../framework-rs/crates/forklaunch-auth" }
+forklaunch-auth = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-auth" }
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync"] }
 

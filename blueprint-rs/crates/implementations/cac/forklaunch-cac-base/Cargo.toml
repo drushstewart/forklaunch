@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust cac base APIs and runtime support"
 name = "forklaunch-cac-base"
 version.workspace = true
 edition.workspace = true
@@ -7,9 +8,9 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-forklaunch-blueprint-core = { path = "../../../forklaunch-blueprint-core" }
-forklaunch-cac-interface = { path = "../../../interfaces/forklaunch-cac-interface" }
-forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core" }
+forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
+forklaunch-cac-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-cac-interface" }
+forklaunch-core = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-core" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

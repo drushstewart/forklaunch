@@ -462,6 +462,11 @@ remaining limits, including unpaired surrogates, bounded nesting, and independen
 JavaScript/ORM normalization semantics. This does not claim upstream adoption or
 registry publication of the patched parser.
 
+The [crate release guide](../docs/adding-projects/rust-releases.md) documents
+packaging, registry installation checks, the standalone parser artifact and
+explicit publication. A passing local registry check does not mean the crates
+have been published publicly.
+
 
 ### Typed multipart requests
 

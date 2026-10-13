@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust core macros APIs and runtime support"
 name = "forklaunch-core-macros"
 version.workspace = true
 edition.workspace = true

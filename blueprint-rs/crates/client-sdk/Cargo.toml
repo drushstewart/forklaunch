@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust blueprint client sdk APIs and runtime support"
 name = "forklaunch-blueprint-client-sdk"
 version.workspace = true
 edition.workspace = true
@@ -7,13 +8,13 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-forklaunch-blueprint-core = { path = "../forklaunch-blueprint-core" }
-forklaunch-iam-interface = { path = "../interfaces/forklaunch-iam-interface" }
-forklaunch-billing-interface = { path = "../interfaces/forklaunch-billing-interface" }
-forklaunch-monitoring-interface = { path = "../interfaces/forklaunch-monitoring-interface" }
-forklaunch-sdk-codegen = { path = "../../../framework-rs/crates/forklaunch-sdk-codegen" }
-forklaunch-sdk-rust = { path = "../../../framework-rs/crates/forklaunch-sdk-rust" }
-forklaunch-sdk-typescript = { path = "../../../framework-rs/crates/forklaunch-sdk-typescript" }
+forklaunch-blueprint-core = { version = "0.1.0", path = "../forklaunch-blueprint-core" }
+forklaunch-iam-interface = { version = "0.1.0", path = "../interfaces/forklaunch-iam-interface" }
+forklaunch-billing-interface = { version = "0.1.0", path = "../interfaces/forklaunch-billing-interface" }
+forklaunch-monitoring-interface = { version = "0.1.0", path = "../interfaces/forklaunch-monitoring-interface" }
+forklaunch-sdk-codegen = { version = "0.1.0", path = "../../../framework-rs/crates/forklaunch-sdk-codegen" }
+forklaunch-sdk-rust = { version = "0.1.0", path = "../../../framework-rs/crates/forklaunch-sdk-rust" }
+forklaunch-sdk-typescript = { version = "0.1.0", path = "../../../framework-rs/crates/forklaunch-sdk-typescript" }
 
 [lints]
 workspace = true

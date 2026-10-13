@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust infrastructure redis APIs and runtime support"
 name = "forklaunch-infrastructure-redis"
 version.workspace = true
 edition.workspace = true
@@ -12,7 +13,7 @@ redis-client = ["dep:redis"]
 encryption = ["forklaunch-core/encryption", "dep:serde"]
 
 [dependencies]
-forklaunch-core = { path = "../forklaunch-core" }
+forklaunch-core = { version = "0.1.0", path = "../forklaunch-core" }
 
 redis = { version = "0.32", default-features = false, features = ["tls-rustls", "tls-rustls-webpki-roots"], optional = true }
 serde = { version = "1", optional = true }

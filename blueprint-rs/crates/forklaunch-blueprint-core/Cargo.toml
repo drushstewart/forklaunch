@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust blueprint core APIs and runtime support"
 name = "forklaunch-blueprint-core"
 version.workspace = true
 edition.workspace = true
@@ -13,8 +14,8 @@ stripe-webhook = ["dep:hmac", "dep:sha2", "dep:zeroize"]
 provider-http = ["dep:reqwest", "dep:url"]
 
 [dependencies]
-forklaunch-contract = { path = "../../../framework-rs/crates/forklaunch-contract" }
-forklaunch-http = { path = "../../../framework-rs/crates/forklaunch-http" }
+forklaunch-contract = { version = "0.1.0", path = "../../../framework-rs/crates/forklaunch-contract" }
+forklaunch-http = { version = "0.1.0", path = "../../../framework-rs/crates/forklaunch-http" }
 
 serde = { version = "1", features = ["derive"] }
 schemars = "0.8"
@@ -27,7 +28,7 @@ hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 zeroize = { version = "1", optional = true }
 
-forklaunch-auth = { path = "../../../framework-rs/crates/forklaunch-auth", optional = true }
+forklaunch-auth = { version = "0.1.0", path = "../../../framework-rs/crates/forklaunch-auth", optional = true }
 chrono = { version = "0.4", features = ["clock"], optional = true }
 uuid = { version = "1", features = ["v4"], optional = true }
 

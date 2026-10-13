@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust asyncapi APIs and runtime support"
 name = "forklaunch-asyncapi"
 version.workspace = true
 edition.workspace = true
@@ -11,10 +12,10 @@ default = []
 import = ["forklaunch-ws/json-schema"]
 
 [dependencies]
-forklaunch-sdk-codegen = { path = "../forklaunch-sdk-codegen" }
-forklaunch-common = { path = "../forklaunch-common" }
-forklaunch-contract = { path = "../forklaunch-contract", features = ["json-schema"] }
-forklaunch-ws = { path = "../forklaunch-ws" }
+forklaunch-sdk-codegen = { version = "0.1.0", path = "../forklaunch-sdk-codegen" }
+forklaunch-common = { version = "0.1.0", path = "../forklaunch-common" }
+forklaunch-contract = { version = "0.1.0", path = "../forklaunch-contract", features = ["json-schema"] }
+forklaunch-ws = { version = "0.1.0", path = "../forklaunch-ws" }
 
 serde_json = "=1.0.151"
 percent-encoding = "2.3"

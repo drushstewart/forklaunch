@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust auth APIs and runtime support"
 name = "forklaunch-auth"
 version.workspace = true
 edition.workspace = true
@@ -12,9 +13,9 @@ remote-jwks = ["dep:reqwest", "dep:tokio"]
 oidc = ["dep:oauth2", "dep:openidconnect", "dep:reqwest"]
 
 [dependencies]
-forklaunch-common = { path = "../forklaunch-common" }
-forklaunch-contract = { path = "../forklaunch-contract" }
-forklaunch-http = { path = "../forklaunch-http" }
+forklaunch-common = { version = "0.1.0", path = "../forklaunch-common" }
+forklaunch-contract = { version = "0.1.0", path = "../forklaunch-contract" }
+forklaunch-http = { version = "0.1.0", path = "../forklaunch-http" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "=1.0.151"

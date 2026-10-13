@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust ecommerce interface APIs and runtime support"
 name = "forklaunch-ecommerce-interface"
 version.workspace = true
 edition.workspace = true
@@ -7,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-forklaunch-blueprint-core = { path = "../../forklaunch-blueprint-core" }
+forklaunch-blueprint-core = { version = "0.1.0", path = "../../forklaunch-blueprint-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "0.8"

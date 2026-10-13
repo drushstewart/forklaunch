@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust openapi APIs and runtime support"
 name = "forklaunch-openapi"
 version.workspace = true
 edition.workspace = true
@@ -7,8 +8,8 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-forklaunch-common = { path = "../forklaunch-common" }
-forklaunch-contract = { path = "../forklaunch-contract", features = ["json-schema"] }
+forklaunch-common = { version = "0.1.0", path = "../forklaunch-common" }
+forklaunch-contract = { version = "0.1.0", path = "../forklaunch-contract", features = ["json-schema"] }
 
 [dev-dependencies]
 serde_json = "=1.0.151"

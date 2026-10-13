@@ -1,4 +1,5 @@
 [package]
+description = "ForkLaunch Rust worker interface APIs and runtime support"
 name = "forklaunch-worker-interface"
 version.workspace = true
 edition.workspace = true
@@ -7,9 +8,9 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-forklaunch-blueprint-core = { path = "../../forklaunch-blueprint-core" }
-forklaunch-ws = { path = "../../../../framework-rs/crates/forklaunch-ws" }
-forklaunch-asyncapi = { path = "../../../../framework-rs/crates/forklaunch-asyncapi" }
+forklaunch-blueprint-core = { version = "0.1.0", path = "../../forklaunch-blueprint-core" }
+forklaunch-ws = { version = "0.1.0", path = "../../../../framework-rs/crates/forklaunch-ws" }
+forklaunch-asyncapi = { version = "0.1.0", path = "../../../../framework-rs/crates/forklaunch-asyncapi" }
 
 [lints]
 workspace = true

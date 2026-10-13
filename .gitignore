@@ -16,6 +16,7 @@ output
 .docker-target
 .docker-cargo
 Cargo.lock.bak
+__pycache__/
 
 agentic-capital
 
