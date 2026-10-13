@@ -3976,3 +3976,23 @@ assets are packaged. Logs:
 `/private/tmp/fl-stripe-reconciliation-{tests,clippy,parity,generated,package}.log`.
 Incomplete captures and cancelled-order references still require separate recovery;
 checklist remains 657/682 (96.3%), 25 open.
+
+
+Trusted custom JWT signer receipt (2026-10-13): `JwtSigner` and
+`KeyRing::sign_jwt_with_signer` accept a typed asynchronous server callback,
+preserve Better Auth custom-sign claim/default semantics, and bypass local key
+selection, JOSE claim setters and storage. Validation precedes callback invocation;
+callback failures are sanitized. Panic-on-access storage and pending-callback tests
+prove no database access and caller-controlled cancellation. Non-finite JavaScript
+claims are rejected because the public boundary uses finite JSON values.
+
+All 45 native auth tests pass (one database opt-in test ignored); strict all-feature,
+all-target Clippy passes. Actual Better Auth comparisons cover 62 custom-sign cases,
+plus 189 existing signing API and 216 persisted key-state regression cases.
+Generated run `8smf2l` validates both SDKs, eight actual client/namespace scenarios,
+HTTP/MCP shared/separate/disabled startup, encrypted tenant sessions, independent
+JWT verification, restart, relocation/preservation, rename and delete. All 932
+embedded assets are packaged. Logs:
+`/private/tmp/fl-custom-jwt-{tests,clippy,parity,local-regression,generated,package}.log`.
+This helper does not configure session-token HTTP routes or remote JWKS; those
+remain open within broader auth coverage. Checklist remains 657/682 (96.3%), 25 open.

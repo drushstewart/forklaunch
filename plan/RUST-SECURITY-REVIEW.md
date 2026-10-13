@@ -204,3 +204,14 @@ are not persisted. Live tests verify Connect headers, expansion, twenty invalid
 provider variants and absence of mutation requests. Field semantics follow the
 [Stripe PaymentIntent](https://docs.stripe.com/api/payment_intents/object) and
 [Charge](https://docs.stripe.com/api/charges/object) references.
+
+
+Custom JWT helper review (2026-10-13): the callback is supplied by trusted Rust
+server code, never deserialized from request options. Input validation and default
+expiry parsing precede callback invocation. No local key store or JOSE claim setter
+runs on this path, matching the actual custom-sign branch. The callback owns claim
+validation/signing/key publication. Callback errors are sanitized and no private
+failure text is emitted. Tests use a store that panics on access and a pending
+signer bounded by caller timeout. Finite JSON claims are supported; non-finite JS
+values are explicitly rejected. This helper does not silently switch public token
+or JWKS endpoints to external keys.

@@ -3,7 +3,7 @@
 mod literal_json;
 use chrono::{DateTime, Utc};
 use forklaunch_iam_better_auth::{
-    keyring::KeyRing,
+    keyring::{KeyRing, custom::JwtSigner},
     store::{AuthStore, AuthTransaction, Model, memory::MemoryAuthStore},
 };
 use serde_json::{Value, json};
@@ -11,6 +11,12 @@ use std::{
     io::{self, BufRead},
     sync::Arc,
 };
+struct CaptureSigner;
+impl JwtSigner for CaptureSigner {
+    async fn sign(&self, payload: Value) -> forklaunch_blueprint_core::BlueprintResult<String> {
+        Ok(payload.to_string())
+    }
+}
 #[tokio::main]
 async fn main() {
     let store = Arc::new(MemoryAuthStore::default());
@@ -35,6 +41,16 @@ async fn main() {
                 tx.commit().await.unwrap();
                 json!(rows)
             }
+            "custom-sign" => match service
+                .sign_jwt_with_signer(input.get("body"), now, &CaptureSigner)
+                .await
+            {
+                Ok(body) => json!({"body":body}),
+                Err(error) if error.code == "VALIDATION_ERROR" => {
+                    json!({"error":{"code":error.code,"message":error.message}})
+                }
+                Err(error) => json!({"error":{"message":error.message}}),
+            },
             "sign" => match service.sign_jwt(input.get("body"), now).await {
                 Ok(body) => json!({"body":body}),
                 Err(error) if error.code == "VALIDATION_ERROR" => {

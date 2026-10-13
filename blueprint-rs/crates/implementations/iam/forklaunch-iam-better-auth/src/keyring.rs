@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use std::{cmp::Reverse, sync::Arc};
 use zeroize::Zeroizing;
 
+pub mod custom;
 mod sign;
 #[cfg(test)]
 pub(crate) mod tests;

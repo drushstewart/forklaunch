@@ -271,3 +271,18 @@ partial, refunded, disputed or substituted evidence requires review. The helper
 only reads provider state and repairs the payment; it does not create/capture/
 refund charges or deliver orders. Client secrets/raw provider data never enter
 the reconciliation audit.
+
+
+Better Auth's trusted server-only keyring helper supports external signers through
+`KeyRing::sign_jwt_with_signer` and the async `keyring::custom::JwtSigner` trait.
+The explicitly supplied callback receives JSON claims with the custom-sign path's
+expiration/issuer/audience defaults. It bypasses local JOSE claim setters and all
+key-store access; callback errors become a fixed sanitized signing error. The
+signer owns algorithm selection, claim policy and key publication. Bound network
+waits in the signer or at the call site. Non-finite JavaScript claims cannot be
+represented by this JSON callback API and are rejected.
+
+This server-only helper does not reconfigure session token routes, remote JWKS
+verification or plugin discovery metadata. Configuring those surfaces for custom
+signers remains part of the broader JWT/JWKS adapter work. Serialized claim options
+cannot replace the typed server callback.

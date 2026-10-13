@@ -120,6 +120,7 @@ on:
       - 'cli/tests/rust_better_auth_role_deletion.mjs'
       - 'cli/tests/rust_better_auth_verify_jwt.mjs'
       - 'cli/tests/rust_better_auth_sign_jwt.mjs'
+      - 'cli/tests/rust_better_auth_custom_jwt.mjs'
       - 'cli/tests/rust_better_auth_oauth_state.mjs'
       - 'cli/tests/rust_better_auth_google_authorize.mjs'
       - 'cli/tests/rust_better_auth_google_verify.mjs'
@@ -319,6 +320,7 @@ on:
       - 'cli/tests/rust_better_auth_role_deletion.mjs'
       - 'cli/tests/rust_better_auth_verify_jwt.mjs'
       - 'cli/tests/rust_better_auth_sign_jwt.mjs'
+      - 'cli/tests/rust_better_auth_custom_jwt.mjs'
       - 'cli/tests/rust_better_auth_oauth_state.mjs'
       - 'cli/tests/rust_better_auth_google_authorize.mjs'
       - 'cli/tests/rust_better_auth_google_verify.mjs'
@@ -802,6 +804,7 @@ jobs:
       - run: node cli/tests/rust_better_auth_role_deletion.mjs
       - run: node cli/tests/rust_better_auth_verify_jwt.mjs
       - run: node cli/tests/rust_better_auth_sign_jwt.mjs
+      - run: node cli/tests/rust_better_auth_custom_jwt.mjs
       - run: node cli/tests/rust_better_auth_oauth_state.mjs
       - run: node cli/tests/rust_better_auth_google_authorize.mjs
       - run: node cli/tests/rust_better_auth_google_verify.mjs

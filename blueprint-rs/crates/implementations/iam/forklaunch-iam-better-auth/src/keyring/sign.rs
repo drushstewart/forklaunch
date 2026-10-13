@@ -105,3 +105,37 @@ impl<S: AuthStore> KeyRing<S> {
 fn error(message: impl Into<String>) -> BlueprintError {
     BlueprintError::new("better_auth_jwt_sign_input", message)
 }
+
+pub(super) fn custom_payload(
+    body: Option<&Value>,
+    now: DateTime<Utc>,
+    base: &str,
+) -> BlueprintResult<Value> {
+    schema::validate(body)?;
+    let body = body.ok_or_else(|| error("Invalid signing input"))?;
+    let payload = &body["payload"];
+    let options = &body["overrideOptions"];
+    let clock = json!(now.timestamp())
+        .as_f64()
+        .ok_or_else(|| error("Invalid signing time"))?;
+    let expiry = claims::expiry(payload, options, clock)?;
+    let mut result = payload.clone();
+    if let Some(record) = result.as_object_mut() {
+        record.shift_remove("__proto__");
+    }
+    result["exp"] = match expiry {
+        claims::Expiry::Claim(value) => value,
+        claims::Expiry::InvalidNumber => {
+            return Err(error("Custom signing requires finite JSON claims"));
+        }
+    };
+    for (claim, option) in [("iss", "issuer"), ("aud", "audience")] {
+        result[claim] = payload
+            .get(claim)
+            .filter(|v| !v.is_null())
+            .or_else(|| options["jwt"].get(option).filter(|v| !v.is_null()))
+            .cloned()
+            .unwrap_or_else(|| json!(base));
+    }
+    Ok(result)
+}
