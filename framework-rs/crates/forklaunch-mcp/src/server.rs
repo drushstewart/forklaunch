@@ -392,6 +392,20 @@ fn build_request(
             headers.insert(name, value);
         }
     }
+    // Browser credentials must retain the actual envelope's Origin and CSRF
+    // proof. Tool arguments cannot overwrite that trust boundary.
+    if matches!(
+        route.auth,
+        Some(forklaunch_contract::AuthConfig::Cookie { .. })
+    ) && let Some(transport) = transport_headers
+    {
+        for name in ["cookie", "origin", "x-csrf-token"] {
+            headers.remove(name);
+            for value in transport.get_all(name) {
+                headers.append(name, value.clone());
+            }
+        }
+    }
     let body = encode_body(route, args, &mut headers)?;
     let mut request = Request::builder()
         .method(route.method.as_str())
@@ -472,6 +486,19 @@ fn encode_body(
 mod tests {
     use super::*;
     use forklaunch_contract::{FieldContract, RouteContract};
+    #[test]
+    fn cookie_tools_preserve_transport_security_headers() {
+        let route = RouteContract::post("Write", "Write", "/write")
+            .with_auth(forklaunch_contract::AuthConfig::cookie("session"));
+        let args = serde_json::json!({"headers": {"origin":"https://spoof.test", "cookie":"session=spoof", "x-csrf-token":"spoof"}});
+        let mut transport = HeaderMap::new();
+        transport.insert("origin", HeaderValue::from_static("https://real.test"));
+        transport.insert("cookie", HeaderValue::from_static("session=real"));
+        let request = build_request(&route, args.as_object().unwrap(), Some(&transport)).unwrap();
+        assert_eq!(request.headers()["origin"], "https://real.test");
+        assert_eq!(request.headers()["cookie"], "session=real");
+        assert!(!request.headers().contains_key("x-csrf-token"));
+    }
     #[test]
     fn raw_text_json_media_type_preserves_signed_bytes() {
         let raw = "{\n  \"id\": \"evt_💬\"\n}";

@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 default = ["adapter"]
+cookie-session = ["adapter", "dep:tower-sessions", "dep:subtle", "dep:rand", "dep:url"]
 multipart = ["adapter", "axum/multipart", "dep:forklaunch-validation"]
 sse = ["adapter", "dep:futures-util", "dep:forklaunch-validation"]
 websocket = ["adapter", "axum/ws", "dep:forklaunch-ws", "dep:futures-util"]
@@ -16,6 +17,10 @@ remote-jwks = ["adapter", "forklaunch-auth/remote-jwks", "dep:jsonwebtoken"]
 adapter = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes", "dep:form_urlencoded", "dep:http-body"]
 
 [dependencies]
+tower-sessions = { version = "0.15", optional = true }
+subtle = { version = "2", optional = true }
+rand = { version = "0.9", optional = true }
+url = { version = "2", optional = true }
 forklaunch-validation = { path = "../forklaunch-validation", optional = true }
 forklaunch-ws = { path = "../forklaunch-ws", features = ["transport"], optional = true }
 futures-util = { version = "0.3", features = ["sink"], optional = true }

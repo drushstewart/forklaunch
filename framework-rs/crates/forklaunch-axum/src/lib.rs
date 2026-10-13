@@ -2,6 +2,8 @@
 
 #[cfg(feature = "adapter")]
 mod body_telemetry;
+#[cfg(feature = "cookie-session")]
+pub mod cookie_session;
 #[cfg(feature = "adapter")]
 mod docs;
 #[cfg(feature = "adapter")]

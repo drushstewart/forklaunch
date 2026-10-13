@@ -2,6 +2,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt::Write as _,
     fs,
     path::Path,
 };
@@ -454,6 +455,10 @@ fn default_schema_json(name: &str) -> String {
 
 fn security_json(auth: &AuthConfig) -> String {
     match auth {
+        AuthConfig::Cookie { name } => json_array([json_object([JsonField::new(
+            cookie_scheme_name(name),
+            json_array([]),
+        )])]),
         AuthConfig::Jwt(_) | AuthConfig::Bearer => {
             json_array([json_object([JsonField::new("bearerAuth", json_array([]))])])
         }
@@ -466,12 +471,24 @@ fn security_json(auth: &AuthConfig) -> String {
     }
 }
 
+fn cookie_scheme_name(name: &str) -> String {
+    let mut key = String::from("cookieAuth_");
+    for byte in name.bytes() {
+        let _ = write!(key, "{byte:02x}");
+    }
+    key
+}
+
 fn security_schemes_json(routes: &[&RouteContract]) -> String {
     let mut schemes = BTreeSet::<&str>::new();
     let mut hmac_header = None;
+    let mut cookies = BTreeSet::new();
 
     for route in routes {
         match &route.auth {
+            Some(AuthConfig::Cookie { name }) => {
+                cookies.insert(name);
+            }
             Some(AuthConfig::Jwt(_) | AuthConfig::Bearer) => {
                 schemes.insert("bearerAuth");
             }
@@ -486,11 +503,11 @@ fn security_schemes_json(routes: &[&RouteContract]) -> String {
         }
     }
 
-    if schemes.is_empty() {
+    if schemes.is_empty() && cookies.is_empty() {
         return String::new();
     }
 
-    json_object(schemes.into_iter().map(|scheme| match scheme {
+    let fields = schemes.into_iter().map(|scheme| match scheme {
         "bearerAuth" => JsonField::new(
             "bearerAuth",
             json_object([
@@ -516,7 +533,17 @@ fn security_schemes_json(routes: &[&RouteContract]) -> String {
                 ),
             ]),
         ),
-    }))
+    });
+    json_object(fields.chain(cookies.into_iter().map(|name| {
+        JsonField::new(
+            cookie_scheme_name(name),
+            json_object([
+                JsonField::new("type", json_string("apiKey")),
+                JsonField::new("in", json_string("cookie")),
+                JsonField::new("name", json_string(name)),
+            ]),
+        )
+    })))
 }
 
 #[cfg(test)]
@@ -577,6 +604,25 @@ mod tests {
         assert!(json.contains("\"hmacAuth\""));
         assert!(json.contains("\"x-service-signature\""));
         assert!(json.contains("\"CreateUserBody\""));
+    }
+
+    #[test]
+    fn distinct_cookie_names_have_distinct_security_schemes() {
+        let mut registry = ContractRegistry::for_service(ServiceContract::new("sessions", "1"));
+        for (path, name) in [("/a", "a-b"), ("/b", "a_b")] {
+            registry
+                .register(RouteContract::get(path, path, path).with_auth(AuthConfig::cookie(name)));
+        }
+        let document: serde_json::Value =
+            serde_json::from_str(&generate_openapi_json(&registry)).unwrap();
+        let schemes = document["components"]["securitySchemes"]
+            .as_object()
+            .unwrap();
+        assert_eq!(schemes.len(), 2);
+        for name in ["a-b", "a_b"] {
+            assert_eq!(schemes[&cookie_scheme_name(name)]["name"], name);
+            assert_eq!(schemes[&cookie_scheme_name(name)]["in"], "cookie");
+        }
     }
 
     #[test]

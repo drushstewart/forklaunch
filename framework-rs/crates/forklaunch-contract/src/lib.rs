@@ -520,6 +520,10 @@ impl HmacAuth {
 pub enum AuthConfig {
     /// Application-verified opaque bearer token, such as a persistent IAM session.
     Bearer,
+    /// Server-side browser session identified by an opaque cookie.
+    Cookie {
+        name: String,
+    },
     Jwt(JwtAuth),
     Basic(BasicAuth),
     Hmac(HmacAuth),
@@ -529,6 +533,11 @@ impl AuthConfig {
     #[must_use]
     pub const fn bearer() -> Self {
         Self::Bearer
+    }
+
+    #[must_use]
+    pub fn cookie(name: impl Into<String>) -> Self {
+        Self::Cookie { name: name.into() }
     }
 
     #[must_use]
@@ -550,6 +559,9 @@ impl AuthConfig {
     pub fn to_json(&self) -> String {
         match self {
             Self::Bearer => "{\"method\":\"bearer\"}".to_owned(),
+            Self::Cookie { name } => {
+                format!("{{\"method\":\"cookie\",\"name\":{}}}", json_string(name))
+            }
             Self::Jwt(jwt) => jwt.to_json(),
             Self::Basic(_) => BasicAuth::to_json(),
             Self::Hmac(hmac) => hmac.to_json(),

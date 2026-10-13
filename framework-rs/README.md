@@ -379,3 +379,37 @@ provide those dependencies alongside reqwest, Serde and Serde JSON.
 generators, runs multipart cases against Rust and TypeScript servers and checks
 HTTP/MCP startup and graceful shutdown. The TypeScript native runtime uses the
 platform FormData parser; Rust uses multer.
+
+### Optional browser sessions
+
+Enable `forklaunch-axum/cookie-session` and configure
+`RouterConfig.cookie_sessions` with `CookieSessions::new(cookie_name,
+"https://your-app.example", store, resolver)`. Declare protected routes with
+`AuthConfig::cookie(cookie_name)`. OpenAPI exposes each named cookie as its own
+cookie API-key security scheme. Without the feature/configuration these routes
+fail closed. Bearer/JWT routes still require their own verifier.
+
+The adapter uses tower-sessions 0.15, secure HttpOnly SameSite=Strict cookies,
+path `/`, and a 30-minute expiry refreshed by session writes. Read-only requests do not
+extend the lifetime. Supply a shared durable `SessionStore`
+in production; MemoryStore is for tests/development. The async resolver receives
+the stored subject and must load current authorization and reject revoked or
+disabled identities. No roles or provider credentials are copied into the cookie.
+Generic session-map updates are not atomic replay or global-revocation storage.
+
+Use the `CookieSession` extractor on login, logout and CSRF bootstrap handlers.
+`csrf_token()` issues a random synchronizer token; serve it with `Cache-Control:
+no-store` and keep it in the trusted browser context. For login/logout and other
+unsafe requests, browsers must send that token in `x-csrf-token`, the session
+cookie, and the exact configured HTTPS `Origin`. Missing, duplicate and foreign
+origins/tokens fail. Verify credentials before calling `login(subject)`; login
+rotates both the session ID and token and returns the replacement token.
+`logout()` flushes the session. Both reject safe methods. Plain Axum handlers
+can use `policy.wrap(router)` with the same policy/store as the framework router.
+Configure credentialed CORS only for trusted origins when needed.
+
+MCP cookie-authenticated tools forward the transport cookie, Origin and CSRF
+headers to the same HTTP authentication path; tool arguments cannot replace
+these headers. MCP transport authentication and Host/Origin policy remain
+independent. This adapter does not replace Better Auth's compatibility cookie
+format or implement OAuth/OIDC login providers.

@@ -51,6 +51,9 @@ pub const DEFAULT_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 /// Configuration for cross-cutting router behavior (docs, limits, CORS).
 #[derive(Clone)]
 pub struct RouterConfig {
+    /// Optional server-side browser sessions and CSRF policy.
+    #[cfg(feature = "cookie-session")]
+    pub cookie_sessions: Option<crate::cookie_session::CookieSessions>,
     /// Whether the generated `OpenAPI` document is served.
     pub openapi_enabled: bool,
     /// Path the `OpenAPI` JSON document is served from.
@@ -84,6 +87,8 @@ pub struct RouterConfig {
 impl Default for RouterConfig {
     fn default() -> Self {
         Self {
+            #[cfg(feature = "cookie-session")]
+            cookie_sessions: None,
             openapi_enabled: true,
             openapi_path: "/openapi.json".to_owned(),
             docs_enabled: true,
@@ -489,7 +494,7 @@ impl ForkLaunchRouter {
         router = router.layer(middleware::from_fn_with_state(state, validate_contract));
 
         let cors = config.cors.unwrap_or_else(CorsLayer::permissive);
-        router
+        let router = router
             .layer(RequestBodyLimitLayer::new(config.body_limit))
             .layer(middleware::from_fn_with_state(telemetry, observe_request))
             .layer(PropagateRequestIdLayer::x_request_id())
@@ -517,7 +522,12 @@ impl ForkLaunchRouter {
                         Err(never) => match never {},
                     }
                 }
-            }))
+            }));
+        #[cfg(feature = "cookie-session")]
+        if let Some(sessions) = config.cookie_sessions {
+            return sessions.wrap(router);
+        }
+        router
     }
 
     /// Mounts an MCP transport whose tools dispatch through this HTTP router.
@@ -785,9 +795,20 @@ async fn validate_contract(
         || contract.rbac.is_some()
         || contract.access != AccessLevel::Public;
     if requires_auth {
-        let authenticated = match &state.authenticator {
-            Some(verifier) => verifier(framework_request.clone(), contract.clone()).await,
-            None => Err(AuthError::MissingCredentials),
+        let authenticated = if let Some(AuthConfig::Cookie { name }) = &contract.auth {
+            #[cfg(feature = "cookie-session")]
+            let result = crate::cookie_session::authenticate(&parts, name).await;
+            #[cfg(not(feature = "cookie-session"))]
+            let result = {
+                let _ = name;
+                Err(AuthError::MissingCredentials)
+            };
+            result
+        } else {
+            match &state.authenticator {
+                Some(verifier) => verifier(framework_request.clone(), contract.clone()).await,
+                None => Err(AuthError::MissingCredentials),
+            }
         };
         let result = authenticated.and_then(|session| {
             if let Some(rbac) = &contract.rbac {

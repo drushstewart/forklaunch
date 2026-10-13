@@ -2161,3 +2161,27 @@ returned 404). The evidence JSON parses and local document links resolve. Owned
 downloaded review sources were removed after recording hashes.
 Checklist: **643/682 (94.3%), 39 open**. The ten new completions are evaluation
 tasks; the percentage measures checklist completion, not runtime feature weight.
+
+### Optional server-side cookie sessions
+
+`forklaunch-axum/cookie-session` integrates tower-sessions 0.15 behind an opt-in
+feature. Applications supply the session store and live subject resolver; routes
+explicitly declare their cookie name. Secure/HttpOnly/SameSite=Strict cookies,
+random synchronizer tokens, exact HTTPS Origin checks, ID/token rotation and
+logout are covered. Unsafe login/logout requires CSRF; bearer routes never use
+cookie authentication as a fallback. OpenAPI uses distinct named cookie schemes.
+MCP preserves transport browser-security headers over tool-argument overrides.
+
+Validation: 97 affected all-feature tests, the additional feature-disabled
+fail-closed test, strict all-target Clippy, 865 packaged source/template files,
+and the three-lockfile RustSec gate pass with no new advisory exceptions.
+Live loopback HTTP and MCP exercise valid/invalid cookies; tests also cover
+fixation, old tokens, cross-origin requests, logout and current disabled-user
+resolution. Logs: `/private/tmp/fl-cookie-final-tests.log`,
+`fl-cookie-default.log`, `fl-cookie-clippy.log`, `fl-cookie-package.log`,
+`fl-cookie-audit.log`.
+
+This closes the tower-sessions adapter recommendation. Production store choice,
+atomic application revocation, OAuth/OIDC providers and Better Auth client/ORM
+parity remain separate work. Read-only access does not extend the thirty-minute
+session expiry; session writes do. Checklist: **644/682 (94.4%), 38 open**.

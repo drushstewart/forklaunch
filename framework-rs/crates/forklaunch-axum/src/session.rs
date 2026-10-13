@@ -86,6 +86,34 @@ mod tests {
             .into_router()
     }
 
+    #[cfg(not(feature = "cookie-session"))]
+    #[tokio::test]
+    async fn cookie_contract_fails_closed_without_adapter_feature() {
+        let config = RouterConfig::default().with_authenticator(|_, _| async {
+            panic!("cookie routes must not fall back to the bearer verifier")
+        });
+        let router = ForkLaunchRouter::anonymous()
+            .get(
+                RouteContract::get("Cookie", "Cookie", "/cookie")
+                    .with_auth(forklaunch_contract::AuthConfig::cookie("session"))
+                    .with_response(200, None),
+                || async { "unexpected" },
+            )
+            .with_config(config)
+            .into_router();
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/cookie")
+                    .header("cookie", "session=unverified")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
     #[tokio::test]
     async fn auth_is_required_for_get_and_implicit_head_even_without_validation() {
         for method in ["GET", "HEAD"] {
