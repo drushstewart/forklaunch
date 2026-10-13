@@ -1754,3 +1754,26 @@ Logs: `/private/tmp/fl-sse-emitter-{tests-final,clippy-final,parity-final,genera
 
 Checklist: **624/682 (91.5%), 58 open**. The broader schema-constraint,
 multipart, resource-scope and external AsyncAPI tasks remain open.
+
+
+### External AsyncAPI binary messages (2026-10-12)
+
+External AsyncAPI 3.0 WebSocket imports now preserve explicit
+`application/octet-stream` messages as native binary metadata. Canonical
+string/binary payloads may be inline or referenced locally. Send/receive may
+use different wire encodings; each binary direction selects one message.
+Mixed wire alternatives, ambiguous byte messages, additional schema assertions,
+reference siblings/cycles/external targets and encoded pointer separators fail
+checked import. JSON `format: binary` alone does not enable byte transport.
+
+Validation passed: 25 AsyncAPI tests, strict Clippy, both compiled SDKs with ten
+live imported-binary roundtrips (including invalid UTF-8, JSON-looking bytes and
+all byte values), and the existing native binary/control-frame regression.
+The rebuilt CLI passes relocated import/check/watch, strict SDK compilation,
+live JSON peers, rename/delete ownership, and generated HTTP/MCP startup and
+shutdown before and after rename. All 772 embedded package entries pass. CI
+runs both native-artifact and imported-binary modes. Logs:
+`/private/tmp/fl-asyncapi-binary-{tests,clippy,runtime,native-regression,lifecycle,cli,package}.log`.
+
+Checklist remains **624/682 (91.5%), 58 open**: this completes binary payload
+support within the broader external AsyncAPI item; its other profiles remain open.

@@ -1,4 +1,4 @@
-//! Explicit server-view imports for JSON WebSocket applications.
+//! Explicit server-view imports for JSON and binary WebSocket applications.
 // Embedded schema: @asyncapi/specs 6.11.1, schemas/3.0.0-without-$id.json,
 // copied unchanged (SHA-256 abe96881dbfaad495ccbb6bd8d3fb43ca18a13b9d7564849ccb66f39d5e5b20f).
 // Upstream: https://github.com/asyncapi/spec-json-schemas
@@ -14,6 +14,7 @@ struct Channel {
     name: String,
     address: String,
     messages: BTreeMap<String, Value>,
+    binary: BTreeSet<String>,
     receive: BTreeSet<String>,
     send: BTreeSet<String>,
 }
@@ -21,7 +22,8 @@ struct Channel {
 /// Import an `AsyncAPI` 3.0 document explicitly describing a WebSocket server.
 /// Server receive/send operations become client outgoing/incoming contracts.
 /// JSON payloads must exclude raw strings and have provably disjoint message
-/// schemas. Missing directions are forbidden, rather than unconstrained.
+/// schemas. Binary directions require one canonical string/binary payload with
+/// application/octet-stream media. Missing directions are forbidden.
 ///
 /// # Errors
 /// Rejects unsupported protocols, media, upgrade parameters/authentication,
@@ -49,23 +51,29 @@ pub fn import_server_websocket_asyncapi(
                 "Every declared channel message must be selected by an operation",
             ));
         }
-        require_disjoint_messages(&channel.messages)?;
+        let json_messages = channel
+            .messages
+            .iter()
+            .filter(|(pointer, _)| !channel.binary.contains(*pointer))
+            .map(|(pointer, schema)| (pointer.clone(), schema.clone()))
+            .collect();
+        require_disjoint_messages(&json_messages)?;
         let outgoing = direction_schema(&channel, &channel.receive)?;
         let incoming = direction_schema(&channel, &channel.send)?;
-        budget.reserve(&outgoing)?;
-        budget.reserve(&incoming)?;
+        budget.reserve(&outgoing.shape)?;
+        budget.reserve(&incoming.shape)?;
         let receive_name = format!("{}_receive", channel.name);
         let send_name = format!("{}_send", channel.name);
         let socket = SocketContract::new(&channel.address)
             .with_client_message(
                 &receive_name,
-                SocketSchemaEntry::new(outgoing)
+                outgoing
                     .with_channel(&channel.address)
                     .with_operation(&receive_name),
             )
             .with_server_message(
                 &send_name,
-                SocketSchemaEntry::new(incoming)
+                incoming
                     .with_channel(&channel.address)
                     .with_operation(&send_name),
             );
@@ -179,11 +187,15 @@ fn read_channels(
             return Err(invalid("Expected 1 through 64 messages per channel"));
         }
         let mut schemas = BTreeMap::new();
+        let mut binary = BTreeSet::new();
         for message in messages.keys() {
             let pointer = format!("{location}/messages/{}", token(message));
             let schema = message_schema(document, &pointer)?;
-            budget.reserve(&schema)?;
-            schemas.insert(pointer, schema);
+            budget.reserve(&schema.shape)?;
+            if schema.binary {
+                binary.insert(pointer.clone());
+            }
+            schemas.insert(pointer, schema.shape);
         }
         channels.insert(
             root,
@@ -191,6 +203,7 @@ fn read_channels(
                 name,
                 address,
                 messages: schemas,
+                binary,
                 receive: BTreeSet::new(),
                 send: BTreeSet::new(),
             },
@@ -248,7 +261,7 @@ fn read_operations(
     Ok(())
 }
 
-fn message_schema(document: &Value, pointer: &str) -> FrameworkResult<Value> {
+fn message_schema(document: &Value, pointer: &str) -> FrameworkResult<SocketSchemaEntry> {
     let (location, message) = object_at(document, pointer)?;
     reject_fields(message, &["headers", "traits"])?;
     check_bindings(document, &location, message)?;
@@ -256,11 +269,24 @@ fn message_schema(document: &Value, pointer: &str) -> FrameworkResult<Value> {
         .get("contentType")
         .or_else(|| document.get("defaultContentType"))
         .and_then(Value::as_str)
-        .ok_or_else(|| invalid("Explicit JSON content type is required"))?;
+        .ok_or_else(|| invalid("Explicit message content type is required"))?;
+    if media == "application/octet-stream" {
+        // Only canonical byte schemas are supported: never discard assertions
+        // such as minLength or enum while converting to an unchecked byte codec.
+        let (_, payload) = object_at(document, &format!("{location}/payload"))?;
+        if Value::Object(payload.clone()) != SocketSchemaEntry::binary().shape {
+            return Err(invalid(
+                "Binary messages require the canonical string/binary payload schema",
+            ));
+        }
+        return Ok(SocketSchemaEntry::binary());
+    }
     if media != "application/json"
         && !(media.starts_with("application/") && media.ends_with("+json"))
     {
-        return Err(invalid("Only JSON WebSocket message media are supported"));
+        return Err(invalid(
+            "Only JSON or application/octet-stream WebSocket message media are supported",
+        ));
     }
     let payload = message
         .get("payload")
@@ -278,7 +304,7 @@ fn message_schema(document: &Value, pointer: &str) -> FrameworkResult<Value> {
             "JSON string payload import requires explicit JSON wire encoding",
         ));
     }
-    Ok(schema)
+    Ok(SocketSchemaEntry::new(schema))
 }
 
 fn check_servers(document: &Value, channel: &Map<String, Value>) -> FrameworkResult<()> {
@@ -353,12 +379,25 @@ fn check_bindings(
     Ok(())
 }
 
-fn direction_schema(channel: &Channel, selected: &BTreeSet<String>) -> FrameworkResult<Value> {
+fn direction_schema(
+    channel: &Channel,
+    selected: &BTreeSet<String>,
+) -> FrameworkResult<SocketSchemaEntry> {
     if selected.is_empty() {
-        return Ok(json!(false));
+        return Ok(SocketSchemaEntry::new(json!(false)));
+    }
+    if !selected.is_disjoint(&channel.binary) {
+        if selected.len() != 1 {
+            return Err(invalid(
+                "Binary directions require exactly one message; mixed wire types and ambiguous byte messages are unsupported",
+            ));
+        }
+        return Ok(SocketSchemaEntry::binary());
     }
     if selected.len() == 1 {
-        return Ok(channel.messages[selected.first().unwrap()].clone());
+        return Ok(SocketSchemaEntry::new(
+            channel.messages[selected.first().unwrap()].clone(),
+        ));
     }
     let mut variants = Vec::new();
     let mut budget = OutputBudget(32 * 1024 * 1024);
@@ -373,7 +412,7 @@ fn direction_schema(channel: &Channel, selected: &BTreeSet<String>) -> Framework
                 .map_err(|_| invalid("Imported schema relocation failed"))?,
         );
     }
-    Ok(json!({"oneOf":variants}))
+    Ok(SocketSchemaEntry::new(json!({"oneOf":variants})))
 }
 
 fn require_disjoint_messages(messages: &BTreeMap<String, Value>) -> FrameworkResult<()> {
@@ -537,6 +576,11 @@ fn pointer(reference: &str) -> FrameworkResult<String> {
     let fragment = reference
         .strip_prefix('#')
         .ok_or_else(|| invalid("Only document-local AsyncAPI references are supported"))?;
+    if !fragment.starts_with('/') || fragment.to_ascii_lowercase().contains("%2f") {
+        return Err(invalid(
+            "AsyncAPI references require literal JSON pointer separators",
+        ));
+    }
     let pointer = percent_encoding::percent_decode_str(fragment)
         .decode_utf8()
         .map_err(|_| invalid("AsyncAPI reference is not UTF-8"))?;
@@ -795,6 +839,94 @@ mod tests {
                 "{mutation}"
             );
         }
+    }
+
+    #[test]
+    fn binary_import_preserves_wire_metadata_and_rejects_ambiguous_constraints() {
+        let mut input = document();
+        input["defaultContentType"] = json!("application/octet-stream");
+        for name in ["Request", "Reply"] {
+            input["components"]["schemas"][name] = json!({"type":"string","format":"binary"});
+        }
+        let original = input.clone();
+        let artifact = import_server_websocket_asyncapi(&input).unwrap();
+        let socket = &artifact.sockets["chat"];
+        for entry in [
+            &socket.client_messages["chat_receive"],
+            &socket.server_messages["chat_send"],
+        ] {
+            assert!(entry.binary && entry.valid_binary_shape());
+        }
+        assert_eq!(input, original);
+        for mutation in [
+            "length",
+            "enum",
+            "ref-sibling",
+            "encoded-separator",
+            "cycle",
+            "external",
+            "multiple",
+            "mixed",
+            "json-format",
+        ] {
+            let mut bad = input.clone();
+            match mutation {
+                "length" => bad["components"]["schemas"]["Request"]["minLength"] = json!(2),
+                "enum" => bad["components"]["schemas"]["Request"]["enum"] = json!(["text"]),
+                "encoded-separator" => {
+                    bad["components"]["messages"]["Request"]["payload"] =
+                        json!({"$ref":"#/components%2Fschemas/Request"});
+                }
+                "ref-sibling" => {
+                    bad["components"]["messages"]["Request"]["payload"]["maxLength"] = json!(4);
+                }
+                "cycle" => {
+                    bad["components"]["schemas"]["Request"] =
+                        json!({"$ref":"#/components/schemas/Request"});
+                }
+                "external" => {
+                    bad["components"]["messages"]["Request"]["payload"] =
+                        json!({"$ref":"https://example.invalid/bytes"});
+                }
+                "multiple" | "mixed" => {
+                    bad["operations"]["accept"]["messages"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(json!({"$ref":"#/channels/chat/messages/reply"}));
+                    if mutation == "mixed" {
+                        bad["components"]["messages"]["Reply"]["contentType"] =
+                            json!("application/json");
+                        bad["components"]["schemas"]["Reply"] =
+                            document()["components"]["schemas"]["Reply"].clone();
+                    }
+                }
+                "json-format" => {
+                    bad["components"]["messages"]["Request"]["contentType"] =
+                        json!("application/json");
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                import_server_websocket_asyncapi(&bad).is_err(),
+                "{mutation}"
+            );
+        }
+        input["components"]["messages"]["Reply"]["contentType"] = json!("application/json");
+        input["components"]["schemas"]["Reply"] =
+            document()["components"]["schemas"]["Reply"].clone();
+        let artifact = import_server_websocket_asyncapi(&input).unwrap();
+        assert!(artifact.sockets["chat"].client_messages["chat_receive"].binary);
+        assert!(!artifact.sockets["chat"].server_messages["chat_send"].binary);
+        input["operations"].as_object_mut().unwrap().remove("reply");
+        input["channels"]["chat"]["messages"]
+            .as_object_mut()
+            .unwrap()
+            .remove("reply");
+        let artifact = import_server_websocket_asyncapi(&input).unwrap();
+        assert_eq!(
+            artifact.sockets["chat"].server_messages["chat_send"].shape,
+            json!(false)
+        );
     }
 
     #[test]

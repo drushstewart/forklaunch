@@ -13,6 +13,7 @@ const deps = createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPEN
 const { WebSocketServer } = deps('ws');
 const temporary = await mkdtemp(path.join(tmpdir(), 'fl-ws-binary-'));
 const env = { ...process.env, CARGO_INCREMENTAL:'0', CARGO_TARGET_DIR:path.resolve(root, process.env.CARGO_TARGET_DIR ?? 'framework-rs/target') };
+const imported = process.env.FORKLAUNCH_TEST_BINARY_ASYNCAPI === '1';
 const binary = {binary:true, shape:{type:'string',format:'binary'}};
 const sockets = new Set();
 let server, child, client;
@@ -22,9 +23,19 @@ try {
   await writeFile(path.join(temporary,'package.json'), JSON.stringify({type:'module'}));
   const artifact = {formatVersion:1,title:'Binary',version:'1',sockets:{bytes:{path:'/bytes',clientMessages:{request:binary},serverMessages:{reply:binary},ping:binary,pong:binary}}};
   const input = path.join(temporary,'contract.json');
-  await writeFile(input,JSON.stringify(artifact));
-  const generated = JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all'],{cwd:root,env,timeout:300000,maxBuffer:8*1024*1024,encoding:'utf8'}));
-  for (const channel of Object.values(generated.asyncapi.channels)) {
+  const document = {
+    asyncapi:'3.0.0',info:{title:'Binary import',version:'1'},defaultContentType:'application/octet-stream',
+    servers:{local:{host:'localhost',protocol:'ws'}},
+    channels:{bytes:{address:'/bytes',messages:{request:{$ref:'#/components/messages/Bytes'},reply:{$ref:'#/components/messages/Bytes'}}}},
+    operations:{
+      receive:{action:'receive',channel:{$ref:'#/channels/bytes'},messages:[{$ref:'#/channels/bytes/messages/request'}]},
+      send:{action:'send',channel:{$ref:'#/channels/bytes'},messages:[{$ref:'#/channels/bytes/messages/reply'}]}
+    },components:{messages:{Bytes:{payload:{$ref:'#/components/schemas/Bytes'}}},schemas:{Bytes:binary.shape}}
+  };
+  await writeFile(input,JSON.stringify(imported ? document : artifact));
+  const generated = JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all', imported ? 'asyncapi' : 'socket-contract'],{cwd:root,env,timeout:300000,maxBuffer:8*1024*1024,encoding:'utf8'}));
+  if (imported) assert.deepEqual(generated.asyncapi, document, 'external document must be preserved');
+  for (const channel of Object.values(imported ? {} : generated.asyncapi.channels)) {
     for (const message of Object.values(channel.messages)) assert.equal(message.contentType,'application/octet-stream');
   }
   await writeFile(path.join(temporary,'src/generated.ts'), generated.typescript.socket_bytes+'\nexport { SocketCodec };\n');
@@ -53,11 +64,11 @@ client.send(&bytes).await.unwrap();
 match client.recv().await.unwrap().unwrap(){SocketEvent::Message(value)=>assert_eq!(value,bytes),_=>panic!("expected message")}
 }
 assert!(client.send(&vec![0;257]).await.is_err());
-client.ping(Some(&vec![0,255,128])).await.unwrap();
+${imported ? '' : `client.ping(Some(&vec![0,255,128])).await.unwrap();
 match client.recv().await.unwrap().unwrap(){SocketEvent::Pong(value)=>assert_eq!(value,vec![0,255,128]),_=>panic!("expected pong")}
-assert!(client.ping(Some(&vec![0;126])).await.is_err());
+assert!(client.ping(Some(&vec![0;126])).await.is_err());`}
 client.close(1000,None).await.unwrap();
-println!("PASS generated Rust binary messages, control bytes and limits");
+println!("PASS generated Rust binary messages and limits${imported ? '' : ', including control frames'}");
 }`);
   execFileSync('cargo',['build','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')],{cwd:root,env,stdio:'inherit',timeout:300000});
   server = new WebSocketServer({host:'127.0.0.1',port:0});
@@ -75,15 +86,17 @@ println!("PASS generated Rust binary messages, control bytes and limits");
     assert.deepEqual(Buffer.from(event.value),bytes);
   }
   await assert.rejects(client.send(new Uint8Array(257)),/byte limit/);
+  if (!imported) {
   await client.ping(new Uint8Array([0,255,128]));
   const pong=await client.recv({timeoutMs:5000}); assert.equal(pong.type,'pong'); assert.deepEqual([...pong.value],[0,255,128]);
   await assert.rejects(client.ping(new Uint8Array(126)),/byte limit/);
+  }
   await client.close(1000);
   child=spawn(path.join(env.CARGO_TARGET_DIR,'debug/forklaunch-binary-socket-fixture'),[url],{stdio:'inherit'});
   const timeout=setTimeout(()=>child.kill('SIGKILL'),15000);
   try { const [code]=await once(child,'exit'); assert.equal(code,0); } finally {clearTimeout(timeout);}
   assert.equal(messages,10);
-  console.log('PASS checked binary artifact, AsyncAPI metadata, compiled Rust/TypeScript SDKs, raw frames, invalid UTF-8, JSON-looking bytes, control frames and bounds');
+  console.log(imported ? 'PASS external AsyncAPI binary import, both compiled SDKs and 10 live byte roundtrips' : 'PASS checked binary artifact, AsyncAPI metadata, compiled Rust/TypeScript SDKs, raw frames, invalid UTF-8, JSON-looking bytes, control frames and bounds');
 } finally {
   if(child?.exitCode===null) child.kill('SIGKILL');
   for(const socket of sockets)socket.terminate();
