@@ -413,3 +413,13 @@ headers to the same HTTP authentication path; tool arguments cannot replace
 these headers. MCP transport authentication and Host/Origin policy remain
 independent. This adapter does not replace Better Auth's compatibility cookie
 format or implement OAuth/OIDC login providers.
+
+HTTP SDK schema imports support document-local static `$anchor` references in
+modern JSON Schema, including percent-encoded names, recursive models and
+anchors in OpenAPI component schemas. Pointer and anchor references to the same
+schema reuse a model. Indexing follows schema positions under shared depth,
+node and byte limits; examples/defaults remain literal values. Duplicate,
+invalid, missing and foreign-resource anchors fail before generation. Older
+Draft 4/6/7 schemas do not gain modern `$anchor` semantics. Resource `$id`,
+external retrieval and dynamic references remain unsupported in SDK imports;
+checked AsyncAPI payload imports retain their separate conservative profile.

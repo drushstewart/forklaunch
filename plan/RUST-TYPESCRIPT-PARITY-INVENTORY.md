@@ -2185,3 +2185,23 @@ This closes the tower-sessions adapter recommendation. Production store choice,
 atomic application revocation, OAuth/OIDC providers and Better Auth client/ORM
 parity remain separate work. Read-only access does not extend the thirty-minute
 session expiry; session writes do. Checklist: **644/682 (94.4%), 38 open**.
+
+### Document-local SDK schema anchors
+
+The shared CLI/native HTTP SDK compiler now resolves static `$anchor` fragments
+at schema positions, including OpenAPI components and guarded recursive models.
+Anchor and pointer aliases reuse one graph node. A bounded index excludes
+literal examples/defaults and nested resource scopes; malformed/duplicate or
+missing anchors fail closed. Draft 4/6/7 do not gain newer anchor semantics.
+
+The mutual-recursion fixture now uses named anchors. A freshly rebuilt CLI
+created and relocated the application, generated both SDKs from contract and
+OpenAPI artifacts, compiled both languages and ran live recursive round trips.
+Both native generators passed the same consumers. HTTP/MCP startup, discovery,
+invocation, Origin rejection, port/listener variants and shutdown passed.
+Validation: 86 CLI SDK tests, 34 native SDK/codegen tests, strict codegen and
+generated-client Clippy. Logs: `/private/tmp/fl-anchor-cli-tests.log`,
+`fl-anchor-final-tests.log`, `fl-anchor-clippy.log`, `fl-anchor-runtime.log`.
+
+The resource-ID/dynamic-reference checklist item remains open; this is a
+verified part of it. Checklist remains **644/682 (94.4%), 38 open**.
