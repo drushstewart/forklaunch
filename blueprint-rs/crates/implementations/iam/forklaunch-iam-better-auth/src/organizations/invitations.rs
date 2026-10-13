@@ -33,8 +33,7 @@ impl<S: AuthStore> OrganizationService<S> {
                 "You are not a member of this organization",
             ));
         }
-        let invitations = tx
-            .list(Model::Invitation)
+        let invitations = crate::store::find_all(&mut tx, Model::Invitation, "organizationId", id)
             .await?
             .into_iter()
             .filter(|row| row["organizationId"] == id)
@@ -133,8 +132,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .to_lowercase();
         let mut tx = self.store.begin(false).await?;
         let mut invitations = Vec::new();
-        for mut row in tx
-            .list(Model::Invitation)
+        for mut row in crate::store::find_all(&mut tx, Model::Invitation, "email", &email)
             .await?
             .into_iter()
             .filter(|row| row["email"] == email)

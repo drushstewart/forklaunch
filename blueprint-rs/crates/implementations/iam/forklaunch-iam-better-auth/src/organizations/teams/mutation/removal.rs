@@ -31,8 +31,7 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             return Err(missing());
         }
-        if tx
-            .list(Model::Team)
+        if crate::store::find_all(&mut tx, Model::Team, "organizationId", org)
             .await?
             .iter()
             .filter(|row| row["organizationId"] == org)
@@ -45,7 +44,7 @@ impl<S: AuthStore> OrganizationService<S> {
             ));
         }
         organization(&mut tx, org).await?;
-        for row in tx.list(Model::TeamMember).await? {
+        for row in crate::store::find_all(&mut tx, Model::TeamMember, "teamId", id).await? {
             if row["teamId"] == id {
                 tx.delete(Model::TeamMember, text(&row, "id")?).await?;
             }
@@ -62,8 +61,7 @@ async fn clean_invitations<T: AuthTransaction>(
     id: &str,
     now: DateTime<Utc>,
 ) -> BlueprintResult<()> {
-    for mut row in tx
-        .list(Model::Invitation)
+    for mut row in crate::store::find_all(tx, Model::Invitation, "organizationId", org)
         .await?
         .into_iter()
         .filter(|row| row["organizationId"] == org && row["status"] == "pending")

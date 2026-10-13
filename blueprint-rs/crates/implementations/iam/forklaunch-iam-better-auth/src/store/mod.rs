@@ -48,7 +48,7 @@ impl Model {
             Self::Member => &["userId", "organizationId"],
             Self::OrganizationRole => &["organizationId", "role"],
             Self::Team => &["organizationId"],
-            Self::TeamMember => &["userId", "teamId"],
+            Self::TeamMember => &["userId", "teamId", "membershipKey"],
             Self::Invitation => &["organizationId", "email"],
             Self::Verification => &["identifier"],
             _ => &[],

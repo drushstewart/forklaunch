@@ -9,15 +9,18 @@ pub(super) async fn exercise<S: AuthStore>(
     let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
     let mut tx = store.begin(true).await.unwrap();
     tx.insert(Model::User,json!({"id":"http-invitee","email":"http-invitee@fixture.test","name":"Invitee","emailVerified":true})).await.unwrap();
-    let invitation = tx
-        .list(Model::Invitation)
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|row| row["email"] == "http-invitee@fixture.test")
-        .unwrap();
-    let team = tx
-        .list(Model::Team)
+    let invitation = crate::store::find_all(
+        &mut tx,
+        Model::Invitation,
+        "email",
+        "http-invitee@fixture.test",
+    )
+    .await
+    .unwrap()
+    .into_iter()
+    .find(|row| row["email"] == "http-invitee@fixture.test")
+    .unwrap();
+    let team = crate::store::find_all(&mut tx, Model::Team, "organizationId", org)
         .await
         .unwrap()
         .into_iter()

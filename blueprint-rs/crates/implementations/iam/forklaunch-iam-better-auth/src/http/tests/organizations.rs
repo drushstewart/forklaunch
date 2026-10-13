@@ -198,7 +198,7 @@ async fn mutations<S: AuthStore>(
             .all(|row| row["organizationId"] != id)
     );
     assert!(
-        tx.list(Model::Team)
+        crate::store::find_all(&mut tx, Model::Team, "organizationId", id)
             .await
             .unwrap()
             .iter()

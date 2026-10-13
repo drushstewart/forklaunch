@@ -23,6 +23,13 @@ async fn exercise_transactions<S: AuthStore>(store: &S) {
     tx.commit().await.unwrap();
     {
         let mut tx = store.begin(false).await.unwrap();
+        assert!(
+            tx.list_page(Model::Invitation, None, 10)
+                .await
+                .unwrap()
+                .records
+                .is_empty()
+        );
         assert_eq!(
             tx.find_unique(Model::User, "email", "private@fixture.test")
                 .await
@@ -467,13 +474,6 @@ async fn exercise_pagination<S: AuthStore>(store: &S) {
     let last = tx.list_page(Model::User, first.next, 4096).await.unwrap();
     assert_eq!(last.records.len(), 4);
     assert!(last.next.is_none());
-    assert!(
-        tx.list_page(Model::Invitation, None, 10)
-            .await
-            .unwrap()
-            .records
-            .is_empty()
-    );
     tx.commit().await.unwrap();
 
     // A continuation remains valid after its row is deleted, and replacement
@@ -502,6 +502,9 @@ async fn seed_large_directory<S: AuthStore>(store: &S) {
         tx.insert(Model::Account, json!({"id":format!("imported-account-{index}"),"userId":format!("imported-{index}"),"providerId":"external","accountId":format!("external-{index}")})).await.unwrap();
         tx.insert(Model::Member, json!({"id":format!("imported-member-{index}"),"userId":format!("imported-{index}"),"organizationId":"foreign-large-org","role":"member"})).await.unwrap();
         tx.insert(Model::OrganizationRole, json!({"id":format!("imported-role-{index}"),"organizationId":"foreign-large-org","role":"owner","permission":"{"})).await.unwrap();
+        tx.insert(Model::Team, json!({"id":format!("imported-team-{index}"),"organizationId":"foreign-large-org","name":"Foreign team"})).await.unwrap();
+        tx.insert(Model::TeamMember, json!({"id":format!("imported-team-member-{index}"),"teamId":format!("imported-team-{index}"),"userId":format!("imported-{index}"),"membershipKey":format!("foreign-key-{index}")})).await.unwrap();
+        tx.insert(Model::Invitation, json!({"id":format!("imported-invitation-{index}"),"organizationId":"foreign-large-org","email":format!("imported-{index}@fixture.test"),"status":"pending"})).await.unwrap();
     }
     tx.insert(
         Model::Organization,
@@ -623,6 +626,7 @@ async fn exercise_large_organization_queries<S: AuthStore>(
         .await
         .unwrap();
     let id = org["id"].as_str().unwrap();
+    exercise_large_team_queries(&service, token, id, now).await;
     let listed = service
         .list_members(token, false, &json!({"organizationId":id}), now)
         .await
@@ -707,6 +711,55 @@ async fn exercise_large_organization_queries<S: AuthStore>(
         4096
     );
     tx.commit().await.unwrap();
+}
+
+async fn exercise_large_team_queries<S: AuthStore>(
+    service: &crate::organizations::OrganizationService<S>,
+    token: &str,
+    org: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) {
+    let teams = service
+        .list_teams(token, false, &json!({"organizationId":org}), now)
+        .await
+        .unwrap();
+    assert_eq!(teams.as_array().unwrap().len(), 1);
+    let team = teams[0]["id"].as_str().unwrap();
+    assert_eq!(
+        service
+            .list_team_members(token, false, &json!({"teamId":team}), now)
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        service
+            .list_user_teams(token, false, &json!({}), now)
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        service
+            .list_invitations(token, false, Some(org), now)
+            .await
+            .unwrap(),
+        json!([])
+    );
+    // An unauthenticated explicit-email query keeps the configured public API.
+    assert_eq!(
+        service
+            .list_user_invitations("", false, Some("missing@fixture.test"), now)
+            .await
+            .unwrap(),
+        json!([])
+    );
 }
 
 #[tokio::test]
@@ -979,6 +1032,16 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .unwrap();
     exercise_large_unique_lookups(Arc::new(bulk.clone())).await;
     exercise_large_session_tokens(Arc::new(bulk.clone())).await;
+    sqlx::query("ANALYZE fl_better_auth.unique_claims")
+        .execute(&owner)
+        .await
+        .unwrap();
+    let plan: Value = sqlx::query_scalar("EXPLAIN (FORMAT JSON) DELETE FROM fl_better_auth.unique_claims WHERE tenant_id=$1 AND model='session' AND id='indexed-session-4098'")
+        .bind(bulk_tenant.id()).fetch_one(&owner).await.unwrap();
+    assert!(
+        plan.to_string().contains("unique_claims_record"),
+        "record claim deletion should use the selective owner index: {plan}"
+    );
     // Emulate pre-index encrypted sessions, then rebuild all 4,099 live tokens
     // in bounded pages with a newly opened runtime store.
     sqlx::query("DELETE FROM fl_better_auth.unique_claims WHERE tenant_id=$1 AND model='session'")

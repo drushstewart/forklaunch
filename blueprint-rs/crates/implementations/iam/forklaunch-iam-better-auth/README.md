@@ -56,13 +56,16 @@ can traverse insertion-ordered 256-record pages within a transaction. Exact
 user/organization/session unique-field lookups use indexes. `find_page` also
 supports nonunique relationship fields with case-sensitive string matching:
 user IDs on sessions/accounts/members, account/provider IDs, organization IDs,
-team IDs, invitation emails, role names and verification identifiers. PostgreSQL
+team IDs/membership keys, invitation emails, role names and verification identifiers. PostgreSQL
 stores keyed blind indexes, including retained encryption keys; queries deduplicate
 rotated-key matches and recheck decrypted fields before returning rows. Memory
 maintains equivalent ordered indexes inside the transaction snapshot.
 
 Migration `0003_relation_indexes.sql` adds the forced-RLS `lookup_claims` table;
 grant the restricted runtime role its SELECT/INSERT/UPDATE/DELETE privileges.
+Migration `0004_unique_claim_record_index.sql` indexes unique claims by record
+owner, making replacement/backfill and foreign-key deletion use a selective
+index instead of scanning a tenant's claims.
 Opening the store rebuilds legacy relationship indexes in bounded pages under
 the tenant write lock; this startup cost scales with the existing dataset.
 Deploy index-aware writers together, since old binaries do not maintain these
@@ -72,9 +75,10 @@ organization membership checks/listing now use scoped indexes. Member listing,
 mutations, organization deletion/full graphs, dynamic roles, invitation membership
 guards and application role/permission surfacing also use scoped relationship
 queries. Stored legacy non-string organization values retain JSON equality through
-a paged fallback; valid string relationships use indexes. Remaining team/provider/
-verification/compliance handlers still require migration before claiming scalable
-production parity.
+a paged fallback; valid string relationships use indexes. Team reads/mutations,
+membership-key/pair lookup and invitation listing/creation also use scoped indexes.
+Remaining provider/verification/compliance handlers still require migration before
+claiming scalable production parity.
 
 `keyring::KeyRing` initializes keys atomically, selects the newest live key,
 restores private keys from storage, rotates keys through trusted operator calls,

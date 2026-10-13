@@ -63,8 +63,7 @@ impl<S: AuthStore> OrganizationService<S> {
             ));
         }
         input::ensure_not_member(&mut tx, org, &email).await?;
-        let pending = tx
-            .list(Model::Invitation)
+        let pending = crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
             .await?
             .into_iter()
             .filter(|row| {
@@ -89,8 +88,7 @@ impl<S: AuthStore> OrganizationService<S> {
             tx.commit().await?;
             return Ok(pending);
         }
-        if tx
-            .list(Model::Invitation)
+        if crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
             .await?
             .iter()
             .filter(|row| row["organizationId"] == org && row["status"] == "pending")

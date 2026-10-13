@@ -10,15 +10,17 @@ pub(in crate::organizations) async fn add<T: AuthTransaction>(
     let id = text(&team, "id")?.to_owned();
     let pair = serde_json::to_vec(&json!([id, user])).map_err(|_| super::super::internal())?;
     let key = URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &pair).as_ref());
-    let rows = tx.list(Model::TeamMember).await?;
-    if let Some(existing) = rows
-        .iter()
-        .find(|row| row["membershipKey"] == key)
-        .or_else(|| {
-            rows.iter()
-                .find(|row| row["teamId"] == id && row["userId"] == user)
-        })
+    if let Some(existing) = tx
+        .find_page(Model::TeamMember, "membershipKey", &key, None, 1)
+        .await?
+        .records
+        .into_iter()
+        .next()
     {
+        return Ok(existing);
+    }
+    let rows = crate::store::find_all(tx, Model::TeamMember, "teamId", &id).await?;
+    if let Some(existing) = rows.iter().find(|row| row["userId"] == user) {
         return Ok(existing.clone());
     }
     let actual = i64::try_from(rows.iter().filter(|row| row["teamId"] == id).count())

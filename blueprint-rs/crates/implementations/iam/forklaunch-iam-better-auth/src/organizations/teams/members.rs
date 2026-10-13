@@ -44,12 +44,12 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let mut team = authorized_team(&mut tx, &view, body, true).await?;
-        let rows: Vec<_> = tx
-            .list(Model::TeamMember)
-            .await?
-            .into_iter()
-            .filter(|row| row["teamId"] == body["teamId"] && row["userId"] == body["userId"])
-            .collect();
+        let rows: Vec<_> =
+            crate::store::find_all(&mut tx, Model::TeamMember, "teamId", text(body, "teamId")?)
+                .await?
+                .into_iter()
+                .filter(|row| row["teamId"] == body["teamId"] && row["userId"] == body["userId"])
+                .collect();
         if rows.is_empty() {
             return Err(no_team_member());
         }

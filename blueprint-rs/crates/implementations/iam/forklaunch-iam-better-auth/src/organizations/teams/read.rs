@@ -34,8 +34,7 @@ impl<S: AuthStore> OrganizationService<S> {
                 "You are not allowed to access this organization as an owner",
             ));
         }
-        let teams: Vec<_> = tx
-            .list(Model::Team)
+        let teams: Vec<_> = crate::store::find_all(&mut tx, Model::Team, "organizationId", id)
             .await?
             .into_iter()
             .filter(|row| row["organizationId"] == id)
@@ -79,8 +78,7 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             return Err(no_team_member());
         }
-        let rows: Vec<_> = tx
-            .list(Model::TeamMember)
+        let rows: Vec<_> = crate::store::find_all(&mut tx, Model::TeamMember, "teamId", id)
             .await?
             .into_iter()
             .filter(|row| row["teamId"] == id)

@@ -46,11 +46,12 @@ async fn team_member<T: AuthTransaction>(
     team: &str,
     user: &str,
 ) -> BlueprintResult<bool> {
-    Ok(tx
-        .list(Model::TeamMember)
-        .await?
-        .iter()
-        .any(|row| row["teamId"] == team && row["userId"] == user))
+    Ok(
+        crate::store::find_all(tx, Model::TeamMember, "teamId", team)
+            .await?
+            .iter()
+            .any(|row| row["teamId"] == team && row["userId"] == user),
+    )
 }
 async fn joined_member<T: AuthTransaction>(
     tx: &mut T,
@@ -64,8 +65,7 @@ async fn joined_member<T: AuthTransaction>(
 }
 async fn user_teams<T: AuthTransaction>(tx: &mut T, user: &str) -> BlueprintResult<Vec<Value>> {
     let mut result = Vec::new();
-    for row in tx
-        .list(Model::TeamMember)
+    for row in crate::store::find_all(tx, Model::TeamMember, "userId", user)
         .await?
         .into_iter()
         .filter(|row| row["userId"] == user)
