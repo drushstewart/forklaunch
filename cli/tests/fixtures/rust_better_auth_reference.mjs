@@ -118,6 +118,20 @@ export async function betterAuthReference(root, options = {}) {
     },
   });
   if (options.rateLimit) config.rateLimit = options.rateLimit;
+  const rateLimitPluginCalls = [];
+  if (options.rateLimitPlugins) {
+    config.plugins.push(...options.rateLimitPlugins.map((rule, index) => ({
+      id: `fixture-rate-limit-${index}`,
+      rateLimit: [{
+        window: rule.window,
+        max: rule.max,
+        pathMatcher: path => {
+          rateLimitPluginCalls.push({ index, path });
+          return path.startsWith(rule.prefix);
+        },
+      }],
+    })));
+  }
   const previousSecret = process.env.BETTER_AUTH_SECRET;
   const previousSecrets = process.env.BETTER_AUTH_SECRETS;
   delete process.env.BETTER_AUTH_SECRETS;
@@ -237,6 +251,7 @@ export async function betterAuthReference(root, options = {}) {
     return result;
   }
   return {
+    rateLimitPluginCalls,
     auth,
     config,
     database,

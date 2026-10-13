@@ -89,6 +89,20 @@ impl std::fmt::Debug for Callback {
 pub struct AuthRateLimitOptions {
     default: AuthRateLimitRule,
     overrides: Vec<PathRule>,
+    plugin_rules: Vec<PluginRule>,
+}
+#[derive(Clone)]
+struct PluginRule {
+    matcher: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+    rule: AuthRateLimitRule,
+}
+impl std::fmt::Debug for PluginRule {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PluginRateLimitRule")
+            .field("rule", &self.rule)
+            .finish_non_exhaustive()
+    }
 }
 #[derive(Clone, Debug)]
 struct PathRule {
@@ -105,10 +119,26 @@ impl Default for AuthRateLimitOptions {
                 max: 100,
             },
             overrides: Vec::new(),
+            plugin_rules: Vec::new(),
         }
     }
 }
 impl AuthRateLimitOptions {
+    /// Adds a plugin rule in plugin/registration order. The first matching
+    /// plugin rule overrides the default and sensitive-endpoint rules, before
+    /// custom static or asynchronous rules are evaluated.
+    #[must_use]
+    pub fn with_plugin_rule(
+        mut self,
+        rule: AuthRateLimitRule,
+        matcher: impl Fn(&str) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.plugin_rules.push(PluginRule {
+            matcher: Arc::new(matcher),
+            rule,
+        });
+        self
+    }
     #[must_use]
     pub fn with_default(mut self, rule: AuthRateLimitRule) -> Self {
         self.default = rule;
@@ -187,7 +217,7 @@ impl AuthRateLimitOptions {
         }
     }
     /// Registers an asynchronous exact or wildcard request rule. The callback
-    /// receives the effective built-in/default rule and runs before any counter
+    /// receives the effective plugin/built-in/default rule and runs before any counter
     /// lock is acquired. Only the first matching custom rule is evaluated.
     ///
     /// # Errors
@@ -214,6 +244,13 @@ impl AuthRateLimitOptions {
         Ok(options)
     }
     fn baseline(&self, path: &str) -> AuthRateLimitRule {
+        if let Some(plugin) = self
+            .plugin_rules
+            .iter()
+            .find(|plugin| (plugin.matcher)(path))
+        {
+            return plugin.rule;
+        }
         Rule::special(path).map_or(self.default, |rule| AuthRateLimitRule {
             window_seconds: u32::try_from(rule.window_ms / 1000)
                 .expect("fixed sensitive rule window"),
@@ -243,8 +280,11 @@ impl AuthRateLimitOptions {
         })
     }
     fn for_path(&self, path: &str) -> Option<Rule> {
+        // Upstream evaluates plugin predicates even when a static custom rule
+        // ultimately overrides the result.
+        let baseline = self.baseline(path).rule();
         self.matching(path).map_or_else(
-            || Some(self.baseline(path).rule()),
+            || Some(baseline),
             |entry| entry.rule.map(AuthRateLimitRule::rule),
         )
     }
@@ -558,6 +598,41 @@ mod tests {
                     .is_err()
             );
         }
+    }
+    #[tokio::test]
+    async fn plugin_order_precedes_custom_rules_and_supplies_callback_defaults() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = calls.clone();
+        let options = AuthRateLimitOptions::default()
+            .with_plugin_rule(AuthRateLimitRule::new(5, 1).unwrap(), move |path| {
+                observed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                path.starts_with("/sign-in")
+            })
+            .with_plugin_rule(AuthRateLimitRule::new(6, 2).unwrap(), |_| true)
+            .with_exact_path("/sign-up/email", None)
+            .unwrap()
+            .with_dynamic_path("/sign-in/email", |_, baseline| async move {
+                assert_eq!(baseline.window_seconds(), 5);
+                assert_eq!(baseline.max_requests(), 1);
+                Ok(AuthRateLimitDecision::UseDefault)
+            })
+            .unwrap();
+        assert_eq!(options.for_path("/ok").unwrap().max, 2);
+        assert_eq!(options.for_path("/sign-in/social").unwrap().max, 1);
+        assert!(options.for_path("/sign-up/email").is_none());
+        let rule = options
+            .resolve(AuthRateLimitRequest {
+                method: Method::POST,
+                uri: "/sign-in/email".parse().unwrap(),
+                path: "/sign-in/email".into(),
+                headers: HeaderMap::new(),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(rule.window_ms, 5000);
+        assert_eq!(rule.max, 1);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 4);
     }
     #[tokio::test]
     async fn async_rules_preserve_atomicity_and_run_without_counter_locks() {

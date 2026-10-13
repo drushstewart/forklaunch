@@ -74,12 +74,14 @@ matching custom rule wins, including when exact and wildcard rules overlap;
 replacing a rule retains its position. Patterns compile at configuration time.
 `with_rate_limiting` controls enablement separately (production by default).
 `with_dynamic_path` registers an asynchronous rule receiving request method,
-original URI, normalized auth-relative path, headers, and the effective default
-or sensitive-endpoint rule. Return `UseDefault`, `Disable`, or `Limit(rule)`.
+original URI, normalized auth-relative path, headers, and the effective plugin,
+default or sensitive-endpoint rule. Return `UseDefault`, `Disable`, or `Limit(rule)`.
 Only the first matching custom rule runs. Callbacks execute before the atomic
 counter lock; errors fail closed with a generic authentication error. Request
-bodies remain available to downstream handlers. Body-reading callbacks, plugin
-rate-limit registrations and external rate limit storage remain unsupported.
+bodies remain available to downstream handlers. `with_plugin_rule` registers a
+positive limit and a path predicate; register rules in plugin order. The first
+matching plugin rule overrides built-in limits before custom rules run.
+Body-reading callbacks and external rate limit storage remain unsupported.
 
 The [engineering security review](../plan/RUST-SECURITY-REVIEW.md) records verified
 auth/crypto boundaries, fixed findings and the exact remaining dependency notices.

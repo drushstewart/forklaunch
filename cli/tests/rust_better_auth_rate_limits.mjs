@@ -12,7 +12,8 @@ process.env.NODE_ENV = 'production';
 const rateLimit = process.env.FORKLAUNCH_AUTH_RATE_LIMIT
   ? JSON.parse(process.env.FORKLAUNCH_AUTH_RATE_LIMIT) : undefined;
 const referenceRateLimit = rateLimit && {
-  ...rateLimit,
+  window: rateLimit.window,
+  max: rateLimit.max,
   customRules: Object.fromEntries(Object.entries(rateLimit.customRules).map(([path, rule]) => [path,
     rule?.callback ? async (request, baseline) => {
       await Promise.resolve();
@@ -22,7 +23,7 @@ const referenceRateLimit = rateLimit && {
     } : rule,
   ])),
 };
-const reference = await betterAuthReference(root, { rateLimit: referenceRateLimit });
+const reference = await betterAuthReference(root, { rateLimit: referenceRateLimit, rateLimitPlugins: rateLimit?.pluginRules });
 const context = await reference.auth.$context;
 assert.equal(context.rateLimit.enabled, true);
 assert.equal(context.rateLimit.window, rateLimit?.window ?? 10);
@@ -175,7 +176,8 @@ const run = spawnSync(
     input:
       cases
         .map((test) => JSON.stringify({ op: 'request', ...test }))
-        .join('\n') + '\n',
+        .join('\n') + '\n' + (rateLimit?.pluginRules
+          ? JSON.stringify({ op: 'ratePluginCalls', now: start }) + '\n' : ''),
   },
 );
 assert.equal(run.status, 0, run.stderr);
@@ -183,6 +185,10 @@ const actual = run.stdout
   .trim()
   .split('\n')
   .map((line) => JSON.parse(line));
+if (rateLimit?.pluginRules) {
+  assert.deepEqual(actual.pop(), reference.rateLimitPluginCalls,
+    'Plugin predicate order must match even when custom rules override the limit');
+}
 assert.equal(actual.length, cases.length);
 const mismatches = [];
 for (let i = 0; i < cases.length; i++) {
@@ -216,13 +222,21 @@ if (!rateLimit) {
     { '/sign-in/e*?': { window: 3, max: 1 }, '/sign-in/**': false, '/sign-up/*': { window: 8, max: 2 } },
     { '/sign-in/*': { callback: true }, '/**': { callback: true } },
     { '/sign-in/email': false, '/**': { callback: true } },
-  ];
-  for (const customRules of configs) {
+  ].map(customRules => ({ customRules }));
+  configs.push(
+    { customRules: { '/sign-up/email': false }, pluginRules: [
+      { prefix: '/sign-in', window: 5, max: 1 }, { prefix: '/', window: 6, max: 2 },
+    ] },
+    { customRules: { '/**': { callback: true } }, pluginRules: [
+      { prefix: '/', window: 6, max: 2 }, { prefix: '/sign-in', window: 5, max: 1 },
+    ] },
+  );
+  for (const config of configs) {
     const configured = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
       cwd: root,
       env: {
         ...process.env,
-        FORKLAUNCH_AUTH_RATE_LIMIT: JSON.stringify({ window: 7, max: 2, customRules }),
+        FORKLAUNCH_AUTH_RATE_LIMIT: JSON.stringify({ window: 7, max: 2, ...config }),
       },
       encoding: 'utf8',
     });

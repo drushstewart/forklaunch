@@ -29,6 +29,7 @@ async fn main() {
     let store = Arc::new(MemoryAuthStore::default());
     let clock = Arc::new(AtomicI64::new(0));
     let server_clock = clock.clone();
+    let plugin_calls = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
     let router = AuthHttp::new(
         store.clone(),
         std::env::var("FORKLAUNCH_AUTH_BASE_URL")
@@ -57,6 +58,19 @@ async fn main() {
             .unwrap()
         };
         let mut options = AuthRateLimitOptions::default().with_default(rule(&config));
+        if let Some(plugins) = config["pluginRules"].as_array() {
+            for (index, plugin) in plugins.iter().enumerate() {
+                let prefix = plugin["prefix"].as_str().unwrap().to_owned();
+                let calls = plugin_calls.clone();
+                options = options.with_plugin_rule(rule(plugin), move |path| {
+                    calls
+                        .lock()
+                        .unwrap()
+                        .push(json!({ "index": index, "path": path }));
+                    path.starts_with(&prefix)
+                });
+            }
+        }
         for (path, value) in config["customRules"].as_object().unwrap() {
             if value["callback"] == true {
                 options = options
@@ -124,6 +138,7 @@ async fn main() {
         let input: Value = literal_json::parse(&line.unwrap()).unwrap();
         clock.store(input["now"].as_i64().unwrap(), Ordering::SeqCst);
         let result = match input["op"].as_str().unwrap() {
+            "ratePluginCalls" => json!(*plugin_calls.lock().unwrap()),
             "seed" | "replace-seed" => seed(&store, &input).await,
             "records" => records(&store, &input).await,
             "seed-keys" => {

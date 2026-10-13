@@ -3604,3 +3604,23 @@ Callback validation receipt: the existing 39 auth tests pass, and all seven focu
 rate-limit regressions pass after correcting the new privacy test's router mount.
 Strict all-feature/all-target clippy and the 1,485-case HTTP fixture pass. The
 PostgreSQL-specific unit test remains explicitly ignored in the portable suite.
+
+
+Native plugin rate rules now accept ordered path predicates and positive limits.
+The first matching plugin rule overrides built-in sensitive/default rules; the
+first matching custom rule can override it, and asynchronous custom callbacks
+receive the effective plugin window/budget. The expanded fixture passes 1,947
+actual Better Auth HTTP comparisons, including reversed plugin ordering, custom
+disablement and callback inheritance. Body-reading callbacks and external counter
+stores remain open; this does not claim complete Better Auth plugin support.
+
+Plugin-rule validation receipt: all 41 portable native auth tests pass, with the
+PostgreSQL-specific unit test explicitly ignored. The final eight focused rate
+regressions, strict all-feature/all-target clippy, and 1,947 HTTP comparisons pass;
+plugin predicate call traces also match actual Better Auth, including static
+custom overrides. Fresh generated run `IxtPZO` passes restricted-role PostgreSQL,
+eight blueprint/generated frontend-client scenarios, both SDKs, HTTP/MCP
+shared/separate/disabled listeners, Origin rejection, restart/shutdown,
+relocation/preservation, rename and deletion. The final predicate-order adjustment
+was checked with native regressions and actual-library traces after that generated
+run; the checkout CLI was rebuilt with the final sources.
