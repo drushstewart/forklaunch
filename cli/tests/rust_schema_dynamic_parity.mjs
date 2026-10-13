@@ -1,0 +1,54 @@
+// Compare the actual SDK graph compiler with independent AJV 2020-12 evaluation.
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const require=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES ?? root,'package.json'));
+const Ajv=require('ajv/dist/2020').default;
+const node=(id,type)=>({$id:id,$dynamicAnchor:'node',type:'object',additionalProperties:false,required:['value'],properties:{value:{type},next:{$ref:'base'}}});
+const schema={
+ $schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/root',type:'object',additionalProperties:false,
+ properties:{left:{$ref:'a'},right:{$ref:'b'}},$defs:{
+  A:node('a','string'),B:node('b','integer'),
+  Base:{$id:'base',$dynamicAnchor:'node',type:'object',additionalProperties:false,properties:{child:{$dynamicRef:'#node'},static:{$ref:'#node'}}}
+ }
+};
+const fixtures=[
+ {schema,cases:[
+  [{},true],[{left:{value:'a'}},true],[{left:{value:1}},false],
+  [{right:{value:1}},true],[{right:{value:'a'}},false],
+  [{left:{value:'a',next:{child:{value:'b'}}}},true],
+  [{left:{value:'a',next:{child:{value:1}}}},false],
+  [{right:{value:1,next:{child:{value:2}}}},true],
+  [{right:{value:1,next:{child:{value:'b'}}}},false],
+  [{left:{value:'a',next:{static:{}}}},true],
+  [{left:{value:'a',next:{static:{value:'b'}}}},false],
+  [{left:{value:'a',next:{static:{child:{value:'b'}}}}},true],
+  // AJV currently leaks the first sibling's dynamic binding into the second.
+  [{left:{value:'a'},right:{value:1,next:{child:{value:2,next:{child:{value:3}}}}}},true,false],
+ ]},
+ {schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/static-root',$dynamicAnchor:'node',$ref:'target#node',$defs:{Target:{$id:'target',$dynamicAnchor:'node',type:'string'}}},cases:[['value',true],[1,false]]},
+ {ajvUnsupported:true,schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/pointer-root',$dynamicAnchor:'node',$dynamicRef:'target#/$defs/Value',$defs:{Target:{$id:'target',$dynamicAnchor:'node',$defs:{Value:{type:'integer'}}}}},cases:[[1,true],['value',false]]},
+ {schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/plain-root',$dynamicAnchor:'node',type:'object',properties:{next:{$dynamicRef:'#plain'}},$defs:{Value:{$anchor:'plain',type:'string'}}},cases:[[{next:'value'},true,false],[{next:{}},false,true]]},
+ {ajvUnsupported:true,schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/uri-root',$dynamicAnchor:'node',type:'object',properties:{next:{$dynamicRef:'target#node'}},$defs:{Target:{$id:'target',$dynamicAnchor:'node',type:'string'}}},cases:[[{next:{}},true],[{next:'value'},false]]},
+];
+const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
+let count=0, differences=0, unsupported=0;
+for(let i=0;i<fixtures.length;i++) {
+ let original;
+ if(fixtures[i].ajvUnsupported) {
+  assert.throws(()=>new Ajv({strict:false}).compile(fixtures[i].schema),/only supports hash fragment reference/);
+  unsupported+=fixtures[i].cases.length;
+ } else { original=new Ajv({strict:false}).compile(fixtures[i].schema); }
+ const compiled=new Ajv({strict:false}).compile(bundled[i].schema);
+ for(const [index,[value,valid,ajvValid=valid]]of fixtures[i].cases.entries()) {
+  assert.equal(bundled[i].original[index],valid,`Native original ${i}/${index}`);
+  assert.equal(bundled[i].compiled[index],valid,`Native compiled ${i}/${index}`);
+  if(original) assert.equal(original(value),ajvValid,`AJV fixture ${i}: ${JSON.stringify(value)} ${JSON.stringify(original.errors)}`);
+  assert.equal(compiled(value),valid,`SDK graph fixture ${i}: ${JSON.stringify(value)} ${JSON.stringify(compiled.errors)}`);
+  count++; if(valid!==ajvValid) differences++;
+ }
+}
+console.log(`PASS ${count} native/SDK dynamic-scope cases, ${count-differences-unsupported} independent AJV agreements, ${differences} recorded AJV scope/anchor differences and ${unsupported} AJV-unsupported URI cases`);

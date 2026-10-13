@@ -29,6 +29,7 @@ resolver = "3"
 
 [features]
 forklaunch-ajv-pointer-decoding = []
+forklaunch-static-anchor-resolution = []
 default = []
 retrieve-async = [
     "dep:async-trait",

@@ -2640,3 +2640,49 @@ Evidence: `fl-resource-dialects-generated.log` (three complete passes),
 also pass (`fl-resource-dialects-cli-tests.log`, `fl-resource-dialects-format.log`).
 Dynamic/recursive references, ID fragments,
 resource/literal contexts and WebSocket relocation remain open; count unchanged.
+
+
+### 2026-10-13 — HTTP SDK dynamic schema scope and native anchor correctness
+
+The shared CLI/native graph compiler now supports explicit 2020-12
+`$dynamicAnchor`/`$dynamicRef` resources. Each reference model is identified by
+its target and inherited dynamic bindings, so the same base resource can safely
+specialize under independent string/integer recursive roots. Static references
+remain static; dynamic references whose initial target is a plain anchor or
+JSON pointer retain static resolution. Binding copies use the existing byte
+budget. Missing/older dialect declarations and WebSocket dynamic imports fail
+explicitly instead of producing models that disagree with runtime validation.
+
+The native validator's opt-in `forklaunch-static-anchor-resolution` correction
+prevents ordinary `$ref` from dynamically rebinding and isolates named-reference
+cache entries by actual resolved target. Pointer aliases retain their upstream
+behavior. Provenance and CI cover the feature; all 1,993 feature-enabled and
+1,992 default vendor validator tests pass, along with 150 referencing tests.
+The one existing archive-missing Git-submodule test remains explicitly skipped.
+
+`rust_schema_dynamic_parity.mjs` drives the actual private graph compiler and
+native validator: 21 native/original and bundled-schema checks pass, including
+recursive context specialization, static-vs-dynamic targets, plain anchors and
+URI/pointer fallback. AJV 8.20 agrees on 14 checks. Three recorded results expose
+AJV sibling-scope leakage / plain-anchor rebinding, and four URI-reference checks
+hit AJV's explicit fragment-only limitation. These are documented differences,
+not reported as AJV parity. Expected behavior follows
+[JSON Schema 2020-12 §8.2.3.2](https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-01#section-8.2.3.2).
+
+Broader regression: 13,908 actual TypeScript/AJV/native codec checks pass;
+30 shared compiler, 5 Rust generator, 8 TypeScript generator, 18 codec and
+7 transport unit/integration tests pass; all 1,087 CLI tests, strict native
+clippy and framework formatting pass. CLI packaging includes all 890 expected
+source/template files. Generated dynamic schemas pass both SDK languages,
+both contract/OpenAPI imports, both native generators, strict Rust client lint,
+and real HTTP/MCP startup, discovery, calls and graceful shutdown.
+Evidence: `fl-resource-dynamic-{ajv,ws-parity,native,final-unit,cli-tests,clippy,format,package,generated,vendor-tests,upstream,referencing}.log`.
+
+Checklist remains **651/682 (95.5%), 31 open**. The broad resource gate still
+includes 2019-09 recursive references, legacy ID fragments, resource/literal
+contexts and WebSocket resource-aware relocation; this batch does not close it.
+
+The combined generated resource suite also passes all four variants (static,
+legacy, mixed and dynamic), recorded in `fl-resource-dynamic-regression.log`.
+Strict all-feature framework API docs pass and the security audit reports no
+unexpected advisories (`fl-resource-dynamic-docs.log`, `fl-resource-dynamic-audit.log`).

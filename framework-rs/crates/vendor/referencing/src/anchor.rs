@@ -35,6 +35,17 @@ impl<'a> Anchor<'a> {
 }
 
 impl<'r> Anchor<'r> {
+    pub(crate) fn resolve_static(&self, resolver: Resolver<'r>) -> Result<Resolved<'r>, Error> {
+        let resource = match self {
+            Anchor::Default { resource, .. } | Anchor::Dynamic { resource, .. } => resource,
+        };
+        Ok(Resolved::new(
+            resource.contents(),
+            resolver,
+            resource.draft(),
+        ))
+    }
+
     /// Get the resource for this anchor.
     pub(crate) fn resolve(&self, resolver: Resolver<'r>) -> Result<Resolved<'r>, Error> {
         match self {

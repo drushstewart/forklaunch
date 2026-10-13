@@ -7,6 +7,8 @@ use url::Url;
 
 const ROOT: &str = "https://forklaunch.invalid/__document__";
 
+pub(super) type Bindings = BTreeMap<String, String>;
+
 pub(super) struct Resources {
     scopes: BTreeMap<usize, String>,
     dialects: BTreeMap<usize, String>,
@@ -15,6 +17,7 @@ pub(super) struct Resources {
     has_ids: bool,
     roots: BTreeMap<String, String>,
     anchors: BTreeMap<String, String>,
+    dynamic: BTreeMap<String, Bindings>,
 }
 impl Resources {
     #[allow(clippy::too_many_lines)]
@@ -36,6 +39,7 @@ impl Resources {
             has_ids: false,
             roots: BTreeMap::from([(ROOT.into(), String::new())]),
             anchors: BTreeMap::new(),
+            dynamic: BTreeMap::new(),
         };
         let mut pending = vec![(
             document,
@@ -101,29 +105,46 @@ impl Resources {
                     result
                         .scopes
                         .insert(std::ptr::from_ref(value) as usize, base.clone());
-                    if let Some(anchor) = object.get("$anchor") {
-                        if ["draft-04", "draft-06", "draft-07"]
-                            .iter()
-                            .any(|draft| dialect.contains(draft))
-                        {
-                            bail!("$anchor is unavailable in the selected schema dialect");
-                        }
-                        let anchor = anchor.as_str().context("Schema anchor must be a string")?;
-                        let mut bytes = anchor.bytes();
-                        if !bytes
-                            .next()
-                            .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
-                            || !bytes.all(|b| b.is_ascii_alphanumeric() || b"-._".contains(&b))
-                        {
-                            bail!("Invalid schema anchor name");
-                        }
-                        budget.bytes = budget
-                            .bytes
-                            .checked_sub(base.len() + anchor.len() + pointer.len())
-                            .context("SDK schema resource index exceeds 32 MiB")?;
-                        let key = format!("{base}#{anchor}");
-                        if result.anchors.insert(key, pointer.clone()).is_some() {
-                            bail!("Duplicate schema anchor");
+                    for keyword in ["$anchor", "$dynamicAnchor"] {
+                        if let Some(anchor) = object.get(keyword) {
+                            if keyword == "$dynamicAnchor" && !dialect.contains("2020-12") {
+                                bail!("$dynamicAnchor requires the 2020-12 dialect");
+                            }
+                            if ["draft-04", "draft-06", "draft-07"]
+                                .iter()
+                                .any(|draft| dialect.contains(draft))
+                            {
+                                bail!("$anchor is unavailable in the selected schema dialect");
+                            }
+                            let anchor =
+                                anchor.as_str().context("Schema anchor must be a string")?;
+                            let mut bytes = anchor.bytes();
+                            if !bytes
+                                .next()
+                                .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+                                || !bytes.all(|b| b.is_ascii_alphanumeric() || b"-._".contains(&b))
+                            {
+                                bail!("Invalid schema anchor name");
+                            }
+                            budget.bytes = budget
+                                .bytes
+                                .checked_sub(base.len() + anchor.len() + pointer.len())
+                                .context("SDK schema resource index exceeds 32 MiB")?;
+                            let key = format!("{base}#{anchor}");
+                            if result.anchors.insert(key, pointer.clone()).is_some() {
+                                bail!("Duplicate schema anchor");
+                            }
+                            if keyword == "$dynamicAnchor" {
+                                budget.bytes = budget
+                                    .bytes
+                                    .checked_sub(base.len() + anchor.len() + pointer.len())
+                                    .context("SDK schema resource index exceeds 32 MiB")?;
+                                result
+                                    .dynamic
+                                    .entry(base.clone())
+                                    .or_default()
+                                    .insert(anchor.into(), pointer.clone());
+                            }
                         }
                     }
                 }
@@ -243,6 +264,63 @@ impl Resources {
         Ok(())
     }
 
+    pub(super) fn bindings(
+        &self,
+        schema: &Value,
+        inherited: &Bindings,
+        budget: &mut ExpansionBudget,
+    ) -> Result<Bindings> {
+        for (name, pointer) in inherited {
+            budget.bytes = budget
+                .bytes
+                .checked_sub(name.len() + pointer.len())
+                .context("SDK dynamic schema context exceeds 32 MiB")?;
+        }
+        let mut bindings = inherited.clone();
+        if let Some(anchors) = self.dynamic.get(self.base(schema)) {
+            for (name, pointer) in anchors {
+                if !bindings.contains_key(name) {
+                    budget.bytes = budget
+                        .bytes
+                        .checked_sub(name.len() + pointer.len())
+                        .context("SDK dynamic schema context exceeds 32 MiB")?;
+                    bindings.insert(name.clone(), pointer.clone());
+                }
+            }
+        }
+        Ok(bindings)
+    }
+
+    fn base(&self, schema: &Value) -> &str {
+        self.scopes
+            .get(&(std::ptr::from_ref(schema) as usize))
+            .map_or(self.default_base.as_str(), String::as_str)
+    }
+
+    pub(super) fn dynamic_pointer(
+        &self,
+        schema: &Value,
+        reference: &str,
+        bindings: &Bindings,
+    ) -> Result<String> {
+        let pointer = self.pointer(schema, reference)?;
+        let mut uri = resolve(self.base(schema), reference)?;
+        let fragment = percent_encoding::percent_decode_str(uri.fragment().unwrap_or(""))
+            .decode_utf8()
+            .context("Schema reference fragment must be UTF-8")?
+            .into_owned();
+        uri.set_fragment(None);
+        if self
+            .dynamic
+            .get(uri.as_str())
+            .is_some_and(|anchors| anchors.contains_key(&fragment))
+            && let Some(target) = bindings.get(&fragment)
+        {
+            return Ok(target.clone());
+        }
+        Ok(pointer)
+    }
+
     pub(super) fn pointer(&self, schema: &Value, reference: &str) -> Result<String> {
         let base = self
             .scopes
@@ -293,6 +371,36 @@ fn resolve(base: &str, reference: &str) -> Result<Url> {
 mod tests {
     use super::super::{DEFINITIONS, ExpansionBudget, REFERENCE, bundle, normalize};
     use serde_json::json;
+
+    #[test]
+    fn dynamic_recursion_requires_an_explicit_supported_dialect() {
+        let schema = json!({"$schema":"https://json-schema.org/draft/2020-12/schema", "$dynamicAnchor":"node",
+            "type":"object", "properties":{"next":{"$dynamicRef":"#node"}}});
+        let compiled = bundle(&schema, &schema, &mut ExpansionBudget::default()).unwrap();
+        assert!(compiled["properties"]["next"]["$ref"].is_string());
+        for dialect in [
+            None,
+            Some("http://json-schema.org/draft-07/schema#"),
+            Some("https://json-schema.org/draft/2019-09/schema"),
+        ] {
+            let mut invalid = schema.clone();
+            if let Some(dialect) = dialect {
+                invalid["$schema"] = json!(dialect);
+            } else {
+                invalid.as_object_mut().unwrap().remove("$schema");
+            }
+            assert!(normalize(&invalid, "Rejected").is_err());
+        }
+        assert!(
+            super::super::bundle_with_resource_policy(
+                &schema,
+                &schema,
+                &mut ExpansionBudget::default(),
+                false
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn resource_roots_and_relative_ids_preserve_recursive_identity() {

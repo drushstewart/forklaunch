@@ -156,6 +156,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_routes.json'
       - 'cli/tests/rust_billing_contracts_parity.mjs'
       - 'cli/tests/rust_actual_validator_fixture.mjs'
+      - 'cli/tests/rust_schema_dynamic_parity.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
@@ -338,6 +339,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_routes.json'
       - 'cli/tests/rust_billing_contracts_parity.mjs'
       - 'cli/tests/rust_actual_validator_fixture.mjs'
+      - 'cli/tests/rust_schema_dynamic_parity.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
@@ -414,6 +416,8 @@ jobs:
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib --features forklaunch-ajv-pointer-decoding
       - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/jsonschema/Cargo.toml --locked --lib --no-default-features --features idna -- --skip validator::tests::validate_ref
+      - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/referencing/Cargo.toml --locked --lib --features forklaunch-static-anchor-resolution
+      - run: CARGO_TARGET_DIR=framework-rs/target cargo test --manifest-path framework-rs/crates/vendor/jsonschema/Cargo.toml --locked --lib --no-default-features --features 'idna forklaunch-static-anchor-resolution' -- --skip validator::tests::validate_ref
       - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-redis --all-features redis_backend -- --ignored
       - run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-infrastructure-s3 --all-features s3_backend -- --ignored
       - uses: actions/setup-node@v4
@@ -489,6 +493,9 @@ jobs:
       - run: node cli/tests/rust_sdk_body_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_schema_dynamic_parity.mjs
+        env:
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_ws_payload_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

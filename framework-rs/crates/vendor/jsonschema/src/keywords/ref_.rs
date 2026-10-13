@@ -281,7 +281,15 @@ fn compile_reference_validator<'a, F: Json>(
 
     let ref_suffix = ctx.suffix().join(keyword);
 
-    let resolved = match ctx.lookup(reference) {
+    #[cfg(feature = "forklaunch-static-anchor-resolution")]
+    let lookup = if keyword == "$ref" {
+        ctx.lookup_static(reference)
+    } else {
+        ctx.lookup(reference)
+    };
+    #[cfg(not(feature = "forklaunch-static-anchor-resolution"))]
+    let lookup = ctx.lookup(reference);
+    let resolved = match lookup {
         Ok(resolved) => resolved,
         Err(error) => return Some(Err(ValidationError::from(error))),
     };
@@ -308,6 +316,24 @@ fn compile_reference_validator<'a, F: Json>(
             Err(error) => return Some(Err(ValidationError::from(error))),
         }
     };
+
+    // Static and dynamic references with the same lexical URI may resolve to
+    // different resources. Cache the actual target identity, not that shared URI.
+    #[cfg(feature = "forklaunch-static-anchor-resolution")]
+    let alias = if is_named(&alias) {
+        let mut fragment = uri::EncodedBuffer::new();
+        fragment.encode_str::<uri::Path>(ref_target_base.as_str());
+        Arc::new(
+            resolved
+                .resolver()
+                .base_uri()
+                .with_fragment(Some(fragment.as_estr())),
+        )
+    } else {
+        alias
+    };
+    #[cfg(feature = "forklaunch-static-anchor-resolution")]
+    let reference = alias.as_str();
 
     // Direct self-reference - skip to avoid infinite recursion. This compares node identity
     // rather than URIs because the location pointer is relative to the enclosing document
@@ -2668,5 +2694,31 @@ mod tests {
             "5 is not of type \"string\"",
             "/$ref",
         );
+    }
+}
+
+#[cfg(all(test, feature = "forklaunch-static-anchor-resolution"))]
+mod forklaunch_static_anchor_tests {
+    use serde_json::json;
+
+    #[test]
+    fn static_and_dynamic_anchor_targets_do_not_share_a_cache_identity() {
+        let schema = json!({
+            "$schema":"https://json-schema.org/draft/2020-12/schema",
+            "$id":"https://schema.fixture.test/root", "$dynamicAnchor":"node",
+            "type":"object", "required":["value"], "properties":{
+                "value":{"type":"string"}, "next":{"$ref":"base"}
+            }, "$defs":{"Base":{
+                "$id":"base", "$dynamicAnchor":"node", "type":"object",
+                "additionalProperties":false, "properties":{
+                    "child":{"$dynamicRef":"#node"}, "static":{"$ref":"#node"}
+                }
+            }}
+        });
+        let validator = crate::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&json!({"value":"a","next":{"static":{}}})));
+        assert!(validator.is_valid(&json!({"value":"a","next":{"child":{"value":"b"}}})));
+        assert!(!validator.is_valid(&json!({"value":"a","next":{"static":{"value":"b"}}})));
+        assert!(!validator.is_valid(&json!({"value":"a","next":{"child":{}}})));
     }
 }

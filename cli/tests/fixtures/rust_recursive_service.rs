@@ -19,6 +19,14 @@ fn body(name: &str, schema: &str) -> BodyContract {
             value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("b#MutualB");
             value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("a#MutualA");
         }
+        if mode == "dynamic" && name == "Tree" {
+            value["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
+            value["$dynamicAnchor"] = json!("node");
+            for pointer in ["/properties/children/items", "/properties/parent/anyOf/0", "/properties/optional"] {
+                value.pointer_mut(pointer).unwrap().as_object_mut().unwrap().remove("$ref");
+                value.pointer_mut(pointer).unwrap()["$dynamicRef"] = json!("#node");
+            }
+        }
         if mode == "legacy" {
             value["$schema"] = json!("http://json-schema.org/draft-04/schema#");
             value["id"] = value.as_object_mut().unwrap().remove("$id").unwrap();

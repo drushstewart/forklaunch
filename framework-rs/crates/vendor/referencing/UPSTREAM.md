@@ -23,3 +23,14 @@ behavior remains the default. No schema documents or literal data are rewritten.
 Run standalone Cargo checks from the repository root with
 `CARGO_TARGET_DIR=framework-rs/target` so build artifacts stay outside vendored
 source and template directories.
+
+The optional `forklaunch-static-anchor-resolution` feature keeps `$ref` to a
+`$dynamicAnchor` static, while `$dynamicRef` still resolves through dynamic
+scope (JSON Schema 2020-12 §8.2.3.2). Native codecs opt in. The referencing
+resolver exposes `lookup_static`; the validator caches named references by
+their resolved target URI and pointer, so static and dynamically rebound targets
+do not share an incorrect cache entry. Pointer-reference aliases retain their
+upstream identity to preserve embedded-resource and recursive-reference behavior.
+A feature-gated regression covers static and dynamic references to the same
+anchor; the full upstream library suite also runs with the feature enabled.
+Default feature behavior remains unchanged.

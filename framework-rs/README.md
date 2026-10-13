@@ -450,13 +450,18 @@ base; pointer fragments address the selected resource, and `$anchor` names are
 scoped to that resource. Draft-4 `id` and embedded resources using different
 schema drafts retain their own keyword rules; legacy `const`/conditional
 annotations do not become modern constraints. Recursive URI/pointer aliases
-retain one model identity.
+retain one model identity. Explicit 2020-12 resources support `$dynamicAnchor`
+and `$dynamicRef`: outermost dynamic bindings specialize recursive models, while
+ordinary `$ref` stays static. Dynamic references to plain anchors or pointers
+retain static resolution. Missing dialect declarations do not enable dynamic
+keywords. Relative root IDs use the implementation's retrieval base
+`https://forklaunch.invalid/__document__`.
 No network fetch occurs during generation. Literal defaults/examples are not
 interpreted as resource declarations. The same depth/node/byte budgets apply to
 the resource index and model graph.
 
 This profile rejects duplicate IDs, missing resources, malformed IDs, nonempty
-ID fragments, dynamic/recursive references,
+ID fragments, 2019-09 recursive references,
 and resource-aware references into literal data/schema dictionaries. WebSocket
 SDK unions retain their existing resource-free profile until their relocation
 and dynamic scope are implemented. An explicit rejection is preferable to

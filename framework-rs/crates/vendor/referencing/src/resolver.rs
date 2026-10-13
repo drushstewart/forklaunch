@@ -66,6 +66,18 @@ impl<'r> Resolver<'r> {
     ///
     /// If the reference cannot be resolved or is invalid.
     pub fn lookup(&self, reference: &str) -> Result<Resolved<'r>, Error> {
+        self.lookup_with_mode(reference, true)
+    }
+
+    /// Resolve a static `$ref` without rebinding a dynamic anchor.
+    /// # Errors
+    /// Returns the same lookup errors as [`Self::lookup`].
+    #[cfg(feature = "forklaunch-static-anchor-resolution")]
+    pub fn lookup_static(&self, reference: &str) -> Result<Resolved<'r>, Error> {
+        self.lookup_with_mode(reference, false)
+    }
+
+    fn lookup_with_mode(&self, reference: &str, dynamic: bool) -> Result<Resolved<'r>, Error> {
         let (uri, fragment) = if let Some(reference) = reference.strip_prefix('#') {
             (self.base_uri.clone(), reference)
         } else {
@@ -94,6 +106,9 @@ impl<'r> Resolver<'r> {
         if !fragment.is_empty() {
             let retrieved = self.lookup_anchor(&uri, fragment)?;
             let resolver = self.evolve(uri);
+            if !dynamic {
+                return retrieved.resolve_static(resolver);
+            }
             return retrieved.resolve(resolver);
         }
 

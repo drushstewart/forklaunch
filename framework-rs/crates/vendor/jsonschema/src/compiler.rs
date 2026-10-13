@@ -467,6 +467,14 @@ impl<'a, F: Json> Context<'a, F> {
         self.resolver.lookup(reference)
     }
 
+    #[cfg(feature = "forklaunch-static-anchor-resolution")]
+    pub(crate) fn lookup_static(
+        &self,
+        reference: &str,
+    ) -> Result<Resolved<'a>, referencing::Error> {
+        self.resolver.lookup_static(reference)
+    }
+
     pub(crate) fn location_cache_key(&self) -> LocationCacheKey {
         LocationCacheKey {
             base_uri: self.resolver.base_uri(),
