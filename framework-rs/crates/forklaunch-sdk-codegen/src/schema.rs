@@ -95,13 +95,30 @@ pub(crate) fn bundle(
 #[allow(dead_code)] // Shared CLI module only uses model generation.
 pub(crate) fn scoped_runtime_schema(schema: &Value) -> Result<Value> {
     let mut budget = ExpansionBudget::default();
-    let resources = resources::Resources::index(schema, &mut budget)?;
+    let effective = standalone_runtime_schema(schema, &mut budget)?;
+    let resources = resources::Resources::index(&effective, &mut budget)?;
     if resources.needs_runtime_bundle() {
         resources.check_runtime_dialects()?;
-        bundle(schema, schema, &mut budget)
+        bundle(&effective, &effective, &mut budget)
     } else {
         clone_literal(schema, &mut budget)
     }
+}
+
+/// Standalone socket codecs default to Draft 7; HTTP model schemas retain
+/// their document's dialect policy. Never mutate caller-owned annotations.
+#[allow(dead_code)] // Shared CLI module only uses HTTP model generation.
+pub(crate) fn standalone_runtime_schema(
+    schema: &Value,
+    budget: &mut ExpansionBudget,
+) -> Result<Value> {
+    let mut effective = clone_literal(schema, budget)?;
+    if let Some(object) = effective.as_object_mut() {
+        object
+            .entry("$schema")
+            .or_insert_with(|| json!("http://json-schema.org/draft-07/schema#"));
+    }
+    Ok(effective)
 }
 
 #[allow(dead_code)] // The shared CLI copy does not import AsyncAPI documents.
@@ -250,9 +267,9 @@ impl Graph<'_> {
             self.resources = Some(resources::Resources::index(self.document, self.budget)?);
         }
         let resources = self.resources.as_ref().unwrap();
-        let dialect = resources.dialect(schema);
+        let dialect = resources.dialect(schema).to_owned();
         if self.runtime && (!dialect.is_empty() || !object.contains_key("$ref")) {
-            let dialect = resources::dialect_key(dialect);
+            let dialect = resources::dialect_key(&dialect);
             if self
                 .runtime_dialect
                 .as_deref()
@@ -270,7 +287,6 @@ impl Graph<'_> {
             }
         }
         let draft4 = dialect.contains("/draft-04/");
-        let draft6 = dialect.contains("/draft-06/");
         let resource_key = if draft4 { "id" } else { "$id" };
         if object.contains_key(resource_key) {
             if !self.resource_ids {
@@ -392,19 +408,7 @@ impl Graph<'_> {
             }
             // Older dialects treat later validation keywords as annotations.
             // Keep literal data intact; only schema positions pass through visit.
-            if (draft4 && matches!(key.as_str(), "const" | "contains" | "propertyNames"))
-                || ((draft4 || draft6)
-                    && matches!(
-                        key.as_str(),
-                        "if" | "then"
-                            | "else"
-                            | "dependentSchemas"
-                            | "prefixItems"
-                            | "unevaluatedProperties"
-                            | "unevaluatedItems"
-                            | "contentSchema"
-                    ))
-            {
+            if resources::ignored_keyword(&dialect, key) {
                 continue;
             }
             self.budget.bytes = self
@@ -416,7 +420,7 @@ impl Graph<'_> {
                 // Only reachable definitions participate in the graph.
                 "$defs" | "definitions" | "$anchor" | "$dynamicAnchor" | "$recursiveAnchor"
                 | "$id" => continue,
-                "properties" | "patternProperties" | "dependentSchemas" => {
+                "properties" | "patternProperties" | "dependentSchemas" | "dependencies" => {
                     let mut properties = Map::new();
                     for (name, schema) in value
                         .as_object()
@@ -427,12 +431,32 @@ impl Graph<'_> {
                             .bytes
                             .checked_sub(name.len())
                             .context("SDK schema graph exceeds 32 MiB")?;
-                        properties.insert(name.clone(), self.visit(schema, depth + 1, &bindings)?);
+                        let schema = if key == "dependencies" && schema.is_array() {
+                            if !schema.as_array().unwrap().iter().all(Value::is_string) {
+                                bail!("Property dependencies must be strings");
+                            }
+                            clone_literal(schema, self.budget)?
+                        } else {
+                            self.visit(schema, depth + 1, &bindings)?
+                        };
+                        properties.insert(name.clone(), schema);
                     }
                     Value::Object(properties)
                 }
+                "items" if value.is_array() => Value::Array(
+                    value
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|schema| self.visit(schema, depth + 1, &bindings))
+                        .collect::<Result<_>>()?,
+                ),
                 "items"
                 | "additionalProperties"
+                | "additionalItems"
+                | "unevaluatedProperties"
+                | "unevaluatedItems"
+                | "contentSchema"
                 | "contains"
                 | "not"
                 | "if"
@@ -500,6 +524,18 @@ fn visit_alias_edges(
             }
         }
     }
+    for key in ["not", "if", "then", "else"] {
+        if let Some(schema) = value.get(key) {
+            visit_alias_edges(schema, definitions, active, done, depth + 1)?;
+        }
+    }
+    for key in ["dependencies", "dependentSchemas"] {
+        if let Some(schemas) = value.get(key).and_then(Value::as_object) {
+            for schema in schemas.values().filter(|schema| !schema.is_array()) {
+                visit_alias_edges(schema, definitions, active, done, depth + 1)?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -549,15 +585,24 @@ fn collapse(value: &mut Value, definitions: &Map<String, Value>) -> Result<()> {
     }
     for (key, value) in object {
         match key.as_str() {
-            "properties" | "patternProperties" | "dependentSchemas" => {
+            "properties" | "patternProperties" | "dependentSchemas" | "dependencies" => {
                 if let Some(properties) = value.as_object_mut() {
                     for schema in properties.values_mut() {
                         collapse(schema, definitions)?;
                     }
                 }
             }
+            "items" if value.is_array() => {
+                for schema in value.as_array_mut().unwrap() {
+                    collapse(schema, definitions)?;
+                }
+            }
             "items"
             | "additionalProperties"
+            | "additionalItems"
+            | "unevaluatedProperties"
+            | "unevaluatedItems"
+            | "contentSchema"
             | "contains"
             | "not"
             | "if"
@@ -586,15 +631,24 @@ fn dependencies(value: &Value, names: &mut BTreeSet<String>) {
     }
     for (key, value) in object {
         match key.as_str() {
-            "properties" | "patternProperties" | "dependentSchemas" => {
+            "properties" | "patternProperties" | "dependentSchemas" | "dependencies" => {
                 if let Some(properties) = value.as_object() {
                     for schema in properties.values() {
                         dependencies(schema, names);
                     }
                 }
             }
+            "items" if value.is_array() => {
+                for schema in value.as_array().unwrap() {
+                    dependencies(schema, names);
+                }
+            }
             "items"
             | "additionalProperties"
+            | "additionalItems"
+            | "unevaluatedProperties"
+            | "unevaluatedItems"
+            | "contentSchema"
             | "contains"
             | "not"
             | "if"
@@ -667,15 +721,24 @@ fn expand(
     if let Some(object) = value.as_object_mut() {
         for (key, value) in object {
             match key.as_str() {
-                "properties" | "patternProperties" | "dependentSchemas" => {
+                "properties" | "patternProperties" | "dependentSchemas" | "dependencies" => {
                     if let Some(properties) = value.as_object_mut() {
                         for schema in properties.values_mut() {
                             expand(schema, definitions, inline, budget, depth + 1)?;
                         }
                     }
                 }
+                "items" if value.is_array() => {
+                    for schema in value.as_array_mut().unwrap() {
+                        expand(schema, definitions, inline, budget, depth + 1)?;
+                    }
+                }
                 "items"
                 | "additionalProperties"
+                | "additionalItems"
+                | "unevaluatedProperties"
+                | "unevaluatedItems"
+                | "contentSchema"
                 | "contains"
                 | "not"
                 | "if"
@@ -709,7 +772,7 @@ fn lower(value: &mut Value, prefix: &str) {
             }
             for (key, value) in object {
                 match key.as_str() {
-                    "properties" | "patternProperties" | "dependentSchemas" => {
+                    "properties" | "patternProperties" | "dependentSchemas" | "dependencies" => {
                         if let Some(properties) = value.as_object_mut() {
                             for schema in properties.values_mut() {
                                 lower(schema, prefix);
@@ -718,6 +781,10 @@ fn lower(value: &mut Value, prefix: &str) {
                     }
                     "items"
                     | "additionalProperties"
+                    | "additionalItems"
+                    | "unevaluatedProperties"
+                    | "unevaluatedItems"
+                    | "contentSchema"
                     | "contains"
                     | "not"
                     | "if"
@@ -740,6 +807,62 @@ fn lower(value: &mut Value, prefix: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inactive_dialect_keywords_do_not_index_resources_or_validate_annotations() {
+        for (dialect, keywords) in [
+            (
+                "http://json-schema.org/draft-07/schema#",
+                vec![
+                    "dependentSchemas",
+                    "prefixItems",
+                    "contentSchema",
+                    "unevaluatedProperties",
+                ],
+            ),
+            (
+                "https://json-schema.org/draft/2019-09/schema",
+                vec!["prefixItems"],
+            ),
+            (
+                "https://json-schema.org/draft/2020-12/schema",
+                vec!["additionalItems"],
+            ),
+        ] {
+            for keyword in keywords {
+                let mut value = json!({"$schema":dialect,"type":"string"});
+                value[keyword] = json!({"$id":42,"$ref":"https://unbundled.invalid/annotation"});
+                let original = value.clone();
+                let bundled = bundle(&value, &value, &mut ExpansionBudget::default()).unwrap();
+                assert!(bundled.get(keyword).is_none());
+                assert_eq!(scoped_runtime_schema(&value).unwrap(), original);
+                assert_eq!(value, original);
+            }
+        }
+        let implicit = json!({"type":"string", "prefixItems":[{"$id":42}]});
+        assert_eq!(scoped_runtime_schema(&implicit).unwrap(), implicit);
+    }
+
+    #[test]
+    fn same_instance_applicator_cycles_fail_without_rejecting_property_recursion() {
+        for keyword in ["not", "if", "then", "else"] {
+            let mut value = json!({});
+            value[keyword] = json!({"$ref":"#"});
+            assert!(normalize(&value, "Cycle").is_err(), "{keyword}");
+        }
+        for keyword in ["dependencies", "dependentSchemas"] {
+            let mut value = json!({});
+            value[keyword] = json!({"trigger":{"$ref":"#"}});
+            assert!(normalize(&value, "Cycle").is_err(), "{keyword}");
+        }
+        assert!(
+            normalize(
+                &json!({"type":"object","properties":{"child":{"$ref":"#"}}}),
+                "Tree"
+            )
+            .is_ok()
+        );
+    }
 
     #[test]
     fn checked_references_require_literal_pointer_separators() {

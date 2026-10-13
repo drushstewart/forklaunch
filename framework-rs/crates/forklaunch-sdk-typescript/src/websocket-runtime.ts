@@ -177,19 +177,35 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
   const dialect = typeof copy === 'object' ? copy.$schema : undefined;
   const draft4 = typeof dialect === 'string' && dialect.includes('/draft-04/');
   const draft6 = typeof dialect === 'string' && dialect.includes('/draft-06/');
-  if (draft4 || draft6) {
-    const ignored = new Set([
-      'if',
-      'then',
-      'else',
-      'dependentSchemas',
-      'prefixItems',
-      'unevaluatedProperties',
-      'unevaluatedItems',
-      'contentSchema',
-      ...(draft4 ? ['const', 'contains', 'propertyNames'] : []),
-    ]);
+  const draft7 =
+    dialect === undefined ||
+    (typeof dialect === 'string' && dialect.includes('/draft-07/'));
+  const draft2019 =
+    typeof dialect === 'string' && dialect.includes('/draft/2019-09/');
+  const draft2020 =
+    typeof dialect === 'string' && dialect.includes('/draft/2020-12/');
+  const legacy = draft4 || draft6 || draft7;
+  const ignored = new Set([
+    ...(draft4 ? ['const', 'contains', 'propertyNames'] : []),
+    ...(draft4 || draft6 ? ['if', 'then', 'else'] : []),
+    ...(legacy
+      ? [
+          'dependentSchemas',
+          'dependentRequired',
+          'unevaluatedProperties',
+          'unevaluatedItems',
+          'contentSchema',
+          'minContains',
+          'maxContains',
+        ]
+      : []),
+    ...(legacy || draft2019 ? ['prefixItems'] : []),
+    ...(draft2020 ? ['additionalItems'] : []),
+  ]);
+  let activeSchemas: WeakSet<object> | undefined;
+  if (ignored.size) {
     const active = new WeakSet<object>();
+    activeSchemas = active;
     const pending: unknown[] = [copy];
     const annotations: unknown[] = [];
     // AJV discovers resource IDs before consulting its dialect vocabulary.
@@ -257,6 +273,7 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
   }
   function visit(node: unknown, location: string[]): void {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    if (activeSchemas && !activeSchemas.has(node)) return;
     const object = node as Record<string, unknown>;
     if (typeof object.$schema === 'string') {
       if (object.$schema.includes('/draft-04/'))

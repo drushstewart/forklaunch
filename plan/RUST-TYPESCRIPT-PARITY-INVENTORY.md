@@ -2833,3 +2833,35 @@ The committed generated fixture is cleaned (196 cumulative). Four build
 artifacts proven to reference previously deleted owned fixtures were also removed.
 Checklist remains **651/682 (95.5%), 31 open**; mixed runtime dialect translation
 and combined URI/path-plus-fragment legacy IDs remain on the resource gate.
+
+### 2026-10-13 — Complete schema applicator graph traversal
+
+The shared graph now resolves references beneath schema dependencies, tuple
+items, additional items, unevaluated properties/items and content schemas.
+Every graph phase (indexing, alias checks, dependency analysis, expansion and
+model lowering) follows those positions. Required-property dependency arrays
+remain literal strings. Same-instance cycles through conditionals, negation
+and schema dependencies fail explicitly; structurally guarded recursion remains
+supported. This prevents dangling references after bundled definitions move.
+
+Dialect-inactive keywords are excluded from graph/index processing and retain
+literal reference locations during contract relocation. Generated TypeScript
+codecs sanitize only their private compilation copy, preserving caller data and
+explicit references into annotation storage. Standalone socket model compilation
+now explicitly applies its Draft 7 default without changing implicit HTTP model
+schemas or resource-free runtime payload annotations.
+
+Validation: 75 original/bundled native cases, 66 independent AJV agreements,
+five previously recorded AJV differences and four unsupported URI cases;
+13,908 generated TypeScript/native and actual TypeScript validator comparisons;
+strict ESM/CommonJS annotation regressions; 42 live roundtrips across both
+resource-aware socket SDKs and external imports; 34 actual TypeScript metadata
+comparisons and 63 parser documents (11 known limitations). Native affected
+suites pass (20 contract, 37 shared compiler, 27 AsyncAPI, eight TypeScript SDK),
+as do 1,093 CLI tests, strict clippy/docs and all 890 packaged sources.
+The relocated dynamic-resource service passes HTTP/MCP startup, initialization,
+discovery, invocation, Origin rejection and graceful shutdown, plus both SDKs
+from contract/OpenAPI artifacts and native generators.
+Evidence: `fl-schema-applicators-{unit,contract,ajv,typescript,annotations,sockets,metadata,cli,clippy,docs,package,generated}.log`.
+Checklist remains **651/682 (95.5%), 31 open**: this advances the broader schema
+constraint/resource gates without prematurely closing their remaining work.

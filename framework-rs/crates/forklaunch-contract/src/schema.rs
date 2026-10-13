@@ -3,25 +3,30 @@ use forklaunch_common::{FrameworkError, FrameworkResult};
 use serde_json::Value;
 use std::collections::{BTreeSet, VecDeque};
 
-/// Keywords added after an explicitly declared Draft 4/6 dialect are literal
-/// annotations, not locations to validate or relocate embedded schemas.
+/// Keywords outside an explicitly declared dialect are literal annotations,
+/// not locations to validate or relocate embedded schemas.
 #[must_use]
 pub fn is_legacy_schema_annotation(root: &Value, keyword: &str) -> bool {
     let dialect = root.get("$schema").and_then(Value::as_str).unwrap_or("");
-    let draft4 = dialect.contains("/draft-04/");
-    let draft6 = dialect.contains("/draft-06/");
+    let draft4 = dialect.contains("draft-04");
+    let draft6 = dialect.contains("draft-06");
+    let draft7 = dialect.contains("draft-07");
+    let legacy = draft4 || draft6 || draft7;
     (draft4 && matches!(keyword, "const" | "contains" | "propertyNames"))
-        || ((draft4 || draft6)
+        || ((draft4 || draft6) && matches!(keyword, "if" | "then" | "else"))
+        || (legacy
             && matches!(
                 keyword,
-                "if" | "then"
-                    | "else"
-                    | "dependentSchemas"
-                    | "prefixItems"
+                "dependentSchemas"
+                    | "dependentRequired"
                     | "unevaluatedProperties"
                     | "unevaluatedItems"
                     | "contentSchema"
+                    | "minContains"
+                    | "maxContains"
             ))
+        || ((legacy || dialect.contains("2019-09")) && keyword == "prefixItems")
+        || (dialect.contains("2020-12") && keyword == "additionalItems")
 }
 
 /// Relocate document-local JSON pointers when embedding a standalone schema.
@@ -533,6 +538,33 @@ mod tests {
             ] {
                 assert_eq!(output[keyword], input[keyword]);
             }
+        }
+    }
+
+    #[test]
+    fn later_dialect_annotations_keep_literal_reference_locations() {
+        for (dialect, keyword) in [
+            (
+                "http://json-schema.org/draft-07/schema#",
+                "dependentSchemas",
+            ),
+            ("http://json-schema.org/draft-07/schema#", "contentSchema"),
+            (
+                "https://json-schema.org/draft/2019-09/schema",
+                "prefixItems",
+            ),
+            (
+                "https://json-schema.org/draft/2020-12/schema",
+                "additionalItems",
+            ),
+        ] {
+            let mut input = json!({"$schema":dialect,"properties":{"value":{"$ref":"#"}}});
+            input[keyword] = json!({"$ref":"#/literal"});
+            let output: Value =
+                serde_json::from_str(&relocate_schema_json(&input.to_string(), &["payload"]))
+                    .unwrap();
+            assert_eq!(output[keyword], input[keyword]);
+            assert_eq!(output["properties"]["value"]["$ref"], "#/payload");
         }
     }
 

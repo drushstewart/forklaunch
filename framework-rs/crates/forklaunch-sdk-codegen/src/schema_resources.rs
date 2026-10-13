@@ -24,10 +24,13 @@ pub(super) struct Resources {
 impl Resources {
     #[allow(clippy::too_many_lines)]
     pub(super) fn index(document: &Value, budget: &mut ExpansionBudget) -> Result<Self> {
-        let dialect = document
-            .get("$schema")
-            .and_then(Value::as_str)
-            .unwrap_or("");
+        let dialect = document.get("$schema").and_then(Value::as_str).unwrap_or(
+            if document.get("asyncapi").is_some() {
+                "http://json-schema.org/draft-07/schema#"
+            } else {
+                ""
+            },
+        );
         budget.bytes = budget
             .bytes
             .checked_sub(dialect.len())
@@ -190,8 +193,6 @@ impl Resources {
                         }
                     }
                 }
-                let draft4 = dialect.contains("draft-04");
-                let draft6 = dialect.contains("draft-06");
                 for (key, child) in object {
                     let path = format!("{pointer}/{}", escape(key));
                     let mut enqueue = |value, path: String, schema| -> Result<()> {
@@ -203,26 +204,17 @@ impl Resources {
                         queue_anchor(&mut pending, budget, (value, path, schema, depth + 1))
                     };
                     if schema {
-                        if (draft4 && matches!(key.as_str(), "contains" | "propertyNames"))
-                            || ((draft4 || draft6)
-                                && matches!(
-                                    key.as_str(),
-                                    "if" | "then"
-                                        | "else"
-                                        | "dependentSchemas"
-                                        | "prefixItems"
-                                        | "unevaluatedProperties"
-                                        | "unevaluatedItems"
-                                        | "contentSchema"
-                                ))
-                        {
+                        if ignored_keyword(&dialect, key) {
                             continue;
                         }
                         match key.as_str() {
                             "$defs" | "definitions" | "properties" | "patternProperties"
-                            | "dependentSchemas" => {
+                            | "dependentSchemas" | "dependencies" => {
                                 if let Some(map) = child.as_object() {
                                     for (name, value) in map {
+                                        if key == "dependencies" && value.is_array() {
+                                            continue;
+                                        }
                                         enqueue(value, format!("{path}/{}", escape(name)), true)?;
                                     }
                                 }
@@ -232,6 +224,11 @@ impl Resources {
                                     for (index, value) in values.iter().enumerate() {
                                         enqueue(value, format!("{path}/{index}"), true)?;
                                     }
+                                }
+                            }
+                            "items" if child.is_array() => {
+                                for (index, value) in child.as_array().unwrap().iter().enumerate() {
+                                    enqueue(value, format!("{path}/{index}"), true)?;
                                 }
                             }
                             "items"
@@ -446,6 +443,28 @@ impl Resources {
         }
     }
 }
+pub(super) fn ignored_keyword(dialect: &str, keyword: &str) -> bool {
+    let draft4 = dialect.contains("draft-04");
+    let draft6 = dialect.contains("draft-06");
+    let draft7 = dialect.contains("draft-07");
+    let legacy = draft4 || draft6 || draft7;
+    (draft4 && matches!(keyword, "const" | "contains" | "propertyNames"))
+        || ((draft4 || draft6) && matches!(keyword, "if" | "then" | "else"))
+        || (legacy
+            && matches!(
+                keyword,
+                "dependentSchemas"
+                    | "dependentRequired"
+                    | "unevaluatedProperties"
+                    | "unevaluatedItems"
+                    | "contentSchema"
+                    | "minContains"
+                    | "maxContains"
+            ))
+        || ((legacy || dialect.contains("2019-09")) && keyword == "prefixItems")
+        || (dialect.contains("2020-12") && keyword == "additionalItems")
+}
+
 pub(super) fn dialect_key(value: &str) -> &str {
     if value.is_empty() {
         return "draft-07";

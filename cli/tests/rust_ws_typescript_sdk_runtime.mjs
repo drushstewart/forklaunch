@@ -251,6 +251,33 @@ export async function types(client: ForkLaunchSocketClient) {
         recursive.encode({ value: 1, next: { value: 'wrong' } }),
       );
     }
+    for (const [dialect, keyword] of [
+      [undefined, 'prefixItems'],
+      ['http://json-schema.org/draft-07/schema#', 'dependentSchemas'],
+      ['http://json-schema.org/draft-07/schema#', 'contentSchema'],
+      ['https://json-schema.org/draft/2019-09/schema', 'prefixItems'],
+      ['https://json-schema.org/draft/2020-12/schema', 'additionalItems'],
+    ]) {
+      const schema = {
+        ...(dialect ? {$schema: dialect} : {}), type: 'string',
+        [keyword]: {
+          first: {$id: 'https://example.invalid/annotation', $ref: 'missing'},
+          second: {$id: 'https://example.invalid/annotation'},
+        },
+      };
+      const original = structuredClone(schema);
+      const codec = new Codec(schema, 4096);
+      assert.equal(codec.decode(codec.encode('value')), 'value');
+      assert.throws(() => codec.encode(42));
+      assert.deepEqual(schema, original);
+      const selected = new Codec({
+        ...(dialect ? {$schema: dialect} : {}),
+        $ref: '#/' + keyword + '/first',
+        [keyword]: {first: {type: 'string', minLength: 2}},
+      }, 4096);
+      assert.equal(selected.decode(selected.encode('valid')), 'valid');
+      assert.throws(() => selected.encode('x'));
+    }
     const literal = {
       $id: 'literal',
       id: 'literal',

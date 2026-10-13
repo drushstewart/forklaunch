@@ -82,7 +82,11 @@ fn payload(name: &str, entry: Option<&SocketSchemaEntry>) -> Result<SocketPayloa
     let schema = schema.unwrap_or(&empty);
     // Validate constraints as well as the type graph before emitting source.
     PayloadCodec::<Value>::json_schema(schema).context("Invalid socket payload schema")?;
-    let models = compile_schema(name, schema)?;
+    let effective = crate::schema::standalone_runtime_schema(
+        schema,
+        &mut crate::schema::ExpansionBudget::default(),
+    )?;
+    let models = compile_schema(name, &effective)?;
     // Resolve standalone resource scopes before union relocation so separate
     // messages may safely reuse IDs and dynamic anchor names.
     let schema = crate::schema::scoped_runtime_schema(schema)?;

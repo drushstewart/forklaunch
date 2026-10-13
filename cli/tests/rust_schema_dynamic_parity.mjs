@@ -51,6 +51,13 @@ for(const [draft,id] of [['04','id'],['06','$id'],['07','$id']]) {
   [{first:{label:1}},false],[{first:{label:'a',next:{label:1}}},false],[{second:'value'},false]
  ]});
 }
+fixtures.push(
+ {schema:{$schema:'http://json-schema.org/draft-07/schema#',$id:'https://schema.fixture.test/dependencies',type:'object',dependencies:{trigger:{$ref:'rule'},other:['required']},definitions:{Rule:{$id:'rule',required:['value'],properties:{value:{type:'integer'}}}}},cases:[ [{},true],[{trigger:true,value:1},true],[{trigger:true},false],[{trigger:true,value:'bad'},false],[{other:1},false],[{other:1,required:2},true] ]},
+ {schema:{$schema:'http://json-schema.org/draft-07/schema#',$id:'https://schema.fixture.test/tuple',type:'array',items:[{$id:'#Word',type:'string'},{$ref:'#/definitions/Count'}],additionalItems:{$ref:'#Word'},definitions:{Count:{type:'integer'}}},cases:[ [[],true],[['a',1,'b'],true],[['a','bad'],false],[['a',1,false],false] ]},
+ {schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/unevaluated-object',type:'object',properties:{known:true},unevaluatedProperties:{$ref:'word'},$defs:{Word:{$id:'word',type:'string'}}},cases:[ [{known:1,extra:'a'},true],[{known:1,extra:1},false],[{known:1},true] ]},
+ {schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/unevaluated-array',type:'array',prefixItems:[{type:'boolean'}],unevaluatedItems:{$ref:'#/$defs/Word'},$defs:{Word:{type:'string'}}},cases:[ [[true,'a'],true],[[true,1],false],[[false],true] ]},
+ {schema:{$schema:'https://json-schema.org/draft/2019-09/schema',$id:'https://schema.fixture.test/content',type:'object',properties:{parsed:{$ref:'#/contentSchema'}},contentSchema:{$ref:'#/$defs/Word'},$defs:{Word:{type:'string'}}},cases:[ [{parsed:'value'},true],[{parsed:1},false] ]}
+);
 const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0, differences=0, unsupported=0;
 for(let i=0;i<fixtures.length;i++) {
