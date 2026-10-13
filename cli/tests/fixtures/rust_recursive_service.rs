@@ -19,6 +19,9 @@ fn body(name: &str, schema: &str) -> BodyContract {
             value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("b#MutualB");
             value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("a#MutualA");
         }
+        if mode == "siblings" && name == "Mutual" {
+            value["minProperties"] = json!(1);
+        }
         if let Some(draft) = mode.strip_prefix("fragment") {
             value["$schema"] = json!(format!("http://json-schema.org/draft-0{draft}/schema#"));
             let id = if draft == "4" { "id" } else { "$id" };

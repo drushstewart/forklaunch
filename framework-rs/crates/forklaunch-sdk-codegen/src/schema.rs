@@ -315,6 +315,15 @@ impl Graph<'_> {
         } else {
             "$recursiveRef"
         };
+        if ["$ref", "$dynamicRef", "$recursiveRef"]
+            .iter()
+            .filter(|key| object.contains_key(**key))
+            .count()
+            > 1
+        {
+            bail!("Multiple reference applicators on one schema are unsupported");
+        }
+        let mut sibling_reference = None;
         if let Some(reference) = object.get(reference_key) {
             let reference = reference.as_str().context("Schema $ref must be a string")?;
             if reference.starts_with('#')
@@ -364,46 +373,54 @@ impl Graph<'_> {
                 name
             };
             let mut resolved = json!({"$ref": format!("#/$defs/{name}")});
-            for (key, value) in object {
-                if key == reference_key {
-                    continue;
+            let has_constraints = object.keys().any(|key| {
+                key != reference_key
+                    && key != resource_key
+                    && !matches!(
+                        key.as_str(),
+                        "description"
+                            | "summary"
+                            | "title"
+                            | "$schema"
+                            | "$defs"
+                            | "definitions"
+                            | "$anchor"
+                            | "$dynamicAnchor"
+                            | "$recursiveAnchor"
+                            | "$id"
+                    )
+                    && !key.starts_with("x-")
+                    && !resources::ignored_keyword(&dialect, key)
+            });
+            if has_constraints {
+                // Keep sibling keywords at the containing schema location.
+                // In particular, unevaluatedProperties/Items must see the
+                // annotations produced by the reference's successful target.
+                sibling_reference = Some(resolved);
+            } else {
+                for (key, value) in object {
+                    if key != reference_key
+                        && key != resource_key
+                        && !matches!(
+                            key.as_str(),
+                            "$defs"
+                                | "definitions"
+                                | "$anchor"
+                                | "$dynamicAnchor"
+                                | "$recursiveAnchor"
+                                | "$id"
+                        )
+                        && !resources::ignored_keyword(&dialect, key)
+                    {
+                        resolved[key] = clone_literal(value, self.budget)?;
+                    }
                 }
-                if key == resource_key {
-                    continue;
-                }
-                if !matches!(
-                    key.as_str(),
-                    "description"
-                        | "summary"
-                        | "title"
-                        | "$schema"
-                        | "$defs"
-                        | "definitions"
-                        | "$anchor"
-                        | "$dynamicAnchor"
-                        | "$recursiveAnchor"
-                        | "$id"
-                ) && !key.starts_with("x-")
-                {
-                    bail!("Unsupported validation sibling of schema $ref: {key}");
-                }
-                if !matches!(
-                    key.as_str(),
-                    "$defs"
-                        | "definitions"
-                        | "$anchor"
-                        | "$dynamicAnchor"
-                        | "$recursiveAnchor"
-                        | "$id"
-                ) {
-                    resolved[key] = clone_literal(value, self.budget)?;
-                }
+                return Ok(resolved);
             }
-            return Ok(resolved);
         }
         let mut result = Map::new();
         for (key, value) in object {
-            if key == resource_key {
+            if key == resource_key || key == reference_key {
                 continue;
             }
             // Older dialects treat later validation keywords as annotations.
@@ -474,6 +491,14 @@ impl Graph<'_> {
                 _ => clone_literal(value, self.budget)?,
             };
             result.insert(key.clone(), value);
+        }
+        if let Some(reference) = sibling_reference {
+            result
+                .entry("allOf")
+                .or_insert_with(|| json!([]))
+                .as_array_mut()
+                .context("Schema allOf must be an array")?
+                .push(reference);
         }
         Ok(Value::Object(result))
     }
@@ -1011,7 +1036,6 @@ mod tests {
             json!({"$dynamicRef":"#node"}),
             json!({"$ref":"#/$defs/A","title":"annotation","$defs":{"A":true}}),
             json!({"$ref":"#/$defs/A","$defs":{"A":42}}),
-            json!({"$ref":"#/$defs/A","minLength":3,"$defs":{"A":{"type":"string"}}}),
         ] {
             assert!(normalize(&schema, "Invalid").is_err(), "{schema}");
         }

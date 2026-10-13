@@ -13,7 +13,7 @@ const deps=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDE
 const {WebSocketServer}=deps('ws');
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-resources-'));
 const env={...process.env,CARGO_INCREMENTAL:'0',CARGO_TARGET_DIR:path.resolve(root,process.env.CARGO_TARGET_DIR??'framework-rs/target')};
-const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7'];
+const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7','siblings'];
 const sockets=new Set();
 let server,child;
 try {
@@ -34,6 +34,11 @@ try {
     delete schema.$id;delete schema.$schema;
     schema[id]='#Node:v1';
     schema={$schema:`http://json-schema.org/draft-0${draft}/schema#`,[id]:'https://schemas.fixture.test/reused',$ref:'#Node:v1',definitions:{Node:schema}};
+   }
+   if(mode==='siblings') {
+    schema.properties.value={$ref:'#/definitions/Value',...(type==='string'?{minLength:1}:{minimum:1})};
+    const base=structuredClone(schema);delete base.$id;delete base.$schema;
+    schema={$schema:'http://json-schema.org/draft-07/schema#',$id:'https://schemas.fixture.test/reused',$ref:'#/definitions/Base',minProperties:1,definitions:{Base:base,Value:{type}}};
    }
    entries[name]={shape:schema,jsonEncoding:true,channel:`/${mode}`};
   }

@@ -7,6 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const fixtures=[
+ {schema:{$ref:"#/definitions/Base",properties:{tag:{enum:["a","b"]}},required:["tag"],definitions:{Base:{type:"object",properties:{id:{type:"integer"}},required:["id"]}}},valid:[{id:1,tag:"a"}],invalid:[{id:1},{tag:"a"},{id:1,tag:"c"}]},
  {schema:{const:{}},valid:[{}],invalid:[1,[],{extra:true}]},
  {schema:false,valid:[],invalid:[null,1,{},[]]},
  {schema:true,valid:[null,1,{},[]],invalid:[]},

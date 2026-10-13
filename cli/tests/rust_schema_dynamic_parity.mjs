@@ -58,6 +58,11 @@ fixtures.push(
  {schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$id:'https://schema.fixture.test/unevaluated-array',type:'array',prefixItems:[{type:'boolean'}],unevaluatedItems:{$ref:'#/$defs/Word'},$defs:{Word:{type:'string'}}},cases:[ [[true,'a'],true],[[true,1],false],[[false],true] ]},
  {schema:{$schema:'https://json-schema.org/draft/2019-09/schema',$id:'https://schema.fixture.test/content',type:'object',properties:{parsed:{$ref:'#/contentSchema'}},contentSchema:{$ref:'#/$defs/Word'},$defs:{Word:{type:'string'}}},cases:[ [{parsed:'value'},true],[{parsed:1},false] ]}
 );
+for(const dialect of ['http://json-schema.org/draft-04/schema#','http://json-schema.org/draft-06/schema#','http://json-schema.org/draft-07/schema#','https://json-schema.org/draft/2019-09/schema','https://json-schema.org/draft/2020-12/schema']) {
+ fixtures.push({schema:{$schema:dialect,$ref:'#/definitions/Word',minLength:2,maxLength:4,definitions:{Word:{type:'string',pattern:'^[a-z]+$'}}},cases:[['ab',true],['a',false],['abcde',false],['12',false],[42,false]]});
+}
+fixtures.push({schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$ref:'#/$defs/Base',properties:{extra:{type:'integer'}},unevaluatedProperties:false,$defs:{Base:{type:'object',required:['base'],properties:{base:{type:'string'}}}}},cases:[[{base:'a'},true],[{base:'a',extra:1},true],[{base:'a',unknown:1},false],[{base:'a',extra:'bad'},false],[{},false]]});
+fixtures.push({schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$ref:'#/$defs/Base',allOf:[{minLength:2}],maxLength:4,$defs:{Base:{type:'string'}}},cases:[['ab',true],['a',false],['abcde',false]]});
 const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0, differences=0, unsupported=0;
 for(let i=0;i<fixtures.length;i++) {

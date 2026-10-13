@@ -2886,3 +2886,33 @@ Evidence: `fl-schema-types-{static,resources,runtime,unit,cli,clippy,docs,packag
 The prior completed generated service workspace was removed (197 cumulative).
 Checklist remains **651/682 (95.5%), 31 open**; broader constraint/emitter parity
 still includes reference siblings and remaining model/runtime boundaries.
+
+### 2026-10-13 — Validation siblings of schema references
+
+The shared graph now imports validation siblings of a single static, dynamic or
+recursive reference. It expresses the target as an `allOf` member while keeping
+sibling constraints on the containing schema, preserving evaluated-property
+annotations for `unevaluatedProperties` and existing intersection members.
+Legacy dialect behavior follows the explicit ForkLaunch AJV compatibility
+profile. OpenAPI Reference Objects outside schema positions retain their
+separate annotation-only rules. Multiple reference applicators on the same
+schema remain explicitly unsupported.
+
+TypeScript intersections preserve the target and sibling model types. Rust
+keeps a concrete referenced/typed intersection constituent when the surrounding
+schema only adds validation constraints, with every constraint still enforced
+by the runtime codec. Recursive typed HTTP responses remain usable.
+
+The expanded resource fixture passes 108 original/bundled native cases and
+99 independent AJV agreements, with the same five recorded AJV differences and
+four unsupported URI cases. Strict TypeScript models pass 21 accepted and 35
+rejected values across 13 fixtures. Sixteen generated clients per language,
+including external AsyncAPI imports, pass 48 live socket roundtrips. Native SDK
+and AsyncAPI suites, 1,093 CLI tests, strict clippy/docs, formatting and 890
+packaged sources pass. A new `siblings` mode in the generated resource matrix
+passes relocated HTTP/MCP startup, discovery, invocation, Origin rejection and
+shutdown, plus typed Rust/TypeScript recursive clients from both artifact
+formats and both native generators. Evidence:
+`fl-schema-siblings-{parity,types,sockets,unit,models,cli,clippy,docs,package,generated}.log`.
+Checklist remains **651/682 (95.5%), 31 open**; the schema gates still require
+mixed runtime dialects, remaining reference profiles and emitter conformance.

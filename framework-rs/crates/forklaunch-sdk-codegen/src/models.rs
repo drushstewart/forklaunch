@@ -393,6 +393,20 @@ pub(crate) fn build_rust_type(
     {
         return format!("Box<{name}>");
     }
+    // An intersection can narrow its constituent type but cannot admit a
+    // different value shape. Retain a concrete referenced/typed constituent
+    // when the containing schema contributes validation-only constraints.
+    // The wire codec still evaluates every intersection constraint.
+    if !["type", "properties", "const", "enum", "oneOf", "anyOf"]
+        .iter()
+        .any(|key| schema.get(*key).is_some())
+        && let Some(parts) = schema.get("allOf").and_then(JsonValue::as_array)
+        && let Some(part) = parts
+            .iter()
+            .find(|part| part.get(super::schema::REFERENCE).is_some() || part.get("type").is_some())
+    {
+        return build_rust_type(type_name, part, models);
+    }
     if let Some(variant) = non_null_schema(schema) {
         return format!(
             "Option<{}>",
