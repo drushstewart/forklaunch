@@ -51,3 +51,10 @@ is initiated. Reconciliation operators additionally need INSERT on
 `fl_ecommerce.payment_reconciliation_audit`. Ordinary claim release reads that
 table so a delayed failure cannot undo a verified capture. Pending/refunded or
 ambiguous evidence and cancelled-order provider references require manual review.
+
+
+Stripe integrations can use `StripePaymentService::reconcile_captured_payment`
+with the same operator context and audit grants. It verifies a fully captured,
+unrefunded, undisputed intent/charge in the configured Connect account before
+repairing local payment state. It does not create/capture/refund charges or change
+orders; mismatched or incomplete evidence remains a review case.

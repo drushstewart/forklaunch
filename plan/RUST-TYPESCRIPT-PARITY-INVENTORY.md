@@ -3956,3 +3956,23 @@ A disk-full build and stopped retained PostgreSQL fixture were resolved by remov
 No source/unrelated workspaces were removed. Uncaptured/ambiguous claims and
 cancelled-order provider references remain open; checklist remains 657/682
 (96.3%), 25 open.
+
+
+Verified Stripe capture recovery receipt (2026-10-13): Stripe client/service
+helpers retrieve expanded charge evidence and use the audited payment-repair
+boundary introduced for PayPal. Full intent/charge amounts, currencies, provider
+reference and order metadata must match; only succeeded, paid, fully captured,
+unrefunded and undisputed evidence is accepted. Connect account headers are retained.
+Provider reads do not create/capture/refund charges or deliver orders; raw client
+secrets/provider responses never enter the audit. Twenty invalid provider variants
+are rejected by live HTTP tests without another mutation or audit entry.
+
+Both Stripe native tests and strict all-feature/all-target clippy pass; fifteen
+actual TypeScript comparisons confirm ordinary provider/Connect/resume/lifecycle
+semantics remain unchanged. Generated run `wg2LRs` passes both SDKs/import formats,
+HTTP/MCP startup, checkout/webhook comparisons, cross-process checkout admission,
+worker/inventory persistence, restart and CLI/Compose lifecycle. All 931 embedded
+assets are packaged. Logs:
+`/private/tmp/fl-stripe-reconciliation-{tests,clippy,parity,generated,package}.log`.
+Incomplete captures and cancelled-order references still require separate recovery;
+checklist remains 657/682 (96.3%), 25 open.

@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Form, Path, State},
+    extract::{Form, Path, Query as HttpQuery, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -23,6 +23,7 @@ use std::{
 #[derive(Clone, Default)]
 struct Fixture {
     calls: Arc<Mutex<Vec<serde_json::Value>>>,
+    details: Arc<Mutex<Option<serde_json::Value>>>,
 }
 async fn create(
     State(state): State<Fixture>,
@@ -53,8 +54,17 @@ async fn retrieve(
     State(state): State<Fixture>,
     Path(id): Path<String>,
     headers: HeaderMap,
+    HttpQuery(query): HttpQuery<HashMap<String, String>>,
 ) -> Json<serde_json::Value> {
+    assert_eq!(headers["authorization"], "Bearer owned-test-stripe-secret");
     state.calls.lock().unwrap().push(json!({"method":"GET","id":id,"account":headers.get("stripe-account").map(|v|v.to_str().unwrap())}));
+    if let Some(details) = state.details.lock().unwrap().clone() {
+        assert_eq!(
+            query.get("expand[]").map(String::as_str),
+            Some("latest_charge")
+        );
+        return Json(details);
+    }
     Json(json!({"id":id,"client_secret":"ephemeral-resume-secret"}))
 }
 fn request(id: &str, order: &str, amount: i64) -> CreatePaymentDto {
@@ -135,6 +145,64 @@ async fn live_stripe_connect_resume_secrets_failures_bounds_and_persistence() {
             assert_eq!(call["account"], "acct_merchant");
         }
     }
+    let evidence = json!({"id":"pi_owned","object":"payment_intent","status":"succeeded",
+        "amount":5350,"amount_received":5350,"currency":"usd","metadata":{"orderId":"order"},
+        "client_secret":"must-not-persist",
+        "latest_charge":{"id":"ch_owned","object":"charge","payment_intent":"pi_owned",
+            "status":"succeeded","paid":true,"captured":true,"refunded":false,"disputed":false,
+            "amount":5350,"amount_captured":5350,"amount_refunded":0,"currency":"usd"}});
+    *state.details.lock().unwrap() = Some(evidence.clone());
+    let actor = forklaunch_blueprint_core::AuditContext::actor("operator", "stripe-recovery");
+    assert_eq!(
+        service
+            .reconcile_captured_payment("pay", actor.clone())
+            .await
+            .unwrap()
+            .status,
+        PaymentStatus::Succeeded
+    );
+    let audit = store.payment_reconciliation_audits().unwrap();
+    assert_eq!(audit.len(), 1);
+    assert_eq!(audit[0].evidence.capture_id, "ch_owned");
+    assert!(!format!("{audit:?}").contains("must-not-persist"));
+    for (pointer, replacement) in [
+        ("/id", json!("other")),
+        ("/status", json!("processing")),
+        ("/status", json!("requires_capture")),
+        ("/object", json!("charge")),
+        ("/amount", json!(1)),
+        ("/amount_received", json!(1)),
+        ("/currency", json!("eur")),
+        ("/metadata/orderId", json!("other-order")),
+        ("/latest_charge", json!("ch_unexpanded")),
+        ("/latest_charge/id", json!("")),
+        ("/latest_charge/payment_intent", json!("other")),
+        ("/latest_charge/status", json!("failed")),
+        ("/latest_charge/paid", json!(false)),
+        ("/latest_charge/captured", json!(false)),
+        ("/latest_charge/refunded", json!(true)),
+        ("/latest_charge/disputed", json!(true)),
+        ("/latest_charge/amount_refunded", json!(1)),
+        ("/latest_charge/amount_captured", json!(1)),
+        ("/latest_charge/amount", json!(1)),
+        ("/latest_charge/currency", json!("eur")),
+    ] {
+        let mut invalid = evidence.clone();
+        *invalid.pointer_mut(pointer).unwrap() = replacement;
+        *state.details.lock().unwrap() = Some(invalid);
+        let error = service
+            .reconcile_captured_payment("pay", actor.clone())
+            .await
+            .unwrap_err();
+        assert!(!error.message.contains("must-not-persist"));
+    }
+    assert_eq!(store.payment_reconciliation_audits().unwrap().len(), 1);
+    assert!(
+        state.calls.lock().unwrap()[2..]
+            .iter()
+            .all(|call| call["method"] == "GET" && call["account"] == "acct_merchant")
+    );
+    *state.details.lock().unwrap() = None;
     base.create_payment(request("providerless", "other", 100))
         .await
         .unwrap();

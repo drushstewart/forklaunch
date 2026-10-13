@@ -191,3 +191,16 @@ This does not establish a distributed transaction or recover every provider stat
 uncaptured claims, ambiguous/multiple captures and cancelled-order references still
 require review. Provider status semantics reference the official
 [PayPal Orders documentation](https://developer.paypal.com/api/orders-v2/save-with-purchase/paypal).
+
+
+Stripe capture recovery review (2026-10-13): retrieval expands `latest_charge`
+using configured merchant credentials and the service's Connect account header.
+Repair requires matching intent/charge identity, order metadata, currency and full
+amounts, succeeded/paid/captured state, zero refunded amount and no refund/dispute
+flags. Missing/unexpanded/substituted, partial or unsettled evidence is rejected.
+Only GET requests occur; the shared snapshot/audit transaction repairs the payment
+without issuing capture/refund or order transitions. Raw responses/client secrets
+are not persisted. Live tests verify Connect headers, expansion, twenty invalid
+provider variants and absence of mutation requests. Field semantics follow the
+[Stripe PaymentIntent](https://docs.stripe.com/api/payment_intents/object) and
+[Charge](https://docs.stripe.com/api/charges/object) references.

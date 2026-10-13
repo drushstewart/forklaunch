@@ -260,3 +260,14 @@ The trusted server-only `VerifiedCapture` API must not accept unverified public
 request bodies. No new public endpoint is enabled. Ordinary PayPal operations
 retain the TypeScript claim/failure semantics until explicit reconciliation;
 cancelled-order references and broader outbound recovery remain open.
+
+
+Stripe recovery uses `StripePaymentService::reconcile_captured_payment` with the
+same audited payment store. It retrieves the PaymentIntent with `latest_charge`
+expanded, preserving the configured Connect account. Both intent and charge must
+match the local amount/currency and provider reference; order metadata must match,
+and the charge must be fully captured, paid, unrefunded and undisputed. Pending,
+partial, refunded, disputed or substituted evidence requires review. The helper
+only reads provider state and repairs the payment; it does not create/capture/
+refund charges or deliver orders. Client secrets/raw provider data never enter
+the reconciliation audit.
