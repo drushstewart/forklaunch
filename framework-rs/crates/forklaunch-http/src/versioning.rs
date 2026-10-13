@@ -183,7 +183,19 @@ impl VersionedRoutePlan {
         };
         let value = match body.kind {
             BodyKind::Json | BodyKind::Unknown => {
-                serde_json::from_slice(bytes).map_err(|_| invalid_body("invalid JSON body"))?
+                let text = decode_utf8(bytes);
+                if text.is_empty() {
+                    serde_json::json!({})
+                } else {
+                    let first = text
+                        .trim_start_matches([' ', '\t', '\r', '\n'])
+                        .as_bytes()
+                        .first();
+                    if !matches!(first, Some(b'{' | b'[')) {
+                        return Err(invalid_body("JSON body must be an object or array"));
+                    }
+                    serde_json::from_str(&text).map_err(|_| invalid_body("invalid JSON body"))?
+                }
             }
             BodyKind::File | BodyKind::Binary => {
                 if !self
@@ -202,14 +214,14 @@ impl VersionedRoutePlan {
                     .ok_or_else(|| invalid_body("missing multipart content type"))?,
                 limits,
             )?,
-            _ => Value::String(
-                std::str::from_utf8(bytes)
-                    .map_err(|_| invalid_body("invalid UTF-8 body"))?
-                    .into(),
-            ),
+            _ => Value::String(decode_utf8(bytes).into_owned()),
         };
         Ok(Some(value))
     }
+}
+// body-parser's UTF-8 decoder replaces malformed sequences and strips one BOM.
+fn decode_utf8(bytes: &[u8]) -> std::borrow::Cow<'_, str> {
+    String::from_utf8_lossy(bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes))
 }
 fn invalid_body(message: &str) -> ContractValidationError {
     ContractValidationError::new(ContractValidationLocation::BodyParser, message)
@@ -342,6 +354,24 @@ mod tests {
         request.params.insert("id".into(), "one".into());
         request
     }
+    #[test]
+    fn json_parser_failures_are_fatal_even_for_unconstrained_schemas() {
+        let mut route = contract();
+        for version in route.versions.values_mut() {
+            version.request.body.as_mut().unwrap().schema.json_schema = Some("true".into());
+        }
+        let plan = VersionedRoutePlan::compile(&route).unwrap();
+        for input in ["null", "42", "true", "\"string\"", " ", "{"] {
+            let errors = plan.select(&request(input)).unwrap_err();
+            assert!(errors.iter().all(ContractValidationError::is_parser_error));
+        }
+        for input in ["", "{}", "[]", "\u{feff}{}"] {
+            let wire = request(input);
+            assert!(plan.select(&wire).unwrap().is_some());
+            assert_eq!(wire.body, Body::Text(input.into()));
+        }
+    }
+
     #[test]
     fn text_versions_normalize_empty_local_bodies_without_altering_bytes() {
         let mut route = contract();

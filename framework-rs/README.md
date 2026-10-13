@@ -565,3 +565,10 @@ explicitly. The methods send the declared request to the same HTTP path, where
 schema matching determines the version. Run `rust_versioned_sdk_runtime.sh`
 for both artifact formats, native generators and live HTTP/MCP checks.
 Remaining non-JSON media/coercion cases are still tracked as incomplete.
+
+Version matching follows the default TypeScript JSON/text wire parser: JSON roots
+must be objects or arrays, an empty JSON body becomes an empty object, one UTF-8
+BOM is stripped, and malformed UTF-8 becomes replacement characters. Original
+handler bytes remain intact; standard Axum extractors retain their own decoding
+rules. Configurable strict mode, other charsets and parsed-value handler delivery
+remain separate work.

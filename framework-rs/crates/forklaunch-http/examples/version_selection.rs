@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let file = fixture["kind"] == "file";
         let form = fixture["kind"] == "form";
         let multipart = fixture["kind"] == "multipart";
+        let wire_bytes = fixture["wireBytes"].as_bool().unwrap_or(false);
         for version in fixture["versions"].as_array().unwrap() {
             let mut body = BodyContract::json("Input");
             if text {
@@ -68,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "application/json"
                 },
             )
-            .with_body(if file || multipart {
+            .with_body(if file || multipart || wire_bytes {
                 Body::Binary(
                     case.as_array()
                         .unwrap()

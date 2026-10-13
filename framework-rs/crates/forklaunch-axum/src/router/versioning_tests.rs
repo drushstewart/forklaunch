@@ -153,14 +153,14 @@ async fn versioned_text_keeps_empty_body_and_uses_the_first_declared_parser() {
     let app = ForkLaunchRouter::new(ServiceInfo::new("text", "1"))
         .post(
             contract,
-            |Extension(version): Extension<SelectedVersion>, body: String| async move {
+            |Extension(version): Extension<SelectedVersion>, body: axum::body::Bytes| async move {
                 (
                     if version.version == "v1" {
                         StatusCode::CREATED
                     } else {
                         StatusCode::ACCEPTED
                     },
-                    format!("{}:{body}", version.version),
+                    format!("{}:{}", version.version, String::from_utf8_lossy(&body)),
                 )
             },
         )
@@ -192,7 +192,8 @@ async fn versioned_text_keeps_empty_body_and_uses_the_first_declared_parser() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), 400);
+    assert_eq!(response.status(), 201);
+    assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), "v1:�");
 }
 
 #[tokio::test]

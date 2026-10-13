@@ -25,6 +25,10 @@ try {
   const result=await mcpRpc(base,'tools/call',{name:tools.find(tool=>tool.name.endsWith(` [v${version}]`) && tool.inputSchema.properties.body?.type==='string' && tool.inputSchema.properties.body?.format!=='binary').name,arguments:{body:value}});
   assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{version,value});
  }
+ for(const [value,version,status] of [['\ufeff','v1',201],['\ufeffa','v1',201],['\ufeffab','v2',202],['\ufeff\ufeff','v1',201]]) {
+  const response=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':'text/plain'},body:value});
+  assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,value});
+ }
  for(const bytes of [[],[0,255,128],Array.from(Buffer.from('水'))]) {
   const response=await fetch(`${base}/versioned-file`,{method:'POST',headers:{'content-type':'application/octet-stream'},body:Buffer.from(bytes)});
   assert.equal(response.status,202);assert.deepEqual(await response.json(),{version:'v2',bytes});

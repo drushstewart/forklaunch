@@ -3320,3 +3320,22 @@ all three artifacts and native generators, and graceful shutdown. Receipts:
 Checklist remains **652/682 (95.6%), 30 open**. The scoped-file gap is closed;
 configurable parsers/charsets and request transformations still keep the broader
 versioning gate open.
+
+
+### 2026-10-13 — Default JSON/text wire parsing in version selection
+
+Version matching now uses the TypeScript defaults for strict JSON roots,
+empty JSON bodies, one leading UTF-8 BOM and malformed UTF-8 replacement. Parser
+failures remain fatal for unconstrained schemas. Wire bytes are preserved;
+standard Axum String/Json extractors still use their own decoding rules, so this
+receipt does not claim parsed-value handler delivery or arbitrary transformations.
+
+Validation: 23 actual TypeScript content-middleware/native wire comparisons,
+45 existing version cases and six registration checks; 59 Axum and 28 HTTP tests;
+strict Clippy; 902 package files. Fresh generated `run.Ux0dcU` verifies BOM-aware
+selection with intact handler bytes, the full HTTP/MCP startup/call/shutdown
+matrix, and both SDKs through three artifact forms and native generators. The
+new comparison runs in CI. Receipts:
+`/private/tmp/fl-wire-{actual,versions,native,clippy,generated,package}.log`.
+Checklist remains **652/682 (95.6%), 30 open**; parser configuration/charsets and
+request transformation delivery remain open.
