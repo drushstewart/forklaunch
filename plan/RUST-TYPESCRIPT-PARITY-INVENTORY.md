@@ -3270,3 +3270,28 @@ Checklist remains **652/682 (95.6%), 30 open**. The standard parser-limit status
 gap is resolved. The versioning gate still includes nested opaque-file schema
 annotations, configurable parser/charset behavior and request transformations;
 this receipt does not claim every TypeScript error payload or middleware hook.
+
+### 2026-10-13 — Multipart opaque-file annotations and legacy File artifacts
+
+Unscoped multipart file schemas now validate the parser's byte-array or text
+values, matching the actual TypeScript file validator. Lowering reuses the
+bounded contract bundler and schema-location walker, including references stored
+inside literal metadata; exported schemas and const/default/example data remain
+unchanged. It recognizes the actual legacy File artifact's exact instance-guard
+oneOf marker. Other string assertions and differing oneOf shapes are rejected
+instead of discarded. Resource-scoped schemas retain their previous validator
+path; opaque-file lowering in that profile remains open.
+
+Validation: **127 actual TypeScript multipart parser/file-validator/native
+comparisons**, covering five drafts, direct properties, definition references,
+literal-metadata references and text-file inputs; seven existing typed-extractor
+comparisons; 59 Axum and 29 HTTP tests; strict Clippy; and 902 embedded package
+files. Generated `run.Paq2su` now declares its attachment as an opaque binary file
+and passes the full live HTTP/MCP media matrix, raw binary attachment preservation,
+both SDKs through three artifact forms and native generators, startup/discovery
+and graceful shutdown. Receipts:
+`/private/tmp/fl-version-multipart-schema-{actual,units,clippy,generated,package}.log`.
+
+Checklist is still **652/682 (95.6%), 30 open**, verified from the checklist file.
+Remaining versioning work is narrowed to scoped opaque-file schemas, configurable
+parser/charset behavior and request transformations.

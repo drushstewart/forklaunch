@@ -42,7 +42,7 @@ pub fn contracts() -> Vec<RouteContract> {
     let mut multipart=RouteContract::post("Write Multipart","Write versioned multipart","/versioned-multipart");
     for (version,minimum,status) in [("v1",1,201),("v2",2,202)] {
         let mut input=BodyContract { kind:BodyKind::Multipart, content_type:Some("multipart/form-data".into()), ..BodyContract::json("MultipartInput") };
-        input.schema=input.schema.with_json_schema(json!({"type":"object","required":["label"],"properties":{"label":{"type":"string","minLength":minimum}}}).to_string());
+        input.schema=input.schema.with_json_schema(json!({"type":"object","required":["label"],"properties":{"label":{"type":"string","minLength":minimum},"file":{"type":"string","format":"binary"}}}).to_string());
         let mut output=BodyContract::json("MultipartOutput");
         output.schema=output.schema.with_json_schema(json!({"type":"object","required":["version","bytes"],"properties":{"version":{"type":"string"},"bytes":{"type":"array","items":{"type":"integer"}}}}).to_string());
         multipart=multipart.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});

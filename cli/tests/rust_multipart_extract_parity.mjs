@@ -7,11 +7,15 @@ import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
+import {actualValidator} from './rust_actual_validator_fixture.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 const dependencies=process.env.FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES;
 assert.ok(dependencies,'Set FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES to the installed canonical-iam fixture');
 const require=createRequire(join(dependencies,'package.json'));
 const ts=require('typescript');
+process.env.TSC_BIN??=require.resolve('typescript/bin/tsc');
+process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES??=dependencies;
+const {validator}=actualValidator(root);
 function load(path,imports={}){
  const exports={};
  const source=ts.transpileModule(readFileSync(join(root,path),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
@@ -46,9 +50,21 @@ try{
  const fixtures=[];
  for(const parts of cases){const bytes=wire(parts);fixtures.push({bytes:[...bytes],expected:await parse(bytes)});}
  const versions=fixtures.map(({bytes,expected})=>({kind:'multipart',versions:[{name:'fallback',schema:{type:'object'}},{name:'exact',schema:{const:expected}}],cases:[bytes]}));
+ const extraBytes=wire([['label',null,'ok'],['file',null,'text file fallback']]);
+ const fileFixtures=[...fixtures,{bytes:[...extraBytes],expected:await parse(extraBytes)}];
+ for(const {bytes,expected} of fileFixtures) {
+  assert.equal(validator.file.safeParse(Array.isArray(expected.file)?Buffer.from(expected.file):expected.file).success,true);
+  const file=validator.openapi(validator.file);
+  for(const dialect of ['http://json-schema.org/draft-04/schema#','http://json-schema.org/draft-06/schema#','http://json-schema.org/draft-07/schema#','https://json-schema.org/draft/2019-09/schema','https://json-schema.org/draft/2020-12/schema']) {
+   for(const storage of ['direct','definitions','default']) {
+    const schema={$schema:dialect,type:'object',required:['label','file'],properties:{label:{type:'string'},file:storage==='direct'?file:{$ref:`#/${storage}/file`}},...(storage==='direct'?{}:{[storage]:{file}})};
+    versions.push({kind:'multipart',versions:[{name:'file',schema}],cases:[bytes]});
+   }
+  }
+ }
  const selected=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(versions),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
- for(const result of selected)assert.deepEqual(result.cases,[{version:'exact',matched:['fallback','exact'],status:200}]);
- console.log(`PASS ${cases.length} actual multipart parser/native version-selection comparisons`);
+ for(const [index,result] of selected.entries())assert.deepEqual(result.cases,index<fixtures.length?[{version:'exact',matched:['fallback','exact'],status:200}]:[{version:'file',matched:['file'],status:200}],`multipart schema ${index}`);
+ console.log(`PASS ${versions.length} actual multipart parser/file-validator/native version comparisons`);
  const path=join(temporary,'cases.json');writeFileSync(path,JSON.stringify(fixtures));
  execFileSync('cargo',['test','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--features','multipart','multipart_matches_typescript_parser','--','--nocapture'],{env:{...process.env,CARGO_INCREMENTAL:'0',FORKLAUNCH_TEST_MULTIPART_CASES:path},stdio:'inherit',timeout:300000});
  console.log(`PASS ${cases.length} actual TypeScript content-parser / native typed multipart comparisons`);
