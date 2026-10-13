@@ -1,6 +1,8 @@
 //! Live counterpart of cli/tests/fixtures/canonical-iam/service.ts.
-use forklaunch_auth::{AuthError, JwtClaims, issue_jwt_hs256, parse_bearer, verify_jwt_hs256};
-use forklaunch_axum::{RouterConfig, session::AuthenticatedSession};
+use forklaunch_auth::{
+    JwtClaims, issue_jwt_hs256, typescript::jwt::verify_jwt_resource, verify_jwt_hs256,
+};
+use forklaunch_axum::{AuthErrorFormat, RouterConfig, session::AuthenticatedSession};
 use forklaunch_blueprint_sample_service::iam_router;
 use forklaunch_iam_base::InMemoryIamService;
 use forklaunch_iam_interface::User;
@@ -12,13 +14,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         User::new("user_1", "ada@example.com"),
         User::new("user_2", "grace@example.com"),
     ]));
-    let config = RouterConfig::default().with_authenticator(|request, _| async move {
-        let token = request
-            .headers
-            .get("authorization")
-            .and_then(|header| parse_bearer(header))
-            .ok_or(AuthError::MissingCredentials)?;
-        let principal = verify_jwt_hs256(token, b"test-only-signing-key")?;
+    let config = RouterConfig {
+        auth_error_format: AuthErrorFormat::TypeScriptText,
+        ..RouterConfig::default()
+    }
+    .with_response_authenticator(|request, _| async move {
+        let claims = verify_jwt_resource(
+            request.headers.get("authorization").map(String::as_str),
+            None,
+            |token| async move {
+                let principal = verify_jwt_hs256(token, b"test-only-signing-key")
+                    .map_err(|error| error.to_error_response())?;
+                Ok(serde_json::to_value(principal).expect("serialize verified principal"))
+            },
+        )
+        .await?;
+        let principal = serde_json::from_value(claims).expect("verified principal shape");
         Ok(AuthenticatedSession::new(
             principal,
             serde_json::json!({"sub":"tester"}),

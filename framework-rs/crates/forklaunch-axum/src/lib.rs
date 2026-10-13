@@ -30,7 +30,7 @@ pub mod sse;
 pub mod websocket;
 
 #[cfg(feature = "adapter")]
-pub use router::{DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter, RouterConfig};
+pub use router::{AuthErrorFormat, DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter, RouterConfig};
 
 use forklaunch_http::{
     Body, ContractValidationError, FrameworkRequest, FrameworkResponse, Headers, HttpApplication,

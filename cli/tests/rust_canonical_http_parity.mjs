@@ -82,11 +82,26 @@ try{
   ['/users',recentlyExpired,403],['/users',notYetValid,403],...numericDates
  ];
  for(const [path,bearer,status,body] of cases){
+  const wire=[];
   for(const [name,url] of [['TypeScript',ts],['Rust',rust]]){
    const response=await fetch(url+path,{headers:bearer?{authorization:`Bearer ${bearer}`}:{},signal:AbortSignal.timeout(5000)});
    const text=await response.text();assert.equal(response.status,status,`${name} ${path}: ${text}`);
+   wire.push({text,type:response.headers.get('content-type')});
    if(body!==undefined)assert.deepEqual(text?JSON.parse(text):'',body,`${name} ${path}`);
   }
+  if(status===401||status===403){assert.deepEqual(wire[1],wire[0],`authentication wire parity: ${path}`);assert.equal(wire[0].type,'text/plain; charset=utf-8');}
+ }
+ const headerCases=[['Bearer',401],[`bearer ${token}`,401],[`Basic ${token}`,401],
+  [`Bearer  ${token}`,403],[`Bearer ${token} ignored`,200],[`Bearer ${token}  suffix`,200]];
+ for(const [authorization,status] of headerCases){
+  const wire=[];
+  for(const url of [ts,rust]){
+   const response=await fetch(`${url}/users`,{headers:{authorization},signal:AbortSignal.timeout(5000)});
+   assert.equal(response.status,status);
+   wire.push({text:await response.text(),type:response.headers.get('content-type')});
+  }
+  if(status!==200)assert.deepEqual(wire[1],wire[0],'exact auth header/error wire profile');
+  else assert.deepEqual(JSON.parse(wire[1].text),JSON.parse(wire[0].text));
  }
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
@@ -123,7 +138,7 @@ try{
  if(process.env.UPDATE_CANONICAL_OPENAPI==='1')writeFileSync(differencePath,differenceSnapshot);
  assert.equal(differenceSnapshot,readFileSync(differencePath,'utf8'),'remaining OpenAPI response differences changed');
  console.log(`PASS normalized OpenAPI parameters/security/success schemas; ${differences.length} explicit error-response document differences retained`);
- console.log(`PASS canonical actual TypeScript/Rust IAM services: ${cases.length*2} live HTTP outcomes and both OpenAPI endpoints; rejected-JWT statuses match`);
+ console.log(`PASS canonical actual TypeScript/Rust IAM services: ${(cases.length+headerCases.length)*2} live HTTP outcomes and both OpenAPI endpoints; rejected-JWT statuses, exact text and media types match`);
 }finally{
  for(const child of children){
   if(child.exitCode!==null||child.signalCode!==null)continue;

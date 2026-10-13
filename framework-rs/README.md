@@ -111,7 +111,7 @@ of those checks, exact scope membership, and subscription-before-feature checks.
 The `scopeHeirarchy` wire spelling matches TypeScript; `scopeHierarchy` is also
 accepted when deserializing native configuration. A protected policy with no
 configured permission/role checks returns 401. Its errors retain the upstream
-status and public message; the native HTTP response remains a JSON envelope.
+status and public message; the default native HTTP response is a JSON envelope.
 Applications resolve grants before invoking this policy. HMAC routes have no
 session and bypass the session policy in TypeScript.
 
@@ -165,8 +165,15 @@ needs explicit `ErrorResponse` statuses/messages, including this Basic verifier.
 It returns an `AuthenticatedSession` only after verification; normal RBAC or a
 configured authorizer still runs afterward. It replaces `with_authenticator`
 and vice versa; cookie routes retain their dedicated session verifier. Callback
-errors must contain public text only. Native responses remain structured JSON,
-including when forwarded through MCP. Actual middleware comparisons and live
+errors must contain public text only. Native responses default to structured JSON,
+including when forwarded through MCP. Set `RouterConfig::auth_error_format` to
+`AuthErrorFormat::TypeScriptText` to send auth failures as the public message with
+`text/plain; charset=utf-8`, matching the TypeScript middleware. Combine it with
+the TypeScript credential/session policy for matching status and message rules.
+The option applies to both credential and authorization failures; request parsing,
+validation, handler errors and OpenAPI error declarations retain their own behavior.
+MCP forwards the same HTTP rejection text; successful responses are unaffected.
+Actual middleware comparisons and live
 HTTP/MCP tests cover parsing, rejection, verified subjects and subsequent RBAC.
 
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned

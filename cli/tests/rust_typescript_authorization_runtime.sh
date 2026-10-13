@@ -29,5 +29,6 @@ cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-aut
 cargo check -p authorization-sdk
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug/authorization"))')"
 node "$SCRIPT_DIR/rust_typescript_authorization_runtime.mjs" "$BINARY"
+FORKLAUNCH_TEST_AUTH_TEXT=1 node "$SCRIPT_DIR/rust_typescript_authorization_runtime.mjs" "$BINARY"
 node "$SCRIPT_DIR/rust_mcp_service_startup.mjs" "$BINARY"
 echo 'PASS generated TypeScript session policy, JWT verification, both SDK compilers and HTTP/MCP startup'

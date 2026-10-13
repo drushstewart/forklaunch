@@ -323,3 +323,14 @@ precedence, missing callbacks and successful original-claim propagation. 2,335
 actual middleware comparisons cover scheduling and unchanged-claim behavior with
 controlled validator outcomes. Native tests verify default missing callbacks and
 cancellation; full schema/error-envelope equivalence remains open.
+
+
+Auth error format review (2026-10-13): `TypeScriptText` changes only the wire
+representation of existing credential/policy rejections. Trusted callbacks still
+own the public status/message, including explicit 500 configuration errors; they
+must not return private provider details. Credential verification and policy
+checks still precede handlers in both modes. Native JSON remains the default,
+with body correlation IDs; both modes retain request telemetry and HEAD semantics.
+Canonical real TypeScript comparisons verify exact auth text/media, while native
+regressions confirm request-validation errors are unaffected. Generated HTTP/MCP
+fixtures exercise both representations and error forwarding.

@@ -4346,3 +4346,26 @@ shutdown matrix. The comparison fixture runs in CI. Logs:
 `/private/tmp/fl-typescript-session-{parity,tests,clippy,generated,package}.log`.
 Schema-validator equivalence, remaining callback/date boundaries and error
 envelopes stay open. Checklist remains **658/682 (96.5%), 24 open**.
+
+
+Auth rejection wire-format receipt (2026-10-13):
+`RouterConfig::auth_error_format` explicitly selects native JSON (the default) or
+TypeScript plain-text authentication/authorization errors. `TypeScriptText` sends
+the public message with `text/plain; charset=utf-8`; credential/session policies
+still determine statuses/messages. Successful responses and request-validation/
+handler errors retain their existing formats. JSON retains correlation IDs and
+HEAD suppresses bodies in both modes. MCP preserves the rejected HTTP body.
+
+The actual TypeScript/native canonical services pass 46 HTTP outcomes, including
+exact missing/invalid/expired/forged JWT rejection bodies, content types and header
+parsing. Both OpenAPI snapshots pass with ten explicit document differences still
+retained. All 70 Axum unit tests, two MCP integrations, one WebSocket integration
+and strict all-feature/all-target Clippy pass. Generated relocated run `szxAHb`
+builds both SDKs, executes 11 vendored OIDC tests, verifies Basic/JWT/HMAC/session
+policies in both JSON/text error modes and passes the complete HTTP/MCP startup
+and shutdown matrix. An initial MCP assertion omitted the standard HTTP reason
+phrase; the corrected exact-body assertion passes in the runtime receipt. All
+944 embedded sources/templates remain packaged. Logs:
+`/private/tmp/fl-auth-text-{canonical-expanded,tests,clippy,generated,runtime,startup,package}.log`.
+Broader schema/errors/OpenAPI conformance remains open. Checklist remains
+**658/682 (96.5%), 24 open**.

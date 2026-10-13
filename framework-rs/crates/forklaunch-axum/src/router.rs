@@ -49,6 +49,17 @@ use tower_http::{
 /// Default maximum request body size accepted before a `400` is returned (2 MiB).
 pub const DEFAULT_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 
+/// Wire representation for authentication and authorization rejections.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AuthErrorFormat {
+    /// Native structured errors with code, message and correlation ID.
+    #[default]
+    Json,
+    /// TypeScript middleware's plain-text public message and UTF-8 media type.
+    /// Use a compatible verifier/policy to also match statuses and messages.
+    TypeScriptText,
+}
+
 /// Configuration for cross-cutting router behavior (docs, limits, CORS).
 #[derive(Clone)]
 pub struct RouterConfig {
@@ -87,6 +98,8 @@ pub struct RouterConfig {
     pub response_authenticator: Option<ResponseAuthenticator>,
     /// Optional replacement for native RBAC, invoked only after authentication.
     pub authorizer: Option<Authorizer>,
+    /// Format only credential/policy errors; validation/handler errors are separate.
+    pub auth_error_format: AuthErrorFormat,
     /// Inject a configured collector to export HTTP traces and metrics.
     pub telemetry: Option<OpenTelemetryCollector>,
 }
@@ -112,6 +125,7 @@ impl Default for RouterConfig {
             authenticator: None,
             response_authenticator: None,
             authorizer: None,
+            auth_error_format: AuthErrorFormat::Json,
             telemetry: None,
         }
     }
@@ -577,11 +591,8 @@ impl ForkLaunchRouter {
             .unwrap_or_else(|| OpenTelemetryCollector::new("forklaunch-http"));
         let state = Arc::new(ValidationState::from_registry(
             &registry,
-            config.body_limit,
-            (config.authenticator, config.response_authenticator),
-            config.authorizer,
+            &config,
             telemetry.clone(),
-            &config.version_body_hooks,
             local_validation,
         ));
         router = router.layer(middleware::from_fn_with_state(state, validate_contract));
@@ -788,19 +799,18 @@ struct ValidationState {
     authenticator: Option<Authenticator>,
     response_authenticator: Option<ResponseAuthenticator>,
     authorizer: Option<Authorizer>,
+    auth_error_format: AuthErrorFormat,
     telemetry: OpenTelemetryCollector,
 }
 
 impl ValidationState {
     fn from_registry(
         registry: &ContractRegistry,
-        body_limit: usize,
-        authenticators: (Option<Authenticator>, Option<ResponseAuthenticator>),
-        authorizer: Option<Authorizer>,
+        config: &RouterConfig,
         telemetry: OpenTelemetryCollector,
-        hooks: &forklaunch_http::VersionBodyHooksRegistry,
         local_validation: HashSet<String>,
     ) -> Self {
+        let hooks = &config.version_body_hooks;
         hooks
             .validate_routes(registry.routes())
             .expect("invalid body hook registration");
@@ -825,10 +835,11 @@ impl ValidationState {
             routes,
             versions,
             local_validation,
-            body_limit,
-            authenticator: authenticators.0,
-            response_authenticator: authenticators.1,
-            authorizer,
+            body_limit: config.body_limit,
+            authenticator: config.authenticator.clone(),
+            response_authenticator: config.response_authenticator.clone(),
+            authorizer: config.authorizer.clone(),
+            auth_error_format: config.auth_error_format,
             telemetry,
         }
     }
@@ -972,12 +983,16 @@ async fn validate_contract(
                     &framework_request.context.correlation_id,
                 );
                 tracing::warn!(operation = %contract.operation_name, correlation_id = %framework_request.context.correlation_id, "request authentication or authorization failed");
-                let response = error;
-                return framework_response_to_axum(
-                    response
+                let response = match state.auth_error_format {
+                    AuthErrorFormat::Json => error
                         .with_correlation_id(framework_request.context.correlation_id)
                         .to_response(),
-                );
+                    AuthErrorFormat::TypeScriptText => {
+                        FrameworkResponse::text(error.kind.status_code(), error.message)
+                            .with_header("content-type", "text/plain; charset=utf-8")
+                    }
+                };
+                return framework_response_to_axum(response);
             }
         }
     }

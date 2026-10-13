@@ -54,7 +54,14 @@ pub fn contracts() -> Vec<RouteContract> {
     .collect()
 }
 pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
-    let config = RouterConfig::default()
+    let config = RouterConfig {
+        auth_error_format: if std::env::var("FORKLAUNCH_TEST_AUTH_TEXT").as_deref() == Ok("1") {
+            forklaunch_axum::AuthErrorFormat::TypeScriptText
+        } else {
+            forklaunch_axum::AuthErrorFormat::Json
+        },
+        ..RouterConfig::default()
+    }
         .with_response_authenticator(|request, contract| async move {
             if contract.operation_name == "checkHmac" {
                 use forklaunch_auth::request_hmac::{HmacAuthorization, SignedBody};

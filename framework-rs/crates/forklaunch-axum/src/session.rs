@@ -101,6 +101,110 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auth_wire_format_is_explicit_and_applies_to_verification_and_policy_errors() {
+        use crate::AuthErrorFormat;
+        use forklaunch_http::{ErrorKind, ErrorResponse};
+        for format in [AuthErrorFormat::Json, AuthErrorFormat::TypeScriptText] {
+            for kind in [
+                ErrorKind::Validation,
+                ErrorKind::Unauthorized,
+                ErrorKind::Forbidden,
+                ErrorKind::Internal,
+            ] {
+                for policy_error in [false, true] {
+                    let config = RouterConfig {
+                        auth_error_format: format,
+                        ..RouterConfig::default()
+                    }
+                    .with_response_authenticator(move |_, _| async move {
+                        if policy_error {
+                            Ok(AuthenticatedSession::new(
+                                Principal::new("verified"),
+                                serde_json::json!({}),
+                            ))
+                        } else {
+                            Err(ErrorResponse::new(kind, "Public érror.\nSecond line."))
+                        }
+                    })
+                    .with_authorizer(move |_, _| {
+                        Err(ErrorResponse::new(kind, "Public érror.\nSecond line."))
+                    });
+                    let router = app(config);
+                    for method in ["GET", "HEAD"] {
+                        let response = router
+                            .clone()
+                            .oneshot(
+                                Request::builder()
+                                    .method(method)
+                                    .uri("/profile")
+                                    .header("x-correlation-id", "wire-test")
+                                    .body(Body::empty())
+                                    .unwrap(),
+                            )
+                            .await
+                            .unwrap();
+                        assert_eq!(response.status().as_u16(), kind.status_code());
+                        assert_eq!(
+                            response.headers()["content-type"],
+                            match format {
+                                AuthErrorFormat::Json => "application/json",
+                                AuthErrorFormat::TypeScriptText => "text/plain; charset=utf-8",
+                            }
+                        );
+                        let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+                        if method == "HEAD" {
+                            assert!(bytes.is_empty());
+                            continue;
+                        }
+                        match format {
+                            AuthErrorFormat::Json => {
+                                let body: serde_json::Value =
+                                    serde_json::from_slice(&bytes).unwrap();
+                                assert_eq!(body["message"], "Public érror.\nSecond line.");
+                                assert_eq!(body["correlationId"], "wire-test");
+                            }
+                            AuthErrorFormat::TypeScriptText => {
+                                assert_eq!(bytes.as_ref(), "Public érror.\nSecond line.".as_bytes());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn text_auth_errors_do_not_change_request_validation_errors() {
+        let config = RouterConfig {
+            auth_error_format: crate::AuthErrorFormat::TypeScriptText,
+            ..RouterConfig::default()
+        }
+        .with_authenticator(|_, _| async {
+            Ok(AuthenticatedSession::new(
+                Principal::new("verified"),
+                serde_json::json!({}),
+            ))
+        });
+        let router = ForkLaunchRouter::anonymous()
+            .get(
+                RouteContract::get("Query", "Query", "/query")
+                    .with_access(AccessLevel::Authenticated)
+                    .with_query(forklaunch_contract::FieldContract::required(
+                        "required", "String",
+                    )),
+                || async { "must not reach handler" },
+            )
+            .with_config(config)
+            .into_router();
+        let response = router
+            .oneshot(Request::get("/query").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.headers()["content-type"], "application/json");
+    }
+
+    #[tokio::test]
     async fn custom_authorizer_runs_only_after_verification_and_overrides_native_rbac() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let calls = Arc::new(AtomicUsize::new(0));
