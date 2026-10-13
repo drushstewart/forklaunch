@@ -199,27 +199,22 @@ impl Graph<'_> {
             }
             return clone_literal(schema, self.budget);
         };
-        if !self.resource_ids && object.contains_key("$id") {
-            bail!("Resource IDs are unsupported in this SDK profile");
+        if self.resources.is_none() {
+            self.resources = Some(resources::Resources::index(self.document, self.budget)?);
+        }
+        let resources = self.resources.as_ref().unwrap();
+        let dialect = resources.dialect(schema);
+        let draft4 = dialect.contains("/draft-04/");
+        let draft6 = dialect.contains("/draft-06/");
+        let resource_key = if draft4 { "id" } else { "$id" };
+        if object.contains_key(resource_key) {
+            if !self.resource_ids {
+                bail!("Resource IDs are unsupported in this SDK profile");
+            }
+            resources.check_target(schema)?;
         }
         if object.contains_key("$dynamicRef") || object.contains_key("$recursiveRef") {
             bail!("Dynamic schema references are unsupported by SDK generation");
-        }
-        let dialect = self
-            .document
-            .get("$schema")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let draft4 = dialect.contains("/draft-04/");
-        let draft6 = dialect.contains("/draft-06/");
-        if draft4 && object.contains_key("id") {
-            bail!("Schema resource IDs are unsupported by SDK generation");
-        }
-        if object.contains_key("$id") {
-            if self.resources.is_none() {
-                self.resources = Some(resources::Resources::index(self.document, self.budget)?);
-            }
-            self.resources.as_ref().unwrap().check_target(schema)?;
         }
         if object.contains_key(REFERENCE) || object.contains_key(DEFINITIONS) {
             bail!("Reserved SDK schema annotation");
@@ -266,6 +261,9 @@ impl Graph<'_> {
                 if key == "$ref" {
                     continue;
                 }
+                if key == resource_key {
+                    continue;
+                }
                 if !matches!(
                     key.as_str(),
                     "description"
@@ -288,6 +286,9 @@ impl Graph<'_> {
         }
         let mut result = Map::new();
         for (key, value) in object {
+            if key == resource_key {
+                continue;
+            }
             // Older dialects treat later validation keywords as annotations.
             // Keep literal data intact; only schema positions pass through visit.
             if (draft4 && matches!(key.as_str(), "const" | "contains" | "propertyNames"))

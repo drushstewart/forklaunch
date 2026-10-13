@@ -447,13 +447,16 @@ the lower-level exact multipart-framing fixture.
 The shared HTTP SDK compiler resolves `$id` resources already bundled in a schema
 or OpenAPI document. Relative IDs and references resolve against their lexical
 base; pointer fragments address the selected resource, and `$anchor` names are
-scoped to that resource. Recursive URI/pointer aliases retain one model identity.
+scoped to that resource. Draft-4 `id` and embedded resources using different
+schema drafts retain their own keyword rules; legacy `const`/conditional
+annotations do not become modern constraints. Recursive URI/pointer aliases
+retain one model identity.
 No network fetch occurs during generation. Literal defaults/examples are not
 interpreted as resource declarations. The same depth/node/byte budgets apply to
 the resource index and model graph.
 
 This profile rejects duplicate IDs, missing resources, malformed IDs, nonempty
-ID fragments, mixed resource dialects, draft-4 `id`, dynamic/recursive references,
+ID fragments, dynamic/recursive references,
 and resource-aware references into literal data/schema dictionaries. WebSocket
 SDK unions retain their existing resource-free profile until their relocation
 and dynamic scope are implemented. An explicit rejection is preferable to

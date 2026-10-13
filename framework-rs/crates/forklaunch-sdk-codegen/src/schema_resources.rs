@@ -9,6 +9,8 @@ const ROOT: &str = "https://forklaunch.invalid/__document__";
 
 pub(super) struct Resources {
     scopes: BTreeMap<usize, String>,
+    dialects: BTreeMap<usize, String>,
+    default_dialect: String,
     default_base: String,
     has_ids: bool,
     roots: BTreeMap<String, String>,
@@ -21,13 +23,15 @@ impl Resources {
             .get("$schema")
             .and_then(Value::as_str)
             .unwrap_or("");
-        let legacy = ["draft-04", "draft-06", "draft-07"]
-            .iter()
-            .any(|value| dialect.contains(value));
-        let draft4 = dialect.contains("draft-04");
-        let draft6 = dialect.contains("draft-06");
+        budget.bytes = budget
+            .bytes
+            .checked_sub(dialect.len())
+            .and_then(|remaining| remaining.checked_sub(dialect.len()))
+            .context("SDK schema resource index exceeds 32 MiB")?;
         let mut result = Self {
             scopes: BTreeMap::new(),
+            dialects: BTreeMap::new(),
+            default_dialect: dialect.into(),
             default_base: ROOT.into(),
             has_ids: false,
             roots: BTreeMap::from([(ROOT.into(), String::new())]),
@@ -39,13 +43,13 @@ impl Resources {
             document.get("openapi").is_none(),
             0,
         )];
-        let mut parents = BTreeMap::from([(String::new(), ROOT.to_owned())]);
+        let mut parents = BTreeMap::from([(String::new(), (ROOT.to_owned(), dialect.to_owned()))]);
         while let Some((value, pointer, schema, depth)) = pending.pop() {
             if depth > 64 || budget.nodes == 0 {
                 bail!("SDK schema resource index exceeds expansion limits");
             }
             budget.nodes -= 1;
-            let mut base = parents
+            let (mut base, mut dialect) = parents
                 .remove(&pointer)
                 .context("Missing schema resource scope")?;
             if schema && value.is_boolean() {
@@ -55,13 +59,19 @@ impl Resources {
             }
             if let Some(object) = value.as_object() {
                 if schema {
-                    if !pointer.is_empty()
-                        && let Some(nested) = object.get("$schema").and_then(Value::as_str)
-                        && nested != dialect
-                    {
-                        bail!("Mixed schema resource dialects are unsupported by SDK generation");
+                    if let Some(declared) = object.get("$schema") {
+                        let declared = declared
+                            .as_str()
+                            .context("Schema dialect must be a string")?;
+                        budget.bytes = budget
+                            .bytes
+                            .checked_sub(declared.len())
+                            .context("SDK schema resource index exceeds 32 MiB")?;
+                        declared.clone_into(&mut dialect);
                     }
-                    if !draft4 && let Some(id) = object.get("$id") {
+                    let draft4 = dialect.contains("draft-04");
+                    let id_key = if draft4 { "id" } else { "$id" };
+                    if let Some(id) = object.get(id_key) {
                         result.has_ids = true;
                         let id = id.as_str().context("Schema resource ID must be a string")?;
                         budget.bytes = budget
@@ -83,12 +93,19 @@ impl Resources {
                     }
                     if pointer.is_empty() {
                         result.default_base.clone_from(&base);
+                        result.default_dialect.clone_from(&dialect);
                     }
+                    result
+                        .dialects
+                        .insert(std::ptr::from_ref(value) as usize, dialect.clone());
                     result
                         .scopes
                         .insert(std::ptr::from_ref(value) as usize, base.clone());
                     if let Some(anchor) = object.get("$anchor") {
-                        if legacy {
+                        if ["draft-04", "draft-06", "draft-07"]
+                            .iter()
+                            .any(|draft| dialect.contains(draft))
+                        {
                             bail!("$anchor is unavailable in the selected schema dialect");
                         }
                         let anchor = anchor.as_str().context("Schema anchor must be a string")?;
@@ -110,14 +127,16 @@ impl Resources {
                         }
                     }
                 }
+                let draft4 = dialect.contains("draft-04");
+                let draft6 = dialect.contains("draft-06");
                 for (key, child) in object {
                     let path = format!("{pointer}/{}", escape(key));
                     let mut enqueue = |value, path: String, schema| -> Result<()> {
                         budget.bytes = budget
                             .bytes
-                            .checked_sub(base.len() + path.len())
+                            .checked_sub(base.len() + path.len() + dialect.len())
                             .context("SDK schema resource index exceeds 32 MiB")?;
-                        parents.insert(path.clone(), base.clone());
+                        parents.insert(path.clone(), (base.clone(), dialect.clone()));
                         queue_anchor(&mut pending, budget, (value, path, schema, depth + 1))
                     };
                     if schema {
@@ -182,9 +201,9 @@ impl Resources {
                     let path = format!("{pointer}/{index}");
                     budget.bytes = budget
                         .bytes
-                        .checked_sub(base.len() + path.len())
+                        .checked_sub(base.len() + path.len() + dialect.len())
                         .context("SDK schema resource index exceeds 32 MiB")?;
-                    parents.insert(path.clone(), base.clone());
+                    parents.insert(path.clone(), (base.clone(), dialect.clone()));
                     queue_anchor(&mut pending, budget, (value, path, false, depth + 1))?;
                 }
             }
@@ -192,8 +211,27 @@ impl Resources {
         Ok(result)
     }
 
+    pub(super) fn dialect<'a>(&'a self, schema: &'a Value) -> &'a str {
+        self.dialects
+            .get(&(std::ptr::from_ref(schema) as usize))
+            .map_or_else(
+                || {
+                    schema
+                        .get("$schema")
+                        .and_then(Value::as_str)
+                        .unwrap_or(&self.default_dialect)
+                },
+                String::as_str,
+            )
+    }
+
     pub(super) fn check_target(&self, target: &Value) -> Result<()> {
-        if (self.has_ids || target.get("$id").is_some())
+        let id = if self.dialect(target).contains("draft-04") {
+            "id"
+        } else {
+            "$id"
+        };
+        if (self.has_ids || target.get(id).is_some())
             && !self
                 .scopes
                 .contains_key(&(std::ptr::from_ref(target) as usize))
@@ -335,6 +373,39 @@ mod tests {
         assert!(normalize(&schema, "Literal").is_err());
         let external = json!({"$id":"https://schemas.test/external","type":"string"});
         assert!(bundle(&external, &json!({}), &mut ExpansionBudget::default()).is_err());
+    }
+
+    #[test]
+    fn draft_four_ids_resolve_without_activating_newer_annotations() {
+        let schema = json!({"$schema":"http://json-schema.org/draft-04/schema#","id":"https://schemas.test/legacy/root","$ref":"child","definitions":{
+            "Child":{"id":"child","type":"object","properties":{"value":{"type":"string","const":"ignored"},"next":{"$ref":"#"}},"if":{"$id":"not-active","type":"bad"}}
+        }});
+        let result = normalize(&schema, "Legacy").unwrap();
+        assert_eq!(result["properties"]["value"]["type"], "string");
+        assert!(result["properties"]["value"].get("const").is_none());
+        assert!(result.get("if").is_none());
+        assert!(result["properties"]["next"][REFERENCE].is_string());
+    }
+
+    #[test]
+    fn embedded_resource_dialects_control_keyword_meaning() {
+        let schema = json!({"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://schemas.test/current","type":"object","properties":{
+            "old":{"$ref":"legacy"},"new":{"type":"string","const":"only"}
+        },"$defs":{"Legacy":{"$schema":"http://json-schema.org/draft-04/schema#","id":"legacy","type":"string","const":"ignored","if":{"$id":false}}}});
+        let result = normalize(&schema, "Mixed").unwrap();
+        assert!(result["properties"]["old"].get("const").is_none());
+        assert_eq!(result["properties"]["new"]["const"], "only");
+        let document = json!({"openapi":"3.1.0","components":{"schemas":{"Legacy":{
+            "$schema":"http://json-schema.org/draft-04/schema#","id":"https://schemas.test/legacy","type":"string","const":"ignored"
+        }}}});
+        let result = bundle(
+            &document["components"]["schemas"]["Legacy"],
+            &document,
+            &mut ExpansionBudget::default(),
+        )
+        .unwrap();
+        assert_eq!(result["type"], "string");
+        assert!(result.get("const").is_none());
     }
 
     #[test]

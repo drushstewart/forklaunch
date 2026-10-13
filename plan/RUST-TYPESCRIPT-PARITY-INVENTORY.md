@@ -2622,3 +2622,21 @@ dialects, resource references into literal/schema-dictionary contexts,
 nonempty ID fragments, dynamic/recursive references and WebSocket resource-aware
 union relocation remain explicitly unsupported. Checklist remains 651/682
 (95.5%), 31 open.
+
+
+Schema resource follow-up adds lexical dialect tracking, draft-4 `id`, and
+embedded resources using different drafts. The model walk now selects keyword
+meaning from the current schema resource, including standalone OpenAPI components,
+instead of applying the document root's draft everywhere. Tests confirm legacy
+`const` and conditional annotations do not become modern validation/type rules.
+Dialect strings and index copies consume the shared byte budget before copying.
+
+The full generated matrix passes static, legacy and mixed-resource variants:
+both client languages, both artifact imports, both native generators, strict
+Rust client lint, HTTP/MCP startup, discovery, invocation and graceful shutdown.
+Evidence: `fl-resource-dialects-generated.log` (three complete passes),
+`fl-resource-dialects-native-tests.log` (29 shared + 5 Rust + 8 TS tests), and
+`fl-resource-dialects-clippy.log`. All 1,086 CLI tests and workspace formatting
+also pass (`fl-resource-dialects-cli-tests.log`, `fl-resource-dialects-format.log`).
+Dynamic/recursive references, ID fragments,
+resource/literal contexts and WebSocket relocation remain open; count unchanged.

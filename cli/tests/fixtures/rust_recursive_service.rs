@@ -9,7 +9,7 @@ const CHOICE: &str = r##"{"anyOf":[{"type":"string"},{"type":"array","items":{"$
 const MUTUAL: &str = r##"{"$ref":"#MutualA","$defs":{"A":{"$anchor":"MutualA","type":"object","additionalProperties":false,"required":["id","peer"],"properties":{"id":{"type":"string"},"peer":{"$ref":"#MutualB"}}},"B":{"$anchor":"MutualB","type":"object","additionalProperties":false,"required":["children"],"properties":{"children":{"type":"array","items":{"$ref":"#MutualA"}}}}}}"##;
 
 fn body(name: &str, schema: &str) -> BodyContract {
-    let schema = if std::env::var_os("FORKLAUNCH_TEST_SCHEMA_RESOURCES").is_some() {
+    let schema = if let Ok(mode) = std::env::var("FORKLAUNCH_TEST_SCHEMA_RESOURCES") {
         let mut value: Value = serde_json::from_str(schema).unwrap();
         value["$id"] = json!(format!("https://schemas.fixture.test/{name}/index.json"));
         if name == "Mutual" {
@@ -18,6 +18,24 @@ fn body(name: &str, schema: &str) -> BodyContract {
             value["$defs"]["B"]["$id"] = json!("nodes/b");
             value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("b#MutualB");
             value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("a#MutualA");
+        }
+        if mode == "legacy" {
+            value["$schema"] = json!("http://json-schema.org/draft-04/schema#");
+            value["id"] = value.as_object_mut().unwrap().remove("$id").unwrap();
+            if name == "Tree" { value["properties"]["label"]["const"] = json!("ignored-legacy-annotation"); }
+        }
+        if name == "Mutual" && (mode == "legacy" || mode == "mixed") {
+            value["$ref"] = json!("nodes/a");
+            for key in ["A", "B"] {
+                let child = &mut value["$defs"][key];
+                child.as_object_mut().unwrap().remove("$anchor");
+                if mode == "legacy" || key == "A" {
+                    child["$schema"] = json!("http://json-schema.org/draft-04/schema#");
+                    child["id"] = child.as_object_mut().unwrap().remove("$id").unwrap();
+                }
+            }
+            value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("b");
+            value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("a");
         }
         value.to_string()
     } else { schema.to_owned() };
