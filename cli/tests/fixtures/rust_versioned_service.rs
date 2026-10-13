@@ -14,6 +14,7 @@ pub fn contracts() -> Vec<RouteContract> {
         route=route.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
     }
     let mut text=RouteContract::post("Write Text","Write versioned text","/versioned-text");
+    text.options.body_parser.text_wire.limit_bytes=8;
     for (version,minimum,status) in [("v1",0,201),("v2",2,202)] {
         let input=BodyContract { kind:BodyKind::Text, content_type:Some("text/plain".into()), ..BodyContract::json("TextInput") };
         let mut input=input;
@@ -49,6 +50,7 @@ pub fn contracts() -> Vec<RouteContract> {
     }
     let mut scalar=RouteContract::post("Write Scalar","Write scalar JSON","/versioned-scalar");
     scalar.options.body_parser.json_strict=false;
+    scalar.options.body_parser.json_wire.inflate=false;
     for (version,kind,status) in [("v1","integer",201),("v2","string",202)] {
         let mut input=BodyContract::json("ScalarInput");
         input.schema=input.schema.with_json_schema(json!({"type":kind}).to_string());
@@ -63,7 +65,7 @@ pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"value":body["value"]})))
     }).post(contracts().remove(1),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<String>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"value":body})))
-    }).post(contracts().remove(2),|Extension(version):Extension<SelectedVersion>,body:axum::body::Bytes|async move {
+    }).post(contracts().remove(2),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<Vec<u8>>|async move {
         (StatusCode::ACCEPTED,Json(json!({"version":version.version,"bytes":body.to_vec()})))
     }).post(contracts().remove(3),|Extension(version):Extension<SelectedVersion>,body:String|async move {
         (match version.version.as_str() {"v1"=>StatusCode::CREATED,"v2"=>StatusCode::ACCEPTED,_=>StatusCode::OK},Json(json!({"version":version.version,"raw":body})))

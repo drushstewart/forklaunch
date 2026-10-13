@@ -599,6 +599,16 @@ roots, while extended=false or depth=0 retains literal bracketed form keys. All
 versions share these options. Registration rejects unsupported default charsets,
 form depth above 32, or parameter limits outside 1..=100,000. Custom options are
 included in contract artifacts; default options preserve the prior artifact
-shape. These options currently apply to the versioned pipeline. Compression,
-per-parser byte limits, custom verify/reviver hooks and form sentinel/entity
-options remain separate work.
+shape. These options currently apply to the versioned pipeline. Custom verify/reviver hooks and form sentinel/entity options remain separate
+work.
+
+The `json_wire`, `text_wire`, `form_wire` and `raw_wire` options set a decompressed
+byte limit and enable/disable inflation independently. Defaults match body-parser:
+100 KiB and inflation enabled. Identity, gzip (including concatenated members),
+zlib deflate and Brotli are supported. Unsupported or disabled encodings return
+415, malformed compressed bodies return 400, and decoded limit violations return
+413. Limits may be configured up to 32 MiB; zero permits only empty decoded bodies.
+Decoding reads at most the limit plus one byte. Transport limits still bound
+compressed bytes, and multipart retains its separate part/field/total limits.
+Parsed values use decoded bytes while original request bytes remain available to
+raw handlers; TypeScript body-parser's verify buffer contains decompressed bytes.

@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod body_parser;
-pub use body_parser::BodyParserOptions;
+pub use body_parser::{BodyParserOptions, BodyParserWireOptions};
 
 #[cfg(feature = "schema-validation")]
 pub mod schema_validation;

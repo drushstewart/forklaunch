@@ -3411,3 +3411,28 @@ Checklist remains **652/682 (95.6%), 30 open**. Compression, per-parser byte lim
 verify/reviver hooks, form sentinel/entity options, complete legacy codec coverage
 and arbitrary schema transformations remain open; this configuration currently
 applies to the versioned pipeline.
+
+
+### 2026-10-13 — Bounded compression and per-parser byte limits
+
+Versioned JSON/text/form/raw parsers now configure byte limits and inflation
+independently. Defaults match body-parser's 100 KiB decoded limit with inflation
+enabled. Identity, gzip (including concatenated members), zlib deflate and Brotli
+are decoded with at most limit+1 output bytes. Unknown/disabled encodings return
+415, malformed streams return 400 and decoded-limit failures return 413. Runtime
+configuration caps limits at 32 MiB; multipart keeps its own limits and transport
+limits still bound wire bytes. Raw request bytes remain original, while selected
+parsed values contain decompressed data (TS verify buffers are decompressed).
+
+Validation: **267 actual TypeScript parser/native value/status comparisons**,
+24 contract/30 HTTP/61 Axum tests, strict Clippy, blueprint check, no new unreviewed
+advisories across all three locks, and 906 packaged files. Fresh `run.ttVFp4`
+passes compressed JSON/text/file HTTP calls for every encoding, expansion-limit
+rejection, configured text limits and disabled scalar inflation, all HTTP/MCP
+startup/discovery/call/shutdown checks, and both SDKs through three artifact forms
+and native generators. Receipts:
+`/private/tmp/fl-wire-limits-{actual,native,config,clippy,blueprint,audit,generated,package}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. Custom verify/reviver hooks, form
+sentinel/entity options, complete legacy codec coverage and schema transformations
+remain on the broader parser/versioning work.

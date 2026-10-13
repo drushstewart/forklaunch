@@ -15,6 +15,8 @@ mod charset;
 mod form;
 #[path = "versioning_multipart.rs"]
 mod multipart;
+#[path = "versioning_wire.rs"]
+mod wire;
 pub use multipart::MultipartLimits;
 
 /// Available to local handlers and as an Axum request extension.
@@ -201,38 +203,49 @@ impl VersionedRoutePlan {
             crate::header_value(&request.headers, "content-type"),
             default_charset,
         );
+        let wire_options = match body.kind {
+            BodyKind::Json | BodyKind::Unknown => Some(&self.parsers.json_wire),
+            BodyKind::Text => Some(&self.parsers.text_wire),
+            BodyKind::UrlEncoded => Some(&self.parsers.form_wire),
+            BodyKind::Binary | BodyKind::File => Some(&self.parsers.raw_wire),
+            _ => None,
+        };
+        if matches!(
+            body.kind,
+            BodyKind::Json | BodyKind::Unknown | BodyKind::Text | BodyKind::UrlEncoded
+        ) {
+            if (matches!(body.kind, BodyKind::Json | BodyKind::Unknown)
+                && !charset.starts_with("utf-"))
+                || (body.kind == BodyKind::UrlEncoded
+                    && charset != "utf-8"
+                    && charset != "iso-8859-1")
+            {
+                return Err(charset::unsupported());
+            }
+            charset::decode(&[], &charset)?;
+        }
+        let decoded = if let Some(options) = wire_options {
+            wire::decode(
+                bytes,
+                crate::header_value(&request.headers, "content-encoding"),
+                options,
+            )?
+        } else {
+            std::borrow::Cow::Borrowed(bytes)
+        };
+        let bytes = decoded.as_ref();
         let value = match body.kind {
             BodyKind::Json | BodyKind::Unknown => {
-                if !charset.starts_with("utf-") {
-                    return Err(charset::unsupported());
-                }
-                let text = charset::decode(bytes, &charset)?;
-                if text.is_empty() {
-                    serde_json::json!({})
-                } else {
-                    let first = text
-                        .trim_start_matches([' ', '\t', '\r', '\n'])
-                        .as_bytes()
-                        .first();
-                    if self.parsers.json_strict && !matches!(first, Some(b'{' | b'[')) {
-                        return Err(invalid_body("JSON body must be an object or array"));
-                    }
-                    serde_json::from_str(&text).map_err(|_| invalid_body("invalid JSON body"))?
-                }
+                parse_json_body(bytes, &charset, self.parsers.json_strict)?
             }
             BodyKind::File | BodyKind::Binary => {
                 Value::Array(bytes.iter().copied().map(Value::from).collect())
             }
-            BodyKind::UrlEncoded => {
-                if charset != "utf-8" && charset != "iso-8859-1" {
-                    return Err(charset::unsupported());
-                }
-                form::parse_decoded(
-                    &charset::decode(bytes, &charset)?,
-                    charset == "iso-8859-1",
-                    &self.parsers,
-                )?
-            }
+            BodyKind::UrlEncoded => form::parse_decoded(
+                &charset::decode(bytes, &charset)?,
+                charset == "iso-8859-1",
+                &self.parsers,
+            )?,
             BodyKind::Multipart => multipart::parse(
                 bytes,
                 crate::header_value(&request.headers, "content-type")
@@ -244,7 +257,37 @@ impl VersionedRoutePlan {
         Ok(Some(value))
     }
 }
+fn parse_json_body(
+    bytes: &[u8],
+    charset: &str,
+    strict: bool,
+) -> Result<Value, ContractValidationError> {
+    let text = charset::decode(bytes, charset)?;
+    if text.is_empty() {
+        return Ok(serde_json::json!({}));
+    }
+    let first = text
+        .trim_start_matches([' ', '\t', '\r', '\n'])
+        .as_bytes()
+        .first();
+    if strict && !matches!(first, Some(b'{' | b'[')) {
+        return Err(invalid_body("JSON body must be an object or array"));
+    }
+    serde_json::from_str(&text).map_err(|_| invalid_body("invalid JSON body"))
+}
+
 fn validate_parser_options(parsers: &forklaunch_contract::BodyParserOptions) -> Result<(), String> {
+    for options in [
+        &parsers.json_wire,
+        &parsers.text_wire,
+        &parsers.form_wire,
+        &parsers.raw_wire,
+    ] {
+        if options.limit_bytes > 32 * 1024 * 1024 {
+            return Err("Parser byte limit exceeds 32 MiB".into());
+        }
+    }
+
     if parsers.form_parameter_limit == 0
         || parsers.form_parameter_limit > 100_000
         || parsers.form_depth > 32
@@ -407,6 +450,13 @@ mod tests {
     #[test]
     fn invalid_parser_configuration_rejects_registration() {
         for options in [
+            forklaunch_contract::BodyParserOptions {
+                json_wire: forklaunch_contract::BodyParserWireOptions {
+                    limit_bytes: 32 * 1024 * 1024 + 1,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             forklaunch_contract::BodyParserOptions {
                 form_parameter_limit: 0,
                 ..Default::default()

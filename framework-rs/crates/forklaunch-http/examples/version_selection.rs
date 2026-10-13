@@ -72,6 +72,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "application/json"
                 },
             )
+            .with_header(
+                "content-encoding",
+                fixture["contentEncoding"].as_str().unwrap_or("identity"),
+            )
             .with_body(if file || multipart || wire_bytes {
                 Body::Binary(
                     case.as_array()
@@ -134,6 +138,20 @@ fn parser_registration(kinds: &[Value]) -> Value {
 
 fn configure_parsers(contract: &mut RouteContract, options: &Value) {
     let parsers = &mut contract.options.body_parser;
+    for (name, wire) in [
+        ("json", &mut parsers.json_wire),
+        ("text", &mut parsers.text_wire),
+        ("urlencoded", &mut parsers.form_wire),
+        ("raw", &mut parsers.raw_wire),
+    ] {
+        if let Some(limit) = options[name]["limit"].as_u64() {
+            wire.limit_bytes = usize::try_from(limit).unwrap();
+        }
+        if let Some(inflate) = options[name]["inflate"].as_bool() {
+            wire.inflate = inflate;
+        }
+    }
+
     if let Some(value) = options["json"]["strict"].as_bool() {
         parsers.json_strict = value;
     }

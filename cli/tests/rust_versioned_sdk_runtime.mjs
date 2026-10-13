@@ -1,3 +1,4 @@
+import {gzipSync,deflateSync,brotliCompressSync} from 'node:zlib';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
@@ -77,6 +78,19 @@ try {
   const result=await mcpRpc(base,'tools/call',{name:`writeMultipart [v${version}]`,arguments:{body:{label}}});
   assert.equal(result.isError,false,JSON.stringify(result));const value=JSON.parse(result.content[0].text);assert.equal(value.version,version);assert.ok(Buffer.from(value.bytes).includes(Buffer.from(label)));
  }
+ for(const [encoding,compress] of Object.entries({gzip:gzipSync,deflate:deflateSync,br:brotliCompressSync})) {
+  for(const [path,type,bytes,status,expected] of [
+   ['versioned-text','text/plain',Buffer.from('水a'),202,{version:'v2',value:'水a'}],
+   ['versions','application/json',Buffer.from(JSON.stringify({kind:'v1',value:'compressed'})),201,{value:'compressed'}],
+   ['versioned-file','application/octet-stream',Buffer.from([0,255,128]),202,{version:'v2',bytes:[0,255,128]}],
+  ]) {
+   const response=await fetch(`${base}/${path}`,{method:'POST',headers:{'content-type':type,'content-encoding':encoding},body:compress(bytes)});
+   assert.equal(response.status,status);assert.deepEqual(await response.json(),expected);
+  }
+  const bomb=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json','content-encoding':encoding},body:compress(Buffer.alloc(102401,97))});assert.equal(bomb.status,413);
+ }
+ const disabledInflate=await fetch(`${base}/versioned-scalar`,{method:'POST',headers:{'content-type':'application/json','content-encoding':'gzip'},body:gzipSync(Buffer.from('42'))});assert.equal(disabledInflate.status,415);
+ const textLimit=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':'text/plain'},body:'123456789'});assert.equal(textLimit.status,413);
  for(const [value,version,status] of [[42,'v1',201],['scalar 水','v2',202]]) {
   const response=await fetch(`${base}/versioned-scalar`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(value)});
   assert.equal(response.status,status);assert.deepEqual(await response.json(),{value});

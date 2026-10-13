@@ -1,3 +1,4 @@
+import {gzipSync,deflateSync,brotliCompressSync,gunzipSync,inflateSync,brotliDecompressSync} from 'node:zlib';
 // Compare actual Express content parsing with native version body matching.
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -57,11 +58,31 @@ for(const options of [{extended:false},{depth:0},{depth:1},{depth:2},{parameterL
  for(const value of ['a[b]=x','a[b][c]=x','a[]=x&a[]=y','a=x&b=y&c=z','__proto__=x&a[__proto__]=y','1[]=a&1=b&1[]=c']) cases.push(['form',Buffer.from(value),undefined,{urlencoded:options}]);
 }
 for(const charset of [undefined,'utf-8']) cases.push(['form',Buffer.from('value=%E9'),charset,{urlencoded:{defaultCharset:'iso-8859-1'}}]);
+const compressors={gzip:gzipSync,deflate:deflateSync,br:brotliCompressSync};
+const decompressors={gzip:gunzipSync,deflate:inflateSync,br:brotliDecompressSync};
+for(const kind of ['json','text','form','file']) {
+ const parser=kind==='form'?'urlencoded':kind==='file'?'raw':kind;
+ const bytes=Buffer.from(kind==='json'?'{"value":"水"}':kind==='form'?'value=%E6%B0%B4':'water 水');
+ for(const limit of [0,bytes.length-1,bytes.length]) cases.push([kind,bytes,undefined,{[parser]:{limit}}]);
+ cases.push([kind,Buffer.alloc(0),undefined,{[parser]:{limit:0}}]);
+ cases.push([kind,Buffer.alloc(102401,97)]);
+ for(const [encoding,compress] of Object.entries(compressors)) {
+  const compressed=compress(bytes);
+  cases.push([kind,compressed,undefined,undefined,encoding]);
+  cases.push([kind,compressed,undefined,{[parser]:{inflate:false}},encoding]);
+  cases.push([kind,compressed,undefined,{[parser]:{limit:bytes.length-1}},encoding]);
+  cases.push([kind,compressed,undefined,{[parser]:{limit:bytes.length}},encoding]);
+  cases.push([kind,compressed.subarray(0,compressed.length-2),undefined,undefined,encoding]);
+  cases.push([kind,Buffer.alloc(0),undefined,undefined,encoding]);
+ }
+ cases.push([kind,bytes,undefined,undefined,'unsupported']);
+}
+cases.push(['text',Buffer.concat([gzipSync(Buffer.from('one')),gzipSync(Buffer.from('two'))]),undefined,undefined,'gzip']);
 const fixtures=[],expected=[];
-for(const [kind,bytes,charset,parserOptions] of cases) {
+for(const [kind,bytes,charset,parserOptions,contentEncoding] of cases) {
  const req=Readable.from([bytes]);
- const contentType=(kind==='json'?'application/json':kind==='form'?'application/x-www-form-urlencoded':'text/plain')+(charset?`; charset=${charset}`:'');
- req.headers={'content-type':contentType,'content-length':String(bytes.length)};
+ const contentType=(kind==='json'?'application/json':kind==='form'?'application/x-www-form-urlencoded':kind==='file'?'application/octet-stream':'text/plain')+(charset?`; charset=${charset}`:'');
+ req.headers={'content-type':contentType,'content-length':String(bytes.length),...(contentEncoding?{'content-encoding':contentEncoding}:{})};
  req.contractDetails={versions:{first:{body:{[kind==='form'?'urlEncodedForm':kind]:{}}}}}; req.schemaValidator={};
  let failure;
  await new Promise((resolve,reject)=>{
@@ -71,12 +92,13 @@ for(const [kind,bytes,charset,parserOptions] of cases) {
  const versions=[{name:'fallback',schema:true}];
  if(failure) expected.push([{status:failure.status}]);
  else {
-  assert.deepEqual(req._rawBody,bytes);
-  versions.push({name:'exact',schema:{const:req.body}});
-  expected.push([{version:'exact',matched:['fallback','exact'],status:200,body:req.body}]);
+  assert.deepEqual(req._rawBody,contentEncoding?decompressors[contentEncoding](bytes):bytes);
+  const body=Buffer.isBuffer(req.body)?[...req.body]:req.body;
+  versions.push({name:'exact',schema:{...(kind==='file'?{type:'array'}:{}),const:body}});
+  expected.push([{version:'exact',matched:['fallback','exact'],status:200,body}]);
  }
- fixtures.push({kind,contentType,parserOptions,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
+ fixtures.push({kind,contentType,contentEncoding,parserOptions,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
 }
-const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
-for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],`${cases[i][0]} ${cases[i][2]} ${cases[i][1].toString('hex')}`);
-console.log(`PASS ${fixtures.length} actual TypeScript/native JSON/text/form wire-parser comparisons: strict roots, empty bodies, BOM, malformed UTF-8 and explicit charsets`);
+const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000,maxBuffer:32*1024*1024}));
+for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],`${cases[i][0]} ${cases[i][2]} ${cases[i][4]} ${cases[i][1].subarray(0,64).toString('hex')}`);
+console.log(`PASS ${fixtures.length} actual TypeScript/native JSON/text/form/file wire-parser comparisons: parser options, charsets, compression and bounded decoded bytes`);
