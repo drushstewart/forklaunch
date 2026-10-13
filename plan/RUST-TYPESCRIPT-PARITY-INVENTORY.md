@@ -3675,3 +3675,25 @@ SDKs, HTTP/MCP shared/separate/disabled listeners, Origin rejection,
 restart/shutdown, relocation/preservation, rename and deletion. Logs are in
 `/private/tmp/fl-auth-storage-{parity,tests,clippy,generated}.log`. This advances
 the broader customization gate without marking it complete.
+
+
+AsyncAPI trait import receipt (2026-10-13): message and operation traits now
+resolve bounded local references and merge in declaration order, with target
+fields applied last. This follows the [AsyncAPI 3 merge mechanism](https://www.asyncapi.com/docs/reference/specification/v3.0.0#traits-merge-mechanism).
+Arrays replace earlier arrays and nested null members remove inherited values.
+Payload scopes remain anchored to the original message; traits cannot introduce
+payloads. Inherited content types and bindings receive the existing wire checks;
+unsupported application headers, security and bindings still fail explicitly.
+Cycles, external references, invalid trait targets and more than 64 traits per
+object fail before generation; expansion shares the import byte budget.
+
+All 29 native AsyncAPI tests and strict all-feature/all-target clippy pass.
+The official AsyncAPI parser agrees on local references, merge ordering, target
+precedence, arrays and nested null removal. Fresh relocated run `xjjTgI` uses
+trait-inherited message content types and operation metadata, compiles both SDKs,
+runs live WebSocket peers, checks watch recovery and input ownership, and passes
+service rename/deletion and the full generated HTTP/MCP startup/shutdown matrix.
+The source-package fixture includes all 913 current embedded assets. Logs:
+`/private/tmp/fl-asyncapi-traits-{tests,parity,clippy,generated,package}.log`.
+The broader event/protocol, upgrade authentication/parameters, replies and richer
+message matching import gate remains open.

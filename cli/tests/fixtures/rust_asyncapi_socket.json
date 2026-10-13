@@ -4,7 +4,6 @@
     "title": "Chat",
     "version": "1.0.0"
   },
-  "defaultContentType": "application/json",
   "servers": {
     "local": {
       "host": "127.0.0.1:8080",
@@ -46,6 +45,11 @@
         {
           "$ref": "#/channels/chat/messages/other"
         }
+      ],
+      "traits": [
+        {
+          "$ref": "#/components/operationTraits/socket"
+        }
       ]
     },
     "reply": {
@@ -57,6 +61,11 @@
         {
           "$ref": "#/channels/chat/messages/reply"
         }
+      ],
+      "traits": [
+        {
+          "$ref": "#/components/operationTraits/socket"
+        }
       ]
     }
   },
@@ -65,17 +74,41 @@
       "Request": {
         "payload": {
           "$ref": "#/components/schemas/Request"
-        }
+        },
+        "traits": [
+          {
+            "contentType": "text/plain"
+          },
+          {
+            "$ref": "#/components/messageTraits/alias"
+          }
+        ]
       },
       "Reply": {
         "payload": {
           "$ref": "#/components/schemas/Reply"
-        }
+        },
+        "traits": [
+          {
+            "contentType": "text/plain"
+          },
+          {
+            "$ref": "#/components/messageTraits/alias"
+          }
+        ]
       },
       "Other": {
         "payload": {
           "$ref": "#/components/schemas/Other"
-        }
+        },
+        "traits": [
+          {
+            "contentType": "text/plain"
+          },
+          {
+            "$ref": "#/components/messageTraits/alias"
+          }
+        ]
       }
     },
     "schemas": {
@@ -128,6 +161,22 @@
           }
         },
         "additionalProperties": false
+      }
+    },
+    "messageTraits": {
+      "json": {
+        "contentType": "application/json"
+      },
+      "alias": {
+        "$ref": "#/components/messageTraits/json"
+      }
+    },
+    "operationTraits": {
+      "socket": {
+        "bindings": {
+          "ws": {}
+        },
+        "summary": "Inherited socket operation"
       }
     }
   }

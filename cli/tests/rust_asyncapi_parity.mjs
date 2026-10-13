@@ -14,8 +14,8 @@ const Ajv = createRequire(parserPath)('ajv');
 const temporary = mkdtempSync(join(tmpdir(), 'forklaunch-asyncapi-parity-'));
 try {
   const output = join(temporary, 'asyncapi.json');
-  const run = spawnSync('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-asyncapi'], {
-    cwd: root, env: { ...process.env, FORKLAUNCH_TEST_ASYNCAPI_DOCUMENT: output },
+  const run = spawnSync('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-asyncapi', '--all-features'], {
+    cwd: root, env: { ...process.env, FORKLAUNCH_TEST_ASYNCAPI_DOCUMENT: output, FORKLAUNCH_TEST_ASYNCAPI_TRAITS: `${output}.traits.json` },
     encoding: 'utf8', timeout: 300000, maxBuffer: 16 * 1024 * 1024
   });
   assert.equal(run.status, 0, `${run.error || ''}\n${run.stdout}\n${run.stderr}`);
@@ -25,6 +25,15 @@ try {
     assert.deepEqual(errors, [], JSON.stringify(errors, null, 2));
     assert.ok(document, 'The official parser must produce a document');
   }
+  const traitFixture = JSON.parse(readFileSync(`${output}.traits.json`, 'utf8'));
+  const traitResult = await new Parser().parse(JSON.stringify(traitFixture.document));
+  assert.deepEqual(traitResult.diagnostics.filter(d => d.severity === 0), []);
+  assert.ok(traitResult.document);
+  const merged = traitResult.document.json().components.messages.Request;
+  for (const field of ['contentType', 'description', 'tags', 'x-settings']) {
+    assert.deepEqual(traitFixture.message[field], merged[field], `trait merge: ${field}`);
+  }
+  console.log('PASS official AsyncAPI trait merging: local references, ordering, target precedence, arrays and nested null removal');
   const typed = JSON.parse(readFileSync(`${output}.typed.json`, 'utf8'));
   const validator = new Ajv({ strict: false });
   validator.addSchema(typed, 'events');

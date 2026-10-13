@@ -4,6 +4,7 @@
 // Upstream: https://github.com/asyncapi/spec-json-schemas
 // Distributed under the adjacent ASYNCAPI_SPEC_LICENSE (Apache-2.0).
 // Upstream attribution is retained in ASYNCAPI_SPEC_NOTICE.
+mod traits;
 use std::collections::{BTreeMap, BTreeSet};
 
 use forklaunch_common::{FrameworkError, FrameworkResult};
@@ -27,7 +28,7 @@ struct Channel {
 ///
 /// # Errors
 /// Rejects unsupported protocols, media, upgrade parameters/authentication,
-/// traits/replies/application headers, overlapping messages, invalid local
+/// replies/application headers, overlapping messages, invalid local
 /// references, unsupported resource scopes, mixed runtime dialects and bounded
 /// schema/output limits.
 pub fn import_server_websocket_asyncapi(
@@ -44,7 +45,7 @@ pub fn import_server_websocket_asyncapi(
     let mut artifact = SocketContractArtifact::new(text(info, "title")?, text(info, "version")?);
     let mut budget = OutputBudget(32 * 1024 * 1024);
     let mut channels = read_channels(document, &mut budget)?;
-    read_operations(document, &mut channels)?;
+    read_operations(document, &mut channels, &mut budget)?;
     for channel in channels.into_values() {
         let used: BTreeSet<_> = channel.receive.union(&channel.send).cloned().collect();
         if used.len() != channel.messages.len() {
@@ -200,7 +201,7 @@ fn read_channels(
         }
         reject_fields(value, &["parameters"])?;
         check_servers(document, value)?;
-        check_bindings(document, &location, value)?;
+        check_bindings(document, value)?;
         let messages = value
             .get("messages")
             .and_then(Value::as_object)
@@ -212,7 +213,7 @@ fn read_channels(
         let mut binary = BTreeSet::new();
         for message in messages.keys() {
             let pointer = format!("{location}/messages/{}", token(message));
-            let schema = message_schema(document, &pointer)?;
+            let schema = message_schema(document, &pointer, budget)?;
             budget.reserve(&schema.shape)?;
             if schema.binary {
                 binary.insert(pointer.clone());
@@ -237,6 +238,7 @@ fn read_channels(
 fn read_operations(
     document: &Value,
     channels: &mut BTreeMap<String, Channel>,
+    budget: &mut OutputBudget,
 ) -> FrameworkResult<()> {
     let operations = document
         .get("operations")
@@ -248,8 +250,9 @@ fn read_operations(
     for name in operations.keys() {
         let location = format!("/operations/{}", token(name));
         let (location, operation) = object_at(document, &location)?;
-        reject_fields(operation, &["traits", "reply", "security"])?;
-        check_bindings(document, &location, operation)?;
+        let operation = traits::apply(document, &location, operation, false, budget)?;
+        reject_fields(&operation, &["reply", "security"])?;
+        check_bindings(document, &operation)?;
         let channel_pointer = reference(
             operation
                 .get("channel")
@@ -265,7 +268,7 @@ fn read_operations(
         if messages.is_empty() || messages.len() > 64 {
             return Err(invalid("Expected 1 through 64 operation messages"));
         }
-        let direction = match text(operation, "action")? {
+        let direction = match text(&operation, "action")? {
             "receive" => &mut channel.receive,
             "send" => &mut channel.send,
             _ => return Err(invalid("Operation action must be send or receive")),
@@ -283,10 +286,15 @@ fn read_operations(
     Ok(())
 }
 
-fn message_schema(document: &Value, pointer: &str) -> FrameworkResult<SocketSchemaEntry> {
+fn message_schema(
+    document: &Value,
+    pointer: &str,
+    budget: &mut OutputBudget,
+) -> FrameworkResult<SocketSchemaEntry> {
     let (location, message) = object_at(document, pointer)?;
-    reject_fields(message, &["headers", "traits"])?;
-    check_bindings(document, &location, message)?;
+    let message = traits::apply(document, &location, message, true, budget)?;
+    reject_fields(&message, &["headers"])?;
+    check_bindings(document, &message)?;
     let media = message
         .get("contentType")
         .or_else(|| document.get("defaultContentType"))
@@ -365,8 +373,8 @@ fn check_servers(document: &Value, channel: &Map<String, Value>) -> FrameworkRes
         {
             return Err(invalid("Channel servers must reference root servers"));
         }
-        let (location, server) = object_at(document, &pointer)?;
-        check_bindings(document, &location, server)?;
+        let (_, server) = object_at(document, &pointer)?;
+        check_bindings(document, server)?;
         if !matches!(text(server, "protocol")?, "ws" | "wss") {
             return Err(invalid("Only ws/wss server protocols are supported"));
         }
@@ -375,15 +383,11 @@ fn check_servers(document: &Value, channel: &Map<String, Value>) -> FrameworkRes
     Ok(())
 }
 
-fn check_bindings(
-    document: &Value,
-    location: &str,
-    value: &Map<String, Value>,
-) -> FrameworkResult<()> {
-    if !value.contains_key("bindings") {
+fn check_bindings(document: &Value, value: &Map<String, Value>) -> FrameworkResult<()> {
+    let Some(bindings) = value.get("bindings") else {
         return Ok(());
-    }
-    let (location, bindings) = object_at(document, &format!("{location}/bindings"))?;
+    };
+    let bindings = binding_object(document, bindings)?;
     for key in bindings.keys() {
         if key.starts_with("x-") {
             continue;
@@ -391,7 +395,7 @@ fn check_bindings(
         if key != "ws" {
             return Err(invalid("Only WebSocket protocol bindings are supported"));
         }
-        let (_, binding) = object_at(document, &format!("{location}/ws"))?;
+        let binding = binding_object(document, &bindings[key])?;
         for (key, value) in binding {
             if key.starts_with("x-") {
                 continue;
@@ -408,6 +412,18 @@ fn check_bindings(
         }
     }
     Ok(())
+}
+
+fn binding_object<'a>(
+    document: &'a Value,
+    value: &'a Value,
+) -> FrameworkResult<&'a Map<String, Value>> {
+    if value.get("$ref").is_some() {
+        return Ok(object_at(document, &reference(value)?)?.1);
+    }
+    value
+        .as_object()
+        .ok_or_else(|| invalid("AsyncAPI bindings must be objects"))
 }
 
 fn direction_schema(
@@ -758,6 +774,106 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(input, document());
+    }
+
+    #[test]
+    fn traits_merge_in_order_with_target_precedence_and_preserve_payload_scope() {
+        let mut input = document();
+        input.as_object_mut().unwrap().remove("defaultContentType");
+        input["components"]["messageTraits"] = json!({
+            "first":{"contentType":"text/plain", "description":"first", "tags":[{"name":"first"}],
+                "x-settings":{"first":true,"removed":true}},
+            "second":{"contentType":"application/json", "description":"second", "tags":[{"name":"second"}],
+                "x-settings":{"second":true,"removed":null}}
+        });
+        input["components"]["operationTraits"] = json!({
+            "get":{"bindings":{"ws":{"method":"GET","bindingVersion":"0.1.0"}}, "summary":"inherited"}
+        });
+        for name in ["Request", "Reply"] {
+            input["components"]["messages"][name]["traits"] = json!([
+                {"$ref":"#/components/messageTraits/first"},
+                {"$ref":"#/components/messageTraits/second"}
+            ]);
+            input["components"]["messages"][name]["description"] = json!("target");
+            input["components"]["messages"][name]["x-settings"] = json!({"target":true});
+        }
+        input["operations"]["accept"]["traits"] =
+            json!([{"$ref":"#/components/operationTraits/get"}]);
+        let artifact = import_server_websocket_asyncapi(&input).unwrap();
+        let baseline = import_server_websocket_asyncapi(&document()).unwrap();
+        assert_eq!(
+            serde_json::to_value(artifact).unwrap(),
+            serde_json::to_value(baseline).unwrap()
+        );
+        let mut budget = OutputBudget(32 * 1024 * 1024);
+        let location = "/components/messages/Request";
+        let merged = traits::apply(
+            &input,
+            location,
+            input.pointer(location).unwrap().as_object().unwrap(),
+            true,
+            &mut budget,
+        )
+        .unwrap();
+        assert_eq!(merged["contentType"], "application/json");
+        assert_eq!(merged["description"], "target");
+        assert_eq!(merged["tags"], json!([{"name":"second"}]));
+        assert_eq!(
+            merged["x-settings"],
+            json!({"first":true,"second":true,"target":true})
+        );
+        if let Ok(output) = std::env::var("FORKLAUNCH_TEST_ASYNCAPI_TRAITS") {
+            std::fs::write(
+                output,
+                serde_json::to_vec(&json!({"document":input,"message":merged.into_owned()}))
+                    .unwrap(),
+            )
+            .unwrap();
+        }
+        // The target's content type wins over the traits as well.
+        input["components"]["messages"]["Request"]["contentType"] = json!("text/plain");
+        assert!(import_server_websocket_asyncapi(&input).is_err());
+    }
+
+    #[test]
+    fn inherited_wire_requirements_and_bad_trait_references_are_not_silently_dropped() {
+        for mutation in [
+            "headers", "security", "binding", "cycle", "external", "payload", "too-many",
+        ] {
+            let mut input = document();
+            match mutation {
+                "headers" => {
+                    input["components"]["messages"]["Request"]["traits"] =
+                        json!([{"headers":{"type":"object"}}]);
+                }
+                "security" => {
+                    input["operations"]["accept"]["traits"] =
+                        json!([{"security":[{"type":"http","scheme":"bearer"}]}]);
+                }
+                "binding" => {
+                    input["operations"]["accept"]["traits"] =
+                        json!([{"bindings":{"ws":{"method":"POST"}}}]);
+                }
+                "cycle" | "external" | "payload" => {
+                    input["components"]["messages"]["Request"]["traits"] =
+                        json!([{"$ref":"#/components/messageTraits/bad"}]);
+                    input["components"]["messageTraits"]["bad"] = match mutation {
+                        "cycle" => json!({"$ref":"#/components/messageTraits/bad"}),
+                        "external" => json!({"$ref":"https://example.invalid/trait"}),
+                        _ => json!({"$ref":"#/components/messages/Reply"}),
+                    };
+                }
+                "too-many" => {
+                    input["components"]["messages"]["Request"]["traits"] =
+                        json!(vec![json!({"contentType":"application/json"}); 65]);
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                import_server_websocket_asyncapi(&input).is_err(),
+                "{mutation}"
+            );
+        }
     }
 
     #[test]
