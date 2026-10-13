@@ -1,7 +1,7 @@
 //! Declaration-ordered request matching for versioned HTTP contracts.
 use crate::{
     Body, ContractValidationError, ContractValidationLocation, FrameworkRequest,
-    validate_request_fields,
+    validate_request_body,
 };
 use forklaunch_contract::{
     BodyKind, RouteContract, SchemaRef,
@@ -14,6 +14,9 @@ mod hooks;
 #[path = "versioning_parser_hooks.rs"]
 mod parser_hooks;
 pub use hooks::{VersionBodyHooks, VersionBodyHooksRegistry};
+#[path = "versioning_fields.rs"]
+mod fields;
+pub use fields::{VersionFieldHooks, VersionFieldValues};
 pub use parser_hooks::BodyParserHooks;
 #[path = "versioning_charset.rs"]
 mod charset;
@@ -32,13 +35,16 @@ pub struct SelectedVersion {
     pub matched_versions: Vec<String>,
     /// Parsed once for selection; original wire bytes remain on the request.
     pub parsed_body: Option<Arc<Value>>,
+    pub parsed_fields: Arc<VersionFieldValues>,
 }
 
 #[derive(Clone)]
 struct FieldValidator {
     location: ContractValidationLocation,
     name: String,
-    validate: Arc<JsonValidator>,
+    validate: Option<Arc<JsonValidator>>,
+    required: bool,
+    hooks: VersionFieldHooks,
 }
 #[derive(Clone)]
 struct Variant {
@@ -108,13 +114,13 @@ impl VersionedRoutePlan {
                 ),
             ] {
                 for field in entries {
-                    if let Some(validate) = compile_schema(&field.schema, &mut remaining_bytes)? {
-                        fields.push(FieldValidator {
-                            location,
-                            name: field.name.clone(),
-                            validate,
-                        });
-                    }
+                    fields.push(FieldValidator {
+                        location,
+                        name: field.name.clone(),
+                        validate: compile_schema(&field.schema, &mut remaining_bytes)?,
+                        required: field.required,
+                        hooks: VersionFieldHooks::default(),
+                    });
                 }
             }
             let body = projected
@@ -177,6 +183,37 @@ impl VersionedRoutePlan {
         Ok(self)
     }
 
+    /// Install value callbacks for a declared field in one version.
+    /// # Errors
+    /// Rejects unknown versions, locations and field names.
+    pub fn with_field_hooks(
+        mut self,
+        version: &str,
+        location: ContractValidationLocation,
+        name: &str,
+        hooks: VersionFieldHooks,
+    ) -> Result<Self, String> {
+        let variant = self
+            .variants
+            .iter_mut()
+            .find(|variant| variant.name == version)
+            .ok_or("Unknown hook version")?;
+        let field = variant
+            .fields
+            .iter_mut()
+            .find(|field| {
+                field.location == location
+                    && if location == ContractValidationLocation::Header {
+                        field.name.eq_ignore_ascii_case(name)
+                    } else {
+                        field.name == name
+                    }
+            })
+            .ok_or("Field hooks require a declared parameter, query or header field")?;
+        field.hooks = hooks;
+        Ok(self)
+    }
+
     /// Return the last matching declaration, retaining every matching name.
     /// Validation options control rejection at the caller, not version discovery.
     /// # Errors
@@ -208,15 +245,18 @@ impl VersionedRoutePlan {
             let Ok(candidate) = variant.hooks.preprocess(body_value.as_ref()) else {
                 continue;
             };
-            if variant.matches(request, candidate.as_deref()) {
+            let Some(fields) = variant.parse_fields(request) else {
+                continue;
+            };
+            if variant.matches_body(request, candidate.as_deref()) {
                 let Ok(candidate) = variant.hooks.transform(candidate) else {
                     continue;
                 };
                 matched.push(variant.name.clone());
-                selected = Some((variant, candidate));
+                selected = Some((variant, candidate, fields));
             }
         }
-        let (variant, candidate) = selected.ok_or_else(|| {
+        let (variant, candidate, fields) = selected.ok_or_else(|| {
             vec![ContractValidationError::new(
                 ContractValidationLocation::Body,
                 "request does not match any declared API version",
@@ -233,6 +273,7 @@ impl VersionedRoutePlan {
                 version: variant.name.clone(),
                 matched_versions: matched,
                 parsed_body: body.map(Arc::new),
+                parsed_fields: Arc::new(fields),
             },
         )))
     }
@@ -457,28 +498,9 @@ fn compile_body(
 }
 
 impl Variant {
-    fn matches(&self, request: &FrameworkRequest, body_value: Option<&Value>) -> bool {
-        if !validate_request_fields(&self.route.request, request, body_value.is_some()).is_empty() {
+    fn matches_body(&self, request: &FrameworkRequest, body_value: Option<&Value>) -> bool {
+        if !validate_request_body(&self.route.request, request, body_value.is_some()).is_empty() {
             return false;
-        }
-        for field in &self.fields {
-            let value = match field.location {
-                ContractValidationLocation::PathParameter => {
-                    request.params.get(&field.name).map(String::as_str)
-                }
-                ContractValidationLocation::Query => {
-                    request.query.get(&field.name).map(String::as_str)
-                }
-                ContractValidationLocation::Header => {
-                    crate::header_value(&request.headers, &field.name)
-                }
-                _ => None,
-            };
-            if let Some(value) = value
-                && (field.validate)(&Value::String(value.to_owned())).is_err()
-            {
-                return false;
-            }
         }
         match &self.body {
             None | Some(BodyValidator::Opaque) => true,

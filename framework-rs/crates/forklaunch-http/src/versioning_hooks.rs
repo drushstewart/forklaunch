@@ -1,5 +1,6 @@
 //! Native body preprocessing/transformation around per-version schema checks.
-use super::{BodyParserHooks, VersionedRoutePlan};
+use super::{BodyParserHooks, VersionFieldHooks, VersionedRoutePlan};
+use crate::ContractValidationLocation;
 use forklaunch_contract::RouteContract;
 use serde_json::Value;
 use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
@@ -83,11 +84,20 @@ impl VersionBodyHooks {
     }
 }
 
+#[derive(Clone, Debug)]
+struct FieldHooks {
+    version: String,
+    location: ContractValidationLocation,
+    name: String,
+    hooks: VersionFieldHooks,
+}
+
 /// Hooks are indexed by HTTP method and operation name, independent of mount prefixes.
 #[derive(Clone, Default, Debug)]
 pub struct VersionBodyHooksRegistry {
     routes: BTreeMap<String, BTreeMap<String, VersionBodyHooks>>,
     parsers: BTreeMap<String, BodyParserHooks>,
+    fields: BTreeMap<String, Vec<FieldHooks>>,
 }
 impl VersionBodyHooksRegistry {
     /// # Errors
@@ -106,6 +116,40 @@ impl VersionBodyHooksRegistry {
             .entry(route_key(route))
             .or_default()
             .insert(version.into(), hooks);
+        Ok(())
+    }
+    /// Register callbacks for one declared parameter, query or header field.
+    /// # Errors
+    /// Rejects invalid contracts, unknown versions or undeclared fields.
+    pub fn insert_field(
+        &mut self,
+        route: &RouteContract,
+        version: &str,
+        location: ContractValidationLocation,
+        name: &str,
+        hooks: VersionFieldHooks,
+    ) -> Result<(), String> {
+        VersionedRoutePlan::compile(route)?.with_field_hooks(
+            version,
+            location,
+            name,
+            hooks.clone(),
+        )?;
+        let name = if location == ContractValidationLocation::Header {
+            name.to_ascii_lowercase()
+        } else {
+            name.to_owned()
+        };
+        let fields = self.fields.entry(route_key(route)).or_default();
+        fields.retain(|field| {
+            field.version != version || field.location != location || field.name != name
+        });
+        fields.push(FieldHooks {
+            version: version.into(),
+            location,
+            name,
+            hooks,
+        });
         Ok(())
     }
     /// # Errors
@@ -127,10 +171,15 @@ impl VersionBodyHooksRegistry {
         for route in routes {
             *counts.entry(route_key(route)).or_default() += 1;
         }
-        for key in self.routes.keys().chain(self.parsers.keys()) {
+        for key in self
+            .routes
+            .keys()
+            .chain(self.parsers.keys())
+            .chain(self.fields.keys())
+        {
             if counts.get(key) != Some(&1) {
                 return Err(format!(
-                    "Body hook operation must identify exactly one route: {key}"
+                    "Version hook operation must identify exactly one route: {key}"
                 ));
             }
         }
@@ -140,6 +189,12 @@ impl VersionBodyHooksRegistry {
     /// # Panics
     /// Panics if both registries define hooks for the same method and operation.
     pub fn extend(&mut self, other: Self) {
+        for (key, hooks) in other.fields {
+            assert!(
+                self.fields.insert(key, hooks).is_none(),
+                "duplicate field hook operation"
+            );
+        }
         for (key, hooks) in other.parsers {
             assert!(
                 self.parsers.insert(key, hooks).is_none(),
@@ -160,6 +215,16 @@ impl VersionBodyHooksRegistry {
         if let Some(versions) = self.routes.get(&route_key(route)) {
             for (version, hooks) in versions {
                 plan = plan.with_body_hooks(version, hooks.clone())?;
+            }
+        }
+        if let Some(fields) = self.fields.get(&route_key(route)) {
+            for field in fields {
+                plan = plan.with_field_hooks(
+                    &field.version,
+                    field.location,
+                    &field.name,
+                    field.hooks.clone(),
+                )?;
             }
         }
         if let Some(hooks) = self.parsers.get(&route_key(route)) {

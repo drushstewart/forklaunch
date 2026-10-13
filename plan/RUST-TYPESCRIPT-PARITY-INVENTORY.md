@@ -3864,3 +3864,31 @@ assets are packaged. Logs:
 `/private/tmp/fl-component-names-{tests,clippy,generated,package}.log`.
 The broader schema/emitter conformance gate remains open; checklist stays
 657/682 (96.3%), 25 open.
+
+
+Versioned field transformation receipt (2026-10-13): native runtime hooks now
+preprocess/default and transform declared parameters, query fields and headers
+around each version's schema checks. Missing and null remain distinct; absent
+post-transform values are accepted. Last-successful selection, unknown-field
+stripping and TypeScript's truthy replacement of existing header keys are covered
+by 320 comparisons against the actual repository parser/Zod source. Typed Axum
+extractors expose selected results while preserving raw query/header values.
+Authentication remains before callbacks; credential-transform compatibility is
+not claimed. Registration rejects unknown fields/versions and ambiguous routes.
+
+Generated run `j0VNl1` passes both SDK compilers from contract and OpenAPI imports,
+36 live HTTP/MCP transformation cases, invalid-input rejection and the full
+HTTP/MCP startup/listener/shutdown matrix. The first run `HwpggS` exposed raw
+percent-encoded path captures. Shared matching now decodes captures once after
+matching the complete route; encoded slashes do not split routes, double encoding
+is preserved after one decode, and malformed escapes/non-UTF-8 captures return
+400. Unit and generated live tests cover these cases, including validation-off
+local dispatch and unchanged raw paths. The new fixtures are registered in CI.
+
+39 HTTP tests, 67 Axum tests and three integration tests pass, as do strict
+all-feature/all-target clippy and the no-default-feature Axum check. Logs:
+`/private/tmp/fl-version-fields-{tests,clippy,parity,generated,disabled,package}.log`.
+The percent-encoding dependency was already locked; only the HTTP dependency edge
+was added. Sparse values, mutable holder/context behavior, cross-field side-effect
+ordering and remaining codec boundaries stay open. Checklist remains 657/682
+(96.3%), 25 open.

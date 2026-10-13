@@ -4,7 +4,7 @@ pub mod sse;
 pub mod versioning;
 pub use versioning::{
     BodyParserHooks, MultipartLimits, SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry,
-    VersionedRoutePlan,
+    VersionFieldHooks, VersionFieldValues, VersionedRoutePlan,
 };
 
 use std::{
@@ -473,7 +473,10 @@ impl LocalRouter {
         let explicit_head = request.method == HttpMethod::Head
             && self.routes.iter().any(|route| {
                 route.contract.method == HttpMethod::Head
-                    && match_path(&route.contract.path, &request.path).is_some()
+                    && !matches!(
+                        match_path_checked(&route.contract.path, &request.path),
+                        Ok(None)
+                    )
             });
         for route in &self.routes {
             if route.contract.method != request.method
@@ -484,7 +487,16 @@ impl LocalRouter {
                 continue;
             }
 
-            if let Some(params) = match_path(&route.contract.path, &request.path) {
+            let params = match match_path_checked(&route.contract.path, &request.path) {
+                Ok(params) => params,
+                Err(error) => {
+                    return Ok(validation_error_response(
+                        &[error],
+                        &request.context.correlation_id,
+                    ));
+                }
+            };
+            if let Some(params) = params {
                 request.params = params;
                 normalize_framework_request_body(&route.contract, &mut request);
                 let selected = route.versions.select(&request);
@@ -536,7 +548,9 @@ pub fn validate_framework_request(
     contract: &RouteContract,
     request: &FrameworkRequest,
 ) -> Vec<ContractValidationError> {
-    if contract.options.request_validation != ValidationMode::Error {
+    // Version selection has already validated pre-transform values. Rechecking
+    // wire presence here would reject defaults and valid absent transform output.
+    if contract.options.request_validation != ValidationMode::Error || request.version.is_some() {
         return Vec::new();
     }
 
@@ -572,6 +586,16 @@ fn validate_request_fields(
     );
     validate_required_headers(&contract.headers, &request.headers, &mut errors);
 
+    errors.extend(validate_request_body(contract, request, has_parsed_body));
+    errors
+}
+
+fn validate_request_body(
+    contract: &forklaunch_contract::RequestContract,
+    request: &FrameworkRequest,
+    has_parsed_body: bool,
+) -> Vec<ContractValidationError> {
+    let mut errors = Vec::new();
     if let Some(body) = &contract.body {
         if request.body.is_empty() && !has_parsed_body {
             errors.push(ContractValidationError::new(
@@ -751,38 +775,64 @@ impl HttpApplication {
     }
 }
 
+/// Match a route and decode captured path parameters exactly once.
 #[must_use]
 pub fn match_path(pattern: &str, path: &str) -> Option<Params> {
+    match_path_checked(pattern, path).ok().flatten()
+}
+
+/// Match the complete route before decoding captured segments.
+///
+/// # Errors
+/// Returns a path validation error for malformed escapes or non-UTF-8 captures.
+pub fn match_path_checked(
+    pattern: &str,
+    path: &str,
+) -> Result<Option<Params>, ContractValidationError> {
     let pattern = sanitize_path_slashes(pattern);
     let path = sanitize_path_slashes(path);
     let pattern_segments = path_segments(&pattern);
     let path_segments = path_segments(&path);
-
     if pattern_segments.len() != path_segments.len() {
-        return None;
+        return Ok(None);
     }
-
     let mut params = Params::new();
     for (pattern_segment, path_segment) in pattern_segments.iter().zip(path_segments) {
-        if let Some(name) = pattern_segment.strip_prefix(':') {
+        let name = pattern_segment.strip_prefix(':').or_else(|| {
+            pattern_segment
+                .strip_prefix('{')
+                .and_then(|segment| segment.strip_suffix('}'))
+        });
+        if let Some(name) = name {
             params.insert(name.to_owned(), path_segment.to_owned());
-            continue;
-        }
-
-        if let Some(name) = pattern_segment
-            .strip_prefix('{')
-            .and_then(|segment| segment.strip_suffix('}'))
-        {
-            params.insert(name.to_owned(), path_segment.to_owned());
-            continue;
-        }
-
-        if *pattern_segment != path_segment {
-            return None;
+        } else if *pattern_segment != path_segment {
+            return Ok(None);
         }
     }
-
-    Some(params)
+    for (name, value) in &mut params {
+        let invalid = || {
+            ContractValidationError::new(
+                ContractValidationLocation::PathParameter,
+                "invalid path parameter encoding",
+            )
+            .with_field(name.clone())
+        };
+        let bytes = value.as_bytes();
+        for (index, byte) in bytes.iter().enumerate() {
+            if *byte == b'%'
+                && !bytes
+                    .get(index + 1..index + 3)
+                    .is_some_and(|digits| digits.iter().all(u8::is_ascii_hexdigit))
+            {
+                return Err(invalid());
+            }
+        }
+        *value = percent_encoding::percent_decode_str(value)
+            .decode_utf8()
+            .map_err(|_| invalid())?
+            .into_owned();
+    }
+    Ok(Some(params))
 }
 
 fn path_segments(path: &str) -> Vec<&str> {
@@ -1143,5 +1193,70 @@ mod head_dispatch_tests {
             )
             .unwrap();
         assert_eq!(get.body, Body::Text("get body".into()));
+    }
+}
+
+#[cfg(test)]
+mod path_encoding_tests {
+    use super::*;
+    #[test]
+    fn captures_decode_once_without_changing_route_segments() {
+        for (wire, decoded) in [
+            ("%20a%20", " a "),
+            ("a%2Fb", "a/b"),
+            ("%252F", "%2F"),
+            ("a+b", "a+b"),
+            ("%E2%98%83", "☃"),
+            ("%3F%23%25", "?#%"),
+        ] {
+            let params = match_path_checked("/users/:id", &format!("/users/{wire}"))
+                .unwrap()
+                .unwrap();
+            assert_eq!(params["id"], decoded);
+        }
+        assert!(
+            match_path_checked("/users/:id", "/users/a/b")
+                .unwrap()
+                .is_none()
+        );
+    }
+    #[test]
+    fn local_router_rejects_encoding_errors_even_without_schema_validation() {
+        let mut route = RouteContract::get("Read", "Read", "/users/:id").with_response(204, None);
+        route.options.request_validation = ValidationMode::None;
+        let mut router = LocalRouter::new();
+        router.register(route, |request: FrameworkRequest| {
+            assert_eq!(request.path, "/users/%252F");
+            assert_eq!(request.params["id"], "%2F");
+            Ok(FrameworkResponse::new(204))
+        });
+        for (path, status) in [
+            ("/users/%252F", 204),
+            ("/users/%FF", 400),
+            ("/users/%", 400),
+        ] {
+            let response = router
+                .execute(FrameworkRequest::new(
+                    HttpMethod::Get,
+                    path,
+                    RequestContext::new("encoding"),
+                ))
+                .unwrap();
+            assert_eq!(response.status_code, status);
+        }
+    }
+
+    #[test]
+    fn invalid_captures_fail_only_after_route_shape_matches() {
+        for wire in ["%", "%2", "%GG", "%FF", "%C0%AF", "%E2%98"] {
+            let error = match_path_checked("/users/{id}", &format!("/users/{wire}")).unwrap_err();
+            assert_eq!(error.location, ContractValidationLocation::PathParameter);
+            assert_eq!(error.field.as_deref(), Some("id"));
+            assert!(
+                match_path_checked("/users/{id}/posts", &format!("/users/{wire}/other"))
+                    .unwrap()
+                    .is_none()
+            );
+        }
     }
 }

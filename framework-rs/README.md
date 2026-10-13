@@ -733,7 +733,8 @@ Runtime callbacks are not serialized into contracts or SDKs. Export schemas that
 describe accepted wire input and explicit response schemas; attach native
 callbacks when constructing the server. This supports native equivalents of body
 preprocessing/transformation, without interpreting JavaScript functions. Missing
-body defaults and query/parameter/header transformations remain separate work.
+body defaults and query/parameter/header transformations use the optional and
+field hooks described below.
 
 
 `BodyParserHooks::with_verify` adds verification for the shared JSON, text,
@@ -770,7 +771,7 @@ own candidate value. `OptionalVersionedBody<T>` extracts the selected optional
 result without consuming raw bytes; it still requires a selected version, and
 present values must deserialize into `T`. Root deletion followed by defaults and
 absent transform outputs work through HTTP/MCP. Sparse-array validation, mutable
-holders/source context and broader non-body transformations remain open.
+holders/source context and remaining codec boundaries remain open.
 Traversal is depth-bounded.
 
 
@@ -781,3 +782,28 @@ Both modes preserve mixed-workspace Cargo, root TypeScript and editor task
 configuration. Pure Rust applications require generated SDKs; declare a project's
 `metadata.language = "typescript"` when attaching TypeScript source to a Rust
 workspace. Existing TypeScript-only Node/Bun mode behavior is retained.
+
+
+Versioned parameters, query fields and headers support `VersionFieldHooks`
+(the same value callbacks as body hooks). Register a declared field with
+`VersionBodyHooksRegistry::insert_field(&route, version, location, name, hooks)`;
+locations are `PathParameter`, `Query` and `Header`. Optional preprocessors can
+supply missing defaults before required/schema checks. Transforms run after
+validation and can remove a successfully parsed field. A callback error rejects
+that version; the last successful version wins. Unknown fields/versions and
+unused or ambiguous route registrations are rejected during construction.
+
+Read results through `SelectedVersion::parsed_fields` or Axum's
+`VersionedParams<T>`, `VersionedQuery<T>` and `VersionedHeaders<T>`. Parameters
+and query results contain declared fields. Headers follow the TypeScript parser:
+only truthy transformed values replace existing wire keys; false, null, zero,
+empty strings and absent outputs preserve the original value. Defaults do not
+add absent header keys. Empty arrays/objects count as truthy.
+
+Raw URI, query and header values remain available. Authentication uses the wire
+headers before version callbacks. Path captures decode percent escapes exactly
+once before validation; encoded slashes remain within the matched capture and
+plus signs remain literal. Invalid escapes or UTF-8 produce 400 even when schema
+validation is disabled. Callback execution is synchronous; errors omit callback
+text. These hooks do not implement mutable JavaScript holders, sparse arrays or
+cross-field callback side-effect ordering.

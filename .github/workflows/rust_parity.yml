@@ -160,6 +160,7 @@ on:
       - 'cli/tests/rust_schema_dynamic_parity.mjs'
       - 'cli/tests/rust_schema_mixed_parity.mjs'
       - 'cli/tests/rust_versioned_api_parity.mjs'
+      - 'cli/tests/rust_versioned_fields_parity.mjs'
       - 'cli/tests/rust_versioned_form_parity.mjs'
       - 'cli/tests/rust_versioned_wire_parity.mjs'
       - 'cli/tests/rust_versioned_sdk_runtime.sh'
@@ -358,6 +359,7 @@ on:
       - 'cli/tests/rust_schema_dynamic_parity.mjs'
       - 'cli/tests/rust_schema_mixed_parity.mjs'
       - 'cli/tests/rust_versioned_api_parity.mjs'
+      - 'cli/tests/rust_versioned_fields_parity.mjs'
       - 'cli/tests/rust_versioned_form_parity.mjs'
       - 'cli/tests/rust_versioned_wire_parity.mjs'
       - 'cli/tests/rust_versioned_sdk_runtime.sh'
@@ -547,6 +549,10 @@ jobs:
       - run: node cli/tests/rust_versioned_form_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_versioned_fields_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_versioned_api_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

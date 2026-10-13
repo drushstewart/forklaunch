@@ -3,6 +3,10 @@
 #[cfg(feature = "adapter")]
 mod body_telemetry;
 #[cfg(feature = "adapter")]
+mod versioned_fields;
+#[cfg(feature = "adapter")]
+pub use versioned_fields::{VersionedHeaders, VersionedParams, VersionedQuery};
+#[cfg(feature = "adapter")]
 mod versioned_body;
 #[cfg(feature = "adapter")]
 pub use versioned_body::{OptionalVersionedBody, VersionedBody};
@@ -30,7 +34,7 @@ pub use router::{DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter, RouterConfig};
 
 use forklaunch_http::{
     Body, ContractValidationError, FrameworkRequest, FrameworkResponse, Headers, HttpApplication,
-    HttpMethod, RequestContext, match_path, validate_framework_request,
+    HttpMethod, RequestContext, validate_framework_request,
 };
 
 #[derive(Debug, Clone)]
@@ -77,7 +81,11 @@ impl AxumApplication {
         let mut request = parts.into_framework_request();
         let explicit_head = request.method == HttpMethod::Head
             && self.app.registry.routes().iter().any(|route| {
-                route.method == HttpMethod::Head && match_path(&route.path, &request.path).is_some()
+                route.method == HttpMethod::Head
+                    && !matches!(
+                        forklaunch_http::match_path_checked(&route.path, &request.path),
+                        Ok(None)
+                    )
             });
         for route in self.app.registry.routes() {
             if route.method != request.method
@@ -88,7 +96,17 @@ impl AxumApplication {
                 continue;
             }
 
-            if let Some(params) = match_path(&route.path, &request.path) {
+            let params = match forklaunch_http::match_path_checked(&route.path, &request.path) {
+                Ok(params) => params,
+                Err(error) => {
+                    return AxumPreparedRequest {
+                        operation_name: Some(route.operation_name.clone()),
+                        request,
+                        validation_errors: vec![error],
+                    };
+                }
+            };
+            if let Some(params) = params {
                 request.params = params;
                 forklaunch_http::normalize_framework_request_body(route, &mut request);
                 // This metadata adapter permits callers to mutate its public registry.

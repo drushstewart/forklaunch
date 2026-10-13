@@ -143,3 +143,15 @@ tokens fail closed. Original claims and tokens must come from trusted server
 storage; the application owns rotation concurrency and persistence. Automatic key
 refresh and account/session provisioning are not implemented by this adapter. The all-lockfile audit has no unreviewed
 findings after the public-verification-only RSA review above.
+
+
+Versioned field/path review (2026-10-13): native field callbacks run after
+transport authentication and cannot change the wire credentials used by the
+session verifier. Field callback errors reject a version without exposing error
+text; runtime registration validates fields/versions/routes. Selected values are
+validated before transforms, so intentionally absent transformed values do not
+undergo duplicate wire-presence checks. Path captures decode once after complete
+route-shape matching; malformed escapes and non-UTF-8 values return 400 regardless
+of schema-validation mode. Encoded slashes stay within the matched capture and raw
+URI bytes remain available to authenticators. percent-encoding was already in the
+lockfiles; this adds a direct dependency without a version change.

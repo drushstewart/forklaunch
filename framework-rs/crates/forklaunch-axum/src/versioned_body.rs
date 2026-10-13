@@ -89,6 +89,7 @@ mod tests {
             StatusCode::INTERNAL_SERVER_ERROR
         );
         parts.extensions.insert(SelectedVersion {
+            parsed_fields: Arc::default(),
             version: "v1".into(),
             matched_versions: vec!["v1".into()],
             parsed_body: Some(Arc::new(serde_json::json!({"private":"secret"}))),
@@ -121,6 +122,7 @@ mod tests {
             StatusCode::INTERNAL_SERVER_ERROR
         );
         parts.extensions.insert(SelectedVersion {
+            parsed_fields: Arc::default(),
             version: "v1".into(),
             matched_versions: vec!["v1".into()],
             parsed_body: None,

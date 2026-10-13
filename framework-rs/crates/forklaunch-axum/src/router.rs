@@ -33,7 +33,8 @@ use forklaunch_contract::{
 use forklaunch_core::{ServiceInfo, telemetry::OpenTelemetryCollector};
 use forklaunch_http::{
     Body as FrameworkBody, ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse,
-    LocalRouter, RequestContext, match_path, validate_framework_request, validation_error_response,
+    LocalRouter, RequestContext, match_path_checked, validate_framework_request,
+    validation_error_response,
 };
 use forklaunch_openapi::{OpenApiOptions, OpenApiServer, generate_openapi_json_with_options};
 use opentelemetry::trace::FutureExt;
@@ -233,7 +234,10 @@ impl ForkLaunchRouter {
                     let Ok(bytes) = to_bytes(body, usize::MAX).await else {
                         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
                     };
-                    let mut request = build_framework_request(&contract, &parts, &bytes);
+                    let mut request = match build_framework_request(&contract, &parts, &bytes) {
+                        Ok(request) => request,
+                        Err(response) => return framework_response_to_axum(response),
+                    };
                     // Flattened nesting changes the transport path, while the local
                     // router retains its original route paths and parameter matcher.
                     if let Some(prefix) = parts
@@ -912,7 +916,10 @@ async fn validate_contract(
         Err(error) => return body_read_error_response(&error),
     };
 
-    let mut framework_request = build_framework_request(&contract, &parts, &bytes);
+    let mut framework_request = match build_framework_request(&contract, &parts, &bytes) {
+        Ok(request) => request,
+        Err(response) => return framework_response_to_axum(response),
+    };
     let requires_auth = contract.auth.is_some()
         || contract.rbac.is_some()
         || contract.access != AccessLevel::Public;
@@ -1062,7 +1069,7 @@ fn build_framework_request(
     contract: &RouteContract,
     parts: &Parts,
     bytes: &[u8],
-) -> FrameworkRequest {
+) -> Result<FrameworkRequest, FrameworkResponse> {
     let path = parts.uri.path();
     let correlation_id = parts
         .headers
@@ -1077,7 +1084,9 @@ fn build_framework_request(
         path,
         RequestContext::new(correlation_id),
     );
-    request.params = match_path(&contract.openapi_path, path).unwrap_or_default();
+    request.params = match_path_checked(&contract.openapi_path, path)
+        .map_err(|error| validation_error_response(&[error], &request.context.correlation_id))?
+        .unwrap_or_default();
 
     for (key, value) in parse_query(parts.uri.query().unwrap_or_default()) {
         request = request.with_query(key, value);
@@ -1115,7 +1124,7 @@ fn build_framework_request(
         .extensions
         .get::<AuthenticatedSession>()
         .map(|session| session.claims.clone());
-    request
+    Ok(request)
 }
 
 fn parse_query(query: &str) -> Vec<(String, String)> {
