@@ -47,6 +47,63 @@ export type ForkLaunchSdkRequestMeta = {
 
 export type ForkLaunchErrorResponses = { 400: string; 401: string; 403: string; 404: string; 500: string };
 
+/** The complete successful HTTP envelope, retaining status-specific response types. */
+export type ForkLaunchQuerySuccess<Result extends { status: number }> = Result extends unknown
+  ? number extends Result['status'] ? Result : `${Result['status']}` extends `2${string}` ? Result : never
+  : never;
+
+export class ForkLaunchSdkHttpError<Result extends { status: number } = { status: number; response?: unknown }> extends Error {
+  constructor(public readonly result: Result) {
+    super(`HTTP request failed with status ${result.status}`);
+    this.name = 'ForkLaunchSdkHttpError';
+  }
+}
+
+function querySuccess<Result extends { status: number }>(result: Result): ForkLaunchQuerySuccess<Result> {
+  if (result.status < 200 || result.status >= 300) throw new ForkLaunchSdkHttpError(result);
+  return result as ForkLaunchQuerySuccess<Result>;
+}
+
+/** Optional TanStack Query v5 options. Keys are explicit: include resource and tenant scope,
+ * but never credentials. No React or TanStack runtime dependency is added to the SDK. */
+export function forkLaunchQueryOptions<Input extends { signal?: AbortSignal | null }, Result extends { status: number }, const Key extends readonly unknown[]>(
+  queryKey: Key,
+  operation: (input: Input) => Promise<Result>,
+  input: Input,
+) {
+  return {
+    queryKey,
+    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<ForkLaunchQuerySuccess<Result>> => {
+      const callerSignal = input.signal;
+      if (!callerSignal || callerSignal === signal) return querySuccess(await operation({ ...input, signal }));
+      const controller = new AbortController();
+      const abortQuery = () => controller.abort(signal.reason);
+      const abortCaller = () => controller.abort(callerSignal.reason);
+      signal.addEventListener('abort', abortQuery, { once: true });
+      callerSignal.addEventListener('abort', abortCaller, { once: true });
+      if (signal.aborted) abortQuery();
+      else if (callerSignal.aborted) abortCaller();
+      try {
+        return querySuccess(await operation({ ...input, signal: controller.signal }));
+      } finally {
+        signal.removeEventListener('abort', abortQuery);
+        callerSignal.removeEventListener('abort', abortCaller);
+      }
+    },
+  };
+}
+
+/** Optional TanStack mutation options. Invalidation and retries remain explicit caller policy. */
+export function forkLaunchMutationOptions<Input, Result extends { status: number }, const Key extends readonly unknown[]>(
+  mutationKey: Key,
+  operation: (input: Input) => Promise<Result>,
+) {
+  return {
+    mutationKey,
+    mutationFn: async (input: Input): Promise<ForkLaunchQuerySuccess<Result>> => querySuccess(await operation(input)),
+  };
+}
+
 {{{form_stringify_source}}}
 
 {{{transport_source}}}

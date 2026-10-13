@@ -94,7 +94,7 @@ import assert from 'node:assert/strict';
 import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createForkLaunchSdk } from './sdks/typescript/dist/index.js';
+import { createForkLaunchSdk, forkLaunchQueryOptions, forkLaunchMutationOptions, ForkLaunchSdkHttpError } from './sdks/typescript/dist/index.js';
 const children = [];
 async function startServer(program, args = []) {
   const process = spawn(program, args, {
@@ -136,6 +136,12 @@ async function verifyRustClient(baseUrl) {
   }
 }
 async function verifyStatusVariants(sdk) {
+  const query=forkLaunchQueryOptions(['accounts','status','queued'],sdk.accounts.status.getStatus,{params:{mode:'queued'}});
+  assert.equal((await query.queryFn({signal:new AbortController().signal})).response.jobId,'queued-1');
+  const mutation=forkLaunchMutationOptions(['accounts','status'],sdk.accounts.status.getStatus);
+  assert.equal((await mutation.mutationFn({params:{mode:'empty'}})).response,undefined);
+  await assert.rejects(mutation.mutationFn({params:{mode:'invalid'}}),error=>error instanceof ForkLaunchSdkHttpError&&error.result.status===400&&error.result.response.errorCode==='invalid_mode');
+
   assert.equal((await sdk.accounts.nullable.getNullable({ params: { mode: 'null' } })).response, null);
   assert.deepEqual((await sdk.accounts.nullable.getNullable({ params: { mode: 'full' } })).response, { name: 'nullable' });
   for (const [mode, expected] of Object.entries({"named": {"name": "Rust"}, "counted": {"count": 42}, "boolean": true, "string": "union", "integer": 7})) {

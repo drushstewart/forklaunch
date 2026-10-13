@@ -360,7 +360,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Generate discriminated response unions by status code.
 - [x] Support binary downloads as Uint8Array in browser TypeScript clients.
 - [x] Support browser file uploads through FormData, Blob and ArrayBuffer, preserving byte-view bounds and encoder-owned multipart boundaries.
-- [ ] Add optional TanStack Query helpers as a later feature.
+- [x] Add optional TanStack Query helpers as a later feature. (`forkLaunchQueryOptions`/`forkLaunchMutationOptions`; actual TanStack Query Core/React Query 5.104.2 conformance and generated HTTP/MCP runtime checks.)
 - [x] Add TypeScript SDK tests against a relocated generated Rust HTTP server (`rust_http_runtime.sh`).
 
 ### TypeScript SDK Compatibility Contract
@@ -1856,3 +1856,24 @@ Checklist: **625/682 (91.6%), 57 open**. Audit completion does not close the bro
 production-worker gate: custom scheduler strategies, BullMQ telemetry hooks,
 Cluster/Sentinel connections and full flow/parent interoperability remain explicit
 implementation requirements in the audit.
+
+### Optional TanStack Query SDK helpers (2026-10-12)
+
+Both the native TypeScript SDK generator and CLI share optional, dependency-free
+`forkLaunchQueryOptions` and `forkLaunchMutationOptions`. They preserve generated
+request/variable types and successful status-specific response envelopes, throw
+HTTP failure envelopes through `ForkLaunchSdkHttpError`, and propagate transport
+errors. Query cancellation composes TanStack and caller signals with listener
+cleanup; cache keys, retry policy, selection and invalidation stay explicit.
+
+Validation: actual Query Core and React Query 5.104.2 checks passed for strict
+request/response inference, scoped keys, cache reuse/invalidation, HTTP errors,
+retries, mutations, network errors and caller/query/pre-aborted cancellation.
+Eight SDK crate tests, reviewed output snapshots, strict SDK Clippy and all 31
+CLI generation tests passed. The rebuilt CLI generated and typechecked both SDKs
+through contract and OpenAPI paths; both clients passed live Rust and TypeScript
+wire fixtures. The generated Rust service also passed real HTTP/MCP startup,
+initialization/discovery/tool invocation and graceful shutdown checks.
+
+Checklist: **626/682 (91.8%), 56 open**. No TanStack runtime dependency is added to
+ordinary generated SDK use. See the framework README for cache scoping and usage.

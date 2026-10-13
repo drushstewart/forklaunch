@@ -225,3 +225,51 @@ cargo test -p forklaunch-sdk-typescript snapshots
 Review the source and snapshot diffs together before committing. CI refuses the
 update flag. OpenAPI is compared as sorted, pretty-printed JSON; SDK source is
 compared with trailing line whitespace normalized. No timestamps or absolute build paths are included.
+
+### Optional TanStack Query helpers
+
+Generated HTTP TypeScript SDKs export dependency-free `forkLaunchQueryOptions`
+and `forkLaunchMutationOptions`. Import them when using TanStack Query v5; the
+ordinary SDK keeps its existing call shape and status-union behavior.
+
+```typescript
+import { queryOptions, useQuery, useMutation } from '@tanstack/react-query';
+import { createForkLaunchSdk, forkLaunchQueryOptions, forkLaunchMutationOptions } from './sdks/typescript/src/index';
+
+const sdk = createForkLaunchSdk({ baseUrl: 'https://api.example.com' });
+const users = useQuery(queryOptions(forkLaunchQueryOptions(
+  ['tenant', tenantId, 'accounts', 'users'],
+  sdk.accounts.users.listUsers,
+  {},
+)));
+const remove = useMutation(forkLaunchMutationOptions(
+  ['tenant', tenantId, 'accounts', 'deleteUser'],
+  sdk.accounts.users.deleteUser,
+));
+```
+
+Use your generated operation names. The helper retains the complete successful
+HTTP envelope (`status`, `code`, `response`, content type and headers), narrowing
+away non-2xx variants. Non-2xx responses throw `ForkLaunchSdkHttpError`, whose
+`result` retains the returned envelope; transport errors propagate unchanged.
+Request parameters and mutation variables retain the generated schema types.
+Queries propagate TanStack's cancellation signal and combine it with a caller
+signal, removing listeners after settlement. Mutations retain caller request
+options and do not invent automatic cancellation or invalidation policies.
+
+Keys are explicit: include the operation, resource arguments, endpoint identity
+and tenant/user cache scope appropriate to your application. Do not put bearer
+tokens or other secrets into keys. Clear scoped cached data when a session ends.
+Spread TanStack options such as `staleTime`, `retry` or `select` at the call site;
+wrap the result with TanStack's `queryOptions` when you need its tagged-key type
+inference for `getQueryData`. Streaming iterators should be consumed explicitly
+rather than cached as reusable results.
+
+The fixture `cli/tests/rust_tanstack_query_parity.mjs` checks actual Query Core and
+React Query **5.104.2** types, cache reuse/invalidation and scope separation,
+HTTP failures and retries, mutations, network failures, and both sources of
+cancellation against generated fetch clients. It follows the upstream
+[query-options](https://tanstack.com/query/latest/docs/framework/react/guides/query-options)
+and [TypeScript integration](https://tanstack.com/query/latest/docs/framework/react/typescript)
+interfaces. Configure `FORKLAUNCH_TEST_TANSTACK_DEPENDENCIES` to an isolated npm
+prefix containing the pinned dependencies listed in the Rust parity workflow.
