@@ -58,6 +58,8 @@ try:
             return json.loads((app/'.forklaunch/release-manifest.json').read_text())
         native = release()
         assert [service['name'] for service in native['services']] == ['rust-api']
+        assert native['services'][0]['runtime'] == 'tokio'
+        assert native['services'][0]['binary'] == 'rust-api'
         assert '/health' in native['services'][0]['config']['openApiSpec']['paths']
         contract = json.loads((app/'.forklaunch/contracts/rust-api/contract.json').read_text())
         assert contract['generator']=='framework-rs'
@@ -96,6 +98,10 @@ language = "typescript"
         mixed = release()
         specs = {service['name']:service['config']['openApiSpec'] for service in mixed['services']}
         assert set(specs)=={'rust-api','ts-api'}
+        components = {service['name']: service for service in mixed['services']}
+        assert components['rust-api']['runtime'] == 'tokio'
+        assert components['rust-api']['binary'] == 'rust-api'
+        assert 'runtime' not in components['ts-api'] and 'binary' not in components['ts-api']
         export_controls = {'FORKLAUNCH_MODE','FORKLAUNCH_OPENAPI_OUTPUT','FORKLAUNCH_CONTRACT_OUTPUT','FORKLAUNCH_ASYNCAPI_OUTPUT'}
         required = {item['name'] for item in mixed.get('requiredEnvironmentVariables',[])}
         assert not export_controls & required, f'Export controls leaked into runtime requirements: {export_controls & required}'

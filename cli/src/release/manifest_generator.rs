@@ -238,6 +238,11 @@ pub(crate) struct ServiceDefinition {
     pub build_context: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dockerfile: Option<String>,
+    /// Per-component runtime prevents mixed-app native binaries using JS startup.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<Runtime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -455,10 +460,28 @@ fn project_is_rust(project: &ProjectEntry) -> bool {
     project_language(project) == ProjectLanguage::Rust
 }
 
+fn project_native_binary(project: &ProjectEntry) -> Option<String> {
+    project_is_rust(project).then(|| {
+        project
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.crate_name.clone())
+            .unwrap_or_else(|| project.name.clone())
+    })
+}
+
 fn project_relative_path(manifest: &ApplicationManifestData, project: &ProjectEntry) -> String {
     if crate::core::storefront::is_capture(project) {
-        return project.metadata.as_ref().and_then(|metadata| metadata.static_path.clone())
-            .unwrap_or_else(|| Path::new(&manifest.modules_path).join(&project.name).to_string_lossy().into_owned());
+        return project
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.static_path.clone())
+            .unwrap_or_else(|| {
+                Path::new(&manifest.modules_path)
+                    .join(&project.name)
+                    .to_string_lossy()
+                    .into_owned()
+            });
     }
     if project_is_rust(project) {
         project
@@ -698,6 +721,8 @@ pub(crate) fn generate_release_manifest(
                 }),
                 build_context: project_build_context(app_root, manifest, project),
                 dockerfile: Some(project_dockerfile(app_root, manifest, project)),
+                runtime: project_is_rust(project).then_some(Runtime::Tokio),
+                binary: project_native_binary(project),
             });
         } else if project.r#type == ProjectType::Worker {
             let runtime_deps = project_runtime_deps.get(&project.name).cloned();
@@ -833,6 +858,8 @@ pub(crate) fn generate_release_manifest(
                 }),
                 build_context: project_build_context(app_root, manifest, project),
                 dockerfile: Some(project_dockerfile(app_root, manifest, project)),
+                runtime: project_is_rust(project).then_some(Runtime::Tokio),
+                binary: project_native_binary(project),
             });
 
             let worker_type_str = project_worker_type(project);
@@ -873,6 +900,8 @@ pub(crate) fn generate_release_manifest(
                 config: ServiceConfigEnum::Worker(worker_config),
                 build_context: project_build_context(app_root, manifest, project),
                 dockerfile: Some(project_dockerfile(app_root, manifest, project)),
+                runtime: project_is_rust(project).then_some(Runtime::Tokio),
+                binary: project_native_binary(project),
             });
         }
     }
@@ -1353,6 +1382,8 @@ mod tests {
             .expect("accounts service should exist");
         assert_eq!(accounts.build_context, Some(".".to_string()));
         assert_eq!(accounts.dockerfile, Some("Dockerfile".to_string()));
+        assert_eq!(accounts.runtime, Some(Runtime::Tokio));
+        assert_eq!(accounts.binary.as_deref(), Some("accounts"));
         let ServiceConfigEnum::Service(accounts_config) = &accounts.config else {
             panic!("accounts should be a service config");
         };
@@ -1364,6 +1395,8 @@ mod tests {
             .find(|service| service.id == "email-worker-worker")
             .expect("email worker should exist");
         assert_eq!(worker.build_context, Some(".".to_string()));
+        assert_eq!(worker.runtime, Some(Runtime::Tokio));
+        assert_eq!(worker.binary.as_deref(), Some("email-worker"));
         let ServiceConfigEnum::Worker(worker_config) = &worker.config else {
             panic!("email worker should have worker config");
         };
@@ -1381,6 +1414,8 @@ mod tests {
             manifest.runtime = runtime.to_string();
             manifest.modules_path = "modules".to_string();
             manifest.language = Some("mixed".to_string());
+            manifest.projects[0].metadata.as_mut().unwrap().crate_name =
+                Some("accounts-native".into());
             let mut legacy = manifest.projects[0].clone();
             legacy.name = "legacy-api".to_string();
             legacy.metadata = Some(ProjectMetadata {
@@ -1409,6 +1444,22 @@ mod tests {
             assert_eq!(release.services.len(), 4);
             for service in release.services {
                 let legacy = service.id == "legacy-api";
+                let serialized = serde_json::to_value(&service).unwrap();
+                if legacy {
+                    assert!(serialized.get("runtime").is_none());
+                    assert!(serialized.get("binary").is_none());
+                } else {
+                    assert_eq!(serialized["runtime"], "tokio");
+                    assert_eq!(
+                        serialized["binary"],
+                        if service.id == "accounts" {
+                            "accounts-native"
+                        } else {
+                            "email-worker"
+                        }
+                    );
+                }
+
                 assert_eq!(
                     service.build_context.as_deref(),
                     Some(if legacy { "modules" } else { "." })
@@ -1448,18 +1499,33 @@ mod tests {
         let mut manifest = rust_release_test_manifest();
         manifest.modules_path = "modules".into();
         manifest.runtime = "node".into();
-        for directory in ["modules", "crates/accounts", "crates/email-worker", "crates/shop"] {
+        for directory in [
+            "modules",
+            "crates/accounts",
+            "crates/email-worker",
+            "crates/shop",
+        ] {
             std::fs::create_dir_all(root.path().join(directory)).unwrap();
         }
         let mut capture = manifest.projects[0].clone();
         capture.name = "shop".into();
         capture.r#type = ProjectType::Library;
         capture.variant = Some("storefront".into());
-        capture.metadata = Some(ProjectMetadata { static_path: Some("crates/shop".into()), ..ProjectMetadata::default() });
+        capture.metadata = Some(ProjectMetadata {
+            static_path: Some("crates/shop".into()),
+            ..ProjectMetadata::default()
+        });
         assert_eq!(project_relative_path(&manifest, &capture), "crates/shop");
         manifest.projects.push(capture);
         super::super::prebuilt::validate_paths(root.path(), &manifest).unwrap();
-        manifest.projects.last_mut().unwrap().metadata.as_mut().unwrap().static_path = Some("../outside".into());
+        manifest
+            .projects
+            .last_mut()
+            .unwrap()
+            .metadata
+            .as_mut()
+            .unwrap()
+            .static_path = Some("../outside".into());
         assert!(super::super::prebuilt::validate_paths(root.path(), &manifest).is_err());
     }
 

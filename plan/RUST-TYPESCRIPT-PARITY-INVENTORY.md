@@ -4073,3 +4073,42 @@ All 936 embedded assets remain packaged. Logs:
 `/private/tmp/fl-common-path-{parity,tests,clippy,generated,package}.log`.
 OpenAPI parameter-string conversion and the rest of the public utility/symbol
 audit remain open; checklist stays 657/682 (96.3%), 25 open.
+
+
+Native platform deployment receipt (2026-10-13): CLI release components now carry
+`runtime: "tokio"` and their actual Cargo executable name, including custom crate
+names and both worker components. JavaScript components retain their existing
+manifest shape. The companion checkout `../forklaunch-platform-rust-parity`,
+branch `rohin/rust-runtime-parity`, commits `fe0974937` and `050b1ef99`, preserves
+these fields through platform schemas and starts native containers with direct
+argv and a cleared image entrypoint. Runtime-aware build groups, CodeBuild and
+image gates skip JavaScript installation for native-only images, use independent
+mixed-image contexts and reject conflicting Node/Bun workspace installers.
+Multiple image builds now emit independently scoped helpers and compile together.
+
+Native tasks default to port 8000, network-accessible service hosts and enabled
+worker health listeners. Native DATABASE_URL values survive worker processing,
+fall back to the final DB_URL unless explicitly unset, use secret task references
+and secret stack outputs. Explicit connections remain authoritative. This does
+not grant database privileges, synthesize tenants or run owner migrations.
+
+All 1,101 CLI tests pass. Real optimized native and mixed Cargo/PNPM/Node release
+builds retain component metadata, generate both SDK targets and reuse prebuilt
+artifacts without publishing (`/private/tmp/fl-native-generated-release.log`).
+Platform validation covers 117 focused deployment/build
+checks plus five manifest-schema checks, generated mixed-program compilation,
+legacy JavaScript snapshot equality and full deployment-worker type checking
+against rebuilt local core/platform-management declarations. Generated relocated
+Linux container run `tBwUZM` passes HTTP/OpenAPI/MCP startup, discovery/invocation,
+health checks and graceful SIGTERM shutdown. Logs:
+`/private/tmp/fl-platform-native-{build,install,listeners,database,schema}-tests.log`,
+`/private/tmp/fl-platform-native-{worker,database}-types.log`,
+`/private/tmp/fl-platform-native-container.log`,
+`/private/tmp/fl-native-release-all-cli-tests.log`.
+
+No AWS deployment was performed. Native migration jobs, database role/tenant
+provisioning, actual ECS/load-balancer behavior and worker role/scaling semantics
+remain open. Both generated native worker components currently execute a combined
+consumer/control process; distinct HTTP-only/consumer-only roles are not implied.
+The companion deployment guide records these limits. The checklist remains
+657/682 (96.3%), 25 open.
