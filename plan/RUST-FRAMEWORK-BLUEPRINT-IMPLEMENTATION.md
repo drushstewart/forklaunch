@@ -787,7 +787,7 @@ Current CLI structure to build on:
 
 ## Phase 14 - Cross-Language Conformance
 
-- [ ] Build a canonical contract fixture service in TypeScript.
+- [x] Build a canonical contract fixture service in TypeScript. (`cli/tests/fixtures/canonical-iam/service.ts` bundles actual repository Express/core/Zod sources; the live paired runner checks 18 HTTP outcomes and both OpenAPI endpoints, explicitly retaining three rejected-JWT status differences.)
 - [x] Build the same canonical contract fixture service in Rust. (`forklaunch-blueprint-sample-service::iam_router` — runnable, contract-driven, serves OpenAPI)
 - [ ] Snapshot OpenAPI outputs and compare normalized output.
 - [x] Snapshot AsyncAPI outputs and compare normalized output. (`rust_ws_metadata_parity.mjs` compares 34 actual TypeScript/native WebSocket documents, then checks committed key-normalized snapshots; official schema/parser and payload/reference checks also pass. Broader external AsyncAPI protocols remain separately tracked.)
@@ -1909,3 +1909,23 @@ Checklist: **627/682 (91.9%), 55 open**. External workspace consumers must apply
 the documented root Cargo patch. Registry publication/upstream adoption,
 unpaired surrogates, deeper nesting and broader ORM/JavaScript normalization
 remain separate gates.
+
+
+### Canonical actual TypeScript service fixture (2026-10-12)
+
+The paired IAM runner now bundles the repository's actual Express, core, common
+and Zod implementation, starts it beside the existing native sample IAM router,
+and checks eighteen live HTTP outcomes plus both generated OpenAPI endpoints.
+Successful user reads/lists, empty missing-user responses and missing credentials
+match. Exact malformed/expired/forged JWT expectations retain three differences:
+TypeScript returns 403 and native returns 401. TypeScript uses `authenticated`
+for JWT-only access; the native IAM contracts still label it `protected` without
+RBAC. These are explicit remaining auth/error conformance work, not normalized
+away. Pagination is intentionally unchanged in the sample handlers.
+
+External TypeScript dependencies are pinned in the fixture manifest; CI installs
+them in a dedicated prefix. The runner bundles source in an isolated temporary
+directory, disables telemetry export, uses ephemeral loopback listeners and
+cleans up its own processes/files. The native example passes strict Clippy.
+Whole-document OpenAPI comparison, remaining validation/auth modes and MCP
+framework conformance remain open. Checklist: **628/682 (92.1%), 54 open**.

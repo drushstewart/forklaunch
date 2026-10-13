@@ -1939,3 +1939,23 @@ Checklist: **627/682 (91.9%), 55 open**. External workspace consumers must apply
 the documented root Cargo patch. Registry publication/upstream adoption,
 unpaired surrogates, deeper nesting and broader ORM/JavaScript normalization
 remain separate gates.
+
+
+### Canonical actual TypeScript service fixture (2026-10-12)
+
+The paired IAM runner now bundles the repository's actual Express, core, common
+and Zod implementation, starts it beside the existing native sample IAM router,
+and checks eighteen live HTTP outcomes plus both generated OpenAPI endpoints.
+Successful user reads/lists, empty missing-user responses and missing credentials
+match. Exact malformed/expired/forged JWT expectations retain three differences:
+TypeScript returns 403 and native returns 401. TypeScript uses `authenticated`
+for JWT-only access; the native IAM contracts still label it `protected` without
+RBAC. These are explicit remaining auth/error conformance work, not normalized
+away. Pagination is intentionally unchanged in the sample handlers.
+
+External TypeScript dependencies are pinned in the fixture manifest; CI installs
+them in a dedicated prefix. The runner bundles source in an isolated temporary
+directory, disables telemetry export, uses ephemeral loopback listeners and
+cleans up its own processes/files. The native example passes strict Clippy.
+Whole-document OpenAPI comparison, remaining validation/auth modes and MCP
+framework conformance remain open. Checklist: **628/682 (92.1%), 54 open**.

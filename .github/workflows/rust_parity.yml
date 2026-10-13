@@ -38,6 +38,8 @@ on:
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_tanstack_query_parity.mjs'
+      - 'cli/tests/rust_canonical_http_parity.mjs'
+      - 'cli/tests/fixtures/canonical-iam/**'
       - 'cli/tests/rust_sdk_body_parity.mjs'
       - 'cli/tests/rust_sse_parity.mjs'
       - 'cli/tests/rust_sse_emitter_parity.mjs'
@@ -203,6 +205,8 @@ on:
       - 'cli/tests/rust_asyncapi_parity.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_tanstack_query_parity.mjs'
+      - 'cli/tests/rust_canonical_http_parity.mjs'
+      - 'cli/tests/fixtures/canonical-iam/**'
       - 'cli/tests/rust_sdk_body_parity.mjs'
       - 'cli/tests/rust_sse_parity.mjs'
       - 'cli/tests/rust_sse_emitter_parity.mjs'
@@ -411,6 +415,13 @@ jobs:
       - run: node cli/tests/rust_query_transport_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: |
+          mkdir -p "$RUNNER_TEMP/fl-canonical-http"
+          cp cli/tests/fixtures/canonical-iam/package.json "$RUNNER_TEMP/fl-canonical-http/package.json"
+          npm install --prefix "$RUNNER_TEMP/fl-canonical-http" --ignore-scripts
+      - run: node cli/tests/rust_canonical_http_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_tanstack_query_parity.mjs
         env:
           FORKLAUNCH_TEST_TANSTACK_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
