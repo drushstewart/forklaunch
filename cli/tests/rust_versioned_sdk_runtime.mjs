@@ -27,8 +27,14 @@ try {
  }
  for(const [value,version,status] of [['\ufeff','v1',201],['\ufeffa','v1',201],['\ufeffab','v2',202],['\ufeff\ufeff','v1',201]]) {
   const response=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':'text/plain'},body:value});
+  assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,value:value.slice(1)});
+ }
+ for(const [bytes,value,version,status] of [[[255],'�','v1',201],[[0xed,0xa0,0x80],'���','v2',202]]) {
+  const response=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':'text/plain'},body:Buffer.from(bytes)});
   assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,value});
  }
+ const bomJson=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json'},body:'\ufeff'+JSON.stringify({kind:'v1',value:'decoded'})});
+ assert.equal(bomJson.status,201);assert.deepEqual(await bomJson.json(),{value:'decoded'});
  for(const bytes of [[],[0,255,128],Array.from(Buffer.from('水'))]) {
   const response=await fetch(`${base}/versioned-file`,{method:'POST',headers:{'content-type':'application/octet-stream'},body:Buffer.from(bytes)});
   assert.equal(response.status,202);assert.deepEqual(await response.json(),{version:'v2',bytes});

@@ -518,12 +518,20 @@ pub fn validate_framework_request(
         return Vec::new();
     }
 
-    validate_request_fields(&contract.request, request)
+    validate_request_fields(
+        &contract.request,
+        request,
+        request
+            .version
+            .as_ref()
+            .is_some_and(|version| version.parsed_body.is_some()),
+    )
 }
 
 fn validate_request_fields(
     contract: &forklaunch_contract::RequestContract,
     request: &FrameworkRequest,
+    has_parsed_body: bool,
 ) -> Vec<ContractValidationError> {
     let mut errors = Vec::new();
     validate_required_fields(
@@ -543,7 +551,7 @@ fn validate_request_fields(
     validate_required_headers(&contract.headers, &request.headers, &mut errors);
 
     if let Some(body) = &contract.body {
-        if request.body.is_empty() {
+        if request.body.is_empty() && !has_parsed_body {
             errors.push(ContractValidationError::new(
                 ContractValidationLocation::Body,
                 "missing required request body",

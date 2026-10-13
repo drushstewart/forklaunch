@@ -3339,3 +3339,26 @@ new comparison runs in CI. Receipts:
 `/private/tmp/fl-wire-{actual,versions,native,clippy,generated,package}.log`.
 Checklist remains **652/682 (95.6%), 30 open**; parser configuration/charsets and
 request transformation delivery remain open.
+
+
+### 2026-10-13 — Parsed version bodies reach typed handlers
+
+`VersionedBody<T>` deserializes the value already parsed and validated during
+version selection, without consuming or rewriting request bytes. Local and
+metadata handlers receive the shared value on `SelectedVersion.parsed_body`.
+The live adapter keeps selection metadata on both framework requests and Axum
+extensions; empty JSON parsed as `{}` no longer fails a later missing-body check.
+The extractor supports JSON, text, file byte arrays, nested forms and multipart.
+Missing selection/body metadata and incompatible handler types reject explicitly
+without exposing payloads in errors. Custom schema transforms and unversioned
+parsed-body delivery remain outside this change.
+
+Validation: 61 Axum and 29 HTTP tests, including every parser with simultaneous
+parsed/raw access and extractor rejection cases; strict Clippy; 23 actual wire
+comparisons; 1,062 actual URL-encoded comparisons; 903 package files. Fresh
+`run.qzu84p` verifies BOM-prefixed JSON and malformed UTF-8 text through generated
+typed handlers, HTTP/MCP startup/discovery/calls/shutdown, and both SDKs through
+three artifacts and native generators. Receipts:
+`/private/tmp/fl-parsed-{native,clippy,actual,form,generated,package}.log`.
+Checklist remains **652/682 (95.6%), 30 open**; configurable parser/charset behavior
+and arbitrary request transformations remain on the versioning gate.

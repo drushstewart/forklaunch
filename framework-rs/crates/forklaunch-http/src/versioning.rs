@@ -20,6 +20,8 @@ pub use multipart::MultipartLimits;
 pub struct SelectedVersion {
     pub version: String,
     pub matched_versions: Vec<String>,
+    /// Parsed once for selection; original wire bytes remain on the request.
+    pub parsed_body: Option<Arc<Value>>,
 }
 
 #[derive(Clone)]
@@ -153,6 +155,7 @@ impl VersionedRoutePlan {
                     SelectedVersion {
                         version: variant.name.clone(),
                         matched_versions: matched,
+                        parsed_body: body_value.map(Arc::new),
                     },
                 ))
             })
@@ -198,13 +201,6 @@ impl VersionedRoutePlan {
                 }
             }
             BodyKind::File | BodyKind::Binary => {
-                if !self
-                    .variants
-                    .iter()
-                    .any(|variant| matches!(variant.body, Some(BodyValidator::Bytes(_))))
-                {
-                    return Ok(None);
-                }
                 Value::Array(bytes.iter().copied().map(Value::from).collect())
             }
             BodyKind::UrlEncoded => form::parse(bytes)?,
@@ -286,7 +282,7 @@ fn compile_body(
 
 impl Variant {
     fn matches(&self, request: &FrameworkRequest, body_value: Option<&Value>) -> bool {
-        if !validate_request_fields(&self.route.request, request).is_empty() {
+        if !validate_request_fields(&self.route.request, request, body_value.is_some()).is_empty() {
             return false;
         }
         for field in &self.fields {
@@ -354,6 +350,34 @@ mod tests {
         request.params.insert("id".into(), "one".into());
         request
     }
+    #[test]
+    fn local_handlers_receive_parsed_values_and_original_bytes() {
+        let mut route = contract();
+        for version in route.versions.values_mut() {
+            let body = version.request.body.as_mut().unwrap();
+            body.kind = BodyKind::Text;
+            body.content_type = Some("text/plain".into());
+            body.schema.json_schema = Some(r#"{"type":"string"}"#.into());
+        }
+        let mut router = LocalRouter::new();
+        router.register(route, |request: FrameworkRequest| {
+            assert_eq!(
+                request.version.unwrap().parsed_body.as_deref(),
+                Some(&json!("�"))
+            );
+            assert_eq!(request.body, Body::Binary(vec![0xef, 0xbb, 0xbf, 255]));
+            Ok(FrameworkResponse::new(202))
+        });
+        let request = FrameworkRequest::new(
+            HttpMethod::Post,
+            "/items/one",
+            RequestContext::new("parsed"),
+        )
+        .with_header("content-type", "text/plain")
+        .with_body(Body::Binary(vec![0xef, 0xbb, 0xbf, 255]));
+        assert_eq!(router.execute(request).unwrap().status_code, 202);
+    }
+
     #[test]
     fn json_parser_failures_are_fatal_even_for_unconstrained_schemas() {
         let mut route = contract();

@@ -50,9 +50,9 @@ pub fn contracts() -> Vec<RouteContract> {
     vec![route,text,file,form,multipart]
 }
 pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
-    router.post(contracts().remove(0),|Extension(version):Extension<SelectedVersion>,Json(body):Json<Value>|async move {
+    router.post(contracts().remove(0),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<Value>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"value":body["value"]})))
-    }).post(contracts().remove(1),|Extension(version):Extension<SelectedVersion>,body:String|async move {
+    }).post(contracts().remove(1),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<String>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"value":body})))
     }).post(contracts().remove(2),|Extension(version):Extension<SelectedVersion>,body:axum::body::Bytes|async move {
         (StatusCode::ACCEPTED,Json(json!({"version":version.version,"bytes":body.to_vec()})))

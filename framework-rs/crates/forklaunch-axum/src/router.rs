@@ -804,7 +804,7 @@ async fn validate_contract(
         Err(error) => return body_read_error_response(&error),
     };
 
-    let framework_request = build_framework_request(&contract, &parts, &bytes);
+    let mut framework_request = build_framework_request(&contract, &parts, &bytes);
     let requires_auth = contract.auth.is_some()
         || contract.rbac.is_some()
         || contract.access != AccessLevel::Public;
@@ -859,7 +859,7 @@ async fn validate_contract(
     }
     let version_plan = &state.versions[&route_key(contract.method, &contract.openapi_path)];
     let contract =
-        match select_contract_version(version_plan, contract, &mut parts, &framework_request) {
+        match select_contract_version(version_plan, contract, &mut parts, &mut framework_request) {
             Ok(contract) => contract,
             Err(errors) => {
                 return framework_response_to_axum(validation_error_response(
@@ -901,7 +901,7 @@ fn select_contract_version(
     plan: &forklaunch_http::VersionedRoutePlan,
     contract: RouteContract,
     parts: &mut Parts,
-    request: &FrameworkRequest,
+    request: &mut FrameworkRequest,
 ) -> Result<RouteContract, Vec<forklaunch_http::ContractValidationError>> {
     let limits = parts
         .extensions
@@ -910,6 +910,7 @@ fn select_contract_version(
         .unwrap_or_default();
     match plan.select_with_multipart_limits(request, limits) {
         Ok(Some((selected, version))) => {
+            request.version = Some(version.clone());
             parts.extensions.insert(version);
             Ok(selected)
         }

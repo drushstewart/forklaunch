@@ -349,3 +349,78 @@ async fn parser_and_transport_limits_remain_fatal_when_validation_is_disabled() 
     let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
     assert!(!String::from_utf8_lossy(&bytes).contains("private"));
 }
+
+#[tokio::test]
+async fn versioned_body_delivers_parsed_values_without_consuming_wire_bytes() {
+    use crate::VersionedBody;
+    use forklaunch_contract::{BodyKind, SchemaRef};
+    let cases = [
+        (
+            BodyKind::Json,
+            "application/json",
+            b"\xef\xbb\xbf{\"value\":1}".to_vec(),
+            json!({"value":1}),
+        ),
+        (BodyKind::Json, "application/json", vec![], json!({})),
+        (
+            BodyKind::Text,
+            "text/plain",
+            vec![0xef, 0xbb, 0xbf, 255],
+            json!("�"),
+        ),
+        (
+            BodyKind::File,
+            "application/octet-stream",
+            vec![0, 255, 128],
+            json!([0, 255, 128]),
+        ),
+        (
+            BodyKind::UrlEncoded,
+            "application/x-www-form-urlencoded",
+            b"items[]=a&items[]=%E6%B0%B4".to_vec(),
+            json!({"items":["a","水"]}),
+        ),
+        (
+            BodyKind::Multipart,
+            "multipart/form-data; boundary=b",
+            b"--b\r\nContent-Disposition: form-data; name=\"value\"\r\n\r\ntext\r\n--b--\r\n"
+                .to_vec(),
+            json!({"value":"text"}),
+        ),
+    ];
+    for (kind, content_type, wire, expected) in cases {
+        let contract =
+            RouteContract::post("Parsed", "Parsed", "/parsed").with_version(VersionedContract {
+                version: "v1".into(),
+                request: RequestContract::default().with_body(BodyContract {
+                    kind,
+                    content_type: Some(content_type.into()),
+                    schema: SchemaRef::named("Input").with_json_schema("true"),
+                }),
+                responses: vec![ResponseContract::new(200, None)],
+            });
+        let app = ForkLaunchRouter::new(ServiceInfo::new("parsed", "1"))
+            .post(
+                contract,
+                |VersionedBody(value): VersionedBody<serde_json::Value>,
+                 bytes: axum::body::Bytes| async move {
+                    axum::Json(json!({"value":value,"wire":bytes.to_vec()}))
+                },
+            )
+            .into_router();
+        let response = app
+            .oneshot(
+                Request::post("/parsed")
+                    .header("content-type", content_type)
+                    .body(Body::from(wire.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let result: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(status, 200, "{kind:?}: {result}");
+        assert_eq!(result, json!({"value":expected,"wire":wire}));
+    }
+}

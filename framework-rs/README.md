@@ -570,5 +570,14 @@ Version matching follows the default TypeScript JSON/text wire parser: JSON root
 must be objects or arrays, an empty JSON body becomes an empty object, one UTF-8
 BOM is stripped, and malformed UTF-8 becomes replacement characters. Original
 handler bytes remain intact; standard Axum extractors retain their own decoding
-rules. Configurable strict mode, other charsets and parsed-value handler delivery
-remain separate work.
+rules. Configurable strict mode and other charsets remain separate work.
+
+Versioned handlers can use `forklaunch_axum::VersionedBody<T>` to deserialize the
+body already parsed and validated during version selection. It is a parts
+extractor, so a subsequent `Bytes` extractor can still read the original wire
+payload. JSON/text BOM handling, replacement characters, nested form objects,
+multipart values and file byte arrays reach handlers without a second parser.
+Local and metadata adapters expose the same shared value through
+`request.version.parsed_body`. Missing version/body metadata rejects with 500;
+a handler type incompatible with the selected schema rejects with 400. Arbitrary
+schema transformations and unversioned parsed-body delivery remain separate work.
