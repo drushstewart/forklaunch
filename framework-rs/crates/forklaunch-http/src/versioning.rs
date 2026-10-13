@@ -51,9 +51,17 @@ impl VersionedRoutePlan {
         if route.versions.len() > 1024 {
             return Err("route exceeds 1024 versions".into());
         }
+        let parser = parser_kind(route.parsing_body());
+        let mut remaining_bytes = 32 * 1024 * 1024_usize;
         let mut variants = Vec::new();
         for name in route.versions.keys() {
             let projected = route.for_version(name).ok_or("missing indexed version")?;
+            if parser_kind(projected.request.body.as_ref()) != parser {
+                return Err("All API versions must use the same body parser".into());
+            }
+            if parser == Some(BodyKind::ServerSentEvent) {
+                return Err("SSE request bodies are not supported".into());
+            }
             let mut fields = Vec::new();
             for (location, entries) in [
                 (
@@ -67,7 +75,7 @@ impl VersionedRoutePlan {
                 ),
             ] {
                 for field in entries {
-                    if let Some(validate) = compile_schema(&field.schema)? {
+                    if let Some(validate) = compile_schema(&field.schema, &mut remaining_bytes)? {
                         fields.push(FieldValidator {
                             location,
                             name: field.name.clone(),
@@ -80,7 +88,7 @@ impl VersionedRoutePlan {
                 .request
                 .body
                 .as_ref()
-                .map(|body| compile_schema(&body.schema))
+                .map(|body| compile_schema(&body.schema, &mut remaining_bytes))
                 .transpose()?
                 .flatten();
             variants.push(Variant {
@@ -130,11 +138,24 @@ impl VersionedRoutePlan {
             })
     }
 }
-fn compile_schema(schema: &SchemaRef) -> Result<Option<Arc<JsonValidator>>, String> {
+fn parser_kind(body: Option<&forklaunch_contract::BodyContract>) -> Option<BodyKind> {
+    body.map(|body| match body.kind {
+        BodyKind::File => BodyKind::Binary,
+        BodyKind::Unknown => BodyKind::Json,
+        kind => kind,
+    })
+}
+fn compile_schema(
+    schema: &SchemaRef,
+    remaining_bytes: &mut usize,
+) -> Result<Option<Arc<JsonValidator>>, String> {
     schema
         .json_schema
         .as_deref()
         .map(|encoded| {
+            *remaining_bytes = remaining_bytes
+                .checked_sub(encoded.len())
+                .ok_or("Version schemas exceed 32 MiB")?;
             let value: Value = serde_json::from_str(encoded)
                 .map_err(|_| "invalid version schema JSON".to_owned())?;
             schema_validation::compile(&value)
@@ -231,6 +252,27 @@ mod tests {
         request.params.insert("id".into(), "one".into());
         request
     }
+    #[test]
+    fn text_versions_normalize_empty_local_bodies_without_altering_bytes() {
+        let mut route = contract();
+        for version in route.versions.values_mut() {
+            let body = version.request.body.as_mut().unwrap();
+            body.kind = BodyKind::Text;
+            body.content_type = Some("text/plain".into());
+            body.schema.json_schema = Some(r#"{"type":"string"}"#.into());
+        }
+        let mut router = LocalRouter::new();
+        router.register(route, |request: FrameworkRequest| {
+            assert_eq!(request.version.unwrap().version, "a-last");
+            assert_eq!(request.body, Body::Text(String::new()));
+            Ok(FrameworkResponse::new(202))
+        });
+        let request =
+            FrameworkRequest::new(HttpMethod::Post, "/items/one", RequestContext::new("empty"))
+                .with_header("content-type", "text/plain");
+        assert_eq!(router.execute(request).unwrap().status_code, 202);
+    }
+
     #[test]
     fn last_matching_declaration_selects_response_contract_and_all_matches() {
         let route = contract();

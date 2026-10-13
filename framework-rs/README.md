@@ -493,12 +493,16 @@ SDK checks from contract and OpenAPI artifacts, including HTTP/MCP startup.
 ## Versioned HTTP request selection
 
 `RouteContract::with_version` retains declaration order, including JavaScript's
-canonical integer-key enumeration rules. For versioned JSON routes, the local
+canonical integer-key enumeration rules. For versioned JSON and text routes, the local
 router and Axum match each declared request and select the last successful one.
 They check response status against that version's responses. Common route
 parameters and auth policy remain shared. Live routers compile embedded schemas
 at construction through the same bounded, offline validator as socket codecs.
-Invalid version schemas fail during router construction.
+Invalid version schemas fail during router construction. Versions share the
+first declaration's body parser and incompatible parser kinds are rejected,
+matching TypeScript registration. Empty text remains an empty string; binary
+inputs retain their bytes before version matching. The combined encoded version
+schemas are capped at 32 MiB before decoding.
 
 Local handlers read `FrameworkRequest.version`; Axum handlers can extract
 `Extension<forklaunch_http::SelectedVersion>`. This contains `version` and

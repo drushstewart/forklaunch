@@ -19,6 +19,12 @@ try {
   const result=await mcpRpc(base,'tools/call',{name:`write [v${version}]`,arguments:{body:{kind:version,value}}});
   assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{value});
  }
+ for(const [value,version,status] of [['','v1',201],['a','v1',201],['水a','v2',202]]) {
+  const response=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':'text/plain'},body:value});
+  assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,value});
+  const result=await mcpRpc(base,'tools/call',{name:tools.find(tool=>tool.name.endsWith(` [v${version}]`) && tool.inputSchema.properties.body?.type==='string').name,arguments:{body:value}});
+  assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{version,value});
+ }
  const invalid=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:'v2',value:'bad'})});assert.equal(invalid.status,400);
  const openapi=await(await fetch(`${base}/openapi.json`)).json();
  assert.deepEqual(openapi.paths['/versions'].post['x-forklaunch-versions'],['v1','v2']);

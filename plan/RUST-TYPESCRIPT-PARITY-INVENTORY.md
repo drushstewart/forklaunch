@@ -3121,3 +3121,30 @@ strict clippy/docs, formatting, and 898 embedded package sources. Evidence:
 `fl-version-export-{cli-final,units,clippy-final,docs,package-final}.log`.
 Checklist remains **652/682 (95.6%), 30 open**. Non-JSON media and
 request-transformation conformance remain on the versioned-API gate.
+
+### 2026-10-13 — Versioned text bodies and shared parser registration
+
+Versioned routes now derive their wire parser from the first declared version,
+including an absent first body, instead of the unversioned base contract. Local
+and metadata adapters normalize empty text and preserve binary bytes before
+selection. Registration rejects incompatible parser kinds; file/binary share a
+parser, and JSON/unknown share a parser. Encoded schemas across a route's versions
+have a combined 32 MiB construction budget before JSON decoding.
+
+Validation: 40 actual TypeScript request-parser/native selection comparisons and
+six actual TypeScript registration/native parser-compatibility checks; 56 Axum
+and 23 HTTP unit tests; strict all-feature/all-target Clippy for both crates; and
+898 embedded package sources. A fresh relocated generated service passed empty,
+short and Unicode text HTTP/MCP calls, JSON version calls, startup/discovery,
+rejection and graceful shutdown. Both typed SDKs passed all three artifact
+sources (contract, standard OpenAPI, named OpenAPI) and both native generators.
+The initial generated probe assumed a tool name rather than using discovery;
+the corrected complete run is recorded in
+`/private/tmp/fl-version-media-generated-final.log` (`run.5wqn6V`). Other receipts:
+`fl-version-media-actual.log`, `fl-version-media-units.log`,
+`fl-version-media-clippy.log`, and `fl-version-media-package.log`.
+
+Checklist stays **652/682 (95.6%), 30 open**. Binary/form/multipart schema matching,
+full middleware coercion/transform behavior and the broader versioning gate
+remain open. These parser tests compare actual TypeScript request validation;
+they do not claim all Express wire-parser behavior is identical.

@@ -1,6 +1,6 @@
 use axum::{Extension, Json, http::StatusCode};
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_contract::{BodyContract, RequestContract, ResponseContract, RouteContract, VersionedContract};
+use forklaunch_contract::{BodyContract, BodyKind, RequestContract, ResponseContract, RouteContract, VersionedContract};
 use forklaunch_http::SelectedVersion;
 use serde_json::{Value,json};
 
@@ -13,10 +13,21 @@ pub fn contracts() -> Vec<RouteContract> {
         output.schema=output.schema.with_json_schema(json!({"type":"object","additionalProperties":false,"required":["value"],"properties":{"value":{"type":kind}}}).to_string());
         route=route.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
     }
-    vec![route]
+    let mut text=RouteContract::post("Write Text","Write versioned text","/versioned-text");
+    for (version,minimum,status) in [("v1",0,201),("v2",2,202)] {
+        let input=BodyContract { kind:BodyKind::Text, content_type:Some("text/plain".into()), ..BodyContract::json("TextInput") };
+        let mut input=input;
+        input.schema=input.schema.with_json_schema(json!({"type":"string","minLength":minimum}).to_string());
+        let mut output=BodyContract::json("TextOutput");
+        output.schema=output.schema.with_json_schema(json!({"type":"object","required":["version","value"],"properties":{"version":{"type":"string"},"value":{"type":"string"}}}).to_string());
+        text=text.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
+    }
+    vec![route,text]
 }
 pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
     router.post(contracts().remove(0),|Extension(version):Extension<SelectedVersion>,Json(body):Json<Value>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"value":body["value"]})))
+    }).post(contracts().remove(1),|Extension(version):Extension<SelectedVersion>,body:String|async move {
+        (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"value":body})))
     })
 }

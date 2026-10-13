@@ -8,7 +8,7 @@ import {actualValidator} from './rust_actual_validator_fixture.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const external=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES,'package.json'));
 const {z}=external('zod/v3');
-const {load,validator}=actualValidator(root,(specifier,_file,load)=>specifier==='@forklaunch/common'?{
+const {load,validator}=actualValidator(root,(specifier,file,load)=>file.endsWith('routerSharedLogic.ts') && /middleware|telemetry/.test(specifier)?{}:specifier==='@forklaunch/common'?{
  ...load(path.join(root,'framework/common/src/deepCloneWithoutUndefined.ts')),
  ...load(path.join(root,'framework/common/src/guards/isRecord.ts')),
 }:undefined);
@@ -18,10 +18,13 @@ for(const names of [['z-first','a-last'],['2','1'],['10','2'],['01','1'],['42949
  const versions=names.map((name,index)=>({name,schema:{type:'object',required:['value'],properties:{value:{type:'string',minLength:index+1}}}}));
  fixtures.push({versions,cases:[{value:'a'},{value:'ab'},{value:''},{value:10},{},null,{value:'abc',extra:true}]});
 }
-const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
+fixtures.push({kind:'text',versions:[{name:'z-first',schema:{type:'string',minLength:0}},{name:'a-last',schema:{type:'string',minLength:2}}],cases:['','a','ab','水','水a']});
+const parserFixtures=[['json','text'],['text','text'],['file','binary'],['none','json'],['none','none'],['urlEncoded','multipart']].map(parserKinds=>({parserKinds}));
+const {validateContractDetails}=load(path.join(root,'framework/core/src/http/router/routerSharedLogic.ts'));
+const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify([...fixtures,...parserFixtures]),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0;
 for(const [i,fixture] of fixtures.entries()) {
- const requestSchema=Object.fromEntries(fixture.versions.map(version=>[version.name,z.object({body:z.object({value:z.string().min(version.schema.properties.value.minLength)}),params:z.object({}),query:z.object({}),headers:z.object({})})]));
+ const requestSchema=Object.fromEntries(fixture.versions.map(version=>[version.name,z.object({body:fixture.kind==='text'?z.string().min(version.schema.minLength):z.object({value:z.string().min(version.schema.properties.value.minLength)}),params:z.object({}),query:z.object({}),headers:z.object({})})]));
  assert.deepEqual(native[i].order,Object.keys(requestSchema));
  for(const [j,body] of fixture.cases.entries()) {
   const req={body,params:{},query:{},headers:{},context:{correlationId:'fixture'},contractDetails:{versions:requestSchema},requestSchema,schemaValidator:validator};
@@ -35,3 +38,12 @@ for(const [i,fixture] of fixtures.entries()) {
  }
 }
 console.log(`PASS ${count} actual TypeScript/native version-selection cases, declaration and JavaScript integer-key ordering, overlap and rejection`);
+
+for(const [index,{parserKinds}] of parserFixtures.entries()) {
+ const bodies={json:z.object({}),text:z.string(),file:validator.file,binary:validator.binary,urlEncoded:{urlEncodedForm:{}},multipart:{multipartForm:{}}};
+ const versions=Object.fromEntries(parserKinds.map((kind,i)=>[`v${i}`,{...(kind==='none'?{}:{body:bodies[kind]}),responses:{200:z.string()}}]));
+ let accepted=true;
+ try {validateContractDetails({name:'Versioned',summary:'Versioned',versions},validator);}catch(error){assert.match(error.message,/same parsing type/);accepted=false;}
+ assert.equal(native[fixtures.length+index].accepted,accepted,parserKinds.join('/'));
+}
+console.log(`PASS ${parserFixtures.length} actual TypeScript/native versioned body-parser registration checks`);

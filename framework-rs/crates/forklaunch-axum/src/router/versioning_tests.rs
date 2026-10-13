@@ -132,3 +132,65 @@ async fn versioned_http_and_mcp_start_discover_invoke_and_shutdown() {
         .unwrap()
         .unwrap();
 }
+
+#[tokio::test]
+async fn versioned_text_keeps_empty_body_and_uses_the_first_declared_parser() {
+    use forklaunch_contract::{BodyKind, SchemaRef};
+    let mut contract = RouteContract::post("Text", "Text", "/text");
+    for (name, min, status) in [("v1", 0, 201), ("v2", 2, 202)] {
+        let body = BodyContract {
+            kind: BodyKind::Text,
+            schema: SchemaRef::named("Text")
+                .with_json_schema(json!({"type":"string","minLength":min}).to_string()),
+            content_type: Some("text/plain".into()),
+        };
+        contract = contract.with_version(VersionedContract {
+            version: name.into(),
+            request: RequestContract::default().with_body(body),
+            responses: vec![ResponseContract::new(status, None)],
+        });
+    }
+    let app = ForkLaunchRouter::new(ServiceInfo::new("text", "1"))
+        .post(
+            contract,
+            |Extension(version): Extension<SelectedVersion>, body: String| async move {
+                (
+                    if version.version == "v1" {
+                        StatusCode::CREATED
+                    } else {
+                        StatusCode::ACCEPTED
+                    },
+                    format!("{}:{body}", version.version),
+                )
+            },
+        )
+        .into_router();
+    for (body, status, expected) in [("", 201, "v1:"), ("a", 201, "v1:a"), ("水a", 202, "v2:水a")]
+    {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/text")
+                    .header("content-type", "text/plain")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), status);
+        assert_eq!(
+            to_bytes(response.into_body(), 1024).await.unwrap(),
+            expected
+        );
+    }
+    let response = app
+        .oneshot(
+            Request::post("/text")
+                .header("content-type", "text/plain")
+                .body(Body::from(vec![255]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 400);
+}

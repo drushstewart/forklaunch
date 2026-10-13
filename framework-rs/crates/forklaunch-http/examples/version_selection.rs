@@ -1,6 +1,6 @@
 //! Conformance bridge for the real HTTP version matcher.
 use forklaunch_contract::{
-    BodyContract, RequestContract, ResponseContract, RouteContract, VersionedContract,
+    BodyContract, BodyKind, RequestContract, ResponseContract, RouteContract, VersionedContract,
 };
 use forklaunch_http::{Body, FrameworkRequest, HttpMethod, RequestContext, VersionedRoutePlan};
 use serde_json::{Value, json};
@@ -12,8 +12,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut output = Vec::new();
     for fixture in fixtures {
         let mut contract = RouteContract::post("Versioned", "Versioned", "/versioned");
+        if let Some(kinds) = fixture["parserKinds"].as_array() {
+            for (index, kind) in kinds.iter().enumerate() {
+                let kind = match kind.as_str().unwrap() {
+                    "none" => None,
+                    "json" => Some(BodyKind::Json),
+                    "text" => Some(BodyKind::Text),
+                    "file" => Some(BodyKind::File),
+                    "binary" => Some(BodyKind::Binary),
+                    "urlEncoded" => Some(BodyKind::UrlEncoded),
+                    "multipart" => Some(BodyKind::Multipart),
+                    _ => unreachable!(),
+                };
+                let body = kind.map(|kind| BodyContract {
+                    kind,
+                    ..BodyContract::json("Input")
+                });
+                contract = contract.with_version(VersionedContract {
+                    version: format!("v{index}"),
+                    request: RequestContract {
+                        body,
+                        ..Default::default()
+                    },
+                    responses: vec![],
+                });
+            }
+            output.push(json!({"accepted":VersionedRoutePlan::compile(&contract).is_ok()}));
+            continue;
+        }
+        let text = fixture["kind"] == "text";
         for version in fixture["versions"].as_array().unwrap() {
             let mut body = BodyContract::json("Input");
+            if text {
+                body.kind = BodyKind::Text;
+                body.content_type = Some("text/plain".into());
+            }
             body.schema = body.schema.with_json_schema(version["schema"].to_string());
             contract = contract.with_version(VersionedContract {
                 version: version["name"].as_str().unwrap().into(),
@@ -29,8 +62,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "/versioned",
                 RequestContext::new("fixture"),
             )
-            .with_header("content-type", "application/json")
-            .with_body(Body::Text(case.to_string()));
+            .with_header(
+                "content-type",
+                if text {
+                    "text/plain"
+                } else {
+                    "application/json"
+                },
+            )
+            .with_body(Body::Text(if text {
+                case.as_str().unwrap().into()
+            } else {
+                case.to_string()
+            }));
             cases.push(match plan.select(&request) {
                 Ok(Some((_,version)))=>json!({"version":version.version,"matched":version.matched_versions,"status":200}),
                 _=>json!({"status":400})

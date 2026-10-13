@@ -92,6 +92,24 @@ impl Body {
     }
 }
 
+/// Preserve wire bytes while normalizing empty/text bodies for the route parser.
+pub fn normalize_framework_request_body(contract: &RouteContract, request: &mut FrameworkRequest) {
+    use forklaunch_contract::BodyKind;
+    match contract.parsing_body().map(|body| body.kind) {
+        Some(BodyKind::Binary | BodyKind::File | BodyKind::Multipart) => {
+            request.body = match std::mem::replace(&mut request.body, Body::Empty) {
+                Body::Text(text) => Body::Binary(text.into_bytes()),
+                Body::Empty => Body::Binary(Vec::new()),
+                bytes @ Body::Binary(_) => bytes,
+            };
+        }
+        Some(BodyKind::Text | BodyKind::UrlEncoded) if request.body.is_empty() => {
+            request.body = Body::Text(String::new());
+        }
+        _ => {}
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrameworkRequest {
     pub context: RequestContext,
@@ -429,6 +447,7 @@ impl LocalRouter {
 
             if let Some(params) = match_path(&route.contract.path, &request.path) {
                 request.params = params;
+                normalize_framework_request_body(&route.contract, &mut request);
                 let selected = route.versions.select(&request);
                 let contract = match selected {
                     Ok(Some((contract, version))) => {

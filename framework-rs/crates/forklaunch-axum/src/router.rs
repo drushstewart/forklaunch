@@ -958,7 +958,7 @@ fn build_framework_request(
         }
     }
 
-    if contract.request.body.as_ref().is_some_and(|body| {
+    if contract.parsing_body().is_some_and(|body| {
         matches!(
             body.kind,
             BodyKind::Binary | BodyKind::File | BodyKind::Multipart
@@ -967,9 +967,7 @@ fn build_framework_request(
         request = request.with_body(FrameworkBody::Binary(bytes.to_vec()));
     } else if !bytes.is_empty()
         || contract
-            .request
-            .body
-            .as_ref()
+            .parsing_body()
             .is_some_and(|body| matches!(body.kind, BodyKind::Text | BodyKind::UrlEncoded))
     {
         request = match std::str::from_utf8(bytes) {

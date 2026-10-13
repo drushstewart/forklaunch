@@ -989,6 +989,16 @@ impl RouteContract {
         self
     }
 
+    /// Body parser shared by all versions, following the first declaration.
+    #[must_use]
+    pub fn parsing_body(&self) -> Option<&BodyContract> {
+        self.versions
+            .first()
+            .map_or(self.request.body.as_ref(), |(_, version)| {
+                version.request.body.as_ref()
+            })
+    }
+
     /// Project a version while retaining route/auth metadata and common params.
     #[must_use]
     pub fn for_version(&self, version: &str) -> Option<Self> {

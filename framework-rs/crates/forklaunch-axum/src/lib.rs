@@ -82,6 +82,7 @@ impl AxumApplication {
 
             if let Some(params) = match_path(&route.path, &request.path) {
                 request.params = params;
+                forklaunch_http::normalize_framework_request_body(route, &mut request);
                 // This metadata adapter permits callers to mutate its public registry.
                 // Live Axum/LocalRouter transports cache plans at registration instead.
                 let selection = forklaunch_http::VersionedRoutePlan::compile(route)
@@ -111,30 +112,6 @@ impl AxumApplication {
                 };
                 let route = selected.as_ref().unwrap_or(route);
 
-                if route.request.body.as_ref().is_some_and(|body| {
-                    matches!(
-                        body.kind,
-                        forklaunch_contract::BodyKind::Binary
-                            | forklaunch_contract::BodyKind::File
-                            | forklaunch_contract::BodyKind::Multipart
-                    )
-                }) {
-                    request.body = match request.body {
-                        Body::Text(text) => Body::Binary(text.into_bytes()),
-                        Body::Empty => Body::Binary(Vec::new()),
-                        bytes @ Body::Binary(_) => bytes,
-                    };
-                }
-                if route.request.body.as_ref().is_some_and(|body| {
-                    matches!(
-                        body.kind,
-                        forklaunch_contract::BodyKind::Text
-                            | forklaunch_contract::BodyKind::UrlEncoded
-                    )
-                }) && matches!(request.body, Body::Empty)
-                {
-                    request.body = Body::Text(String::new());
-                }
                 let validation_errors = validate_framework_request(route, &request);
                 return AxumPreparedRequest {
                     operation_name: Some(route.operation_name.clone()),
