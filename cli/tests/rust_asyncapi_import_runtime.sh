@@ -12,6 +12,17 @@ mv app relocated-app
 cd relocated-app
 mkdir -p .forklaunch/asyncapi/realtime
 cp "$SCRIPT_DIR/fixtures/rust_asyncapi_socket.json" .forklaunch/asyncapi/realtime/asyncapi.json
+if [[ "${FORKLAUNCH_TEST_ASYNCAPI_RESOURCES:-0}" == "1" ]]; then
+python3 - <<'PYTHON_RESOURCES'
+from pathlib import Path
+import json
+p=Path('.forklaunch/asyncapi/realtime/asyncapi.json')
+document=json.loads(p.read_text())
+for name,schema in document['components']['schemas'].items():
+    schema['$id']=f'https://schemas.fixture.test/{name}'
+p.write_text(json.dumps(document))
+PYTHON_RESOURCES
+fi
 "$CLI" sdk generate --path . --target all --from asyncapi
 "$CLI" sdk generate --path . --target all --from asyncapi --check
 "$CLI" sdk watch --path . --target all --from asyncapi --service realtime --once

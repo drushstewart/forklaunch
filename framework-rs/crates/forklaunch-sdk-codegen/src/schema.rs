@@ -104,16 +104,42 @@ pub(crate) fn scoped_runtime_schema(schema: &Value) -> Result<Value> {
     }
 }
 
+#[allow(dead_code)] // The shared CLI copy does not import AsyncAPI documents.
+pub(crate) fn bundle_document_resources(document: &Value, location: &str) -> Result<Option<Value>> {
+    let mut budget = ExpansionBudget::default();
+    let resources = resources::Resources::index(document, &mut budget)?;
+    if !resources.needs_runtime_bundle() {
+        return Ok(None);
+    }
+    let schema = document
+        .pointer(location)
+        .context("Document schema location is missing")?;
+    resources.check_target(schema)?;
+    bundle_with_profile(schema, document, &mut budget, true, true).map(Some)
+}
+
 pub(crate) fn bundle_with_resource_policy(
     schema: &Value,
     document: &Value,
     budget: &mut ExpansionBudget,
     resource_ids: bool,
 ) -> Result<Value> {
+    bundle_with_profile(schema, document, budget, resource_ids, false)
+}
+
+fn bundle_with_profile(
+    schema: &Value,
+    document: &Value,
+    budget: &mut ExpansionBudget,
+    resource_ids: bool,
+    runtime: bool,
+) -> Result<Value> {
     let mut graph = Graph {
         document,
         budget,
         resource_ids,
+        runtime,
+        runtime_dialect: None,
         names: BTreeMap::new(),
         definitions: Map::new(),
         resources: None,
@@ -198,6 +224,8 @@ struct Graph<'a> {
     definitions: Map<String, Value>,
     resources: Option<resources::Resources>,
     resource_ids: bool,
+    runtime: bool,
+    runtime_dialect: Option<String>,
 }
 
 impl Graph<'_> {
@@ -223,6 +251,24 @@ impl Graph<'_> {
         }
         let resources = self.resources.as_ref().unwrap();
         let dialect = resources.dialect(schema);
+        if self.runtime && (!dialect.is_empty() || !object.contains_key("$ref")) {
+            let dialect = resources::dialect_key(dialect);
+            if self
+                .runtime_dialect
+                .as_deref()
+                .is_some_and(|previous| previous != dialect)
+            {
+                bail!("Runtime resource bundling requires one JSON Schema dialect");
+            }
+            if self.runtime_dialect.is_none() {
+                self.budget.bytes = self
+                    .budget
+                    .bytes
+                    .checked_sub(dialect.len())
+                    .context("SDK schema graph exceeds 32 MiB")?;
+                self.runtime_dialect = Some(dialect.to_owned());
+            }
+        }
         let draft4 = dialect.contains("/draft-04/");
         let draft6 = dialect.contains("/draft-06/");
         let resource_key = if draft4 { "id" } else { "$id" };

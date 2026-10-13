@@ -47,14 +47,40 @@ try {
  deps('ajv-formats')(specValidator);
  const validateDocument=specValidator.compile(deps('@asyncapi/specs/schemas/3.0.0-without-$id.json'));
  assert.ok(validateDocument(generated.asyncapi),JSON.stringify(validateDocument.errors));
- let rustModules='',rustChecks='',tsTypes='';
+ const externalDocument={asyncapi:'3.0.0',info:{title:'External resource scopes',version:'1'},servers:{local:{host:'localhost',protocol:'ws'}},channels:{},operations:{},components:{schemas:{}}};
  for(const mode of modes) {
+  const shape=structuredClone(artifact.sockets[mode].serverMessages.text.shape);
+  const id=shape.id?'id':'$id';shape[id]=`https://schemas.fixture.test/${mode}/root`;
+  externalDocument.components.schemas[`${mode}_resource`]=shape;
+  externalDocument.components.schemas[mode]={$schema:shape.$schema,$ref:shape[id]};
+  let payload={$schema:shape.$schema,$ref:`#/components/schemas/${mode}`};
+  const dialect=shape.$schema.match(/(draft-0[467]|2019-09|2020-12)/)[1];
+  if(dialect!=='draft-07') payload={schemaFormat:`application/schema+json;version=${dialect}`,schema:payload};
+  externalDocument.channels[mode]={address:`/${mode}`,messages:{tree:{contentType:'application/json',payload}}};
+  for(const action of ['receive','send']) externalDocument.operations[`${mode}_${action}`]={action,channel:{$ref:`#/channels/${mode}`},messages:[{$ref:`#/channels/${mode}/messages/tree`}]};
+ }
+ await writeFile(input,JSON.stringify(externalDocument));
+ const imported=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',maxBuffer:16*1024*1024,timeout:300000}));
+ assert.deepEqual(imported.asyncapi,externalDocument);
+ for(const kind of ['duplicate','missing','mixed']) {
+  const invalid=structuredClone(externalDocument);
+  if(kind==='duplicate') invalid.components.schemas.duplicate=structuredClone(invalid.components.schemas.plain_resource);
+  if(kind==='missing') invalid.components.schemas.plain.$ref='https://unbundled.fixture.invalid/schema';
+  if(kind==='mixed') invalid.components.schemas.legacy.$schema='https://json-schema.org/draft/2020-12/schema';
+  await writeFile(input,JSON.stringify(invalid));
+  assert.throws(()=>execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',stdio:'pipe',timeout:300000}),error=>new RegExp(kind==='duplicate'?'Duplicate schema resource ID':kind==='missing'?'not bundled':'one JSON Schema dialect').test(error.stderr));
+ }
+
+ for(const mode of modes) for(const language of ['rust','typescript']) generated[language][`socket_${mode}_import`]=imported[language][`socket_${mode}`];
+ const clientModes=[...modes,...modes.map(mode=>`${mode}_import`)];
+ let rustModules='',rustChecks='',tsTypes='';
+ for(const mode of clientModes) {
   await writeFile(path.join(temporary,`src/${mode}.ts`),generated.typescript[`socket_${mode}`]);
   await writeFile(path.join(temporary,`src/${mode}.rs`),generated.rust[`socket_${mode}`]);
   rustModules+=`mod ${mode};\n`;
   rustChecks+=`{
 let (mut client,_)= ${mode}::SocketClient::connect(format!("{}/${mode}",url),SocketOptions::default()).await.unwrap();
-for value in [serde_json::json!({"value":"a","next":{"value":"b"}}),serde_json::json!({"value":1,"next":{"value":2}})] {
+for value in [serde_json::json!({"value":"a","next":{"value":"b"}})${mode.endsWith('_import')?'':',serde_json::json!({"value":1,"next":{"value":2}})'}] {
 let outgoing: ${mode}::SocketOutgoing=serde_json::from_value(value.clone()).unwrap();
 client.send(&outgoing).await.unwrap();
 match client.recv().await.unwrap().unwrap() {SocketEvent::Message(received)=>assert_eq!(serde_json::to_value(received).unwrap(),value),_=>panic!("expected message")}
@@ -75,10 +101,11 @@ client.close(1000,None).await.unwrap();
  let messages=0;
  server.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('message',(bytes,binary)=>{messages++;socket.send(bytes,{binary});});});
  const url=`ws://127.0.0.1:${server.address().port}`;
- for(const mode of modes) {
+ for(const mode of clientModes) {
   const {SocketClient}=await import(pathToFileURL(path.join(temporary,`dist/${mode}.js`)));
   const client=await SocketClient.connect(`${url}/${mode}`);
-  for(const value of [{value:'a',next:{value:'b'}},{value:1,next:{value:2}}]) {
+  const values=mode.endsWith('_import')?[{value:'a',next:{value:'b'}}]:[{value:'a',next:{value:'b'}},{value:1,next:{value:2}}];
+  for(const value of values) {
    await client.send(value);const event=await client.recv({timeoutMs:5000});assert.equal(event.type,'message');assert.deepEqual(event.value,value);
   }
   for(const value of [{value:''},{value:'a',next:{value:2}},{value:1,next:{value:'a'}}]) await assert.rejects(client.send(value));
@@ -87,8 +114,8 @@ client.close(1000,None).await.unwrap();
  child=spawn(path.join(env.CARGO_TARGET_DIR,'debug/forklaunch-resource-socket-fixture'),[url],{stdio:'inherit'});
  const timer=setTimeout(()=>child.kill('SIGKILL'),20000);
  try {const [code]=await once(child,'exit');assert.equal(code,0);} finally {clearTimeout(timer);}
- assert.equal(messages,modes.length*4);
- console.log(`PASS duplicate resource IDs, static/legacy/dynamic/recursive/fragment unions, both typed SDKs and ${messages} live socket roundtrips`);
+ assert.equal(messages,modes.length*6);
+ console.log(`PASS duplicate resource IDs, static/legacy/dynamic/recursive/fragment unions, external AsyncAPI imports, both typed SDKs and ${messages} live socket roundtrips`);
 } finally {
  if(child?.exitCode===null) child.kill('SIGKILL');
  for(const socket of sockets) socket.terminate();

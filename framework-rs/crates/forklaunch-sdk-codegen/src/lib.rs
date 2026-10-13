@@ -23,6 +23,25 @@ pub fn bundle_schema_resources(value: &serde_json::Value) -> anyhow::Result<serd
     schema::scoped_runtime_schema(value)
 }
 
+/// Extract a schema from an `OpenAPI` or `AsyncAPI` document, resolving bundled
+/// resource identities and preserving guarded recursive references.
+/// Resource-free documents retain the existing literal-reference bundler.
+///
+/// # Errors
+/// Rejects missing or unsupported references, invalid resource scopes and
+/// shared depth/node/byte limits. Remote resources are never retrieved.
+pub fn bundle_document_schema_resources(
+    document: &serde_json::Value,
+    location: &str,
+) -> anyhow::Result<serde_json::Value> {
+    if let Some(schema) = schema::bundle_document_resources(document, location)? {
+        Ok(schema)
+    } else {
+        forklaunch_contract::bundle_document_schema(document, location)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))
+    }
+}
+
 /// A bounded schema graph compiled into both client languages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchemaModels {

@@ -28,7 +28,8 @@ struct Channel {
 /// # Errors
 /// Rejects unsupported protocols, media, upgrade parameters/authentication,
 /// traits/replies/application headers, overlapping messages, invalid local
-/// references, resource scopes and bounded schema/output limits.
+/// references, unsupported resource scopes, mixed runtime dialects and bounded
+/// schema/output limits.
 pub fn import_server_websocket_asyncapi(
     document: &Value,
 ) -> FrameworkResult<SocketContractArtifact> {
@@ -330,7 +331,9 @@ fn message_schema(document: &Value, pointer: &str) -> FrameworkResult<SocketSche
     } else {
         format!("{location}/payload")
     };
-    let schema = forklaunch_contract::bundle_document_schema(document, &schema_location)?;
+    let schema =
+        forklaunch_sdk_codegen::bundle_document_schema_resources(document, &schema_location)
+            .map_err(|error| invalid(&format!("Imported schema resources: {error}")))?;
     validate_payload_profile(&schema)?;
     Ok(SocketSchemaEntry::json(schema))
 }

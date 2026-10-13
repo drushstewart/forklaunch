@@ -48,7 +48,7 @@ impl Resources {
         let mut pending = vec![(
             document,
             String::new(),
-            document.get("openapi").is_none(),
+            document.get("openapi").is_none() && document.get("asyncapi").is_none(),
             0,
         )];
         let mut parents = BTreeMap::from([(String::new(), (ROOT.to_owned(), dialect.to_owned()))]);
@@ -248,7 +248,12 @@ impl Resources {
                             | "contentSchema" => enqueue(child, path, true)?,
                             _ => {}
                         }
-                    } else if pointer == "/components/schemas" || key == "schema" {
+                    } else if pointer == "/components/schemas"
+                        || key == "schema"
+                        || (key == "payload"
+                            && document.get("asyncapi").is_some()
+                            && child.get("schemaFormat").is_none())
+                    {
                         enqueue(child, path, true)?;
                     } else if !key.starts_with("x-")
                         && !matches!(
@@ -307,20 +312,11 @@ impl Resources {
     }
 
     pub(super) fn check_runtime_dialects(&self) -> Result<()> {
-        fn dialect(value: &str) -> &str {
-            if value.is_empty() {
-                return "draft-07";
-            }
-            ["draft-04", "draft-06", "draft-07", "2019-09", "2020-12"]
-                .into_iter()
-                .find(|draft| value.contains(draft))
-                .unwrap_or(value)
-        }
-        let expected = dialect(&self.default_dialect);
+        let expected = dialect_key(&self.default_dialect);
         if self
             .dialects
             .values()
-            .any(|value| dialect(value) != expected)
+            .any(|value| dialect_key(value) != expected)
         {
             bail!("Runtime resource bundling requires one JSON Schema dialect");
         }
@@ -450,6 +446,16 @@ impl Resources {
         }
     }
 }
+pub(super) fn dialect_key(value: &str) -> &str {
+    if value.is_empty() {
+        return "draft-07";
+    }
+    ["draft-04", "draft-06", "draft-07", "2019-09", "2020-12"]
+        .into_iter()
+        .find(|draft| value.contains(draft))
+        .unwrap_or(value)
+}
+
 fn validate_anchor(anchor: &str, legacy: bool) -> Result<()> {
     let mut bytes = anchor.bytes();
     if !bytes
@@ -482,6 +488,25 @@ fn resolve(base: &str, reference: &str) -> Result<Url> {
 mod tests {
     use super::super::{DEFINITIONS, ExpansionBudget, REFERENCE, bundle, normalize};
     use serde_json::json;
+
+    #[test]
+    fn asyncapi_payload_and_component_resource_scopes_are_indexed() {
+        let document = json!({"asyncapi":"3.0.0", "components":{"schemas":{"Node":{
+            "$schema":"https://json-schema.org/draft/2020-12/schema", "$id":"urn:fixture:node", "$dynamicAnchor":"node",
+            "type":"object", "properties":{"next":{"$dynamicRef":"#node"}}
+        }}}, "channels":{"tree":{"messages":{"node":{"payload":{"schemaFormat":"application/schema+json;version=2020-12",
+            "schema":{"$schema":"https://json-schema.org/draft/2020-12/schema", "$ref":"urn:fixture:node"}}}}}}});
+        let location = "/channels/tree/messages/node/payload/schema";
+        let compiled = super::super::bundle_document_resources(&document, location)
+            .unwrap()
+            .unwrap();
+        assert_eq!(compiled["type"], "object");
+        assert!(compiled["properties"]["next"]["$ref"].is_string());
+        let mut invalid = document.clone();
+        invalid.pointer_mut(location).unwrap()["$schema"] =
+            json!("http://json-schema.org/draft-07/schema#");
+        assert!(super::super::bundle_document_resources(&invalid, location).is_err());
+    }
 
     #[test]
     fn static_anchor_names_follow_the_declared_dialect() {

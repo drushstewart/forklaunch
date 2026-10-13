@@ -2797,3 +2797,39 @@ Evidence: `fl-legacy-fragment-{ajv,socket,codec,unit,final-unit,clippy,cli-tests
 Checklist remains **651/682 (95.5%), 31 open**, with the remaining resource
 boundaries now stated directly on the checklist. Eleven owned generated
 fixtures from this batch are removed after commit (195 cumulative).
+
+
+### 2026-10-13 — External AsyncAPI component/payload resource imports
+
+`bundle_document_schema_resources` now extracts resource-aware schemas from
+OpenAPI/AsyncAPI documents using the shared bounded graph. The resource index
+recognizes standalone payloads, Multi Format schema wrappers and component
+schemas. Bundled URI aliases resolve without retrieval. Resource-free documents
+retain the existing contextual/literal bundler, preserving its broader legacy
+annotation handling. The external AsyncAPI importer uses the new entry point.
+
+Runtime dialect checking follows each message's reachable graph, so separate
+messages can use different drafts without conflating constraints. A message
+whose reference chain crosses incompatible dialects fails explicitly, including
+alias roots whose `$schema` would otherwise overwrite the target dialect.
+Duplicate IDs and missing remote resources also fail before output.
+
+The expanded socket fixture compiles fourteen clients per language across
+seven raw/fragment resource variants and their external-import counterparts.
+Both languages pass 42 live roundtrips, strict models, constraint rejection,
+official AsyncAPI schema checks, unchanged external source documents and three
+negative resource-boundary cases. All five existing imported dialect clients
+still pass live peers and 20 invalid-bound checks. Native tests pass: 27 AsyncAPI,
+35 shared compiler, 5 Rust SDK and 8 TypeScript SDK; all 1,091 CLI tests pass.
+Strict clippy, formatting, all-feature docs and 890 packaged sources pass.
+
+New `rust_asyncapi_resources_runtime.sh` runs the relocated CLI import lifecycle
+with component IDs: generation/check/watch, invalid-input recovery, strict
+consumers, live peers, input ownership, rename/delete and HTTP/MCP startup,
+discovery, calls and shutdown before/after rename. It passes and is included in
+CI beside the resource-free variant. Evidence:
+`fl-asyncapi-resources-{runtime,dialects,unit,clippy,cli-tests,generated,docs,format,package}.log`.
+The committed generated fixture is cleaned (196 cumulative). Four build
+artifacts proven to reference previously deleted owned fixtures were also removed.
+Checklist remains **651/682 (95.5%), 31 open**; mixed runtime dialect translation
+and combined URI/path-plus-fragment legacy IDs remain on the resource gate.
