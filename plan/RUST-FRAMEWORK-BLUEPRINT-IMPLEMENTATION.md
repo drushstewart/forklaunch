@@ -1,6 +1,6 @@
 # Rust Framework And Blueprint Implementation Plan
 
-Current verified progress (2026-10-13): **655/682 checklist items (96.0%), 27 open**.
+Current verified progress (2026-10-13): **656/682 checklist items (96.2%), 26 open**.
 The unchecked boxes below are the remaining gates; detailed validation receipts
 are in [the parity inventory](RUST-TYPESCRIPT-PARITY-INVENTORY.md).
 
@@ -176,7 +176,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Implement `forklaunch-iam-base` as ForkLaunch-owned auth domain logic. The crate owns credentials, directory services and optional PostgreSQL opaque sessions; phase-12 IAM and phase-16 directory fixtures cover the implementation. This reconciles the architectural recommendation, not remaining provider/client parity.
 - [x] Use `argon2` and `password-hash` for salted Argon2id password hashing; reject malformed hashes and disabled users.
 - [x] Use `tower-sessions` for server-side sessions when cookie/session auth is enabled. Optional `forklaunch-axum/cookie-session` supplies secure cookies, subject resolution, session/CSRF rotation, Origin checks and logout; live HTTP/MCP authentication and fail-closed feature-disabled tests pass. Better Auth retains its protocol-specific adapter.
-- [ ] Use `openidconnect` and `oauth2` for OAuth/OIDC provider integrations.
+- [x] Use `openidconnect` and `oauth2` for OAuth/OIDC provider integrations. Optional `forklaunch-auth/oidc` provides bounded discovery, authorization code + S256 PKCE, browser-bound single-use state, public/HTTP Basic clients and RS256 ID-token/nonce/access-token-hash verification. Local provider and generated-feature HTTP/MCP checks pass; generic refresh, automatic key refresh and account/session provisioning remain in the broader provider lifecycle gate.
 - [x] Use `jsonwebtoken` for JWT validation/issuance where JWTs are enough. (`forklaunch-auth` verifies HS256 and explicit JWK/JWKS policies and issues typed HS256 claims; actual JOSE verifies native-issued tokens and both canonical servers accept them. Better Auth provider-specific formats remain in their adapter.)
 - [x] Keep Better Auth parity at the behavior/API level, not as a crate dependency. `forklaunch-iam-better-auth` owns the native implementation, while actual TypeScript/Better Auth fixtures define comparison behavior. Remaining ORM/client/options/provider gaps stay explicitly open in phase 16.
 - [ ] Add optional adapters for promising frameworks only after security review.

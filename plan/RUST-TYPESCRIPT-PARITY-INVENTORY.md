@@ -3743,3 +3743,34 @@ listener/startup/shutdown matrix. All 915 current embedded source assets are
 packaged. CI runs both the actual-source comparison and generated runtime.
 Logs: `/private/tmp/fl-ts-rbac-{parity,tests,clippy,generated,package}.log`.
 Broader auth transport/session and error-envelope parity remain open.
+
+
+OAuth/OIDC library adapter receipt (2026-10-13): optional `forklaunch-auth/oidc`
+now uses [oauth2 5](https://docs.rs/oauth2/5.0.0/oauth2/) and
+[openidconnect 4](https://docs.rs/openidconnect/latest/openidconnect/) for reusable
+authorization-code provider integration. Discovery is pinned to operator-owned
+issuer/client/callback configuration; transport permits HTTPS or loopback HTTP,
+refuses redirects/URL credentials/fragments and bounds responses/time. Pending
+state is non-cloneable, expires in ten minutes and binds issuer/client/callback;
+applications retain it in the initiating browser's server-side session. Public
+and HTTP Basic clients use S256 PKCE. RS256 verification checks issuer, audience,
+expiry, nonce, present azp, nonempty subject, future iat and present at_hash.
+Provider errors and Debug omit secrets.
+
+All 22 auth tests and strict all-feature/all-target clippy pass. Local provider
+coverage includes real discovery/JWKS/token HTTP, PKCE wire bytes, public and
+confidential clients, state/config/expiry failures before exchange, invalid
+metadata/scopes, nonce/signature/issuer/audience/azp/expiry failures, substituted
+access tokens, redirects and declared/chunked response bounds. The all-lockfile
+security gate and its tests pass with no unreviewed findings. The new framework
+RSA advisory is retained with a public-verification-only source review; it is
+not claimed fixed. No existing locked package version was removed/upgraded.
+Fresh generated `Z2FzoB` enables the optional adapter, compiles both SDKs and
+passes signed-JWT authorization and the HTTP/MCP listener/startup/shutdown matrix.
+All 918 embedded assets are packaged. Logs:
+`/private/tmp/fl-oidc-{tests,clippy,security,security-tests,generated,package}.log`.
+
+This closes the explicit OAuth/OIDC library-integration requirement. The generic
+adapter does not provision accounts/sessions or implement refresh grants or
+automatic key refresh; the configured Better Auth Google flow remains separate.
+Checklist: 656/682 complete (96.2%), 26 open.

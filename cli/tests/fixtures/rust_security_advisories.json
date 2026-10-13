@@ -8,6 +8,14 @@
     "review": "AWS S3 1.124.0 S3 Express cache uses CacheKey(String), without a custom/panicking Drop. The advisory's panicking key destructor prerequisite is absent. Re-review on SDK/key-type changes; do not add direct lru use under this exception."
   },
   {
+    "scope": "framework",
+    "kind": "vulnerability",
+    "id": "RUSTSEC-2023-0071",
+    "package": "rsa",
+    "version": "0.9.10",
+    "review": "Optional openidconnect 4.0.1 client uses rsa only for public RS256 signature verification via CoreJsonWebKey/RsaPublicKey::verify. OidcProvider exposes no RSA private-key signing or decryption; client authentication uses HTTP Basic. Test token signing uses jsonwebtoken/ring. Re-review before introducing private-key operations or changing this dependency path."
+  },
+  {
     "scope": "blueprint",
     "kind": "vulnerability",
     "id": "RUSTSEC-2023-0071",

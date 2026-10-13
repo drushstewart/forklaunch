@@ -39,6 +39,7 @@ source review. A passing gate means there are no **unreviewed** findings.
 | Scope | Finding | Current reachability assessment |
 | --- | --- | --- |
 | Framework | [RUSTSEC-2026-0253](https://rustsec.org/advisories/RUSTSEC-2026-0253.html), lru 0.16.4 | AWS S3 1.124.0 uses `LruCache<CacheKey, ...>` for S3 Express identities. `CacheKey` wraps `String` and has no custom destructor; the advisory requires a panicking key destructor during `pop`. The reviewed SDK uses `get_or_insert_mut`. Re-review any SDK upgrade or direct LRU use. Upgrading to an SDK using fixed LRU remains dependency maintenance work. |
+| Framework | [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html), rsa 0.9.10 | The optional `openidconnect` 4.0.1 adapter calls `CoreJsonWebKey` public RS256 verification, which uses `RsaPublicKey::verify`. It exposes no RSA private-key operations; client credentials use HTTP Basic and fixture signing uses jsonwebtoken/ring. Re-review before adding private-key operations or changing this path. |
 | Blueprint | [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html), rsa 0.9.10 | [`rsa_key.rs`](../blueprint-rs/crates/implementations/iam/forklaunch-iam-better-auth/src/jwt/rsa_key.rs) uses the crate only for key generation, PKCS#8 conversion and public modulus/exponent extraction. Private-key signing uses ring and no decryption API is exposed. The timing-sensitive private operations described by the advisory are not used through this crate. Re-review before adding them. |
 | CLI | [RUSTSEC-2024-0436](https://rustsec.org/advisories/RUSTSEC-2024-0436.html), paste 1.0.15 | An unmaintained proc macro performs identifier concatenation at compile time in `core/manifest.rs` and `core/mutable_enum.rs`. No runtime vulnerability is identified by this notice. Replacement remains maintenance work. |
 
@@ -122,3 +123,19 @@ precedence and exact scopes rather than native cumulative checks/hierarchy
 implication. It is opt-in; native defaults are preserved. The 1,495 actual-source
 policy comparisons and generated signed-JWT HTTP/MCP acceptance/rejection cases
 cover this boundary. No dependency changes are introduced.
+
+
+OIDC authorization-code adapter review (2026-10-13): operator-owned issuer/client/
+callback configuration controls all outbound URLs. Bounded transport enforces
+HTTPS or loopback HTTP and no URL credentials/fragments/redirects. Discovery
+checks issuer identity; code exchange consumes non-cloneable ten-minute state,
+compares state in constant time, binds provider/client/callback and uses S256 PKCE.
+Applications must retain pending state in the initiating browser's server-side
+session. RS256 ID tokens are checked by openidconnect for signature, issuer,
+audience, expiry and nonce; the adapter also checks present azp, nonempty subject,
+future iat and a present access-token hash. Public/confidential client wire tests,
+invalid metadata, state/config mismatch, oversized declared/chunked bodies,
+redirects and invalid/substituted token tests pass. Errors/Debug omit secrets.
+Refresh grants, automatic key refresh and account/session provisioning are not
+implemented by this generic adapter. The all-lockfile audit has no unreviewed
+findings after the public-verification-only RSA review above.

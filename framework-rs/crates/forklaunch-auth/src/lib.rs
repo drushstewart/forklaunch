@@ -19,6 +19,9 @@ use subtle::ConstantTimeEq;
 
 pub mod jwt;
 
+#[cfg(feature = "oidc")]
+pub mod oidc;
+
 /// Explicit compatibility policy for verified TypeScript-style sessions.
 pub mod typescript;
 

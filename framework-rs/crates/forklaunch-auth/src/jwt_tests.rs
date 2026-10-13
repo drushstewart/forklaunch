@@ -1,5 +1,5 @@
 // Test-only signing material, never used by runtime code.
-const RSA_PRIVATE: &[u8] = br"-----BEGIN PRIVATE KEY-----
+pub(crate) const RSA_PRIVATE: &[u8] = br"-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC4TpQNSQrBuQ/X
 YX116SRxKGEgyYhTV1gkCepv8B1wN/Ht/oEGMpa/UIaKzPhmWNFqCIDp+Ttz3xhT
 1nha+gOY35r/A9QC9oXWJg0eOVw5dCbY30zADgQu6uwl5uHszRs1/pz7oXyCTdKD
@@ -28,7 +28,7 @@ Obb8pdBbfeTuGaKECBi4hI9dSAxkh0yPd/sooOntngFiGuswjbIJiCoH4AlNP6bo
 cSSdh47MrwO+b+Nr0uuT8z0=
 -----END PRIVATE KEY-----
 ";
-fn rsa_jwk(kid: &str) -> jsonwebtoken::jwk::Jwk {
+pub(crate) fn rsa_jwk(kid: &str) -> jsonwebtoken::jwk::Jwk {
     serde_json::from_value(serde_json::json!({"kty":"RSA","n":"uE6UDUkKwbkP12F9dekkcShhIMmIU1dYJAnqb_AdcDfx7f6BBjKWv1CGisz4ZljRagiA6fk7c98YU9Z4WvoDmN-a_wPUAvaF1iYNHjlcOXQm2N9MwA4ELursJebh7M0bNf6c-6F8gk3Sg8nlU2zTGarIkWAiSDPukQHtNwI8144LsnW2pg5XO3LT60OAGj0VojzFWBGKHZW6boqNL2UBgLYW7_XA90ZryMQ1Pi4U2T-phD0dT4wKnG14BzuwFe-9zracKGpdOG8k2ngyUwDAcKzf_vJv4TDmCUm2M9RzQcCTAtQTbAw44RYpTfbnlQy_zac6JyklmynAElHK9w-7yQ","e":"AQAB","alg":"RS256","use":"sig","kid":kid})).unwrap()
 }
 

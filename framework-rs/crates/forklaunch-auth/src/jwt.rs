@@ -319,4 +319,4 @@ mod remote {
 
 #[cfg(test)]
 #[path = "jwt_tests.rs"]
-mod tests;
+pub(crate) mod tests;

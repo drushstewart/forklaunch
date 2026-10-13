@@ -9,6 +9,7 @@ repository.workspace = true
 [features]
 default = []
 remote-jwks = ["dep:reqwest", "dep:tokio"]
+oidc = ["dep:oauth2", "dep:openidconnect", "dep:reqwest"]
 
 [dependencies]
 forklaunch-common = { path = "../forklaunch-common" }
@@ -26,6 +27,9 @@ base64 = "0.22"
 
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 tokio = { version = "1", features = ["sync", "time"], optional = true }
+
+oauth2 = { version = "5.0.0", default-features = false, optional = true }
+openidconnect = { version = "4.0.1", default-features = false, optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "test-util"] }

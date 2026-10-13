@@ -65,6 +65,31 @@ session rejection remains 401. Native HTTP error bodies retain their structured
 JSON envelope; complete TypeScript error-envelope parity is still tracked.
 Better Auth JWT formats and provider/cookie/OIDC flows use their own adapter.
 
+Enable `forklaunch-auth` feature `oidc` for the reusable
+`oidc::OidcProvider` authorization-code adapter built on `oauth2` 5 and
+`openidconnect` 4. Configure a trusted issuer, registered client credentials and
+callback URL with `OidcProvider::discover`. Discovery checks the issuer and
+fetches provider keys using HTTPS (loopback HTTP is available for fixtures),
+without redirects, with a 15-second timeout and a 1 MiB response limit.
+The adapter supports RS256 ID tokens, S256 PKCE, public clients and
+`client_secret_basic` authentication. Advertised incompatible flows/auth methods
+are rejected; other grants and signing algorithms are not enabled.
+
+`provider.begin(&scopes)` returns `PendingAuthorization`. Redirect the browser to
+`pending.authorization_url()` and keep the non-cloneable pending value in the
+initiating browser's server-side session. On callback, retrieve and consume that
+browser-bound value, then call `provider.exchange(pending, returned_state, code)`.
+Do not use the callback state alone to select another browser's pending login.
+State expires after ten minutes and is bound to issuer, client and callback.
+Successful exchange returns verified standard claims and typed secret tokens;
+applications own encrypted token persistence and account/session creation.
+Verification checks signature, issuer, audience, expiry, nonce, a present
+`azp`, nonempty subject, future issue time (60-second tolerance), and `at_hash`
+when present. Errors and Debug output omit credentials, tokens and provider
+response details. Rediscover explicitly to refresh metadata/keys. This generic
+adapter is separate from the configured Better Auth Google/account flow.
+
+
 `forklaunch_auth::typescript::TypeScriptRbacPolicy` is an explicit compatibility
 policy for verified, server-enriched JWT/Basic sessions. It preserves omitted
 versus empty rule sets, permission-before-role precedence, access-level bypass
