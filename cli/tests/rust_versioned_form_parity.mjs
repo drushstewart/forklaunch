@@ -24,6 +24,9 @@ const {contentParse}=load('framework/express/src/middleware/content.parse.middle
  express:require('express'),busboy:require('busboy')
 });
 const cases=['value=a','value=a+b','value=%E6%B0%B4','value=','value','value=a&value=b','value[]=a','value[]=a&value[]=b','value=a&value[]=b&value=c','value[]=a&value=b&value[]=c','value%5B%5D=a&value[]=b','1[]=a&1=b&1[]=c','value=%ff+%20','value=%E6%B0','value=%2','value=%zz','value=%5B%ff','value=%00%2B','a.b=x','constructor=x','toString=x','__proto__=ignored&value=ok','=ignored&value=ok','&&value=ok&&','value=a=b','value=%26%3D','value[]=','value[]','value=a&other=b&value=c'];
+cases.push('a[b=c]=x','a%5Bb=c%5D=x','a[b%3Dc]=x','a[b]=x','a[0]=x','a[2]=x&a[0]=y','a[][]=x','[]=x','[x]=a','a[b][c]=x','a[]=x&a[b]=y','a[b]=x&a[]=y','a=x&a[b]=y','a[b]=x&a=y','a[b]=x&a=','a[]=x&a[]=y&a[0]=z','a[0][b]=x&a[0][c]=y','a[][b]=x&a[][c]=y','a[100]=x','a[99]=x&a[]=y','a[100]=x&a[]=y','a[100]=x&a=y','a=x&a[100]=y','a[__proto__][x]=y','a[constructor][prototype]=x','a[b]suffix[c]=x','a[b[c]]=x','a[unclosed=x','a[[]b=x','a[01]=x&a[1]=y',`a${'[b]'.repeat(32)}=x`);
+const atoms=['a=x','a=','a[]=y','a[0]=z','a[2]=p','a[b]=q','a[][b]=r','a[100]=s','a[101][b]=t','a[__proto__]=u'];
+for(const first of atoms)for(const second of atoms)for(const third of atoms)cases.push([first,second,third].join('&'));
 const fixtures=[];
 for(const body of cases) {
  const bytes=Buffer.from(body),req=Readable.from([bytes]);

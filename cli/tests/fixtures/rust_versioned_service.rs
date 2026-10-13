@@ -31,9 +31,10 @@ pub fn contracts() -> Vec<RouteContract> {
         file=file.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(202,Some(output))]});
     }
     let mut form=RouteContract::post("Write Form","Write versioned form","/versioned-form");
-    for (version,minimum,status) in [("v1",1,201),("v2",2,202)] {
+    for (version,minimum,status) in [("v1",1,201),("v2",2,202),("v3",0,200)] {
         let mut input=BodyContract { kind:BodyKind::UrlEncoded, content_type:Some("application/x-www-form-urlencoded".into()), ..BodyContract::json("FormInput") };
-        input.schema=input.schema.with_json_schema(json!({"type":"object","required":["value"],"properties":{"value":{"type":"string","minLength":minimum}}}).to_string());
+        let value=if version=="v3" {json!({"type":"object","required":["items"],"properties":{"items":{"type":"array","minItems":2,"items":{"type":"string"}}}})} else {json!({"type":"string","minLength":minimum})};
+        input.schema=input.schema.with_json_schema(json!({"type":"object","required":["value"],"properties":{"value":value}}).to_string());
         let mut output=BodyContract::json("FormOutput");
         output.schema=output.schema.with_json_schema(json!({"type":"object","required":["version","raw"],"properties":{"version":{"type":"string"},"raw":{"type":"string"}}}).to_string());
         form=form.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
@@ -48,6 +49,6 @@ pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
     }).post(contracts().remove(2),|Extension(version):Extension<SelectedVersion>,body:axum::body::Bytes|async move {
         (StatusCode::ACCEPTED,Json(json!({"version":version.version,"bytes":body.to_vec()})))
     }).post(contracts().remove(3),|Extension(version):Extension<SelectedVersion>,body:String|async move {
-        (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"raw":body})))
+        (match version.version.as_str() {"v1"=>StatusCode::CREATED,"v2"=>StatusCode::ACCEPTED,_=>StatusCode::OK},Json(json!({"version":version.version,"raw":body})))
     })
 }

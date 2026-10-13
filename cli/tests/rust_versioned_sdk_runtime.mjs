@@ -40,6 +40,10 @@ try {
   const result=await mcpRpc(base,'tools/call',{name:`writeForm [v${version}]`,arguments:{body:{value}}});
   assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{version,raw});
  }
+ for(const raw of ['value[items][]=a&value[items][]=%E6%B0%B4','value[items][2]=a&value[items][0]=b']) {
+  const response=await fetch(`${base}/versioned-form`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:raw});
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),{version:'v3',raw});
+ }
  for(const body of ['value=','value=a&value=b','value[nested]=a']) {
   const response=await fetch(`${base}/versioned-form`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
   assert.equal(response.status,400,body);

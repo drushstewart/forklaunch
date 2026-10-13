@@ -3196,3 +3196,26 @@ Checklist remains **652/682 (95.6%), 30 open**. Nested/indexed forms, multipart
 version selection, configurable parser options and broader transformations are
 still incomplete. MCP form arrays retain TypeScript's existing JSON-composite
 serialization; this batch does not change that transport contract.
+
+### 2026-10-13 — Nested URL-encoded version selection
+
+The form matcher now handles nested bracket paths, sparse indexed arrays,
+array/object/scalar collisions, array overflow objects, balanced and unterminated
+bracket names, prototype keys and equals signs inside bracket keys. Arrays compact
+only after merging, matching qs. Input depth is bounded at 32 bracket levels and
+merged output at 64 levels; the 1,000-parameter limit remains. Numeric indices use
+the exactly representable JavaScript integer range.
+
+Validation: **1,060 actual TypeScript content-middleware/native comparisons**,
+including every triple from ten collision/overflow/prototype fragments; 57 Axum
+and 25 HTTP tests; strict Clippy; and 900 embedded package sources. Generated
+`run.cjSiEE` adds a third form version requiring a nested array and verifies both
+bracket-array and sparse-index HTTP inputs select it while preserving wire bytes.
+The full generated HTTP/MCP matrix, both typed SDKs through three artifact forms,
+both native generators, startup/discovery and graceful shutdown pass. Receipts:
+`/private/tmp/fl-version-nested-{actual-final,units,clippy,generated,package}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. Nested forms no longer block the
+standard UTF-8 selection profile. Multipart matching, configurable parser options,
+non-UTF-8 charsets, parser-limit error-status equivalence and arbitrary request
+transformations remain incomplete; this is not a claim of every Express option.

@@ -1,15 +1,28 @@
-//! Bounded URL-encoded matching for flat fields and repeated string arrays.
-//! Nested/indexed qs paths are rejected rather than treated as literal keys.
-use serde_json::{Map, Value};
+//! Bounded URL-encoded matching for strings, arrays and nested bracket paths.
+use serde_json::Value;
+#[path = "versioning_form_tree.rs"]
+mod tree;
 
 pub(super) fn parse(bytes: &[u8]) -> Option<Value> {
     let text = std::str::from_utf8(bytes).ok()?;
+    let parameter_count = text.bytes().filter(|byte| *byte == b'&').count() + 1;
+    if parameter_count > 1000 {
+        return None;
+    }
+    let limit = u64::try_from(parameter_count.max(100)).ok()?;
     let mut groups = std::collections::BTreeMap::<String, (usize, Vec<Value>)>::new();
     for (index, part) in text.split('&').enumerate() {
         if index >= 1000 {
             return None;
         }
-        let (key, value) = part.split_once('=').unwrap_or((part, ""));
+        let part = brackets(part);
+        let separator = part
+            .find("]=")
+            .map(|index| index + 1)
+            .or_else(|| part.find('='));
+        let (key, value) = separator.map_or((part.as_str(), ""), |index| {
+            (&part[..index], &part[index + 1..])
+        });
         let key = decode(key);
         groups
             .entry(key)
@@ -26,46 +39,21 @@ pub(super) fn parse(bytes: &[u8]) -> Option<Value> {
             .filter(|n| *n != u32::MAX && n.to_string() == *key);
         (integer.is_none(), integer.unwrap_or(0), *order)
     });
-    let mut fields = Map::new();
-    for (key, (_, mut values)) in groups {
-        let array = key.ends_with("[]");
-        let name = if array { &key[..key.len() - 2] } else { &key };
-        if name.contains(['[', ']']) || (array && name.is_empty()) {
+    let mut fields = tree::Node::empty();
+    for (key, (_, values)) in groups {
+        let node = tree::wrap(&key, tree::Node::values(values), limit)?;
+        fields = fields.merge(node, limit);
+        if !fields.within_depth(0) {
             return None;
         }
-        if name.is_empty() || name == "__proto__" {
-            continue;
-        }
-        match fields.get_mut(name) {
-            Some(Value::Array(previous)) => previous.append(&mut values),
-            Some(previous) => {
-                values.insert(0, previous.take());
-                *previous = Value::Array(values);
-            }
-            None => {
-                fields.insert(
-                    name.into(),
-                    if array || values.len() > 1 {
-                        Value::Array(values)
-                    } else {
-                        values.remove(0)
-                    },
-                );
-            }
-        }
     }
-    Some(Value::Object(fields))
+    fields.into_value(0)
 }
 
 // qs uses decodeURIComponent: malformed percent escapes or UTF-8 retain the
 // entire original component, after '+' replacement, rather than lossy decoding.
 fn decode(encoded: &str) -> String {
-    let replaced = encoded
-        .replace("%5B", "[")
-        .replace("%5b", "[")
-        .replace("%5D", "]")
-        .replace("%5d", "]")
-        .replace('+', " ");
+    let replaced = brackets(encoded).replace('+', " ");
     let input = replaced.as_bytes();
     let mut decoded = Vec::with_capacity(input.len());
     let mut index = 0;
@@ -89,6 +77,13 @@ fn decode(encoded: &str) -> String {
     }
     String::from_utf8(decoded).unwrap_or(replaced)
 }
+fn brackets(encoded: &str) -> String {
+    encoded
+        .replace("%5B", "[")
+        .replace("%5b", "[")
+        .replace("%5D", "]")
+        .replace("%5d", "]")
+}
 const fn digit(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -103,12 +98,14 @@ mod tests {
     use super::*;
     use serde_json::json;
     #[test]
-    fn limits_and_unsupported_paths_fail_without_losing_data() {
+    fn parameter_depth_limits_and_decoding_are_explicit() {
         assert!(parse("a=x&".repeat(1000).as_bytes()).is_none());
         assert!(parse("a=x&".repeat(999).as_bytes()).is_some());
-        for text in ["a[b]=x", "a[0]=x", "a[][]=x", "[]=x"] {
-            assert!(parse(text.as_bytes()).is_none(), "{text}");
-        }
+        assert!(parse(format!("a{}=x", "[b]".repeat(33)).as_bytes()).is_none());
+        assert_eq!(
+            parse(b"a[b]=x&a[c][]=y&a[c][]=z"),
+            Some(json!({"a":{"b":"x","c":["y","z"]}}))
+        );
         assert!(parse(&[255]).is_none());
         assert_eq!(
             parse(b"__proto__=x&constructor=y&=ignored"),
