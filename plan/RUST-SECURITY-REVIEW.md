@@ -215,3 +215,15 @@ failure text is emitted. Tests use a store that panics on access and a pending
 signer bounded by caller timeout. Finite JSON claims are supported; non-finite JS
 values are explicitly rejected. This helper does not silently switch public token
 or JWKS endpoints to external keys.
+
+
+External HTTP JWT signing (2026-10-13): explicit trusted configuration accepts an
+absolute HTTP(S) public-key URL without credentials/fragments and a recognized
+asymmetric algorithm. This URL is metadata, never a request-selected fetch target.
+The signer receives claims only after authoritative session validation; absent,
+forged and revoked sessions cannot invoke it. Local JWKS publication is disabled
+with 404; signing success/failure creates no local private-key records. Callback
+errors retain sanitized helper errors. Live TCP tests independently verify signed
+claims and confirm revocation, callback count, failure redaction and graceful
+shutdown. Applications remain responsible for external key publication/rotation,
+verification configuration, actual callback algorithm enforcement and deadlines.

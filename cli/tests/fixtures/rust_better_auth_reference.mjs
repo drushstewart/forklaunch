@@ -117,6 +117,10 @@ export async function betterAuthReference(root, options = {}) {
       level: 'error',
     },
   });
+  if (options.jwt) config.plugins = config.plugins.map(plugin => plugin.id === 'jwt'
+    ? plugins.jwt({ ...plugin.options, ...options.jwt,
+        jwt: { ...plugin.options.jwt, ...options.jwt.jwt } })
+    : plugin);
   if (options.rateLimit) config.rateLimit = options.rateLimit;
   const rateLimitPluginCalls = [];
   if (options.rateLimitPlugins) {

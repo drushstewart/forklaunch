@@ -1,4 +1,5 @@
 use super::*;
+mod external_jwt;
 mod organizations;
 pub(crate) mod tokens;
 use crate::store::{AuthTransaction, Model, memory::MemoryAuthStore};

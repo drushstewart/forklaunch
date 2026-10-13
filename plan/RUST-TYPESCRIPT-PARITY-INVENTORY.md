@@ -3996,3 +3996,24 @@ embedded assets are packaged. Logs:
 `/private/tmp/fl-custom-jwt-{tests,clippy,parity,local-regression,generated,package}.log`.
 This helper does not configure session-token HTTP routes or remote JWKS; those
 remain open within broader auth coverage. Checklist remains 657/682 (96.3%), 25 open.
+
+
+External HTTP JWT signer receipt (2026-10-13): trusted `ExternalJwtSigner`
+configuration wires the typed callback into session-authenticated `/token`,
+`get-session` JWT headers and popup callback exchange. Explicit asymmetric
+algorithm/public-key URL metadata is required. Local `/jwks` returns 404 and
+signing creates no local key rows; key publication, rotation and verifier
+configuration remain application-owned, as does callback algorithm enforcement.
+
+Nine actual Better Auth HTTP cases compare configured claims, headers, anonymous
+and forged sessions, and remote-JWKS suppression. Live TCP tests independently
+verify signatures, deny revoked sessions without invoking the signer, sanitize
+provider failures, check popup exchange and confirm empty local key storage.
+The complete native suite passes 47 tests (one database opt-in test ignored),
+updated focused tests and strict all-target Clippy pass, and 161 existing actual
+HTTP/session comparisons remain unchanged. Generated run `gRhDXs` passes both
+SDKs, all eight client/namespace scenarios, encrypted persistence, HTTP/MCP
+startup/discovery/invocation, restart and rename/delete. All 934 embedded assets
+are packaged. Logs:
+`/private/tmp/fl-external-jwt-{tests,all-tests,clippy,parity,http-regression,generated,package}.log`.
+Checklist remains 657/682 (96.3%), 25 open; broader auth adapters/options remain.

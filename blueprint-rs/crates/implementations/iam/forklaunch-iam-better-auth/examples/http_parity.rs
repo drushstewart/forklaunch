@@ -160,6 +160,27 @@ async fn main() {
     } else {
         router
     };
+    let router = if std::env::var_os("FORKLAUNCH_AUTH_EXTERNAL_JWT").is_some() {
+        struct EchoSigner;
+        impl forklaunch_iam_better_auth::keyring::custom::JwtSigner for EchoSigner {
+            async fn sign(
+                &self,
+                payload: Value,
+            ) -> forklaunch_blueprint_core::BlueprintResult<String> {
+                Ok(payload.to_string())
+            }
+        }
+        router.with_external_jwt_signer(
+            forklaunch_iam_better_auth::http::ExternalJwtSigner::new(
+                "https://keys.fixture.test/jwks",
+                "EdDSA",
+                EchoSigner,
+            )
+            .unwrap(),
+        )
+    } else {
+        router
+    };
     #[cfg(feature = "application-http")]
     let router = if std::env::var_os("FORKLAUNCH_AUTH_POPUP_HELPERS").is_some() {
         router.router_with_redirects()

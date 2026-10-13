@@ -286,3 +286,16 @@ This server-only helper does not reconfigure session token routes, remote JWKS
 verification or plugin discovery metadata. Configuring those surfaces for custom
 signers remains part of the broader JWT/JWKS adapter work. Serialized claim options
 cannot replace the typed server callback.
+
+
+For authenticated HTTP session tokens, construct `http::ExternalJwtSigner::new`
+with a public JWKS URL, explicit asymmetric algorithm and a typed `JwtSigner`,
+then pass it to `AuthHttp::with_external_jwt_signer`. `/token` and the
+`get-session` response header use the callback after persistent session validation.
+The callback receives the configured email/organization claims, subject, issuance
+and expiry times, issuer and audience. No local signing key is created; `/jwks`
+returns 404 as in Better Auth's remote-JWKS mode. The application must publish the
+external public keys and configure JWT verification separately. Popup callback helpers exchange through the same configured auth router. This
+does not configure OpenID discovery metadata. The key URL
+is configuration metadata and is never fetched by this adapter; signing algorithms,
+key rotation and callback deadlines remain the external signer's responsibility.

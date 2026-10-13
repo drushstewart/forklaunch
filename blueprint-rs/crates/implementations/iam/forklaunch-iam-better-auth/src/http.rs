@@ -27,6 +27,8 @@ pub mod application;
 mod callback;
 mod credential;
 mod email;
+mod external_jwt;
+pub use external_jwt::ExternalJwtSigner;
 mod organization;
 mod public;
 mod rate;
@@ -48,6 +50,7 @@ pub(crate) mod tests;
 pub struct AuthHttp<S> {
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
+    external_jwt: Option<ExternalJwtSigner>,
     secret: Zeroizing<Vec<u8>>,
     base_url: String,
     base_path: String,
@@ -78,6 +81,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Self {
             store,
             google: None,
+            external_jwt: None,
             secret,
             base_url,
             base_path: "/api/auth".into(),
@@ -301,6 +305,18 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(view.map_or(Value::Null, |view| view.body()))
     }
     async fn jwt(&self, view: &SessionView, now: DateTime<Utc>) -> BlueprintResult<String> {
+        if let Some(signer) = &self.external_jwt {
+            let body = json!({"payload": {
+                "iat": now.timestamp(),
+                "sub": text(&view.user, "id")?,
+                "email": text(&view.user, "email")?,
+                "activeOrganizationId": view.session["activeOrganizationId"]
+            }});
+            let result = KeyRing::new(self.store.clone(), self.auth_origin())
+                .sign_jwt_with_signer(Some(&body), now, signer)
+                .await?;
+            return Ok(text(&result, "token")?.to_owned());
+        }
         KeyRing::new(self.store.clone(), self.auth_origin())
             .issue(
                 text(&view.user, "id")?,
@@ -377,9 +393,7 @@ async fn handle<S: AuthStore + 'static>(
         return result;
     }
     if path == "/jwks" {
-        return KeyRing::new(app.store.clone(), app.auth_origin())
-            .jwks(now)
-            .await;
+        return app.jwks(now).await;
     }
     let sessions = SessionService::new(app.store.clone());
     if path == "/sign-out" {
