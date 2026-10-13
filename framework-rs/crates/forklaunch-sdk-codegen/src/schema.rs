@@ -82,6 +82,40 @@ pub(crate) fn document_pointer(reference: &str) -> Option<String> {
 pub(crate) const REFERENCE: &str = "x-forklaunch-sdk-reference";
 pub(crate) const DEFINITIONS: &str = "x-forklaunch-sdk-definitions";
 
+/// Reuses the bounded resource index while importing schemas from one document.
+/// The document borrow keeps pointer-based lexical scopes valid for the cache.
+#[allow(dead_code)] // Used by the CLI OpenAPI importer through the shared source module.
+pub(crate) struct DocumentSchemas<'a> {
+    document: &'a Value,
+    resources: Option<std::sync::Arc<resources::Resources>>,
+}
+#[allow(dead_code)] // Used by the CLI OpenAPI importer through the shared source module.
+impl<'a> DocumentSchemas<'a> {
+    pub(crate) fn new(document: &'a Value) -> Self {
+        Self {
+            document,
+            resources: None,
+        }
+    }
+    pub(crate) fn bundle(&mut self, schema: &Value, budget: &mut ExpansionBudget) -> Result<Value> {
+        if self.resources.is_none() {
+            self.resources = Some(std::sync::Arc::new(resources::Resources::index(
+                self.document,
+                budget,
+            )?));
+        }
+        bundle_runtime_profile(
+            schema,
+            self.document,
+            budget,
+            true,
+            false,
+            false,
+            self.resources.clone(),
+        )
+    }
+}
+
 pub(crate) fn bundle(
     schema: &Value,
     document: &Value,
@@ -109,7 +143,7 @@ pub(crate) fn scoped_runtime_schema(schema: &Value) -> Result<Value> {
 pub(crate) fn runtime_schema_2020(schema: &Value) -> Result<Value> {
     let mut budget = ExpansionBudget::default();
     let effective = standalone_runtime_schema(schema, &mut budget)?;
-    bundle_runtime_profile(&effective, &effective, &mut budget, true, true, true)
+    bundle_runtime_profile(&effective, &effective, &mut budget, true, true, true, None)
 }
 
 /// Standalone socket codecs default to Draft 7; HTTP model schemas retain
@@ -158,7 +192,7 @@ fn bundle_with_profile(
     resource_ids: bool,
     runtime: bool,
 ) -> Result<Value> {
-    bundle_runtime_profile(schema, document, budget, resource_ids, runtime, false)
+    bundle_runtime_profile(schema, document, budget, resource_ids, runtime, false, None)
 }
 
 fn bundle_runtime_profile(
@@ -168,6 +202,7 @@ fn bundle_runtime_profile(
     resource_ids: bool,
     runtime: bool,
     translate: bool,
+    resources: Option<std::sync::Arc<resources::Resources>>,
 ) -> Result<Value> {
     let mut graph = Graph {
         document,
@@ -178,11 +213,19 @@ fn bundle_runtime_profile(
         translate,
         names: BTreeMap::new(),
         definitions: Map::new(),
-        resources: None,
+        resources,
     };
     let mut root = graph.visit(schema, 0, &resources::Bindings::new())?;
     if runtime && !translate && graph.runtime_dialects.len() > 1 {
-        return bundle_runtime_profile(schema, document, graph.budget, resource_ids, true, true);
+        return bundle_runtime_profile(
+            schema,
+            document,
+            graph.budget,
+            resource_ids,
+            true,
+            true,
+            graph.resources.clone(),
+        );
     }
     // TypeScript cannot represent a cycle consisting only of aliases/unions.
     // Object properties and array items provide the necessary structural guard.
@@ -267,7 +310,7 @@ struct Graph<'a> {
     budget: &'a mut ExpansionBudget,
     names: BTreeMap<(String, resources::Bindings), String>,
     definitions: Map<String, Value>,
-    resources: Option<resources::Resources>,
+    resources: Option<std::sync::Arc<resources::Resources>>,
     resource_ids: bool,
     runtime: bool,
     runtime_dialects: BTreeSet<String>,
@@ -293,7 +336,10 @@ impl Graph<'_> {
             return clone_literal(schema, self.budget);
         };
         if self.resources.is_none() {
-            self.resources = Some(resources::Resources::index(self.document, self.budget)?);
+            self.resources = Some(std::sync::Arc::new(resources::Resources::index(
+                self.document,
+                self.budget,
+            )?));
         }
         let resources = self.resources.as_ref().unwrap();
         let dialect = resources.dialect(schema).to_owned();

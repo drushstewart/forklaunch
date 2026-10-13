@@ -2,9 +2,9 @@
 //! document-local references without fetching files or remote URLs.
 use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use convert_case::{Case, Casing};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
     if document.get("openapi").is_none() && document.get("").is_some() {
@@ -22,6 +22,7 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
         .and_then(Value::as_object)
         .context("OpenAPI paths must be an object")?;
     let mut budget = ExpansionBudget::default();
+    let mut schemas = super::schema::DocumentSchemas::new(document);
     let mut names = BTreeSet::new();
     let mut routes = Vec::new();
     for (path, item) in paths {
@@ -31,7 +32,7 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
         if !path.starts_with('/') {
             bail!("OpenAPI operation path must start with /");
         }
-        let item = resolve(item, document, 0, &mut budget)?;
+        let item = resolve_indexed(item, document, 0, &mut budget, &mut schemas)?;
         let item = item
             .as_object()
             .context("OpenAPI path item must be an object")?;
@@ -244,11 +245,28 @@ fn media_body(response: &Value, request: bool) -> Result<Value> {
 
 use super::schema::{ExpansionBudget, clone_literal, document_pointer};
 
+#[cfg(test)]
 fn resolve(
     value: &Value,
     document: &Value,
     depth: usize,
     budget: &mut ExpansionBudget,
+) -> Result<Value> {
+    resolve_indexed(
+        value,
+        document,
+        depth,
+        budget,
+        &mut super::schema::DocumentSchemas::new(document),
+    )
+}
+
+fn resolve_indexed(
+    value: &Value,
+    document: &Value,
+    depth: usize,
+    budget: &mut ExpansionBudget,
+    schema_index: &mut super::schema::DocumentSchemas<'_>,
 ) -> Result<Value> {
     if depth > 64 || budget.nodes == 0 {
         bail!("OpenAPI references exceed expansion limits or contain a cycle");
@@ -275,7 +293,8 @@ fn resolve(
                 let target = document
                     .pointer(&pointer)
                     .with_context(|| format!("Missing OpenAPI reference {reference}"))?;
-                let mut resolved = resolve(target, document, depth + 1, budget)?;
+                let mut resolved =
+                    resolve_indexed(target, document, depth + 1, budget, schema_index)?;
                 for (key, value) in object {
                     if key == "$ref" {
                         continue;
@@ -303,7 +322,7 @@ fn resolve(
                         ) {
                         clone_literal(value, budget)?
                     } else if key == "schema" {
-                        super::schema::bundle(value, document, budget)?
+                        schema_index.bundle(value, budget)?
                     } else if matches!(
                         key.as_str(),
                         "properties" | "patternProperties" | "$defs" | "dependentSchemas"
@@ -317,7 +336,13 @@ fn resolve(
                                     .context("OpenAPI expanded references exceed 32 MiB")?;
                                 schemas.insert(
                                     name.clone(),
-                                    resolve(schema, document, depth + 1, budget)?,
+                                    resolve_indexed(
+                                        schema,
+                                        document,
+                                        depth + 1,
+                                        budget,
+                                        schema_index,
+                                    )?,
                                 );
                             }
                             Value::Object(schemas)
@@ -325,7 +350,7 @@ fn resolve(
                             bail!("OpenAPI named schema collection must be an object");
                         }
                     } else {
-                        resolve(value, document, depth + 1, budget)?
+                        resolve_indexed(value, document, depth + 1, budget, schema_index)?
                     };
                     resolved.insert(key.clone(), value);
                 }
@@ -334,7 +359,7 @@ fn resolve(
         }
         Value::Array(array) => array
             .iter()
-            .map(|value| resolve(value, document, depth + 1, budget))
+            .map(|value| resolve_indexed(value, document, depth + 1, budget, schema_index))
             .collect::<Result<Vec<_>>>()
             .map(Value::Array),
         _ => Ok(value.clone()),
@@ -387,6 +412,31 @@ fn contract_from_versioned_openapi(document: &Value) -> Result<Value> {
 mod tests {
     use super::*;
     #[test]
+    fn many_operations_share_one_bounded_document_resource_index() {
+        let mut spec = json!({"openapi":"3.1.0","paths":{},"components":{"schemas":{}}});
+        for index in 0..300 {
+            spec["components"]["schemas"][format!("Model{index}")] = json!({
+                "type":"object", "properties":{"value":{"type":"string"}}
+            });
+        }
+        for index in 0..80 {
+            spec["paths"][format!("/items/{index}")] = json!({"get":{
+                "operationId":format!("getItem{index}"),
+                "responses":{"200":{"content":{"application/json":{"schema":{
+                    "$ref":"#/components/schemas/Model0"
+                }}}}}
+            }});
+        }
+        let contract = contract_from_openapi(&spec).unwrap();
+        assert_eq!(contract["routes"].as_array().unwrap().len(), 80);
+        for route in contract["routes"].as_array().unwrap() {
+            assert_eq!(
+                route["responses"][0]["body"]["schema"]["jsonSchema"]["properties"]["value"]["type"],
+                "string"
+            );
+        }
+    }
+    #[test]
     fn imports_real_operations_and_references_with_parameter_overrides() {
         let spec = json!({"openapi":"3.1.0", "paths":{"/users/{id}": {
             "parameters":[{"in":"path", "name":"id", "schema":{"type":"string"}}, {"in":"query", "name":"dryRun", "schema":{"type":"string"}}],
@@ -405,8 +455,7 @@ mod tests {
             "boolean"
         );
         assert_eq!(
-            route["responses"][0]["body"]["schema"]["jsonSchema"]["properties"]["displayName"]
-                ["type"],
+            route["responses"][0]["body"]["schema"]["jsonSchema"]["properties"]["displayName"]["type"],
             "string"
         );
     }
@@ -472,23 +521,27 @@ mod schema_reference_tests {
     #[test]
     fn expansion_budget_and_validation_siblings_are_rejected() {
         let document = json!({"schema":{"type":"string"}});
-        assert!(resolve(
-            &json!({"$ref":"#/schema", "minLength":5}),
-            &document,
-            0,
-            &mut ExpansionBudget::default()
-        )
-        .is_err());
-        assert!(resolve(
-            &json!([1, 2, 3]),
-            &document,
-            0,
-            &mut ExpansionBudget {
-                nodes: 2,
-                bytes: 1024
-            }
-        )
-        .is_err());
+        assert!(
+            resolve(
+                &json!({"$ref":"#/schema", "minLength":5}),
+                &document,
+                0,
+                &mut ExpansionBudget::default()
+            )
+            .is_err()
+        );
+        assert!(
+            resolve(
+                &json!([1, 2, 3]),
+                &document,
+                0,
+                &mut ExpansionBudget {
+                    nodes: 2,
+                    bytes: 1024
+                }
+            )
+            .is_err()
+        );
     }
 }
 
@@ -529,16 +582,18 @@ mod operation_name_tests {
     #[test]
     fn literal_reference_annotations_cannot_bypass_the_byte_budget() {
         let schema = json!({"const": "x".repeat(1000)});
-        assert!(resolve(
-            &schema,
-            &json!({}),
-            0,
-            &mut ExpansionBudget {
-                nodes: 100,
-                bytes: 100
-            }
-        )
-        .is_err());
+        assert!(
+            resolve(
+                &schema,
+                &json!({}),
+                0,
+                &mut ExpansionBudget {
+                    nodes: 100,
+                    bytes: 100
+                }
+            )
+            .is_err()
+        );
     }
 }
 
@@ -658,15 +713,19 @@ mod extended_method_tests {
             assert_eq!(route["responses"][0]["body"], Value::Null);
         }
         document["paths"]["/probe/{id}"]["x-forklaunch-http-methods"]["BREW"] = json!({});
-        assert!(contract_from_openapi(&document)
-            .unwrap_err()
-            .to_string()
-            .contains("Unsupported extended"));
+        assert!(
+            contract_from_openapi(&document)
+                .unwrap_err()
+                .to_string()
+                .contains("Unsupported extended")
+        );
         document["paths"]["/probe/{id}"]["x-forklaunch-http-methods"] = json!([]);
-        assert!(contract_from_openapi(&document)
-            .unwrap_err()
-            .to_string()
-            .contains("must be an object"));
+        assert!(
+            contract_from_openapi(&document)
+                .unwrap_err()
+                .to_string()
+                .contains("must be an object")
+        );
     }
 }
 
@@ -675,13 +734,22 @@ mod version_bundle_tests {
     use super::*;
     #[test]
     fn imports_every_named_version_with_its_own_component_scope() {
-        let document=|kind:&str|json!({"openapi":"3.1.0","paths":{"/values":{"post":{"operationId":"write","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Value"}}}},"responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Value"}}}}}}}},"components":{"schemas":{"Value":{"type":kind}}}});
+        let document = |kind: &str| json!({"openapi":"3.1.0","paths":{"/values":{"post":{"operationId":"write","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Value"}}}},"responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Value"}}}}}}}},"components":{"schemas":{"Value":{"type":kind}}}});
         let mut contract=contract_from_openapi(&json!({"":{"openapi":"3.1.0","paths":{}},"v1":document("string"),"v2":document("integer")})).unwrap();
-        assert_eq!(contract["routes"][0]["versions"].as_array().unwrap().len(),2);
+        assert_eq!(
+            contract["routes"][0]["versions"].as_array().unwrap().len(),
+            2
+        );
         crate::sdk::versions::expand_contract(&mut contract).unwrap();
-        assert_eq!(contract["routes"][0]["operationName"],"writeVersionV1");
-        assert_eq!(contract["routes"][0]["request"]["body"]["schema"]["jsonSchema"]["type"],"string");
-        assert_eq!(contract["routes"][1]["request"]["body"]["schema"]["jsonSchema"]["type"],"integer");
+        assert_eq!(contract["routes"][0]["operationName"], "writeVersionV1");
+        assert_eq!(
+            contract["routes"][0]["request"]["body"]["schema"]["jsonSchema"]["type"],
+            "string"
+        );
+        assert_eq!(
+            contract["routes"][1]["request"]["body"]["schema"]["jsonSchema"]["type"],
+            "integer"
+        );
     }
 
     #[test]
