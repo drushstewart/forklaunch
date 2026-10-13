@@ -2564,3 +2564,28 @@ Checklist: 649/682 (95.2%), 33 open. These are verified checklist counts, not an
 estimate that all remaining tasks have equal effort. Broader provider options,
 versioned routing, contract/schema conformance and deployment/publication gates
 remain open.
+
+
+### Workspace documentation completion (2026-10-13)
+
+Both workspaces now have indexed guides covering every member's purpose and
+feature/default selection, linked public API source, setup/composition, runtime
+operations, persistence/auth boundaries, provider/worker semantics, SDKs and
+remaining compatibility limits. Existing runnable generation and protocol guides
+are linked rather than duplicated. The blueprint README no longer describes
+completed indexed-query migration as outstanding, and documents ecommerce
+protected compliance export and explicit retention policy.
+
+Strict all-feature `cargo doc --workspace --no-deps` builds pass for all 19
+framework and 30 distinct blueprint crates. The first strict framework build
+caught broken HMAC and OTLP intra-doc links; fully qualified links now resolve.
+CI runs both strict documentation builds. Every crate is in the guide catalog,
+and all 81 local guide links/anchors resolve. Both workspace format checks pass,
+including module ordering left by recent additions. Evidence:
+`/private/tmp/fl-framework-docs.log`, `fl-blueprint-docs.log`,
+`fl-framework-format.log`, `fl-blueprint-format.log`.
+
+Checklist: 651/682 (95.5%), 31 open. Documentation describes current verified
+capabilities and the remaining gaps; it does not close their implementation or
+publication/deployment gates. Six completed relay scratch workspaces were removed
+following commit `01686c344`; approximately 60 GiB remained free.

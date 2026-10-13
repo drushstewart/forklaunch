@@ -1,4 +1,4 @@
-//! Opt-in, application-owned OTLP/HTTP providers. Call [`TelemetryRuntime::start`]
+//! Opt-in, application-owned OTLP/HTTP providers. Call [`TelemetryRuntime::start`](crate::telemetry::otlp::TelemetryRuntime::start)
 //! once from an executable, after handling offline contract export. Libraries
 //! should accept a collector instead of installing process-global providers.
 //!

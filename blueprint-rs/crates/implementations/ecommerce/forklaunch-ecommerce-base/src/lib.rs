@@ -8,8 +8,8 @@ pub mod events;
 pub mod import;
 #[cfg(feature = "postgres")]
 pub mod postgres;
-pub mod shipping;
 pub mod retention;
+pub mod shipping;
 pub mod store;
 pub mod webhook;
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};

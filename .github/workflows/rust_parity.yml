@@ -403,6 +403,9 @@ jobs:
           exit 1
       - run: cargo fmt --manifest-path framework-rs/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path framework-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: cargo doc --manifest-path framework-rs/Cargo.toml --workspace --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
       - name: Framework tests and reviewed OpenAPI / SDK snapshots
         run: cargo test --manifest-path framework-rs/Cargo.toml --workspace --all-features
       - run: cargo test --manifest-path framework-rs/crates/vendor/serde_json/Cargo.toml --locked --target-dir framework-rs/target
@@ -858,6 +861,9 @@ jobs:
           exit 1
       - run: cargo fmt --manifest-path blueprint-rs/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: cargo doc --manifest-path blueprint-rs/Cargo.toml --workspace --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-base --all-features --test services -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --test http -- --ignored

@@ -8,6 +8,10 @@ description: Generate Rust services, contracts, and TypeScript or Rust SDKs.
 
 The Rust port lives on `rohin/rust-framework`. It adds Rust services, workers, libraries, routers, contract exports, and generated SDKs to the existing CLI.
 
+The [framework guide](../../framework-rs/GUIDE.md) and
+[blueprint guide](../../blueprint-rs/GUIDE.md) provide crate/feature catalogs,
+API reference build commands, and operational boundaries.
+
 ## Create and run a service
 
 ```sh

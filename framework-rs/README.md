@@ -1,5 +1,7 @@
 # framework-rs
 
+See the [workspace guide](GUIDE.md) for the complete crate/feature catalog, development and operations workflows, API documentation commands, and compatibility boundaries.
+
 Rust-native ForkLaunch framework crates.
 
 This workspace implements contract registration, validation primitives, an Axum HTTP adapter, OpenAPI and AsyncAPI generation, MCP tool generation and an optional Streamable HTTP server, SDK code generation, and infrastructure interfaces. Optional runtime integrations are feature-gated: PostgreSQL tenant transactions, TypeScript-compatible field encryption, Redis storage, and remote JWKS verification. Axum supports verified sessions, RBAC, and OpenTelemetry request instruments. Production integration and cross-language parity work remains tracked in [the implementation plan](../plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md).

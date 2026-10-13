@@ -24,14 +24,14 @@ use zeroize::Zeroizing;
 mod account_tokens;
 #[cfg(feature = "application-http")]
 pub mod application;
-#[cfg(feature = "application-http")]
-pub mod relay;
 mod callback;
 mod credential;
 mod email;
 mod organization;
 mod public;
 mod rate;
+#[cfg(feature = "application-http")]
+pub mod relay;
 mod request;
 mod social;
 mod social_callback;

@@ -3,8 +3,8 @@
 //! timestamp and nonce. JSON callers should serialize once, sign the wire bytes,
 //! and send those same bytes rather than reserializing a JSON object.
 //!
-//! [`HmacAuthorization::verify`] matches the TypeScript signature check;
-//! [`HmacAuthorization::verify_at`] also enforces timestamp freshness. A shared
+//! [`HmacAuthorization::verify`](crate::request_hmac::HmacAuthorization::verify) matches the TypeScript signature check;
+//! [`HmacAuthorization::verify_at`](crate::request_hmac::HmacAuthorization::verify_at) also enforces timestamp freshness. A shared
 //! nonce store is an application-owned policy, separate from signature checking.
 use crate::{AuthError, hmac_sign, hmac_verify};
 use chrono::{DateTime, Datelike, SecondsFormat, Utc};

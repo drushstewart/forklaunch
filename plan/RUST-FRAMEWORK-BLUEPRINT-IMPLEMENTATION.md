@@ -804,8 +804,8 @@ Current CLI structure to build on:
 
 ## Phase 15 - Release Readiness
 
-- [ ] Add full docs for `framework-rs`.
-- [ ] Add full docs for `blueprint-rs`.
+- [x] Add framework workspace guide, complete crate/feature catalog, routing/auth/media/infrastructure and operations guidance, linked CLI examples and strict all-feature API docs. All 19 crate docs build with warnings denied; CI enforces the build.
+- [x] Add blueprint workspace guide, complete crate/feature catalog, module/provider/worker/compliance and operations guidance, linked CLI examples and strict all-feature API docs. All 30 distinct crate docs build with warnings denied; CI enforces the build.
 - [x] Add examples for Rust services, Rust workers, and mixed TypeScript/Rust apps. ([Runnable generation guide](../docs/adding-projects/rust.md): service startup, database/Redis/BullMQ/Kafka workers, both mixed-app directions and HTTP/MCP probes. Existing generated/runtime fixtures validate these examples; remaining broad documentation coverage stays open.)
 - [x] Add a migration guide for TypeScript users adopting native services/workers/libraries/modules, with workspace requirements, preserved settings, shared SDKs and separate Docker builds.
 - [ ] Add crate publishing pipeline.

@@ -1,5 +1,7 @@
 # blueprint-rs
 
+See the [workspace guide](GUIDE.md) for the complete crate/feature catalog, development and operations workflows, API documentation commands, and compatibility boundaries.
+
 Rust blueprint crates for ForkLaunch.
 
 This workspace mirrors the TypeScript `blueprint` style with shared core primitives, contract and interface crates, SDK generation, and reference implementations for IAM, CAC, messaging, billing, and workers. IAM provides an optional PostgreSQL backend with tenant RLS, Argon2id credentials, persistent sessions, an async Axum adapter, and generated modules. The database worker provides an optional PostgreSQL queue implementing async leases, acknowledgments, retry backoff, crash recovery, and failed-job retention. Both integrations use the `postgres` feature. The database worker also provides a `runtime` feature with a polling runner, lease renewal, bounded queue operations, configurable concurrent deliveries, and graceful drain; newly generated PostgreSQL workers use both features.
@@ -149,8 +151,9 @@ role. PostgreSQL pages decrypt at most limit+1 records and retain tenant RLS and
 record-bound encryption. The memory reference backend maintains insertion-order
 and unique-field indexes, but still clones its transaction snapshot in memory.
 The existing `list()` remains capped and fails closed for oversized models.
-Session/account/member services that still use it need separate indexed-query
-migration; this primitive does not yet remove their production scan limits.
+Production auth paths use indexed lookups or bounded paging, including sessions,
+accounts, members, provider verification records and key rotation. Collection
+responses still require memory proportional to their returned result.
 
 Better Auth session-token authentication now uses exact unique indexes in memory
 and rotating encrypted blind indexes in PostgreSQL. Fetch, refresh, single-token
@@ -166,4 +169,24 @@ startup and roll back the claims. This uniqueness check is deliberately stricter
 than the configured TypeScript entity's unindexed token field. Roll out
 index-aware writers together; older binaries do not maintain token claims and
 must not keep writing after backfill. Session-list/revoke-all and account/member
-queries still have separate indexed-query work outstanding.
+queries use the corresponding indexed lookup paths.
+
+
+## Ecommerce compliance and retention
+
+`forklaunch_ecommerce_base::compliance` provides tenant-scoped classified Order
+export and erasure. `OrderSubjectField::Id` preserves the configured TS default;
+select `CustomerId` explicitly for customer-scoped application policy. Exported
+shipping addresses remain opaque `ProtectedAddress` values (ordinary serialization
+emits `{}`). Explicit `deanon` requires an audit callback before disclosure.
+PostgreSQL erasure audits and deletes matching orders atomically; unrelated carts,
+payments, provider receipts and other tenants are not removed.
+
+`retention::OrderCompliance` supplies metadata to the framework retention hooks.
+There is no default retention period. Required shipping addresses are non-nullable:
+anonymization keeps their value and records completion, matching the TS metadata.
+Deletion removes the order. The PostgreSQL adapter uses a tenant-scoped operation
+lease, bounded oldest-first batches and RLS-protected completion markers; dry runs
+count without mutation. Cutoffs are exclusive and cannot be in the future.
+Migrations and the generated restricted-role grants include the retention marker
+table. Provider cancellation/capture reconciliation remains a separate concern.
