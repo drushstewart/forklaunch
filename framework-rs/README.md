@@ -509,5 +509,16 @@ an overlapping request can therefore select a later HTTP version, matching the
 TypeScript implementation.
 
 `cli/tests/rust_versioned_api_parity.mjs` executes the actual TypeScript parser
-and compares its selections with Rust. Versioned OpenAPI/SDK projections and
-remaining non-JSON media/coercion cases are still tracked as incomplete.
+and compares its selections with Rust. The standard OpenAPI document shows the last declared version and retains every
+request/response in `x-forklaunch-version-contracts`. Use
+`generate_versioned_openapi_json` for a named document collection with unversioned
+routes under the empty key, matching TypeScript's exporter.
+
+CLI contract/OpenAPI imports and both native SDK plans generate a typed method
+for every version: `write` with `v1`/`v2` becomes `writeVersionV1`/`writeVersionV2`
+in TypeScript and the corresponding snake-case Rust methods. Version labels
+follow the existing generated identifier rules; ambiguous normalized names fail
+explicitly. The methods send the declared request to the same HTTP path, where
+schema matching determines the version. Run `rust_versioned_sdk_runtime.sh`
+for both artifact formats, native generators and live HTTP/MCP checks.
+Remaining non-JSON media/coercion cases are still tracked as incomplete.

@@ -5,6 +5,7 @@ mod models;
 pub mod render;
 pub mod response;
 mod schema;
+mod versions;
 pub mod websocket;
 
 pub use models::{
@@ -166,6 +167,21 @@ impl SdkGenerationPlan {
             operations: registry
                 .routes()
                 .iter()
+                .flat_map(|route| {
+                    if route.versions.is_empty() {
+                        return vec![route.clone()];
+                    }
+                    route
+                        .versions
+                        .keys()
+                        .filter_map(|version| {
+                            let mut projected = route.for_version(version)?;
+                            projected.operation_name =
+                                versions::operation_name(&route.operation_name, version);
+                            Some(projected)
+                        })
+                        .collect()
+                })
                 .map(|route| SdkOperation {
                     name: route.operation_name.clone(),
                     method: route.method,
@@ -234,6 +250,33 @@ mod tests {
     use forklaunch_contract::{BodyContract, FieldContract, HttpMethod, RouteContract};
 
     use super::*;
+
+    #[test]
+    fn versioned_plans_include_every_request_and_response() {
+        use forklaunch_contract::{RequestContract, ResponseContract, VersionedContract};
+        let mut route = RouteContract::post("Write", "Write", "/versions");
+        for (version, name, status) in [("v1", "StringBody", 201), ("v2", "IntegerBody", 202)] {
+            route = route.with_version(VersionedContract {
+                version: version.into(),
+                request: RequestContract::default().with_body(BodyContract::json(name)),
+                responses: vec![ResponseContract::new(
+                    status,
+                    Some(BodyContract::json(name)),
+                )],
+            });
+        }
+        let mut registry = ContractRegistry::new();
+        registry.register(route);
+        let plan = SdkGenerationPlan::from_registry(SdkTarget::Rust, &registry);
+        assert_eq!(plan.operations.len(), 2);
+        assert_eq!(plan.operations[0].name, "writeVersionV1");
+        assert_eq!(plan.operations[1].name, "writeVersionV2");
+        assert_eq!(
+            plan.operations[0].request_body.as_deref(),
+            Some("StringBody")
+        );
+        assert_eq!(plan.operations[1].response_status_codes, vec![202]);
+    }
 
     #[test]
     fn sdk_plan_retains_schema_graphs_and_response_media() {

@@ -993,12 +993,26 @@ impl RouteContract {
     #[must_use]
     pub fn for_version(&self, version: &str) -> Option<Self> {
         let selected = self.versions.get(version)?;
-        let mut route = self.clone();
-        route.request = selected.request.clone();
-        route.request.params.clone_from(&self.request.params);
-        route.responses.clone_from(&selected.responses);
-        route.versions.clear();
-        Some(route)
+        Some(Self {
+            name: self.name.clone(),
+            operation_name: self.operation_name.clone(),
+            summary: self.summary.clone(),
+            method: self.method,
+            path: self.path.clone(),
+            openapi_path: self.openapi_path.clone(),
+            access: self.access,
+            request: RequestContract {
+                params: self.request.params.clone(),
+                query: selected.request.query.clone(),
+                headers: selected.request.headers.clone(),
+                body: selected.request.body.clone(),
+            },
+            responses: selected.responses.clone(),
+            versions: indexmap::IndexMap::new(),
+            auth: self.auth.clone(),
+            rbac: self.rbac.clone(),
+            options: self.options.clone(),
+        })
     }
 
     #[must_use]

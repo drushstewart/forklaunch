@@ -7,13 +7,9 @@ use convert_case::{Case, Casing};
 use serde_json::{json, Value};
 
 pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
-    // TypeScript exporters preserve named versions and serialize their default
-    // document under the empty key. Resolve references within that document.
-    let document = if document.get("openapi").is_none() {
-        document.get("").unwrap_or(document)
-    } else {
-        document
-    };
+    if document.get("openapi").is_none() && document.get("").is_some() {
+        return contract_from_versioned_openapi(document);
+    }
     let version = document
         .get("openapi")
         .and_then(Value::as_str)
@@ -209,6 +205,9 @@ pub(super) fn contract_from_openapi(document: &Value) -> Result<Value> {
                 bail!("OpenAPI operations produce duplicate SDK method names: {operation_name}");
             }
             route["operationName"] = Value::String(operation_name);
+            if let Some(versions) = operation.get("x-forklaunch-version-contracts") {
+                route["versions"] = versions.clone();
+            }
             routes.push(route);
         }
     }
@@ -340,6 +339,48 @@ fn resolve(
             .map(Value::Array),
         _ => Ok(value.clone()),
     }
+}
+
+fn contract_from_versioned_openapi(document: &Value) -> Result<Value> {
+    let documents = document
+        .as_object()
+        .context("Versioned OpenAPI documents must be an object")?;
+    let mut contract = contract_from_openapi(&document[""])?;
+    let mut grouped = BTreeMap::<(String, String), Value>::new();
+    for (version, source) in documents.iter().filter(|(version, _)| !version.is_empty()) {
+        let imported = contract_from_openapi(source)?;
+        for route in imported["routes"]
+            .as_array()
+            .context("Imported OpenAPI routes are missing")?
+        {
+            if route.get("versions").is_some() {
+                bail!("Nested OpenAPI version collections are unsupported");
+            }
+            let key = (
+                route["method"]
+                    .as_str()
+                    .context("Versioned method")?
+                    .to_owned(),
+                route["path"].as_str().context("Versioned path")?.to_owned(),
+            );
+            let group = grouped.entry(key).or_insert_with(|| {
+                let mut group = route.clone();
+                group["versions"] = json!([]);
+                group
+            });
+            if group["operationName"] != route["operationName"]
+                || group.pointer("/request/params") != route.pointer("/request/params")
+            {
+                bail!("Named OpenAPI versions must share operation IDs and path parameters");
+            }
+            group["versions"].as_array_mut().context("Version collection")?.push(json!({"version":version,"request":route["request"],"responses":route["responses"]}));
+        }
+    }
+    contract["routes"]
+        .as_array_mut()
+        .context("Default OpenAPI routes are missing")?
+        .extend(grouped.into_values());
+    Ok(contract)
 }
 
 #[cfg(test)]
@@ -633,7 +674,18 @@ mod extended_method_tests {
 mod version_bundle_tests {
     use super::*;
     #[test]
-    fn imports_explicit_default_with_local_references_without_combining_versions() {
+    fn imports_every_named_version_with_its_own_component_scope() {
+        let document=|kind:&str|json!({"openapi":"3.1.0","paths":{"/values":{"post":{"operationId":"write","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Value"}}}},"responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Value"}}}}}}}},"components":{"schemas":{"Value":{"type":kind}}}});
+        let mut contract=contract_from_openapi(&json!({"":{"openapi":"3.1.0","paths":{}},"v1":document("string"),"v2":document("integer")})).unwrap();
+        assert_eq!(contract["routes"][0]["versions"].as_array().unwrap().len(),2);
+        crate::sdk::versions::expand_contract(&mut contract).unwrap();
+        assert_eq!(contract["routes"][0]["operationName"],"writeVersionV1");
+        assert_eq!(contract["routes"][0]["request"]["body"]["schema"]["jsonSchema"]["type"],"string");
+        assert_eq!(contract["routes"][1]["request"]["body"]["schema"]["jsonSchema"]["type"],"integer");
+    }
+
+    #[test]
+    fn imports_explicit_default_with_isolated_local_references() {
         let document = json!({"openapi":"3.1.0","paths":{"/default":{"get":{"operationId":"defaultOperation","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Response"}}}}}}}},"components":{"schemas":{"Response":{"type":"object","properties":{"message":{"type":"string"}}}}}});
         let expected = contract_from_openapi(&document).unwrap();
         let bundled = json!({"":document,"v2":{"openapi":"3.1.0","paths":{"/other":{}}}});

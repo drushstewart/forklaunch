@@ -3085,3 +3085,39 @@ live TypeScript socket suite pass after sharing the validator. Strict docs and
 Checklist stays **652/682 (95.6%), 30 open**. This is the runtime/MCP portion of
 versioning; OpenAPI export, SDK projections and non-JSON media/coercion coverage
 still prevent closing the versioned-API gate.
+
+### 2026-10-13 — Versioned OpenAPI exports and typed SDK methods
+
+Standard OpenAPI operations now project the last declared version and retain all
+request/response contracts in `x-forklaunch-version-contracts`, alongside the
+existing version-name list. `generate_versioned_openapi_json` exports independent
+named documents with unversioned routes under the empty key. Components and
+security metadata are generated per document, so repeated schema names across
+versions retain their own meanings.
+
+CLI imports preserve full version metadata from standard OpenAPI and import all
+named documents with reference resolution isolated to each document. Contract
+and OpenAPI imports share bounded version expansion with native SDK method
+naming: `write` plus `v1`/`v2` becomes `writeVersionV1`/`writeVersionV2` and the
+corresponding Rust snake-case methods. Every method retains its request schema,
+response schema/status and common params. Colliding normalized aliases fail
+explicitly, following the existing generated-identifier profile. Shared metadata
+clones obey the graph byte/node budget; a repeated-large-params regression proves
+version expansion cannot bypass the cap. Native projections also avoid cloning
+all sibling versions for every projected route.
+
+A fresh relocated generated service passes typed Rust and strict TypeScript
+consumers through contract, standard OpenAPI and named OpenAPI imports, followed
+by both native generators. Each of the four passes starts HTTP/MCP, initializes
+and discovers versioned tools, invokes both versions, rejects a mismatched body,
+checks distinct tool schemas and shuts down gracefully. The TypeScript consumers
+also reject wrong-version body types at compile time. The E2E workflow includes
+this fixture. Earlier fixture-only method-name mismatches were corrected before
+the complete fresh run.
+
+Validation: 1,099 CLI tests; 20 contract/22 HTTP/7 OpenAPI/43 shared compiler tests;
+strict clippy/docs, formatting, and 898 embedded package sources. Evidence:
+`fl-version-generated-complete.log`,
+`fl-version-export-{cli-final,units,clippy-final,docs,package-final}.log`.
+Checklist remains **652/682 (95.6%), 30 open**. Non-JSON media and
+request-transformation conformance remain on the versioned-API gate.

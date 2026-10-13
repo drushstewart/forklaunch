@@ -543,6 +543,7 @@ fn http_sdk_services_from_artifacts(
 
 fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result<SdkService> {
     let mut contract = contract.clone();
+    super::versions::expand_contract(&mut contract)?;
     let mut ts_models = Vec::new();
     let mut schema_index = 0;
     fn prepare(

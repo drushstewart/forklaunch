@@ -109,6 +109,13 @@ pub fn openapi_routes(registry: &ContractRegistry) -> Vec<OpenApiRoute> {
         .routes()
         .iter()
         .filter(|route| route.options.openapi)
+        .map(|route| {
+            route
+                .versions
+                .last()
+                .and_then(|(version, _)| route.for_version(version))
+                .unwrap_or_else(|| route.clone())
+        })
         .map(|route| OpenApiRoute {
             operation_id: route.operation_name.clone(),
             method: route.method,
@@ -138,11 +145,21 @@ pub fn generate_openapi_json_with_options(
     registry: &ContractRegistry,
     options: &OpenApiOptions,
 ) -> String {
-    let routes = registry
+    let projected = registry
         .routes()
         .iter()
         .filter(|route| route.options.openapi)
+        .map(|route| {
+            let mut selected = route
+                .versions
+                .last()
+                .and_then(|(version, _)| route.for_version(version))
+                .unwrap_or_else(|| route.clone());
+            selected.versions.clone_from(&route.versions);
+            selected
+        })
         .collect::<Vec<_>>();
+    let routes = projected.iter().collect::<Vec<_>>();
     let components = components_json(&routes);
 
     let mut fields = vec![
@@ -166,6 +183,50 @@ pub fn generate_openapi_json_with_options(
     }
 
     json_object(fields)
+}
+
+/// Export the TypeScript-compatible document collection: the empty key holds
+/// unversioned routes, and each named document contains that version's routes.
+/// Every document has its own schema/security components and version metadata.
+#[must_use]
+pub fn generate_versioned_openapi_json(
+    registry: &ContractRegistry,
+    options: &OpenApiOptions,
+) -> String {
+    let mut versions = vec![String::new()];
+    for route in registry
+        .routes()
+        .iter()
+        .filter(|route| route.options.openapi)
+    {
+        for version in route.versions.keys() {
+            if !versions.contains(version) {
+                versions.push(version.clone());
+            }
+        }
+    }
+    json_object(versions.into_iter().map(|version| {
+        let mut selected = registry
+            .service()
+            .map_or_else(ContractRegistry::new, |service| {
+                ContractRegistry::for_service(service.clone())
+            });
+        for route in registry.routes() {
+            if version.is_empty() && route.versions.is_empty() {
+                selected.register(route.clone());
+            } else if let Some(route) = route.for_version(&version) {
+                selected.register(route);
+            }
+        }
+        let mut options = options.clone();
+        if !version.is_empty() {
+            options.version.clone_from(&version);
+        }
+        JsonField::new(
+            version,
+            generate_openapi_json_with_options(&selected, &options),
+        )
+    }))
 }
 
 /// # Errors
@@ -270,6 +331,15 @@ fn operation_json(route: &RouteContract, service_name: Option<&String>) -> Strin
         fields.push(JsonField::new(
             "x-forklaunch-versions",
             json_array(route.versions.keys().map(|version| json_string(version))),
+        ));
+        fields.push(JsonField::new(
+            "x-forklaunch-version-contracts",
+            json_array(
+                route
+                    .versions
+                    .values()
+                    .map(forklaunch_contract::VersionedContract::to_json),
+            ),
         ));
     }
 
@@ -554,6 +624,43 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn named_version_documents_preserve_distinct_schemas_responses_and_common_params() {
+        use forklaunch_contract::{RequestContract, VersionedContract};
+        let mut route = RouteContract::post("Versioned", "Versioned", "/items/:id")
+            .with_param(FieldContract::required("id", "Id"));
+        for (version, kind, status) in [("z-first", "string", 201), ("a-last", "integer", 202)] {
+            let mut body = BodyContract::json("Input");
+            body.schema = body
+                .schema
+                .with_json_schema(format!(r#"{{"type":"{kind}"}}"#));
+            route = route.with_version(VersionedContract {
+                version: version.into(),
+                request: RequestContract::default().with_body(body.clone()),
+                responses: vec![ResponseContract::new(status, Some(body))],
+            });
+        }
+        let mut registry = ContractRegistry::new();
+        registry.register(route);
+        registry
+            .register(RouteContract::get("Health", "Health", "/health").with_response(200, None));
+        let documents =
+            generate_versioned_openapi_json(&registry, &OpenApiOptions::from_registry(&registry));
+        let documents: serde_json::Value = serde_json::from_str(&documents).unwrap();
+        assert!(documents[""]["paths"].get("/health").is_some());
+        assert!(documents[""]["paths"].get("/items/{id}").is_none());
+        for (version, kind, status) in [("z-first", "string", "201"), ("a-last", "integer", "202")]
+        {
+            let document = &documents[version];
+            let operation = &document["paths"]["/items/{id}"]["post"];
+            assert_eq!(document["info"]["version"], version);
+            assert!(document["paths"].get("/health").is_none());
+            assert_eq!(operation["parameters"][0]["name"], "id");
+            assert!(operation["responses"].get(status).is_some());
+            assert_eq!(document["components"]["schemas"]["Input"]["type"], kind);
+        }
+    }
 
     #[test]
     fn maps_registered_routes_to_openapi_routes() {
