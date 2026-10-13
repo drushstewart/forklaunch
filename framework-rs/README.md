@@ -128,6 +128,16 @@ session; ensure the subsequent router authorizer uses the same complete policy.
 The helper does not issue credentials, create principals or implement a schema
 validator. Callback cancellation does not retry work or begin subsequent lookups.
 
+`forklaunch_validation::ParseError` retains the TypeScript validator's ordered
+string path segments and public message. `pretty_print_parse_errors` matches
+`prettyPrintParseErrors`, including absent/empty lists, empty versus absent
+prefixes, root paths and multiline numbered messages. A session resolver can
+format `Invalid session: {pretty_print_parse_errors(Some(&errors), Some("Session"))}`
+in a validation response. Only supply public messages. This helper formats
+validator output; it does not equate native/Garde schema rules with Zod/TypeBox
+or change the default JSON error envelope. Use `AuthErrorFormat::TypeScriptText`
+when the application also needs TypeScript's auth wire representation.
+
 `forklaunch_auth::typescript::basic::verify_basic` explicitly enables the
 TypeScript synchronous Basic-login parsing profile. It matches case-sensitive
 prefixes, first-space token selection, Node base64 decoding, replacement UTF-8

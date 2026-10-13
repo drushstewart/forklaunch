@@ -51,7 +51,13 @@ try {
   const result=await mcpRpc(base,'tools/call',{name:'checkBasic',arguments:{}},headers);
   assert.equal(result.isError,status!==200);
   if(status===200){assert.deepEqual(body,{subject:'fixture-user'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
-  else { assert.ok(JSON.stringify(body).includes(message)); if(textErrors)assert.equal(result.content[0].text,`HTTP ${status} ${STATUS_CODES[status]}: ${body}`); }
+  else {
+   assert.equal(textErrors ? body : body.message, message);
+   const prefix=`HTTP ${status} ${STATUS_CODES[status]}: `;
+   assert.ok(result.content[0].text.startsWith(prefix));
+   const mcpBody=result.content[0].text.slice(prefix.length);
+   assert.equal(textErrors ? mcpBody : JSON.parse(mcpBody).message, message);
+  }
  }
  // Fetch trims trailing HTTP header whitespace, so an empty token arrives as 'Basic'.
  for(const [credential,status] of [[null,401],['basic owned-opaque-token',401],['Basic ',401],['Basic unverified',403],['Basic owned-invalid-session',400],['Basic owned-reader-token',403],['Basic owned-opaque-token ignored',200]]) {
@@ -89,7 +95,7 @@ try {
  const fullSession={scopes:['team'],permissions:['read'],active_subscription:true,features:['reports']};
  for(const [name,claims,status,message] of [
   ['session',fullSession,200,null],
-  ['session',{...fullSession,sub:'invalid-session'},400,'Invalid session: subject rejected'],
+  ['session',{...fullSession,sub:'invalid-session'},400,'Invalid session: Session validation failed with the following errors:\n1. Path: sub\n   Message: subject rejected\n\n2. Path: root\n   Message: session rejected'],
   ['session',{...fullSession,scopes:[]},403,'Invalid scope for operation.'],
   ['session',{...fullSession,permissions:[],roles:['admin']},403,'Invalid Authorization permissions.'],
   ['session',{...fullSession,active_subscription:false},403,'Active subscription required.'],
@@ -102,7 +108,13 @@ try {
   const result=await mcpRpc(base,'tools/call',{name:name==='session'?'checkSession':'checkMissingSessionCallback',arguments:{}},headers);
   assert.equal(result.isError,status!==200);
   if(status===200){assert.deepEqual(body,{subject:'fixture-subject',team:'ordered-session-team'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
-  else { assert.ok(JSON.stringify(body).includes(message)); if(textErrors)assert.equal(result.content[0].text,`HTTP ${status} ${STATUS_CODES[status]}: ${body}`); }
+  else {
+   assert.equal(textErrors ? body : body.message, message);
+   const prefix=`HTTP ${status} ${STATUS_CODES[status]}: `;
+   assert.ok(result.content[0].text.startsWith(prefix));
+   const mcpBody=result.content[0].text.slice(prefix.length);
+   assert.equal(textErrors ? mcpBody : JSON.parse(mcpBody).message, message);
+  }
  }
  server.kill('SIGTERM');const [code,signal]=await exited;assert.equal(code,0,`${signal}: ${errors}`);
  console.log(`PASS generated verified-session authorization (${textErrors?'text':'JSON'} errors): HTTP/MCP Basic login and async Basic/JWT resource verification, HMAC signatures/freshness, permissions, exact scopes, subscriptions, features, missing policies, rejected credentials and graceful shutdown`);

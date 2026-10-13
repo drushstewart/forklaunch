@@ -13,7 +13,7 @@ cp "$SCRIPT_DIR/fixtures/rust_typescript_authorization.rs" crates/authorization/
 python3 - <<'PY'
 from pathlib import Path
 p=Path('crates/authorization/Cargo.toml')
-p.write_text(p.read_text().replace('[dependencies]\n','[dependencies]\nserde_json = "1"\nforklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth", features = ["oidc"] }\n'))
+p.write_text(p.read_text().replace('[dependencies]\n','[dependencies]\nserde_json = "1"\nforklaunch-validation = { path = "../../.forklaunch/framework-rs/crates/forklaunch-validation" }\nforklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth", features = ["oidc"] }\n'))
 p=Path('crates/authorization/src/lib.rs')
 s='pub mod policy_fixture;\n'+p.read_text()
 s=s.replace('for contract in routes::contracts() {','for contract in routes::contracts().into_iter().chain(policy_fixture::contracts()) {')

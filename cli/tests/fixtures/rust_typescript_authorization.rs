@@ -13,6 +13,7 @@ use forklaunch_auth::{
 use forklaunch_axum::{ForkLaunchRouter, RouterConfig, session::AuthenticatedSession};
 use forklaunch_contract::{AccessLevel, AuthConfig, BodyContract, JwtAuthConfig, RouteContract};
 use forklaunch_http::{ErrorKind, ErrorResponse};
+use forklaunch_validation::{ParseError, pretty_print_parse_errors};
 use serde_json::{Value, json};
 const SECRET: &[u8] = b"fixture-only-session-authorization-key";
 pub fn contracts() -> Vec<RouteContract> {
@@ -208,7 +209,13 @@ struct SessionResolver<'a> {
 impl TypeScriptSessionResolver for SessionResolver<'_> {
     fn validate_session(&self, claims: &Value) -> Result<(), ErrorResponse> {
         if claims["sub"] == "invalid-session" {
-            return Err(ErrorResponse::new(ErrorKind::Validation, "Invalid session: subject rejected"));
+            let errors = [
+                ParseError { path: vec!["sub".into()], message: "subject rejected".into() },
+                ParseError { path: vec![], message: "session rejected".into() },
+            ];
+            return Err(ErrorResponse::new(ErrorKind::Validation, format!(
+                "Invalid session: {}", pretty_print_parse_errors(Some(&errors), Some("Session"))
+            )));
         }
         Ok(())
     }

@@ -27,6 +27,9 @@ use forklaunch_http::{ContractValidationError, ContractValidationLocation};
 use schemars::JsonSchema;
 use serde::{Serialize, de::DeserializeOwned};
 
+mod parse_errors;
+pub use parse_errors::{ParseError, pretty_print_parse_errors};
+
 /// A type usable as a `ForkLaunch` request/response schema.
 ///
 /// Blanket-implemented for every type that is deserializable, serializable,

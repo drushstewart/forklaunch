@@ -4421,3 +4421,30 @@ embedded source/template files are packaged. Logs:
 Pending/ambiguous claims, canceled intents with prior charges, PayPal cancellation
 and canceled-order references remain open; this narrow repair does not close the
 umbrella recovery gate. Checklist remains **658/682 (96.5%), 24 open**.
+
+### 2026-10-13 — Public API source inventory and parse-error formatting
+
+The checked source graph now covers all 44 tracked package manifests, 608 resolved
+public type entry points and 1,662 declaration/re-export records. It retains
+public method signatures, DTO type aliases, local/external re-export edges,
+private module source lists and executable entry points. CI checks drift using
+TypeScript 5.9.3 without loading application code. Regression checks cover
+wildcard/root-directory resolution, explicitly exported validator test helpers,
+packages without root exports, service members, DTOs and private module separation.
+This is syntactic coverage; semantic Rust/fixture mappings remain open.
+
+`forklaunch-validation` now exports the string-path `ParseError` DTO and
+`pretty_print_parse_errors`. Formatting matches **918 actual TypeScript cases**
+for absent/null/empty errors and prefixes, root/nested/empty path segments,
+Unicode, control characters, multiline messages, ordering and three-digit error
+numbers. It does not claim Zod/TypeBox/Garde validator equivalence.
+
+Six native validation tests and strict all-target/all-feature Clippy pass. Fresh
+relocated generated service `WQudHl` builds both SDKs and passes eleven vendored
+OIDC tests. Structured session errors pass HTTP and MCP with exact decoded message
+checks in JSON and text modes, plus the complete listener/startup/shutdown matrix.
+The original fixture compared escaped JSON with literal newlines; that assertion
+was corrected and both runtime modes rerun successfully. All **949** embedded Rust
+source/template files are packaged, including the new formatter example. Logs:
+`/private/tmp/fl-parse-errors-{parity,tests,clippy,generated,runtime,startup,package}.log`.
+Checklist remains **658/682 (96.5%), 24 open**.
