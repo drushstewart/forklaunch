@@ -141,6 +141,14 @@ root `/`, adds missing leading slashes and removes repeated boundary slashes.
 Callers that relied on the earlier Rust helpers' full normalization should use
 `normalize_route_path`.
 
+`open_api_compliant_path` now matches TypeScript's global ASCII-word replacement:
+`/files/:name.pdf` becomes `/files/{name}.pdf`, and `/prefix:id` becomes
+`/prefix{id}`. Unicode outside the ASCII parameter name remains literal. Native
+contracts and route decorators use `route_open_api_path` to preserve their
+whole-segment matching behavior. Use that function if you relied on the former
+Rust helper's output. Converting an embedded parameter to an OpenAPI string does
+not add embedded-parameter matching to the native router.
+
 
 [Export and SDK commands](../docs/adding-projects/rust.md#export-contracts-and-sdks)
 cover contract/OpenAPI imports, both client languages and mixed applications.

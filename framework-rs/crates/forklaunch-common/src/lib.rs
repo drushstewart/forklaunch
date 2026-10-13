@@ -97,9 +97,38 @@ pub fn join_base_path(base_path: &str, child_path: &str) -> String {
     }
 }
 
-/// Converts Express-style parameters into `OpenAPI` path parameters.
+/// Matches TypeScript `openApiCompliantPath`: replace every colon followed by
+/// ASCII word characters, including parameters embedded within path segments.
+/// This is a string conversion, not a declaration of native router support.
 #[must_use]
 pub fn open_api_compliant_path(path: &str) -> String {
+    let mut output = String::with_capacity(path.len());
+    let mut characters = path.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character == ':'
+            && characters
+                .peek()
+                .is_some_and(|next| next.is_ascii_alphanumeric() || *next == '_')
+        {
+            output.push('{');
+            while let Some(next) =
+                characters.next_if(|next| next.is_ascii_alphanumeric() || *next == '_')
+            {
+                output.push(next);
+            }
+            output.push('}');
+        } else {
+            output.push(character);
+        }
+    }
+    output
+}
+
+/// Native whole-segment parameter conversion, paired with native route matching.
+/// Keep this separate from the TypeScript string utility above: mixed literal
+/// and parameter segments require additional native matching support.
+#[must_use]
+pub fn route_open_api_path(path: &str) -> String {
     path.split('/')
         .map(|segment| {
             segment
@@ -233,6 +262,18 @@ mod tests {
         assert_eq!(
             open_api_compliant_path("/users/:id/posts/:postId"),
             "/users/{id}/posts/{postId}"
+        );
+    }
+
+    #[test]
+    fn typescript_path_conversion_is_separate_from_native_route_segments() {
+        assert_eq!(
+            open_api_compliant_path("/files/:name.:ext/prefix:id/:café/:用户/:"),
+            "/files/{name}.{ext}/prefix{id}/{caf}é/:用户/:"
+        );
+        assert_eq!(
+            route_open_api_path("/files/:name.:ext/prefix:id/:café"),
+            "/files/{name.:ext}/prefix:id/{café}"
         );
     }
 

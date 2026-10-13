@@ -4134,3 +4134,20 @@ matrix. All 938 embedded assets are packaged. Logs:
 `/private/tmp/fl-typescript-basic-{parity,adapter-tests,sockets,clippy,generated,package,rbac-regression}.log`.
 Async/custom Basic resource decoders, session-schema validation and remaining
 credential/error transports remain open; checklist stays 657/682 (96.3%), 25 open.
+
+
+OpenAPI path utility receipt (2026-10-13): `open_api_compliant_path` now implements
+the exact public TypeScript global ASCII-word replacement, including literal
+prefixes, file suffixes, adjacent parameters and non-ASCII boundaries. Native
+contract construction and route decoration use explicit `route_open_api_path`,
+preserving their existing whole-segment conversion/matching. This does not claim
+native routing support for partial-segment parameters.
+
+The actual-source common matrix covers 711 inputs across sixteen exports (11,376
+comparisons). All 130 affected common/contract/OpenAPI/Axum/MCP tests and strict
+all-feature/all-target Clippy pass. Generated relocated run `0tl7w8` passes versioned
+field transforms/defaults, raw wire preservation, both SDK compilers and the full
+HTTP/MCP startup/shutdown matrix; all 938 embedded assets are packaged. Logs:
+`/private/tmp/fl-common-openapi-{parity,tests,clippy,generated,package}.log`.
+Native embedded-parameter route matching and the remaining public-symbol audit
+stay open; checklist remains 657/682 (96.3%), 25 open.

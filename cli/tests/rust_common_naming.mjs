@@ -8,8 +8,9 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const {load}=actualValidator(root);
 const reference={...load(path.join(root,'framework/common/src/camelCase.ts')),
  ...load(path.join(root,'framework/common/src/hashString.ts')),
- ...load(path.join(root,'framework/common/src/slashManipulation.ts'))};
-const cases=['/','//','///','////','users','users/','users//','/users///','///users//','//a//b///','','HTTP-Response_id','API-Key','123invalid','123-ABC','123','!!!',' --_./:',
+ ...load(path.join(root,'framework/common/src/slashManipulation.ts')),
+ ...load(path.join(root,'framework/common/src/openApiCompliantPath.ts'))};
+const cases=['/:id','/:name.:ext','/prefix:id','/:café','/:用户','/:','::id','/:id-name','/:123_ABC','/http://localhost:8000/:param','/{existing}/:next', '/:'+'a'.repeat(5000),'/:_/:9', '/:İ/:K/:ß', '/','//','///','////','users','users/','users//','/users///','///users//','//a//b///','','HTTP-Response_id','API-Key','123invalid','123-ABC','123','!!!',' --_./:',
  'foo!bar','foo@bar','foo\tbar','foo\nbar','foo\u00a0bar','foo?bar','foo#bar','foo[bar]',
  '$money','_private','FOO__bar','École.İSTANBUL','Kelvin/ßeta','İstanbul','ßeta','𐐨word','𐐀word','😀hello',
  'a\0b','Σςσ','a'.repeat(5000),String.fromCodePoint(0x10ffff)];

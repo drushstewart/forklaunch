@@ -482,8 +482,7 @@ impl ForkLaunchRouter {
         path: &str,
         mut transform: impl FnMut(MethodRouter) -> MethodRouter,
     ) -> Result<Self, String> {
-        let path =
-            forklaunch_common::open_api_compliant_path(&join_base_path(&self.base_path, path));
+        let path = forklaunch_common::route_open_api_path(&join_base_path(&self.base_path, path));
         if !self.routes.contains_key(&path) {
             return Err("Cannot decorate an unregistered route".into());
         }

@@ -21,7 +21,7 @@ pub use schema_bundle::{bundle_document_schema, bundle_literal_schema_references
 use std::collections::BTreeMap;
 
 use forklaunch_common::{
-    json_array, json_string, json_string_array, normalize_route_path, open_api_compliant_path,
+    json_array, json_string, json_string_array, normalize_route_path, route_open_api_path,
     to_pretty_camel_case,
 };
 
@@ -922,7 +922,7 @@ impl RouteContract {
             name,
             summary: summary.into(),
             method,
-            openapi_path: open_api_compliant_path(&path),
+            openapi_path: route_open_api_path(&path),
             path,
             access: AccessLevel::Public,
             request: RequestContract::default(),
