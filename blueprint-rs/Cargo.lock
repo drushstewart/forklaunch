@@ -950,6 +950,7 @@ dependencies = [
  "forklaunch-openapi",
  "form_urlencoded",
  "http-body",
+ "http-body-util",
  "jsonwebtoken",
  "opentelemetry",
  "serde",

@@ -84,6 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
             cases.push(match plan.select(&request) {
                 Ok(Some((_,version)))=>json!({"version":version.version,"matched":version.matched_versions,"status":200}),
+                Err(errors)=>json!({"status":forklaunch_http::validation_error_response(&errors,"fixture").status_code}),
                 _=>json!({"status":400})
             });
         }

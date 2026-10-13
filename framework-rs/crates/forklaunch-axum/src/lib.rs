@@ -88,7 +88,7 @@ impl AxumApplication {
                 let selection = forklaunch_http::VersionedRoutePlan::compile(route)
                     .map_err(|_| {
                         vec![ContractValidationError::new(
-                            forklaunch_http::ContractValidationLocation::Body,
+                            forklaunch_http::ContractValidationLocation::BodyParserConfiguration,
                             "invalid versioned route schema",
                         )]
                     })
@@ -100,7 +100,10 @@ impl AxumApplication {
                     }
                     Err(validation_errors)
                         if route.options.request_validation
-                            == forklaunch_contract::ValidationMode::Error =>
+                            == forklaunch_contract::ValidationMode::Error
+                            || validation_errors
+                                .iter()
+                                .any(ContractValidationError::is_parser_error) =>
                     {
                         return AxumPreparedRequest {
                             operation_name: Some(route.operation_name.clone()),

@@ -209,6 +209,7 @@ impl FrameworkResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
     Validation,
+    PayloadTooLarge,
     Unauthorized,
     Forbidden,
     NotFound,
@@ -221,6 +222,7 @@ impl ErrorKind {
     pub const fn code(self) -> &'static str {
         match self {
             Self::Validation => "validation_error",
+            Self::PayloadTooLarge => "payload_too_large",
             Self::Unauthorized => "unauthorized",
             Self::Forbidden => "forbidden",
             Self::NotFound => "not_found",
@@ -233,6 +235,7 @@ impl ErrorKind {
     pub const fn status_code(self) -> u16 {
         match self {
             Self::Validation => 400,
+            Self::PayloadTooLarge => 413,
             Self::Unauthorized => 401,
             Self::Forbidden => 403,
             Self::NotFound => 404,
@@ -320,6 +323,9 @@ pub enum ContractValidationLocation {
     Query,
     Header,
     Body,
+    BodyParser,
+    BodySize,
+    BodyParserConfiguration,
     ResponseStatus,
 }
 
@@ -331,6 +337,17 @@ pub struct ContractValidationError {
 }
 
 impl ContractValidationError {
+    /// Parser failures remain fatal even when schema validation is disabled.
+    #[must_use]
+    pub const fn is_parser_error(&self) -> bool {
+        matches!(
+            self.location,
+            ContractValidationLocation::BodyParser
+                | ContractValidationLocation::BodySize
+                | ContractValidationLocation::BodyParserConfiguration
+        )
+    }
+
     #[must_use]
     pub fn new(location: ContractValidationLocation, message: impl Into<String>) -> Self {
         Self {
@@ -455,7 +472,8 @@ impl LocalRouter {
                         contract
                     }
                     Err(errors)
-                        if route.contract.options.request_validation == ValidationMode::Error =>
+                        if route.contract.options.request_validation == ValidationMode::Error
+                            || errors.iter().any(ContractValidationError::is_parser_error) =>
                     {
                         return Ok(validation_error_response(
                             &errors,
@@ -645,11 +663,19 @@ pub fn validation_error_response(
     errors: &[ContractValidationError],
     correlation_id: &str,
 ) -> FrameworkResponse {
-    let kind = if errors
-        .iter()
-        .any(|error| error.location == ContractValidationLocation::ResponseStatus)
-    {
+    let kind = if errors.iter().any(|error| {
+        matches!(
+            error.location,
+            ContractValidationLocation::ResponseStatus
+                | ContractValidationLocation::BodyParserConfiguration
+        )
+    }) {
         ErrorKind::Internal
+    } else if errors
+        .iter()
+        .any(|error| error.location == ContractValidationLocation::BodySize)
+    {
+        ErrorKind::PayloadTooLarge
     } else {
         ErrorKind::Validation
     };

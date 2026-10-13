@@ -1,4 +1,5 @@
 //! Multipart version matching over an already buffered body; no I/O is polled.
+use super::{ContractValidationError, ContractValidationLocation, body_too_large, invalid_body};
 use futures_util::FutureExt;
 use serde_json::{Map, Value};
 
@@ -20,11 +21,19 @@ impl Default for MultipartLimits {
     }
 }
 
-pub(super) fn parse(bytes: &[u8], content_type: &str, limits: MultipartLimits) -> Option<Value> {
+pub(super) fn parse(
+    bytes: &[u8],
+    content_type: &str,
+    limits: MultipartLimits,
+) -> Result<Value, ContractValidationError> {
     if limits.parts == 0 || limits.field_bytes == 0 || limits.total_bytes == 0 {
-        return None;
+        return Err(ContractValidationError::new(
+            ContractValidationLocation::BodyParserConfiguration,
+            "invalid multipart limits",
+        ));
     }
-    let boundary = multer::parse_boundary(content_type).ok()?;
+    let boundary = multer::parse_boundary(content_type)
+        .map_err(|_| invalid_body("invalid multipart boundary"))?;
     // This stream only contains immediately ready, owned memory. Poll once;
     // never nest an executor or block a runtime thread waiting for I/O.
     let stream = futures_util::stream::iter([Ok::<_, std::io::Error>(bytes.to_vec())]);
@@ -33,23 +42,34 @@ pub(super) fn parse(bytes: &[u8], content_type: &str, limits: MultipartLimits) -
         let mut fields = Map::new();
         let mut count = 0_usize;
         let mut total = 0_usize;
-        while let Some(mut field) = multipart.next_field().await.ok()? {
+        while let Some(mut field) = multipart
+            .next_field()
+            .await
+            .map_err(|_| invalid_body("invalid multipart body"))?
+        {
             count += 1;
             if count > limits.parts {
-                return None;
+                return Err(body_too_large("multipart body exceeds limit"));
             }
-            let name = field.name()?.to_owned();
+            let name = field
+                .name()
+                .ok_or_else(|| invalid_body("multipart field has no name"))?
+                .to_owned();
             let file = field.file_name().is_some()
                 || field.content_type().is_some_and(|mime| {
                     mime.essence_str()
                         .eq_ignore_ascii_case("application/octet-stream")
                 });
             let mut bytes = Vec::new();
-            while let Some(chunk) = field.chunk().await.ok()? {
+            while let Some(chunk) = field
+                .chunk()
+                .await
+                .map_err(|_| invalid_body("invalid multipart body"))?
+            {
                 if chunk.len() > limits.field_bytes.saturating_sub(bytes.len())
                     || chunk.len() > limits.total_bytes.saturating_sub(total)
                 {
-                    return None;
+                    return Err(body_too_large("multipart body exceeds limit"));
                 }
                 total += chunk.len();
                 bytes.extend_from_slice(&chunk);
@@ -57,14 +77,17 @@ pub(super) fn parse(bytes: &[u8], content_type: &str, limits: MultipartLimits) -
             let value = if file {
                 Value::Array(bytes.into_iter().map(Value::from).collect())
             } else {
-                Value::String(String::from_utf8(bytes).ok()?)
+                Value::String(
+                    String::from_utf8(bytes)
+                        .map_err(|_| invalid_body("invalid multipart UTF-8 field"))?,
+                )
             };
             fields.insert(name, value);
         }
-        Some(Value::Object(fields))
+        Ok(Value::Object(fields))
     }
     .now_or_never()
-    .flatten()
+    .unwrap_or_else(|| Err(invalid_body("multipart parser did not complete")))
 }
 
 #[cfg(test)]
@@ -81,7 +104,7 @@ mod tests {
         };
         assert_eq!(
             parse(BODY, MIME, limits),
-            Some(serde_json::json!({"a":"two"}))
+            Ok(serde_json::json!({"a":"two"}))
         );
         for limits in [
             MultipartLimits { parts: 1, ..limits },
@@ -95,9 +118,19 @@ mod tests {
             },
             MultipartLimits { parts: 0, ..limits },
         ] {
-            assert!(parse(BODY, MIME, limits).is_none());
+            assert!(parse(BODY, MIME, limits).is_err());
         }
-        assert!(parse(BODY, "multipart/form-data", limits).is_none());
-        assert!(parse(&BODY[..BODY.len() - 10], MIME, limits).is_none());
+        let errors = [parse(BODY, MIME, MultipartLimits { parts: 0, ..limits }).unwrap_err()];
+        assert_eq!(
+            crate::validation_error_response(&errors, "fixture").status_code,
+            500
+        );
+        let errors = [parse(BODY, MIME, MultipartLimits { parts: 1, ..limits }).unwrap_err()];
+        assert_eq!(
+            crate::validation_error_response(&errors, "fixture").status_code,
+            413
+        );
+        assert!(parse(BODY, "multipart/form-data", limits).is_err());
+        assert!(parse(&BODY[..BODY.len() - 10], MIME, limits).is_err());
     }
 }

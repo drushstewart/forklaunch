@@ -531,7 +531,13 @@ Text fields become strings and file fields become byte arrays; repeated names
 use the last part, and overwritten parts still count toward limits. The matcher
 polls only ready memory and does not start an executor. Handlers retain the exact
 original body. Native byte-array schemas are supported; nested OpenAPI opaque
-file schemas and parser-limit error-status equivalence remain incomplete.
+file schemas remain incomplete.
+
+Parser failures remain fatal when schema validation is disabled, including for
+named body schemas without embedded JSON Schema. Form parameter and multipart
+size limits return 413; malformed bodies and form nesting overflow return 400;
+invalid multipart limits return 500. Streamed request-body limits also return
+413, while ordinary body-read failures return 400 without exposing I/O details.
 
 Local handlers read `FrameworkRequest.version`; Axum handlers can extract
 `Extension<forklaunch_http::SelectedVersion>`. This contains `version` and

@@ -27,19 +27,26 @@ const cases=['value=a','value=a+b','value=%E6%B0%B4','value=','value','value=a&v
 cases.push('a[b=c]=x','a%5Bb=c%5D=x','a[b%3Dc]=x','a[b]=x','a[0]=x','a[2]=x&a[0]=y','a[][]=x','[]=x','[x]=a','a[b][c]=x','a[]=x&a[b]=y','a[b]=x&a[]=y','a=x&a[b]=y','a[b]=x&a=y','a[b]=x&a=','a[]=x&a[]=y&a[0]=z','a[0][b]=x&a[0][c]=y','a[][b]=x&a[][c]=y','a[100]=x','a[99]=x&a[]=y','a[100]=x&a[]=y','a[100]=x&a=y','a=x&a[100]=y','a[__proto__][x]=y','a[constructor][prototype]=x','a[b]suffix[c]=x','a[b[c]]=x','a[unclosed=x','a[[]b=x','a[01]=x&a[1]=y',`a${'[b]'.repeat(32)}=x`);
 const atoms=['a=x','a=','a[]=y','a[0]=z','a[2]=p','a[b]=q','a[][b]=r','a[100]=s','a[101][b]=t','a[__proto__]=u'];
 for(const first of atoms)for(const second of atoms)for(const third of atoms)cases.push([first,second,third].join('&'));
-const fixtures=[];
-for(const body of cases) {
+const failureCases=['a=x&'.repeat(1000),`a${'[b]'.repeat(33)}=x`];
+const fixtures=[],expected=[];
+for(const body of [...cases,...failureCases]) {
  const bytes=Buffer.from(body),req=Readable.from([bytes]);
  req.headers={'content-type':'application/x-www-form-urlencoded','content-length':String(bytes.length)};
  req.contractDetails={versions:{first:{body:{urlEncodedForm:{}}},last:{body:{urlEncodedForm:{}}}}};req.schemaValidator={};
+ let failure;
  await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(Error('parser deadline')),5000);
   contentParse()(req,{},error=>{clearTimeout(timer);error?reject(error):resolve();});
- });
+ }).catch(error=>{failure=error;});
+ if(failure) {
+  assert.ok(failureCases.includes(body));assert.ok([400,413].includes(failure.status));
+  fixtures.push({kind:'form',versions:[{name:'fallback',schema:{type:'object'}}],cases:[body]});expected.push([{status:failure.status}]);continue;
+ }
  assert.ok(req.body && typeof req.body==='object',body);
  assert.deepEqual(req._rawBody,bytes);
  fixtures.push({kind:'form',versions:[{name:'fallback',schema:{type:'object'}},{name:'exact',schema:{const:req.body}}],cases:[body]});
+ expected.push([{version:'exact',matched:['fallback','exact'],status:200}]);
 }
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
-for(const [i,result] of native.entries()) assert.deepEqual(result.cases,[{version:'exact',matched:['fallback','exact'],status:200}],cases[i]);
-console.log(`PASS ${cases.length} actual TypeScript wire-parser/native URL-encoded version comparisons, including repeats, bracket arrays and malformed escapes`);
+for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],[...cases,...failureCases][i]);
+console.log(`PASS ${fixtures.length} actual TypeScript wire-parser/native URL-encoded version comparisons, including repeats, bracket arrays and malformed escapes`);

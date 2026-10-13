@@ -44,9 +44,9 @@ try {
   const response=await fetch(`${base}/versioned-form`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:raw});
   assert.equal(response.status,200);assert.deepEqual(await response.json(),{version:'v3',raw});
  }
- for(const body of ['value=','value=a&value=b','value[nested]=a']) {
+ for(const [body,status] of [['value=',400],['value=a&value=b',400],['value[nested]=a',400],['a=x&'.repeat(1000),413],[`a${'[b]'.repeat(33)}=x`,400]]) {
   const response=await fetch(`${base}/versioned-form`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
-  assert.equal(response.status,400,body);
+  assert.equal(response.status,status,body);
  }
  for(const [label,version,status] of [['a','v1',201],['水a','v2',202]]) {
   const form=new FormData();form.append('label',label);form.append('file',new Blob([new Uint8Array([0,255,128])]),'file.bin');

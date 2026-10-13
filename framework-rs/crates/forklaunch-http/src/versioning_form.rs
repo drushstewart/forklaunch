@@ -1,19 +1,20 @@
 //! Bounded URL-encoded matching for strings, arrays and nested bracket paths.
+use super::{ContractValidationError, body_too_large, invalid_body};
 use serde_json::Value;
 #[path = "versioning_form_tree.rs"]
 mod tree;
 
-pub(super) fn parse(bytes: &[u8]) -> Option<Value> {
-    let text = std::str::from_utf8(bytes).ok()?;
+pub(super) fn parse(bytes: &[u8]) -> Result<Value, ContractValidationError> {
+    let text = std::str::from_utf8(bytes).map_err(|_| invalid_body("invalid UTF-8 form body"))?;
     let parameter_count = text.bytes().filter(|byte| *byte == b'&').count() + 1;
     if parameter_count > 1000 {
-        return None;
+        return Err(body_too_large("form exceeds 1000 parameters"));
     }
-    let limit = u64::try_from(parameter_count.max(100)).ok()?;
+    let limit = u64::try_from(parameter_count.max(100)).expect("bounded parameter count");
     let mut groups = std::collections::BTreeMap::<String, (usize, Vec<Value>)>::new();
     for (index, part) in text.split('&').enumerate() {
         if index >= 1000 {
-            return None;
+            return Err(body_too_large("form exceeds 1000 parameters"));
         }
         let part = brackets(part);
         let separator = part
@@ -41,13 +42,16 @@ pub(super) fn parse(bytes: &[u8]) -> Option<Value> {
     });
     let mut fields = tree::Node::empty();
     for (key, (_, values)) in groups {
-        let node = tree::wrap(&key, tree::Node::values(values), limit)?;
+        let node = tree::wrap(&key, tree::Node::values(values), limit)
+            .ok_or_else(|| invalid_body("form exceeds nesting depth"))?;
         fields = fields.merge(node, limit);
         if !fields.within_depth(0) {
-            return None;
+            return Err(invalid_body("form exceeds merged nesting depth"));
         }
     }
-    fields.into_value(0)
+    fields
+        .into_value(0)
+        .ok_or_else(|| invalid_body("form exceeds merged nesting depth"))
 }
 
 // qs uses decodeURIComponent: malformed percent escapes or UTF-8 retain the
@@ -99,25 +103,25 @@ mod tests {
     use serde_json::json;
     #[test]
     fn parameter_depth_limits_and_decoding_are_explicit() {
-        assert!(parse("a=x&".repeat(1000).as_bytes()).is_none());
-        assert!(parse("a=x&".repeat(999).as_bytes()).is_some());
-        assert!(parse(format!("a{}=x", "[b]".repeat(33)).as_bytes()).is_none());
+        assert!(parse("a=x&".repeat(1000).as_bytes()).is_err());
+        assert!(parse("a=x&".repeat(999).as_bytes()).is_ok());
+        assert!(parse(format!("a{}=x", "[b]".repeat(33)).as_bytes()).is_err());
         assert_eq!(
             parse(b"a[b]=x&a[c][]=y&a[c][]=z"),
-            Some(json!({"a":{"b":"x","c":["y","z"]}}))
+            Ok(json!({"a":{"b":"x","c":["y","z"]}}))
         );
-        assert!(parse(&[255]).is_none());
+        assert!(parse(&[255]).is_err());
         assert_eq!(
             parse(b"__proto__=x&constructor=y&=ignored"),
-            Some(json!({"constructor":"y"}))
+            Ok(json!({"constructor":"y"}))
         );
         assert_eq!(
             parse(b"a=%ff+%20&b=%E6%B0%B4&c=%2"),
-            Some(json!({"a":"%ff %20","b":"水","c":"%2"}))
+            Ok(json!({"a":"%ff %20","b":"水","c":"%2"}))
         );
         assert_eq!(
             parse(b"a=1&a[]=2&a%5B%5D=3"),
-            Some(json!({"a":["1","2","3"]}))
+            Ok(json!({"a":["1","2","3"]}))
         );
     }
 }

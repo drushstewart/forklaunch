@@ -1240,6 +1240,7 @@ dependencies = [
  "futures-util",
  "garde",
  "http-body 1.0.1",
+ "http-body-util",
  "jsonwebtoken",
  "opentelemetry",
  "opentelemetry_sdk",

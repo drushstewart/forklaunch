@@ -135,7 +135,9 @@ impl VersionedRoutePlan {
         if self.variants.is_empty() {
             return Ok(None);
         }
-        let body_value = self.body_value(request, limits);
+        let body_value = self
+            .body_value(request, limits)
+            .map_err(|error| vec![error])?;
         let mut matched = Vec::new();
         let mut selected = None;
         for variant in &self.variants {
@@ -162,35 +164,58 @@ impl VersionedRoutePlan {
             })
     }
     // Versions share a parser. Decode once, even when many schemas are tried.
-    fn body_value(&self, request: &FrameworkRequest, limits: MultipartLimits) -> Option<Value> {
-        let variant = self.variants.iter().find(|variant| {
-            matches!(
-                variant.body,
-                Some(BodyValidator::Value(_) | BodyValidator::Bytes(_))
-            )
-        })?;
-        let kind = variant.route.request.body.as_ref()?.kind;
+    fn body_value(
+        &self,
+        request: &FrameworkRequest,
+        limits: MultipartLimits,
+    ) -> Result<Option<Value>, ContractValidationError> {
+        let Some(body) = self
+            .variants
+            .first()
+            .and_then(|variant| variant.route.request.body.as_ref())
+        else {
+            return Ok(None);
+        };
         let bytes = match &request.body {
             Body::Empty => &[][..],
             Body::Text(text) => text.as_bytes(),
             Body::Binary(bytes) => bytes.as_slice(),
         };
-        match kind {
-            BodyKind::Json | BodyKind::Unknown => serde_json::from_slice(bytes).ok(),
-            BodyKind::File | BodyKind::Binary => Some(Value::Array(
-                bytes.iter().copied().map(Value::from).collect(),
-            )),
-            BodyKind::UrlEncoded => form::parse(bytes),
+        let value = match body.kind {
+            BodyKind::Json | BodyKind::Unknown => {
+                serde_json::from_slice(bytes).map_err(|_| invalid_body("invalid JSON body"))?
+            }
+            BodyKind::File | BodyKind::Binary => {
+                if !self
+                    .variants
+                    .iter()
+                    .any(|variant| matches!(variant.body, Some(BodyValidator::Bytes(_))))
+                {
+                    return Ok(None);
+                }
+                Value::Array(bytes.iter().copied().map(Value::from).collect())
+            }
+            BodyKind::UrlEncoded => form::parse(bytes)?,
             BodyKind::Multipart => multipart::parse(
                 bytes,
-                crate::header_value(&request.headers, "content-type")?,
+                crate::header_value(&request.headers, "content-type")
+                    .ok_or_else(|| invalid_body("missing multipart content type"))?,
                 limits,
+            )?,
+            _ => Value::String(
+                std::str::from_utf8(bytes)
+                    .map_err(|_| invalid_body("invalid UTF-8 body"))?
+                    .into(),
             ),
-            _ => std::str::from_utf8(bytes)
-                .ok()
-                .map(|text| Value::String(text.into())),
-        }
+        };
+        Ok(Some(value))
     }
+}
+fn invalid_body(message: &str) -> ContractValidationError {
+    ContractValidationError::new(ContractValidationLocation::BodyParser, message)
+}
+fn body_too_large(message: &str) -> ContractValidationError {
+    ContractValidationError::new(ContractValidationLocation::BodySize, message)
 }
 fn parser_kind(body: Option<&forklaunch_contract::BodyContract>) -> Option<BodyKind> {
     body.map(|body| match body.kind {
@@ -476,6 +501,52 @@ mod tests {
                     "a-last"
                 }
             );
+        }
+    }
+    #[test]
+    fn parser_failures_are_fatal_even_without_embedded_schemas_or_validation() {
+        use forklaunch_contract::ValidationMode;
+        for mode in [
+            ValidationMode::Error,
+            ValidationMode::Warning,
+            ValidationMode::None,
+        ] {
+            for (kind, mime, wire, status) in [
+                (BodyKind::Json, "application/json", "{".into(), 400),
+                (
+                    BodyKind::UrlEncoded,
+                    "application/x-www-form-urlencoded",
+                    "a=x&".repeat(1000),
+                    413,
+                ),
+                (
+                    BodyKind::UrlEncoded,
+                    "application/x-www-form-urlencoded",
+                    format!("a{}=x", "[b]".repeat(33)),
+                    400,
+                ),
+            ] {
+                let mut route = contract();
+                route.options.request_validation = mode;
+                for version in route.versions.values_mut() {
+                    let body = version.request.body.as_mut().unwrap();
+                    body.kind = kind;
+                    body.content_type = Some(mime.into());
+                    body.schema.json_schema = None;
+                }
+                let mut router = LocalRouter::new();
+                router.register(
+                    route,
+                    |_: FrameworkRequest| -> forklaunch_common::FrameworkResult<FrameworkResponse> {
+                        panic!("parser failure entered handler")
+                    },
+                );
+                let response = router
+                    .execute(request(&wire).with_header("content-type", mime))
+                    .unwrap();
+                assert_eq!(response.status_code, status);
+                assert!(response.body.as_text().unwrap().contains("version-test"));
+            }
         }
     }
     #[test]

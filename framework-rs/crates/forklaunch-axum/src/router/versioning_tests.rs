@@ -301,7 +301,50 @@ async fn versioned_multipart_keeps_wire_bytes_and_respects_shared_limits() {
         let response = limited.oneshot(request()).await.unwrap();
         assert_eq!(
             response.status().as_u16(),
-            if text == "a" { 201 } else { 400 }
+            if text == "a" {
+                201
+            } else if text.is_empty() {
+                400
+            } else {
+                413
+            }
         );
     }
+}
+
+#[tokio::test]
+async fn parser_and_transport_limits_remain_fatal_when_validation_is_disabled() {
+    let mut route = RouteContract::post("Parse", "Parse", "/parse");
+    route.options.request_validation = ValidationMode::None;
+    route = route.with_version(VersionedContract {
+        version: "v1".into(),
+        request: RequestContract::default().with_body(BodyContract::json("NamedInput")),
+        responses: vec![],
+    });
+    let app = ForkLaunchRouter::new(ServiceInfo::new("parse", "1"))
+        .with_config(RouterConfig {
+            body_limit: 8,
+            ..Default::default()
+        })
+        .post(route, || async { StatusCode::IM_A_TEAPOT })
+        .into_router();
+    for (wire, status) in [("{", 400), ("0123456789", 413)] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/parse")
+                    .header("content-type", "application/json")
+                    .body(Body::from(wire))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), status);
+    }
+    let response = body_read_error_response(&axum::Error::new(std::io::Error::other(
+        "fixture private I/O failure",
+    )));
+    assert_eq!(response.status(), 400);
+    let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("private"));
 }

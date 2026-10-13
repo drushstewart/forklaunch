@@ -3246,3 +3246,27 @@ matching is complete for this profile; nested OpenAPI opaque-file annotations,
 parser-limit error-status equivalence, charset/configurable parser behavior and
 arbitrary transformations remain open. Mixed text/file duplicate-name ordering
 retains the already documented nonportable TypeScript behavior.
+
+### 2026-10-13 — Parser failure statuses and disabled-validation behavior
+
+Body parsing now distinguishes malformed input (400), form/multipart limits
+(413), and invalid multipart configuration (500). Failures remain fatal when
+schema validation is None/Warning and when a body has only a named schema.
+Local, metadata and live Axum adapters preserve these distinctions. Streamed
+Axum body-limit errors are identified through their typed error chain and return
+413; unrelated read errors remain 400 and do not expose I/O details. Public error
+classification adds body parser/size/configuration locations and PayloadTooLarge.
+Both workspace locks include Axum's direct http-body-util dependency.
+
+Validation: **1,062 actual TypeScript form-parser/native comparisons**, including
+parameter-limit 413 and nesting-limit 400; 59 Axum and 27 HTTP tests; strict
+all-feature/all-target Clippy; blueprint checks; and 901 embedded package files.
+Fresh generated `run.ctLYC7` verifies error statuses with the full HTTP/MCP media
+matrix and both SDKs through three artifact forms/native generators, startup,
+discovery and graceful shutdown. Receipts:
+`/private/tmp/fl-version-parser-status-{actual,units,clippy,blueprint,generated,package}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. The standard parser-limit status
+gap is resolved. The versioning gate still includes nested opaque-file schema
+annotations, configurable parser/charset behavior and request transformations;
+this receipt does not claim every TypeScript error payload or middleware hook.

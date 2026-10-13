@@ -799,10 +799,9 @@ async fn validate_contract(
     };
 
     let (mut parts, body) = request.into_parts();
-    let Ok(bytes) = to_bytes(body, state.body_limit).await else {
-        return framework_response_to_axum(
-            ErrorResponse::new(ErrorKind::Validation, "request body exceeds limit").to_response(),
-        );
+    let bytes = match to_bytes(body, state.body_limit).await {
+        Ok(bytes) => bytes,
+        Err(error) => return body_read_error_response(&error),
     };
 
     let framework_request = build_framework_request(&contract, &parts, &bytes);
@@ -882,6 +881,22 @@ async fn validate_contract(
     validate_response_status(&contract, response, &correlation_id)
 }
 
+fn body_read_error_response(error: &axum::Error) -> Response {
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(error) = source {
+        if error.is::<http_body_util::LengthLimitError>() {
+            return framework_response_to_axum(
+                ErrorResponse::new(ErrorKind::PayloadTooLarge, "request body exceeds limit")
+                    .to_response(),
+            );
+        }
+        source = error.source();
+    }
+    framework_response_to_axum(
+        ErrorResponse::new(ErrorKind::Validation, "invalid request body").to_response(),
+    )
+}
+
 fn select_contract_version(
     plan: &forklaunch_http::VersionedRoutePlan,
     contract: RouteContract,
@@ -898,7 +913,14 @@ fn select_contract_version(
             parts.extensions.insert(version);
             Ok(selected)
         }
-        Err(errors) if contract.options.request_validation == ValidationMode::Error => Err(errors),
+        Err(errors)
+            if contract.options.request_validation == ValidationMode::Error
+                || errors
+                    .iter()
+                    .any(forklaunch_http::ContractValidationError::is_parser_error) =>
+        {
+            Err(errors)
+        }
         Ok(None) | Err(_) => Ok(contract),
     }
 }
