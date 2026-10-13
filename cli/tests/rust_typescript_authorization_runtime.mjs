@@ -11,7 +11,7 @@ let errors='';server.stderr.on('data',chunk=>errors+=chunk);
 const timer=setTimeout(()=>server.kill('SIGKILL'),60000);
 try {
  const base=await new Promise((resolve,reject)=>{let output='';server.stdout.on('data',chunk=>{output+=chunk;const match=output.match(/listening on (http:\/\/[^\s]+)/);if(match)resolve(match[1]);});server.once('exit',()=>reject(Error(errors)));});
- await probeMcp(base,['checkPermissions','checkScope','checkFeatures','checkUnconfigured','checkBasic','checkResource','checkJwtResource','checkHmac']);
+ await probeMcp(base,['checkPermissions','checkScope','checkFeatures','checkUnconfigured','checkBasic','checkResource','checkJwtResource','checkHmac','checkSession','checkMissingSessionCallback']);
  const cases=[
   ['permissions',{permissions:['read']},200],['permissions',{roles:['admin']},403],
   ['scope',{scopes:['team']},200],['scope',{scopes:['admin']},403],['scope',{scopes:['team','unknown']},403],
@@ -79,6 +79,24 @@ try {
   const body=await response.json();
   const result=await mcpRpc(base,'tools/call',{name:'checkHmac',arguments:{}},headers);assert.equal(result.isError,status!==200);
   if(status===200){assert.deepEqual(body,{subject:'trusted-peer'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
+ }
+ const fullSession={scopes:['team'],permissions:['read'],active_subscription:true,features:['reports']};
+ for(const [name,claims,status,message] of [
+  ['session',fullSession,200,null],
+  ['session',{...fullSession,sub:'invalid-session'},400,'Invalid session: subject rejected'],
+  ['session',{...fullSession,scopes:[]},403,'Invalid scope for operation.'],
+  ['session',{...fullSession,permissions:[],roles:['admin']},403,'Invalid Authorization permissions.'],
+  ['session',{...fullSession,active_subscription:false},403,'Active subscription required.'],
+  ['session',{...fullSession,features:[]},403,'Required features not available.'],
+  ['missing-session-callback',fullSession,500,'No permission surfacing function provided.'],
+ ]) {
+  const headers={authorization:`Bearer ${token(claims)}`};
+  const response=await fetch(`${base}/policy/${name}`,{headers});assert.equal(response.status,status,`ordered ${name}`);
+  const body=await response.json();
+  const result=await mcpRpc(base,'tools/call',{name:name==='session'?'checkSession':'checkMissingSessionCallback',arguments:{}},headers);
+  assert.equal(result.isError,status!==200);
+  if(status===200){assert.deepEqual(body,{subject:'fixture-subject',team:'ordered-session-team'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
+  else assert.ok(JSON.stringify(body).includes(message));
  }
  server.kill('SIGTERM');const [code,signal]=await exited;assert.equal(code,0,`${signal}: ${errors}`);
  console.log('PASS generated verified-session authorization: HTTP/MCP Basic login and async Basic/JWT resource verification, HMAC signatures/freshness, permissions, exact scopes, subscriptions, features, missing policies, rejected credentials and graceful shutdown');

@@ -4322,3 +4322,27 @@ CLI log: `/private/tmp/fl-rust-release-cli-tests.log`. Local validation ran on m
 new Linux workflow has not been executed here. No public crate or GitHub release
 was uploaded. Optional adapter runtime checks, public publication/installation and
 AWS deployment remain separate gates. Checklist: **658/682 (96.5%), 24 open**.
+
+
+Ordered session callback receipt (2026-10-13):
+`TypeScriptRbacPolicy::authorize_session` accepts trusted request-scoped
+`TypeScriptSessionResolver` implementations, validates original verified claims,
+then awaits scopes, permissions or roles, subscription and features in middleware
+order. Rejections stop subsequent lookups; authenticated/internal access skips
+permission/role callbacks. Missing required callbacks return the exact TypeScript
+500 messages. Missing scope callbacks retain the upstream skip behavior. Parsed
+defaults/transforms never replace the original session. Applications still own
+credential verification, identity binding, schema validation and public callback
+error formatting.
+
+All 2,335 actual middleware callback-order comparisons pass, including controlled
+validator outcomes, original claims, missing callbacks, empty grants, access,
+precedence and async failures. All 36 auth tests and strict all-feature/all-target
+Clippy pass; native regressions include cancellation without later callbacks.
+Generated relocated run `r2lhuP` compiles both SDKs, executes vendored OIDC tests,
+and validates real signed-JWT session validation/ordered grants over HTTP/MCP,
+alongside existing Basic/JWT/HMAC/RBAC cases and the complete listener/startup/
+shutdown matrix. The comparison fixture runs in CI. Logs:
+`/private/tmp/fl-typescript-session-{parity,tests,clippy,generated,package}.log`.
+Schema-validator equivalence, remaining callback/date boundaries and error
+envelopes stay open. Checklist remains **658/682 (96.5%), 24 open**.

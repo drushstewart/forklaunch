@@ -303,3 +303,23 @@ existing strict RFC3339 verifier with a 60-second skew limit and rejects missing
 keys, invalid signatures and expired credentials on HTTP and MCP. Error messages
 from custom callbacks must be explicitly public; native structured envelopes and
 strict request-HMAC APIs remain unchanged.
+
+
+Ordered session callback review (2026-10-13): the opt-in session resolver runs
+only after application credential verification. Validation sees immutable original
+claims; parsed transformations/defaults are intentionally not substituted. Trusted
+resolvers can hold request/tenant context and must obtain grants from authoritative
+application state. Scope, permission/role, subscription and feature callbacks run
+sequentially with short-circuiting; absent required callbacks return explicit 500s.
+Missing scope callbacks preserve the TypeScript skip behavior, so applications
+requiring scope enforcement must configure one. Callback errors are explicitly
+public and must be redacted at the provider boundary. Dropping the policy future
+stops polling it, without retries or starting later callbacks; independently
+spawned provider work remains application-owned.
+
+The adapter creates no principal and does not replace schema validation. Generated
+JWT-authenticated HTTP/MCP tests cover validation, each grant rejection, permission
+precedence, missing callbacks and successful original-claim propagation. 2,335
+actual middleware comparisons cover scheduling and unchanged-claim behavior with
+controlled validator outcomes. Native tests verify default missing callbacks and
+cancellation; full schema/error-envelope equivalence remains open.

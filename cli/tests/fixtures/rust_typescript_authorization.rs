@@ -6,6 +6,7 @@ use forklaunch_auth::{
         basic::{verify_basic, verify_basic_resource},
         hmac::verify_hmac,
         jwt::verify_jwt_resource,
+        session::TypeScriptSessionResolver,
     },
     verify_jwt_hs256,
 };
@@ -24,6 +25,8 @@ pub fn contracts() -> Vec<RouteContract> {
         "resource",
         "jwt-resource",
         "hmac",
+        "session",
+        "missing-session-callback",
     ]
     .into_iter()
     .map(|name| {
@@ -126,10 +129,30 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
                 .ok_or_else(|| AuthError::MissingCredentials.to_error_response())?;
             let token = parse_bearer(header).ok_or_else(invalid)?;
             let principal = verify_jwt_hs256(token, SECRET).map_err(|_| invalid())?;
+            if matches!(contract.operation_name.as_str(), "checkSession" | "checkMissingSessionCallback") {
+                let claims = json!({"sub":principal.subject,"team":"ordered-session-team"});
+                let resolver = SessionResolver {
+                    principal: &principal,
+                    missing_permissions: contract.operation_name == "checkMissingSessionCallback",
+                };
+                TypeScriptRbacPolicy {
+                    required_scope: Some("team".into()),
+                    scope_hierarchy: Some(vec!["team".into()]),
+                    allowed_permissions: Some(vec!["read".into()]),
+                    allowed_roles: Some(vec!["admin".into()]),
+                    require_active_subscription: true,
+                    required_features: vec!["reports".into()],
+                    ..Default::default()
+                }.authorize_session(&claims, Some(contract.access), &resolver).await?;
+                return Ok(AuthenticatedSession::new(principal, claims));
+            }
             Ok(AuthenticatedSession::new(principal, json!({})))
         })
         .with_authorizer(|session, contract| {
             if contract.operation_name == "checkHmac" { return Ok(()); }
+            // These two routes perform their complete async policy in the
+            // authenticator above, before an authenticated session is returned.
+            if matches!(contract.operation_name.as_str(), "checkSession" | "checkMissingSessionCallback") { return Ok(()); }
             let policy = match contract.operation_name.as_str() {
                 "checkResource" | "checkJwtResource" => TypeScriptRbacPolicy {
                     allowed_roles: Some(vec!["admin".into()]),
@@ -169,4 +192,36 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
         );
     }
     router
+}
+
+struct SessionResolver<'a> {
+    principal: &'a forklaunch_auth::Principal,
+    missing_permissions: bool,
+}
+impl TypeScriptSessionResolver for SessionResolver<'_> {
+    fn validate_session(&self, claims: &Value) -> Result<(), ErrorResponse> {
+        if claims["sub"] == "invalid-session" {
+            return Err(ErrorResponse::new(ErrorKind::Validation, "Invalid session: subject rejected"));
+        }
+        Ok(())
+    }
+    async fn scopes(&self, _: &Value) -> Result<Option<Vec<String>>, ErrorResponse> {
+        tokio::task::yield_now().await;
+        Ok(Some(self.principal.scopes.clone()))
+    }
+    async fn permissions(&self, _: &Value) -> Result<Option<Vec<String>>, ErrorResponse> {
+        tokio::task::yield_now().await;
+        Ok((!self.missing_permissions).then(|| self.principal.permissions.clone()))
+    }
+    async fn roles(&self, _: &Value) -> Result<Option<Vec<String>>, ErrorResponse> {
+        panic!("permission rules take precedence over role callbacks")
+    }
+    async fn subscription(&self, _: &Value) -> Result<Option<bool>, ErrorResponse> {
+        tokio::task::yield_now().await;
+        Ok(Some(self.principal.active_subscription))
+    }
+    async fn features(&self, _: &Value) -> Result<Option<Vec<String>>, ErrorResponse> {
+        tokio::task::yield_now().await;
+        Ok(Some(self.principal.features.clone()))
+    }
 }

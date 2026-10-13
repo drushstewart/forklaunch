@@ -2,6 +2,7 @@
 pub mod basic;
 pub mod hmac;
 pub mod jwt;
+pub mod session;
 use crate::Principal;
 use forklaunch_contract::AccessLevel;
 use forklaunch_http::{ErrorKind, ErrorResponse};

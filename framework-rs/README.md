@@ -115,6 +115,19 @@ status and public message; the native HTTP response remains a JSON envelope.
 Applications resolve grants before invoking this policy. HMAC routes have no
 session and bypass the session policy in TypeScript.
 
+For request-scoped grant lookups, `TypeScriptRbacPolicy::authorize_session` accepts
+a `typescript::session::TypeScriptSessionResolver`. It checks application-owned
+session validation, then awaits scopes, permissions or roles, subscription and
+features in middleware order. Earlier rejection prevents later lookups; missing
+required grant callbacks return the matching 500. Missing scope callbacks skip
+scope checks in this compatibility profile. Validation checks original claims
+without replacing them with defaults or transformed output. Implementations can
+hold trusted tenant/request context and must return only public callback errors.
+Call this after credential verification and before returning an authenticated
+session; ensure the subsequent router authorizer uses the same complete policy.
+The helper does not issue credentials, create principals or implement a schema
+validator. Callback cancellation does not retry work or begin subsequent lookups.
+
 `forklaunch_auth::typescript::basic::verify_basic` explicitly enables the
 TypeScript synchronous Basic-login parsing profile. It matches case-sensitive
 prefixes, first-space token selection, Node base64 decoding, replacement UTF-8
