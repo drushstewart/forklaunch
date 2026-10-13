@@ -91,6 +91,17 @@ impl RedisTtlCache {
         Ok(Self { config, connection })
     }
 
+    #[must_use]
+    pub const fn config(&self) -> &RedisTtlCacheConfig {
+        &self.config
+    }
+
+    /// Native equivalent of the provider client escape hatch. Raw commands bypass
+    /// cache key/TTL validation and any outer JSON/encryption codec.
+    pub fn connection_mut(&mut self) -> &mut Connection {
+        &mut self.connection
+    }
+
     /// Retrieves the value and millisecond expiry together using MULTI/EXEC.
     /// # Errors
     /// Rejects invalid keys and backend failures.
@@ -190,13 +201,23 @@ impl RedisTtlCache {
             pattern.push(character);
         }
         pattern.push('*');
+        self.list_keys_matching(&pattern)
+    }
+
+    /// Lists sorted unique live keys using a Redis glob pattern and SCAN.
+    /// TypeScript `listKeys(prefix)` corresponds to `format!("{prefix}*")`.
+    /// SCAN is not a snapshot; concurrent key changes may affect results.
+    ///
+    /// # Errors
+    /// Returns an error when Redis rejects a scan.
+    pub fn list_keys_matching(&mut self, pattern: &str) -> FrameworkResult<Vec<String>> {
         let mut cursor = 0_u64;
         let mut keys = BTreeSet::new();
         loop {
             let (next, page): (u64, Vec<String>) = redis::cmd("SCAN")
                 .arg(cursor)
                 .arg("MATCH")
-                .arg(&pattern)
+                .arg(pattern)
                 .arg("COUNT")
                 .arg(256)
                 .query(&mut self.connection)
@@ -245,6 +266,21 @@ impl TtlCache for RedisTtlCache {
             .arg(normalize_key(key)?)
             .query(&mut self.connection)
             .map_err(backend_error)
+    }
+    fn peek_batch(&mut self, keys: &[String]) -> FrameworkResult<Vec<bool>> {
+        let keys = keys
+            .iter()
+            .map(|key| normalize_key(key.as_str()))
+            .collect::<FrameworkResult<Vec<_>>>()?;
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut pipeline = redis::pipe();
+        pipeline.atomic();
+        for key in keys {
+            pipeline.cmd("EXISTS").arg(key);
+        }
+        pipeline.query(&mut self.connection).map_err(backend_error)
     }
     fn put_batch(
         &mut self,

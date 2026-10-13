@@ -102,6 +102,14 @@ pub trait TtlCache {
         Ok(self.get(key)?.is_some())
     }
 
+    /// Checks existence in input order without decoding stored values.
+    ///
+    /// # Errors
+    /// Returns the first backend failure. Implementations may batch the checks.
+    fn peek_batch(&mut self, keys: &[String]) -> FrameworkResult<Vec<bool>> {
+        keys.iter().map(|key| self.peek(key)).collect()
+    }
+
     /// Writes several entries under a shared TTL.
     ///
     /// # Errors

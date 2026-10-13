@@ -353,3 +353,27 @@ verified capture blocks contradictory cancellation. References remain available
 for investigation. No provider mutation, order transition, delivery or public
 reconciliation endpoint is added. Trusted evidence structures must not be bound
 directly to caller-controlled input.
+
+### Redis inspection and opt-in safe-value parsing (2026-10-13)
+
+Typed Redis existence/list/delete operations do not decode or authenticate stored
+values. They reveal key existence to the already-authorized cache caller, matching
+TS EXISTS/DEL semantics, including lists and corrupt ciphertext. Tenant key
+namespaces and application authorization remain caller-owned. Batched Redis
+existence checks use MULTI/EXEC; batch deletion validates all keys before DEL.
+Glob scans are explicit and separate from literal-prefix scans. Neither is a
+snapshot. Native raw client access bypasses the surrounding cache validation and
+codec, as the existing TS getClient escape hatch does.
+
+The new `JsonRecordCodec::with_typescript_safe_values` profile permits non-JSON
+plaintext to decode as a string, and writes top-level strings without JSON quotes.
+It can change the type of JSON-looking strings on read; strict JSON stays default.
+UTF-8 checking and ciphertext recognition/authentication run before parsing. An
+invalid ciphertext, missing tenant or wrong tenant never takes the plaintext
+fallback. Typed decoding errors also remain errors, even when the input was valid
+JSON of another type. Actual TypeScript safeParse/safeStringify source now replaces
+the old fixture's JSON.parse/JSON.stringify substitutes. Both envelope formats,
+wrong-context/corrupt-record failures and plaintext migration pass real Redis
+interop checks. Native unit coverage checks typed failures and invalid UTF-8.
+JavaScript class/BigInt and IEEE-number compatibility are not claimed by this
+bounded JSON-compatible-value profile.

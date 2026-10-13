@@ -918,3 +918,32 @@ only describes a host and mapped ports, with no container ownership or cleanup.
 `TEST_TOKENS` supplies the same deliberately invalid mock Bearer/HMAC values as
 TypeScript and cannot authenticate real requests. Container management, ORM setup,
 database clearing and the complete blueprint test harness remain separate work.
+
+### Typed Redis inspection and TypeScript scalar values
+
+`JsonCache::peek_record` and `peek_batch_records` check existence without JSON
+parsing or decryption. The Redis backend uses one MULTI/EXEC transaction for a
+batch and preserves input order, duplicates and misses. Lists, corrupt ciphertext
+and non-JSON strings still count as existing keys. `delete_batch_records` removes
+keys without decoding and returns the number deleted; Redis validates every key
+before the single DEL command. Default backend implementations may process keys
+sequentially.
+
+`list_keys_by_prefix` escapes glob characters; `list_keys_matching` accepts a Redis
+glob, so TypeScript `listKeys(prefix)` maps to `list_keys_matching` with `*`
+appended. Both return sorted unique SCAN results; concurrent changes can affect
+which keys are observed. `peek_records_by_prefix` retains key/result pairs,
+including a false result when a scanned key disappears before the existence
+transaction. `backend`, `backend_mut`, `RedisTtlCache::config` and
+`connection_mut` expose configuration and native client access. Raw commands
+bypass the outer key/TTL/JSON/encryption wrappers.
+
+`JsonRecordCodec::with_typescript_safe_values()` explicitly enables TypeScript's
+`safeStringify`/`safeParse` behavior for JSON-compatible values. It writes top-level
+strings verbatim and treats non-JSON plaintext as a string. Strings containing
+valid JSON change type on read: `"false"` becomes a boolean, and `"[1]"` becomes an
+array. A requested Rust type may reject that result. Strict JSON remains the
+codec default. Both profiles reject invalid UTF-8 and enforce authentication
+before parsing encrypted values; missing tenant context, wrong keys and tampering
+never become plaintext fallbacks. JavaScript class/BigInt serialization, number
+rounding and TypeScript's falsy queue-batch filtering are separate boundaries.

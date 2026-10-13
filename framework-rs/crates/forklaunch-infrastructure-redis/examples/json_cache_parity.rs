@@ -31,14 +31,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             CiphertextFormat::V2
         });
     let url = std::env::var("FORKLAUNCH_TEST_REDIS_URL")?;
+    let codec = |encryptor| {
+        let codec = JsonRecordCodec::new(encryptor);
+        if input["typescriptSafe"] == true {
+            codec.with_typescript_safe_values()
+        } else {
+            codec
+        }
+    };
     let mut queue = input["queue"]
         .as_str()
         .map(|key| RedisQueue::connect(&url, key))
         .transpose()?
-        .map(|queue| JsonQueue::new(queue, JsonRecordCodec::new(encryptor.clone())));
+        .map(|queue| JsonQueue::new(queue, codec(encryptor.clone())));
     let mut cache = JsonCache::new(
         RedisTtlCache::connect(RedisTtlCacheConfig::new(url, Duration::from_secs(60)))?,
-        JsonRecordCodec::new(encryptor),
+        codec(encryptor),
     );
     let tenant = input["tenant"]
         .as_str()
@@ -55,6 +63,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// Keep the fixture's wire operation dispatch in one table.
+#[allow(clippy::too_many_lines)]
 fn execute(
     operation: &Value,
     cache: &mut JsonCache<RedisTtlCache>,
@@ -63,6 +73,27 @@ fn execute(
 ) -> Result<Value, Box<dyn std::error::Error>> {
     let key = operation["key"].as_str().unwrap_or("");
     let result = match operation["op"].as_str().ok_or("Operation required")? {
+        "peek" => cache.peek_record(key).map(|value| json!(value)),
+        "peekBatch" => {
+            let keys: Vec<String> = serde_json::from_value(operation["keys"].clone())?;
+            cache.peek_batch_records(&keys).map(|values| json!(values))
+        }
+        "deleteBatch" => {
+            let keys: Vec<String> = serde_json::from_value(operation["keys"].clone())?;
+            cache.delete_batch_records(&keys).map(|value| json!(value))
+        }
+        "peekPrefix" => cache
+            .peek_records_by_prefix(key)
+            .map(|values| json!(values)),
+        "keys" => cache.list_keys_by_prefix(key).map(|values| json!(values)),
+        "matchingKeys" => cache.list_keys_matching(key).map(|values| json!(values)),
+        "ttl" => Ok(json!(cache.backend().config().default_ttl().as_millis())),
+        "rawExists" => {
+            let present: bool = redis::cmd("EXISTS")
+                .arg(key)
+                .query(cache.backend_mut().connection_mut())?;
+            Ok(json!(present))
+        }
         "put" => cache
             .put_record(
                 key,

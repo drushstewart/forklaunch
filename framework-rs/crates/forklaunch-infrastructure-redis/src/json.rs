@@ -29,6 +29,31 @@ pub struct JsonCacheWrite<T> {
 
 #[cfg(feature = "redis-client")]
 impl JsonCache<crate::client::RedisTtlCache> {
+    /// Returns sorted unique keys for a literal prefix using SCAN.
+    /// # Errors
+    /// Propagates backend failures.
+    pub fn list_keys_by_prefix(&mut self, prefix: &str) -> FrameworkResult<Vec<String>> {
+        self.cache.list_keys_by_prefix(prefix)
+    }
+
+    /// Lists sorted unique keys matching a Redis glob pattern, without decoding.
+    /// Append `*` to reproduce TypeScript's `listKeys(prefix)` pattern semantics.
+    /// # Errors
+    /// Propagates backend failures.
+    pub fn list_keys_matching(&mut self, pattern: &str) -> FrameworkResult<Vec<String>> {
+        self.cache.list_keys_matching(pattern)
+    }
+
+    /// Scans a literal prefix, then checks existence without reading/decrypting
+    /// values. Retains keys with a false result if they disappeared after the scan.
+    /// # Errors
+    /// Propagates backend failures.
+    pub fn peek_records_by_prefix(&mut self, prefix: &str) -> FrameworkResult<Vec<(String, bool)>> {
+        let keys = self.list_keys_by_prefix(prefix)?;
+        let present = self.cache.peek_batch(&keys)?;
+        Ok(keys.into_iter().zip(present).collect())
+    }
+
     /// Serializes every value and validates every key/TTL before sending one transaction.
     /// # Errors
     /// Propagates JSON, encryption, validation and backend failures.
@@ -122,6 +147,30 @@ impl<C: TtlCache> JsonCache<C> {
         self.cache
     }
 
+    #[must_use]
+    pub const fn backend(&self) -> &C {
+        &self.cache
+    }
+
+    /// Access the underlying backend. Direct writes bypass this JSON codec.
+    pub fn backend_mut(&mut self) -> &mut C {
+        &mut self.cache
+    }
+
+    /// Checks existence without needing a tenant or decoding/decrypting the value.
+    /// # Errors
+    /// Propagates backend failures.
+    pub fn peek_record(&mut self, key: &str) -> FrameworkResult<bool> {
+        self.cache.peek(key)
+    }
+
+    /// Preserves order, duplicates and misses without decoding/decrypting values.
+    /// # Errors
+    /// Propagates backend failures.
+    pub fn peek_batch_records(&mut self, keys: &[String]) -> FrameworkResult<Vec<bool>> {
+        self.cache.peek_batch(keys)
+    }
+
     /// # Errors
     /// Propagates serialization, encryption, invalid TTL and backend failures.
     pub fn put_record<T: Serialize + ?Sized>(
@@ -187,6 +236,13 @@ impl<C: TtlCache> JsonCache<C> {
     /// Propagates backend failures.
     pub fn delete_record(&mut self, key: &str) -> FrameworkResult<bool> {
         self.cache.delete(key)
+    }
+
+    /// Deletes keys without decoding their values, returning the number removed.
+    /// # Errors
+    /// Propagates backend failures.
+    pub fn delete_batch_records(&mut self, keys: &[String]) -> FrameworkResult<usize> {
+        self.cache.delete_batch(keys)
     }
 }
 

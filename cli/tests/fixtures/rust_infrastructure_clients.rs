@@ -86,9 +86,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap()
                     .contains("private@example.test")
             );
+            let missing_key = format!("{cache_key}-missing");
+            assert_eq!(
+                encrypted
+                    .peek_batch_records(&[cache_key.clone(), missing_key, cache_key.clone()])
+                    .map_err(|error| error.to_string())?,
+                vec![true, false, true]
+            );
+            assert_eq!(
+                encrypted
+                    .list_keys_matching(&format!("{cache_key}*"))
+                    .map_err(|error| error.to_string())?,
+                vec![cache_key.clone()]
+            );
+            assert_eq!(
+                encrypted.backend().config().default_ttl(),
+                Duration::from_secs(3600)
+            );
             encrypted
                 .delete_record(&cache_key)
                 .map_err(|error| error.to_string())?;
+            let codec = forklaunch_core::persistence::json::JsonRecordCodec::from_env()
+                .map_err(|error| error.to_string())?
+                .with_typescript_safe_values();
+            let mut compatible = forklaunch_infrastructure_redis::json::JsonCache::new(
+                redis_infrastructure::connect().map_err(|error| error.to_string())?,
+                codec,
+            );
+            compatible
+                .put_record(&cache_key, "false", None, Some(&tenant))
+                .map_err(|error| error.to_string())?;
+            assert_eq!(
+                compatible
+                    .read_record::<bool>(&cache_key, Some(&tenant))
+                    .map_err(|error| error.to_string())?,
+                Some(false)
+            );
+            assert!(
+                compatible
+                    .read_record::<String>(&cache_key, Some(&tenant))
+                    .is_err()
+            );
+            assert!(
+                compatible
+                    .read_record::<bool>(&cache_key, Some(&wrong))
+                    .is_err()
+            );
+            assert_eq!(
+                compatible
+                    .delete_batch_records(&[cache_key.clone(), cache_key.clone()])
+                    .map_err(|error| error.to_string())?,
+                1
+            );
             let mut queue = redis_infrastructure::encrypted_queue(&format!("{cache_key}-queue"))
                 .map_err(|error| error.to_string())?;
             queue

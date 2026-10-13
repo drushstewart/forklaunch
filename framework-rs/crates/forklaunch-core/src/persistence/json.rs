@@ -9,12 +9,28 @@ use serde::{Serialize, de::DeserializeOwned};
 /// Holds keys, but deliberately exposes neither them nor a `Debug` implementation.
 pub struct JsonRecordCodec {
     encryptor: FieldEncryptor,
+    typescript_safe_values: bool,
 }
 
 impl JsonRecordCodec {
     #[must_use]
     pub fn new(encryptor: FieldEncryptor) -> Self {
-        Self { encryptor }
+        Self {
+            encryptor,
+            typescript_safe_values: false,
+        }
+    }
+
+    /// Enable TypeScript `safeStringify`/`safeParse` behavior for JSON-compatible
+    /// values: top-level strings are written verbatim, and non-JSON plaintext is
+    /// read as a string. Strings containing valid JSON parse into that JSON value.
+    /// This does not emulate JavaScript classes, `BigInt` or number rounding.
+    /// Authentication errors still fail closed before parsing; strict JSON remains
+    /// the default. Typed callers can reject the resulting value during decoding.
+    #[must_use]
+    pub const fn with_typescript_safe_values(mut self) -> Self {
+        self.typescript_safe_values = true;
+        self
     }
 
     /// # Errors
@@ -31,7 +47,10 @@ impl JsonRecordCodec {
         value: &T,
         tenant: Option<&TenantContext>,
     ) -> FrameworkResult<Vec<u8>> {
-        let json = serde_json::to_string(value).map_err(|_| json_error())?;
+        let mut json = serde_json::to_string(value).map_err(|_| json_error())?;
+        if self.typescript_safe_values && json.starts_with('"') {
+            json = serde_json::from_str::<String>(&json).map_err(|_| json_error())?;
+        }
         match tenant {
             Some(tenant) => self
                 .encryptor
@@ -44,7 +63,9 @@ impl JsonRecordCodec {
     /// Reads legacy plaintext JSON alongside authenticated envelopes.
     /// Encrypted records require tenant context, and failures never become cache misses.
     /// # Errors
-    /// Rejects invalid UTF-8/JSON, missing context, wrong tenants/keys and tampered envelopes.
+    /// Rejects invalid UTF-8, missing context, wrong tenants/keys and tampered
+    /// envelopes. Strict mode also rejects invalid JSON; either mode rejects
+    /// values incompatible with the requested Rust type.
     pub fn decode<T: DeserializeOwned>(
         &self,
         bytes: &[u8],
@@ -64,7 +85,13 @@ impl JsonRecordCodec {
         } else {
             text
         };
-        serde_json::from_str(json).map_err(|_| json_error())
+        if self.typescript_safe_values {
+            let value = serde_json::from_str::<serde_json::Value>(json)
+                .unwrap_or_else(|_| serde_json::Value::String(json.to_owned()));
+            serde_json::from_value(value).map_err(|_| json_error())
+        } else {
+            serde_json::from_str(json).map_err(|_| json_error())
+        }
     }
 }
 
@@ -79,6 +106,41 @@ fn json_error() -> FrameworkError {
 mod tests {
     use super::*;
     use serde_json::{Value, json};
+
+    #[test]
+    fn safe_value_fallback_does_not_hide_type_or_authentication_failures() {
+        let codec = JsonRecordCodec::new(FieldEncryptor::new("safe-value-fixture").unwrap())
+            .with_typescript_safe_values();
+        assert_eq!(codec.encode("plain", None).unwrap(), b"plain");
+        assert_eq!(
+            codec.decode::<String>(b"{invalid", None).unwrap(),
+            "{invalid"
+        );
+        assert_eq!(codec.decode::<Value>(b"false", None).unwrap(), json!(false));
+        assert!(codec.decode::<String>(b"false", None).is_err());
+        assert!(codec.decode::<bool>(b"plain", None).is_err());
+        assert!(codec.decode::<Value>(b"\xff", None).is_err());
+        let tenant = TenantContext::new("tenant-a").unwrap();
+        let bytes = codec.encode("plain", Some(&tenant)).unwrap();
+        assert_eq!(
+            codec.decode::<String>(&bytes, Some(&tenant)).unwrap(),
+            "plain"
+        );
+        assert_eq!(
+            codec.decode::<Value>(&bytes, None).unwrap_err().code(),
+            "record_tenant_required"
+        );
+        assert!(
+            codec
+                .decode::<Value>(&bytes, Some(&TenantContext::new("tenant-b").unwrap()))
+                .is_err()
+        );
+        assert!(
+            codec
+                .decode::<Value>(b"v2:bad:bad:bad", Some(&tenant))
+                .is_err()
+        );
+    }
 
     #[test]
     fn literal_serde_marker_keys_survive_plain_and_encrypted_records() {

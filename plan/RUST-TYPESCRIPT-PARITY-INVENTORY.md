@@ -41,7 +41,7 @@ remain open under checklist item 849; this inventory does not close that item.
 | [`@forklaunch/express`](../framework/express/package.json) | forklaunch-axum | Equivalent HTTP behavior is the target; multipart/SSE and full validation/auth/error fixtures remain. |
 | [`@forklaunch/hyper-express`](../framework/hyper-express/package.json) | forklaunch-axum | All 27 exported HTTP methods dispatch through shared validation/auth and nested contracts; both SDK artifact sources and actual compiled TypeScript router token forwarding are covered. Runtime-specific adapter internals need no clone. |
 | [`@forklaunch/infrastructure-s3`](../framework/infrastructure/S3/package.json) | forklaunch-infrastructure-s3 | Async store, bounded streaming/multipart transfers, codecs, signed downloads and browser POST policies are implemented with real MinIO fixtures. POST size/type/key/expiry enforcement, AWS signature vectors, SDK credential cache/rotation and actual TypeScript policy fixtures are covered; ordinary SigV4 bucket endpoints only. |
-| [`@forklaunch/infrastructure-redis`](../framework/infrastructure/redis/package.json) | forklaunch-infrastructure-redis | Async cache/queue/pubsub and real fixtures exist; audit remaining provider-specific options and typed codecs. |
+| [`@forklaunch/infrastructure-redis`](../framework/infrastructure/redis/package.json) | forklaunch-infrastructure-redis | Redis cache/queue/pubsub, typed EXISTS/delete batches, literal-prefix/glob scans and native client/config access have real fixtures. Opt-in safe-value codecs now use actual TS safeParse/safeStringify source for JSON-compatible string interoperability; JavaScript-special values, number boundaries and falsy queue-batch semantics remain. |
 | [`@forklaunch/internal`](../framework/internal/package.json) | contract macros, CLI embedded templates and Rust tooling | Map remaining exported build/runtime helpers; JavaScript compiler utilities remain in the TypeScript path. |
 | [`@forklaunch/testing`](../framework/testing/package.json) | forklaunch-testing and runtime fixtures | Test environment configuration, nine database aliases, Redis/Kafka/S3 endpoints and mock tokens match 970 actual TypeScript cases; child-process environment isolation passes. Container ownership/lifecycle, ORM setup/database clearing and the complete blueprint harness remain. |
 | [`@forklaunch/universal-sdk`](../framework/universal-sdk/package.json) | forklaunch-sdk-rust, forklaunch-sdk-typescript, forklaunch-sdk-codegen and CLI SDKs | HTTP/multipart uploads, bounded CLI SSE responses and guarded recursive CLI models and omission/null presence exist through both artifact formats, with actual TypeScript conformance and live clients; native Rust and TypeScript typed HTTP/SSE responses and recursive models share the CLI compiler and pass strict consumers and live clients; one shared HTTP SDK now imports native contracts and TypeScript OpenAPI, with both live client languages, lifecycle preservation and custom-path watch recovery. Remaining schema conformance, multipart response scope and broader realtime profiles remain. |
@@ -4469,4 +4469,39 @@ files pass. No dependency was added to the default runtime; example serializatio
 uses dev dependencies. This does not implement Docker ownership/cleanup, ORM
 setup, database clearing or the full blueprint harness. Logs:
 `/private/tmp/fl-testing-env-{parity,tests,clippy,package,release-tests}.log`.
+Checklist remains **658/682 (96.5%), 24 open**.
+
+### 2026-10-13 — Typed Redis inspection and actual safe-value interop
+
+`JsonCache` now exposes single/batch existence checks and batch deletion without
+reading, decoding or decrypting values. Redis existence batches use MULTI/EXEC,
+retain order/duplicates/misses, and support lists and corrupt ciphertext. Keys are
+validated before sending batch commands. Literal-prefix scans remain separate
+from explicit Redis glob scans, with sorted unique SCAN output. Prefix existence
+results retain key/result pairs across concurrent disappearance. Native backend,
+configuration and raw connection access map the TS configuration/client helpers.
+
+The previous JSON interop fixture substituted JSON.parse/JSON.stringify for
+TypeScript's safeParse/safeStringify, hiding top-level string differences. It now
+loads both actual common helpers. `JsonRecordCodec::with_typescript_safe_values`
+adds an explicit compatibility profile: strings are written verbatim, valid JSON
+text parses to its JSON value, and non-JSON text falls back to a string. Strict
+JSON remains default. Invalid UTF-8, missing/wrong tenant, bad ciphertext and Rust
+type mismatches remain errors. Both envelope formats pass actual Redis tests for
+ordinary/JSON-looking/malformed strings, scalar values, arrays/objects, rotation,
+expiry, persisted keys, empty/duplicate batches, corrupt/list existence checks,
+atomic invalid-key rejection, raw client access and glob/literal-prefix scans.
+JavaScript special values/number rounding and falsy queue batch filtering remain.
+
+Three codec unit tests, seven Redis tests including the real backend, strict
+all-feature/all-target core/Redis Clippy, nine release checks and **951** packaged
+Rust source/template files pass. Added an explicit serde derive dev dependency
+for existing core tests that previously relied on workspace feature unification.
+Fresh relocated generated infrastructure run `Dq9Tv6` passes ownership/lifecycle,
+Redis/S3 binary and encrypted JSON round-trips, typed inspection and safe-string
+checks, both SDKs and the full HTTP/MCP startup/shutdown matrix. Its production
+codec/Redis sources match the final source. A separate fresh application from the
+final rebuilt CLI also verifies the updated core dev-dependency manifest and
+exact runtime sources. Logs:
+`/private/tmp/fl-json-peek-{parity,clippy,codec-tests,tests,generated,package,release-tests}.log`.
 Checklist remains **658/682 (96.5%), 24 open**.
