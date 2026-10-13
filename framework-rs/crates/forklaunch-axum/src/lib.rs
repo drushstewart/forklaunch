@@ -36,12 +36,16 @@ use forklaunch_http::{
 #[derive(Debug, Clone)]
 pub struct AxumApplication {
     pub app: HttpApplication,
+    pub version_body_hooks: forklaunch_http::VersionBodyHooksRegistry,
 }
 
 impl AxumApplication {
     #[must_use]
     pub fn new(app: HttpApplication) -> Self {
-        Self { app }
+        Self {
+            app,
+            version_body_hooks: forklaunch_http::VersionBodyHooksRegistry::default(),
+        }
     }
 
     #[must_use]
@@ -89,7 +93,10 @@ impl AxumApplication {
                 forklaunch_http::normalize_framework_request_body(route, &mut request);
                 // This metadata adapter permits callers to mutate its public registry.
                 // Live Axum/LocalRouter transports cache plans at registration instead.
-                let selection = forklaunch_http::VersionedRoutePlan::compile(route)
+                let selection = self
+                    .version_body_hooks
+                    .validate_routes(self.app.registry.routes())
+                    .and_then(|()| self.version_body_hooks.compile(route))
                     .map_err(|_| {
                         vec![ContractValidationError::new(
                             forklaunch_http::ContractValidationLocation::BodyParserConfiguration,

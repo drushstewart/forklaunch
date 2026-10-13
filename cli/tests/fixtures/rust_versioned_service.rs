@@ -60,10 +60,31 @@ pub fn contracts() -> Vec<RouteContract> {
         output.schema=output.schema.with_json_schema(json!({"type":"object","required":["value"],"properties":{"value":{"type":kind}}}).to_string());
         scalar=scalar.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
     }
-    vec![route,text,file,form,multipart,scalar]
+    let mut transformed=RouteContract::post("Write Transform","Transform versioned JSON","/versioned-transform");
+    for (version,minimum,status) in [("v1",1,201),("v2",2,202)] {
+        let mut input=BodyContract::json("TransformInput");
+        input.schema=input.schema.with_json_schema(json!({"type":"object","required":["value"],"properties":{"value":{"type":"string","minLength":minimum}}}).to_string());
+        let mut output=BodyContract::json("TransformOutput");
+        output.schema=output.schema.with_json_schema(json!({"type":"object","required":["value"],"properties":{"value":{"type":"string"}}}).to_string());
+        transformed=transformed.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
+    }
+    vec![route,text,file,form,multipart,scalar,transformed]
 }
 pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
-    router.post(contracts().remove(0),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<Value>|async move {
+    let mut hooks=forklaunch_http::VersionBodyHooksRegistry::default();
+    for version in ["v1","v2"] {
+        hooks.insert(&contracts()[6],version,forklaunch_http::VersionBodyHooks::default()
+            .with_preprocess(|body| {
+                let value=body["value"].as_str().ok_or("expected text")?;
+                Ok(json!({"value":value.trim()}))
+            })
+            .with_transform(move |body| {
+                let value=body["value"].as_str().ok_or("expected text")?;
+                if value=="deny" || (version=="v2" && value=="blocked") { return Err("rejected".into()); }
+                Ok(json!({"value":if version=="v1" {value.to_uppercase()} else {format!("{value}!")}}))
+            })).unwrap();
+    }
+    router.with_version_body_hooks(hooks).post(contracts().remove(0),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<Value>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"value":body["value"]})))
     }).post(contracts().remove(1),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<String>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"value":body})))
@@ -75,5 +96,7 @@ pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"bytes":body.to_vec()})))
     }).post(contracts().remove(5),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(value):forklaunch_axum::VersionedBody<Value>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"value":value})))
+    }).post(contracts().remove(6),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(value):forklaunch_axum::VersionedBody<Value>|async move {
+        (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(value))
     })
 }

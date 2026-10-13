@@ -48,3 +48,35 @@ for(const [index,{parserKinds}] of parserFixtures.entries()) {
  assert.equal(native[fixtures.length+index].accepted,accepted,parserKinds.join('/'));
 }
 console.log(`PASS ${parserFixtures.length} actual TypeScript/native versioned body-parser registration checks`);
+
+
+const transformedFixtures=[
+ {kind:'text',includeBody:true,versions:[{name:'first',schema:{type:'string',minLength:1},hook:'trim-first'},{name:'last',schema:{type:'string',minLength:2},hook:'trim-last'}],cases:['',' ',' a ',' ab ','blocked','deny',' 水 ','ß']},
+ {includeBody:true,parserOptions:{json:{strict:false}},versions:[{name:'first',schema:{type:'integer',minimum:0},hook:'number-first'},{name:'last',schema:{type:'integer',minimum:10},hook:'number-last'}],cases:['42','-1','nope',42,0,13,99,null,true,' 12 ']}
+];
+const transformedNative=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(transformedFixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
+let transformedCount=0;
+for(const [index,fixture] of transformedFixtures.entries()) {
+ const requestSchema=Object.fromEntries(fixture.versions.map(version=> {
+  const text=version.hook.startsWith('trim');
+  const inner=text?z.string().min(version.schema.minLength):z.number().int().min(version.schema.minimum);
+  const schema=z.preprocess(value=>text?(typeof value==='string'?value.trim():value):(typeof value==='string'?Number(value):value),inner).transform((value,context)=>{
+   if(text?(value==='deny'||(version.hook==='trim-last'&&value==='blocked')):(value===99||(version.hook==='number-last'&&value===13))) {
+    context.addIssue({code:z.ZodIssueCode.custom,message:'rejected transform'});return z.NEVER;
+   }
+   return text?(version.hook==='trim-first'?{value:value.toUpperCase(),source:'first'}:{value:`${value}!`,source:'last'}):{value:version.hook==='number-first'?value+10:value*2};
+  });
+  return [version.name,z.object({body:schema,params:z.object({}),query:z.object({}),headers:z.object({})})];
+ }));
+ for(const [caseIndex,body] of fixture.cases.entries()) {
+  const req={body,params:{},query:{},headers:{},context:{correlationId:'transform'},contractDetails:{versions:requestSchema},requestSchema,schemaValidator:validator};
+  let status=200;
+  const res={type(){return this;},status(code){status=code;return this;},send(){return this;}};
+  parse(req,res,()=>{});
+  const expected=status===400?{status}:{status,version:req.version,matched:Array.from(req._parsedVersions),body:req.body};
+  assert.deepEqual(transformedNative[index].cases[caseIndex],expected,`${index}/${caseIndex}`);
+  assert.equal(req._rawBody,body);
+  transformedCount++;
+ }
+}
+console.log(`PASS ${transformedCount} actual TypeScript/native preprocessing, transformation, rejection and independent version-input comparisons`);

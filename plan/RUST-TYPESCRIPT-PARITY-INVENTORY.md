@@ -3457,3 +3457,30 @@ artifacts and native generators, startup/discovery and graceful shutdown.
 Receipts: `/private/tmp/fl-form-options-{actual,native,clippy,generated,package}.log`.
 Checklist remains **652/682 (95.6%), 30 open**. Verify/reviver hooks, schema/request
 transformations and complete legacy codec/invalid-string coverage remain open.
+
+### Native per-version body hooks and adapter ownership (2026-10-13)
+
+Native callbacks now preprocess each version's original parsed input before schema
+checks and transform successful candidates afterward. Rejections are isolated to
+the candidate; a later failed transform preserves the earlier successful version.
+Direct/local/metadata adapters expose the selected transformed value and preserve
+raw bytes. Nested live routers retain hooks. Local handlers served through Axum
+own selection/response validation, so callbacks run once; transport authentication
+and byte limits still run before local dispatch. Live/metadata registries reject
+missing or ambiguous method/operation registrations.
+
+Validation: 45 actual TypeScript version comparisons, six parser registration
+checks and **18 actual Zod preprocessing/transformation comparisons**; 404 parser
+wire comparisons; 24 contract, 31 HTTP and 63 Axum tests plus three integration
+tests; strict Clippy; 907 package files. Fresh `run.iFWY4d` passes generated HTTP
+and MCP transformation/fallback/rejection, both typed SDK transformation calls
+across contract/OpenAPI/named OpenAPI and native generators, startup/discovery,
+Origin rejection and graceful shutdown. The multi-route native exporter fixture
+now preserves distinct schema names rather than accidentally sharing components.
+Receipts: `/private/tmp/fl-body-hooks-{actual,wire,native,clippy,package}.log` and
+`/private/tmp/fl-body-hooks-generated-final.log`.
+
+Runtime callbacks are explicit native code, not serialized JavaScript. Parser
+verify/reviver, missing-body defaults, non-body transformations and the documented
+codec/string representation boundaries remain open. Checklist **652/682 (95.6%),
+30 open**; this completes a portion of the broad versioning gate.

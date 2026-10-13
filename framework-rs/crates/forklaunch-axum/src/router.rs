@@ -6,7 +6,7 @@
 //! framework. Enabled by the default `adapter` feature.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::SocketAddr,
     sync::{
         Arc,
@@ -51,6 +51,8 @@ pub const DEFAULT_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 /// Configuration for cross-cutting router behavior (docs, limits, CORS).
 #[derive(Clone)]
 pub struct RouterConfig {
+    /// Native callbacks run around each version's body schema validation.
+    pub version_body_hooks: forklaunch_http::VersionBodyHooksRegistry,
     /// Optional server-side browser sessions and CSRF policy.
     #[cfg(feature = "cookie-session")]
     pub cookie_sessions: Option<crate::cookie_session::CookieSessions>,
@@ -87,6 +89,7 @@ pub struct RouterConfig {
 impl Default for RouterConfig {
     fn default() -> Self {
         Self {
+            version_body_hooks: forklaunch_http::VersionBodyHooksRegistry::default(),
             #[cfg(feature = "cookie-session")]
             cookie_sessions: None,
             openapi_enabled: true,
@@ -147,6 +150,7 @@ pub struct ForkLaunchRouter {
     extended_routes: HashMap<String, HashMap<String, MethodRouter>>,
     config: RouterConfig,
     internal_mounts: Vec<internal::InternalMount>,
+    local_validation: HashSet<String>,
 }
 
 macro_rules! typed_route_methods {
@@ -181,6 +185,7 @@ impl ForkLaunchRouter {
             extended_routes: HashMap::new(),
             config: RouterConfig::default(),
             internal_mounts: Vec::new(),
+            local_validation: HashSet::new(),
         }
     }
 
@@ -195,6 +200,9 @@ impl ForkLaunchRouter {
         let handlers = Arc::new(handlers);
         let mut router = Self::new(service);
         for contract in contracts {
+            router
+                .local_validation
+                .insert(route_key(contract.method, &contract.openapi_path));
             let handlers = Arc::clone(&handlers);
             let handler_contract = contract.clone();
             let handler = move |request: Request| {
@@ -205,7 +213,17 @@ impl ForkLaunchRouter {
                     let Ok(bytes) = to_bytes(body, usize::MAX).await else {
                         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
                     };
-                    let request = build_framework_request(&contract, &parts, &bytes);
+                    let mut request = build_framework_request(&contract, &parts, &bytes);
+                    // Flattened nesting changes the transport path, while the local
+                    // router retains its original route paths and parameter matcher.
+                    if let Some(prefix) = parts
+                        .extensions
+                        .get::<MatchedPath>()
+                        .and_then(|matched| matched.as_str().strip_suffix(&contract.openapi_path))
+                        && request.path.starts_with(prefix)
+                    {
+                        request.path.drain(..prefix.len());
+                    }
                     match handlers.execute(request) {
                         Ok(response) => framework_response_to_axum(response),
                         Err(error) => {
@@ -233,6 +251,7 @@ impl ForkLaunchRouter {
             extended_routes: HashMap::new(),
             config: RouterConfig::default(),
             internal_mounts: Vec::new(),
+            local_validation: HashSet::new(),
         }
     }
 
@@ -247,6 +266,16 @@ impl ForkLaunchRouter {
     #[must_use]
     pub fn with_config(mut self, config: RouterConfig) -> Self {
         self.config = config;
+        self
+    }
+
+    /// Install native version body callbacks without replacing other router options.
+    #[must_use]
+    pub fn with_version_body_hooks(
+        mut self,
+        hooks: forklaunch_http::VersionBodyHooksRegistry,
+    ) -> Self {
+        self.config.version_body_hooks = hooks;
         self
     }
 
@@ -345,8 +374,13 @@ impl ForkLaunchRouter {
             routes,
             extended_routes,
             internal_mounts,
+            local_validation,
+            config,
             ..
         } = child;
+        self.config
+            .version_body_hooks
+            .extend(config.version_body_hooks);
 
         for mut mount in internal_mounts {
             mount.prefix = join_base_path(&prefix, &mount.prefix);
@@ -357,6 +391,12 @@ impl ForkLaunchRouter {
         }
 
         for mut route in registry.into_artifact().routes {
+            if local_validation.contains(&route_key(route.method, &route.openapi_path)) {
+                self.local_validation.insert(route_key(
+                    route.method,
+                    &join_base_path(&prefix, &route.openapi_path),
+                ));
+            }
             route.path = join_base_path(&prefix, &route.path);
             route.openapi_path = join_base_path(&prefix, &route.openapi_path);
             self.registry.register(route);
@@ -435,6 +475,7 @@ impl ForkLaunchRouter {
             mut extended_routes,
             config,
             internal_mounts,
+            local_validation,
             ..
         } = self;
 
@@ -492,6 +533,8 @@ impl ForkLaunchRouter {
             config.body_limit,
             config.authenticator,
             telemetry.clone(),
+            &config.version_body_hooks,
+            local_validation,
         ));
         router = router.layer(middleware::from_fn_with_state(state, validate_contract));
 
@@ -692,6 +735,7 @@ fn docs_handler(html: String) -> MethodRouter {
 struct ValidationState {
     routes: HashMap<String, RouteContract>,
     versions: HashMap<String, forklaunch_http::VersionedRoutePlan>,
+    local_validation: HashSet<String>,
     body_limit: usize,
     authenticator: Option<Authenticator>,
     telemetry: OpenTelemetryCollector,
@@ -703,7 +747,12 @@ impl ValidationState {
         body_limit: usize,
         authenticator: Option<Authenticator>,
         telemetry: OpenTelemetryCollector,
+        hooks: &forklaunch_http::VersionBodyHooksRegistry,
+        local_validation: HashSet<String>,
     ) -> Self {
+        hooks
+            .validate_routes(registry.routes())
+            .expect("invalid body hook registration");
         let routes = registry
             .routes()
             .iter()
@@ -715,14 +764,16 @@ impl ValidationState {
             .map(|route| {
                 (
                     route_key(route.method, &route.openapi_path),
-                    forklaunch_http::VersionedRoutePlan::compile(route)
-                        .expect("invalid versioned route schema"),
+                    hooks
+                        .compile(route)
+                        .expect("invalid versioned route schema or hooks"),
                 )
             })
             .collect();
         Self {
             routes,
             versions,
+            local_validation,
             body_limit,
             authenticator,
             telemetry,
@@ -771,6 +822,29 @@ fn route_key(method: HttpMethod, path: &str) -> String {
     format!("{} {}", method.as_str(), path)
 }
 
+async fn authenticate_contract(
+    state: &ValidationState,
+    contract: &RouteContract,
+    parts: &Parts,
+    framework_request: &FrameworkRequest,
+) -> Result<AuthenticatedSession, AuthError> {
+    if let Some(AuthConfig::Cookie { name }) = &contract.auth {
+        #[cfg(feature = "cookie-session")]
+        let result = crate::cookie_session::authenticate(parts, name).await;
+        #[cfg(not(feature = "cookie-session"))]
+        let result = {
+            let _ = (parts, name);
+            Err(AuthError::MissingCredentials)
+        };
+        result
+    } else {
+        match &state.authenticator {
+            Some(verifier) => verifier(framework_request.clone(), contract.clone()).await,
+            None => Err(AuthError::MissingCredentials),
+        }
+    }
+}
+
 async fn validate_contract(
     State(state): State<Arc<ValidationState>>,
     request: Request,
@@ -809,21 +883,8 @@ async fn validate_contract(
         || contract.rbac.is_some()
         || contract.access != AccessLevel::Public;
     if requires_auth {
-        let authenticated = if let Some(AuthConfig::Cookie { name }) = &contract.auth {
-            #[cfg(feature = "cookie-session")]
-            let result = crate::cookie_session::authenticate(&parts, name).await;
-            #[cfg(not(feature = "cookie-session"))]
-            let result = {
-                let _ = name;
-                Err(AuthError::MissingCredentials)
-            };
-            result
-        } else {
-            match &state.authenticator {
-                Some(verifier) => verifier(framework_request.clone(), contract.clone()).await,
-                None => Err(AuthError::MissingCredentials),
-            }
-        };
+        let authenticated =
+            authenticate_contract(&state, &contract, &parts, &framework_request).await;
         let result = authenticated.and_then(|session| {
             if let Some(rbac) = &contract.rbac {
                 authorize(&session.principal, rbac)?;
@@ -856,6 +917,17 @@ async fn validate_contract(
                 );
             }
         }
+    }
+    // LocalRouter owns selection and response validation for its handlers.
+    // Authentication and the transport body limit still run above, but runtime
+    // callbacks must execute exactly once and may change the selected schema.
+    if state
+        .local_validation
+        .contains(&route_key(contract.method, &contract.openapi_path))
+    {
+        return next
+            .run(Request::from_parts(parts, AxumBody::from(bytes)))
+            .await;
     }
     let version_plan = &state.versions[&route_key(contract.method, &contract.openapi_path)];
     let contract =

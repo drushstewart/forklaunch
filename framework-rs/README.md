@@ -618,3 +618,29 @@ from the parsed object. It still counts toward the parameter limit. With
 using JavaScript Number/UTF-16 code-unit behavior, including paired surrogates;
 keys remain unchanged. Both options default to false. Unpaired surrogates retain
 the documented native string representation limitation.
+
+Native version bodies can attach `VersionBodyHooks::with_preprocess` before schema
+validation and `with_transform` after successful validation. Register callbacks
+with `VersionBodyHooksRegistry::insert(&route, version, hooks)` and install the
+registry through `ForkLaunchRouter::with_version_body_hooks`,
+`LocalRouter::register_with_body_hooks`, or `AxumApplication::version_body_hooks`.
+Callbacks receive a JSON value and return `Result<Value, String>`. Each version
+starts with the same original parsed input. A callback error rejects that version;
+a later rejection preserves an earlier successful match. The selected transformed
+value is available through `VersionedBody<T>` and `SelectedVersion::parsed_body`.
+Raw request bytes remain intact. Callbacks execute synchronously and should not
+perform blocking I/O.
+
+Hook registries use the HTTP method and operation name, independently of mount
+prefixes. Live and metadata adapters reject missing/ambiguous registrations;
+nesting carries child hook registries and rejects duplicate hook operations.
+For local handlers served through Axum, register hooks on the local router: it
+owns selection and response validation, while Axum still enforces authentication
+and its transport body limit. Callbacks execute once through this adapter.
+
+Runtime callbacks are not serialized into contracts or SDKs. Export schemas that
+describe accepted wire input and explicit response schemas; attach native
+callbacks when constructing the server. This supports native equivalents of body
+preprocessing/transformation, without interpreting JavaScript functions. Missing
+body defaults, query/parameter/header transformations and body-parser verify or
+JSON reviver callbacks remain separate work.

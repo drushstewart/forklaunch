@@ -95,6 +95,16 @@ try {
  }
  const disabledInflate=await fetch(`${base}/versioned-scalar`,{method:'POST',headers:{'content-type':'application/json','content-encoding':'gzip'},body:gzipSync(Buffer.from('42'))});assert.equal(disabledInflate.status,415);
  const textLimit=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':'text/plain'},body:'123456789'});assert.equal(textLimit.status,413);
+ for(const [value,version,status,expected] of [[' a ','v1',201,'A'],[' ab ','v2',202,'ab!'],['blocked','v1',201,'BLOCKED']]) {
+  const response=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({value})});
+  assert.equal(response.status,status);assert.deepEqual(await response.json(),{value:expected});
+  const result=await mcpRpc(base,'tools/call',{name:`writeTransform [v${version}]`,arguments:{body:{value}}});
+  assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{value:expected});
+ }
+ for(const value of ['deny',' ']) {
+  const response=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({value})});
+  assert.equal(response.status,400);
+ }
  for(const [value,version,status] of [[42,'v1',201],['scalar 水','v2',202]]) {
   const response=await fetch(`${base}/versioned-scalar`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(value)});
   assert.equal(response.status,status);assert.deepEqual(await response.json(),{value});

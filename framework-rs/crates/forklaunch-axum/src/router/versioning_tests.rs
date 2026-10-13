@@ -424,3 +424,119 @@ async fn versioned_body_delivers_parsed_values_without_consuming_wire_bytes() {
         assert_eq!(result, json!({"value":expected,"wire":wire}));
     }
 }
+
+#[tokio::test]
+async fn native_body_hooks_run_once_through_direct_and_nested_local_adapters() {
+    use forklaunch_http::{VersionBodyHooks, VersionBodyHooksRegistry};
+    for local in [false, true] {
+        let mut contract = RouteContract::post("Hook", "Hook", "/hook");
+        contract.options.body_parser.json_strict = false;
+        contract = contract.with_version(VersionedContract {
+            version: "one".into(),
+            request: RequestContract::default().with_body(BodyContract {
+                schema: forklaunch_contract::SchemaRef::named("Number")
+                    .with_json_schema(r#"{"type":"integer"}"#),
+                ..BodyContract::json("Number")
+            }),
+            responses: vec![ResponseContract::new(201, None)],
+        });
+        let calls = Arc::new(AtomicU64::new(0));
+        let count = calls.clone();
+        let mut hooks = VersionBodyHooksRegistry::default();
+        hooks
+            .insert(
+                &contract,
+                "one",
+                VersionBodyHooks::default()
+                    .with_preprocess(move |value| {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        value
+                            .as_str()
+                            .ok_or("expected string")?
+                            .parse::<i64>()
+                            .map(serde_json::Value::from)
+                            .map_err(|error| error.to_string())
+                    })
+                    .with_transform(|value| Ok(json!({"result":value.as_i64().unwrap()+1}))),
+            )
+            .unwrap();
+        let service = ServiceInfo::new("hooks", "1");
+        let child = if local {
+            let mut handlers = LocalRouter::new();
+            handlers.register_with_body_hooks(
+                contract.clone(),
+                &hooks,
+                |request: FrameworkRequest| {
+                    assert_eq!(request.body, FrameworkBody::Text("\"41\"".into()));
+                    Ok(FrameworkResponse::json(
+                        201,
+                        request.version.unwrap().parsed_body.unwrap().to_string(),
+                    ))
+                },
+            );
+            ForkLaunchRouter::from_local_router(service.clone(), [contract], handlers)
+        } else {
+            ForkLaunchRouter::new(service.clone()).with_version_body_hooks(hooks.clone()).post(contract,
+                |crate::VersionedBody(value): crate::VersionedBody<serde_json::Value>| async move {
+                    (StatusCode::CREATED, axum::Json(value))
+                })
+        };
+        // Hook registration survives mounting a child router, and local selection
+        // sees its original route path rather than the flattened transport prefix.
+        let app = ForkLaunchRouter::new(service)
+            .nest("/api", child)
+            .into_router();
+        let response = app
+            .oneshot(
+                Request::post("/api/hook")
+                    .header("content-type", "application/json")
+                    .body(Body::from("\"41\""))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED, "local={local}");
+        let value: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap()).unwrap();
+        assert_eq!(value, json!({"result":42}));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[test]
+fn metadata_adapter_delivers_transformed_body_and_keeps_wire_bytes() {
+    use forklaunch_http::{HttpApplication, VersionBodyHooks, VersionBodyHooksRegistry};
+    let contract = RouteContract::post("Hook", "Hook", "/hook").with_version(VersionedContract {
+        version: "one".into(),
+        request: RequestContract::default().with_body(BodyContract::json("Input")),
+        responses: vec![ResponseContract::new(200, None)],
+    });
+    let mut hooks = VersionBodyHooksRegistry::default();
+    hooks
+        .insert(
+            &contract,
+            "one",
+            VersionBodyHooks::default().with_transform(|value| {
+                Ok(json!({"result":value["value"].as_i64().ok_or("missing value")?+1}))
+            }),
+        )
+        .unwrap();
+    let mut app = HttpApplication::new(ServiceInfo::new("hooks", "1"));
+    app.register_route(contract);
+    let mut adapter = crate::AxumApplication::new(app);
+    adapter.version_body_hooks = hooks;
+    let prepared = adapter.prepare_request(
+        crate::AxumRequestParts::new(HttpMethod::Post, "/hook")
+            .with_header("content-type", "application/json")
+            .with_body(br#"{"value":41}"#.to_vec()),
+    );
+    assert!(prepared.validation_errors.is_empty());
+    assert_eq!(
+        prepared.request.body,
+        FrameworkBody::Text(r#"{"value":41}"#.into())
+    );
+    assert_eq!(
+        *prepared.request.version.unwrap().parsed_body.unwrap(),
+        json!({"result":42})
+    );
+}

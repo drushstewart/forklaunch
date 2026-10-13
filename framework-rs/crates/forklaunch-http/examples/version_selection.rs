@@ -22,33 +22,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let form = fixture["kind"] == "form";
         let multipart = fixture["kind"] == "multipart";
         let wire_bytes = fixture["wireBytes"].as_bool().unwrap_or(false);
-        for version in fixture["versions"].as_array().unwrap() {
-            let mut body = BodyContract::json("Input");
-            if text {
-                body.kind = BodyKind::Text;
-                body.content_type = Some("text/plain".into());
-            }
-            if file {
-                body.kind = BodyKind::File;
-                body.content_type = Some("application/octet-stream".into());
-            }
-            if form {
-                body.kind = BodyKind::UrlEncoded;
-                body.content_type = Some("application/x-www-form-urlencoded".into());
-            }
-            if multipart {
-                body.kind = BodyKind::Multipart;
-                body.content_type = Some("multipart/form-data".into());
-            }
-            body.schema = body.schema.with_json_schema(version["schema"].to_string());
-            contract = contract.with_version(VersionedContract {
-                version: version["name"].as_str().unwrap().into(),
-                request: RequestContract::default().with_body(body),
-                responses: vec![ResponseContract::new(200, None)],
-            });
-        }
-        let plan = VersionedRoutePlan::compile(&contract)
+        contract = fixture_versions(contract, &fixture);
+        let mut plan = VersionedRoutePlan::compile(&contract)
             .map_err(|error| format!("fixture {}: {error}", output.len()))?;
+        for version in fixture["versions"].as_array().unwrap() {
+            let mode = version["hook"].as_str().unwrap_or("");
+            if !mode.is_empty() {
+                plan =
+                    plan.with_body_hooks(version["name"].as_str().unwrap(), fixture_hooks(mode))?;
+            }
+        }
         let mut cases = Vec::new();
         for case in fixture["cases"].as_array().unwrap() {
             let request = FrameworkRequest::new(
@@ -179,4 +162,73 @@ fn configure_parsers(contract: &mut RouteContract, options: &Value) {
     if let Some(value) = options["urlencoded"]["parameterLimit"].as_u64() {
         parsers.form_parameter_limit = usize::try_from(value).unwrap();
     }
+}
+
+fn fixture_hooks(mode: &str) -> forklaunch_http::VersionBodyHooks {
+    let mode = mode.to_owned();
+    let preprocess_mode = mode.clone();
+    forklaunch_http::VersionBodyHooks::default()
+        .with_preprocess(move |value| {
+            if preprocess_mode.starts_with("trim") {
+                Ok(value
+                    .as_str()
+                    .map_or_else(|| value.clone(), |value| json!(value.trim())))
+            } else if let Some(value) = value.as_str() {
+                value
+                    .trim()
+                    .parse::<i64>()
+                    .map(Value::from)
+                    .map_err(|_| "invalid integer".into())
+            } else {
+                Ok(value.clone())
+            }
+        })
+        .with_transform(move |value| {
+            if mode.starts_with("trim") {
+                let text = value.as_str().ok_or("not text")?;
+                if text == "deny" || (mode == "trim-last" && text == "blocked") {
+                    return Err("rejected transform".into());
+                }
+                Ok(if mode == "trim-first" {
+                    json!({"value":text.to_uppercase(),"source":"first"})
+                } else {
+                    json!({"value":format!("{text}!"),"source":"last"})
+                })
+            } else {
+                let number = value.as_i64().ok_or("not integer")?;
+                if number == 99 || (mode == "number-last" && number == 13) {
+                    return Err("rejected transform".into());
+                }
+                Ok(json!({"value":if mode == "number-first" {number+10} else {number*2}}))
+            }
+        })
+}
+
+fn fixture_versions(mut contract: RouteContract, fixture: &Value) -> RouteContract {
+    for version in fixture["versions"].as_array().unwrap() {
+        let mut body = BodyContract::json("Input");
+        if fixture["kind"] == "text" {
+            body.kind = BodyKind::Text;
+            body.content_type = Some("text/plain".into());
+        }
+        if fixture["kind"] == "file" {
+            body.kind = BodyKind::File;
+            body.content_type = Some("application/octet-stream".into());
+        }
+        if fixture["kind"] == "form" {
+            body.kind = BodyKind::UrlEncoded;
+            body.content_type = Some("application/x-www-form-urlencoded".into());
+        }
+        if fixture["kind"] == "multipart" {
+            body.kind = BodyKind::Multipart;
+            body.content_type = Some("multipart/form-data".into());
+        }
+        body.schema = body.schema.with_json_schema(version["schema"].to_string());
+        contract = contract.with_version(VersionedContract {
+            version: version["name"].as_str().unwrap().into(),
+            request: RequestContract::default().with_body(body),
+            responses: vec![ResponseContract::new(200, None)],
+        });
+    }
+    contract
 }

@@ -56,7 +56,7 @@ cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk
 python3 - "$SCRIPT_DIR/fixtures/rust_versioned_sdk.rs" <<'PYTHON'
 from pathlib import Path
 import sys
-source=Path(sys.argv[1]).read_text().replace('VersionsVersions','').replace('versions_write_version','write_version')
+source=Path(sys.argv[1]).read_text().replace('VersionsVersions','').replace('versions_write_version','write_version').replace('VersionsVersionedTransform','').replace('versioned_transform_write_transform_version','write_transform_version')
 Path('sdks/rust/versions-sdk/examples/version_roundtrip.rs').write_text(source)
 PYTHON
 cargo build -p versions-sdk --example version_roundtrip

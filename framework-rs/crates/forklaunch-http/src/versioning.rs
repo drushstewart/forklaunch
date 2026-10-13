@@ -8,7 +8,10 @@ use forklaunch_contract::{
     schema_validation::{self, JsonValidator},
 };
 use serde_json::Value;
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
+#[path = "versioning_hooks.rs"]
+mod hooks;
+pub use hooks::{VersionBodyHooks, VersionBodyHooksRegistry};
 #[path = "versioning_charset.rs"]
 mod charset;
 #[path = "versioning_form.rs"]
@@ -40,6 +43,7 @@ struct Variant {
     route: RouteContract,
     fields: Vec<FieldValidator>,
     body: Option<BodyValidator>,
+    hooks: VersionBodyHooks,
 }
 
 #[derive(Clone)]
@@ -120,9 +124,29 @@ impl VersionedRoutePlan {
                 route: projected,
                 fields,
                 body,
+                hooks: VersionBodyHooks::default(),
             });
         }
         Ok(Self { variants, parsers })
+    }
+
+    /// # Errors
+    /// Rejects unknown versions or hooks on a version without a declared body.
+    pub fn with_body_hooks(
+        mut self,
+        version: &str,
+        hooks: VersionBodyHooks,
+    ) -> Result<Self, String> {
+        let variant = self
+            .variants
+            .iter_mut()
+            .find(|variant| variant.name == version)
+            .ok_or("Unknown hook version")?;
+        if variant.route.request.body.is_none() {
+            return Err("Body hooks require a declared body".into());
+        }
+        variant.hooks = hooks;
+        Ok(self)
     }
 
     /// Return the last matching declaration, retaining every matching name.
@@ -153,28 +177,36 @@ impl VersionedRoutePlan {
         let mut matched = Vec::new();
         let mut selected = None;
         for variant in &self.variants {
-            if variant.matches(request, body_value.as_ref()) {
+            let Ok(candidate) = variant.hooks.preprocess(body_value.as_ref()) else {
+                continue;
+            };
+            if variant.matches(request, candidate.as_deref()) {
+                let Ok(candidate) = variant.hooks.transform(candidate) else {
+                    continue;
+                };
                 matched.push(variant.name.clone());
-                selected = Some(variant);
+                selected = Some((variant, candidate));
             }
         }
-        selected
-            .map(|variant| {
-                Some((
-                    variant.route.clone(),
-                    SelectedVersion {
-                        version: variant.name.clone(),
-                        matched_versions: matched,
-                        parsed_body: body_value.map(Arc::new),
-                    },
-                ))
-            })
-            .ok_or_else(|| {
-                vec![ContractValidationError::new(
-                    ContractValidationLocation::Body,
-                    "request does not match any declared API version",
-                )]
-            })
+        let (variant, candidate) = selected.ok_or_else(|| {
+            vec![ContractValidationError::new(
+                ContractValidationLocation::Body,
+                "request does not match any declared API version",
+            )]
+        })?;
+        let body = match candidate {
+            Some(Cow::Borrowed(_)) => body_value,
+            Some(Cow::Owned(value)) => Some(value),
+            None => None,
+        };
+        Ok(Some((
+            variant.route.clone(),
+            SelectedVersion {
+                version: variant.name.clone(),
+                matched_versions: matched,
+                parsed_body: body.map(Arc::new),
+            },
+        )))
     }
     // Versions share a parser. Decode once, even when many schemas are tried.
     fn body_value(

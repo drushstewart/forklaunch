@@ -2,7 +2,10 @@
 
 pub mod sse;
 pub mod versioning;
-pub use versioning::{MultipartLimits, SelectedVersion, VersionedRoutePlan};
+pub use versioning::{
+    MultipartLimits, SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry,
+    VersionedRoutePlan,
+};
 
 use std::{
     collections::BTreeMap,
@@ -439,8 +442,20 @@ impl LocalRouter {
         contract: RouteContract,
         handler: impl LocalHandler + 'static,
     ) -> &mut Self {
-        let versions =
-            VersionedRoutePlan::compile(&contract).expect("invalid versioned route schema");
+        self.register_with_body_hooks(contract, &VersionBodyHooksRegistry::default(), handler)
+    }
+
+    /// # Panics
+    /// Panics on invalid schemas or hooks referring to removed versions.
+    pub fn register_with_body_hooks(
+        &mut self,
+        contract: RouteContract,
+        hooks: &VersionBodyHooksRegistry,
+        handler: impl LocalHandler + 'static,
+    ) -> &mut Self {
+        let versions = hooks
+            .compile(&contract)
+            .expect("invalid versioned route schema or hooks");
         self.routes.push(LocalRoute {
             versions,
             contract,

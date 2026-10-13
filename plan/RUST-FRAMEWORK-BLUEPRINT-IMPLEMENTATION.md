@@ -288,7 +288,7 @@ Completed candidate-selection review: [Rust auth evaluation](RUST-AUTH-FRAMEWORK
 ### `forklaunch-openapi`
 
 - [x] Generate OpenAPI 3.1 from `ContractRegistry`.
-- [ ] Support versioned APIs. Ordered JSON/text/file/form/multipart selection, shared-parser checks and limits, per-version response validation, MCP tools, named/full-metadata OpenAPI exports and both typed SDKs are implemented. Configurable parser/charset behavior and request transformations remain open; see the 2026-10-13 versioning receipts.
+- [ ] Support versioned APIs. Ordered JSON/text/file/form/multipart selection, shared-parser checks and limits, per-version response validation, MCP tools, named/full-metadata OpenAPI exports and both typed SDKs are implemented. Configurable parser limits/charsets/compression and native per-version body preprocessing/transformation are implemented. Parser verify/reviver, non-body transformations and remaining codec/invalid-string boundaries stay open; see the 2026-10-13 versioning receipts.
 - [x] Support servers, descriptions, tags, summaries, operation IDs, auth schemes, response codes.
 - [x] Serve raw OpenAPI JSON.
 - [x] Support file output mode for build and CI.
