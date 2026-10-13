@@ -9,11 +9,13 @@ const root = path.resolve(
   '../..',
 );
 process.env.NODE_ENV = 'production';
-const reference = await betterAuthReference(root);
+const rateLimit = process.env.FORKLAUNCH_AUTH_RATE_LIMIT
+  ? JSON.parse(process.env.FORKLAUNCH_AUTH_RATE_LIMIT) : undefined;
+const reference = await betterAuthReference(root, { rateLimit });
 const context = await reference.auth.$context;
 assert.equal(context.rateLimit.enabled, true);
-assert.equal(context.rateLimit.window, 10);
-assert.equal(context.rateLimit.max, 100);
+assert.equal(context.rateLimit.window, rateLimit?.window ?? 10);
+assert.equal(context.rateLimit.max, rateLimit?.max ?? 100);
 assert.equal(context.rateLimit.storage, 'memory');
 const cases = [];
 const start = 1800000000000;
@@ -86,6 +88,13 @@ for (const route of [
   '/sign-in/email/',
 ])
   add(160000, '192.0.2.12', route);
+if (rateLimit) {
+  for (const time of [170000, 171000, 171000, 171001, 177999, 178000])
+    add(time, '192.0.2.40', '/ok', { method: 'GET', body: undefined });
+  for (const time of [180000, 181000, 181001, 183999, 184000])
+    add(time, '192.0.2.41');
+  for (let i = 0; i < 10; i++) add(190000, '192.0.2.42', '/sign-up/email');
+}
 const RealDate = Date;
 const expected = [];
 for (const test of cases) {
@@ -172,3 +181,23 @@ assert.deepEqual(mismatches, []);
 console.log(
   `Better Auth production rate limits: ${cases.length} actual HTTP comparisons passed`,
 );
+
+// Keep customization conformance in the standard regression entry point.
+if (!rateLimit) {
+  const configured = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
+    cwd: root,
+    env: {
+      ...process.env,
+      FORKLAUNCH_AUTH_RATE_LIMIT: JSON.stringify({
+        window: 7, max: 2,
+        customRules: {
+          '/sign-in/email': { window: 3, max: 2 },
+          '/sign-up/email': false,
+        },
+      }),
+    },
+    encoding: 'utf8',
+  });
+  assert.equal(configured.status, 0, configured.stderr + configured.stdout);
+  process.stdout.write(configured.stdout);
+}

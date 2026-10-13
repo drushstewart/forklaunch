@@ -117,6 +117,7 @@ export async function betterAuthReference(root, options = {}) {
       level: 'error',
     },
   });
+  if (options.rateLimit) config.rateLimit = options.rateLimit;
   const previousSecret = process.env.BETTER_AUTH_SECRET;
   const previousSecrets = process.env.BETTER_AUTH_SECRETS;
   delete process.env.BETTER_AUTH_SECRETS;

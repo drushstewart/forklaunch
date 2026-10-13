@@ -44,6 +44,33 @@ async fn main() {
     .with_clock(move || {
         DateTime::<Utc>::from_timestamp_millis(server_clock.load(Ordering::SeqCst)).unwrap()
     });
+    let router = if let Ok(config) = std::env::var("FORKLAUNCH_AUTH_RATE_LIMIT") {
+        use forklaunch_iam_better_auth::http::{AuthRateLimitOptions, AuthRateLimitRule};
+        let config: serde_json::Value = serde_json::from_str(&config).unwrap();
+        let rule = |value: &serde_json::Value| {
+            AuthRateLimitRule::new(
+                u32::try_from(value["window"].as_u64().unwrap()).unwrap(),
+                u32::try_from(value["max"].as_u64().unwrap()).unwrap(),
+            )
+            .unwrap()
+        };
+        let mut options = AuthRateLimitOptions::default().with_default(rule(&config));
+        for (path, value) in config["customRules"].as_object().unwrap() {
+            options = options
+                .with_exact_path(
+                    path,
+                    if value == &serde_json::Value::Bool(false) {
+                        None
+                    } else {
+                        Some(rule(value))
+                    },
+                )
+                .unwrap();
+        }
+        router.with_rate_limit_options(options)
+    } else {
+        router
+    };
     let router = if let Ok(endpoint) = std::env::var("FORKLAUNCH_GOOGLE_CERTIFICATES_URL") {
         let provider = forklaunch_iam_better_auth::oauth::google_client::GoogleClient::new(
             "fixture-google-id".into(),

@@ -3553,3 +3553,22 @@ calling real native and tsx HTTP services. All **1,100 CLI tests pass**. Receipt
 This closes the direct live TypeScript import gate: **653/682 (95.7%), 29 open**.
 It does not make Rust source directly importable from TypeScript; native services
 continue using their generated contract clients.
+
+
+Better Auth rate-limit customization now supports positive default windows/budgets
+and exact auth-relative path overrides, including endpoint disablement. The
+standard `rust_better_auth_rate_limits.mjs` entry point runs 153 default and 174
+configured HTTP comparisons against actual Better Auth 1.7.6. Sensitive built-in
+rules override defaults; explicit endpoint settings override both. Retry headers,
+rolling boundaries, path normalization, parser/guard ordering and atomic request
+counting are preserved. Configuration rejects zero budgets/windows and unsupported
+wildcard/query/encoded paths. Dynamic rule callbacks, wildcard rules and external
+storage remain open; this narrows the existing customization gate without changing
+the broad checklist completion count.
+
+Validation receipt: 36 portable auth tests pass (the dedicated PostgreSQL unit
+test remains explicitly ignored in that run), strict all-feature/all-target auth
+clippy passes, and fresh generated run `cK6KDS` passes against restricted-role
+PostgreSQL. Eight actual frontend client scenarios, both generated SDKs,
+HTTP/MCP shared/separate/disabled listeners, Origin rejection, restart/shutdown,
+relocation, preservation, rename and deletion all pass.

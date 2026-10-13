@@ -16,17 +16,104 @@ use std::{
 
 const MAX_ENTRIES: usize = 100_000;
 
-#[derive(Clone, Copy)]
+/// A positive rolling idle-window limit. Windows are expressed in seconds.
+#[derive(Clone, Copy, Debug)]
+pub struct AuthRateLimitRule {
+    window_seconds: u32,
+    max: u32,
+}
+impl AuthRateLimitRule {
+    /// Constructs a rolling idle-window limit.
+    ///
+    /// # Errors
+    /// Rejects zero windows and zero request budgets at configuration time.
+    pub fn new(window_seconds: u32, max: u32) -> BlueprintResult<Self> {
+        if window_seconds == 0 || max == 0 {
+            return Err(BlueprintError::new(
+                "invalid_rate_limit",
+                "Rate limits must be positive",
+            ));
+        }
+        Ok(Self {
+            window_seconds,
+            max,
+        })
+    }
+    fn rule(self) -> Rule {
+        Rule {
+            window_ms: i64::from(self.window_seconds) * 1000,
+            max: self.max,
+        }
+    }
+}
+/// Process-local limits with Better Auth's built-in sensitive-endpoint rules.
+/// Exact-path overrides take precedence over both sensitive and default rules.
+#[derive(Clone, Debug)]
+pub struct AuthRateLimitOptions {
+    default: AuthRateLimitRule,
+    overrides: HashMap<String, Option<AuthRateLimitRule>>,
+}
+impl Default for AuthRateLimitOptions {
+    fn default() -> Self {
+        Self {
+            default: AuthRateLimitRule {
+                window_seconds: 10,
+                max: 100,
+            },
+            overrides: HashMap::new(),
+        }
+    }
+}
+impl AuthRateLimitOptions {
+    #[must_use]
+    pub fn with_default(mut self, rule: AuthRateLimitRule) -> Self {
+        self.default = rule;
+        self
+    }
+    /// Paths are relative to the auth mount. `None` disables the endpoint limit.
+    ///
+    /// # Errors
+    /// Wildcards, queries and noncanonical paths are rejected explicitly.
+    pub fn with_exact_path(
+        mut self,
+        path: impl Into<String>,
+        rule: Option<AuthRateLimitRule>,
+    ) -> BlueprintResult<Self> {
+        let path = path.into();
+        if !path.starts_with('/')
+            || (path.len() > 1 && path.ends_with('/'))
+            || path.contains(['*', '?', '#', '%'])
+            || path.contains("//")
+        {
+            return Err(BlueprintError::new(
+                "invalid_rate_limit_path",
+                "Expected a canonical exact auth path",
+            ));
+        }
+        self.overrides.insert(path, rule);
+        Ok(self)
+    }
+    fn for_path(&self, path: &str) -> Option<Rule> {
+        if let Some(rule) = self.overrides.get(path) {
+            return rule.map(AuthRateLimitRule::rule);
+        }
+        Some(Rule::special(path).unwrap_or_else(|| self.default.rule()))
+    }
+}
+
+#[derive(Clone)]
 pub(super) struct RateLimiter {
     pub enabled: bool,
+    pub options: AuthRateLimitOptions,
 }
 impl RateLimiter {
     pub fn new() -> Self {
         Self {
             enabled: std::env::var("NODE_ENV").is_ok_and(|value| value == "production"),
+            options: AuthRateLimitOptions::default(),
         }
     }
-    fn consume(self, ip: &str, path: &str, now: i64) -> BlueprintResult<Option<u64>> {
+    fn consume(&self, ip: &str, path: &str, now: i64) -> BlueprintResult<Option<u64>> {
         static MEMORY: OnceLock<Mutex<Memory>> = OnceLock::new();
         if !self.enabled {
             return Ok(None);
@@ -42,7 +129,10 @@ impl RateLimiter {
         let ip = if ip.is_empty() { "no-trusted-ip" } else { ip };
         state.consume(
             Arc::from(format!("{ip}|{path}")),
-            Rule::for_path(path),
+            match self.options.for_path(path) {
+                Some(rule) => rule,
+                None => return Ok(None),
+            },
             now,
             MAX_ENTRIES,
         )
@@ -90,15 +180,15 @@ struct Rule {
     max: u32,
 }
 impl Rule {
-    fn for_path(path: &str) -> Self {
+    fn special(path: &str) -> Option<Self> {
         if ["/sign-in", "/sign-up", "/change-password", "/change-email"]
             .iter()
             .any(|prefix| path.starts_with(prefix))
         {
-            Self {
+            Some(Self {
                 window_ms: 10_000,
                 max: 3,
-            }
+            })
         } else if [
             "/request-password-reset",
             "/send-verification-email",
@@ -108,15 +198,12 @@ impl Rule {
         .contains(&path)
             || path.starts_with("/forget-password")
         {
-            Self {
+            Some(Self {
                 window_ms: 60_000,
                 max: 3,
-            }
+            })
         } else {
-            Self {
-                window_ms: 10_000,
-                max: 100,
-            }
+            None
         }
     }
 }
@@ -224,6 +311,39 @@ fn internal() -> BlueprintError {
 mod tests {
     use super::*;
     #[test]
+    fn configured_rules_preserve_special_limits_and_allow_exact_overrides() {
+        assert!(AuthRateLimitRule::new(0, 1).is_err());
+        assert!(AuthRateLimitRule::new(1, 0).is_err());
+        for path in ["ok", "/sign-in/*", "/ok/", "/ok?x=1", "/%6fk", "//ok"] {
+            assert!(
+                AuthRateLimitOptions::default()
+                    .with_exact_path(path, None)
+                    .is_err()
+            );
+        }
+        let options = AuthRateLimitOptions::default()
+            .with_default(AuthRateLimitRule::new(20, 2).unwrap())
+            .with_exact_path(
+                "/sign-in/email",
+                Some(AuthRateLimitRule::new(30, 5).unwrap()),
+            )
+            .unwrap()
+            .with_exact_path("/sign-up/email", None)
+            .unwrap();
+        assert_eq!(options.for_path("/ok").unwrap().window_ms, 20_000);
+        assert_eq!(options.for_path("/ok").unwrap().max, 2);
+        assert_eq!(options.for_path("/sign-in/email").unwrap().max, 5);
+        assert_eq!(options.for_path("/sign-in/social").unwrap().max, 3);
+        assert_eq!(
+            options
+                .for_path("/request-password-reset")
+                .unwrap()
+                .window_ms,
+            60_000
+        );
+        assert!(options.for_path("/sign-up/email").is_none());
+    }
+    #[test]
     fn rolling_expiry_denials_and_insertion_eviction_keep_indexes_bounded() {
         let mut memory = Memory::default();
         let rule = Rule {
@@ -270,10 +390,13 @@ mod tests {
             .map(|_| {
                 let path = path.clone();
                 std::thread::spawn(move || {
-                    RateLimiter { enabled: true }
-                        .consume("192.0.2.1", &path, 1_800_000_000_000)
-                        .unwrap()
-                        .is_none()
+                    RateLimiter {
+                        enabled: true,
+                        options: AuthRateLimitOptions::default(),
+                    }
+                    .consume("192.0.2.1", &path, 1_800_000_000_000)
+                    .unwrap()
+                    .is_none()
                 })
             })
             .collect();

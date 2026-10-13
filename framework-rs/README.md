@@ -64,6 +64,13 @@ return 401 for missing credentials and 403 for invalid tokens. Opaque bearer
 session rejection remains 401. Native HTTP error bodies retain their structured
 JSON envelope; complete TypeScript error-envelope parity is still tracked.
 Better Auth JWT formats and provider/cookie/OIDC flows use their own adapter.
+`AuthHttp::with_rate_limit_options` accepts `AuthRateLimitOptions` with a positive
+`AuthRateLimitRule::new(window_seconds, max)` default and `with_exact_path`
+overrides relative to the auth mount. An override of `None` disables that endpoint's
+limit. Built-in sensitive-endpoint limits take precedence over the default;
+exact overrides take precedence over both. `with_rate_limiting` controls enablement
+separately (production by default). Wildcards, dynamic callbacks and external rate
+limit storage remain unsupported by this configuration API.
 
 The [engineering security review](../plan/RUST-SECURITY-REVIEW.md) records verified
 auth/crypto boundaries, fixed findings and the exact remaining dependency notices.

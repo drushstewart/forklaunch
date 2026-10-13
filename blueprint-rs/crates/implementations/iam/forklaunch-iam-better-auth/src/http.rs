@@ -30,6 +30,7 @@ mod email;
 mod organization;
 mod public;
 mod rate;
+pub use rate::{AuthRateLimitOptions, AuthRateLimitRule};
 #[cfg(feature = "application-http")]
 pub mod relay;
 mod request;
@@ -173,6 +174,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     #[must_use]
     pub fn with_rate_limiting(mut self, enabled: bool) -> Self {
         self.limiter.enabled = enabled;
+        self
+    }
+    /// Configures process-local rate limits; enablement is controlled separately.
+    #[must_use]
+    pub fn with_rate_limit_options(mut self, options: AuthRateLimitOptions) -> Self {
+        self.limiter.options = options;
         self
     }
     /// Credentialed browser policy for the outer `ForkLaunchRouter`. Install this
