@@ -131,6 +131,8 @@ on:
       - 'cli/tests/rust_better_auth_compliance.mjs'
       - 'cli/tests/rust_ecommerce_compliance.mjs'
       - 'cli/tests/rust_ecommerce_retention.mjs'
+      - 'cli/tests/rust_relay_orm.mjs'
+      - 'cli/src/templates/project/relay/**'
       - 'cli/tests/rust_better_auth_retention.mjs'
       - 'cli/tests/fixtures/rust_better_auth_orm.mjs'
       - 'cli/tests/fixtures/rust_better_auth_bridge.mjs'
@@ -309,6 +311,8 @@ on:
       - 'cli/tests/rust_better_auth_compliance.mjs'
       - 'cli/tests/rust_ecommerce_compliance.mjs'
       - 'cli/tests/rust_ecommerce_retention.mjs'
+      - 'cli/tests/rust_relay_orm.mjs'
+      - 'cli/src/templates/project/relay/**'
       - 'cli/tests/rust_better_auth_retention.mjs'
       - 'cli/tests/fixtures/rust_better_auth_orm.mjs'
       - 'cli/tests/fixtures/rust_better_auth_bridge.mjs'
@@ -719,6 +723,10 @@ jobs:
       - run: node cli/tests/rust_better_auth_public.mjs
       - run: node cli/tests/rust_better_auth_surfacing.mjs
       - run: node cli/tests/rust_better_auth_orm.mjs
+      - run: node cli/tests/rust_relay_orm.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_ORM_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_ecommerce_retention.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

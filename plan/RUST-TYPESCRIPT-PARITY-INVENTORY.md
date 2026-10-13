@@ -2505,3 +2505,17 @@ Compose ownership, source preservation, relocation and rename/sync/delete
 removed, including the superseded run missing its local Stripe dependency path.
 Ecommerce compliance gate is complete: **648/682 (95.0%), 34 open**. Interrupted
 provider capture/reconciliation remains separate work.
+
+
+### Relay handoff concurrency prerequisite
+
+The Rust/mixed relay audit reproduced a real TypeScript template race: two
+independent request entity managers, synchronized after reading one ticket, both
+redeemed it. The template now conditionally updates the unused, unexpired ticket
+in one database statement before minting a session. The real MikroORM/PostgreSQL
+fixture now permits exactly one redemption and checks nonce uniqueness, replay,
+unknown and expired tickets. CI watches the relay template and runs this fixture.
+Evidence: `/private/tmp/fl-relay-orm-before.log` (2 redemptions instead of 1) and
+`fl-relay-orm-after.log` (pass). This fixes the reference behavior; native relay
+service, HTTP/MCP and generated lifecycle work remain open. Checklist stays
+648/682 (95.0%), 34 open.
