@@ -2372,3 +2372,29 @@ fixture sources, and the two newly completed generated runs. Nested Git repos,
 tracked files and active workspaces were excluded. Detailed old-run receipts:
 `/private/tmp/fl-validated-workspace-cleanup.json` and
 `/private/tmp/fl-completed-workspaces-removed.json`.
+
+### Indexed teams/invitations and claim-owner writes
+
+Team reads, member selection/mutations and invitation listing/creation now use
+scoped indexes. Membership-key lookup retains precedence over legacy team/user
+pairs. Migration 0004 indexes unique claims by record owner for replacement,
+backfill and FK deletion. PostgreSQL EXPLAIN verifies the selective owner index
+on the large dataset. The shared fixture now includes 4,100 records in each of
+users, accounts, organization members/roles, teams/team memberships and invitations,
+plus the existing 4,100-session scenario. Native/live HTTP/MCP behavior remains
+correct beyond the old model scan bound.
+
+All 31 native tests, strict Clippy, 1,550 actual TypeScript team/invitation
+comparisons and restricted encrypted PostgreSQL pass. The expanded backfill
+exceeded the owned fixture's 256 MiB temporary volume; a fresh 1 GiB fixture
+passes the full test. CI PostgreSQL has no corresponding 256 MiB volume limit.
+The CLI packages 868 source/template files; the generated relocated app passes
+both SDKs, frontend clients, HTTP/MCP startup/invocation, restart and lifecycle
+checks. The generated workspace was removed after completion. Logs:
+`/private/tmp/fl-auth-team-index-tests-final.log`, `fl-auth-team-index-clippy-final.log`,
+`fl-auth-team-index-postgres-final.log`, `fl-auth-team-index-runtime.log`,
+`fl-auth-team-index-package.log` and seven named comparison logs. Another 296 MiB
+of build outputs were removed only where dependency files traced them to already
+deleted, validated generated workspaces (`fl-orphan-generated-artifacts.json`).
+Provider/password, verification, keyring and compliance/retention traversal
+remain open. Checklist stays **646/682 (94.7%), 36 open**.
