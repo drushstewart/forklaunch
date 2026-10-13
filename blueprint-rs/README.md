@@ -134,3 +134,20 @@ The root Cargo patch applies transitively to HTTP/MCP, workers and JSON record
 persistence. When consuming these source crates from another workspace, copy the
 workspace patch described in the [JSON boundary audit](../plan/RUST-JSON-BOUNDARY-AUDIT.md);
 dependency manifests cannot apply Cargo patches to their callers.
+
+Better Auth storage supports `AuthTransaction::list_page(model, after, limit)`
+for bounded insertion-order pagination over models larger than 4,096 rows.
+Limits are 1..=4,096; `AuthPage.next` is present only when another row exists.
+Keep the transaction open across pages for a stable view against other writers.
+Cursors are model-scoped positions, not authorization credentials. Replacing a
+record keeps its position, deleting a cursor's record does not invalidate the
+continuation, and rollback restores records and indexes together.
+
+Migration `0002_record_pagination.sql` adds the tenant/model/sequence index;
+apply migrations with the schema owner before serving requests with the runtime
+role. PostgreSQL pages decrypt at most limit+1 records and retain tenant RLS and
+record-bound encryption. The memory reference backend maintains insertion-order
+and unique-field indexes, but still clones its transaction snapshot in memory.
+The existing `list()` remains capped and fails closed for oversized models.
+Session/account/member services that still use it need separate indexed-query
+migration; this primitive does not yet remove their production scan limits.

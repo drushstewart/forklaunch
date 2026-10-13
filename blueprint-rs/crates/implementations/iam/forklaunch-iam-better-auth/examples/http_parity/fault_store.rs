@@ -1,5 +1,5 @@
 //! Owned fixture failures; never used by production HTTP handlers.
-use super::{AuthStore, AuthTransaction, Model};
+use super::{AuthCursor, AuthPage, AuthStore, AuthTransaction, Model};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::sync::Arc;
@@ -54,6 +54,17 @@ impl<T: AuthTransaction> AuthTransaction for FaultTransaction<T> {
             return Err(read_failure());
         }
         self.inner.get_many(model, ids, limit).await
+    }
+    async fn list_page(
+        &mut self,
+        model: Model,
+        after: Option<AuthCursor>,
+        limit: usize,
+    ) -> BlueprintResult<AuthPage> {
+        if self.read == Some(model) {
+            return Err(read_failure());
+        }
+        self.inner.list_page(model, after, limit).await
     }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         if self.read == Some(model) {

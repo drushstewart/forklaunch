@@ -2205,3 +2205,28 @@ generated-client Clippy. Logs: `/private/tmp/fl-anchor-cli-tests.log`,
 
 The resource-ID/dynamic-reference checklist item remains open; this is a
 verified part of it. Checklist remains **644/682 (94.4%), 38 open**.
+
+### Bounded auth-store pagination
+
+Better Auth transactions now expose insertion-order keyset pages with opaque
+model-scoped cursors and 1..=4096 limits. PostgreSQL uses a new
+(tenant_id, model, sequence) index and decrypts at most limit+1 records per page;
+the memory backend maintains ordering and unique-field indexes. Replacement,
+deletion and rollback keep those indexes consistent. Page Debug output omits
+auth record contents. Stable traversal uses one existing serialized transaction.
+
+Memory and live restricted-role encrypted PostgreSQL pass 4,100-record paging,
+exact boundaries, invalid limits/cursor models, deleted cursor rows, replacement
+ordering and rollback. The PostgreSQL test also retains encryption, tenant RLS,
+rotation, ciphertext/index transplant rejection and atomic audit checks. The
+all-feature crate suite passes 29 tests (one database test run separately), and
+final memory-store regressions pass after replacing unique-field scans. Strict
+all-target Clippy and packaging of 866 embedded sources/templates pass.
+Logs: `/private/tmp/fl-auth-pagination-postgres.log`,
+`fl-auth-pagination-all-tests.log`, `fl-auth-pagination-final-store.log`,
+`fl-auth-pagination-clippy.log`, `fl-auth-pagination-package.log`.
+The owned PostgreSQL container was removed after validation.
+
+Account/session/member query migration and encrypted lookup backfill remain
+open. The existing full-model list still rejects oversized results, preventing
+silent authorization truncation. Checklist remains **644/682 (94.4%), 38 open**.

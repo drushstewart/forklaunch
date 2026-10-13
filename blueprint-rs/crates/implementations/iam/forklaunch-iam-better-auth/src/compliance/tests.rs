@@ -1,3 +1,4 @@
+use crate::store::{AuthCursor, AuthPage};
 use super::*;
 use serde_json::json;
 #[tokio::test]

@@ -61,6 +61,28 @@ pub trait AuthStore: Send + Sync {
     ) -> impl Future<Output = BlueprintResult<Self::Transaction<'_>>> + Send;
 }
 
+/// Opaque insertion-order continuation, scoped to a model. Use within the same
+/// transaction for a stable snapshot. Never use a cursor as authorization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthCursor {
+    model: Model,
+    sequence: u64,
+}
+/// One bounded page; `next` is present only when another record exists.
+pub struct AuthPage {
+    pub records: Vec<Value>,
+    pub next: Option<AuthCursor>,
+}
+
+impl std::fmt::Debug for AuthPage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthPage")
+            .field("record_count", &self.records.len())
+            .field("next", &self.next)
+            .finish()
+    }
+}
+
 /// One serialized graph operation. Drop without commit rolls back all changes.
 /// Model relationships/cascades are the auth service's responsibility.
 pub trait AuthTransaction: Send {
@@ -87,6 +109,15 @@ pub trait AuthTransaction: Send {
         ids: &[String],
         limit: usize,
     ) -> impl Future<Output = BlueprintResult<Vec<Value>>> + Send;
+    /// Indexed keyset pagination in insertion order. Limits are 1..=4096;
+    /// cross-model cursors are rejected. The transaction's lock keeps pages
+    /// stable against concurrent writers. Replacements retain their position.
+    fn list_page(
+        &mut self,
+        model: Model,
+        after: Option<AuthCursor>,
+        limit: usize,
+    ) -> impl Future<Output = BlueprintResult<AuthPage>> + Send;
     /// Returns insertion order, bounded to 4096 records per model. Oversized
     /// scans fail explicitly instead of silently truncating authorization data.
     fn list(&mut self, model: Model) -> impl Future<Output = BlueprintResult<Vec<Value>>> + Send;
@@ -158,4 +189,22 @@ fn validate_many(ids: &[String], limit: usize) -> BlueprintResult<()> {
         return Err(invalid());
     }
     Ok(())
+}
+
+fn page_start(model: Model, after: Option<AuthCursor>, limit: usize) -> BlueprintResult<u64> {
+    if !(1..=4096).contains(&limit) || after.is_some_and(|cursor| cursor.model != model) {
+        return Err(invalid());
+    }
+    Ok(after.map_or(0, |cursor| cursor.sequence))
+}
+fn page(model: Model, mut rows: Vec<(u64, Value)>, limit: usize) -> AuthPage {
+    let next = (rows.len() > limit).then(|| AuthCursor {
+        model,
+        sequence: rows[limit - 1].0,
+    });
+    rows.truncate(limit);
+    AuthPage {
+        records: rows.into_iter().map(|(_, row)| row).collect(),
+        next,
+    }
 }

@@ -174,6 +174,65 @@ async fn exercise_many<T: AuthTransaction>(tx: &mut T) {
     );
 }
 
+async fn exercise_pagination<S: AuthStore>(store: &S) {
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(tx.list_page(Model::User, None, 0).await.is_err());
+    assert!(tx.list_page(Model::User, None, 4097).await.is_err());
+    let mut after = None;
+    let mut ids = Vec::new();
+    loop {
+        let page = tx.list_page(Model::User, after, 137).await.unwrap();
+        assert!(!page.records.is_empty() && page.records.len() <= 137);
+        ids.extend(
+            page.records
+                .into_iter()
+                .map(|row| row["id"].as_str().unwrap().to_owned()),
+        );
+        after = page.next;
+        if after.is_none() {
+            break;
+        }
+        assert!(tx.list_page(Model::Organization, after, 1).await.is_err());
+    }
+    assert_eq!(
+        ids,
+        (0..4100)
+            .map(|index| format!("imported-{index}"))
+            .collect::<Vec<_>>()
+    );
+    let first = tx.list_page(Model::User, None, 4096).await.unwrap();
+    assert_eq!(first.records.len(), 4096);
+    let last = tx.list_page(Model::User, first.next, 4096).await.unwrap();
+    assert_eq!(last.records.len(), 4);
+    assert!(last.next.is_none());
+    assert!(
+        tx.list_page(Model::Invitation, None, 10)
+            .await
+            .unwrap()
+            .records
+            .is_empty()
+    );
+    tx.commit().await.unwrap();
+
+    // A continuation remains valid after its row is deleted, and replacement
+    // does not move a record to the end. Rollback restores both data and indexes.
+    let mut tx = store.begin(true).await.unwrap();
+    let first = tx.list_page(Model::User, None, 1).await.unwrap();
+    tx.delete(Model::User, "imported-0").await.unwrap();
+    let mut row = tx.get(Model::User, "imported-1").await.unwrap().unwrap();
+    row["name"] = json!("updated");
+    tx.replace(Model::User, row).await.unwrap();
+    let second = tx.list_page(Model::User, first.next, 1).await.unwrap();
+    assert_eq!(second.records[0]["id"], "imported-1");
+    assert_eq!(second.records[0]["name"], "updated");
+    drop(tx);
+    let mut tx = store.begin(false).await.unwrap();
+    let first = tx.list_page(Model::User, None, 2).await.unwrap();
+    assert_eq!(first.records[0]["id"], "imported-0");
+    assert!(first.records[1].get("name").is_none());
+    tx.commit().await.unwrap();
+}
+
 async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync::Arc<S>) {
     let mut tx = store.begin(true).await.unwrap();
     for index in 0..4100 {
@@ -186,6 +245,7 @@ async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync:
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    exercise_pagination(store.as_ref()).await;
     let mut tx = store.begin(false).await.unwrap();
     assert!(
         tx.list(Model::User).await.is_err(),

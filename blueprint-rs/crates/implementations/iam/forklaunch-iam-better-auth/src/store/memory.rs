@@ -12,6 +12,8 @@ use tokio::sync::{Mutex, OwnedMutexGuard};
 struct State {
     rows: BTreeMap<(Model, String), (u64, Value)>,
     sequence: u64,
+    ordered: BTreeMap<(Model, u64), String>,
+    unique_values: BTreeMap<(Model, &'static str, String), String>,
 }
 #[derive(Clone, Default)]
 pub struct MemoryAuthStore {
@@ -42,17 +44,41 @@ impl MemoryAuthTransaction {
     fn unique(&self, model: Model, row: &Value) -> BlueprintResult<()> {
         validate_record(model, row)?;
         let id = record_id(row)?;
-        for field in model.unique_fields() {
-            if let Some(candidate) = row.get(*field).filter(|value| !value.is_null())
-                && self.pending.rows.iter().any(|((family, key), (_, value))| {
-                    *family == model && key != id && value.get(*field) == Some(candidate)
-                })
+        for key in unique_keys(model, row) {
+            if self
+                .pending
+                .unique_values
+                .get(&key)
+                .is_some_and(|owner| owner != id)
             {
                 return Err(conflict());
             }
         }
         Ok(())
     }
+    fn index_record(&mut self, model: Model, row: &Value) -> BlueprintResult<()> {
+        let id = record_id(row)?;
+        if let Some((_, previous)) = self.pending.rows.get(&(model, id.to_owned())) {
+            for key in unique_keys(model, previous) {
+                self.pending.unique_values.remove(&key);
+            }
+        }
+        for key in unique_keys(model, row) {
+            self.pending.unique_values.insert(key, id.to_owned());
+        }
+        Ok(())
+    }
+}
+fn unique_keys(model: Model, row: &Value) -> Vec<(Model, &'static str, String)> {
+    model
+        .unique_fields()
+        .iter()
+        .filter_map(|field| {
+            row.get(*field)
+                .and_then(Value::as_str)
+                .map(|value| (model, *field, value.to_owned()))
+        })
+        .collect()
 }
 impl AuthTransaction for MemoryAuthTransaction {
     async fn get(&mut self, model: Model, id: &str) -> BlueprintResult<Option<Value>> {
@@ -68,17 +94,18 @@ impl AuthTransaction for MemoryAuthTransaction {
         field: &str,
         value: &str,
     ) -> BlueprintResult<Option<Value>> {
-        if !model.unique_fields().contains(&field) {
-            return Err(invalid());
-        }
+        let field = model
+            .unique_fields()
+            .iter()
+            .copied()
+            .find(|candidate| *candidate == field)
+            .ok_or_else(invalid)?;
         Ok(self
             .pending
-            .rows
-            .iter()
-            .find_map(|((family, _), (_, row))| {
-                (*family == model && row.get(field).and_then(Value::as_str) == Some(value))
-                    .then(|| row.clone())
-            }))
+            .unique_values
+            .get(&(model, field, value.to_owned()))
+            .and_then(|id| self.pending.rows.get(&(model, id.clone())))
+            .map(|(_, row)| row.clone()))
     }
     async fn get_many(
         &mut self,
@@ -98,6 +125,30 @@ impl AuthTransaction for MemoryAuthTransaction {
             .take(limit)
             .map(|(_, row)| row.clone())
             .collect())
+    }
+    async fn list_page(
+        &mut self,
+        model: Model,
+        after: Option<super::AuthCursor>,
+        limit: usize,
+    ) -> BlueprintResult<super::AuthPage> {
+        use std::ops::Bound::{Excluded, Included};
+        let after = super::page_start(model, after, limit)?;
+        let rows = self
+            .pending
+            .ordered
+            .range((Excluded((model, after)), Included((model, u64::MAX))))
+            .take(limit + 1)
+            .map(|((_, sequence), id)| {
+                let (_, value) = self
+                    .pending
+                    .rows
+                    .get(&(model, id.clone()))
+                    .ok_or_else(storage_error)?;
+                Ok((*sequence, value.clone()))
+            })
+            .collect::<BlueprintResult<Vec<_>>>()?;
+        Ok(super::page(model, rows, limit))
     }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let mut rows: Vec<_> = self
@@ -125,6 +176,10 @@ impl AuthTransaction for MemoryAuthTransaction {
             .sequence
             .checked_add(1)
             .ok_or_else(storage_error)?;
+        self.index_record(model, &value)?;
+        self.pending
+            .ordered
+            .insert((model, self.pending.sequence), key.1.clone());
         self.pending
             .rows
             .insert(key, (self.pending.sequence, value));
@@ -135,12 +190,18 @@ impl AuthTransaction for MemoryAuthTransaction {
         let key = (model, record_id(&value)?.to_owned());
         let sequence = self.pending.rows.get(&key).ok_or_else(not_found)?.0;
         self.unique(model, &value)?;
+        self.index_record(model, &value)?;
         self.pending.rows.insert(key, (sequence, value));
         Ok(())
     }
     async fn delete(&mut self, model: Model, id: &str) -> BlueprintResult<()> {
         self.require_write()?;
-        self.pending.rows.remove(&(model, id.to_owned()));
+        if let Some((sequence, row)) = self.pending.rows.remove(&(model, id.to_owned())) {
+            self.pending.ordered.remove(&(model, sequence));
+            for key in unique_keys(model, &row) {
+                self.pending.unique_values.remove(&key);
+            }
+        }
         Ok(())
     }
     async fn commit(mut self) -> BlueprintResult<()> {

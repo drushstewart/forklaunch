@@ -237,6 +237,29 @@ impl AuthTransaction for PostgresAuthTransaction<'_> {
             .map(|(id, ciphertext)| self.store.decode(model, &id, &ciphertext))
             .collect()
     }
+    async fn list_page(
+        &mut self,
+        model: Model,
+        after: Option<super::AuthCursor>,
+        limit: usize,
+    ) -> BlueprintResult<super::AuthPage> {
+        let after =
+            i64::try_from(super::page_start(model, after, limit)?).map_err(|_| invalid())?;
+        let rows: Vec<(i64, String, String)> = sqlx::query_as(
+            "SELECT sequence,id,ciphertext FROM fl_better_auth.records WHERE tenant_id=$1 AND model=$2 AND sequence>$3 ORDER BY sequence LIMIT $4",
+        ).bind(self.store.tenant.id()).bind(model.as_str()).bind(after).bind(i64::try_from(limit + 1).map_err(|_| invalid())?)
+            .fetch_all(&mut *self.tx).await.map_err(db_error)?;
+        let rows = rows
+            .into_iter()
+            .map(|(sequence, id, ciphertext)| {
+                Ok((
+                    u64::try_from(sequence).map_err(|_| storage_error())?,
+                    self.store.decode(model, &id, &ciphertext)?,
+                ))
+            })
+            .collect::<BlueprintResult<Vec<_>>>()?;
+        Ok(super::page(model, rows, limit))
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let rows: Vec<(String,String)> = sqlx::query_as("SELECT id,ciphertext FROM fl_better_auth.records WHERE tenant_id=$1 AND model=$2 ORDER BY sequence LIMIT 4097")
             .bind(self.store.tenant.id()).bind(model.as_str()).fetch_all(&mut *self.tx).await.map_err(db_error)?;
