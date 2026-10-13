@@ -240,6 +240,7 @@ function generateOperationObject<SV extends AnySchemaValidator>(
       operationObject.parameters?.push({
         name: key,
         in: 'path',
+        required: true,
         schema: typedSchemaValidator.openapi(params[key])
       });
     }
@@ -292,33 +293,15 @@ function generateOperationObject<SV extends AnySchemaValidator>(
     };
 
     if ('basic' in auth) {
-      operationObject.security = [
-        {
-          basic: Array.from(
-            'allowedPermissions' in auth &&
-              auth.allowedPermissions instanceof Set
-              ? auth.allowedPermissions.values()
-              : []
-          )
-        }
-      ];
+      operationObject.security = [{ basic: [] }];
 
       securitySchemes['basic'] = {
         type: 'http',
         scheme: 'basic'
       };
     } else if (auth) {
-      operationObject.security = [
-        {
-          [auth.headerName !== 'Authorization' ? 'bearer' : 'apiKey']:
-            Array.from(
-              'allowedPermissions' in auth &&
-                auth.allowedPermissions instanceof Set
-                ? auth.allowedPermissions.values()
-                : []
-            )
-        }
-      ];
+      const schemeName = auth.headerName || 'Authorization';
+      operationObject.security = [{ [schemeName]: [] }];
 
       if (auth.headerName && auth.headerName !== 'Authorization') {
         securitySchemes[auth.headerName] = {

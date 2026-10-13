@@ -43,10 +43,14 @@ try{
  cpSync(join(root,'framework/validator/shims'),join(temporary,'source/validator/shims'),{recursive:true});
  writeFileSync(join(temporary,'package.json'),'{"private":true,"type":"module"}');
  writeFileSync(join(temporary,'tsconfig.json'),JSON.stringify({compilerOptions:{baseUrl:'.',paths:{
+  '@fixture/openapi':['source/core/src/http/openApiV3Generator/openApiV3Generator.ts'],
   '@forklaunch/common':['source/common/index.ts'],'@forklaunch/validator':['source/validator/index.ts'],
   '@forklaunch/validator/*':['source/validator/src/*/index.ts'],'@forklaunch/core/*':['source/core/src/*/index.ts'],
   '@forklaunch/express':['source/express/index.ts']},target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',esModuleInterop:true}}));
  cpSync(join(fixture,'service.ts'),join(temporary,'service.ts'));
+ cpSync(join(fixture,'openapi.ts'),join(temporary,'openapi.ts'));
+ run(join(dependencies,'node_modules/.bin/esbuild'),['openapi.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=openapi.mjs']);
+ run(process.execPath,['openapi.mjs']);
  run(join(dependencies,'node_modules/.bin/esbuild'),['service.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=service.mjs']);
  run('cargo',['build','--quiet','--manifest-path',join(root,'blueprint-rs/Cargo.toml'),'-p','forklaunch-blueprint-sample-service','--example','canonical_iam']);
  const ts=await start(process.execPath,['service.mjs']);
@@ -75,7 +79,15 @@ try{
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);
   const document=await response.json();const spec=document.latest??document;
+  if(process.env.FORKLAUNCH_TEST_OPENAPI_OUTPUT){
+   mkdirSync(process.env.FORKLAUNCH_TEST_OPENAPI_OUTPUT,{recursive:true});
+   writeFileSync(join(process.env.FORKLAUNCH_TEST_OPENAPI_OUTPUT,url===ts?'typescript.json':'rust.json'),JSON.stringify(spec,null,2)+'\n');
+  }
   assert.ok(spec.paths['/users']);assert.ok(spec.paths['/users/{id}']);
+  assert.equal(spec.paths['/users/{id}'].get.parameters.find(parameter=>parameter.in==='path').required,true);
+  for(const item of Object.values(spec.paths))for(const operation of Object.values(item))
+   for(const requirement of operation.security??[])for(const name of Object.keys(requirement))
+    assert.ok(spec.components.securitySchemes[name],`unresolved security scheme ${name}`);
  }
  console.log(`PASS canonical actual TypeScript/Rust IAM services: ${cases.length*2} live HTTP outcomes and both OpenAPI endpoints; 3 known rejected-JWT status differences remain`);
 }finally{

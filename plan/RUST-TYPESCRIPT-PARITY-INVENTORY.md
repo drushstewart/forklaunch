@@ -1959,3 +1959,19 @@ directory, disables telemetry export, uses ephemeral loopback listeners and
 cleans up its own processes/files. The native example passes strict Clippy.
 Whole-document OpenAPI comparison, remaining validation/auth modes and MCP
 framework conformance remain open. Checklist: **628/682 (92.1%), 54 open**.
+
+
+### Canonical fixture follow-up: access labels and valid OpenAPI (2026-10-12)
+
+The actual service comparison exposed TypeScript OpenAPI security requirements
+that did not resolve to their declared schemes and path parameters missing the
+mandatory required flag. The emitter now references its declared default,
+explicit Authorization or custom-header scheme names; HTTP Basic/JWT/API-key
+requirements carry empty scope arrays rather than RBAC permission names. Four
+actual-source emitter cases and both live documents enforce these invariants.
+JWT-only native IAM contracts now use `authenticated`, matching TypeScript's
+access semantics without changing credential checks or adding implicit RBAC.
+All eight IAM-interface/sample-service library tests and the eighteen live
+HTTP outcomes pass. The three rejected-JWT status differences remain explicit;
+whole-document OpenAPI and broad auth/error conformance remain open.
+Checklist remains **628/682 (92.1%), 54 open**.

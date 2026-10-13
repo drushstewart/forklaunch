@@ -26,8 +26,10 @@ Rust sample); this fixture does not claim pagination conformance. Rejected auth
 checks assert each implementation's exact status: missing credentials return 401
 in both; malformed, expired and forged JWTs return TypeScript 403 versus Rust 401.
 These three known differences are explicit regression expectations, not equivalence
-claims. TypeScript uses `authenticated` for JWT-only contracts; the Rust IAM
-contracts currently use `protected` without RBAC. Framework error envelopes and
-access-level validation are separate auth/error parity work.
+claims. Both services now use `authenticated` for JWT-only contracts. Framework error
+envelopes and broader access-level validation are separate auth/error parity work.
+The runner also exercises the actual TypeScript OpenAPI emitter with default,
+explicit and custom JWT headers plus Basic auth: security references must resolve,
+non-OAuth scope lists must be empty and path parameters must be required.
 Whole-document OpenAPI normalization, multipart, streaming, other auth modes,
 MCP conformance and production IAM persistence remain separate checklist items.

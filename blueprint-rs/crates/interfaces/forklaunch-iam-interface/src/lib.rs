@@ -225,7 +225,7 @@ pub mod contracts {
 
         registry.register(
             RouteContract::get("Get User", "Get a user by id", "/users/:id")
-                .with_access(AccessLevel::Protected)
+                .with_access(AccessLevel::Authenticated)
                 .with_auth(AuthConfig::jwt(JwtAuthConfig::SignatureKey))
                 .with_param(FieldContract::required("id", "String"))
                 .with_response(200, Some(json_body::<User>("User")))
@@ -234,7 +234,7 @@ pub mod contracts {
 
         registry.register(
             RouteContract::get("List Users", "List users", "/users")
-                .with_access(AccessLevel::Protected)
+                .with_access(AccessLevel::Authenticated)
                 .with_auth(AuthConfig::jwt(JwtAuthConfig::SignatureKey))
                 .with_query(FieldContract::optional("limit", "Integer"))
                 .with_query(FieldContract::optional("cursor", "String"))
@@ -247,7 +247,7 @@ pub mod contracts {
                 "List the permissions granted to a user",
                 "/users/:id/permissions",
             )
-            .with_access(AccessLevel::Protected)
+            .with_access(AccessLevel::Authenticated)
             .with_auth(AuthConfig::jwt(JwtAuthConfig::SignatureKey))
             .with_param(FieldContract::required("id", "String"))
             .with_response(200, Some(json_body::<Vec<Permission>>("PermissionList"))),
@@ -257,7 +257,7 @@ pub mod contracts {
             RouteContract::get("List Organizations", "List organizations", "/organizations")
                 .with_query(FieldContract::optional("limit", "Integer"))
                 .with_query(FieldContract::optional("cursor", "String"))
-                .with_access(AccessLevel::Protected)
+                .with_access(AccessLevel::Authenticated)
                 .with_auth(AuthConfig::jwt(JwtAuthConfig::SignatureKey))
                 .with_response(
                     200,
@@ -330,7 +330,7 @@ mod tests {
         assert!(operation_names.contains(&"listUsers"));
         assert!(operation_names.contains(&"listOrganizations"));
 
-        // protected routes carry an auth config
+        // JWT-only routes require authentication without declaring RBAC
         let get_user = registry
             .routes()
             .iter()
