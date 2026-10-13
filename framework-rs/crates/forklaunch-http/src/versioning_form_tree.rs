@@ -166,7 +166,14 @@ fn numeric(key: &str) -> Option<u64> {
         .filter(|index| *index <= 9_007_199_254_740_991 && index.to_string() == key)
 }
 
-pub(super) fn wrap(key: &str, mut leaf: Node, limit: u64) -> Option<Node> {
+pub(super) fn wrap(key: &str, mut leaf: Node, limit: u64, depth: usize) -> Option<Node> {
+    if depth == 0 {
+        return Some(if key.is_empty() || key == "__proto__" {
+            Node::empty()
+        } else {
+            Node::Object(BTreeMap::from([(key.into(), leaf)]), None)
+        });
+    }
     if key.is_empty() {
         return Some(Node::empty());
     }
@@ -178,7 +185,7 @@ pub(super) fn wrap(key: &str, mut leaf: Node, limit: u64) -> Option<Node> {
     let mut offset = first;
     let mut count = 0;
     while offset < key.len() {
-        if count >= 32 {
+        if count >= depth {
             return None;
         }
         let mut level = 1;

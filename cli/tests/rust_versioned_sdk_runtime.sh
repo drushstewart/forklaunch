@@ -19,6 +19,15 @@ p=Path('crates/versions/src/main.rs');p.write_text(p.read_text().replace('router
 PYTHON
 cargo build -p versions
 "$CLI" openapi export --path .
+python3 - <<'PYTHON'
+import json
+from pathlib import Path
+artifact=json.loads(Path('.forklaunch/contracts/versions/contract.json').read_text())
+routes=artifact['routes']
+scalar=next(route for route in routes if route['path']=='/versioned-scalar')
+assert scalar['options']['bodyParser']['jsonStrict'] is False
+assert all('bodyParser' not in route['options'] for route in routes if route['path']=='/versions')
+PYTHON
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug/versions"))')"
 node "$SCRIPT_DIR/rust_mcp_service_startup.mjs" "$BINARY"
 cargo run --manifest-path "$REPO_ROOT/framework-rs/Cargo.toml" -p forklaunch-sdk-typescript --example versioned_client -- "$PWD/.forklaunch/contracts/versions/contract.json" "$PWD/.forklaunch/named-sdk.ts" "$PWD/.forklaunch/named-openapi.json"

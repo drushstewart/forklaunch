@@ -22,7 +22,7 @@ try {
  for(const [value,version,status] of [['','v1',201],['a','v1',201],['水a','v2',202]]) {
   const response=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':'text/plain'},body:value});
   assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,value});
-  const result=await mcpRpc(base,'tools/call',{name:tools.find(tool=>tool.name.endsWith(` [v${version}]`) && tool.inputSchema.properties.body?.type==='string' && tool.inputSchema.properties.body?.format!=='binary').name,arguments:{body:value}});
+  const result=await mcpRpc(base,'tools/call',{name:tools.find(tool=>tool.name===`writeText [v${version}]`).name,arguments:{body:value}});
   assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{version,value});
  }
  for(const [value,version,status] of [['\ufeff','v1',201],['\ufeffa','v1',201],['\ufeffab','v2',202],['\ufeff\ufeff','v1',201]]) {
@@ -76,6 +76,12 @@ try {
   const response=await fetch(wire);assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,bytes});
   const result=await mcpRpc(base,'tools/call',{name:`writeMultipart [v${version}]`,arguments:{body:{label}}});
   assert.equal(result.isError,false,JSON.stringify(result));const value=JSON.parse(result.content[0].text);assert.equal(value.version,version);assert.ok(Buffer.from(value.bytes).includes(Buffer.from(label)));
+ }
+ for(const [value,version,status] of [[42,'v1',201],['scalar 水','v2',202]]) {
+  const response=await fetch(`${base}/versioned-scalar`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(value)});
+  assert.equal(response.status,status);assert.deepEqual(await response.json(),{value});
+  const result=await mcpRpc(base,'tools/call',{name:`writeScalar [v${version}]`,arguments:{body:value}});
+  assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{value});
  }
  const invalid=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:'v2',value:'bad'})});assert.equal(invalid.status,400);
  const openapi=await(await fetch(`${base}/openapi.json`)).json();

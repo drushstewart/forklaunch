@@ -3387,3 +3387,27 @@ artifacts and native generators. Receipts:
 Checklist remains **652/682 (95.6%), 30 open**. Every iconv alias/table, unpaired
 surrogate behavior, custom charset defaults, form charset-sentinel options and
 arbitrary transformations are not claimed complete.
+
+
+### 2026-10-13 — Configurable versioned JSON/text/form parsers
+
+`RouteOptions.body_parser` now configures JSON strict mode, JSON/text/form default
+charsets, form extended mode, depth and parameter limits across every version.
+Explicit Content-Type charsets override defaults. Flat parsing retains bracketed
+keys; configured depth overflow is 400 and parameter overflow is 413. Invalid
+default charsets and unsupported limits fail registration (depth <=32, parameters
+1..=100,000). Non-default settings are exported in contract artifacts; defaults
+preserve the prior shape.
+
+Validation: **170 actual TypeScript content-middleware/native value/status
+comparisons**, 1,062 existing form comparisons, 24 contract/30 HTTP/61 Axum unit
+tests, strict Clippy and 905 embedded package files. Fresh generated `run.dbD25l`
+includes a non-strict scalar JSON route, verifies custom/default artifact metadata,
+HTTP and MCP scalar calls, every previous media/charset check, both SDKs through
+three artifact formats and native generators, startup/discovery and shutdown.
+Receipts: `/private/tmp/fl-parser-options-{actual,form,native,clippy,generated,package}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. Compression, per-parser byte limits,
+verify/reviver hooks, form sentinel/entity options, complete legacy codec coverage
+and arbitrary schema transformations remain open; this configuration currently
+applies to the versioned pipeline.

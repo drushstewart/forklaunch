@@ -51,12 +51,14 @@ enum BodyValidator {
 #[derive(Default, Clone)]
 pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
+    parsers: forklaunch_contract::BodyParserOptions,
 }
 impl std::fmt::Debug for VersionedRoutePlan {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("VersionedRoutePlan")
             .field("variant_count", &self.variants.len())
+            .field("parsers", &self.parsers)
             .finish()
     }
 }
@@ -66,6 +68,10 @@ impl VersionedRoutePlan {
     pub fn compile(route: &RouteContract) -> Result<Self, String> {
         if route.versions.len() > 1024 {
             return Err("route exceeds 1024 versions".into());
+        }
+        let parsers = route.options.body_parser.clone();
+        if !route.versions.is_empty() {
+            validate_parser_options(&parsers)?;
         }
         let parser = parser_kind(route.parsing_body());
         let mut remaining_bytes = 32 * 1024 * 1024_usize;
@@ -114,7 +120,7 @@ impl VersionedRoutePlan {
                 body,
             });
         }
-        Ok(Self { variants })
+        Ok(Self { variants, parsers })
     }
 
     /// Return the last matching declaration, retaining every matching name.
@@ -186,7 +192,15 @@ impl VersionedRoutePlan {
             Body::Text(text) => text.as_bytes(),
             Body::Binary(bytes) => bytes.as_slice(),
         };
-        let charset = charset::charset(crate::header_value(&request.headers, "content-type"));
+        let default_charset = match body.kind {
+            BodyKind::Json | BodyKind::Unknown => &self.parsers.json_default_charset,
+            BodyKind::UrlEncoded => &self.parsers.form_default_charset,
+            _ => &self.parsers.text_default_charset,
+        };
+        let charset = charset::charset(
+            crate::header_value(&request.headers, "content-type"),
+            default_charset,
+        );
         let value = match body.kind {
             BodyKind::Json | BodyKind::Unknown => {
                 if !charset.starts_with("utf-") {
@@ -200,7 +214,7 @@ impl VersionedRoutePlan {
                         .trim_start_matches([' ', '\t', '\r', '\n'])
                         .as_bytes()
                         .first();
-                    if !matches!(first, Some(b'{' | b'[')) {
+                    if self.parsers.json_strict && !matches!(first, Some(b'{' | b'[')) {
                         return Err(invalid_body("JSON body must be an object or array"));
                     }
                     serde_json::from_str(&text).map_err(|_| invalid_body("invalid JSON body"))?
@@ -213,7 +227,11 @@ impl VersionedRoutePlan {
                 if charset != "utf-8" && charset != "iso-8859-1" {
                     return Err(charset::unsupported());
                 }
-                form::parse_decoded(&charset::decode(bytes, &charset)?, charset == "iso-8859-1")?
+                form::parse_decoded(
+                    &charset::decode(bytes, &charset)?,
+                    charset == "iso-8859-1",
+                    &self.parsers,
+                )?
             }
             BodyKind::Multipart => multipart::parse(
                 bytes,
@@ -226,6 +244,31 @@ impl VersionedRoutePlan {
         Ok(Some(value))
     }
 }
+fn validate_parser_options(parsers: &forklaunch_contract::BodyParserOptions) -> Result<(), String> {
+    if parsers.form_parameter_limit == 0
+        || parsers.form_parameter_limit > 100_000
+        || parsers.form_depth > 32
+    {
+        return Err("Invalid form parser limits (depth <= 32, parameters 1..=100000)".into());
+    }
+    if !parsers.json_default_charset.starts_with("utf-")
+        || !matches!(
+            parsers.form_default_charset.as_str(),
+            "utf-8" | "iso-8859-1"
+        )
+    {
+        return Err("Invalid default parser charset".into());
+    }
+    for charset in [
+        &parsers.json_default_charset,
+        &parsers.text_default_charset,
+        &parsers.form_default_charset,
+    ] {
+        charset::decode(&[], charset).map_err(|_| "Unsupported default parser charset")?;
+    }
+    Ok(())
+}
+
 // body-parser's UTF-8 decoder replaces malformed sequences and strips one BOM.
 fn decode_utf8(bytes: &[u8]) -> std::borrow::Cow<'_, str> {
     String::from_utf8_lossy(bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes))
@@ -361,6 +404,40 @@ mod tests {
         request.params.insert("id".into(), "one".into());
         request
     }
+    #[test]
+    fn invalid_parser_configuration_rejects_registration() {
+        for options in [
+            forklaunch_contract::BodyParserOptions {
+                form_parameter_limit: 0,
+                ..Default::default()
+            },
+            forklaunch_contract::BodyParserOptions {
+                form_parameter_limit: 100_001,
+                ..Default::default()
+            },
+            forklaunch_contract::BodyParserOptions {
+                form_depth: 33,
+                ..Default::default()
+            },
+            forklaunch_contract::BodyParserOptions {
+                json_default_charset: "latin1".into(),
+                ..Default::default()
+            },
+            forklaunch_contract::BodyParserOptions {
+                form_default_charset: "utf-16le".into(),
+                ..Default::default()
+            },
+            forklaunch_contract::BodyParserOptions {
+                text_default_charset: "unknown".into(),
+                ..Default::default()
+            },
+        ] {
+            let mut route = contract();
+            route.options.body_parser = options;
+            assert!(VersionedRoutePlan::compile(&route).is_err());
+        }
+    }
+
     #[test]
     fn local_handlers_receive_parsed_values_and_original_bytes() {
         let mut route = contract();

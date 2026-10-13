@@ -6,18 +6,26 @@ mod tree;
 
 #[cfg(test)]
 fn parse(bytes: &[u8]) -> Result<Value, ContractValidationError> {
-    parse_decoded(&super::decode_utf8(bytes), false)
+    parse_decoded(
+        &super::decode_utf8(bytes),
+        false,
+        &forklaunch_contract::BodyParserOptions::default(),
+    )
 }
-pub(super) fn parse_decoded(text: &str, latin1: bool) -> Result<Value, ContractValidationError> {
+pub(super) fn parse_decoded(
+    text: &str,
+    latin1: bool,
+    options: &forklaunch_contract::BodyParserOptions,
+) -> Result<Value, ContractValidationError> {
     let parameter_count = text.bytes().filter(|byte| *byte == b'&').count() + 1;
-    if parameter_count > 1000 {
-        return Err(body_too_large("form exceeds 1000 parameters"));
+    if parameter_count > options.form_parameter_limit {
+        return Err(body_too_large("form exceeds parameter limit"));
     }
     let limit = u64::try_from(parameter_count.max(100)).expect("bounded parameter count");
     let mut groups = std::collections::BTreeMap::<String, (usize, Vec<Value>)>::new();
     for (index, part) in text.split('&').enumerate() {
-        if index >= 1000 {
-            return Err(body_too_large("form exceeds 1000 parameters"));
+        if index >= options.form_parameter_limit {
+            return Err(body_too_large("form exceeds parameter limit"));
         }
         let part = brackets(part);
         let separator = part
@@ -45,8 +53,17 @@ pub(super) fn parse_decoded(text: &str, latin1: bool) -> Result<Value, ContractV
     });
     let mut fields = tree::Node::empty();
     for (key, (_, values)) in groups {
-        let node = tree::wrap(&key, tree::Node::values(values), limit)
-            .ok_or_else(|| invalid_body("form exceeds nesting depth"))?;
+        let node = tree::wrap(
+            &key,
+            tree::Node::values(values),
+            limit,
+            if options.form_extended {
+                options.form_depth
+            } else {
+                0
+            },
+        )
+        .ok_or_else(|| invalid_body("form exceeds nesting depth"))?;
         fields = fields.merge(node, limit);
         if !fields.within_depth(0) {
             return Err(invalid_body("form exceeds merged nesting depth"));

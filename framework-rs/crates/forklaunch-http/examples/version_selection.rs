@@ -16,6 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output.push(parser_registration(kinds));
             continue;
         }
+        configure_parsers(&mut contract, &fixture["parserOptions"]);
         let text = fixture["kind"] == "text";
         let file = fixture["kind"] == "file";
         let form = fixture["kind"] == "form";
@@ -129,4 +130,29 @@ fn parser_registration(kinds: &[Value]) -> Value {
         });
     }
     json!({"accepted":VersionedRoutePlan::compile(&contract).is_ok()})
+}
+
+fn configure_parsers(contract: &mut RouteContract, options: &Value) {
+    let parsers = &mut contract.options.body_parser;
+    if let Some(value) = options["json"]["strict"].as_bool() {
+        parsers.json_strict = value;
+    }
+    if let Some(value) = options["json"]["defaultCharset"].as_str() {
+        parsers.json_default_charset = value.into();
+    }
+    if let Some(value) = options["text"]["defaultCharset"].as_str() {
+        parsers.text_default_charset = value.into();
+    }
+    if let Some(value) = options["urlencoded"]["defaultCharset"].as_str() {
+        parsers.form_default_charset = value.into();
+    }
+    if let Some(value) = options["urlencoded"]["extended"].as_bool() {
+        parsers.form_extended = value;
+    }
+    if let Some(value) = options["urlencoded"]["depth"].as_u64() {
+        parsers.form_depth = usize::try_from(value).unwrap();
+    }
+    if let Some(value) = options["urlencoded"]["parameterLimit"].as_u64() {
+        parsers.form_parameter_limit = usize::try_from(value).unwrap();
+    }
 }

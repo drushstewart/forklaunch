@@ -9,7 +9,7 @@ pub(super) fn unsupported() -> ContractValidationError {
     )
 }
 
-pub(super) fn charset(content_type: Option<&str>) -> String {
+pub(super) fn charset(content_type: Option<&str>, default: &str) -> String {
     content_type
         .and_then(|value| value.parse::<mime::Mime>().ok())
         .and_then(|mime| {
@@ -17,7 +17,7 @@ pub(super) fn charset(content_type: Option<&str>) -> String {
                 .map(|value| value.as_str().to_ascii_lowercase())
         })
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "utf-8".into())
+        .unwrap_or_else(|| default.to_ascii_lowercase())
 }
 
 pub(super) fn decode<'a>(

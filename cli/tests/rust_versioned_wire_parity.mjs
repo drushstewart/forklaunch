@@ -50,8 +50,15 @@ for(const kind of ['json','text']) for(const [encoding,charset] of [['utf-16be',
  cases.push([kind,iconv.encode(kind==='json'?' {"value":"水"}':'abc 水',encoding),charset]);
 }
 for(const charset of ['utf-16le','utf-16be','utf-32le','utf-32be']) cases.push(['text',Buffer.concat([iconv.encode('abc',charset),Buffer.from([1])]),charset]);
+for(const value of ['null','true','42','"text"','', ' ', '{']) cases.push(['json',Buffer.from(value),undefined,{json:{strict:false}}]);
+cases.push(['json',iconv.encode('{"value":"水"}','utf-16le'),undefined,{json:{defaultCharset:'utf-16le'}}]);
+for(const charset of [undefined,'utf-8']) cases.push(['text',Buffer.from([233]),charset,{text:{defaultCharset:'iso-8859-1'}}]);
+for(const options of [{extended:false},{depth:0},{depth:1},{depth:2},{parameterLimit:2}]) {
+ for(const value of ['a[b]=x','a[b][c]=x','a[]=x&a[]=y','a=x&b=y&c=z','__proto__=x&a[__proto__]=y','1[]=a&1=b&1[]=c']) cases.push(['form',Buffer.from(value),undefined,{urlencoded:options}]);
+}
+for(const charset of [undefined,'utf-8']) cases.push(['form',Buffer.from('value=%E9'),charset,{urlencoded:{defaultCharset:'iso-8859-1'}}]);
 const fixtures=[],expected=[];
-for(const [kind,bytes,charset] of cases) {
+for(const [kind,bytes,charset,parserOptions] of cases) {
  const req=Readable.from([bytes]);
  const contentType=(kind==='json'?'application/json':kind==='form'?'application/x-www-form-urlencoded':'text/plain')+(charset?`; charset=${charset}`:'');
  req.headers={'content-type':contentType,'content-length':String(bytes.length)};
@@ -59,7 +66,7 @@ for(const [kind,bytes,charset] of cases) {
  let failure;
  await new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>reject(Error('parser deadline')),5000);
-  contentParse()(req,{},error=>{clearTimeout(timer);error?reject(error):resolve();});
+  contentParse(parserOptions)(req,{},error=>{clearTimeout(timer);error?reject(error):resolve();});
  }).catch(error=>{failure=error;});
  const versions=[{name:'fallback',schema:true}];
  if(failure) expected.push([{status:failure.status}]);
@@ -68,7 +75,7 @@ for(const [kind,bytes,charset] of cases) {
   versions.push({name:'exact',schema:{const:req.body}});
   expected.push([{version:'exact',matched:['fallback','exact'],status:200,body:req.body}]);
  }
- fixtures.push({kind,contentType,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
+ fixtures.push({kind,contentType,parserOptions,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
 }
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
 for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],`${cases[i][0]} ${cases[i][2]} ${cases[i][1].toString('hex')}`);

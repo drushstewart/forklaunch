@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod body_parser;
+pub use body_parser::BodyParserOptions;
+
 #[cfg(feature = "schema-validation")]
 pub mod schema_validation;
 
@@ -387,6 +390,7 @@ impl ResponseContract {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteOptions {
+    pub body_parser: BodyParserOptions,
     pub request_validation: ValidationMode,
     pub response_validation: ValidationMode,
     pub openapi: bool,
@@ -396,6 +400,7 @@ pub struct RouteOptions {
 impl Default for RouteOptions {
     fn default() -> Self {
         Self {
+            body_parser: BodyParserOptions::default(),
             request_validation: ValidationMode::Error,
             response_validation: ValidationMode::Error,
             openapi: true,
@@ -407,13 +412,20 @@ impl Default for RouteOptions {
 impl RouteOptions {
     #[must_use]
     pub fn to_json(&self) -> String {
-        format!(
+        let mut output = format!(
             "{{\"requestValidation\":{},\"responseValidation\":{},\"openapi\":{},\"mcp\":{}}}",
             json_string(self.request_validation.as_artifact_str()),
             json_string(self.response_validation.as_artifact_str()),
             self.openapi,
             self.mcp
-        )
+        );
+        if self.body_parser != BodyParserOptions::default() {
+            output.pop();
+            output.push_str(",\"bodyParser\":");
+            output.push_str(&self.body_parser.to_json());
+            output.push('}');
+        }
+        output
     }
 }
 

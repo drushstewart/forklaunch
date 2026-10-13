@@ -47,7 +47,16 @@ pub fn contracts() -> Vec<RouteContract> {
         output.schema=output.schema.with_json_schema(json!({"type":"object","required":["version","bytes"],"properties":{"version":{"type":"string"},"bytes":{"type":"array","items":{"type":"integer"}}}}).to_string());
         multipart=multipart.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
     }
-    vec![route,text,file,form,multipart]
+    let mut scalar=RouteContract::post("Write Scalar","Write scalar JSON","/versioned-scalar");
+    scalar.options.body_parser.json_strict=false;
+    for (version,kind,status) in [("v1","integer",201),("v2","string",202)] {
+        let mut input=BodyContract::json("ScalarInput");
+        input.schema=input.schema.with_json_schema(json!({"type":kind}).to_string());
+        let mut output=BodyContract::json("ScalarOutput");
+        output.schema=output.schema.with_json_schema(json!({"type":"object","required":["value"],"properties":{"value":{"type":kind}}}).to_string());
+        scalar=scalar.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
+    }
+    vec![route,text,file,form,multipart,scalar]
 }
 pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
     router.post(contracts().remove(0),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<Value>|async move {
@@ -60,5 +69,7 @@ pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
         (match version.version.as_str() {"v1"=>StatusCode::CREATED,"v2"=>StatusCode::ACCEPTED,_=>StatusCode::OK},Json(json!({"version":version.version,"raw":body})))
     }).post(contracts().remove(4),|Extension(version):Extension<SelectedVersion>,body:axum::body::Bytes|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"bytes":body.to_vec()})))
+    }).post(contracts().remove(5),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(value):forklaunch_axum::VersionedBody<Value>|async move {
+        (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"value":value})))
     })
 }

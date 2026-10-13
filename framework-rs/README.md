@@ -570,7 +570,7 @@ Version matching follows the default TypeScript JSON/text wire parser: JSON root
 must be objects or arrays, an empty JSON body becomes an empty object, one UTF-8
 BOM is stripped, and malformed UTF-8 becomes replacement characters. Original
 handler bytes remain intact; standard Axum extractors retain their own decoding
-rules. Configurable strict mode and additional legacy charsets remain separate work.
+rules. Additional legacy charsets remain separate work.
 
 Versioned handlers can use `forklaunch_axum::VersionedBody<T>` to deserialize the
 body already parsed and validated during version selection. It is a parts
@@ -591,3 +591,14 @@ comparison matrix covers Windows-1252, Shift-JIS, GB18030, Big5 and KOI8-R as we
 as Unicode encodings; failed multibyte leads retry the following byte to match
 iconv behavior. This does not claim every iconv alias/table, unpaired surrogate
 behavior, custom charset defaults or form charset-sentinel options.
+
+Set `route.options.body_parser` to configure versioned parsing: JSON strict mode,
+JSON/text/form default charsets, form extended mode, nesting depth and parameter
+limit. Explicit request charsets override defaults. Non-strict JSON permits scalar
+roots, while extended=false or depth=0 retains literal bracketed form keys. All
+versions share these options. Registration rejects unsupported default charsets,
+form depth above 32, or parameter limits outside 1..=100,000. Custom options are
+included in contract artifacts; default options preserve the prior artifact
+shape. These options currently apply to the versioned pipeline. Compression,
+per-parser byte limits, custom verify/reviver hooks and form sentinel/entity
+options remain separate work.
