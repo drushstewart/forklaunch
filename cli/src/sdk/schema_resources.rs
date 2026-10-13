@@ -1,0 +1,1 @@
+../../../framework-rs/crates/forklaunch-sdk-codegen/src/schema_resources.rs

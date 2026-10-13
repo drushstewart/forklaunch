@@ -9,6 +9,7 @@ keywords = ["cli", "scaffolding", "microservices", "typescript", "rust"]
 repository = "https://github.com/forklaunch/forklaunch-js"
 
 [dependencies]
+url = "2"
 ctrlc = { version = "3.5.2", features = ["termination"] }
 anyhow = "1.0"
 base64 = "0.22.1"

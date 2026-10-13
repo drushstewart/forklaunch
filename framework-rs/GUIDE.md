@@ -124,8 +124,10 @@ Use the exact reviewed dependency exceptions in the
 [Export and SDK commands](../docs/adding-projects/rust.md#export-contracts-and-sdks)
 cover contract/OpenAPI imports, both client languages and mixed applications.
 The shared compiler handles recursive schemas with bounded graph processing;
-unsupported references fail rather than silently widening a type. Resource IDs,
-dynamic references, remaining schema constraints, versioned dispatch and richer
+unsupported references fail rather than silently widening a type. Bundled static
+resource IDs and scoped anchors are supported by the HTTP SDK compiler; see the
+[resource profile](README.md#bundled-schema-resource-ids) for explicit boundaries.
+Dynamic references, remaining schema constraints, versioned dispatch and richer
 external AsyncAPI imports are still open compatibility work. Version metadata
 must not be interpreted as implemented runtime version selection.
 

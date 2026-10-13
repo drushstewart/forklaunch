@@ -1441,6 +1441,7 @@ dependencies = [
  "percent-encoding",
  "ramhorns",
  "serde_json",
+ "url",
 ]
 
 [[package]]

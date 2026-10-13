@@ -82,6 +82,14 @@ fn payload(name: &str, entry: Option<&SocketSchemaEntry>) -> Result<SocketPayloa
     let schema = schema.unwrap_or(&empty);
     // Validate constraints as well as the type graph before emitting source.
     PayloadCodec::<Value>::json_schema(schema).context("Invalid socket payload schema")?;
+    // Socket unions still rebase document-local pointers. Resource-aware union
+    // relocation is a separate profile; do not widen it with HTTP model support.
+    crate::schema::bundle_with_resource_policy(
+        schema,
+        schema,
+        &mut crate::schema::ExpansionBudget::default(),
+        false,
+    )?;
     let models = compile_schema(name, schema)?;
     Ok(SocketPayloadPlan {
         schema: schema.clone(),

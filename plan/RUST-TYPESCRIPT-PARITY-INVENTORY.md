@@ -2589,3 +2589,36 @@ Checklist: 651/682 (95.5%), 31 open. Documentation describes current verified
 capabilities and the remaining gaps; it does not close their implementation or
 publication/deployment gates. Six completed relay scratch workspaces were removed
 following commit `01686c344`; approximately 60 GiB remained free.
+
+
+### Bundled static schema resources in HTTP SDK imports (2026-10-13)
+
+The shared CLI/native HTTP SDK compiler now indexes bundled `$id` resources,
+resolves relative references against lexical bases, scopes anchors per resource,
+and preserves recursive identity across URI/pointer aliases. This follows the
+[JSON Schema resource/base-URI model](https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-01).
+Generation never fetches external schemas. Indexing shares the existing depth,
+node and byte bounds and excludes literal annotations. Duplicate/malformed or
+missing resource identities fail explicitly. Source packaging includes the new
+shared resolver module and both workspace lockfiles record the URI dependency.
+
+The resource-enabled recursive fixture passes both CLI artifact sources
+(contract/OpenAPI), both live client languages, both native framework generators,
+HTTP/MCP discovery/invocation and shutdown. It includes self-recursive resource
+roots and relative references between mutually recursive resources. The original
+resource-free recursive fixture also passes. Unit checks cover scoped duplicate
+anchor names, URN identities, literal preservation, missing/duplicate/dynamic
+resources, OpenAPI component-local pointers, and expansion bounds.
+
+Evidence: `/private/tmp/fl-resource-generated.log`,
+`fl-resource-recursive-regression.log`, `fl-resource-native-tests.log` (27 shared
+compiler + 5 Rust generator + 8 TS generator tests),
+`fl-resource-native-clippy.log`, `fl-resource-cli-tests.log` (1,084 pass),
+`fl-resource-package.log` (889 packaged source/template checks), and
+`fl-resource-format.log`. CI includes the resource-enabled generated runtime.
+
+The broad resource-reference gate stays open: draft-4 IDs, mixed resource
+dialects, resource references into literal/schema-dictionary contexts,
+nonempty ID fragments, dynamic/recursive references and WebSocket resource-aware
+union relocation remain explicitly unsupported. Checklist remains 651/682
+(95.5%), 31 open.

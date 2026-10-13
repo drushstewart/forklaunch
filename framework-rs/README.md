@@ -440,3 +440,23 @@ compares live HTTP body bytes with the native MCP encoder. Set
 prefix. The MCP link uses the official in-memory transport; forwarded HTTP is a
 loopback TCP server. This complements native HTTP/MCP listener/startup tests and
 the lower-level exact multipart-framing fixture.
+
+
+### Bundled schema resource IDs
+
+The shared HTTP SDK compiler resolves `$id` resources already bundled in a schema
+or OpenAPI document. Relative IDs and references resolve against their lexical
+base; pointer fragments address the selected resource, and `$anchor` names are
+scoped to that resource. Recursive URI/pointer aliases retain one model identity.
+No network fetch occurs during generation. Literal defaults/examples are not
+interpreted as resource declarations. The same depth/node/byte budgets apply to
+the resource index and model graph.
+
+This profile rejects duplicate IDs, missing resources, malformed IDs, nonempty
+ID fragments, mixed resource dialects, draft-4 `id`, dynamic/recursive references,
+and resource-aware references into literal data/schema dictionaries. WebSocket
+SDK unions retain their existing resource-free profile until their relocation
+and dynamic scope are implemented. An explicit rejection is preferable to
+silently generating a model for the wrong schema resource. Run
+`cli/tests/rust_schema_resources_runtime.sh` for live recursive Rust/TypeScript
+SDK checks from contract and OpenAPI artifacts, including HTTP/MCP startup.

@@ -9,6 +9,18 @@ const CHOICE: &str = r##"{"anyOf":[{"type":"string"},{"type":"array","items":{"$
 const MUTUAL: &str = r##"{"$ref":"#MutualA","$defs":{"A":{"$anchor":"MutualA","type":"object","additionalProperties":false,"required":["id","peer"],"properties":{"id":{"type":"string"},"peer":{"$ref":"#MutualB"}}},"B":{"$anchor":"MutualB","type":"object","additionalProperties":false,"required":["children"],"properties":{"children":{"type":"array","items":{"$ref":"#MutualA"}}}}}}"##;
 
 fn body(name: &str, schema: &str) -> BodyContract {
+    let schema = if std::env::var_os("FORKLAUNCH_TEST_SCHEMA_RESOURCES").is_some() {
+        let mut value: Value = serde_json::from_str(schema).unwrap();
+        value["$id"] = json!(format!("https://schemas.fixture.test/{name}/index.json"));
+        if name == "Mutual" {
+            value["$ref"] = json!("nodes/a#MutualA");
+            value["$defs"]["A"]["$id"] = json!("nodes/a");
+            value["$defs"]["B"]["$id"] = json!("nodes/b");
+            value["$defs"]["A"]["properties"]["peer"]["$ref"] = json!("b#MutualB");
+            value["$defs"]["B"]["properties"]["children"]["items"]["$ref"] = json!("a#MutualA");
+        }
+        value.to_string()
+    } else { schema.to_owned() };
     BodyContract {
         kind: BodyKind::Json,
         schema: SchemaRef::named(name).with_json_schema(schema),

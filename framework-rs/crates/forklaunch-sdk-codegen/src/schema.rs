@@ -4,6 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value, json};
 
+#[path = "schema_resources.rs"]
+mod resources;
+
 pub(crate) struct ExpansionBudget {
     pub(crate) nodes: usize,
     pub(crate) bytes: usize,
@@ -84,12 +87,22 @@ pub(crate) fn bundle(
     document: &Value,
     budget: &mut ExpansionBudget,
 ) -> Result<Value> {
+    bundle_with_resource_policy(schema, document, budget, true)
+}
+
+pub(crate) fn bundle_with_resource_policy(
+    schema: &Value,
+    document: &Value,
+    budget: &mut ExpansionBudget,
+    resource_ids: bool,
+) -> Result<Value> {
     let mut graph = Graph {
         document,
         budget,
+        resource_ids,
         names: BTreeMap::new(),
         definitions: Map::new(),
-        anchors: None,
+        resources: None,
     };
     let mut root = graph.visit(schema, 0)?;
     // TypeScript cannot represent a cycle consisting only of aliases/unions.
@@ -164,143 +177,13 @@ fn queue_anchor<'a>(
     Ok(())
 }
 
-// Discover anchors only at schema positions. Literal examples/defaults and
-// property-name maps are never interpreted as schemas. Nested resources retain
-// their own scope and are deliberately excluded until resource IDs are supported.
-#[allow(clippy::too_many_lines)]
-fn local_anchors(
-    document: &Value,
-    budget: &mut ExpansionBudget,
-) -> Result<BTreeMap<String, String>> {
-    let dialect = document
-        .get("$schema")
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    if ["draft-04", "draft-06", "draft-07"]
-        .iter()
-        .any(|draft| dialect.contains(draft))
-    {
-        bail!("$anchor is unavailable in the selected schema dialect");
-    }
-    let mut anchors = BTreeMap::new();
-    let mut pending = vec![(
-        document,
-        String::new(),
-        document.get("openapi").is_none(),
-        0,
-    )];
-    while let Some((value, pointer, schema, depth)) = pending.pop() {
-        if depth > 64 || budget.nodes == 0 {
-            bail!("SDK schema anchor index exceeds expansion limits");
-        }
-        budget.nodes -= 1;
-        let Some(object) = value.as_object() else {
-            if !schema && let Some(values) = value.as_array() {
-                for (index, value) in values.iter().enumerate() {
-                    queue_anchor(
-                        &mut pending,
-                        budget,
-                        (value, format!("{pointer}/{index}"), false, depth + 1),
-                    )?;
-                }
-            }
-            continue;
-        };
-        if schema {
-            if object.contains_key("$id") {
-                continue;
-            }
-            if let Some(anchor) = object.get("$anchor") {
-                let anchor = anchor.as_str().context("Schema anchor must be a string")?;
-                let mut bytes = anchor.bytes();
-                if !bytes
-                    .next()
-                    .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
-                    || !bytes.all(|byte| byte.is_ascii_alphanumeric() || b"-._".contains(&byte))
-                {
-                    bail!("Invalid schema anchor name");
-                }
-                budget.bytes = budget
-                    .bytes
-                    .checked_sub(anchor.len() + pointer.len())
-                    .context("SDK schema anchor index exceeds 32 MiB")?;
-                if anchors.insert(anchor.to_owned(), pointer.clone()).is_some() {
-                    bail!("Duplicate schema anchor {anchor}");
-                }
-            }
-        }
-        for (key, value) in object {
-            let child = format!("{pointer}/{}", key.replace('~', "~0").replace('/', "~1"));
-            if schema {
-                match key.as_str() {
-                    "$defs" | "definitions" | "properties" | "patternProperties"
-                    | "dependentSchemas" => {
-                        if let Some(map) = value.as_object() {
-                            for (name, value) in map {
-                                queue_anchor(
-                                    &mut pending,
-                                    budget,
-                                    (
-                                        value,
-                                        format!(
-                                            "{child}/{}",
-                                            name.replace('~', "~0").replace('/', "~1")
-                                        ),
-                                        true,
-                                        depth + 1,
-                                    ),
-                                )?;
-                            }
-                        }
-                    }
-                    "allOf" | "anyOf" | "oneOf" | "prefixItems" => {
-                        if let Some(values) = value.as_array() {
-                            for (index, value) in values.iter().enumerate() {
-                                queue_anchor(
-                                    &mut pending,
-                                    budget,
-                                    (value, format!("{child}/{index}"), true, depth + 1),
-                                )?;
-                            }
-                        }
-                    }
-                    "items"
-                    | "additionalProperties"
-                    | "additionalItems"
-                    | "contains"
-                    | "not"
-                    | "if"
-                    | "then"
-                    | "else"
-                    | "propertyNames"
-                    | "unevaluatedProperties"
-                    | "unevaluatedItems"
-                    | "contentSchema" => {
-                        queue_anchor(&mut pending, budget, (value, child, true, depth + 1))?;
-                    }
-                    _ => {}
-                }
-            } else if pointer == "/components/schemas" || key == "schema" {
-                queue_anchor(&mut pending, budget, (value, child, true, depth + 1))?;
-            } else if !key.starts_with("x-")
-                && !matches!(
-                    key.as_str(),
-                    "example" | "examples" | "default" | "enum" | "const"
-                )
-            {
-                queue_anchor(&mut pending, budget, (value, child, false, depth + 1))?;
-            }
-        }
-    }
-    Ok(anchors)
-}
-
 struct Graph<'a> {
     document: &'a Value,
     budget: &'a mut ExpansionBudget,
     names: BTreeMap<String, String>,
     definitions: Map<String, Value>,
-    anchors: Option<BTreeMap<String, String>>,
+    resources: Option<resources::Resources>,
+    resource_ids: bool,
 }
 
 impl Graph<'_> {
@@ -316,11 +199,11 @@ impl Graph<'_> {
             }
             return clone_literal(schema, self.budget);
         };
-        if object.contains_key("$id")
-            || object.contains_key("$dynamicRef")
-            || object.contains_key("$recursiveRef")
-        {
-            bail!("Schema resource IDs and dynamic references are unsupported by SDK generation");
+        if !self.resource_ids && object.contains_key("$id") {
+            bail!("Resource IDs are unsupported in this SDK profile");
+        }
+        if object.contains_key("$dynamicRef") || object.contains_key("$recursiveRef") {
+            bail!("Dynamic schema references are unsupported by SDK generation");
         }
         let dialect = self
             .document
@@ -331,6 +214,12 @@ impl Graph<'_> {
         let draft6 = dialect.contains("/draft-06/");
         if draft4 && object.contains_key("id") {
             bail!("Schema resource IDs are unsupported by SDK generation");
+        }
+        if object.contains_key("$id") {
+            if self.resources.is_none() {
+                self.resources = Some(resources::Resources::index(self.document, self.budget)?);
+            }
+            self.resources.as_ref().unwrap().check_target(schema)?;
         }
         if object.contains_key(REFERENCE) || object.contains_key(DEFINITIONS) {
             bail!("Reserved SDK schema annotation");
@@ -349,28 +238,19 @@ impl Graph<'_> {
                 .bytes
                 .checked_sub(reference.len() + object.keys().map(String::len).sum::<usize>())
                 .context("SDK schema graph exceeds 32 MiB")?;
-            let pointer = if let Some(pointer) = document_pointer(reference) {
-                pointer
-            } else if let Some(fragment) = reference.strip_prefix('#') {
-                let anchor = percent_encoding::percent_decode_str(fragment)
-                    .decode_utf8()
-                    .context("Schema anchor must be UTF-8")?;
-                if self.anchors.is_none() {
-                    self.anchors = Some(local_anchors(self.document, self.budget)?);
-                }
-                self.anchors
-                    .as_ref()
-                    .unwrap()
-                    .get(anchor.as_ref())
-                    .with_context(|| format!("Missing schema anchor {reference}"))?
-                    .clone()
-            } else {
-                bail!("Only UTF-8 document-local schema references are supported");
-            };
+            if self.resources.is_none() {
+                self.resources = Some(resources::Resources::index(self.document, self.budget)?);
+            }
+            let pointer = self
+                .resources
+                .as_ref()
+                .unwrap()
+                .pointer(schema, reference)?;
             let target = self
                 .document
                 .pointer(&pointer)
                 .with_context(|| format!("Missing schema reference {reference}"))?;
+            self.resources.as_ref().unwrap().check_target(target)?;
             let name = if let Some(name) = self.names.get(&pointer) {
                 name.clone()
             } else {
@@ -395,11 +275,12 @@ impl Graph<'_> {
                         | "$defs"
                         | "definitions"
                         | "$anchor"
+                        | "$id"
                 ) && !key.starts_with("x-")
                 {
                     bail!("Unsupported validation sibling of schema $ref: {key}");
                 }
-                if key != "$defs" && key != "definitions" && key != "$anchor" {
+                if !matches!(key.as_str(), "$defs" | "definitions" | "$anchor" | "$id") {
                     resolved[key] = clone_literal(value, self.budget)?;
                 }
             }
@@ -431,7 +312,7 @@ impl Graph<'_> {
                 .context("SDK schema graph exceeds 32 MiB")?;
             let value = match key.as_str() {
                 // Only reachable definitions participate in the graph.
-                "$defs" | "definitions" | "$anchor" => continue,
+                "$defs" | "definitions" | "$anchor" | "$id" => continue,
                 "properties" | "patternProperties" | "dependentSchemas" => {
                     let mut properties = Map::new();
                     for (name, schema) in value
@@ -901,7 +782,6 @@ mod tests {
             json!({"$ref":"#"}),
             json!({"anyOf":[{"$ref":"#"},{"type":"string"}]}),
             json!({REFERENCE:"Forged"}),
-            json!({"$id":"https://example.invalid/schema","type":"object","properties":{"child":{"$ref":"#"}}}),
             json!({"$dynamicRef":"#node"}),
             json!({"$ref":"#/$defs/A","title":"annotation","$defs":{"A":true}}),
             json!({"$ref":"#/$defs/A","$defs":{"A":42}}),

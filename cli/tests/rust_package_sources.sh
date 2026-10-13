@@ -13,6 +13,8 @@ import sys
 root = Path(sys.argv[1])
 packaged = set(Path(sys.argv[2]).read_text().splitlines())
 expected = {
+    "src/sdk/schema.rs",
+    "src/sdk/schema_resources.rs",
     "src/dev/contracts.rs",
     "src/dev/typescript.rs",
     "src/dev/sockets.rs",
