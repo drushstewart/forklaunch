@@ -194,3 +194,53 @@ async fn versioned_text_keeps_empty_body_and_uses_the_first_declared_parser() {
         .unwrap();
     assert_eq!(response.status(), 400);
 }
+
+#[tokio::test]
+async fn versioned_files_preserve_non_utf8_empty_and_json_looking_bytes() {
+    let mut contract = RouteContract::post("File", "File", "/file");
+    for name in ["v1", "v2"] {
+        let body = BodyContract {
+            kind: BodyKind::File,
+            schema: forklaunch_contract::SchemaRef::named("File")
+                .with_json_schema(json!({"type":"string","format":"binary"}).to_string()),
+            content_type: Some("application/octet-stream".into()),
+        };
+        contract = contract.with_version(VersionedContract {
+            version: name.into(),
+            request: RequestContract::default().with_body(body),
+            responses: vec![ResponseContract::new(202, None)],
+        });
+    }
+    let app = ForkLaunchRouter::new(ServiceInfo::new("file", "1"))
+        .post(
+            contract,
+            |Extension(version): Extension<SelectedVersion>, body: bytes::Bytes| async move {
+                assert_eq!(version.version, "v2");
+                assert_eq!(version.matched_versions, ["v1", "v2"]);
+                (StatusCode::ACCEPTED, body)
+            },
+        )
+        .into_router();
+    for bytes in [
+        vec![],
+        vec![0, 255, 128],
+        b"{\"value\":1}".to_vec(),
+        "水".as_bytes().to_vec(),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/file")
+                    .header("content-type", "application/octet-stream; charset=binary")
+                    .body(Body::from(bytes.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 202);
+        assert_eq!(
+            to_bytes(response.into_body(), 1024).await.unwrap().as_ref(),
+            bytes
+        );
+    }
+}

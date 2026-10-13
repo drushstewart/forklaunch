@@ -22,8 +22,16 @@ try {
  for(const [value,version,status] of [['','v1',201],['a','v1',201],['水a','v2',202]]) {
   const response=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':'text/plain'},body:value});
   assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,value});
-  const result=await mcpRpc(base,'tools/call',{name:tools.find(tool=>tool.name.endsWith(` [v${version}]`) && tool.inputSchema.properties.body?.type==='string').name,arguments:{body:value}});
+  const result=await mcpRpc(base,'tools/call',{name:tools.find(tool=>tool.name.endsWith(` [v${version}]`) && tool.inputSchema.properties.body?.type==='string' && tool.inputSchema.properties.body?.format!=='binary').name,arguments:{body:value}});
   assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{version,value});
+ }
+ for(const bytes of [[],[0,255,128],Array.from(Buffer.from('水'))]) {
+  const response=await fetch(`${base}/versioned-file`,{method:'POST',headers:{'content-type':'application/octet-stream'},body:Buffer.from(bytes)});
+  assert.equal(response.status,202);assert.deepEqual(await response.json(),{version:'v2',bytes});
+ }
+ for(const value of ['', '水']) {
+  const result=await mcpRpc(base,'tools/call',{name:'writeFile [vv2]',arguments:{body:value}});
+  assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{version:'v2',bytes:Array.from(Buffer.from(value))});
  }
  const invalid=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:'v2',value:'bad'})});assert.equal(invalid.status,400);
  const openapi=await(await fetch(`${base}/openapi.json`)).json();

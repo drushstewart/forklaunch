@@ -22,12 +22,22 @@ pub fn contracts() -> Vec<RouteContract> {
         output.schema=output.schema.with_json_schema(json!({"type":"object","required":["version","value"],"properties":{"version":{"type":"string"},"value":{"type":"string"}}}).to_string());
         text=text.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(status,Some(output))]});
     }
-    vec![route,text]
+    let mut file=RouteContract::post("Write File","Write versioned file","/versioned-file");
+    for version in ["v1","v2"] {
+        let mut input=BodyContract { kind:BodyKind::File, content_type:Some("application/octet-stream".into()), ..BodyContract::json("FileInput") };
+        input.schema=input.schema.with_json_schema(json!({"type":"string","format":"binary"}).to_string());
+        let mut output=BodyContract::json("FileOutput");
+        output.schema=output.schema.with_json_schema(json!({"type":"object","required":["version","bytes"],"properties":{"version":{"type":"string"},"bytes":{"type":"array","items":{"type":"integer"}}}}).to_string());
+        file=file.with_version(VersionedContract{version:version.into(),request:RequestContract::default().with_body(input),responses:vec![ResponseContract::new(202,Some(output))]});
+    }
+    vec![route,text,file]
 }
 pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
     router.post(contracts().remove(0),|Extension(version):Extension<SelectedVersion>,Json(body):Json<Value>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"value":body["value"]})))
     }).post(contracts().remove(1),|Extension(version):Extension<SelectedVersion>,body:String|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"value":body})))
+    }).post(contracts().remove(2),|Extension(version):Extension<SelectedVersion>,body:axum::body::Bytes|async move {
+        (StatusCode::ACCEPTED,Json(json!({"version":version.version,"bytes":body.to_vec()})))
     })
 }

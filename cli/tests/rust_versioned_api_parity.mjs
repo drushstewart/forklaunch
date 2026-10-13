@@ -19,15 +19,16 @@ for(const names of [['z-first','a-last'],['2','1'],['10','2'],['01','1'],['42949
  fixtures.push({versions,cases:[{value:'a'},{value:'ab'},{value:''},{value:10},{},null,{value:'abc',extra:true}]});
 }
 fixtures.push({kind:'text',versions:[{name:'z-first',schema:{type:'string',minLength:0}},{name:'a-last',schema:{type:'string',minLength:2}}],cases:['','a','ab','水','水a']});
+fixtures.push({kind:'file',versions:[{name:'z-first',schema:{type:'string',format:'binary',title:'File'}},{name:'a-last',schema:{type:'string',format:'binary'}}],cases:[[],[0,255,128],[97,98],[230,176,180],[34,123,125,34]]});
 const parserFixtures=[['json','text'],['text','text'],['file','binary'],['none','json'],['none','none'],['urlEncoded','multipart']].map(parserKinds=>({parserKinds}));
 const {validateContractDetails}=load(path.join(root,'framework/core/src/http/router/routerSharedLogic.ts'));
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify([...fixtures,...parserFixtures]),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0;
 for(const [i,fixture] of fixtures.entries()) {
- const requestSchema=Object.fromEntries(fixture.versions.map(version=>[version.name,z.object({body:fixture.kind==='text'?z.string().min(version.schema.minLength):z.object({value:z.string().min(version.schema.properties.value.minLength)}),params:z.object({}),query:z.object({}),headers:z.object({})})]));
+ const requestSchema=Object.fromEntries(fixture.versions.map(version=>[version.name,z.object({body:fixture.kind==='file'?validator.file:fixture.kind==='text'?z.string().min(version.schema.minLength):z.object({value:z.string().min(version.schema.properties.value.minLength)}),params:z.object({}),query:z.object({}),headers:z.object({})})]));
  assert.deepEqual(native[i].order,Object.keys(requestSchema));
  for(const [j,body] of fixture.cases.entries()) {
-  const req={body,params:{},query:{},headers:{},context:{correlationId:'fixture'},contractDetails:{versions:requestSchema},requestSchema,schemaValidator:validator};
+  const req={body:fixture.kind==='file'?Buffer.from(body):body,params:{},query:{},headers:{},context:{correlationId:'fixture'},contractDetails:{versions:requestSchema},requestSchema,schemaValidator:validator};
   let status=200,next=false;
   const res={type(){return this;},status(code){status=code;return this;},send(){return this;}};
   parse(req,res,()=>{next=true;});

@@ -3148,3 +3148,27 @@ Checklist stays **652/682 (95.6%), 30 open**. Binary/form/multipart schema match
 full middleware coercion/transform behavior and the broader versioning gate
 remain open. These parser tests compare actual TypeScript request validation;
 they do not claim all Express wire-parser behavior is identical.
+
+### 2026-10-13 — Versioned opaque files and native byte constraints
+
+Version matching no longer decodes file/binary bytes as UTF-8. The standard
+opaque OpenAPI binary-string shape (with descriptive annotations) accepts and
+preserves every byte. Native array and boolean schemas validate the byte-array
+representation. Unsupported assertions on opaque string schemas fail at route
+construction instead of silently losing their constraints. JSON/unknown parser
+aliases also consistently use JSON during matching.
+
+Validation: 45 actual TypeScript/native request-selection comparisons (including
+five actual file-validator Buffer inputs) and six parser registration checks;
+57 Axum and 24 HTTP tests; strict Clippy; and 898 embedded package sources.
+A fresh relocated generated service (`run.ZkUoe6`) passed raw HTTP file calls
+with empty/non-UTF-8/Unicode bytes and MCP file calls with representable strings,
+plus JSON/text calls, both typed SDKs through all three artifact sources and both
+native generators, startup/discovery and graceful shutdown. Receipts:
+`/private/tmp/fl-version-file-{actual,units,clippy,generated,package}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. This closes the opaque file
+matching defect, not all media semantics: arbitrary transformations, the separate
+TypeScript base64-string binary validator, multipart/form matching and full
+wire-parser conformance remain tracked. MCP string-file calls do not establish
+arbitrary binary MCP transport parity.

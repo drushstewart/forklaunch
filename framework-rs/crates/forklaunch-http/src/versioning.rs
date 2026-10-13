@@ -28,7 +28,14 @@ struct Variant {
     name: String,
     route: RouteContract,
     fields: Vec<FieldValidator>,
-    body: Option<Arc<JsonValidator>>,
+    body: Option<BodyValidator>,
+}
+
+#[derive(Clone)]
+enum BodyValidator {
+    Value(Arc<JsonValidator>),
+    Bytes(Arc<JsonValidator>),
+    Opaque,
 }
 
 /// Reusable schema plan; live routers compile it once during construction.
@@ -88,7 +95,7 @@ impl VersionedRoutePlan {
                 .request
                 .body
                 .as_ref()
-                .map(|body| compile_schema(&body.schema, &mut remaining_bytes))
+                .map(|body| compile_body(body, &mut remaining_bytes))
                 .transpose()?
                 .flatten();
             variants.push(Variant {
@@ -145,10 +152,7 @@ fn parser_kind(body: Option<&forklaunch_contract::BodyContract>) -> Option<BodyK
         kind => kind,
     })
 }
-fn compile_schema(
-    schema: &SchemaRef,
-    remaining_bytes: &mut usize,
-) -> Result<Option<Arc<JsonValidator>>, String> {
+fn decode_schema(schema: &SchemaRef, remaining_bytes: &mut usize) -> Result<Option<Value>, String> {
     schema
         .json_schema
         .as_deref()
@@ -156,11 +160,61 @@ fn compile_schema(
             *remaining_bytes = remaining_bytes
                 .checked_sub(encoded.len())
                 .ok_or("Version schemas exceed 32 MiB")?;
-            let value: Value = serde_json::from_str(encoded)
-                .map_err(|_| "invalid version schema JSON".to_owned())?;
-            schema_validation::compile(&value)
+            serde_json::from_str(encoded).map_err(|_| "invalid version schema JSON".to_owned())
         })
         .transpose()
+}
+fn compile_schema(
+    schema: &SchemaRef,
+    remaining_bytes: &mut usize,
+) -> Result<Option<Arc<JsonValidator>>, String> {
+    decode_schema(schema, remaining_bytes)?
+        .as_ref()
+        .map(schema_validation::compile)
+        .transpose()
+}
+fn compile_body(
+    body: &forklaunch_contract::BodyContract,
+    remaining_bytes: &mut usize,
+) -> Result<Option<BodyValidator>, String> {
+    let Some(schema) = decode_schema(&body.schema, remaining_bytes)? else {
+        return Ok(None);
+    };
+    let validator = schema_validation::compile(&schema)?;
+    if !matches!(body.kind, BodyKind::File | BodyKind::Binary) {
+        return Ok(Some(BodyValidator::Value(validator)));
+    }
+    if schema.is_boolean() || schema.get("type").and_then(Value::as_str) == Some("array") {
+        return Ok(Some(BodyValidator::Bytes(validator)));
+    }
+    // OpenAPI's binary string describes opaque wire bytes, not UTF-8 text.
+    // Do not silently discard assertions that cannot apply to that representation.
+    let opaque = schema.as_object().is_some_and(|object| {
+        object.get("type").and_then(Value::as_str) == Some("string")
+            && object.get("format").and_then(Value::as_str) == Some("binary")
+            && object.keys().all(|key| {
+                matches!(
+                    key.as_str(),
+                    "type"
+                        | "format"
+                        | "$schema"
+                        | "$id"
+                        | "title"
+                        | "description"
+                        | "default"
+                        | "examples"
+                        | "example"
+                        | "deprecated"
+                        | "readOnly"
+                        | "writeOnly"
+                )
+            })
+    });
+    if opaque {
+        Ok(Some(BodyValidator::Opaque))
+    } else {
+        Err("Versioned binary/file schemas require an opaque binary string, a byte-array schema, or a boolean schema".into())
+    }
 }
 impl Variant {
     fn matches(&self, request: &FrameworkRequest) -> bool {
@@ -200,7 +254,17 @@ impl Variant {
             Body::Text(text) => text.as_bytes(),
             Body::Binary(bytes) => bytes.as_slice(),
         };
-        let value = if body.kind == BodyKind::Json {
+        let validate = match validate {
+            BodyValidator::Opaque => return true,
+            BodyValidator::Bytes(validate) => {
+                return validate(&Value::Array(
+                    bytes.iter().copied().map(Value::from).collect(),
+                ))
+                .is_ok();
+            }
+            BodyValidator::Value(validate) => validate,
+        };
+        let value = if matches!(body.kind, BodyKind::Json | BodyKind::Unknown) {
             match serde_json::from_slice(bytes) {
                 Ok(value) => value,
                 Err(_) => return false,
@@ -342,6 +406,60 @@ mod tests {
                 .status_code,
             500
         );
+    }
+    #[test]
+    fn binary_versions_validate_bytes_and_reject_unsupported_string_assertions() {
+        let mut route = contract();
+        for version in route.versions.values_mut() {
+            let body = version.request.body.as_mut().unwrap();
+            body.kind = BodyKind::Binary;
+            body.content_type = Some("application/octet-stream".into());
+            body.schema.json_schema = Some(json!({"type":"array","items":{"type":"integer","minimum":0,"maximum":255},"minItems":if version.version=="a-last" {2} else {0}}).to_string());
+        }
+        let plan = VersionedRoutePlan::compile(&route).unwrap();
+        for (bytes, expected) in [
+            (vec![], "z-first"),
+            (vec![255], "z-first"),
+            (vec![0, 255], "a-last"),
+        ] {
+            let input = request("")
+                .with_header("content-type", "application/octet-stream")
+                .with_body(Body::Binary(bytes));
+            assert_eq!(plan.select(&input).unwrap().unwrap().1.version, expected);
+        }
+        let body = route.versions["a-last"].request.body.as_mut().unwrap();
+        body.schema.json_schema =
+            Some(json!({"type":"string","format":"binary","minLength":1}).to_string());
+        assert!(
+            VersionedRoutePlan::compile(&route)
+                .unwrap_err()
+                .contains("opaque binary string")
+        );
+        for schema in [
+            json!({"type":"string","format":"binary","title":"File"}),
+            json!(true),
+            json!(false),
+        ] {
+            route.versions["a-last"]
+                .request
+                .body
+                .as_mut()
+                .unwrap()
+                .schema
+                .json_schema = Some(schema.to_string());
+            let plan = VersionedRoutePlan::compile(&route).unwrap();
+            let input = request("")
+                .with_header("content-type", "application/octet-stream")
+                .with_body(Body::Binary(vec![255]));
+            assert_eq!(
+                plan.select(&input).unwrap().unwrap().1.version,
+                if schema == json!(false) {
+                    "z-first"
+                } else {
+                    "a-last"
+                }
+            );
+        }
     }
     #[test]
     fn malformed_and_unbundled_version_schemas_fail_during_construction() {

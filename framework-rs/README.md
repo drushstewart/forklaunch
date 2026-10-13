@@ -504,6 +504,16 @@ matching TypeScript registration. Empty text remains an empty string; binary
 inputs retain their bytes before version matching. The combined encoded version
 schemas are capped at 32 MiB before decoding.
 
+Versioned file/binary inputs accept the opaque OpenAPI schema
+`{"type":"string","format":"binary"}` with descriptive annotations. Arbitrary
+wire bytes, including empty and invalid UTF-8 inputs, are preserved. Native
+byte-array schemas validate the actual bytes and their array constraints;
+boolean schemas are also supported. Additional assertions on an opaque string
+are rejected at registration instead of being ignored. This file profile matches
+the TypeScript file validator's input acceptance; it does not reproduce arbitrary
+Zod transformations or treat the separate base64-string binary validator as a
+raw-byte validator.
+
 Local handlers read `FrameworkRequest.version`; Axum handlers can extract
 `Extension<forklaunch_http::SelectedVersion>`. This contains `version` and
 `matched_versions`. MCP exposes each version as `operation [v<version>]` when

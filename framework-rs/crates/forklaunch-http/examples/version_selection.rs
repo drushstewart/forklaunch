@@ -41,11 +41,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
         let text = fixture["kind"] == "text";
+        let file = fixture["kind"] == "file";
         for version in fixture["versions"].as_array().unwrap() {
             let mut body = BodyContract::json("Input");
             if text {
                 body.kind = BodyKind::Text;
                 body.content_type = Some("text/plain".into());
+            }
+            if file {
+                body.kind = BodyKind::File;
+                body.content_type = Some("application/octet-stream".into());
             }
             body.schema = body.schema.with_json_schema(version["schema"].to_string());
             contract = contract.with_version(VersionedContract {
@@ -64,17 +69,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .with_header(
                 "content-type",
-                if text {
+                if file {
+                    "application/octet-stream"
+                } else if text {
                     "text/plain"
                 } else {
                     "application/json"
                 },
             )
-            .with_body(Body::Text(if text {
-                case.as_str().unwrap().into()
+            .with_body(if file {
+                Body::Binary(
+                    case.as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|v| u8::try_from(v.as_u64().unwrap()).unwrap())
+                        .collect(),
+                )
             } else {
-                case.to_string()
-            }));
+                Body::Text(if text {
+                    case.as_str().unwrap().into()
+                } else {
+                    case.to_string()
+                })
+            });
             cases.push(match plan.select(&request) {
                 Ok(Some((_,version)))=>json!({"version":version.version,"matched":version.matched_versions,"status":200}),
                 _=>json!({"status":400})
