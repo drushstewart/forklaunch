@@ -523,7 +523,7 @@ indices use the exactly representable JavaScript integer range. Wire bytes remai
 available to the handler; matching does not rewrite its body. Body decoding is
 shared across candidate versions. `rust_versioned_form_parity.mjs` compares the
 profile against the actual TypeScript content middleware. Configurable parser
-options and non-UTF-8 charsets remain incomplete.
+options and additional legacy charsets remain incomplete.
 
 Multipart version matching uses buffered wire bytes and shares `MultipartLimits`
 with the typed Axum extractor, including caller-installed limit extensions.
@@ -570,7 +570,7 @@ Version matching follows the default TypeScript JSON/text wire parser: JSON root
 must be objects or arrays, an empty JSON body becomes an empty object, one UTF-8
 BOM is stripped, and malformed UTF-8 becomes replacement characters. Original
 handler bytes remain intact; standard Axum extractors retain their own decoding
-rules. Configurable strict mode and other charsets remain separate work.
+rules. Configurable strict mode and additional legacy charsets remain separate work.
 
 Versioned handlers can use `forklaunch_axum::VersionedBody<T>` to deserialize the
 body already parsed and validated during version selection. It is a parts
@@ -581,3 +581,13 @@ Local and metadata adapters expose the same shared value through
 `request.version.parsed_body`. Missing version/body metadata rejects with 500;
 a handler type incompatible with the selected schema rejects with 400. Arbitrary
 schema transformations and unversioned parsed-body delivery remain separate work.
+
+Versioned JSON/text/form parsing honors the request Content-Type charset. JSON
+requires a `utf-` encoding; URL-encoded forms accept UTF-8 or ISO-8859-1, including
+Latin-1 percent decoding. Text supports UTF-8, UTF-16/32 endian variants and
+autodetection, Latin-1, ASCII, and encoding_rs legacy encodings. Unsupported
+charsets reject with 415, including when schema rejection is disabled. The
+comparison matrix covers Windows-1252, Shift-JIS, GB18030, Big5 and KOI8-R as well
+as Unicode encodings; failed multibyte leads retry the following byte to match
+iconv behavior. This does not claim every iconv alias/table, unpaired surrogate
+behavior, custom charset defaults or form charset-sentinel options.

@@ -57,7 +57,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .with_header(
                 "content-type",
-                if multipart {
+                if let Some(content_type) = fixture["contentType"].as_str() {
+                    content_type
+                } else if multipart {
                     "multipart/form-data; boundary=boundary"
                 } else if form {
                     "application/x-www-form-urlencoded"
@@ -85,7 +87,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
             });
             cases.push(match plan.select(&request) {
-                Ok(Some((_,version)))=>json!({"version":version.version,"matched":version.matched_versions,"status":200}),
+                Ok(Some((_,version)))=> {
+                    let mut output=json!({"version":version.version,"matched":version.matched_versions,"status":200});
+                    if fixture["includeBody"] == true { output["body"]=version.parsed_body.as_deref().cloned().unwrap_or(Value::Null); }
+                    output
+                },
                 Err(errors)=>json!({"status":forklaunch_http::validation_error_response(&errors,"fixture").status_code}),
                 _=>json!({"status":400})
             });

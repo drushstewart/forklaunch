@@ -9,6 +9,8 @@ use forklaunch_contract::{
 };
 use serde_json::Value;
 use std::sync::Arc;
+#[path = "versioning_charset.rs"]
+mod charset;
 #[path = "versioning_form.rs"]
 mod form;
 #[path = "versioning_multipart.rs"]
@@ -184,9 +186,13 @@ impl VersionedRoutePlan {
             Body::Text(text) => text.as_bytes(),
             Body::Binary(bytes) => bytes.as_slice(),
         };
+        let charset = charset::charset(crate::header_value(&request.headers, "content-type"));
         let value = match body.kind {
             BodyKind::Json | BodyKind::Unknown => {
-                let text = decode_utf8(bytes);
+                if !charset.starts_with("utf-") {
+                    return Err(charset::unsupported());
+                }
+                let text = charset::decode(bytes, &charset)?;
                 if text.is_empty() {
                     serde_json::json!({})
                 } else {
@@ -203,14 +209,19 @@ impl VersionedRoutePlan {
             BodyKind::File | BodyKind::Binary => {
                 Value::Array(bytes.iter().copied().map(Value::from).collect())
             }
-            BodyKind::UrlEncoded => form::parse(bytes)?,
+            BodyKind::UrlEncoded => {
+                if charset != "utf-8" && charset != "iso-8859-1" {
+                    return Err(charset::unsupported());
+                }
+                form::parse_decoded(&charset::decode(bytes, &charset)?, charset == "iso-8859-1")?
+            }
             BodyKind::Multipart => multipart::parse(
                 bytes,
                 crate::header_value(&request.headers, "content-type")
                     .ok_or_else(|| invalid_body("missing multipart content type"))?,
                 limits,
             )?,
-            _ => Value::String(decode_utf8(bytes).into_owned()),
+            _ => Value::String(charset::decode(bytes, &charset)?.into_owned()),
         };
         Ok(Some(value))
     }

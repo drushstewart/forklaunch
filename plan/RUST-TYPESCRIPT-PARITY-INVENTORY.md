@@ -3362,3 +3362,28 @@ three artifacts and native generators. Receipts:
 `/private/tmp/fl-parsed-{native,clippy,actual,form,generated,package}.log`.
 Checklist remains **652/682 (95.6%), 30 open**; configurable parser/charset behavior
 and arbitrary request transformations remain on the versioning gate.
+
+
+### 2026-10-13 — Request charset decoding and unsupported-encoding status
+
+Versioned JSON/text/form matching and parsed handler values honor Content-Type
+charsets. JSON requires `utf-`; forms accept UTF-8 and ISO-8859-1 with Latin-1
+percent decoding; text supports Unicode endian/autodetection variants and the
+encoding_rs legacy tables. Unknown/disallowed encodings return 415 as fatal parser
+errors. Original wire bytes remain intact. Multibyte decoding retries the byte
+after a failed lead; UTF-32 trailing bytes produce the TypeScript replacement
+character. UTF-8 forms now follow body-parser replacement/BOM behavior before qs
+percent decoding. Both workspace locks include the direct decoder/MIME edges.
+
+Validation: **128 actual TypeScript content-middleware/native parsed-value and
+status comparisons**, including UTF-8/16/32, endian detection, quoted charset
+labels, Latin-1, ASCII, Windows-1252, Shift-JIS, GB18030, Big5 and KOI8-R; 1,062
+existing form comparisons; 61 Axum and 29 HTTP tests; strict Clippy; blueprint
+check; 904 package files. Fresh `run.SUIJG0` passes live decoded UTF-16 JSON/text,
+Latin-1 text/forms, 415 rejection and the full HTTP/MCP/SDK matrix across three
+artifacts and native generators. Receipts:
+`/private/tmp/fl-charset-{actual,form,native,clippy,blueprint,generated,package}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. Every iconv alias/table, unpaired
+surrogate behavior, custom charset defaults, form charset-sentinel options and
+arbitrary transformations are not claimed complete.

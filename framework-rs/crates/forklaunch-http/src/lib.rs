@@ -210,6 +210,7 @@ impl FrameworkResponse {
 pub enum ErrorKind {
     Validation,
     PayloadTooLarge,
+    UnsupportedMediaType,
     Unauthorized,
     Forbidden,
     NotFound,
@@ -223,6 +224,7 @@ impl ErrorKind {
         match self {
             Self::Validation => "validation_error",
             Self::PayloadTooLarge => "payload_too_large",
+            Self::UnsupportedMediaType => "unsupported_media_type",
             Self::Unauthorized => "unauthorized",
             Self::Forbidden => "forbidden",
             Self::NotFound => "not_found",
@@ -236,6 +238,7 @@ impl ErrorKind {
         match self {
             Self::Validation => 400,
             Self::PayloadTooLarge => 413,
+            Self::UnsupportedMediaType => 415,
             Self::Unauthorized => 401,
             Self::Forbidden => 403,
             Self::NotFound => 404,
@@ -325,6 +328,7 @@ pub enum ContractValidationLocation {
     Body,
     BodyParser,
     BodySize,
+    BodyEncoding,
     BodyParserConfiguration,
     ResponseStatus,
 }
@@ -344,6 +348,7 @@ impl ContractValidationError {
             self.location,
             ContractValidationLocation::BodyParser
                 | ContractValidationLocation::BodySize
+                | ContractValidationLocation::BodyEncoding
                 | ContractValidationLocation::BodyParserConfiguration
         )
     }
@@ -684,6 +689,11 @@ pub fn validation_error_response(
         .any(|error| error.location == ContractValidationLocation::BodySize)
     {
         ErrorKind::PayloadTooLarge
+    } else if errors
+        .iter()
+        .any(|error| error.location == ContractValidationLocation::BodyEncoding)
+    {
+        ErrorKind::UnsupportedMediaType
     } else {
         ErrorKind::Validation
     };

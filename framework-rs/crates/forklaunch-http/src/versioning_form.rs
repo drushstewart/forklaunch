@@ -4,8 +4,11 @@ use serde_json::Value;
 #[path = "versioning_form_tree.rs"]
 mod tree;
 
-pub(super) fn parse(bytes: &[u8]) -> Result<Value, ContractValidationError> {
-    let text = std::str::from_utf8(bytes).map_err(|_| invalid_body("invalid UTF-8 form body"))?;
+#[cfg(test)]
+fn parse(bytes: &[u8]) -> Result<Value, ContractValidationError> {
+    parse_decoded(&super::decode_utf8(bytes), false)
+}
+pub(super) fn parse_decoded(text: &str, latin1: bool) -> Result<Value, ContractValidationError> {
     let parameter_count = text.bytes().filter(|byte| *byte == b'&').count() + 1;
     if parameter_count > 1000 {
         return Err(body_too_large("form exceeds 1000 parameters"));
@@ -24,12 +27,12 @@ pub(super) fn parse(bytes: &[u8]) -> Result<Value, ContractValidationError> {
         let (key, value) = separator.map_or((part.as_str(), ""), |index| {
             (&part[..index], &part[index + 1..])
         });
-        let key = decode(key);
+        let key = decode(key, latin1);
         groups
             .entry(key)
             .or_insert_with(|| (index, Vec::new()))
             .1
-            .push(Value::String(decode(value)));
+            .push(Value::String(decode(value, latin1)));
     }
     let mut groups: Vec<_> = groups.into_iter().collect();
     // Object.keys enumerates canonical JavaScript integer keys before strings.
@@ -56,7 +59,10 @@ pub(super) fn parse(bytes: &[u8]) -> Result<Value, ContractValidationError> {
 
 // qs uses decodeURIComponent: malformed percent escapes or UTF-8 retain the
 // entire original component, after '+' replacement, rather than lossy decoding.
-fn decode(encoded: &str) -> String {
+fn decode(encoded: &str, latin1: bool) -> String {
+    if latin1 {
+        return decode_latin1(encoded);
+    }
     let replaced = brackets(encoded).replace('+', " ");
     let input = replaced.as_bytes();
     let mut decoded = Vec::with_capacity(input.len());
@@ -80,6 +86,26 @@ fn decode(encoded: &str) -> String {
         }
     }
     String::from_utf8(decoded).unwrap_or(replaced)
+}
+fn decode_latin1(encoded: &str) -> String {
+    let replaced = brackets(encoded).replace('+', " ");
+    let mut output = String::new();
+    let mut remaining = replaced.as_str();
+    while !remaining.is_empty() {
+        let bytes = remaining.as_bytes();
+        if bytes[0] == b'%'
+            && bytes.len() >= 3
+            && let (Some(high), Some(low)) = (digit(bytes[1]), digit(bytes[2]))
+        {
+            output.push(char::from(high * 16 + low));
+            remaining = &remaining[3..];
+            continue;
+        }
+        let character = remaining.chars().next().expect("nonempty remainder");
+        output.push(character);
+        remaining = &remaining[character.len_utf8()..];
+    }
+    output
 }
 fn brackets(encoded: &str) -> String {
     encoded
@@ -110,7 +136,7 @@ mod tests {
             parse(b"a[b]=x&a[c][]=y&a[c][]=z"),
             Ok(json!({"a":{"b":"x","c":["y","z"]}}))
         );
-        assert!(parse(&[255]).is_err());
+        assert_eq!(parse(&[255]).unwrap(), serde_json::json!({"�":""}));
         assert_eq!(
             parse(b"__proto__=x&constructor=y&=ignored"),
             Ok(json!({"constructor":"y"}))

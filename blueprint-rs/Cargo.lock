@@ -1298,10 +1298,12 @@ dependencies = [
 name = "forklaunch-http"
 version = "0.1.0"
 dependencies = [
+ "encoding_rs",
  "forklaunch-common",
  "forklaunch-contract",
  "forklaunch-core",
  "futures-util",
+ "mime",
  "multer",
  "serde_json",
 ]

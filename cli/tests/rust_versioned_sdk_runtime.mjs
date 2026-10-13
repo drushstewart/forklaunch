@@ -35,6 +35,17 @@ try {
  }
  const bomJson=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json'},body:'\ufeff'+JSON.stringify({kind:'v1',value:'decoded'})});
  assert.equal(bomJson.status,201);assert.deepEqual(await bomJson.json(),{value:'decoded'});
+ for(const [charset,bytes,value] of [['utf-16le',Buffer.from('水a','utf16le'),'水a'],['utf-16be',Buffer.from('水a','utf16le').swap16(),'水a'],['iso-8859-1',Buffer.from([99,97,102,233]),'café']]) {
+  const response=await fetch(`${base}/versioned-text`,{method:'POST',headers:{'content-type':`text/plain; charset=${charset}`},body:bytes});
+  assert.equal(response.status,202);assert.deepEqual(await response.json(),{version:'v2',value});
+ }
+ const utf16Json=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json; charset=utf-16le'},body:Buffer.from(JSON.stringify({kind:'v1',value:'水'}),'utf16le')});
+ assert.equal(utf16Json.status,201);assert.deepEqual(await utf16Json.json(),{value:'水'});
+ const latinForm=await fetch(`${base}/versioned-form`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded; charset=iso-8859-1'},body:'value=caf%E9'});
+ assert.equal(latinForm.status,202);assert.deepEqual(await latinForm.json(),{version:'v2',raw:'value=caf%E9'});
+ for(const [path,type] of [['versions','application/json; charset=latin1'],['versioned-text','text/plain; charset=unknown'],['versioned-form','application/x-www-form-urlencoded; charset=utf-16le']]) {
+  const response=await fetch(`${base}/${path}`,{method:'POST',headers:{'content-type':type},body:'{}'});assert.equal(response.status,415);
+ }
  for(const bytes of [[],[0,255,128],Array.from(Buffer.from('水'))]) {
   const response=await fetch(`${base}/versioned-file`,{method:'POST',headers:{'content-type':'application/octet-stream'},body:Buffer.from(bytes)});
   assert.equal(response.status,202);assert.deepEqual(await response.json(),{version:'v2',bytes});
