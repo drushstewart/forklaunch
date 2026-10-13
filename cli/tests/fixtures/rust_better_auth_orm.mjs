@@ -5,7 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import crypto from 'node:crypto';
 import { actualValidator } from '../rust_actual_validator_fixture.mjs';
-export async function betterAuthOrm(root, dependencies, resolveAdditional, sameRealm = false) {
+export async function betterAuthOrm(root, dependencies, resolveAdditional, sameRealm = false, entityIndex = 'blueprint/iam-better-auth/persistence/entities/index.ts') {
   const require = createRequire(path.join(dependencies, 'package.json'));
   const core = await import(pathToFileURL(require.resolve('@mikro-orm/core')));
   const { MikroORM } = await import(
@@ -42,7 +42,7 @@ export async function betterAuthOrm(root, dependencies, resolveAdditional, sameR
     MikroORM,
     core,
     persistence,
-    entities: load('blueprint/iam-better-auth/persistence/entities/index.ts'),
+    entities: load(entityIndex),
     load
   };
 }

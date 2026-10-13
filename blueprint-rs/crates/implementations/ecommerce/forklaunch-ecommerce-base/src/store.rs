@@ -1,5 +1,6 @@
 //! Atomic persistence boundary shared by memory and `PostgreSQL` implementations.
 mod compliance;
+mod retention;
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_ecommerce_interface::{
     CartDto, CartItemDto, InventoryDto, OrderDto, OrderStatus, PaymentDto, PaymentStatus,
@@ -369,6 +370,18 @@ pub(crate) fn apply_mutation(
 pub struct InMemoryEcommerceStore {
     records: Mutex<BTreeMap<(RecordKind, String), Record>>,
     applied_events: Mutex<BTreeMap<String, String>>,
+    retention_tenant: Option<forklaunch_core::persistence::TenantContext>,
+    retention_markers: Mutex<std::collections::BTreeSet<String>>,
+}
+impl InMemoryEcommerceStore {
+    /// Bind development retention operations to one logical tenant.
+    #[must_use]
+    pub fn for_tenant(tenant: forklaunch_core::persistence::TenantContext) -> Self {
+        Self {
+            retention_tenant: Some(tenant),
+            ..Self::default()
+        }
+    }
 }
 fn unique(record: &Record) -> Vec<(Field, &str)> {
     match record {
@@ -585,7 +598,11 @@ impl EcommerceStore for InMemoryEcommerceStore {
                 Err(error) => Some(Err(error)),
             })
             .collect();
+        let mut markers = self.retention_markers.lock().map_err(storage_error)?;
         for key in keys? {
+            if key.0 == RecordKind::Order {
+                markers.remove(&key.1);
+            }
             records.remove(&key);
         }
         Ok(())

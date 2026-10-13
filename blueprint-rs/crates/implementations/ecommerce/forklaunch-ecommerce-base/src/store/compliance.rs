@@ -43,7 +43,9 @@ impl EcommerceComplianceStore for InMemoryEcommerceStore {
                 _ => None,
             })
             .collect();
+        let mut markers = self.retention_markers.lock().map_err(storage_error)?;
         for id in &ids {
+            markers.remove(id);
             records.remove(&(RecordKind::Order, id.clone()));
         }
         Ok(ids.len())

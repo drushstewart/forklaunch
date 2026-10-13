@@ -4,6 +4,8 @@ mod catalog;
 mod compliance;
 #[path = "support/events.rs"]
 mod events;
+#[path = "support/retention.rs"]
+mod retention;
 #[path = "support/webhook.rs"]
 mod webhook;
 use forklaunch_ecommerce_base::{
@@ -406,7 +408,7 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("ecom_{suffix}");
     let password = uuid::Uuid::new_v4().to_string();
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO {role}; GRANT USAGE ON SCHEMA fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_worker.jobs TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.order_retention,fl_ecommerce.records TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO {role}; GRANT USAGE ON SCHEMA fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_worker.jobs TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};")).execute(&owner).await.unwrap();
     let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
     let runtime = PgPoolOptions::new()
         .max_connections(8)
@@ -514,6 +516,7 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     assert_eq!(visible, 0);
     business_rules(Arc::clone(&a)).await;
     compliance::exercise(Arc::clone(&a)).await;
+    retention::exercise(Arc::clone(&a), tenant_a.clone()).await;
     let compliance_a = forklaunch_ecommerce_base::compliance::EcommerceComplianceService::new(
         Arc::clone(&a),
         forklaunch_ecommerce_base::compliance::OrderSubjectField::CustomerId,
@@ -597,6 +600,31 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     let failed_erase = compliance_a.erase("foreign-owner").await.unwrap();
     assert_eq!(failed_erase.records_deleted, 0);
     assert_eq!(failed_erase.failures.len(), 1);
+    let cutoff: std::time::SystemTime =
+        chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+            .unwrap()
+            .into();
+    let policy = forklaunch_core::persistence::retention::RetentionPolicy::for_entity::<
+        forklaunch_ecommerce_base::retention::OrderCompliance,
+    >(
+        cutoff,
+        forklaunch_core::persistence::retention::RetentionAction::Delete,
+    )
+    .unwrap();
+    assert!(
+        forklaunch_core::persistence::retention::RetentionStore::apply_batch(
+            a.as_ref(),
+            forklaunch_core::persistence::retention::RetentionRequest {
+                tenant: &tenant_a,
+                policy: &policy,
+                now: std::time::SystemTime::now(),
+                batch_size: 1,
+            }
+        )
+        .await
+        .is_err(),
+        "retention deletion must roll back on audit failure"
+    );
     assert!(
         service
             .transition_order(TransitionOrderDto {
@@ -622,6 +650,12 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         1,
         "audit failure must roll back erasure"
     );
+    assert!(service.get_order("retention-first").await.is_ok());
+    let markers: i64 = sqlx::query_scalar("SELECT count(*) FROM fl_ecommerce.order_retention")
+        .fetch_one(&runtime)
+        .await
+        .unwrap();
+    assert_eq!(markers, 0, "retention markers require a bound tenant");
     let rotated = Arc::new(
         FieldEncryptor::new("ecommerce-test-new-secret-only")
             .unwrap()

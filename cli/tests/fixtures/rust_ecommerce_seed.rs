@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "PASS generated ecommerce encrypted addresses, audited actor identity, secret exclusion and durable worker receipts"
         );
     } else {
-        sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'parity-test-only'; GRANT USAGE ON SCHEMA fl_ecommerce,fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_worker.jobs TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role}")).execute(&pool).await?;
+        sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'parity-test-only'; GRANT USAGE ON SCHEMA fl_ecommerce,fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.order_retention,fl_ecommerce.records,fl_worker.jobs TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role}")).execute(&pool).await?;
         sqlx::query("INSERT INTO fl_ecommerce.records(tenant_id,kind,id,data) VALUES ($1,'inventory','fixture-stock',$2)")
             .bind(&tenants[0]).bind(serde_json::json!({"id":"fixture-stock","variantId":"variant","stock":8,"createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"})).execute(&pool).await?;
     }

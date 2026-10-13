@@ -8,7 +8,7 @@ import { betterAuthOrm } from './fixtures/rust_better_auth_orm.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const source = await betterAuthOrm(root, process.env.FORKLAUNCH_TEST_ORM_DEPENDENCIES,
   (specifier, _file, load) => specifier === '@forklaunch/interfaces-ecommerce/types'
-    ? load(path.join(root, 'blueprint/interfaces/ecommerce/types/order.service.types.ts')) : undefined, true);
+    ? load(path.join(root, 'blueprint/interfaces/ecommerce/types/order.service.types.ts')) : undefined, true, 'blueprint/ecommerce-stripe/persistence/entities/order.entity.ts');
 const { persistence, core } = source;
 const { Order } = source.load('blueprint/ecommerce-stripe/persistence/entities/order.entity.ts');
 const { ComplianceDataService } = source.load('framework/core/src/services/complianceDataService.ts');

@@ -4,7 +4,7 @@ Persistent ecommerce service with HTTP and MCP, HMAC catalog/cart/order/payment 
 
 Apply `cargo run -p {{{name}}} -- --migrate` with a schema-owner connection. Generated Compose runs the HTTP service and a separate `<module>-inventory-worker` from the same image. The worker shares database/tenant/encryption settings and exposes container readiness on port 9090 without a host port. Sync preserves worker settings; rename/delete follow the owning module. Run the HTTP service with `cargo run -p {{{name}}}` and a separate inventory process with `cargo run -p {{{name}}} -- --worker`. HTTP health is `/health`; MCP is `/mcp` on the same listener. Offline `FORKLAUNCH_MODE=contract` exports routes without provider/storage credentials. Configure the trusted tenant, encryption keys and providers in `.env.example`; request fields cannot change the database tenant.
 
-Runtime database roles must have no SUPERUSER/BYPASSRLS. Grant schema USAGE on `fl_ecommerce,fl_worker`, SELECT/INSERT/UPDATE/DELETE on `fl_ecommerce.records,fl_worker.jobs`, SELECT/INSERT on `fl_ecommerce.inventory_event_receipts`, SELECT/INSERT/UPDATE on `fl_ecommerce.webhook_events`, INSERT on `fl_ecommerce.pii_read_audit`, and USAGE on `fl_worker` sequences. Apply migrations separately with the owner role. Addresses are encrypted and plaintext reads audit the verified service actor.
+Runtime database roles must have no SUPERUSER/BYPASSRLS. Grant schema USAGE on `fl_ecommerce,fl_worker`, SELECT/INSERT/UPDATE/DELETE on `fl_ecommerce.records,fl_ecommerce.order_retention,fl_worker.jobs`, SELECT/INSERT on `fl_ecommerce.inventory_event_receipts`, SELECT/INSERT/UPDATE on `fl_ecommerce.webhook_events`, INSERT on `fl_ecommerce.pii_read_audit`, and USAGE on `fl_worker` sequences. Apply migrations separately with the owner role. Addresses are encrypted and plaintext reads audit the verified service actor.
 
 Order transitions and their inventory jobs commit together. The worker decrements on paid, restocks cancellation from paid/fulfilled and ignores stock for pending cancellation. All item deltas and durable receipts commit together, preserving stock on retry/redelivery. The worker uses the same tenant and database, with optional HTTP readiness and bearer-authenticated pause/resume/drain controls.
 
@@ -29,4 +29,14 @@ reads and audit inserts commit together; failed audits or decryption roll back
 an erasure. A nonempty `failures` list means the operation is incomplete.
 Unclassified carts, payments and event receipts are not cascaded. These are
 trusted application hooks; this preset defines no new public compliance route.
-Order retention policy integration remains separate work.
+The store implements the framework `RetentionStore` API for explicit
+`RetentionPolicy::for_entity::<OrderCompliance>` policies; the preset imposes no
+default retention duration. Resolve the calendar cutoff in trusted application
+configuration and pass the store's tenant to `retention::enforce`. Dry runs count,
+and mutations use bounded oldest-first batches. The configured address is
+non-nullable: an anonymization policy records completion without clearing that
+address, matching TypeScript; a delete policy erases the whole order. Migration
+`5_order_retention.sql` stores tenant-isolated markers that survive ordinary
+order updates and disappear on deletion. Memory development stores use
+`InMemoryEcommerceStore::for_tenant` to bind retention requests. Treat any reported
+errors or exhausted batch budget as incomplete enforcement.

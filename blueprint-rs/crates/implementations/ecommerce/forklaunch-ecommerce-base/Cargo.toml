@@ -9,7 +9,7 @@ repository.workspace = true
 [features]
 default = []
 worker = ["dep:forklaunch-worker-interface", "dep:forklaunch-worker-database"]
-postgres = ["dep:forklaunch-core", "dep:sqlx", "forklaunch-worker-database?/postgres"]
+postgres = ["forklaunch-core/postgres", "forklaunch-core/encryption", "dep:sqlx", "forklaunch-worker-database?/postgres"]
 
 [dependencies]
 forklaunch-worker-interface = { path = "../../../interfaces/forklaunch-worker-interface", optional = true }
@@ -24,7 +24,7 @@ zeroize = "1"
 regex = "1"
 tokio = { version = "1", features = ["time"] }
 tracing = "0.1"
-forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"], optional = true }
+forklaunch-core = { path = "../../../../../framework-rs/crates/forklaunch-core" }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros"], optional = true }
 
 [dev-dependencies]

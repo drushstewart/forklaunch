@@ -2471,3 +2471,37 @@ MikroORM/native comparisons pass. The same-realm fixture mode preserves MikroORM
 execution is unchanged. CI includes the new comparison. Evidence:
 `/private/tmp/fl-ecommerce-compliance-{tests,postgres,clippy,clippy-default,actual}.log`.
 Retention remains open; checklist remains 647/682 (94.9%).
+
+
+### Ecommerce explicit retention policies
+
+The ecommerce stores now implement the framework `RetentionStore` boundary for
+`OrderCompliance`. No default retention duration is imposed. Trusted applications
+resolve a calendar cutoff and opt into deletion or anonymization, with tenant
+binding, bounded oldest-first batches, dry-run counts and incomplete-enforcement
+reporting. The configured shipping address is non-nullable: the actual TS service
+preserves it during anonymization and records completion; native behavior matches.
+Deletion removes the whole Order. Migration `5_order_retention.sql` stores forced-
+RLS completion markers with a cascading record FK, so ordinary DTO updates cannot
+lose markers and reused deleted IDs cannot inherit them. Runtime grants include
+the marker table. Memory stores bind retention via `for_tenant`.
+
+Six portable native ecommerce tests and restricted PostgreSQL pass, including
+competing passes, exact cutoff exclusion, replay, marker preservation across
+updates/deletion/recreation, foreign-tenant rejection and audit-failure rollback.
+Strict default/all-feature/all-target Clippy passes. Eight real encrypted ORM
+retention comparisons and twelve classified export/erasure comparisons pass;
+fixtures load the actual ecommerce entity metadata without unrelated auth registry
+entries. The rebuilt CLI packages 879 sources, and the Rust security audit reports
+no unexpected findings. Evidence: `/private/tmp/fl-ecommerce-retention-*.log`.
+The earlier generated ecommerce run passed HTTP/MCP and checkout but lacked the
+local Stripe fixture path; a fresh complete run supplies `STRIPE_SDK_PATH`.
+
+The complete rebuilt generated ecommerce run passes HTTP/MCP startup/discovery,
+both SDKs, actual TS checkout/webhook comparisons, cross-process checkout races,
+provider verification/capture, encrypted persistence, durable inventory worker,
+Compose ownership, source preservation, relocation and rename/sync/delete
+(`fl-ecommerce-retention-runtime.log`). Both owned generated workspaces were
+removed, including the superseded run missing its local Stripe dependency path.
+Ecommerce compliance gate is complete: **648/682 (95.0%), 34 open**. Interrupted
+provider capture/reconciliation remains separate work.
