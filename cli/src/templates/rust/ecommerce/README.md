@@ -4,7 +4,7 @@ Persistent ecommerce service with HTTP and MCP, HMAC catalog/cart/order/payment 
 
 Apply `cargo run -p {{{name}}} -- --migrate` with a schema-owner connection. Generated Compose runs the HTTP service and a separate `<module>-inventory-worker` from the same image. The worker shares database/tenant/encryption settings and exposes container readiness on port 9090 without a host port. Sync preserves worker settings; rename/delete follow the owning module. Run the HTTP service with `cargo run -p {{{name}}}` and a separate inventory process with `cargo run -p {{{name}}} -- --worker`. HTTP health is `/health`; MCP is `/mcp` on the same listener. Offline `FORKLAUNCH_MODE=contract` exports routes without provider/storage credentials. Configure the trusted tenant, encryption keys and providers in `.env.example`; request fields cannot change the database tenant.
 
-Runtime database roles must have no SUPERUSER/BYPASSRLS. Grant schema USAGE on `fl_ecommerce,fl_worker`, SELECT/INSERT/UPDATE/DELETE on `fl_ecommerce.records,fl_ecommerce.order_retention,fl_worker.jobs`, SELECT/INSERT on `fl_ecommerce.inventory_event_receipts`, SELECT/INSERT/UPDATE on `fl_ecommerce.webhook_events`, INSERT on `fl_ecommerce.pii_read_audit`, SELECT on `fl_ecommerce.payment_reconciliation_audit`, and USAGE on `fl_worker` sequences. Apply migrations separately with the owner role. Addresses are encrypted and plaintext reads audit the verified service actor.
+Runtime database roles must have no SUPERUSER/BYPASSRLS. Grant schema USAGE on `fl_ecommerce,fl_worker`, SELECT/INSERT/UPDATE/DELETE on `fl_ecommerce.records,fl_ecommerce.order_retention,fl_worker.jobs`, SELECT/INSERT on `fl_ecommerce.inventory_event_receipts`, SELECT/INSERT/UPDATE on `fl_ecommerce.webhook_events`, INSERT on `fl_ecommerce.pii_read_audit`, SELECT on `fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.payment_cancellation_audit`, and USAGE on `fl_worker` sequences. Apply migrations separately with the owner role. Addresses are encrypted and plaintext reads audit the verified service actor.
 
 Order transitions and their inventory jobs commit together. The worker decrements on paid, restocks cancellation from paid/fulfilled and ignores stock for pending cancellation. All item deltas and durable receipts commit together, preserving stock on retry/redelivery. The worker uses the same tenant and database, with optional HTTP readiness and bearer-authenticated pause/resume/drain controls.
 
@@ -58,3 +58,13 @@ with the same operator context and audit grants. It verifies a fully captured,
 unrefunded, undisputed intent/charge in the configured Connect account before
 repairing local payment state. It does not create/capture/refund charges or change
 orders; mismatched or incomplete evidence remains a review case.
+
+Migration 7 adds `payment_cancellation_audit`. Runtime roles need SELECT and
+reconciliation operators additionally need INSERT. Apply the migration and grants
+before updating a running service. `StripePaymentService::reconcile_canceled_payment`
+accepts only terminal canceled intents with no charge, zero received/capturable
+amounts and matching local identifiers/amount/currency. It marks the local payment
+failed, preserves its reference and audits the actor atomically. Later confirmation
+or contradictory capture repair cannot reopen it. The provider is only read;
+no cancellation/refund or order transition is issued. Prior charges, ambiguous
+states and PayPal cancellation require review. Evidence APIs remain server-only.

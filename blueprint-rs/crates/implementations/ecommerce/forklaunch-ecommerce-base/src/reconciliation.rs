@@ -56,26 +56,48 @@ pub(crate) fn validate(
     evidence: &VerifiedCapture,
     actor: &AuditContext,
 ) -> BlueprintResult<()> {
-    let valid_id = |value: &str| {
-        !value.trim().is_empty() && value.len() <= 1024 && !value.chars().any(char::is_control)
-    };
+    if !valid_id(&evidence.capture_id) {
+        return Err(invalid_evidence());
+    }
+    validate_payment_evidence(
+        expected,
+        &evidence.provider,
+        &evidence.provider_ref,
+        evidence.amount_cents,
+        &evidence.currency,
+        actor,
+    )
+}
+pub(crate) fn valid_id(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 1024 && !value.chars().any(char::is_control)
+}
+fn invalid_evidence() -> BlueprintError {
+    BlueprintError::new(
+        "ecommerce_invalid_reconciliation",
+        "Provider evidence or reconciliation actor is invalid",
+    )
+}
+pub(crate) fn validate_payment_evidence(
+    expected: &PaymentDto,
+    provider: &str,
+    provider_ref: &str,
+    amount_cents: i64,
+    currency: &str,
+    actor: &AuditContext,
+) -> BlueprintResult<()> {
     if actor
         .actor_id
         .as_deref()
         .is_none_or(|value| !valid_id(value))
         || !valid_id(&actor.correlation_id)
-        || !valid_id(&evidence.provider)
-        || !valid_id(&evidence.capture_id)
-        || !valid_id(&evidence.provider_ref)
-        || evidence.amount_cents <= 0
-        || expected.provider_ref.as_deref() != Some(evidence.provider_ref.as_str())
-        || expected.amount_cents != evidence.amount_cents
-        || !expected.currency.eq_ignore_ascii_case(&evidence.currency)
+        || !valid_id(provider)
+        || !valid_id(provider_ref)
+        || amount_cents <= 0
+        || expected.provider_ref.as_deref() != Some(provider_ref)
+        || expected.amount_cents != amount_cents
+        || !expected.currency.eq_ignore_ascii_case(currency)
     {
-        return Err(BlueprintError::new(
-            "ecommerce_invalid_reconciliation",
-            "Capture evidence or reconciliation actor is invalid",
-        ));
+        return Err(invalid_evidence());
     }
     Ok(())
 }
@@ -106,6 +128,18 @@ impl PaymentReconciliationStore for crate::store::InMemoryEcommerceStore {
         let Some(Record::Payment(current)) = records.get(&key) else {
             return Err(not_found(RecordKind::Payment));
         };
+        if self
+            .payment_cancellation_audit
+            .lock()
+            .map_err(storage_error)?
+            .iter()
+            .any(|audit| {
+                audit.payment_id == expected.id
+                    && Some(&audit.evidence.provider_ref) == expected.provider_ref.as_ref()
+            })
+        {
+            return Err(crate::cancellation::conflict());
+        }
         let payment = repair(current, &expected)?;
         let mut audit = self
             .payment_reconciliation_audit

@@ -4369,3 +4369,35 @@ phrase; the corrected exact-body assertion passes in the runtime receipt. All
 `/private/tmp/fl-auth-text-{canonical-expanded,tests,clippy,generated,runtime,startup,package}.log`.
 Broader schema/errors/OpenAPI conformance remains open. Checklist remains
 **658/682 (96.5%), 24 open**.
+
+
+Terminal Stripe cancellation receipt (2026-10-13):
+`StripePaymentService::reconcile_canceled_payment` reads authenticated provider
+evidence in the configured Connect account. Only canceled intents with positive
+cancellation time, zero received/capturable funds, explicit null latest charge
+and matching intent/order/amount/currency qualify. It marks the local payment
+failed, preserves its reference and atomically audits the operator. It never
+mutates provider state or transitions/delivers an order.
+
+`PaymentCancellationStore` implements memory/PostgreSQL snapshot checks and
+atomic audit/update. Migration 7 uses forced tenant RLS; runtime roles need SELECT
+and operators additionally need INSERT on the new audit table. Confirmation/claim
+mutations reject recorded terminal cancellation. Capture and cancellation repairs
+reject contradictory prior verified evidence. Existing ordinary failed-payment
+confirmation behavior remains unchanged when no verified cancellation exists.
+
+Provider tests reject 16 insufficient/mismatched cancellation responses and verify
+read-only requests, Connect binding and secret exclusion. Restricted PostgreSQL
+tests pass snapshot rejection, audit-write rollback, tenant isolation, persisted
+audit fields, restart and blocked delayed confirmations. Base/Stripe suites and
+strict all-feature/all-target Clippy pass. Generated relocated run `Nacuku` executes
+the vendored provider/reconciliation tests, builds both SDK targets from both
+artifact formats, and passes real HTTP/MCP, tenant/encryption, checkout/provider
+webhook, inventory worker and restart checks. Eight actual checkout cases, eleven
+actual webhook cases and four native replay/concurrency scenarios pass. All 947
+embedded source/template files are packaged. Logs:
+`/private/tmp/fl-terminal-payment-{tests,postgres,clippy,generated,package}.log`.
+
+Pending/ambiguous claims, canceled intents with prior charges, PayPal cancellation
+and canceled-order references remain open; this narrow repair does not close the
+umbrella recovery gate. Checklist remains **658/682 (96.5%), 24 open**.

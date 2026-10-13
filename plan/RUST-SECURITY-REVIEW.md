@@ -334,3 +334,22 @@ with body correlation IDs; both modes retain request telemetry and HEAD semantic
 Canonical real TypeScript comparisons verify exact auth text/media, while native
 regressions confirm request-validation errors are unaffected. Generated HTTP/MCP
 fixtures exercise both representations and error forwarding.
+
+
+Terminal Stripe cancellation review (2026-10-13): recovery performs an authenticated
+GET with the configured Connect account. It requires `canceled`, positive provider
+cancellation time, zero received/capturable funds, explicit null latest charge and
+matching intent/order/amount/currency. Stripe documents canceled intents as terminal
+([API reference](https://docs.stripe.com/api/payment_intents/cancel)); this implementation
+deliberately rejects any prior charge rather than inferring refund/authorization
+state. Pending, ambiguous and PayPal cancellation states remain review cases.
+
+The local snapshot is compared under the payment lock. Status and operator audit
+commit together; audit insertion failure rolls back the update. Tenant RLS and
+restricted SELECT/INSERT grants apply to migration 7. Runtime roles need SELECT
+on the new audit table before serving the updated confirmation paths. Verified
+cancellation blocks later claims/confirmation and contradictory capture evidence;
+verified capture blocks contradictory cancellation. References remain available
+for investigation. No provider mutation, order transition, delivery or public
+reconciliation endpoint is added. Trusted evidence structures must not be bound
+directly to caller-controlled input.

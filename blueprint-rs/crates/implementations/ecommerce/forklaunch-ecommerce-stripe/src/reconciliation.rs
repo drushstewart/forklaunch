@@ -3,6 +3,7 @@ use crate::{StripeClient, StripeConnect, StripePaymentService, shape_error};
 use forklaunch_blueprint_core::{
     AuditContext, BlueprintError, BlueprintResult, provider_http::provider_status_error,
 };
+use forklaunch_ecommerce_base::cancellation::{PaymentCancellationStore, VerifiedCancellation};
 use forklaunch_ecommerce_base::reconciliation::{PaymentReconciliationStore, VerifiedCapture};
 use forklaunch_ecommerce_interface::{PaymentDto, PaymentService};
 use reqwest::Method;
@@ -68,6 +69,72 @@ impl<S: PaymentReconciliationStore> StripePaymentService<S> {
             .record_verified_capture(expected, evidence, actor)
             .await
     }
+}
+impl<S: PaymentCancellationStore> StripePaymentService<S> {
+    /// Read a terminal canceled intent with no charge and atomically mark the local
+    /// payment failed with an operator audit. Preserves the provider reference and
+    /// never cancels/refunds a provider payment or transitions the associated order.
+    /// # Errors
+    /// Rejects nonterminal, charged, mismatched or contradictory provider evidence,
+    /// stale snapshots and audit/storage failures. Pending/ambiguous states require review.
+    pub async fn reconcile_canceled_payment(
+        &self,
+        id: &str,
+        actor: AuditContext,
+    ) -> BlueprintResult<PaymentDto> {
+        let expected = self.base.get_payment(id).await?;
+        let reference = expected
+            .provider_ref
+            .as_deref()
+            .filter(|id| valid_id(id))
+            .ok_or_else(review_required)?;
+        let intent = self
+            .client
+            .retrieve_intent_details(reference, self.connect.as_ref())
+            .await?;
+        let evidence = verify_cancellation(&expected, &intent)?;
+        self.base
+            .record_verified_cancellation(expected, evidence, actor)
+            .await
+    }
+}
+fn verify_cancellation(
+    payment: &PaymentDto,
+    intent: &Value,
+) -> BlueprintResult<VerifiedCancellation> {
+    let reference = payment
+        .provider_ref
+        .as_deref()
+        .filter(|id| valid_id(id))
+        .ok_or_else(review_required)?;
+    let canceled_at = intent["canceled_at"]
+        .as_i64()
+        .filter(|timestamp| *timestamp > 0)
+        .ok_or_else(review_required)?;
+    if payment.amount_cents <= 0
+        || payment.currency.len() != 3
+        || !payment.currency.bytes().all(|b| b.is_ascii_alphabetic())
+        || intent["id"] != reference
+        || intent["object"] != "payment_intent"
+        || intent["status"] != "canceled"
+        || intent["amount"].as_i64() != Some(payment.amount_cents)
+        || intent["amount_received"].as_i64() != Some(0)
+        || intent["amount_capturable"].as_i64() != Some(0)
+        || intent.get("latest_charge") != Some(&Value::Null)
+        || intent["metadata"]["orderId"].as_str() != Some(payment.order_id.as_str())
+        || !intent["currency"]
+            .as_str()
+            .is_some_and(|value| value.eq_ignore_ascii_case(&payment.currency))
+    {
+        return Err(review_required());
+    }
+    Ok(VerifiedCancellation {
+        provider: "stripe".into(),
+        provider_ref: reference.into(),
+        canceled_at,
+        amount_cents: payment.amount_cents,
+        currency: payment.currency.to_ascii_uppercase(),
+    })
 }
 fn verify_capture(payment: &PaymentDto, intent: &Value) -> BlueprintResult<VerifiedCapture> {
     let reference = payment

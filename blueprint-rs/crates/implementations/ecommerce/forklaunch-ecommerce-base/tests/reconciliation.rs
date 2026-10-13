@@ -1,11 +1,12 @@
 use forklaunch_blueprint_core::AuditContext;
 use forklaunch_ecommerce_base::{
     BaseEcommerceService,
+    cancellation::{PaymentCancellationStore, VerifiedCancellation},
     reconciliation::{PaymentReconciliationStore, VerifiedCapture},
     store::InMemoryEcommerceStore,
 };
 use forklaunch_ecommerce_interface::{
-    CreatePaymentDto, FailPaymentDto, PaymentService, PaymentStatus,
+    ConfirmPaymentDto, CreatePaymentDto, FailPaymentDto, PaymentService, PaymentStatus,
 };
 use std::sync::Arc;
 fn evidence() -> VerifiedCapture {
@@ -20,7 +21,7 @@ fn evidence() -> VerifiedCapture {
 fn actor() -> AuditContext {
     AuditContext::actor("operator", "reconcile-owned")
 }
-async fn exercise<S: PaymentReconciliationStore>(store: Arc<S>) {
+async fn exercise<S: PaymentReconciliationStore + PaymentCancellationStore>(store: Arc<S>) {
     let service = BaseEcommerceService::new(store);
     let original = service
         .create_payment_with_reference(
@@ -82,6 +83,105 @@ async fn exercise<S: PaymentReconciliationStore>(store: Arc<S>) {
         PaymentStatus::Succeeded
     );
     assert!(!service.claim_for_confirmation("order-owned").await.unwrap());
+    exercise_cancellation(&service).await;
+}
+async fn exercise_cancellation<S: PaymentReconciliationStore + PaymentCancellationStore>(
+    service: &BaseEcommerceService<S>,
+) {
+    let captured = service.get_payment("payment").await.unwrap();
+    let cancellation = VerifiedCancellation {
+        provider: "stripe".into(),
+        provider_ref: "order-owned".into(),
+        canceled_at: 1_700_000_000,
+        amount_cents: 105,
+        currency: "USD".into(),
+    };
+    assert_eq!(
+        service
+            .record_verified_cancellation(captured, cancellation.clone(), actor())
+            .await
+            .unwrap_err()
+            .code,
+        "ecommerce_terminal_payment_conflict"
+    );
+    let pending = service
+        .create_payment_with_reference(
+            CreatePaymentDto {
+                id: Some("terminal".into()),
+                order_id: "terminal-order".into(),
+                amount_cents: 105,
+                currency: "usd".into(),
+            },
+            Some("terminal-ref".into()),
+        )
+        .await
+        .unwrap();
+    let cancellation = VerifiedCancellation {
+        provider_ref: "terminal-ref".into(),
+        ..cancellation
+    };
+    assert!(
+        service
+            .record_verified_cancellation(
+                pending.clone(),
+                cancellation.clone(),
+                AuditContext::system("anonymous")
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .claim_for_confirmation("terminal-ref")
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        service
+            .record_verified_cancellation(pending, cancellation.clone(), actor())
+            .await
+            .unwrap_err()
+            .code,
+        "ecommerce_reconciliation_conflict"
+    );
+    let expected = service.get_payment("terminal").await.unwrap();
+    let failed = service
+        .record_verified_cancellation(expected, cancellation, actor())
+        .await
+        .unwrap();
+    assert_eq!(failed.status, PaymentStatus::Failed);
+    assert_eq!(failed.provider_ref.as_deref(), Some("terminal-ref"));
+    service
+        .release_confirmation_claim("terminal-ref")
+        .await
+        .unwrap();
+    assert!(
+        service
+            .claim_for_confirmation("terminal-ref")
+            .await
+            .is_err()
+    );
+    assert!(
+        service
+            .confirm_payment(ConfirmPaymentDto {
+                provider_ref: "terminal-ref".into()
+            })
+            .await
+            .is_err()
+    );
+    let proof = VerifiedCapture {
+        provider_ref: "terminal-ref".into(),
+        ..evidence()
+    };
+    assert_eq!(
+        service
+            .record_verified_capture(failed.clone(), proof, actor())
+            .await
+            .unwrap_err()
+            .code,
+        "ecommerce_terminal_payment_conflict"
+    );
+    assert_eq!(service.get_payment("terminal").await.unwrap(), failed);
 }
 #[tokio::test]
 async fn memory_repairs_are_audited_and_reject_stale_snapshots() {
@@ -92,6 +192,10 @@ async fn memory_repairs_are_audited_and_reject_stale_snapshots() {
     assert_eq!(audits[0].previous_status, PaymentStatus::Failed);
     assert_eq!(audits[0].actor, actor());
     assert_eq!(audits[0].evidence, evidence());
+    let cancellations = store.payment_cancellation_audits().unwrap();
+    assert_eq!(cancellations.len(), 1);
+    assert_eq!(cancellations[0].previous_status, PaymentStatus::Succeeded);
+    assert_eq!(cancellations[0].actor, actor());
 }
 #[cfg(feature = "postgres")]
 #[tokio::test]
@@ -109,7 +213,7 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
     PostgresEcommerceStore::migrate(&owner).await.unwrap();
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("ecom_reconcile_{suffix}");
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.payment_reconciliation_audit TO {role};"))
+    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.payment_cancellation_audit TO {role};"))
         .execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(4)
@@ -174,6 +278,38 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
             .is_err()
     );
     assert_eq!(service.get_payment("rollback").await.unwrap(), pending);
+    let terminal = VerifiedCancellation {
+        provider: "stripe".into(),
+        provider_ref: "rollback-ref".into(),
+        canceled_at: 1_700_000_000,
+        amount_cents: 105,
+        currency: "USD".into(),
+    };
+    sqlx::raw_sql(&format!(
+        "REVOKE INSERT ON fl_ecommerce.payment_cancellation_audit FROM {role}"
+    ))
+    .execute(&owner)
+    .await
+    .unwrap();
+    assert!(
+        service
+            .record_verified_cancellation(pending.clone(), terminal.clone(), actor())
+            .await
+            .is_err()
+    );
+    assert_eq!(service.get_payment("rollback").await.unwrap(), pending);
+    sqlx::raw_sql(&format!(
+        "GRANT INSERT ON fl_ecommerce.payment_cancellation_audit TO {role}"
+    ))
+    .execute(&owner)
+    .await
+    .unwrap();
+    assert!(
+        other
+            .record_verified_cancellation(pending, terminal, actor())
+            .await
+            .is_err()
+    );
     sqlx::raw_sql(&format!(
         "GRANT INSERT ON fl_ecommerce.payment_reconciliation_audit TO {role}"
     ))
@@ -186,6 +322,23 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
             .await
             .unwrap();
     assert_eq!(hidden, 0);
+    let hidden: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fl_ecommerce.payment_cancellation_audit")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(hidden, 0);
+    let cancellation_rows: Vec<(String,String,i64,String)> = sqlx::query_as("SELECT payment_id,provider_ref,canceled_at,actor_id FROM fl_ecommerce.payment_cancellation_audit WHERE tenant_id=$1")
+        .bind(tenant.id()).fetch_all(&owner).await.unwrap();
+    assert_eq!(
+        cancellation_rows,
+        vec![(
+            "terminal".into(),
+            "terminal-ref".into(),
+            1_700_000_000,
+            "operator".into()
+        )]
+    );
     let rows:Vec<(String,String,String,String)>=sqlx::query_as("SELECT payment_id,capture_id,actor_id,correlation_id FROM fl_ecommerce.payment_reconciliation_audit WHERE tenant_id=$1")
         .bind(tenant.id()).fetch_all(&owner).await.unwrap();
     assert_eq!(
@@ -210,12 +363,28 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
         reopened.get_payment("payment").await.unwrap().status,
         PaymentStatus::Succeeded
     );
+    assert_eq!(
+        reopened.get_payment("terminal").await.unwrap().status,
+        PaymentStatus::Failed
+    );
+    assert!(
+        reopened
+            .confirm_payment(ConfirmPaymentDto {
+                provider_ref: "terminal-ref".into()
+            })
+            .await
+            .is_err()
+    );
     drop(reopened);
     drop(other);
     drop(service);
     drop(store);
     pool.close().await;
-    for table in ["records", "payment_reconciliation_audit"] {
+    for table in [
+        "records",
+        "payment_reconciliation_audit",
+        "payment_cancellation_audit",
+    ] {
         sqlx::query(&format!(
             "DELETE FROM fl_ecommerce.{table} WHERE tenant_id=$1"
         ))

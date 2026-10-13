@@ -284,6 +284,23 @@ only reads provider state and repairs the payment; it does not create/capture/
 refund charges or deliver orders. Client secrets/raw provider data never enter
 the reconciliation audit.
 
+`StripePaymentService::reconcile_canceled_payment` repairs an interrupted local
+claim only from a terminal canceled intent with zero received/capturable amount,
+an explicit null latest charge, a positive cancellation timestamp, and matching
+order/amount/currency. It preserves the provider reference, sets the payment to
+failed and atomically records an operator audit. Migration 7 adds the tenant-RLS
+`payment_cancellation_audit` table; runtime roles need SELECT and reconciliation
+operators additionally need INSERT. Apply the migration and grants before serving
+new code. Recorded cancellation blocks later confirmations/claims and contradictory
+capture repairs; verified capture evidence also blocks cancellation repair.
+
+The helper performs a provider read only. It does not cancel/refund funds, reopen
+an attempt or change the order. This narrow policy relies on Stripe's documented
+[terminal cancellation behavior](https://docs.stripe.com/api/payment_intents/cancel).
+Canceled intents with any prior charge, pending states, PayPal cancellation and
+ambiguous evidence still require review. `VerifiedCancellation` is a trusted
+server-only API and must never accept unauthenticated evidence from a request.
+
 
 Better Auth's trusted server-only keyring helper supports external signers through
 `KeyRing::sign_jwt_with_signer` and the async `keyring::custom::JwtSigner` trait.

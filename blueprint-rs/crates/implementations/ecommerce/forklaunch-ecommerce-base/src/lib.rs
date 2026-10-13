@@ -1,6 +1,7 @@
 //! Persistent ecommerce business rules with atomic storage seams. The memory
 //! adapter is for development; `PostgreSQL` owns production tenant isolation.
 #![forbid(unsafe_code)]
+pub mod cancellation;
 pub mod catalog;
 pub mod checkout;
 pub mod compliance;
@@ -199,8 +200,8 @@ impl<S: EcommerceStore> BaseEcommerceService<S> {
     }
     /// Atomically claims pending -> succeeded before an external capture.
     /// # Errors
-    /// Returns missing-record or storage failures. False means another caller
-    /// already claimed it or the payment is not pending.
+    /// Rejects audited terminal cancellation and storage failures. False means
+    /// another caller already claimed it, it is missing, or it is not pending.
     pub async fn claim_for_confirmation(&self, provider_ref: &str) -> BlueprintResult<bool> {
         match self
             .store

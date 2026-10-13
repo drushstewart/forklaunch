@@ -197,6 +197,80 @@ async fn live_stripe_connect_resume_secrets_failures_bounds_and_persistence() {
         assert!(!error.message.contains("must-not-persist"));
     }
     assert_eq!(store.payment_reconciliation_audits().unwrap().len(), 1);
+    base.create_payment_with_reference(
+        request("canceled", "canceled-order", 5350),
+        Some("pi_canceled".into()),
+    )
+    .await
+    .unwrap();
+    assert!(base.claim_for_confirmation("pi_canceled").await.unwrap());
+    let canceled = json!({"id":"pi_canceled","object":"payment_intent","status":"canceled",
+        "canceled_at":1_700_000_000,"amount":5350,"amount_received":0,"amount_capturable":0,
+        "currency":"usd","metadata":{"orderId":"canceled-order"},"latest_charge":null,
+        "client_secret":"must-not-persist"});
+    for (pointer, replacement) in [
+        ("/id", json!("other")),
+        ("/object", json!("charge")),
+        ("/status", json!("processing")),
+        ("/status", json!("requires_capture")),
+        ("/status", json!("succeeded")),
+        ("/canceled_at", json!(null)),
+        ("/canceled_at", json!(0)),
+        ("/canceled_at", json!("1700000000")),
+        ("/amount", json!(1)),
+        ("/amount_received", json!(1)),
+        ("/amount_capturable", json!(1)),
+        ("/currency", json!("eur")),
+        ("/metadata/orderId", json!("other")),
+        ("/latest_charge", json!("ch_prior")),
+        ("/latest_charge", json!({"paid":false})),
+    ] {
+        let mut invalid = canceled.clone();
+        *invalid.pointer_mut(pointer).unwrap() = replacement;
+        *state.details.lock().unwrap() = Some(invalid);
+        assert!(
+            service
+                .reconcile_canceled_payment("canceled", actor.clone())
+                .await
+                .is_err()
+        );
+    }
+    let mut missing_charge = canceled.clone();
+    missing_charge
+        .as_object_mut()
+        .unwrap()
+        .remove("latest_charge");
+    *state.details.lock().unwrap() = Some(missing_charge);
+    assert!(
+        service
+            .reconcile_canceled_payment("canceled", actor.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        base.get_payment("canceled").await.unwrap().status,
+        PaymentStatus::Succeeded
+    );
+    assert!(store.payment_cancellation_audits().unwrap().is_empty());
+    *state.details.lock().unwrap() = Some(canceled);
+    let repaired = service
+        .reconcile_canceled_payment("canceled", actor.clone())
+        .await
+        .unwrap();
+    assert_eq!(repaired.status, PaymentStatus::Failed);
+    assert_eq!(repaired.provider_ref.as_deref(), Some("pi_canceled"));
+    assert!(
+        service
+            .confirm_payment(ConfirmPaymentDto {
+                provider_ref: "pi_canceled".into()
+            })
+            .await
+            .is_err()
+    );
+    let cancellations = store.payment_cancellation_audits().unwrap();
+    assert_eq!(cancellations.len(), 1);
+    assert_eq!(cancellations[0].evidence.canceled_at, 1_700_000_000);
+    assert!(!format!("{cancellations:?}").contains("must-not-persist"));
     assert!(
         state.calls.lock().unwrap()[2..]
             .iter()

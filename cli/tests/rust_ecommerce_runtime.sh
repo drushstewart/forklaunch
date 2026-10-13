@@ -47,6 +47,8 @@ if run_cli init service spare-shop --path . --language rust -d postgresql -D Inv
     echo 'FAIL generic initialization must preserve builtin ecommerce'; exit 1
 fi
 cargo build --workspace
+cargo test --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --test provider
+cargo test --manifest-path .forklaunch/blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test reconciliation -- --include-ignored
 OTEL_EXPORTER_OTLP_ENDPOINT=invalid OTEL_EXPORTER_OTLP_PROTOCOL=invalid run_cli openapi export --path .
 run_cli sdk generate --path . --target all --from contract
 "$TSC_BIN" --strict --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --outDir sdks/typescript/dist sdks/typescript/src/index.ts

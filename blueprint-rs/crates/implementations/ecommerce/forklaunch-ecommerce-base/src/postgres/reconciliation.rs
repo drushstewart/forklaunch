@@ -20,6 +20,9 @@ impl PaymentReconciliationStore for PostgresEcommerceStore {
             .bind(self.tenant.id()).bind(&expected.id).fetch_optional(&mut *tx).await.map_err(storage_error)?;
         let data = data.ok_or_else(|| not_found(RecordKind::Payment))?;
         let current: PaymentDto = serde_json::from_value(data.0).map_err(storage_error)?;
+        if super::cancellation::is_canceled(&mut tx, self.tenant.id(), &current).await? {
+            return Err(crate::cancellation::conflict());
+        }
         let payment = repair(&current, &expected)?;
         sqlx::query("INSERT INTO fl_ecommerce.payment_reconciliation_audit(id,tenant_id,payment_id,previous_status,provider,provider_ref,capture_id,amount_cents,currency,actor_id,correlation_id) VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
             .bind(uuid::Uuid::new_v4().to_string()).bind(self.tenant.id()).bind(&payment.id)

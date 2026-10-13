@@ -371,6 +371,8 @@ pub struct InMemoryEcommerceStore {
     pub(crate) records: Mutex<BTreeMap<(RecordKind, String), Record>>,
     pub(crate) payment_reconciliation_audit:
         Mutex<Vec<crate::reconciliation::PaymentReconciliationAudit>>,
+    pub(crate) payment_cancellation_audit:
+        Mutex<Vec<crate::cancellation::PaymentCancellationAudit>>,
     applied_events: Mutex<BTreeMap<String, String>>,
     retention_tenant: Option<forklaunch_core::persistence::TenantContext>,
     retention_markers: Mutex<std::collections::BTreeSet<String>>,
@@ -581,6 +583,22 @@ impl EcommerceStore for InMemoryEcommerceStore {
             }
         }
         let old = old.ok_or_else(|| not_found(query.kind))?;
+        if matches!(
+            mutation,
+            Mutation::ConfirmPayment | Mutation::ClaimConfirmation
+        ) && let Record::Payment(payment) = &old
+            && self
+                .payment_cancellation_audit
+                .lock()
+                .map_err(storage_error)?
+                .iter()
+                .any(|audit| {
+                    audit.payment_id == payment.id
+                        && Some(&audit.evidence.provider_ref) == payment.provider_ref.as_ref()
+                })
+        {
+            return Err(crate::cancellation::conflict());
+        }
         if matches!(mutation, Mutation::ReleaseConfirmation)
             && let Record::Payment(payment) = &old
             && self

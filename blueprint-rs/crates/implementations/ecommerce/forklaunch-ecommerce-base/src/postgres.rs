@@ -12,6 +12,7 @@ use forklaunch_ecommerce_interface::events::OrderEvent;
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
+mod cancellation;
 mod compliance;
 mod reconciliation;
 mod retention;
@@ -403,6 +404,14 @@ impl EcommerceStore for PostgresEcommerceStore {
         let record = self
             .decode(&mut tx, selector.kind, &id, data.0, "mutate")
             .await?;
+        if matches!(
+            mutation,
+            Mutation::ConfirmPayment | Mutation::ClaimConfirmation
+        ) && let Record::Payment(payment) = &record
+            && cancellation::is_canceled(&mut tx, self.tenant.id(), payment).await?
+        {
+            return Err(crate::cancellation::conflict());
+        }
         if matches!(mutation, Mutation::ReleaseConfirmation)
             && let Record::Payment(payment) = &record
         {

@@ -39,7 +39,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_worker.jobs TO ecom
 GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO ecommerce_app;
 GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO ecommerce_app;
 GRANT INSERT ON fl_ecommerce.pii_read_audit TO ecommerce_app;
-GRANT SELECT,INSERT ON fl_ecommerce.payment_reconciliation_audit TO ecommerce_app;
+GRANT SELECT,INSERT ON fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.payment_cancellation_audit TO ecommerce_app;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO ecommerce_app;
 SQL
 python3 - "$APP_ROOT" "$COMPOSE" "$IMAGE" "$NETWORK" "$DATABASE" <<'PY'
