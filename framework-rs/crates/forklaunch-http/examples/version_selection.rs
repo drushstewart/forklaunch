@@ -81,6 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(Some((_,version)))=> {
                     let mut output=json!({"version":version.version,"matched":version.matched_versions,"status":200});
                     if fixture["includeBody"] == true { output["body"]=version.parsed_body.as_deref().cloned().unwrap_or(Value::Null); }
+                    if fixture["includePresence"] == true { output["bodyPresent"]=json!(version.parsed_body.is_some()); }
                     output
                 },
                 Err(errors)=>json!({"status":forklaunch_http::validation_error_response(&errors,"fixture").status_code}),
@@ -168,6 +169,24 @@ fn configure_parsers(contract: &mut RouteContract, options: &Value) {
 }
 
 fn fixture_hooks(mode: &str) -> forklaunch_http::VersionBodyHooks {
+    if mode.starts_with("optional") {
+        let first = mode == "optional-first";
+        return forklaunch_http::VersionBodyHooks::default()
+            .with_optional_preprocess(move |value| {
+                Ok(Some(value.cloned().unwrap_or(json!(if first {
+                    5
+                } else {
+                    10
+                }))))
+            })
+            .with_optional_transform(move |value| {
+                let number = value.and_then(Value::as_i64).ok_or("not integer")?;
+                if number == 13 && !first {
+                    return Err("private transform detail".into());
+                }
+                Ok((number != 99).then(|| json!({"value":number})))
+            });
+    }
     let mode = mode.to_owned();
     let preprocess_mode = mode.clone();
     forklaunch_http::VersionBodyHooks::default()
@@ -249,6 +268,11 @@ fn fixture_parser_hooks(fixture: &Value) -> forklaunch_http::BodyParserHooks {
         });
     }
     if fixture.get("reviver").is_some() {
+        if fixture["reviver"] == "missing" {
+            return hooks.with_json_reviver(|key, value| {
+                Ok((!key.is_empty() || value != "missing").then_some(value))
+            });
+        }
         let trace = fixture["reviver"] == "trace";
         let count = std::sync::atomic::AtomicI64::new(0);
         hooks = hooks.with_json_reviver(move |key, value| {

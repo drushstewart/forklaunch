@@ -113,6 +113,12 @@ try {
  assert.equal(revived.status,202);assert.deepEqual(await revived.json(),{value:'revived!'});
  const revivedMcp=await mcpRpc(base,'tools/call',{name:'writeTransform [vv2]',arguments:{body:{value:'revive'}}});
  assert.equal(revivedMcp.isError,false);assert.deepEqual(JSON.parse(revivedMcp.content[0].text),{value:'revived!'});
+ for(const [body,expected] of [[{value:'ignored',missingBody:true},{value:'default!'}],[{value:'absent'},{value:'absent'}]]) {
+  const response=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  assert.equal(response.status,202);assert.deepEqual(await response.json(),expected);
+  const result=await mcpRpc(base,'tools/call',{name:'writeTransform [vv2]',arguments:{body}});
+  assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),expected);
+ }
  const reviverFailure=await fetch(`${base}/versioned-transform`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({value:'ab',rejectReviver:true})});
  assert.equal(reviverFailure.status,400);assert.ok(!(await reviverFailure.text()).includes('private reviver detail'));
  for(const value of ['deny',' ']) {

@@ -79,20 +79,22 @@ pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
         }
         Ok(())
     }).with_json_reviver(|key,value| {
-        if key=="drop" { return Ok(None); }
+        if key=="drop" || (key.is_empty() && value["missingBody"]==true) { return Ok(None); }
         if key=="rejectReviver" { return Err("private reviver detail".into()); }
         Ok(Some(if key=="value" && value=="revive" {json!("revived")} else {value}))
     })).unwrap();
     for version in ["v1","v2"] {
         hooks.insert(&contracts()[6],version,forklaunch_http::VersionBodyHooks::default()
-            .with_preprocess(|body| {
+            .with_optional_preprocess(|body| {
+                let Some(body)=body else { return Ok(Some(json!({"value":"default"}))); };
                 let value=body["value"].as_str().ok_or("expected text")?;
-                Ok(json!({"value":value.trim()}))
+                Ok(Some(json!({"value":value.trim()})))
             })
-            .with_transform(move |body| {
+            .with_optional_transform(move |body| {
+                let body=body.ok_or("missing body")?;
                 let value=body["value"].as_str().ok_or("expected text")?;
                 if value=="deny" || (version=="v2" && value=="blocked") { return Err("rejected".into()); }
-                Ok(json!({"value":if version=="v1" {value.to_uppercase()} else {format!("{value}!")}}))
+                Ok((value!="absent").then(||json!({"value":if version=="v1" {value.to_uppercase()} else {format!("{value}!")}})))
             })).unwrap();
     }
     router.with_version_body_hooks(hooks).post(contracts().remove(0),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(body):forklaunch_axum::VersionedBody<Value>|async move {
@@ -107,7 +109,7 @@ pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"version":version.version,"bytes":body.to_vec()})))
     }).post(contracts().remove(5),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(value):forklaunch_axum::VersionedBody<Value>|async move {
         (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(json!({"value":value})))
-    }).post(contracts().remove(6),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::VersionedBody(value):forklaunch_axum::VersionedBody<Value>|async move {
-        (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(value))
+    }).post(contracts().remove(6),|Extension(version):Extension<SelectedVersion>,forklaunch_axum::OptionalVersionedBody(value):forklaunch_axum::OptionalVersionedBody<Value>|async move {
+        (if version.version=="v1" {StatusCode::CREATED}else{StatusCode::ACCEPTED},Json(value.unwrap_or_else(||json!({"value":"absent"}))))
     })
 }

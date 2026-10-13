@@ -5,7 +5,7 @@ mod body_telemetry;
 #[cfg(feature = "adapter")]
 mod versioned_body;
 #[cfg(feature = "adapter")]
-pub use versioned_body::VersionedBody;
+pub use versioned_body::{OptionalVersionedBody, VersionedBody};
 #[cfg(feature = "cookie-session")]
 pub mod cookie_session;
 #[cfg(feature = "adapter")]

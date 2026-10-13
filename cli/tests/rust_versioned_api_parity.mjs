@@ -80,3 +80,26 @@ for(const [index,fixture] of transformedFixtures.entries()) {
  }
 }
 console.log(`PASS ${transformedCount} actual TypeScript/native preprocessing, transformation, rejection and independent version-input comparisons`);
+
+const optionalFixture={includeBody:true,includePresence:true,reviver:'missing',parserOptions:{json:{strict:false}},versions:[
+ {name:'first',schema:{type:'integer',minimum:0},hook:'optional-first'},
+ {name:'last',schema:{type:'integer',minimum:10},hook:'optional-last'}
+],cases:['missing',null,0,5,10,13,99,-1,true,'10',{},[]]};
+const optionalNative=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify([optionalFixture]),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}))[0];
+const optionalSchemas=Object.fromEntries(optionalFixture.versions.map(version=>[version.name,z.object({
+ body:z.preprocess(value=>value===undefined?(version.name==='first'?5:10):value,z.number().int().min(version.schema.minimum)).transform((value,context)=>{
+  if(value===13&&version.name==='last'){context.addIssue({code:z.ZodIssueCode.custom,message:'private transform detail'});return z.NEVER;}
+  return value===99?undefined:{value};
+ }),params:z.object({}),query:z.object({}),headers:z.object({})
+})]));
+for(const [index,value] of optionalFixture.cases.entries()) {
+ const body=value==='missing'?undefined:value;
+ const req={body,params:{},query:{},headers:{},context:{correlationId:'optional'},contractDetails:{versions:optionalSchemas},requestSchema:optionalSchemas,schemaValidator:validator};
+ let status=200;
+ const res={type(){return this;},status(code){status=code;return this;},send(){return this;}};
+ parse(req,res,()=>{});
+ const expected=status===400?{status}:{status,version:req.version,matched:Array.from(req._parsedVersions),body:req.body??null,bodyPresent:req.body!==undefined};
+ assert.deepEqual(optionalNative.cases[index],expected,`optional body ${index}`);
+ assert.equal(req._rawBody,body);
+}
+console.log(`PASS ${optionalFixture.cases.length} actual TypeScript/native missing-value defaults, explicit null, absent transform output and per-version fallback comparisons`);

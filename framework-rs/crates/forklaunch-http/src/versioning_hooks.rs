@@ -4,7 +4,7 @@ use forklaunch_contract::RouteContract;
 use serde_json::Value;
 use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
-type Transform = dyn Fn(&Value) -> Result<Value, String> + Send + Sync;
+type Transform = dyn Fn(Option<&Value>) -> Result<Option<Value>, String> + Send + Sync;
 
 /// Runtime functions are deliberately separate from exported schema metadata.
 #[derive(Clone, Default)]
@@ -27,7 +27,7 @@ impl VersionBodyHooks {
         mut self,
         callback: impl Fn(&Value) -> Result<Value, String> + Send + Sync + 'static,
     ) -> Self {
-        self.preprocess = Some(Arc::new(callback));
+        self.preprocess = Some(Arc::new(move |value| value.map(&callback).transpose()));
         self
     }
     /// Run after this version's schema checks. Errors reject only this version.
@@ -36,6 +36,30 @@ impl VersionBodyHooks {
         mut self,
         callback: impl Fn(&Value) -> Result<Value, String> + Send + Sync + 'static,
     ) -> Self {
+        self.transform = Some(Arc::new(move |value| value.map(&callback).transpose()));
+        self
+    }
+    /// Run before schema checks, including when the parsed value is absent.
+    /// `None` represents absence; `Some(Value::Null)` is an explicit JSON null.
+    /// Return a value to supply a missing-value default. Returning `None` still
+    /// requires the selected contract to accept absence. Replaces any previously
+    /// registered preprocessor, including one set with `with_preprocess`.
+    #[must_use]
+    pub fn with_optional_preprocess(
+        mut self,
+        callback: impl Fn(Option<&Value>) -> Result<Option<Value>, String> + Send + Sync + 'static,
+    ) -> Self {
+        self.preprocess = Some(Arc::new(callback));
+        self
+    }
+    /// Run after successful schema checks, allowing the transformed output to
+    /// become absent. Errors reject only this version. Replaces any previously
+    /// registered transform, including one set with `with_transform`.
+    #[must_use]
+    pub fn with_optional_transform(
+        mut self,
+        callback: impl Fn(Option<&Value>) -> Result<Option<Value>, String> + Send + Sync + 'static,
+    ) -> Self {
         self.transform = Some(Arc::new(callback));
         self
     }
@@ -43,18 +67,18 @@ impl VersionBodyHooks {
         &self,
         body: Option<&'a Value>,
     ) -> Result<Option<Cow<'a, Value>>, String> {
-        match (&self.preprocess, body) {
-            (Some(callback), Some(value)) => callback(value).map(|value| Some(Cow::Owned(value))),
-            _ => Ok(body.map(Cow::Borrowed)),
+        match &self.preprocess {
+            Some(callback) => callback(body).map(|value| value.map(Cow::Owned)),
+            None => Ok(body.map(Cow::Borrowed)),
         }
     }
     pub(super) fn transform<'a>(
         &self,
         body: Option<Cow<'a, Value>>,
     ) -> Result<Option<Cow<'a, Value>>, String> {
-        match (&self.transform, body) {
-            (Some(callback), Some(value)) => callback(&value).map(|value| Some(Cow::Owned(value))),
-            (_, value) => Ok(value),
+        match &self.transform {
+            Some(callback) => callback(body.as_deref()).map(|value| value.map(Cow::Owned)),
+            None => Ok(body),
         }
     }
 }

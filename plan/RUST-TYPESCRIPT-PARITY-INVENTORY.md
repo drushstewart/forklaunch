@@ -3697,3 +3697,25 @@ The source-package fixture includes all 913 current embedded assets. Logs:
 `/private/tmp/fl-asyncapi-traits-{tests,parity,clippy,generated,package}.log`.
 The broader event/protocol, upgrade authentication/parameters, replies and richer
 message matching import gate remains open.
+
+
+Optional version-body hooks receipt (2026-10-13): native preprocessing can now
+receive absence separately from explicit JSON null and supply defaults before
+per-version schema validation. Optional transforms can produce an absent result
+after successful validation. Existing required-value hooks still skip absent
+inputs; registering either callback form replaces its counterpart.
+`OptionalVersionedBody<T>` extracts a selected optional result without consuming
+raw bytes and rejects missing version selection or incompatible present values.
+
+The actual repository TypeScript parser/Zod comparison adds 12 cases for absent
+input/defaults, explicit null, absent transformed output, failed transformations,
+independent version candidates and fallback. All 45 prior version-selection,
+six parser-registration and 18 transformation comparisons also pass. Native
+validation passes 34 HTTP tests, 65 Axum tests and three integration tests, plus
+strict all-feature/all-target clippy. Fresh generated run `uzzJd8` passes both
+SDK languages through contracts, full/named OpenAPI and native generators;
+HTTP/MCP root deletion/defaults and absent transformed results; all prior
+media/parser/verify/reviver cases; listener startup and graceful shutdown.
+Logs: `/private/tmp/fl-optional-body-{parity,tests,clippy,generated}.log`.
+Sparse arrays, mutable reviver holders/source context and broader non-body
+transformations remain open. Checklist remains 655/682 complete, 27 open.

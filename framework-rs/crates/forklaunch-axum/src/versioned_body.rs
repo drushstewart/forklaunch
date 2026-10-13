@@ -14,6 +14,40 @@ use serde::de::DeserializeOwned;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionedBody<T>(pub T);
 
+/// Decode an optional transformed body from a selected API version.
+/// Absence returns `None`; an explicit JSON null is deserialized as a present
+/// value. The extractor still requires a selected version and leaves raw bytes
+/// available to subsequent body extractors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OptionalVersionedBody<T>(pub Option<T>);
+
+impl<S, T> FromRequestParts<S> for OptionalVersionedBody<T>
+where
+    S: Send + Sync,
+    T: DeserializeOwned + Send,
+{
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let version = parts.extensions.get::<SelectedVersion>().ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "OptionalVersionedBody requires a selected version",
+        ))?;
+        version
+            .parsed_body
+            .as_deref()
+            .map(T::deserialize)
+            .transpose()
+            .map(Self)
+            .map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Selected version body does not match the handler type",
+                )
+            })
+    }
+}
+
 impl<S, T> FromRequestParts<S> for VersionedBody<T>
 where
     S: Send + Sync,
@@ -74,5 +108,48 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(value, serde_json::json!({"private":"secret"}));
+    }
+
+    #[tokio::test]
+    async fn optional_extractor_distinguishes_absence_null_and_missing_selection() {
+        let (mut parts, ()) = axum::http::Request::new(()).into_parts();
+        assert_eq!(
+            OptionalVersionedBody::<serde_json::Value>::from_request_parts(&mut parts, &())
+                .await
+                .unwrap_err()
+                .0,
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        parts.extensions.insert(SelectedVersion {
+            version: "v1".into(),
+            matched_versions: vec!["v1".into()],
+            parsed_body: None,
+        });
+        assert_eq!(
+            OptionalVersionedBody::<serde_json::Value>::from_request_parts(&mut parts, &())
+                .await
+                .unwrap()
+                .0,
+            None
+        );
+        parts
+            .extensions
+            .get_mut::<SelectedVersion>()
+            .unwrap()
+            .parsed_body = Some(Arc::new(serde_json::Value::Null));
+        assert_eq!(
+            OptionalVersionedBody::<serde_json::Value>::from_request_parts(&mut parts, &())
+                .await
+                .unwrap()
+                .0,
+            Some(serde_json::Value::Null)
+        );
+        assert_eq!(
+            OptionalVersionedBody::<String>::from_request_parts(&mut parts, &())
+                .await
+                .unwrap_err()
+                .0,
+            StatusCode::BAD_REQUEST
+        );
     }
 }

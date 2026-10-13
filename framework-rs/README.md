@@ -693,8 +693,18 @@ This native JSON callback does not expose mutable JavaScript holders or source
 context. Sparse array removal returns 400 because `serde_json::Value` cannot
 represent array holes; it is not silently converted to null. A removed root is
 an absent parsed body, so callers must use an appropriate optional-body contract
-and handler; `VersionedBody<T>` requires a present value. Broader undefined/default
-and sparse-array validation semantics remain open. Traversal is depth-bounded.
+and handler; `VersionedBody<T>` requires a present value.
+`VersionBodyHooks::with_optional_preprocess` receives `None` for absence and
+`Some(Value::Null)` for explicit null, allowing missing-value defaults before
+schema checks. `with_optional_transform` can return `None` after successful
+validation. These methods replace the corresponding required-value callback;
+required-value callbacks continue to skip absent inputs. Each version sees its
+own candidate value. `OptionalVersionedBody<T>` extracts the selected optional
+result without consuming raw bytes; it still requires a selected version, and
+present values must deserialize into `T`. Root deletion followed by defaults and
+absent transform outputs work through HTTP/MCP. Sparse-array validation, mutable
+holders/source context and broader non-body transformations remain open.
+Traversal is depth-bounded.
 
 
 In a mixed application, `forklaunch sdk mode -t live` switches registered
