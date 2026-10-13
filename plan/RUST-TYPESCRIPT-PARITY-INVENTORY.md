@@ -3655,3 +3655,23 @@ borrow-bound document index while preserving cumulative expansion limits. Its
 80-operation/300-component regression, all 109 CLI SDK tests, 43 shared codegen
 tests and strict codegen clippy pass. Customer persistence and customer/checkout
 helper gates are closed; provider/local-write reconciliation remains open.
+
+
+Better Auth custom rate-limit storage receipt (2026-10-13):
+`AuthRateLimitOptions::with_custom_storage` accepts an async application-owned
+atomic check/increment backend. Effective plugin/custom rules and normalized
+`IP|auth-path` keys reach the backend; disabled limits bypass it. Retry omission
+uses the effective window and explicit zero survives. Errors return a generic
+failure without private details or process-local fallback. Applications own
+backend atomicity and expiry; built-in Redis/PostgreSQL counter backends and
+body-reading rule callbacks remain open.
+
+All 2,409 actual Better Auth HTTP comparisons pass, including exact backend and
+plugin call traces. Native validation passes 43 tests (one PostgreSQL-specific
+unit test ignored), including concurrent custom consumption and fail-closed
+errors, plus strict all-feature/all-target clippy. Fresh generated run `93F5fo`
+passes restricted-role PostgreSQL, eight actual frontend-client scenarios, both
+SDKs, HTTP/MCP shared/separate/disabled listeners, Origin rejection,
+restart/shutdown, relocation/preservation, rename and deletion. Logs are in
+`/private/tmp/fl-auth-storage-{parity,tests,clippy,generated}.log`. This advances
+the broader customization gate without marking it complete.

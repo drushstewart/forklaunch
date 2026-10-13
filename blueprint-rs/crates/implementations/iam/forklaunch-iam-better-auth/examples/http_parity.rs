@@ -30,6 +30,7 @@ async fn main() {
     let clock = Arc::new(AtomicI64::new(0));
     let server_clock = clock.clone();
     let plugin_calls = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let storage_calls = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
     let router = AuthHttp::new(
         store.clone(),
         std::env::var("FORKLAUNCH_AUTH_BASE_URL")
@@ -48,6 +49,7 @@ async fn main() {
     let router = if let Ok(config) = std::env::var("FORKLAUNCH_AUTH_RATE_LIMIT") {
         use forklaunch_iam_better_auth::http::{
             AuthRateLimitDecision, AuthRateLimitOptions, AuthRateLimitRule,
+            AuthRateLimitStorageDecision,
         };
         let config: serde_json::Value = serde_json::from_str(&config).unwrap();
         let rule = |value: &serde_json::Value| {
@@ -58,6 +60,38 @@ async fn main() {
             .unwrap()
         };
         let mut options = AuthRateLimitOptions::default().with_default(rule(&config));
+        if config["customStorage"] == true {
+            let calls = storage_calls.clone();
+            let counts = Arc::new(std::sync::Mutex::new(std::collections::HashMap::<
+                String,
+                u32,
+            >::new()));
+            options = options.with_custom_storage(move |key, rule| {
+                let calls = calls.clone();
+                let counts = counts.clone();
+                async move {
+                    tokio::task::yield_now().await;
+                    calls.lock().unwrap().push(
+                        json!({"key":key,"window":rule.window_seconds(),"max":rule.max_requests()}),
+                    );
+                    let mut counts = counts.lock().unwrap();
+                    let count = counts.entry(key).or_default();
+                    *count += 1;
+                    Ok(if *count <= rule.max_requests() {
+                        AuthRateLimitStorageDecision::Allow
+                    } else {
+                        AuthRateLimitStorageDecision::Deny {
+                            retry_after: match *count % 3 {
+                                0 => None,
+                                1 => Some(0),
+                                _ => Some(u64::from(rule.window_seconds()) + 2),
+                            },
+                        }
+                    })
+                }
+            });
+        }
+
         if let Some(plugins) = config["pluginRules"].as_array() {
             for (index, plugin) in plugins.iter().enumerate() {
                 let prefix = plugin["prefix"].as_str().unwrap().to_owned();
@@ -139,6 +173,7 @@ async fn main() {
         clock.store(input["now"].as_i64().unwrap(), Ordering::SeqCst);
         let result = match input["op"].as_str().unwrap() {
             "ratePluginCalls" => json!(*plugin_calls.lock().unwrap()),
+            "rateStorageCalls" => json!(*storage_calls.lock().unwrap()),
             "seed" | "replace-seed" => seed(&store, &input).await,
             "records" => records(&store, &input).await,
             "seed-keys" => {

@@ -32,6 +32,7 @@ mod public;
 mod rate;
 pub use rate::{
     AuthRateLimitDecision, AuthRateLimitOptions, AuthRateLimitRequest, AuthRateLimitRule,
+    AuthRateLimitStorageDecision,
 };
 #[cfg(feature = "application-http")]
 pub mod relay;
@@ -178,7 +179,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self.limiter.enabled = enabled;
         self
     }
-    /// Configures process-local rate limits; enablement is controlled separately.
+    /// Configures rate limits and optional custom storage; enablement is controlled separately.
     #[must_use]
     pub fn with_rate_limit_options(mut self, options: AuthRateLimitOptions) -> Self {
         self.limiter.options = options;

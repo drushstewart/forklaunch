@@ -23,6 +23,20 @@ const referenceRateLimit = rateLimit && {
     } : rule,
   ])),
 };
+const storageCalls = [];
+if (rateLimit?.customStorage) {
+  const counts = new Map();
+  referenceRateLimit.customStorage = {
+    async consume(key, rule) {
+      await Promise.resolve();
+      storageCalls.push({ key, window: rule.window, max: rule.max });
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return { allowed: count <= rule.max,
+        retryAfter: count % 3 === 0 ? null : count % 3 === 1 ? 0 : rule.window + 2 };
+    },
+  };
+}
 const reference = await betterAuthReference(root, { rateLimit: referenceRateLimit, rateLimitPlugins: rateLimit?.pluginRules });
 const context = await reference.auth.$context;
 assert.equal(context.rateLimit.enabled, true);
@@ -177,7 +191,8 @@ const run = spawnSync(
       cases
         .map((test) => JSON.stringify({ op: 'request', ...test }))
         .join('\n') + '\n' + (rateLimit?.pluginRules
-          ? JSON.stringify({ op: 'ratePluginCalls', now: start }) + '\n' : ''),
+          ? JSON.stringify({ op: 'ratePluginCalls', now: start }) + '\n' : '') + (rateLimit?.customStorage
+          ? JSON.stringify({ op: 'rateStorageCalls', now: start }) + '\n' : ''),
   },
 );
 assert.equal(run.status, 0, run.stderr);
@@ -185,6 +200,7 @@ const actual = run.stdout
   .trim()
   .split('\n')
   .map((line) => JSON.parse(line));
+if (rateLimit?.customStorage) assert.deepEqual(actual.pop(), storageCalls);
 if (rateLimit?.pluginRules) {
   assert.deepEqual(actual.pop(), reference.rateLimitPluginCalls,
     'Plugin predicate order must match even when custom rules override the limit');
@@ -230,6 +246,10 @@ if (!rateLimit) {
     { customRules: { '/**': { callback: true } }, pluginRules: [
       { prefix: '/', window: 6, max: 2 }, { prefix: '/sign-in', window: 5, max: 1 },
     ] },
+  );
+  configs.push(
+    { customRules: { '/sign-up/email': false }, customStorage: true },
+    { customRules: { '/**': { callback: true } }, pluginRules: [{ prefix: '/', window: 5, max: 2 }], customStorage: true },
   );
   for (const config of configs) {
     const configured = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {

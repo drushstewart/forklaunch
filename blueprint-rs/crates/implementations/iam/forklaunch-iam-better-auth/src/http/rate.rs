@@ -1,4 +1,5 @@
-//! Configured Better Auth process-local rolling idle-window rate limits.
+//! Configured Better Auth rolling idle-window limits and custom counter storage.
+mod storage;
 use super::{AuthHttp, failure, request::client_ip};
 use crate::{origins::CompiledGlob, store::AuthStore};
 use axum::{
@@ -15,6 +16,7 @@ use std::{
     pin::Pin,
     sync::{Arc, Mutex, OnceLock},
 };
+pub use storage::AuthRateLimitStorageDecision;
 
 const MAX_ENTRIES: usize = 100_000;
 
@@ -83,13 +85,14 @@ impl std::fmt::Debug for Callback {
         formatter.write_str("RateLimitCallback")
     }
 }
-/// Process-local limits with Better Auth's built-in sensitive-endpoint rules.
+/// Better Auth limits with process-local or application-owned counter storage.
 /// The first matching custom rule takes precedence over sensitive and default rules.
 #[derive(Clone, Debug)]
 pub struct AuthRateLimitOptions {
     default: AuthRateLimitRule,
     overrides: Vec<PathRule>,
     plugin_rules: Vec<PluginRule>,
+    storage: Option<storage::CustomStorage>,
 }
 #[derive(Clone)]
 struct PluginRule {
@@ -120,10 +123,25 @@ impl Default for AuthRateLimitOptions {
             },
             overrides: Vec::new(),
             plugin_rules: Vec::new(),
+            storage: None,
         }
     }
 }
 impl AuthRateLimitOptions {
+    /// Installs an asynchronous counter backend. It receives the normalized
+    /// `IP|auth-path` key and effective rule after plugin/custom overrides.
+    /// The backend must atomically check/increment and own its expiry policy.
+    /// Disabled limits skip storage; backend failures fail closed without
+    /// exposing their details. There is no fallback to process-local counters.
+    #[must_use]
+    pub fn with_custom_storage<F, Fut>(mut self, consume: F) -> Self
+    where
+        F: Fn(String, AuthRateLimitRule) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = BlueprintResult<AuthRateLimitStorageDecision>> + Send + 'static,
+    {
+        self.storage = Some(storage::CustomStorage::new(consume));
+        self
+    }
     /// Adds a plugin rule in plugin/registration order. The first matching
     /// plugin rule overrides the default and sensitive-endpoint rules, before
     /// custom static or asynchronous rules are evaluated.
@@ -310,6 +328,32 @@ impl RateLimiter {
         let path = normalized_path(path);
         self.consume_rule(ip, path, self.options.for_path(path), now)
     }
+    async fn consume_backend(
+        &self,
+        ip: &str,
+        path: &str,
+        rule: Option<Rule>,
+        now: i64,
+    ) -> BlueprintResult<Option<u64>> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let Some(rule) = rule else {
+            return Ok(None);
+        };
+        if let Some(storage) = &self.options.storage {
+            let ip = if ip.is_empty() { "no-trusted-ip" } else { ip };
+            let public_rule = AuthRateLimitRule {
+                window_seconds: u32::try_from(rule.window_ms / 1000).map_err(|_| internal())?,
+                max: rule.max,
+            };
+            return storage
+                .consume(format!("{ip}|{path}"), public_rule)
+                .await
+                .map_err(|_| internal());
+        }
+        self.consume_rule(ip, path, Some(rule), now)
+    }
     fn consume_rule(
         &self,
         ip: &str,
@@ -374,7 +418,8 @@ pub(super) async fn guard<S: AuthStore + 'static>(
     };
     match app
         .limiter
-        .consume_rule(&ip, &path, rule, (app.clock)().timestamp_millis())
+        .consume_backend(&ip, &path, rule, (app.clock)().timestamp_millis())
+        .await
     {
         Ok(None) => next.run(request).await,
         Ok(Some(retry)) => {
@@ -598,6 +643,98 @@ mod tests {
                     .is_err()
             );
         }
+    }
+    #[tokio::test]
+    async fn custom_storage_is_async_atomic_and_skipped_for_disabled_limits() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = calls.clone();
+        let options = AuthRateLimitOptions::default().with_custom_storage(move |key, rule| {
+            let observed = observed.clone();
+            async move {
+                tokio::task::yield_now().await;
+                assert_eq!(key, "no-trusted-ip|/sign-in/email");
+                assert_eq!(rule.window_seconds(), 10);
+                let count = observed.fetch_add(1, Ordering::SeqCst);
+                Ok(if count < rule.max_requests() as usize {
+                    AuthRateLimitStorageDecision::Allow
+                } else {
+                    AuthRateLimitStorageDecision::Deny { retry_after: None }
+                })
+            }
+        });
+        let limiter = Arc::new(RateLimiter {
+            enabled: true,
+            options: options.clone(),
+        });
+        let rule = Rule::special("/sign-in/email");
+        let mut workers = Vec::new();
+        for _ in 0..16 {
+            let limiter = limiter.clone();
+            workers.push(tokio::spawn(async move {
+                limiter
+                    .consume_backend("", "/sign-in/email", rule, 0)
+                    .await
+                    .unwrap()
+            }));
+        }
+        let mut admitted = 0;
+        for worker in workers {
+            match worker.await.unwrap() {
+                None => admitted += 1,
+                Some(retry) => assert_eq!(retry, 10),
+            }
+        }
+        assert_eq!(admitted, 3);
+        assert_eq!(
+            limiter
+                .consume_backend("", "/sign-in/email", None, 0)
+                .await
+                .unwrap(),
+            None
+        );
+        let disabled = RateLimiter {
+            enabled: false,
+            options,
+        };
+        assert_eq!(
+            disabled
+                .consume_backend("", "/sign-in/email", rule, 0)
+                .await
+                .unwrap(),
+            None
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 16);
+    }
+    #[tokio::test]
+    async fn custom_storage_failures_are_private_and_never_fall_back() {
+        use crate::store::memory::MemoryAuthStore;
+        use tower::ServiceExt;
+        let options = AuthRateLimitOptions::default().with_custom_storage(|_, _| async {
+            Err(BlueprintError::new(
+                "private-code",
+                "private-storage-secret",
+            ))
+        });
+        let router = AuthHttp::new(
+            Arc::new(MemoryAuthStore::default()),
+            "http://localhost:3000".into(),
+            vec![42; 32],
+            vec![],
+        )
+        .unwrap()
+        .with_rate_limiting(true)
+        .with_rate_limit_options(options)
+        .router();
+        let response = router
+            .oneshot(Request::builder().uri("/ok").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        assert!(!String::from_utf8_lossy(&bytes).contains("private-"));
     }
     #[tokio::test]
     async fn plugin_order_precedes_custom_rules_and_supplies_callback_defaults() {

@@ -81,7 +81,13 @@ counter lock; errors fail closed with a generic authentication error. Request
 bodies remain available to downstream handlers. `with_plugin_rule` registers a
 positive limit and a path predicate; register rules in plugin order. The first
 matching plugin rule overrides built-in limits before custom rules run.
-Body-reading callbacks and external rate limit storage remain unsupported.
+`with_custom_storage` accepts an asynchronous atomic counter backend receiving the
+normalized `IP|auth-path` key and effective rule. Return `Allow` or
+`Deny { retry_after }`; omitted retry values use the effective window, and zero is
+preserved. Disabled limits skip storage. Backend failures fail closed without
+exposing private details or falling back to memory. Applications own counter
+atomicity and expiry; built-in Redis/PostgreSQL counter backends and body-reading
+rule callbacks remain unsupported.
 
 The [engineering security review](../plan/RUST-SECURITY-REVIEW.md) records verified
 auth/crypto boundaries, fixed findings and the exact remaining dependency notices.
