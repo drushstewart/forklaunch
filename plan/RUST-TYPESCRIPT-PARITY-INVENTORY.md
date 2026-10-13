@@ -3587,3 +3587,20 @@ external storage remain open under the existing customization gate.
 Wildcard validation receipt: 37 portable native auth tests and strict all-feature,
 all-target clippy pass, including live HTTP/MCP startup/shutdown and concurrent
 rate limiting. The PostgreSQL-specific unit test remains explicitly ignored.
+
+
+Native Better Auth custom rate-limit callbacks now await asynchronous decisions
+from method, original URI, normalized auth-relative path and headers. Each callback
+receives the inherited sensitive/default rule and can retain it, disable the limit,
+or select a positive window/budget. Only the first matching rule executes; counter
+locks are acquired after the callback completes, and default/static rules avoid
+cloning request metadata. Callback failures fail closed without exposing private
+messages. The standard fixture passes 1,485 actual Better Auth HTTP comparisons
+across default, exact, wildcard and two asynchronous-rule profiles. Bodies remain
+untouched for downstream parsing. Body-reading callbacks, plugin rate rules and
+external counter stores remain open under the broader customization gate.
+
+Callback validation receipt: the existing 39 auth tests pass, and all seven focused
+rate-limit regressions pass after correcting the new privacy test's router mount.
+Strict all-feature/all-target clippy and the 1,485-case HTTP fixture pass. The
+PostgreSQL-specific unit test remains explicitly ignored in the portable suite.

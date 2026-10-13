@@ -11,7 +11,18 @@ const root = path.resolve(
 process.env.NODE_ENV = 'production';
 const rateLimit = process.env.FORKLAUNCH_AUTH_RATE_LIMIT
   ? JSON.parse(process.env.FORKLAUNCH_AUTH_RATE_LIMIT) : undefined;
-const reference = await betterAuthReference(root, { rateLimit });
+const referenceRateLimit = rateLimit && {
+  ...rateLimit,
+  customRules: Object.fromEntries(Object.entries(rateLimit.customRules).map(([path, rule]) => [path,
+    rule?.callback ? async (request, baseline) => {
+      await Promise.resolve();
+      if (request.headers.get('x-rate-mode') === 'disabled') return false;
+      if (request.headers.get('x-rate-mode') === 'inherit') return undefined;
+      return { window: baseline.window + 2, max: Math.max(1, baseline.max - 1) };
+    } : rule,
+  ])),
+};
+const reference = await betterAuthReference(root, { rateLimit: referenceRateLimit });
 const context = await reference.auth.$context;
 assert.equal(context.rateLimit.enabled, true);
 assert.equal(context.rateLimit.window, rateLimit?.window ?? 10);
@@ -96,6 +107,18 @@ if (rateLimit) {
   for (let i = 0; i < 10; i++) add(190000, '192.0.2.42', '/sign-up/email');
   for (const route of ['/sign-in/deep/missing', '/sign-up/deep/missing', '/sign-in/e', '/sign-in/eX', '/sign-in/email/', '/sign-in/email?x=1'])
     for (let i = 0; i < 5; i++) add(200000, '192.0.2.43', route);
+}
+if (Object.values(rateLimit?.customRules ?? {}).some(rule => rule?.callback)) {
+  for (const [mode, offset] of [['inherit', 210000], ['disabled', 250000], ['limit', 290000]]) {
+    for (const route of ['/sign-in/email', '/ok']) {
+      for (const delta of [0, 0, 0, 1000, 8999, 9000, 10000, 12000, 22000]) {
+        add(offset + delta, '192.0.2.50', route, {
+          method: 'GET', body: undefined,
+          headers: { 'x-forwarded-for': '192.0.2.50', 'x-rate-mode': mode },
+        });
+      }
+    }
+  }
 }
 const RealDate = Date;
 const expected = [];
@@ -191,6 +214,8 @@ if (!rateLimit) {
     { '/sign-in/*': { window: 4, max: 1 }, '/sign-in/email': false, '/sign-up/**': false },
     { '/sign-in/email': false, '/sign-in/*': { window: 4, max: 1 }, '/**': { window: 2, max: 2 } },
     { '/sign-in/e*?': { window: 3, max: 1 }, '/sign-in/**': false, '/sign-up/*': { window: 8, max: 2 } },
+    { '/sign-in/*': { callback: true }, '/**': { callback: true } },
+    { '/sign-in/email': false, '/**': { callback: true } },
   ];
   for (const customRules of configs) {
     const configured = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {

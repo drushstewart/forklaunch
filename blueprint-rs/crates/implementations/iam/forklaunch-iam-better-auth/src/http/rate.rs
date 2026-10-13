@@ -4,13 +4,15 @@ use crate::{origins::CompiledGlob, store::AuthStore};
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::{HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     middleware::Next,
     response::Response,
 };
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use std::{
     collections::{BTreeMap, HashMap},
+    future::Future,
+    pin::Pin,
     sync::{Arc, Mutex, OnceLock},
 };
 
@@ -39,11 +41,46 @@ impl AuthRateLimitRule {
             max,
         })
     }
+    #[must_use]
+    pub fn window_seconds(self) -> u32 {
+        self.window_seconds
+    }
+    #[must_use]
+    pub fn max_requests(self) -> u32 {
+        self.max
+    }
     fn rule(self) -> Rule {
         Rule {
             window_ms: i64::from(self.window_seconds) * 1000,
             max: self.max,
         }
+    }
+}
+/// Request metadata available to an asynchronous rate-limit rule.
+/// The body remains untouched for downstream parsing and authentication.
+#[derive(Clone, Debug)]
+pub struct AuthRateLimitRequest {
+    pub method: Method,
+    pub uri: Uri,
+    pub path: String,
+    pub headers: HeaderMap,
+}
+/// Result of a request-specific rule, corresponding to upstream undefined,
+/// false, or a replacement window/budget respectively.
+#[derive(Clone, Copy, Debug)]
+pub enum AuthRateLimitDecision {
+    UseDefault,
+    Disable,
+    Limit(AuthRateLimitRule),
+}
+type CallbackFuture = Pin<Box<dyn Future<Output = BlueprintResult<AuthRateLimitDecision>> + Send>>;
+#[derive(Clone)]
+struct Callback(
+    Arc<dyn Fn(AuthRateLimitRequest, AuthRateLimitRule) -> CallbackFuture + Send + Sync>,
+);
+impl std::fmt::Debug for Callback {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("RateLimitCallback")
     }
 }
 /// Process-local limits with Better Auth's built-in sensitive-endpoint rules.
@@ -58,6 +95,7 @@ struct PathRule {
     path: String,
     pattern: Option<CompiledGlob>,
     rule: Option<AuthRateLimitRule>,
+    callback: Option<Callback>,
 }
 impl Default for AuthRateLimitOptions {
     fn default() -> Self {
@@ -100,6 +138,7 @@ impl AuthRateLimitOptions {
             path,
             pattern: None,
             rule,
+            callback: None,
         });
         Ok(self)
     }
@@ -132,6 +171,7 @@ impl AuthRateLimitOptions {
             path,
             pattern: Some(pattern),
             rule,
+            callback: None,
         });
         Ok(self)
     }
@@ -146,16 +186,67 @@ impl AuthRateLimitOptions {
             self.overrides.push(rule);
         }
     }
-    fn for_path(&self, path: &str) -> Option<Rule> {
-        if let Some(entry) = self.overrides.iter().find(|entry| {
+    /// Registers an asynchronous exact or wildcard request rule. The callback
+    /// receives the effective built-in/default rule and runs before any counter
+    /// lock is acquired. Only the first matching custom rule is evaluated.
+    ///
+    /// # Errors
+    /// Rejects unsupported paths/patterns as `with_path_pattern` does.
+    pub fn with_dynamic_path<F, Fut>(
+        self,
+        path: impl Into<String>,
+        callback: F,
+    ) -> BlueprintResult<Self>
+    where
+        F: Fn(AuthRateLimitRequest, AuthRateLimitRule) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = BlueprintResult<AuthRateLimitDecision>> + Send + 'static,
+    {
+        let path = path.into();
+        let mut options = self.with_path_pattern(path.clone(), None)?;
+        let entry = options
+            .overrides
+            .iter_mut()
+            .find(|entry| entry.path == path)
+            .ok_or_else(internal)?;
+        entry.callback = Some(Callback(Arc::new(move |request, rule| {
+            Box::pin(callback(request, rule))
+        })));
+        Ok(options)
+    }
+    fn baseline(&self, path: &str) -> AuthRateLimitRule {
+        Rule::special(path).map_or(self.default, |rule| AuthRateLimitRule {
+            window_seconds: u32::try_from(rule.window_ms / 1000)
+                .expect("fixed sensitive rule window"),
+            max: rule.max,
+        })
+    }
+    fn matching(&self, path: &str) -> Option<&PathRule> {
+        self.overrides.iter().find(|entry| {
             entry
                 .pattern
                 .as_ref()
                 .map_or_else(|| entry.path == path, |pattern| pattern.matches(path))
-        }) {
-            return entry.rule.map(AuthRateLimitRule::rule);
-        }
-        Some(Rule::special(path).unwrap_or_else(|| self.default.rule()))
+        })
+    }
+    async fn resolve(&self, request: AuthRateLimitRequest) -> BlueprintResult<Option<Rule>> {
+        let baseline = self.baseline(&request.path);
+        let Some(entry) = self.matching(&request.path) else {
+            return Ok(Some(baseline.rule()));
+        };
+        let Some(callback) = &entry.callback else {
+            return Ok(entry.rule.map(AuthRateLimitRule::rule));
+        };
+        Ok(match (callback.0)(request, baseline).await? {
+            AuthRateLimitDecision::UseDefault => Some(baseline.rule()),
+            AuthRateLimitDecision::Disable => None,
+            AuthRateLimitDecision::Limit(rule) => Some(rule.rule()),
+        })
+    }
+    fn for_path(&self, path: &str) -> Option<Rule> {
+        self.matching(path).map_or_else(
+            || Some(self.baseline(path).rule()),
+            |entry| entry.rule.map(AuthRateLimitRule::rule),
+        )
     }
 }
 
@@ -171,30 +262,42 @@ impl RateLimiter {
             options: AuthRateLimitOptions::default(),
         }
     }
+    #[cfg(test)]
     fn consume(&self, ip: &str, path: &str, now: i64) -> BlueprintResult<Option<u64>> {
+        if !self.enabled {
+            return Ok(None);
+        }
+        let path = normalized_path(path);
+        self.consume_rule(ip, path, self.options.for_path(path), now)
+    }
+    fn consume_rule(
+        &self,
+        ip: &str,
+        path: &str,
+        rule: Option<Rule>,
+        now: i64,
+    ) -> BlueprintResult<Option<u64>> {
         static MEMORY: OnceLock<Mutex<Memory>> = OnceLock::new();
         if !self.enabled {
             return Ok(None);
         }
-        // Better Auth's default memory storage is shared across auth instances
-        // in a process. Keep its exact IP|normalized-path key and insertion order.
+        let Some(rule) = rule else {
+            return Ok(None);
+        };
+        // Better Auth shares IP|normalized-path counters across auth instances.
+        // User callbacks run before this lock; check and increment remain atomic.
         let mut state = MEMORY
             .get_or_init(|| Mutex::new(Memory::default()))
             .lock()
             .map_err(|_| internal())?;
-        let path = path.trim_end_matches('/');
-        let path = if path.is_empty() { "/" } else { path };
         let ip = if ip.is_empty() { "no-trusted-ip" } else { ip };
-        state.consume(
-            Arc::from(format!("{ip}|{path}")),
-            match self.options.for_path(path) {
-                Some(rule) => rule,
-                None => return Ok(None),
-            },
-            now,
-            MAX_ENTRIES,
-        )
+        state.consume(Arc::from(format!("{ip}|{path}")), rule, now, MAX_ENTRIES)
     }
+}
+
+fn normalized_path(path: &str) -> &str {
+    let path = path.trim_end_matches('/');
+    if path.is_empty() { "/" } else { path }
 }
 
 pub(super) async fn guard<S: AuthStore + 'static>(
@@ -206,9 +309,32 @@ pub(super) async fn guard<S: AuthStore + 'static>(
         return next.run(request).await;
     }
     let ip = client_ip(request.headers());
+    let path = normalized_path(request.uri().path()).to_owned();
+    let rule = if app
+        .limiter
+        .options
+        .matching(&path)
+        .is_some_and(|entry| entry.callback.is_some())
+    {
+        let metadata = AuthRateLimitRequest {
+            method: request.method().clone(),
+            uri: request
+                .extensions()
+                .get::<axum::extract::OriginalUri>()
+                .map_or_else(|| request.uri().clone(), |original| original.0.clone()),
+            path: path.clone(),
+            headers: request.headers().clone(),
+        };
+        match app.limiter.options.resolve(metadata).await {
+            Ok(rule) => rule,
+            Err(_) => return failure(&internal()),
+        }
+    } else {
+        app.limiter.options.for_path(&path)
+    };
     match app
         .limiter
-        .consume(&ip, request.uri().path(), (app.clock)().timestamp_millis())
+        .consume_rule(&ip, &path, rule, (app.clock)().timestamp_millis())
     {
         Ok(None) => next.run(request).await,
         Ok(Some(retry)) => {
@@ -432,6 +558,117 @@ mod tests {
                     .is_err()
             );
         }
+    }
+    #[tokio::test]
+    async fn async_rules_preserve_atomicity_and_run_without_counter_locks() {
+        let path = format!("/sign-in/{}", uuid::Uuid::new_v4());
+        let barrier = Arc::new(tokio::sync::Barrier::new(16));
+        let options = AuthRateLimitOptions::default()
+            .with_dynamic_path(&path, move |request, baseline| {
+                let barrier = barrier.clone();
+                async move {
+                    assert_eq!(request.method, Method::POST);
+                    assert_eq!(request.uri.query(), Some("client=fixture"));
+                    assert_eq!(baseline.max_requests(), 3);
+                    barrier.wait().await;
+                    Ok(AuthRateLimitDecision::UseDefault)
+                }
+            })
+            .unwrap();
+        let limiter = Arc::new(RateLimiter {
+            enabled: true,
+            options,
+        });
+        let mut workers = Vec::new();
+        for _ in 0..16 {
+            let limiter = limiter.clone();
+            let path = path.clone();
+            workers.push(tokio::spawn(async move {
+                let request = AuthRateLimitRequest {
+                    method: Method::POST,
+                    uri: "/api/auth/sign-in/test?client=fixture".parse().unwrap(),
+                    path: path.clone(),
+                    headers: HeaderMap::new(),
+                };
+                let rule = limiter.options.resolve(request).await.unwrap();
+                limiter
+                    .consume_rule("192.0.2.240", &path, rule, 1_800_000_000_000)
+                    .unwrap()
+                    .is_none()
+            }));
+        }
+        let mut admitted = 0;
+        for worker in workers {
+            admitted += usize::from(worker.await.unwrap());
+        }
+        assert_eq!(admitted, 3);
+    }
+    #[tokio::test]
+    async fn callback_errors_do_not_fall_through_to_another_rule() {
+        let options = AuthRateLimitOptions::default()
+            .with_dynamic_path("/sign-in/*", |_, _| async {
+                Err(BlueprintError::new("fixture_failure", "private failure"))
+            })
+            .unwrap()
+            .with_path_pattern("/**", None)
+            .unwrap();
+        let result = options
+            .resolve(AuthRateLimitRequest {
+                method: Method::POST,
+                uri: "/sign-in/email".parse().unwrap(),
+                path: "/sign-in/email".into(),
+                headers: HeaderMap::new(),
+            })
+            .await;
+        assert!(result.is_err());
+    }
+    #[tokio::test]
+    async fn callback_failure_is_private_and_disabled_limiter_skips_callbacks() {
+        use crate::store::memory::MemoryAuthStore;
+        use tower::ServiceExt;
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = calls.clone();
+        let options = AuthRateLimitOptions::default()
+            .with_dynamic_path("/**", move |_, _| {
+                observed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async { Err(BlueprintError::new("private-code", "private-secret")) }
+            })
+            .unwrap();
+        for enabled in [true, false] {
+            let router = AuthHttp::new(
+                Arc::new(MemoryAuthStore::default()),
+                "http://localhost:3000".into(),
+                vec![42; 32],
+                vec![],
+            )
+            .unwrap()
+            .with_rate_limiting(enabled)
+            .with_rate_limit_options(options.clone())
+            .router();
+            let router = axum::Router::new().nest("/api/auth", router);
+            let response = router
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/auth/ok")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                if enabled {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                } else {
+                    StatusCode::OK
+                }
+            );
+            let bytes = axum::body::to_bytes(response.into_body(), 1024)
+                .await
+                .unwrap();
+            assert!(!String::from_utf8_lossy(&bytes).contains("private-"));
+        }
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
     #[test]
     fn rolling_expiry_denials_and_insertion_eviction_keep_indexes_bounded() {

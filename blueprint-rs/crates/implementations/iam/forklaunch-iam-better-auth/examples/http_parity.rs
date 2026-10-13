@@ -45,7 +45,9 @@ async fn main() {
         DateTime::<Utc>::from_timestamp_millis(server_clock.load(Ordering::SeqCst)).unwrap()
     });
     let router = if let Ok(config) = std::env::var("FORKLAUNCH_AUTH_RATE_LIMIT") {
-        use forklaunch_iam_better_auth::http::{AuthRateLimitOptions, AuthRateLimitRule};
+        use forklaunch_iam_better_auth::http::{
+            AuthRateLimitDecision, AuthRateLimitOptions, AuthRateLimitRule,
+        };
         let config: serde_json::Value = serde_json::from_str(&config).unwrap();
         let rule = |value: &serde_json::Value| {
             AuthRateLimitRule::new(
@@ -56,6 +58,28 @@ async fn main() {
         };
         let mut options = AuthRateLimitOptions::default().with_default(rule(&config));
         for (path, value) in config["customRules"].as_object().unwrap() {
+            if value["callback"] == true {
+                options = options
+                    .with_dynamic_path(path, |request, baseline| async move {
+                        tokio::task::yield_now().await;
+                        Ok(
+                            match request
+                                .headers
+                                .get("x-rate-mode")
+                                .and_then(|value| value.to_str().ok())
+                            {
+                                Some("disabled") => AuthRateLimitDecision::Disable,
+                                Some("inherit") => AuthRateLimitDecision::UseDefault,
+                                _ => AuthRateLimitDecision::Limit(AuthRateLimitRule::new(
+                                    baseline.window_seconds() + 2,
+                                    baseline.max_requests().saturating_sub(1).max(1),
+                                )?),
+                            },
+                        )
+                    })
+                    .unwrap();
+                continue;
+            }
             options = options
                 .with_path_pattern(
                     path,

@@ -30,7 +30,9 @@ mod email;
 mod organization;
 mod public;
 mod rate;
-pub use rate::{AuthRateLimitOptions, AuthRateLimitRule};
+pub use rate::{
+    AuthRateLimitDecision, AuthRateLimitOptions, AuthRateLimitRequest, AuthRateLimitRule,
+};
 #[cfg(feature = "application-http")]
 pub mod relay;
 mod request;
