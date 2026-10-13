@@ -3624,3 +3624,34 @@ shared/separate/disabled listeners, Origin rejection, restart/shutdown,
 relocation/preservation, rename and deletion. The final predicate-order adjustment
 was checked with native regressions and actual-library traces after that generated
 run; the checkout CLI was rebuilt with the final sources.
+
+
+Customer persistence now has typed native create/read/update/delete/list operations
+over the existing durable billing store. PostgreSQL migration 3 adds the customer
+kind; email/name use tenant-, record- and field-bound encrypted envelopes and
+atomic actor audits. Shared memory/restricted-role PostgreSQL tests cover durable
+CRUD, concurrent disjoint updates, duplicate-ID races, nullable-name clearing,
+empty-ID filtering and cache rejection. PostgreSQL also verifies tenant isolation,
+audit-failure rollback, restart/reopening, retained-key rotation, ciphertext
+substitution rejection and absence of customer plaintext in storage. This fills
+the planned native customer persistence gap; the five configured TypeScript
+billing services remain unchanged and all 168 actual service comparisons pass.
+
+Stripe customer create/retrieve/update/list/delete now use the existing direct
+and managed client helpers alongside checkout lifecycle operations. The official
+Stripe 22.6.2 fixture passes 26 direct cases; actual TypeScript managed transport
+passes 28 cases, including customer nested address/metadata encoding, expansions,
+pagination parameters, null updates and deletion. Provider/local-write atomicity,
+reconciliation and configured mapper review remain separately open.
+
+
+Billing completion receipt: 11 portable billing tests, the dedicated restricted-role
+PostgreSQL integration, strict all-target/all-feature billing clippy, 168 base-service
+comparisons and 26 direct/28 managed Stripe cases pass. Generated run `kpWfCb`
+passes mixed billing/Stripe modules, both SDKs from contract and OpenAPI imports,
+HTTP/MCP startup, encrypted persistence and lifecycle. The first run `4fppO5`
+exposed repeated whole-document SDK indexing; commit `299933772` reuses one
+borrow-bound document index while preserving cumulative expansion limits. Its
+80-operation/300-component regression, all 109 CLI SDK tests, 43 shared codegen
+tests and strict codegen clippy pass. Customer persistence and customer/checkout
+helper gates are closed; provider/local-write reconciliation remains open.

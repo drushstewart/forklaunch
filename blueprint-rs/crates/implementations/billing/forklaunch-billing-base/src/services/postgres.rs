@@ -180,7 +180,7 @@ impl PostgresBillingStore {
     }
     fn encode(&self, scope: Scope, kind: BillingKind, mut data: Value) -> BlueprintResult<Value> {
         validate_record(kind, &data)?;
-        for field in ["providerFields", "uri"] {
+        for &field in sensitive_fields(kind) {
             if let Some(value) = data.get(field) {
                 let envelope = json!({"scope":scope.as_str(),"kind":kind.as_str(),"id":data["id"],"field":field,"value":value});
                 let encrypted = self
@@ -209,7 +209,7 @@ impl PostgresBillingStore {
             return Err(storage_error());
         }
         let mut sensitive = false;
-        for field in ["providerFields", "uri"] {
+        for &field in sensitive_fields(kind) {
             if let Some(value) = data.get(field) {
                 let encrypted = value.as_str().ok_or_else(storage_error)?;
                 let plaintext = self
@@ -254,6 +254,9 @@ impl BillingStore for PostgresBillingStore {
         data: Value,
         ttl: Duration,
     ) -> BlueprintResult<Value> {
+        if kind == BillingKind::Customer && scope != Scope::Durable {
+            return Err(invalid());
+        }
         let id = data["id"].as_str().ok_or_else(invalid)?;
         validate_id(id)?;
         let encoded = self.encode(scope, kind, data.clone())?;
@@ -437,5 +440,13 @@ fn db_error(error: sqlx::Error) -> BlueprintError {
         conflict()
     } else {
         storage_error()
+    }
+}
+
+fn sensitive_fields(kind: BillingKind) -> &'static [&'static str] {
+    if kind == BillingKind::Customer {
+        &["email", "name"]
+    } else {
+        &["providerFields", "uri"]
     }
 }

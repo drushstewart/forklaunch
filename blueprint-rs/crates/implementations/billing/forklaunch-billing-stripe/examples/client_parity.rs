@@ -42,6 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 async fn run(client: &StripeBillingClient, action: &Value) -> BlueprintResult<Value> {
     let resource = match action["resource"].as_str().unwrap_or("") {
+        "customers" => StripeResource::Customer,
         "plans" => StripeResource::Plan,
         "products" => StripeResource::Product,
         "prices" => StripeResource::Price,

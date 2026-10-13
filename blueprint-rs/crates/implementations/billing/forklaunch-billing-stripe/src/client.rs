@@ -12,6 +12,7 @@ use zeroize::Zeroizing;
 pub const STRIPE_API_VERSION: &str = "2026-08-26.dahlia";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StripeResource {
+    Customer,
     Plan,
     Product,
     Price,
@@ -23,6 +24,7 @@ pub enum StripeResource {
 impl StripeResource {
     const fn path(self) -> &'static [&'static str] {
         match self {
+            Self::Customer => &["v1", "customers"],
             Self::Plan => &["v1", "plans"],
             Self::Product => &["v1", "products"],
             Self::Price => &["v1", "prices"],

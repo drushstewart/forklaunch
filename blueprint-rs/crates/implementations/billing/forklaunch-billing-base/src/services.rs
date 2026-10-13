@@ -1,4 +1,7 @@
-//! Native asynchronous implementations of the five billing service interfaces.
+//! Native asynchronous billing services and durable customer persistence.
+use forklaunch_billing_interface::customers::{
+    CreateCustomerDto, CustomerDto, CustomerService, UpdateCustomerDto,
+};
 use forklaunch_billing_interface::services::{
     BillingPortalDto, BillingPortalService, CheckoutSessionDto, CheckoutSessionService,
     CreateBillingPortalDto, CreateCheckoutSessionDto, CreatePaymentLinkDto, CreatePlanDto,
@@ -17,6 +20,7 @@ pub mod postgres;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BillingKind {
+    Customer,
     Plan,
     Subscription,
     CheckoutSession,
@@ -27,6 +31,7 @@ impl BillingKind {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Customer => "customer",
             Self::Plan => "plan",
             Self::Subscription => "subscription",
             Self::CheckoutSession => "checkout_session",
@@ -319,6 +324,30 @@ impl<S: BillingStore> BaseBillingService<S> {
         Ok(())
     }
 }
+impl<S: BillingStore> CustomerService for BaseBillingService<S> {
+    async fn create_customer(&self, request: CreateCustomerDto) -> BlueprintResult<CustomerDto> {
+        self.create(BillingKind::Customer, request, false).await
+    }
+    async fn get_customer(&self, id: &str) -> BlueprintResult<CustomerDto> {
+        self.get(BillingKind::Customer, id, false).await
+    }
+    async fn update_customer(&self, request: UpdateCustomerDto) -> BlueprintResult<CustomerDto> {
+        self.update(BillingKind::Customer, request, false).await
+    }
+    async fn delete_customer(&self, id: &str) -> BlueprintResult<()> {
+        validate_id(id)?;
+        self.store
+            .delete(Scope::Durable, BillingKind::Customer, id)
+            .await?;
+        Ok(())
+    }
+    async fn list_customers(&self, ids: Option<&[String]>) -> BlueprintResult<Vec<CustomerDto>> {
+        if ids.is_some_and(<[String]>::is_empty) {
+            return Ok(Vec::new());
+        }
+        self.list(BillingKind::Customer, ids, false).await
+    }
+}
 impl<S: BillingStore> PlanService for BaseBillingService<S> {
     async fn create_plan(&self, request: CreatePlanDto) -> BlueprintResult<PlanDto> {
         self.create(BillingKind::Plan, request, false).await
@@ -506,6 +535,19 @@ fn merge(mut data: Value, patch: &Value) -> BlueprintResult<Value> {
 fn validate_record(kind: BillingKind, data: &Value) -> BlueprintResult<()> {
     validate_id(data["id"].as_str().ok_or_else(invalid)?)?;
     match kind {
+        BillingKind::Customer => {
+            let customer: CustomerDto = decode(data.clone())?;
+            if customer.email.trim().is_empty()
+                || customer.email.len() > 320
+                || customer.email.chars().any(char::is_control)
+                || customer
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| name.len() > 1024 || name.chars().any(char::is_control))
+            {
+                return Err(invalid());
+            }
+        }
         BillingKind::Plan => {
             decode::<PlanDto>(data.clone())?;
         }

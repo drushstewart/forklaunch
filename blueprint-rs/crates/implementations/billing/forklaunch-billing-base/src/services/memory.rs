@@ -39,6 +39,9 @@ impl BillingStore for MemoryBillingStore {
         data: Value,
         ttl: Duration,
     ) -> BlueprintResult<Value> {
+        if kind == BillingKind::Customer && scope != Scope::Durable {
+            return Err(invalid());
+        }
         validate_record(kind, &data)?;
         let id = data["id"].as_str().ok_or_else(invalid)?.to_owned();
         validate_id(&id)?;

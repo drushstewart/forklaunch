@@ -1,6 +1,6 @@
 # Rust Framework And Blueprint Implementation Plan
 
-Current verified progress (2026-10-13): **653/682 checklist items (95.7%), 29 open**.
+Current verified progress (2026-10-13): **655/682 checklist items (96.0%), 27 open**.
 The unchecked boxes below are the remaining gates; detailed validation receipts
 are in [the parity inventory](RUST-TYPESCRIPT-PARITY-INVENTORY.md).
 
@@ -612,7 +612,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 
 - [x] Implement initial in-memory billing service for interface and SDK smoke tests.
 - [x] Implement the five asynchronous base billing service traits and typed DTOs with owned memory and tenant-RLS PostgreSQL storage. Plans/subscriptions are durable; checkout/payment-link/portal sessions use TTL cache primary storage with optional database backup. Actual TS base-class conformance covers 168 operations over explicit generic mapper/cache/ORM boundaries. Native fixtures cover concurrent disjoint updates, unique provider IDs, real cache expiry independent of provider expiry, encrypted provider data/session URIs, audit rollback, cross-tenant isolation, key rotation and reopening. Configured Stripe mappers/provider integration and generated modules remain separate gates.
-- [ ] Implement customer/subscription/plan persistence.
+- [x] Implement customer/subscription/plan persistence. Native typed customer CRUD now uses the same durable memory/PostgreSQL store as plans/subscriptions; migration 3 adds customers, encrypts email/name in field-bound envelopes and retains tenant RLS and atomic actor audits. Shared tests cover concurrent updates/creation, nullable-name clearing, filtering, audit rollback, retained-key rotation and ciphertext substitution. The configured TypeScript module has no separate customer service; its 168 five-service comparisons remain green.
 - [x] Implement entitlement checks. (metered `has_entitlement`)
 - [x] Implement usage recording. (`record_usage` + `recorded_usage`)
 - [x] Add embedded billing migrations and isolated PostgreSQL container tests. `forklaunch-billing-base/migrations`, `tests/services.rs` and `cli/tests/rust_billing_runtime.sh` cover restricted-role RLS, encryption, audits, concurrency and reopening. The fixture uses owned Docker containers directly rather than the testcontainers crate; validated in the phase-16 billing runtime checkpoint.
@@ -623,7 +623,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Implement Stripe client integration. `forklaunch-billing-stripe/src/client.rs` supports direct and managed transports; the phase-16 fixtures cover 21 official SDK and 23 managed gateway comparisons.
 - [x] Implement webhook verification. (`webhook::verify` — `t=...,v1=<hex>` HMAC-SHA256, constant-time)
 - [x] Implement subscription sync. `forklaunch-billing-stripe/src/synchronization.rs` and the phase-16 webhook fixture cover subscription updates, missed-create recovery and party reassignment protection. Interrupted provider/local writes remain separately open.
-- [ ] Implement customer and checkout helpers.
+- [x] Implement customer and checkout helpers. `StripeResource::Customer` supports create/retrieve/update/list/list-all/delete through the existing direct and instance-signed client alongside checkout lifecycle helpers. Official Stripe SDK and actual managed TypeScript transport fixtures pass 26 and 28 cases. Fresh mixed billing/Stripe generation, both SDKs, HTTP/MCP, persistence and lifecycle pass; provider/local-write reconciliation remains separately open.
 - [x] Add controlled HTTP provider tests for Stripe interactions. `tests/transport.rs` uses real local Axum HTTP peers rather than wiremock; actual TypeScript/official Stripe SDK conformance covers transport and service effects in the phase-16 fixtures.
 
 ### Worker Implementations

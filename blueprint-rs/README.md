@@ -190,3 +190,25 @@ lease, bounded oldest-first batches and RLS-protected completion markers; dry ru
 count without mutation. Cutoffs are exclusive and cannot be in the future.
 Migrations and the generated restricted-role grants include the retention marker
 table. Provider cancellation/capture reconciliation remains a separate concern.
+
+
+Durable customer CRUD is available through
+`forklaunch_billing_interface::customers::CustomerService`, implemented by
+`BaseBillingService` over both memory and PostgreSQL stores. Customer IDs may be
+supplied by the server or generated on creation. Email and name are encrypted in
+PostgreSQL with record/field-bound envelopes; reads and updates require an atomic
+actor audit. Updates distinguish an omitted name from explicit `null` (clear).
+`list_customers(None)` lists records within the store's existing bounded limit;
+`Some(&[])` returns no records. Customers never use the expiring session cache.
+Migration 3 extends existing billing databases without changing earlier migration
+checksums. This is the native customer-persistence interface planned for the port;
+the configured TypeScript billing module has five services and no standalone
+customer service.
+
+`StripeBillingClient` supports `StripeResource::Customer` through its create,
+retrieve, update, list/list-all and delete helpers, using either direct Stripe
+authentication or the instance-signed managed transport. The same client already
+supports checkout creation, retrieval, update and expiry. Applications can persist
+a provider customer ID in the native customer's `id` field and pass it to checkout.
+Provider requests and local persistence remain separate operations; interrupted
+provider/local-write reconciliation is still an open gate.

@@ -1,6 +1,7 @@
 use forklaunch_billing_base::services::{
     BaseBillingService, BillingKind, BillingStore, Scope, memory::MemoryBillingStore,
 };
+use forklaunch_billing_interface::customers::CustomerService;
 use forklaunch_billing_interface::services::{
     BillingPortalService, CheckoutSessionService, PaymentLinkService, PlanService,
     SubscriptionService, UpdatePlanDto,
@@ -20,8 +21,98 @@ fn checkout(id: &str) -> Value {
 fn value<T: Serialize>(value: T) -> Value {
     serde_json::to_value(value).unwrap()
 }
+async fn exercise_customers<S: BillingStore + 'static>(store: Arc<S>) {
+    let service = BaseBillingService::new(store.clone());
+    let request = json!({"id":"customer", "email":"private-customer@example.test", "name":"Private Customer"});
+    let created = service.create_customer(dto(request.clone())).await.unwrap();
+    assert_eq!(created.name.as_deref(), Some("Private Customer"));
+    assert!(service.create_customer(dto(request)).await.is_err());
+    let (email, name) = tokio::join!(
+        service.update_customer(dto(
+            json!({"id":"customer", "email":"updated-private-customer@example.test"})
+        )),
+        service.update_customer(dto(
+            json!({"id":"customer", "name":"Updated Private Customer"})
+        ))
+    );
+    email.unwrap();
+    name.unwrap();
+    let updated = service.get_customer("customer").await.unwrap();
+    assert_eq!(updated.email, "updated-private-customer@example.test");
+    assert_eq!(updated.name.as_deref(), Some("Updated Private Customer"));
+    assert_eq!(updated.created_at, created.created_at);
+    assert!(updated.updated_at >= created.updated_at);
+    assert!(
+        service
+            .update_customer(dto(json!({"id":"customer", "email":""})))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        service.get_customer("customer").await.unwrap().email,
+        updated.email
+    );
+    service
+        .update_customer(dto(json!({"id":"customer", "name":null})))
+        .await
+        .unwrap();
+    assert!(
+        service
+            .get_customer("customer")
+            .await
+            .unwrap()
+            .name
+            .is_none()
+    );
+    assert_eq!(
+        service
+            .list_customers(Some(&["customer".into()]))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(service.list_customers(Some(&[])).await.unwrap().is_empty());
+    assert!(
+        store
+            .insert(
+                Scope::Cache,
+                BillingKind::Customer,
+                value(created),
+                Duration::from_secs(10)
+            )
+            .await
+            .is_err()
+    );
+    service
+        .create_customer(dto(
+            json!({"id":"deleted-customer", "email":"deleted@example.test"}),
+        ))
+        .await
+        .unwrap();
+    service.delete_customer("deleted-customer").await.unwrap();
+    assert!(service.get_customer("deleted-customer").await.is_err());
+    let mut workers = Vec::new();
+    for _ in 0..8 {
+        let store = store.clone();
+        workers.push(tokio::spawn(async move {
+            BaseBillingService::new(store)
+                .create_customer(dto(
+                    json!({"id":"customer-race", "email":"race@example.test"}),
+                ))
+                .await
+                .is_ok()
+        }));
+    }
+    let mut winners = 0;
+    for worker in workers {
+        winners += usize::from(worker.await.unwrap());
+    }
+    assert_eq!(winners, 1);
+}
 #[allow(clippy::too_many_lines, clippy::float_cmp)] // Exact integer-valued money round trips.
 async fn exercise<S: BillingStore + 'static>(store: Arc<S>) {
+    exercise_customers(Arc::clone(&store)).await;
     let service = BaseBillingService::new(Arc::clone(&store));
     service
         .create_plan(dto(plan("plan", "price")))
@@ -399,6 +490,7 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     limited_pool.close().await;
     let other_service = BaseBillingService::new(Arc::clone(&other));
     assert!(other_service.get_plan("plan").await.is_err());
+    assert!(other_service.get_customer("customer").await.is_err());
     assert!(other_service.get_user_subscription("party").await.is_err());
     assert!(
         other_service
@@ -425,6 +517,8 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     for (row,) in data {
         let raw = row.to_string();
         assert!(!raw.contains("private-billing@example.test"));
+        assert!(!raw.contains("private-customer@example.test"));
+        assert!(!raw.contains("Private Customer"));
         assert!(!raw.contains("private-session-token"));
         assert!(!raw.contains("updated-session-token"));
     }
@@ -461,6 +555,15 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     .await
     .unwrap();
     assert!(service.get_plan("plan").await.is_err());
+    assert!(service.get_customer("customer").await.is_err());
+    assert!(
+        service
+            .update_customer(dto(
+                json!({"id":"customer", "email":"must-rollback@example.test"})
+            ))
+            .await
+            .is_err()
+    );
     assert!(
         service
             .update_plan(dto(json!({"id":"plan","description":"must-rollback"})))
@@ -527,6 +630,33 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     );
     // Authenticated envelopes bind scope, kind, record and field, preventing
     // an owner/storage bug from substituting another record's encrypted payload.
+    assert_eq!(
+        reopened.get_customer("customer").await.unwrap().email,
+        "updated-private-customer@example.test"
+    );
+    reopened
+        .update_customer(dto(json!({"id":"customer", "name":"Rotated Customer"})))
+        .await
+        .unwrap();
+    assert_eq!(
+        new_only
+            .get_customer("customer")
+            .await
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Rotated Customer")
+    );
+    let customer_cipher: Value = sqlx::query_scalar("SELECT data->'email' FROM fl_billing.records WHERE tenant_id=$1 AND kind='customer' AND id='customer'")
+        .bind(tenant.id()).fetch_one(&owner).await.unwrap();
+    let other_customer_cipher: Value = sqlx::query_scalar("SELECT data->'email' FROM fl_billing.records WHERE tenant_id=$1 AND kind='customer' AND id='customer-race'")
+        .bind(tenant.id()).fetch_one(&owner).await.unwrap();
+    sqlx::query("UPDATE fl_billing.records SET data=jsonb_set(data,'{email}',$2) WHERE tenant_id=$1 AND kind='customer' AND id='customer'")
+        .bind(tenant.id()).bind(other_customer_cipher).execute(&owner).await.unwrap();
+    assert!(reopened.get_customer("customer").await.is_err());
+    sqlx::query("UPDATE fl_billing.records SET data=jsonb_set(data,'{email}',$2) WHERE tenant_id=$1 AND kind='customer' AND id='customer'")
+        .bind(tenant.id()).bind(customer_cipher).execute(&owner).await.unwrap();
+    assert!(new_only.get_customer("customer").await.is_ok());
     let (original,): (Value,) = sqlx::query_as("SELECT data->'providerFields' FROM fl_billing.records WHERE tenant_id=$1 AND scope='durable' AND kind='plan' AND id='plan'")
         .bind(tenant.id()).fetch_one(&owner).await.unwrap();
     let (other_cipher,): (Value,) = sqlx::query_as("SELECT data->'providerFields' FROM fl_billing.records WHERE tenant_id=$1 AND scope='durable' AND kind='subscription' AND id='subscription'")

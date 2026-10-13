@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod customers;
 pub mod module_contracts;
 pub mod services;
 
