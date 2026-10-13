@@ -1676,3 +1676,15 @@ Non-ID subject lookups retain the store's 4,096-record bound and fail if exceede
 ORM relation inference and scalable indexed traversal are separate tasks. Logs:
 `/private/tmp/fl-directory-compliance-{parity,postgres,all-tests,clippy,runtime,package}.log`.
 Checklist: **619/682 (90.8%), 63 open**. Percentages count checklist items equally.
+
+
+### Shared template rendering (2026-10-12)
+
+`generate_with_template`, native scaffolding and SDK templates now share the
+same Ramhorn rendering primitive. Native and SDK callers also share embedded
+file lookup and contextual diagnostics. The legacy directory walk, TypeScript
+namespace/database replacements, native preservation rules and SDK ownership
+logic remain at their existing boundaries. All 1,075 CLI tests pass
+(`/private/tmp/fl-shared-template-tests.log`).
+
+Checklist: **620/682 (90.9%), 62 open**.

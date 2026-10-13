@@ -700,7 +700,7 @@ Current CLI structure to build on:
 ### Template Rendering
 
 - [x] Add Rust template namespaces under `cli/src/templates/rust` and SDK template namespaces under `cli/src/templates/sdk`.
-- [ ] Reuse `generate_with_template` where practical.
+- [x] Reuse the rendering primitive from `generate_with_template` for native scaffolds and SDKs. Shared Ramhorn parsing/rendering and embedded-template diagnostics replace duplicated renderers; legacy TypeScript replacements and each generator's file-ownership rules remain at their existing boundaries. All 1,075 CLI tests pass.
 - [x] Add Rust-specific generation variables: crate name, module path, lib name, binary name, Rust edition, SDK targets.
 - [x] Avoid TypeScript AST transforms for Rust templates.
 - [x] Render Rust app, service, worker, library, router, TypeScript SDK, and Rust SDK scaffolds through Ramhorn templates instead of inline stubs.
@@ -1646,3 +1646,15 @@ Non-ID subject lookups retain the store's 4,096-record bound and fail if exceede
 ORM relation inference and scalable indexed traversal are separate tasks. Logs:
 `/private/tmp/fl-directory-compliance-{parity,postgres,all-tests,clippy,runtime,package}.log`.
 Checklist: **619/682 (90.8%), 63 open**. Percentages count checklist items equally.
+
+
+### Shared template rendering (2026-10-12)
+
+`generate_with_template`, native scaffolding and SDK templates now share the
+same Ramhorn rendering primitive. Native and SDK callers also share embedded
+file lookup and contextual diagnostics. The legacy directory walk, TypeScript
+namespace/database replacements, native preservation rules and SDK ownership
+logic remain at their existing boundaries. All 1,075 CLI tests pass
+(`/private/tmp/fl-shared-template-tests.log`).
+
+Checklist: **620/682 (90.9%), 62 open**.

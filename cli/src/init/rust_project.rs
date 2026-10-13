@@ -10,7 +10,7 @@ use clap::ArgMatches;
 use convert_case::{Case, Casing};
 use include_dir::{Dir, include_dir};
 use indexmap::IndexMap;
-use ramhorns::{Content, Template};
+use ramhorns::Content;
 use serde_json::{Value as JsonValue, json};
 use serde_yml::{from_str as yaml_from_str, to_string as yaml_to_string};
 use termcolor::{ColorChoice, StandardStream, WriteColor};
@@ -23,7 +23,8 @@ use crate::core::{
         HealthTest, Healthcheck, Restart,
     },
     name::validate_name,
-    rendered_template::{RenderedTemplate, TEMPLATES_DIR, write_rendered_templates},
+    rendered_template::{RenderedTemplate, write_rendered_templates},
+    template::render_embedded_template,
 };
 
 // Embed source only, so released CLIs generate portable apps without a repository checkout.
@@ -1645,17 +1646,8 @@ fn option(matches: &ArgMatches, id: &str) -> Option<String> {
 }
 
 fn render_rust_template<T: Content>(template_path: &str, data: &T) -> String {
-    let template_file = TEMPLATES_DIR
-        .get_file(template_path)
-        .unwrap_or_else(|| panic!("embedded Rust template {template_path} is missing"));
-    let template = Template::new(
-        template_file
-            .contents_utf8()
-            .expect("embedded Rust templates must be UTF-8"),
-    )
-    .expect("embedded Rust template should compile");
-
-    template.render(data)
+    render_embedded_template(template_path, data)
+        .unwrap_or_else(|error| panic!("Invalid embedded Rust template {template_path}: {error:#}"))
 }
 
 fn render_static_rust_template(template_path: &str) -> String {

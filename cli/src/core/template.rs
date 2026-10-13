@@ -2,7 +2,7 @@ use std::{fs::create_dir_all, path::Path};
 
 use anyhow::{Context, Result};
 use include_dir::{Dir, File};
-use ramhorns::Template;
+use ramhorns::{Content, Template};
 use regex::Regex;
 
 use super::{
@@ -58,6 +58,25 @@ fn forklaunch_replacements(app_name: &String, template: String) -> String {
     template.replace("@forklaunch/blueprint-", format!("@{app_name}/").as_str())
 }
 
+/// Shared rendering primitive for legacy manifests, native scaffolds and SDKs.
+/// Language-specific replacements and file ownership stay with their callers.
+pub(crate) fn render_template<T: Content>(source: &str, data: &T) -> Result<String> {
+    Ok(Template::new(source)?.render(data))
+}
+
+pub(crate) fn render_embedded_template<T: Content>(
+    template_path: &str,
+    data: &T,
+) -> Result<String> {
+    let source = TEMPLATES_DIR
+        .get_file(template_path)
+        .with_context(|| format!("Missing embedded template {template_path}"))?
+        .contents_utf8()
+        .with_context(|| format!("Embedded template {template_path} is not UTF-8"))?;
+    render_template(source, data)
+        .with_context(|| format!("Failed to render embedded template {template_path}"))
+}
+
 pub(crate) fn generate_with_template(
     output_prefix: Option<&String>,
     template_dir: &PathIO,
@@ -96,24 +115,30 @@ pub(crate) fn generate_with_template(
                 &entry.path().to_string_lossy()
             )
         })?;
-        let tpl = Template::new(file_contents.clone())?;
         let rendered = match data {
-            ManifestData::Application(manifest_data) => {
-                forklaunch_replacements(&manifest_data.app_name, tpl.render(&manifest_data))
-            }
+            ManifestData::Application(manifest_data) => forklaunch_replacements(
+                &manifest_data.app_name,
+                render_template(&file_contents, manifest_data)?,
+            ),
             ManifestData::Service(manifest_data) => database_replacements(
                 &manifest_data.database,
-                forklaunch_replacements(&manifest_data.app_name, tpl.render(&manifest_data)),
+                forklaunch_replacements(
+                    &manifest_data.app_name,
+                    render_template(&file_contents, manifest_data)?,
+                ),
             ),
-            ManifestData::Library(manifest_data) => {
-                forklaunch_replacements(&manifest_data.app_name, tpl.render(&manifest_data))
-            }
-            ManifestData::Router(manifest_data) => {
-                forklaunch_replacements(&manifest_data.app_name, tpl.render(&manifest_data))
-            }
-            ManifestData::Worker(manifest_data) => {
-                forklaunch_replacements(&manifest_data.app_name, tpl.render(&manifest_data))
-            }
+            ManifestData::Library(manifest_data) => forklaunch_replacements(
+                &manifest_data.app_name,
+                render_template(&file_contents, manifest_data)?,
+            ),
+            ManifestData::Router(manifest_data) => forklaunch_replacements(
+                &manifest_data.app_name,
+                render_template(&file_contents, manifest_data)?,
+            ),
+            ManifestData::Worker(manifest_data) => forklaunch_replacements(
+                &manifest_data.app_name,
+                render_template(&file_contents, manifest_data)?,
+            ),
         };
         if !output_path.exists() {
             let output_path_str = output_path.file_name().unwrap().to_str().unwrap();

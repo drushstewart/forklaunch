@@ -10,7 +10,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use clap::{Arg, ArgAction, ArgMatches, Command, parser::ValueSource};
 use convert_case::{Case, Casing};
-use ramhorns::{Content, Template};
+use ramhorns::Content;
 use serde_json::{Value as JsonValue, json};
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 use toml::Value;
@@ -22,7 +22,7 @@ use super::{
 };
 use crate::{
     CliCommand,
-    core::{command::command, rendered_template::TEMPLATES_DIR},
+    core::{command::command, rendered_template::TEMPLATES_DIR, template::render_embedded_template},
     init::rust_project::{self, add_rust_workspace_member},
 };
 
@@ -1433,15 +1433,7 @@ fn rust_sse_source() -> Result<String> {
 }
 
 fn render_sdk_template<T: Content>(template_path: &str, data: &T) -> Result<String> {
-    let template_file = TEMPLATES_DIR
-        .get_file(template_path)
-        .with_context(|| format!("Missing SDK template {template_path}"))?;
-    let template = Template::new(
-        template_file
-            .contents_utf8()
-            .with_context(|| format!("SDK template {template_path} is not UTF-8"))?,
-    )?;
-    Ok(template.render(data))
+    render_embedded_template(template_path, data)
 }
 
 #[cfg(test)]
