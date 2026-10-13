@@ -1733,3 +1733,25 @@ entries pass. Logs: `/private/tmp/fl-schema-context-{metadata,tests-final,rust-s
 Checklist: **622/682 (91.2%), 60 open**. General resource IDs/anchors/dynamic
 resolution remain open; resource-preserving relocation still rejects aliases
 whose scope cannot be safely resolved.
+
+
+### Telemetry presence checkpoint (2026-10-12)
+
+The generated telemetry fixture now starts both HTTP and MCP, invokes health,
+and rejects untrusted origins before verifying real OTLP exports. Assertions
+cover W3C parent IDs, trace correlation, response status/size/duration metrics,
+zero active-request balances after completion, exclusion of correlation IDs
+from metric dimensions, structured error logs and SIGTERM flushing. Offline
+exports still succeed with intentionally invalid live telemetry settings.
+
+The relocated generated app/worker build passes. Both native telemetry middleware
+tests pass, covering auth/unmatched requests and streaming completion, error,
+cancellation and HEAD. The actual receiver fixture passes HTTP/JSON and protobuf
+signals, exporter authentication/resource configuration, disabled export and
+sanitized invalid configuration. Existing CI runs both the direct OTLP fixture
+and the generated shell fixture. Logs:
+`/private/tmp/fl-telemetry-presence-{generated,middleware,otlp}.log`.
+
+Checklist: **623/682 (91.3%), 59 open**. This verifies telemetry presence and
+lifecycle behavior; it does not claim identical TypeScript metric names or
+vendor-specific telemetry configuration.
