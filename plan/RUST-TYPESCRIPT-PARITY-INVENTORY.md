@@ -1647,3 +1647,32 @@ preserved. Free disk rose from approximately 74 GiB to 99 GiB.
 
 Validation also passes core all-feature tests, the CLI rebuild and all 767 required
 embedded package sources. Checklist: **618/682 (90.6%), 64 open**.
+
+
+### Application-configured IAM directory compliance (2026-10-12)
+
+Applications can register generic `ComplianceMetadata` types with
+`DirectoryCompliance` and use `iam_router_with_compliance`. The default remains
+unclassified. Explicit scalar subject mappings select records within the trusted
+store tenant; export projects IDs and classified fields, while erasure deletes
+whole records to match the actual TypeScript service. Each entity commits
+separately. Failed reads/deletes/commits report sanitized failures, never claim
+uncommitted deletes, and produce an HTTP/MCP error for incomplete operations.
+
+Validation passed:
+
+- Five actual TypeScript/native configured compliance comparisons, alongside
+  the existing 44 directory operations, 33 route contracts and 22 schema layouts.
+- Eleven native IAM-base tests, including commit failure/rollback and metadata
+  validation; the shared compliance fixture also passed against encrypted
+  PostgreSQL with restricted-role tenant RLS.
+- Strict all-feature/all-target IAM-base and IAM-axum Clippy.
+- Generated HTTP/MCP startup, system-role rejection/acceptance, classified export,
+  erasure and repeated-operation 404; existing CRUD, both live SDKs, restart,
+  source preservation, relocation, rename and deletion passed.
+- Rebuilt CLI and all 770 embedded Rust source/template package entries.
+
+Non-ID subject lookups retain the store's 4,096-record bound and fail if exceeded;
+ORM relation inference and scalable indexed traversal are separate tasks. Logs:
+`/private/tmp/fl-directory-compliance-{parity,postgres,all-tests,clippy,runtime,package}.log`.
+Checklist: **619/682 (90.8%), 63 open**. Percentages count checklist items equally.

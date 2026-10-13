@@ -593,7 +593,7 @@ Native typed runtime uses raw UTF-8 string / JSON payloads matching the TypeScri
 - [x] Port configured IAM directory CRUD and grant surfacing: typed single/batch interfaces, transactional memory/PostgreSQL stores, relationship hydration and cleanup, encrypted sensitive fields, retained-key uniqueness claims and atomic actor audits. Real PostgreSQL fixtures cover rollback, cross-tenant reads, runtime-role checks, concurrent uniqueness, key rotation and ciphertext swapping. Direct actual TypeScript conformance covers 44 service operations, 30 routes and 20 request/response schema layouts. Correct upstream permission batch awaiting/transaction propagation and user batch ID filters.
 - [x] Generate the thirty configured IAM directory HTTP/MCP operations alongside opaque sessions. Validate live typed Rust and TypeScript SDK calls, nested models and status unions. Verify request HMAC and JWKS JWT policy, role/permission checks, storage-resolved organization scope, atomic mixed-organization rejection and SDK generation. Preserve the legacy `/users/:id` route as `getSessionUser` so directory `/user/:id` retains `getUser` in SDK/MCP contracts.
 - [x] Add configured IAM base discovery/compliance routes and actual compliance-policy conformance. Public discovery returns 204; system-role JWT export/erase return 404 because all configured entity scalars (including inherited base properties) are classified `none`. Execute the actual TypeScript compliance service to verify empty results without entity reads. All 33 configured routes and 22 request/response schema layouts match the actual sources; generated HTTP/MCP, both SDKs and lifecycle checks pass.
-- [ ] Support application-specific directory compliance classifications and generic entity metadata. Encryption at rest must not implicitly select fields for compliance export/erase.
+- [x] Support application-specific directory compliance classifications and generic entity metadata. Explicit generic metadata selects export fields and whole-record erasure independently of encryption; trusted tenant stores, per-entity transactions, sanitized incomplete-operation errors and system-role HTTP/MCP routes pass actual TypeScript, encrypted PostgreSQL and generated lifecycle fixtures. Scalar subject links use the existing bounded directory listing; scalable indexed traversal remains separate.
 - [ ] Integrate directory identities with enabled authentication providers and complete generic mapper/filter extensions; directory CRUD passwords are deliberately ignored by the configured TypeScript mapper, and opaque credential identities remain separate.
 - [ ] Implement JWT issuance, cookie/CSRF lifecycle, and OAuth/OIDC provider flows.
 - [x] Expose async IAM read/session/repository traits and a reusable Axum adapter; wire PostgreSQL IAM into `init module --language rust -m iam-base` and application `--modules iam-base`.
@@ -1617,3 +1617,32 @@ preserved. Free disk rose from approximately 74 GiB to 99 GiB.
 
 Validation also passes core all-feature tests, the CLI rebuild and all 767 required
 embedded package sources. Checklist: **618/682 (90.6%), 64 open**.
+
+
+### Application-configured IAM directory compliance (2026-10-12)
+
+Applications can register generic `ComplianceMetadata` types with
+`DirectoryCompliance` and use `iam_router_with_compliance`. The default remains
+unclassified. Explicit scalar subject mappings select records within the trusted
+store tenant; export projects IDs and classified fields, while erasure deletes
+whole records to match the actual TypeScript service. Each entity commits
+separately. Failed reads/deletes/commits report sanitized failures, never claim
+uncommitted deletes, and produce an HTTP/MCP error for incomplete operations.
+
+Validation passed:
+
+- Five actual TypeScript/native configured compliance comparisons, alongside
+  the existing 44 directory operations, 33 route contracts and 22 schema layouts.
+- Eleven native IAM-base tests, including commit failure/rollback and metadata
+  validation; the shared compliance fixture also passed against encrypted
+  PostgreSQL with restricted-role tenant RLS.
+- Strict all-feature/all-target IAM-base and IAM-axum Clippy.
+- Generated HTTP/MCP startup, system-role rejection/acceptance, classified export,
+  erasure and repeated-operation 404; existing CRUD, both live SDKs, restart,
+  source preservation, relocation, rename and deletion passed.
+- Rebuilt CLI and all 770 embedded Rust source/template package entries.
+
+Non-ID subject lookups retain the store's 4,096-record bound and fail if exceeded;
+ORM relation inference and scalable indexed traversal are separate tasks. Logs:
+`/private/tmp/fl-directory-compliance-{parity,postgres,all-tests,clippy,runtime,package}.log`.
+Checklist: **619/682 (90.8%), 63 open**. Percentages count checklist items equally.

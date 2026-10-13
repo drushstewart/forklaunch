@@ -230,3 +230,19 @@ const exported=await compliance.export('fixture-user'),erased=await compliance.e
 assert.deepEqual(JSON.parse(JSON.stringify(exported)),{userId:'fixture-user',entities:{},failures:[]});
 assert.deepEqual(JSON.parse(JSON.stringify(erased)),{entitiesAffected:[],recordsDeleted:0,failures:[]});
 console.log('PASS actual configured TypeScript IAM compliance policy: every entity scalar is classified none; export/erase return no data and perform no entity reads');
+
+const classifiedRows={
+ User:[{id:'subject',email:'subject@fixture.test',firstName:'Classified',unclassified:'omit',roles:[]},{id:'foreign',email:'foreign@fixture.test',firstName:'Foreign',unclassified:'omit',roles:[]}],
+ Role:[{id:'owned-role',owner:'subject',label:'Classified role',permissions:[]},{id:'foreign-role',owner:'foreign',label:'Foreign role',permissions:[]}]
+};
+const nativeCompliance=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-iam-base','--example','directory_compliance'],{cwd:root,encoding:'utf8',input:JSON.stringify(classifiedRows),timeout:180000}));
+metadata.registerEntityCompliance('User',new Map([['id','none'],['email','pii'],['firstName','phi'],['unclassified','none']]));
+metadata.registerEntityCompliance('Role',new Map([['id','none'],['owner','none'],['label','pci']]));
+const classifiedStore=structuredClone(classifiedRows);
+const configuredCompliance=new ComplianceDataService({
+ getMetadata:()=>({getAll:()=>new Map(Object.entries(classifiedStore).map(([className,rows])=>[className,{className,properties:Object.fromEntries(Object.keys(rows[0]).map(key=>[key,{}]))}]))}),
+ em:{fork:()=>({find:async(entity,filter)=>classifiedStore[entity].filter(row=>Object.entries(filter).every(([key,value])=>row[key]===value)),remove(row){for(const [family,records]of Object.entries(classifiedStore))classifiedStore[family]=records.filter(candidate=>candidate!==row);},flush:async()=>{}})}
+},collector,{User:'id',Role:'owner'});
+const actualCompliance=[await configuredCompliance.export('subject'),await configuredCompliance.erase('subject'),await configuredCompliance.export('subject'),await configuredCompliance.export('foreign'),await configuredCompliance.erase('subject')];
+assert.deepEqual(nativeCompliance,JSON.parse(JSON.stringify(actualCompliance)));
+console.log('PASS 5 actual TS/native application-configured compliance operations: PII/PHI/PCI projection, explicit subject links, full-row erasure, unrelated subjects and repeated erasure');

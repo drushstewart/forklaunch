@@ -13,7 +13,11 @@ use forklaunch_blueprint_core::{
     contract::{AuthConfig, HttpMethod, RouteContract},
 };
 use forklaunch_core::ServiceInfo;
-use forklaunch_iam_base::directory::{postgres::PostgresDirectoryStore, service::BaseIamDirectory};
+use forklaunch_iam_base::directory::{
+    compliance::{DirectoryCompliance, DirectoryComplianceService},
+    postgres::PostgresDirectoryStore,
+    service::BaseIamDirectory,
+};
 use forklaunch_iam_interface::{
     AsyncIamSessions, module_contracts,
     services::{OrganizationService, PermissionService, RoleService, UserService},
@@ -32,6 +36,22 @@ pub fn iam_router<S: AsyncIamSessions + 'static>(
     auth: HmacJwksAuth,
     info: ServiceInfo,
 ) -> ForkLaunchRouter {
+    iam_router_with_compliance(sessions, store, auth, info, DirectoryCompliance::default())
+}
+
+/// Compose directory routes with application-owned compliance classifications.
+/// The supplied store fixes tenant scope; route parameters never select a tenant.
+/// Incomplete storage operations return an error rather than a successful erasure.
+/// # Panics
+/// Only inconsistent package-owned route metadata can panic.
+#[must_use]
+pub fn iam_router_with_compliance<S: AsyncIamSessions + 'static>(
+    sessions: Arc<S>,
+    store: PostgresDirectoryStore,
+    auth: HmacJwksAuth,
+    info: ServiceInfo,
+    compliance: DirectoryCompliance,
+) -> ForkLaunchRouter {
     let opaque = super::session_config(&sessions)
         .authenticator
         .expect("session verifier exists");
@@ -47,34 +67,48 @@ pub fn iam_router<S: AsyncIamSessions + 'static>(
             }
         }
     });
-    add_routes(super::build_session_router(sessions, info, true), store).with_config(config)
+    add_routes(
+        super::build_session_router(sessions, info, true),
+        store,
+        compliance,
+    )
+    .with_config(config)
 }
 #[allow(clippy::too_many_lines)]
-fn add_routes(mut router: ForkLaunchRouter, store: PostgresDirectoryStore) -> ForkLaunchRouter {
+fn add_routes(
+    mut router: ForkLaunchRouter,
+    store: PostgresDirectoryStore,
+    compliance: DirectoryCompliance,
+) -> ForkLaunchRouter {
     let store = Arc::new(store);
+    let compliance = Arc::new(compliance);
     for contract in module_contracts::registry().routes() {
-        // Configured IAM entities explicitly classify every scalar as `none`.
-        // Encryption at rest does not implicitly opt a field into compliance.
         if contract.operation_name == "getauthmethods" {
             router = router.get(contract.clone(), || async { StatusCode::NO_CONTENT });
             continue;
         }
-        if contract.operation_name == "exportuserdata" {
-            router = router.get(contract.clone(), || async {
-                (
-                    StatusCode::NOT_FOUND,
-                    "User not found or no PII data to export",
-                )
-            });
-            continue;
-        }
-        if contract.operation_name == "eraseuserdata" {
-            router = router.delete(contract.clone(), || async {
-                (
-                    StatusCode::NOT_FOUND,
-                    "User not found or no PII data to erase",
-                )
-            });
+        if matches!(
+            contract.operation_name.as_str(),
+            "exportuserdata" | "eraseuserdata"
+        ) {
+            let erase = contract.operation_name == "eraseuserdata";
+            let store = store.clone();
+            let compliance = compliance.clone();
+            let handler = move |Extension(session): Extension<AuthenticatedSession>,
+                                Path(subject): Path<String>| {
+                let store = store.clone();
+                let compliance = compliance.clone();
+                async move {
+                    compliance_response(&store, &compliance, &session, &subject, erase)
+                        .await
+                        .unwrap_or_else(|error| failure(&error))
+                }
+            };
+            router = if erase {
+                router.delete(contract.clone(), handler)
+            } else {
+                router.get(contract.clone(), handler)
+            };
             continue;
         }
         let handler_contract = contract.clone();
@@ -150,6 +184,52 @@ fn add_routes(mut router: ForkLaunchRouter, store: PostgresDirectoryStore) -> Fo
         };
     }
     router
+}
+async fn compliance_response(
+    store: &PostgresDirectoryStore,
+    config: &DirectoryCompliance,
+    session: &AuthenticatedSession,
+    subject: &str,
+    erase: bool,
+) -> BlueprintResult<Response> {
+    let store = store.with_audit_context(AuditContext::actor(
+        &session.principal.subject,
+        uuid::Uuid::new_v4().to_string(),
+    ))?;
+    let service = DirectoryComplianceService::new(Arc::new(store), config.clone());
+    let incomplete = || {
+        BlueprintError::new(
+            "iam_directory_storage_error",
+            "IAM directory compliance operation incomplete",
+        )
+    };
+    if erase {
+        let result = service.erase(subject).await?;
+        if !result.failures.is_empty() {
+            return Err(incomplete());
+        }
+        if result.records_deleted == 0 {
+            return Ok((
+                StatusCode::NOT_FOUND,
+                "User not found or no PII data to erase",
+            )
+                .into_response());
+        }
+        Ok(Json(result).into_response())
+    } else {
+        let result = service.export(subject).await?;
+        if !result.failures.is_empty() {
+            return Err(incomplete());
+        }
+        if result.entities.is_empty() {
+            return Ok((
+                StatusCode::NOT_FOUND,
+                "User not found or no PII data to export",
+            )
+                .into_response());
+        }
+        Ok(Json(result).into_response())
+    }
 }
 fn query_input(query: Option<&str>) -> BlueprintResult<Value> {
     let mut result = json!({});

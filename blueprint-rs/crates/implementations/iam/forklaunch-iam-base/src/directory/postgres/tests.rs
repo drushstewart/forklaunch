@@ -82,6 +82,11 @@ async fn encrypted_directory_transactions_tenant_rls_rotation_and_relationships(
     )
     .await
     .unwrap();
+    crate::directory::compliance::tests::exercise(
+        Arc::new(store.clone()),
+        Arc::new(second.clone()),
+    )
+    .await;
     let service = BaseIamDirectory::new(Arc::new(store.clone()));
     let other_service = BaseIamDirectory::new(Arc::new(second.clone()));
     let permission = service

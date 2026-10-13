@@ -82,3 +82,39 @@ BullMQ producers inherit configured job defaults while the wrapper overrides ret
 IAM directory parity now includes typed user/role/permission/organization CRUD interfaces, transactional memory and PostgreSQL stores, nested relationship hydration, encrypted sensitive fields, retained-key uniqueness claims and atomic actor audits. Generated IAM modules expose thirty configured directory operations over HTTP and MCP alongside the existing opaque session endpoints. Directory users and authentication identities remain separate, matching the configured TypeScript CRUD mapper's omission of passwords. Cookie/CSRF, JWT issuance, verification/reset, OAuth/OIDC, Better Auth and application-specific compliance integration remain separate gates. Base discovery returns 204; its system-role compliance routes return 404 under the configured all-`none` entity policy.
 
 See the [Rust/TypeScript compatibility baseline](../docs/adding-projects/rust-compatibility.md) for source package versions, artifact formats and implementation choices.
+
+### Application-configured IAM compliance
+
+IAM directory compliance defaults to no classified entities. Applications can
+register their own `ComplianceMetadata` types independently of encryption:
+
+```rust,ignore
+use forklaunch_core::persistence::compliance::ComplianceMetadata;
+use forklaunch_iam_base::directory::{DirectoryKind, compliance::DirectoryCompliance};
+
+#[derive(ComplianceMetadata)]
+#[compliance(entity = "User")]
+struct UserCompliance {
+    id: String,
+    #[compliance(level = "pii")]
+    email: String,
+}
+
+let compliance = DirectoryCompliance::default()
+    .with_entity::<UserCompliance>(DirectoryKind::User, "id")?;
+let router = forklaunch_iam_axum::directory::iam_router_with_compliance(
+    sessions, directory, auth, service_info, compliance,
+);
+```
+
+The authenticated HTTP and MCP export/erase routes require the system role and
+use the store's trusted tenant. Export selects IDs and explicitly classified
+fields. Erasure deletes whole matching records, following the TypeScript
+compliance service. Each entity runs in its own transaction; incomplete storage
+operations return an error through the router. Direct service callers must check
+`failures`, including when other entities committed successfully.
+
+A subject field other than `id` must contain an explicit scalar string ID.
+These lookups use the directory store's bounded listing (currently 4,096 records
+for PostgreSQL); relation inference and scalable indexed traversal remain
+separate work. See the [executable example](crates/implementations/iam/forklaunch-iam-base/examples/directory_compliance.rs).

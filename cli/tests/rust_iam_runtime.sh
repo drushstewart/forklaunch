@@ -50,6 +50,31 @@ test ! -e "$RUN_ROOT/app/crates/dry-iam"
 run_cli init module --path "$RUN_ROOT/app" --language rust -m iam-base -d postgresql
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
+# Fixture-only application metadata: normal starts stay unclassified; a later
+# process enables the public customization API for HTTP/MCP compliance probes.
+python3 - <<'PYTHON'
+from pathlib import Path
+p=Path('crates/iam/src/main.rs')
+s=p.read_text()
+old='let router = forklaunch_iam_axum::directory::iam_router(store, directory, auth, service_info());'
+assert old in s
+new='''#[allow(dead_code)]
+    #[derive(forklaunch_core::persistence::compliance::ComplianceMetadata)]
+    #[compliance(entity = "User")]
+    struct ClassifiedUser {
+        id: String,
+        #[compliance(level = "pii")]
+        email: String,
+        #[compliance(level = "phi", name = "firstName")]
+        first_name: String,
+    }
+    let mut compliance = forklaunch_iam_base::directory::compliance::DirectoryCompliance::default();
+    if env::var("FORKLAUNCH_FIXTURE_CLASSIFIED_IAM").as_deref() == Ok("1") {
+        compliance = compliance.with_entity::<ClassifiedUser>(forklaunch_iam_base::directory::DirectoryKind::User, "id")?;
+    }
+    let router = forklaunch_iam_axum::directory::iam_router_with_compliance(store, directory, auth, service_info(), compliance);'''
+p.write_text(s.replace(old,new,1))
+PYTHON
 printf '\npub const USER_OWNED_MARKER: &str = "preserved";\n' >> crates/iam/src/lib.rs
 run_cli sync service iam --path .
 grep -q USER_OWNED_MARKER crates/iam/src/lib.rs

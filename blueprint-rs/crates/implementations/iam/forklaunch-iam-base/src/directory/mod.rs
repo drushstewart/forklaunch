@@ -3,6 +3,7 @@ use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::future::Future;
 
+pub mod compliance;
 mod mapping;
 pub mod memory;
 #[cfg(feature = "postgres")]

@@ -30,9 +30,9 @@ const role = process.env.FORKLAUNCH_TEST_ROLE;
 const databaseUrl = new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);
 databaseUrl.username = role;
 databaseUrl.password = 'parity-test-only';
-async function start(tenant) {
+async function start(tenant, classified = false) {
   const child = spawn(process.argv[2], [], {
-    env: { ...process.env, DATABASE_URL: databaseUrl.toString(), TENANT_ID: `${role}-${tenant}`, HOST: '127.0.0.1', SERVICE_PORT: '0', ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience },
+    env: { ...process.env, FORKLAUNCH_FIXTURE_CLASSIFIED_IAM: classified ? '1' : '0', DATABASE_URL: databaseUrl.toString(), TENANT_ID: `${role}-${tenant}`, HOST: '127.0.0.1', SERVICE_PORT: '0', ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   const exited = once(child, 'exit');
@@ -149,6 +149,24 @@ try {
   assert.equal((await restartedSdk.iam.users.listUsers({query:{}})).code, 401);
   const revokedMcp=await mcpRpc(restarted.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}},{authorization:`Bearer ${token}`});assert.equal(revokedMcp.isError,true);
   console.log('PASS generated PostgreSQL IAM, typed TypeScript SDK, tenant isolation, restart persistence, revocation, and SIGTERM');
+  const classified = await start('a', true);
+  await probeMcp(classified.baseUrl, ['exportuserdata', 'eraseuserdata']);
+  const system = jwt(directory.a.users[0].id, ['system']);
+  await call(classified.baseUrl, `/compliance/export/${outsider.id}`, 'GET', undefined, 403, jwt());
+  const data = await call(classified.baseUrl, `/compliance/export/${outsider.id}`, 'GET', undefined, 200, system);
+  assert.equal(data.userId, outsider.id);
+  assert.deepEqual(Object.keys(data.entities.User[0]).sort(), ['email', 'firstName', 'id']);
+  assert.equal(data.entities.User[0].email, outsider.email);
+  const exported = await mcpRpc(classified.baseUrl, 'tools/call', {name:'exportuserdata',arguments:{params:{userId:outsider.id}}}, {authorization:system});
+  assert.equal(exported.isError, false, JSON.stringify(exported));
+  assert.deepEqual(JSON.parse(exported.content[0].text), data);
+  const erased = await mcpRpc(classified.baseUrl, 'tools/call', {name:'eraseuserdata',arguments:{params:{userId:outsider.id}}}, {authorization:system});
+  assert.equal(erased.isError, false, JSON.stringify(erased));
+  assert.deepEqual(JSON.parse(erased.content[0].text), {entitiesAffected:['User'],recordsDeleted:1,failures:[]});
+  await call(classified.baseUrl, `/compliance/export/${outsider.id}`, 'GET', undefined, 404, system);
+  await call(classified.baseUrl, `/compliance/erase/${outsider.id}`, 'DELETE', undefined, 404, system);
+  console.log('PASS application-configured encrypted IAM compliance over HTTP/MCP: explicit fields, system-role authorization, export, erase and repeated-operation 404');
+
 } finally {
   for (const { child } of processes) {
     if (child.exitCode === null && child.signalCode === null) {
