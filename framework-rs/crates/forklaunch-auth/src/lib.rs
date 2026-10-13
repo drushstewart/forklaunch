@@ -175,8 +175,8 @@ pub fn verify_jwt_hs256(token: &str, signature_key: &[u8]) -> Result<Principal, 
     // Keep fractional nbf values rather than silently truncating them.
     for name in ["nbf", "iat"] {
         if let Some(value) = data.claims.get(name) {
-            let date = value.as_f64().ok_or(AuthError::InvalidCredentials)?;
-            if name == "nbf" && date > now_number {
+            let numeric_date = value.as_f64().ok_or(AuthError::InvalidCredentials)?;
+            if name == "nbf" && numeric_date > now_number {
                 return Err(AuthError::InvalidCredentials);
             }
         }
