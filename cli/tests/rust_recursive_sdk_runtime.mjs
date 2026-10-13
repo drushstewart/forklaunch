@@ -17,7 +17,10 @@ try {
   const tools = await probeMcp(baseUrl, ['readTree', 'writeTree', 'readForest', 'readChoice', 'readMutual']);
   const inputSchema = tools.find(tool => tool.name === 'writeTree').inputSchema;
   assert.equal(inputSchema.properties.body.examples[0].metadata.$ref, '#');
-  if (process.env.FORKLAUNCH_TEST_SCHEMA_RESOURCES === 'dynamic') {
+  if (process.env.FORKLAUNCH_TEST_SCHEMA_RESOURCES === 'composed') {
+    assert.equal(inputSchema.properties.body.properties.children.items.$dynamicRef, '#node');
+    assert.equal(inputSchema.properties.body.properties.children.items.$ref, '#/$defs/NodeConstraints');
+  } else if (process.env.FORKLAUNCH_TEST_SCHEMA_RESOURCES === 'dynamic') {
     assert.equal(inputSchema.properties.body.properties.children.items.$dynamicRef, '#node');
   } else if (process.env.FORKLAUNCH_TEST_SCHEMA_RESOURCES === 'recursive') {
     assert.equal(inputSchema.properties.body.properties.children.items.$recursiveRef, '#');

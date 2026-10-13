@@ -63,24 +63,31 @@ for(const dialect of ['http://json-schema.org/draft-04/schema#','http://json-sch
 }
 fixtures.push({schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$ref:'#/$defs/Base',properties:{extra:{type:'integer'}},unevaluatedProperties:false,$defs:{Base:{type:'object',required:['base'],properties:{base:{type:'string'}}}}},cases:[[{base:'a'},true],[{base:'a',extra:1},true],[{base:'a',unknown:1},false],[{base:'a',extra:'bad'},false],[{},false]]});
 fixtures.push({schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$ref:'#/$defs/Base',allOf:[{minLength:2}],maxLength:4,$defs:{Base:{type:'string'}}},cases:[['ab',true],['a',false],['abcde',false]]});
+// AJV default mode shadows its dynamic-reference validity flag and skips the static sibling; allErrors mode evaluates both.
+fixtures.push({allErrorsParity:true,schema:{$schema:'https://json-schema.org/draft/2020-12/schema',$dynamicAnchor:'node',type:'object',required:['value'],properties:{value:{type:'integer'},child:{$ref:'#/$defs/Base',$dynamicRef:'#node'}},$defs:{Base:{type:'object',properties:{value:{minimum:1}}}}},cases:[[{value:0},true],[{value:0,child:{value:1}},true],[{value:0,child:{value:0}},false,true],[{value:0,child:{value:'1'}},false],[{value:0,child:{value:1,child:{value:2}}},true],[{value:0,child:{value:1,child:{value:0}}},false,true]]});
+fixtures.push({allErrorsParity:true,schema:{$schema:'https://json-schema.org/draft/2019-09/schema',$recursiveAnchor:true,type:'object',required:['value'],properties:{value:{type:'integer'},child:{$ref:'#/$defs/Base',$recursiveRef:'#'}},$defs:{Base:{type:'object',properties:{value:{minimum:1}}}}},cases:[[{value:0},true],[{value:0,child:{value:1}},true],[{value:0,child:{value:0}},false,true],[{value:0,child:{value:'1'}},false],[{value:0,child:{value:1,child:{value:2}}},true],[{value:0,child:{value:1,child:{value:0}}},false,true]]});
 const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
-let count=0, differences=0, unsupported=0;
+let count=0, differences=0, unsupported=0, allErrorsComparisons=0;
 for(let i=0;i<fixtures.length;i++) {
  let original;
  const dialect=fixtures[i].schema.$schema;
  const Validator=dialect.includes('2019-09')?Ajv2019:dialect.includes('2020-12')?Ajv:dialect.includes('draft-04')?AjvDraft4:AjvLegacy;
- const validator=()=>{const value=new Validator({strict:false});if(dialect.includes('draft-06'))value.addMetaSchema(require('ajv/dist/refs/json-schema-draft-06.json'));return value;};
+ const validator=(allErrors=false)=>{const value=new Validator({strict:false,allErrors});if(dialect.includes('draft-06'))value.addMetaSchema(require('ajv/dist/refs/json-schema-draft-06.json'));return value;};
  if(fixtures[i].ajvUnsupported) {
   assert.throws(()=>validator().compile(fixtures[i].schema),/only supports hash fragment reference/);
   unsupported+=fixtures[i].cases.length;
  } else { original=validator().compile(fixtures[i].schema); }
+ const allErrorsOriginal=fixtures[i].allErrorsParity ? validator(true).compile(fixtures[i].schema) : undefined;
  const compiled=validator().compile(bundled[i].schema);
  for(const [index,[value,valid,ajvValid=valid]]of fixtures[i].cases.entries()) {
   assert.equal(bundled[i].original[index],valid,`Native original ${i}/${index}`);
+  if(allErrorsOriginal) {assert.equal(allErrorsOriginal(value),valid,`AJV allErrors original ${i}/${index}`);allErrorsComparisons++;}
   assert.equal(bundled[i].compiled[index],valid,`Native compiled ${i}/${index}`);
   if(original) assert.equal(original(value),ajvValid,`AJV fixture ${i}: ${JSON.stringify(value)} ${JSON.stringify(original.errors)}`);
   assert.equal(compiled(value),valid,`SDK graph fixture ${i}: ${JSON.stringify(value)} ${JSON.stringify(compiled.errors)}`);
   count++; if(valid!==ajvValid) differences++;
  }
 }
-console.log(`PASS ${count} native/SDK dynamic-scope cases, ${count-differences-unsupported} independent AJV agreements, ${differences} recorded AJV scope/anchor differences and ${unsupported} AJV-unsupported URI cases`);
+console.log(`PASS ${count} native/SDK dynamic-scope cases, ${count-differences-unsupported} independent AJV agreements, ${differences} recorded AJV behavior differences and ${unsupported} AJV-unsupported URI cases`);
+
+if(allErrorsComparisons) console.log(`PASS ${allErrorsComparisons} independent AJV allErrors comparisons for composed static/dynamic references`);

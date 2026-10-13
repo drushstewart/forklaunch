@@ -13,7 +13,7 @@ const deps=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDE
 const {WebSocketServer}=deps('ws');
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-resources-'));
 const env={...process.env,CARGO_INCREMENTAL:'0',CARGO_TARGET_DIR:path.resolve(root,process.env.CARGO_TARGET_DIR??'framework-rs/target')};
-const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7','siblings'];
+const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7','siblings','composed2020','composed2019'];
 const sockets=new Set();
 let server,child;
 try {
@@ -28,6 +28,13 @@ try {
     [mode==='legacy'?'id':'$id']:'https://schemas.fixture.test/reused',type:'object',additionalProperties:false,required:['value'],properties:{value:{type,...(type==='string'?{minLength:1}:{minimum:1})},next:{$ref:'#'}}};
    if(mode==='dynamic') {schema.$dynamicAnchor='node';schema.properties.next={$dynamicRef:'#node'};}
    if(mode==='recursive') {schema.$recursiveAnchor=true;schema.properties.next={$recursiveRef:'#'};}
+   if(mode.startsWith('composed')) {
+    const modern=mode==='composed2020';
+    schema.$schema=`https://json-schema.org/draft/${modern?'2020-12':'2019-09'}/schema`;
+    schema[modern?'$dynamicAnchor':'$recursiveAnchor']=modern?'node':true;
+    schema.properties.next={$ref:'#/$defs/Next',[modern?'$dynamicRef':'$recursiveRef']:modern?'#node':'#'};
+    schema.$defs={Next:{type:'object',not:{required:['value'],properties:{value:{enum:['blocked',9]}}}}};
+   }
    if(mode.startsWith('fragment')) {
     const draft=mode.at(-1), id=draft==='4'?'id':'$id';
     schema.properties.next={$ref:'#Node:v1'};
@@ -92,6 +99,8 @@ match client.recv().await.unwrap().unwrap() {SocketEvent::Message(received)=>ass
 }
 let invalid: ${mode}::SocketOutgoing=serde_json::from_value(serde_json::json!({"value":""})).unwrap();
 assert!(client.send(&invalid).await.is_err());
+${mode.startsWith('composed')?`let invalid: ${mode}::SocketOutgoing=serde_json::from_value(serde_json::json!({"value":"a","next":{"value":"blocked"}})).unwrap();
+assert!(client.send(&invalid).await.is_err());`:''}
 client.close(1000,None).await.unwrap();
 }\n`;
   tsTypes+=`import type {SocketOutgoing as ${mode}} from './${mode}.js';\nexport const ${mode}Valid: ${mode}={value:'a',next:{value:'b'}};\n// @ts-expect-error Every recursive variant constrains its value type.\nexport const ${mode}Invalid: ${mode}={value:false};\n`;
@@ -114,6 +123,7 @@ client.close(1000,None).await.unwrap();
    await client.send(value);const event=await client.recv({timeoutMs:5000});assert.equal(event.type,'message');assert.deepEqual(event.value,value);
   }
   for(const value of [{value:''},{value:'a',next:{value:2}},{value:1,next:{value:'a'}}]) await assert.rejects(client.send(value));
+  if(mode.startsWith('composed')) await assert.rejects(client.send({value:'a',next:{value:'blocked'}}));
   await client.close(1000);
  }
  child=spawn(path.join(env.CARGO_TARGET_DIR,'debug/forklaunch-resource-socket-fixture'),[url],{stdio:'inherit'});

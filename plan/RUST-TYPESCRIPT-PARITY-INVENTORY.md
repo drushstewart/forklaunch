@@ -2916,3 +2916,33 @@ formats and both native generators. Evidence:
 `fl-schema-siblings-{parity,types,sockets,unit,models,cli,clippy,docs,package,generated}.log`.
 Checklist remains **651/682 (95.5%), 31 open**; the schema gates still require
 mixed runtime dialects, remaining reference profiles and emitter conformance.
+
+### 2026-10-13 — Composed static/dynamic/recursive references
+
+The graph evaluates every applicable reference keyword on a schema and retains
+all targets in the containing intersection. Static plus 2020-12 dynamic or
+2019-09 recursive references now preserve both constraints and recursive scope.
+This follows the independent-applicator semantics in JSON Schema Core 2020-12
+sections 7.2 and 8.2.3:
+https://json-schema.org/draft/2020-12/json-schema-core#section-8.2.3.
+
+The expanded fixture passes 120 original/bundled native cases, 107 independent
+AJV default-mode agreements and 12 additional AJV allErrors-mode comparisons.
+Four new recorded default-mode AJV differences arise from its generated dynamic
+reference validity variable being shadowed: it skips the adjacent static
+constraint, while allErrors mode and native evaluation correctly enforce both.
+Together with prior cases, nine AJV behavior differences and four unsupported
+URI cases remain explicit. Bundled generated schemas enforce both constraints
+with either AJV mode.
+
+Twenty generated clients per language, including external imports, pass 60 live
+socket roundtrips and reject payloads that violate only the static sibling.
+The generated `composed` HTTP service mode passes typed recursive clients through
+both artifact formats/native generators plus HTTP/MCP startup, discovery,
+invocation, Origin rejection and graceful shutdown. Native suites, 1,093 CLI
+tests, strict clippy/docs, formatting and 890 packaged sources pass. Evidence:
+`fl-schema-composed-{parity,sockets,unit,cli,clippy,docs,package,generated}.log`.
+The first generated attempt exposed a fixture assertion that assumed one
+reference keyword; the assertion now checks both and the complete rerun passes.
+Checklist remains **651/682 (95.5%), 31 open**. Multiple-reference composition is
+no longer a remaining schema-profile boundary.

@@ -308,23 +308,12 @@ impl Graph<'_> {
         if object.contains_key(REFERENCE) || object.contains_key(DEFINITIONS) {
             bail!("Reserved SDK schema annotation");
         }
-        let reference_key = if object.contains_key("$ref") {
-            "$ref"
-        } else if object.contains_key("$dynamicRef") {
-            "$dynamicRef"
-        } else {
-            "$recursiveRef"
-        };
-        if ["$ref", "$dynamicRef", "$recursiveRef"]
-            .iter()
-            .filter(|key| object.contains_key(**key))
-            .count()
-            > 1
-        {
-            bail!("Multiple reference applicators on one schema are unsupported");
-        }
-        let mut sibling_reference = None;
-        if let Some(reference) = object.get(reference_key) {
+        let reference_keys = ["$ref", "$dynamicRef", "$recursiveRef"];
+        let mut sibling_references = Vec::new();
+        for reference_key in reference_keys {
+            let Some(reference) = object.get(reference_key) else {
+                continue;
+            };
             let reference = reference.as_str().context("Schema $ref must be a string")?;
             if reference.starts_with('#')
                 && (reference.contains("%2F") || reference.contains("%2f"))
@@ -396,7 +385,7 @@ impl Graph<'_> {
                 // Keep sibling keywords at the containing schema location.
                 // In particular, unevaluatedProperties/Items must see the
                 // annotations produced by the reference's successful target.
-                sibling_reference = Some(resolved);
+                sibling_references.push(resolved);
             } else {
                 for (key, value) in object {
                     if key != reference_key
@@ -420,7 +409,7 @@ impl Graph<'_> {
         }
         let mut result = Map::new();
         for (key, value) in object {
-            if key == resource_key || key == reference_key {
+            if key == resource_key || reference_keys.contains(&key.as_str()) {
                 continue;
             }
             // Older dialects treat later validation keywords as annotations.
@@ -492,13 +481,13 @@ impl Graph<'_> {
             };
             result.insert(key.clone(), value);
         }
-        if let Some(reference) = sibling_reference {
+        if !sibling_references.is_empty() {
             result
                 .entry("allOf")
                 .or_insert_with(|| json!([]))
                 .as_array_mut()
                 .context("Schema allOf must be an array")?
-                .push(reference);
+                .extend(sibling_references);
         }
         Ok(Value::Object(result))
     }

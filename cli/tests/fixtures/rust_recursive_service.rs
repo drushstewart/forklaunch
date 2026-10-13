@@ -46,6 +46,15 @@ fn body(name: &str, schema: &str) -> BodyContract {
                 value.pointer_mut(pointer).unwrap()["$dynamicRef"] = json!("#node");
             }
         }
+        if mode == "composed" && name == "Tree" {
+            value["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
+            value["$dynamicAnchor"] = json!("node");
+            value["$defs"] = json!({"NodeConstraints":{"minProperties":1}});
+            for pointer in ["/properties/children/items", "/properties/parent/anyOf/0", "/properties/optional"] {
+                value.pointer_mut(pointer).unwrap()["$ref"] = json!("#/$defs/NodeConstraints");
+                value.pointer_mut(pointer).unwrap()["$dynamicRef"] = json!("#node");
+            }
+        }
         if mode == "recursive" && name == "Tree" {
             value["$schema"] = json!("https://json-schema.org/draft/2019-09/schema");
             value["$recursiveAnchor"] = json!(true);
