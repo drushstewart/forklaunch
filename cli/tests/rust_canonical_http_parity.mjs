@@ -15,7 +15,7 @@ const expected=JSON.parse(readFileSync(join(fixture,'package.json'))).dependenci
 for(const [name,version] of Object.entries(expected)) {
  assert.equal(JSON.parse(readFileSync(join(dependencies,'node_modules',name,'package.json'))).version,version,`${name} fixture version`);
 }
-const {SignJWT}=await import(pathToFileURL(require.resolve('jose')));
+const {SignJWT,jwtVerify}=await import(pathToFileURL(require.resolve('jose')));
 const temporary=mkdtempSync(join(tmpdir(),'fl-canonical-http-'));
 const children=[];
 function run(command,args){
@@ -55,14 +55,18 @@ try{
  run(join(dependencies,'node_modules/.bin/esbuild'),['service.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=service.mjs']);
  run('cargo',['build','--quiet','--manifest-path',join(root,'blueprint-rs/Cargo.toml'),'-p','forklaunch-blueprint-sample-service','--example','canonical_iam']);
  const ts=await start(process.execPath,['service.mjs']);
- const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/canonical_iam'),[]);
+ const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/canonical_iam'),[join(temporary,'issued.json')]);
  const key=new TextEncoder().encode('test-only-signing-key');
+ const issued=JSON.parse(readFileSync(join(temporary,'issued.json')));
+ const verified=await jwtVerify(issued.token,key,{algorithms:['HS256']});
+ assert.deepEqual(verified.payload,issued.claims);
+ assert.equal(verified.protectedHeader.alg,'HS256');
  const token=await new SignJWT({sub:'tester'}).setProtectedHeader({alg:'HS256'}).setExpirationTime('1h').sign(key);
  const expired=await new SignJWT({sub:'tester',exp:1}).setProtectedHeader({alg:'HS256'}).sign(key);
  const forged=await new SignJWT({sub:'tester'}).setProtectedHeader({alg:'HS256'}).setExpirationTime('1h').sign(new TextEncoder().encode('wrong-key'));
  const users=[{id:'user_1',email:'ada@example.com',display_name:null,disabled:false,roles:[]},{id:'user_2',email:'grace@example.com',display_name:null,disabled:false,roles:[]}];
  const cases=[
-  ['/users/user_1',token,200,users[0]],['/users/user_2',token,200,users[1]],
+  ['/users/user_1',token,200,users[0]],['/users/user_1',issued.token,200,users[0]],['/users/user_2',token,200,users[1]],
   ['/users',token,200,{items:users,next_cursor:null}],
   ['/users?limit=2&cursor=user_1',token,200,{items:users,next_cursor:null}],
   ['/users/missing',token,404,''],['/users',undefined,401],['/users','invalid',403],

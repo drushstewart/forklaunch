@@ -42,6 +42,26 @@ application responsibilities. The [in-memory conformance adapter](crates/forklau
 illustrates the hook boundary; 24 cases compare it with the actual TypeScript
 retention service. This does not claim generic SQL/ORM retention parity.
 
+## JWT authentication
+
+`forklaunch_auth::issue_jwt_hs256(&claims, secret)` issues typed `JwtClaims`
+through `jsonwebtoken`. Supply a server-owned subject, expiry in UNIX seconds,
+roles, permissions, scopes, features and subscription state. The function rejects
+empty subjects/keys; applications own expiry policy, secret generation, rotation
+and key distribution. `verify_jwt_hs256` checks the signature and expiry before
+returning a principal. For asymmetric keys and issuer/audience/algorithm policy,
+use `jwt::verify_jwk`, `verify_jwks`, or the optional remote-JWKS adapter with an
+explicit `Validation`. Token-provided key URLs never select trusted keys.
+
+The [canonical IAM example](../blueprint-rs/crates/sample-service/examples/canonical_iam.rs)
+shows issuance and router authentication with a test-only key. The actual
+TypeScript/JOSE fixture verifies Rust-issued claims and both servers accept the
+token; JOSE-issued tokens also authenticate against Rust. Declared JWT routes
+return 401 for missing credentials and 403 for invalid tokens. Opaque bearer
+session rejection remains 401. Native HTTP error bodies retain their structured
+JSON envelope; complete TypeScript error-envelope parity is still tracked.
+Better Auth JWT formats and provider/cookie/OIDC flows use their own adapter.
+
 ## Commands
 
 ```bash

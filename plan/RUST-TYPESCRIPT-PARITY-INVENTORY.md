@@ -2006,3 +2006,17 @@ correlation IDs. All 58 auth/Axum library tests, strict all-feature/all-target
 Clippy, the eighteen actual-framework HTTP outcomes and OpenAPI snapshots pass.
 The canonical fixture has no remaining rejected-JWT status exceptions.
 Checklist remains **629/682 (92.2%), 53 open**.
+
+
+### Typed JWT issuance and actual JOSE interoperability (2026-10-12)
+
+`forklaunch_auth::issue_jwt_hs256` now issues explicit server-owned `JwtClaims`
+through jsonwebtoken, complementing existing HS256 and configured JWK/JWKS
+verification. Empty subjects/keys fail; applications retain expiry, secret,
+rotation and grant policy. The canonical native example issues a test token,
+actual JOSE verifies every claim and both TypeScript/Rust services accept it.
+JOSE-issued tokens continue to authenticate against native verification.
+All twenty live HTTP outcomes, full OpenAPI snapshots, fifteen auth tests and
+strict auth/example Clippy checks pass. Documentation distinguishes the simple
+JWT helper from Better Auth's provider-specific signing and cookie/OIDC flows.
+Checklist: **630/682 (92.4%), 52 open**.

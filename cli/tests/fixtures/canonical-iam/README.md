@@ -5,7 +5,9 @@ Zod validator sources; external runtime dependencies are pinned in `package.json
 There are no replacement handlers, auth middleware or validator implementations.
 The native counterpart is `sample-service/examples/canonical_iam.rs`, which uses
 `forklaunch-blueprint-sample-service::iam_router` and the published IAM contracts.
-Both seed Ada and Grace and use the same test-only HS256 key.
+Both seed Ada and Grace and use the same test-only HS256 key. The native example
+issues a token through `issue_jwt_hs256`; JOSE verifies every claim and both
+services accept it, in addition to the JOSE-issued token cases.
 
 ```sh
 mkdir -p /tmp/fl-canonical-http-dependencies

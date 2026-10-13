@@ -164,6 +164,29 @@ pub fn verify_jwt_hs256(token: &str, signature_key: &[u8]) -> Result<Principal, 
         .map_err(|_| AuthError::InvalidCredentials)
 }
 
+/// Issues an HS256 JWT from server-owned claims and a nonempty signing key.
+///
+/// The caller supplies the subject, expiry (UNIX seconds) and grants explicitly.
+/// No claims are copied from a request or added implicitly. Use a securely
+/// generated secret; key distribution and rotation belong to the application.
+/// This does not replace the Better Auth adapter's provider-specific JWT format.
+///
+/// # Errors
+/// Returns [`AuthError::InvalidCredentials`] for an empty key/subject or when
+/// serialization/signing fails. The caller owns expiry policy; an already
+/// expired token can be issued but will fail verification.
+pub fn issue_jwt_hs256(claims: &JwtClaims, signature_key: &[u8]) -> Result<String, AuthError> {
+    if signature_key.is_empty() || claims.sub.is_empty() {
+        return Err(AuthError::InvalidCredentials);
+    }
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(Algorithm::HS256),
+        claims,
+        &jsonwebtoken::EncodingKey::from_secret(signature_key),
+    )
+    .map_err(|_| AuthError::InvalidCredentials)
+}
+
 /// Computes the base64-encoded HMAC-SHA256 signature for `payload`.
 /// # Panics
 ///
@@ -295,6 +318,29 @@ mod tests {
             .expect("clock after epoch")
             .as_secs();
         usize::try_from(now).unwrap_or(0) + 3600
+    }
+
+    #[test]
+    fn typed_jwt_issuance_preserves_grants_and_rejects_invalid_inputs() {
+        let mut claims = JwtClaims {
+            sub: "issuer-test".into(),
+            exp: 4_102_444_800,
+            roles: vec!["admin".into()],
+            permissions: vec!["users:read".into()],
+            scopes: vec!["profile".into()],
+            features: vec!["reports".into()],
+            active_subscription: true,
+        };
+        let token = issue_jwt_hs256(&claims, b"test-only-signing-key").unwrap();
+        let principal = verify_jwt_hs256(&token, b"test-only-signing-key").unwrap();
+        assert_eq!(principal, Principal::from_claims(claims.clone()));
+        assert!(verify_jwt_hs256(&token, b"different-key").is_err());
+        claims.exp = 1;
+        let expired = issue_jwt_hs256(&claims, b"test-only-signing-key").unwrap();
+        assert!(verify_jwt_hs256(&expired, b"test-only-signing-key").is_err());
+        assert!(issue_jwt_hs256(&claims, b"").is_err());
+        claims.sub.clear();
+        assert!(issue_jwt_hs256(&claims, b"test-only-signing-key").is_err());
     }
 
     #[test]
