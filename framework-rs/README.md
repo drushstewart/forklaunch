@@ -514,6 +514,15 @@ the TypeScript file validator's input acceptance; it does not reproduce arbitrar
 Zod transformations or treat the separate base64-string binary validator as a
 raw-byte validator.
 
+URL-encoded version matching supports flat string fields and repeated string
+arrays (`value=a&value=b` or `value[]=a&value[]=b`), with the TypeScript parser's
+percent-decoding fallback and repeated-key grouping. It rejects nested/indexed
+form paths and more than 1,000 parameters. Wire bytes remain available to the
+handler; version matching does not rewrite its body. Body decoding is shared
+across candidate versions. `rust_versioned_form_parity.mjs` compares this profile
+against the actual TypeScript content middleware. Full nested form semantics
+and caller-configurable parser options remain incomplete.
+
 Local handlers read `FrameworkRequest.version`; Axum handlers can extract
 `Extension<forklaunch_http::SelectedVersion>`. This contains `version` and
 `matched_versions`. MCP exposes each version as `operation [v<version>]` when

@@ -33,6 +33,17 @@ try {
   const result=await mcpRpc(base,'tools/call',{name:'writeFile [vv2]',arguments:{body:value}});
   assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{version:'v2',bytes:Array.from(Buffer.from(value))});
  }
+ for(const [value,version,status] of [['a','v1',201],['水a','v2',202]]) {
+  const raw=new URLSearchParams({value}).toString();
+  const response=await fetch(`${base}/versioned-form`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:raw});
+  assert.equal(response.status,status);assert.deepEqual(await response.json(),{version,raw});
+  const result=await mcpRpc(base,'tools/call',{name:`writeForm [v${version}]`,arguments:{body:{value}}});
+  assert.equal(result.isError,false,JSON.stringify(result));assert.deepEqual(JSON.parse(result.content[0].text),{version,raw});
+ }
+ for(const body of ['value=','value=a&value=b','value[nested]=a']) {
+  const response=await fetch(`${base}/versioned-form`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
+  assert.equal(response.status,400,body);
+ }
  const invalid=await fetch(`${base}/versions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:'v2',value:'bad'})});assert.equal(invalid.status,400);
  const openapi=await(await fetch(`${base}/openapi.json`)).json();
  assert.deepEqual(openapi.paths['/versions'].post['x-forklaunch-versions'],['v1','v2']);

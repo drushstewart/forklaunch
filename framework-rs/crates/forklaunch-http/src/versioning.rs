@@ -9,6 +9,8 @@ use forklaunch_contract::{
 };
 use serde_json::Value;
 use std::sync::Arc;
+#[path = "versioning_form.rs"]
+mod form;
 
 /// Available to local handlers and as an Axum request extension.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,10 +121,11 @@ impl VersionedRoutePlan {
         if self.variants.is_empty() {
             return Ok(None);
         }
+        let body_value = self.body_value(request);
         let mut matched = Vec::new();
         let mut selected = None;
         for variant in &self.variants {
-            if variant.matches(request) {
+            if variant.matches(request, body_value.as_ref()) {
                 matched.push(variant.name.clone());
                 selected = Some(variant);
             }
@@ -143,6 +146,31 @@ impl VersionedRoutePlan {
                     "request does not match any declared API version",
                 )]
             })
+    }
+    // Versions share a parser. Decode once, even when many schemas are tried.
+    fn body_value(&self, request: &FrameworkRequest) -> Option<Value> {
+        let variant = self.variants.iter().find(|variant| {
+            matches!(
+                variant.body,
+                Some(BodyValidator::Value(_) | BodyValidator::Bytes(_))
+            )
+        })?;
+        let kind = variant.route.request.body.as_ref()?.kind;
+        let bytes = match &request.body {
+            Body::Empty => &[][..],
+            Body::Text(text) => text.as_bytes(),
+            Body::Binary(bytes) => bytes.as_slice(),
+        };
+        match kind {
+            BodyKind::Json | BodyKind::Unknown => serde_json::from_slice(bytes).ok(),
+            BodyKind::File | BodyKind::Binary => Some(Value::Array(
+                bytes.iter().copied().map(Value::from).collect(),
+            )),
+            BodyKind::UrlEncoded => form::parse(bytes),
+            _ => std::str::from_utf8(bytes)
+                .ok()
+                .map(|text| Value::String(text.into())),
+        }
     }
 }
 fn parser_kind(body: Option<&forklaunch_contract::BodyContract>) -> Option<BodyKind> {
@@ -217,7 +245,7 @@ fn compile_body(
     }
 }
 impl Variant {
-    fn matches(&self, request: &FrameworkRequest) -> bool {
+    fn matches(&self, request: &FrameworkRequest, body_value: Option<&Value>) -> bool {
         if !validate_request_fields(&self.route.request, request).is_empty() {
             return false;
         }
@@ -240,42 +268,12 @@ impl Variant {
                 return false;
             }
         }
-        let Some(validate) = &self.body else {
-            return true;
-        };
-        let body = self
-            .route
-            .request
-            .body
-            .as_ref()
-            .expect("body validator requires contract");
-        let bytes = match &request.body {
-            Body::Empty => &[][..],
-            Body::Text(text) => text.as_bytes(),
-            Body::Binary(bytes) => bytes.as_slice(),
-        };
-        let validate = match validate {
-            BodyValidator::Opaque => return true,
-            BodyValidator::Bytes(validate) => {
-                return validate(&Value::Array(
-                    bytes.iter().copied().map(Value::from).collect(),
-                ))
-                .is_ok();
+        match &self.body {
+            None | Some(BodyValidator::Opaque) => true,
+            Some(BodyValidator::Value(validate) | BodyValidator::Bytes(validate)) => {
+                body_value.is_some_and(|value| validate(value).is_ok())
             }
-            BodyValidator::Value(validate) => validate,
-        };
-        let value = if matches!(body.kind, BodyKind::Json | BodyKind::Unknown) {
-            match serde_json::from_slice(bytes) {
-                Ok(value) => value,
-                Err(_) => return false,
-            }
-        } else {
-            match std::str::from_utf8(bytes) {
-                Ok(text) => Value::String(text.into()),
-                Err(_) => return false,
-            }
-        };
-        validate(&value).is_ok()
+        }
     }
 }
 

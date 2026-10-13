@@ -160,6 +160,7 @@ on:
       - 'cli/tests/rust_schema_dynamic_parity.mjs'
       - 'cli/tests/rust_schema_mixed_parity.mjs'
       - 'cli/tests/rust_versioned_api_parity.mjs'
+      - 'cli/tests/rust_versioned_form_parity.mjs'
       - 'cli/tests/rust_versioned_sdk_runtime.sh'
       - 'cli/tests/rust_versioned_sdk_runtime.mjs'
       - 'cli/tests/fixtures/rust_versioned_service.rs'
@@ -353,6 +354,7 @@ on:
       - 'cli/tests/rust_schema_dynamic_parity.mjs'
       - 'cli/tests/rust_schema_mixed_parity.mjs'
       - 'cli/tests/rust_versioned_api_parity.mjs'
+      - 'cli/tests/rust_versioned_form_parity.mjs'
       - 'cli/tests/rust_versioned_sdk_runtime.sh'
       - 'cli/tests/rust_versioned_sdk_runtime.mjs'
       - 'cli/tests/fixtures/rust_versioned_service.rs'
@@ -531,6 +533,9 @@ jobs:
       - run: node cli/tests/rust_schema_types_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_versioned_form_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_versioned_api_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

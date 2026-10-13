@@ -3172,3 +3172,27 @@ matching defect, not all media semantics: arbitrary transformations, the separat
 TypeScript base64-string binary validator, multipart/form matching and full
 wire-parser conformance remain tracked. MCP string-file calls do not establish
 arbitrary binary MCP transport parity.
+
+### 2026-10-13 — Versioned flat URL-encoded forms and shared body decoding
+
+Version selection parses URL-encoded flat fields and repeated string arrays into
+schema values, preserving original handler bytes. It follows qs repeated-key
+grouping, canonical integer-key ordering and malformed percent/UTF-8 escape
+fallback. Bracket-array names are supported; nested/indexed paths are rejected
+explicitly. Parsing has a 1,000-parameter bound. JSON/text/byte-array body decoding
+now happens once per request, shared by all candidate versions.
+
+Validation: 29 comparisons against the repository's actual Express content
+middleware, including raw-body capture, repeated keys, bracket arrays, Unicode,
+malformed escapes and prototype names; the existing 45 request-selector and six
+registration comparisons; 57 Axum/25 HTTP tests; strict Clippy; 899 embedded
+package files. Generated `run.l5FVJF` passed HTTP and MCP form version calls,
+invalid-form rejection, all previous media cases, both typed SDKs through three
+artifact sources and both native generators, startup and graceful shutdown.
+The wire-parser fixture is included in Rust parity CI. Receipts:
+`/private/tmp/fl-version-form-{actual-final,regression,units,clippy,generated,package}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. Nested/indexed forms, multipart
+version selection, configurable parser options and broader transformations are
+still incomplete. MCP form arrays retain TypeScript's existing JSON-composite
+serialization; this batch does not change that transport contract.

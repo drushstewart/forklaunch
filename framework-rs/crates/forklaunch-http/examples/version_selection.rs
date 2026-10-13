@@ -13,35 +13,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for fixture in fixtures {
         let mut contract = RouteContract::post("Versioned", "Versioned", "/versioned");
         if let Some(kinds) = fixture["parserKinds"].as_array() {
-            for (index, kind) in kinds.iter().enumerate() {
-                let kind = match kind.as_str().unwrap() {
-                    "none" => None,
-                    "json" => Some(BodyKind::Json),
-                    "text" => Some(BodyKind::Text),
-                    "file" => Some(BodyKind::File),
-                    "binary" => Some(BodyKind::Binary),
-                    "urlEncoded" => Some(BodyKind::UrlEncoded),
-                    "multipart" => Some(BodyKind::Multipart),
-                    _ => unreachable!(),
-                };
-                let body = kind.map(|kind| BodyContract {
-                    kind,
-                    ..BodyContract::json("Input")
-                });
-                contract = contract.with_version(VersionedContract {
-                    version: format!("v{index}"),
-                    request: RequestContract {
-                        body,
-                        ..Default::default()
-                    },
-                    responses: vec![],
-                });
-            }
-            output.push(json!({"accepted":VersionedRoutePlan::compile(&contract).is_ok()}));
+            output.push(parser_registration(kinds));
             continue;
         }
         let text = fixture["kind"] == "text";
         let file = fixture["kind"] == "file";
+        let form = fixture["kind"] == "form";
         for version in fixture["versions"].as_array().unwrap() {
             let mut body = BodyContract::json("Input");
             if text {
@@ -51,6 +28,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if file {
                 body.kind = BodyKind::File;
                 body.content_type = Some("application/octet-stream".into());
+            }
+            if form {
+                body.kind = BodyKind::UrlEncoded;
+                body.content_type = Some("application/x-www-form-urlencoded".into());
             }
             body.schema = body.schema.with_json_schema(version["schema"].to_string());
             contract = contract.with_version(VersionedContract {
@@ -69,7 +50,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .with_header(
                 "content-type",
-                if file {
+                if form {
+                    "application/x-www-form-urlencoded"
+                } else if file {
                     "application/octet-stream"
                 } else if text {
                     "text/plain"
@@ -86,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .collect(),
                 )
             } else {
-                Body::Text(if text {
+                Body::Text(if text || form {
                     case.as_str().unwrap().into()
                 } else {
                     case.to_string()
@@ -101,4 +84,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
+}
+
+fn parser_registration(kinds: &[Value]) -> Value {
+    let mut contract = RouteContract::post("Versioned", "Versioned", "/versioned");
+    for (index, kind) in kinds.iter().enumerate() {
+        let kind = match kind.as_str().unwrap() {
+            "none" => None,
+            "json" => Some(BodyKind::Json),
+            "text" => Some(BodyKind::Text),
+            "file" => Some(BodyKind::File),
+            "binary" => Some(BodyKind::Binary),
+            "urlEncoded" => Some(BodyKind::UrlEncoded),
+            "multipart" => Some(BodyKind::Multipart),
+            _ => unreachable!(),
+        };
+        let body = kind.map(|kind| BodyContract {
+            kind,
+            ..BodyContract::json("Input")
+        });
+        contract = contract.with_version(VersionedContract {
+            version: format!("v{index}"),
+            request: RequestContract {
+                body,
+                ..Default::default()
+            },
+            responses: vec![],
+        });
+    }
+    json!({"accepted":VersionedRoutePlan::compile(&contract).is_ok()})
 }
