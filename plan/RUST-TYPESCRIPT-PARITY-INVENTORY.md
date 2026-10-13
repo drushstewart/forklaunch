@@ -2422,3 +2422,33 @@ client scenarios (80 HTTP actions), HTTP/MCP shared/separate/disabled listeners,
 root/custom/URL namespaces, self-JWKS, persistence, shutdown and rename/delete.
 All 868 embedded sources passed. The completed owned workspace `run.VztQJh` was
 removed; runtime and package evidence use the same provider-index log prefix.
+
+
+### Final auth traversal migration and configured JWKS window
+
+All production Better Auth service callers now use indexed matches or keyset
+pages. Keyring signing, verification and JWKS publication read the configured
+adapter's first 100 inserted keys. An actual 101-record endpoint fixture caught
+and now verifies the prior JWKS publication mismatch. Operator rotation pages
+through all keys; it deliberately retains upstream's public first-100 window,
+so operators must prune historical rows before new keys fall outside that window.
+Retention uses 256-record pages and a bounded oldest-batch selection with stable
+insertion ties. Dry runs count without collecting decrypted account rows.
+
+All 31 portable auth tests passed; the restricted encrypted PostgreSQL fixture
+passed in 290.36 seconds. Both stores exercise more than 4,096 account and key
+records, retained-key behavior, final-page rotation, retention ordering/zero-size
+batches/dry runs/replay, tenant isolation, audit and rollback. Strict all-feature,
+all-target Clippy passed. Actual TS comparisons: key lifecycle 30, retention 41,
+signing 189 API + 216 storage, verification 393 API + 309 storage, JWT/JWKS 26.
+The rebuilt CLI packages all 868 sources. Evidence:
+`/private/tmp/fl-auth-final-scans-{tests,clippy,postgres,keyring,retention,sign_jwt,verify_jwt,jwt,package}.log`.
+Global expiration/retention scans remain linear and response arrays retain memory
+proportional to their matches; startup index backfill requires coordinated writers.
+
+The final rebuilt generated preset also passed both SDKs, all eight frontend
+client scenarios, HTTP/MCP startup (shared/separate/disabled), custom/root/URL
+namespaces, self-JWKS, persistence, shutdown and rename/delete
+(`fl-auth-final-scans-runtime.log`). Indexed auth storage gate is complete:
+**647/682 (94.9%), 35 open**. Broader Better Auth custom hooks/options and dynamic
+namespace semantics remain separate, open work.
