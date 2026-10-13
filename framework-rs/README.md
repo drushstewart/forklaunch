@@ -323,3 +323,32 @@ The [JSON boundary audit](../plan/RUST-JSON-BOUNDARY-AUDIT.md) records coverage 
 remaining limits, including unpaired surrogates, bounded nesting, and independent
 JavaScript/ORM normalization semantics. This does not claim upstream adoption or
 registry publication of the patched parser.
+
+
+### Typed multipart requests
+
+Enable `forklaunch-axum`'s `multipart` feature and use
+`multipart::Multipart<Upload>` as the last handler extractor. `Upload` implements
+`FrameworkSchema` (Serde, Schemars and garde); parsing and validation finish before
+the handler runs. Text parts map to strings, file parts to `Vec<u8>`. Octet-stream
+parts without filenames are files too. Repeated names use the last parsed part.
+Mixed text/file parts sharing a name are not a portable cross-language contract:
+Busboy assigns files on asynchronous stream completion. Use distinct field names.
+Filenames are ignored and never used as filesystem paths. Numeric/composite text
+coercion requires an explicit Serde model rule.
+
+`Extension(MultipartLimits { parts: 128, field_bytes: 1024 * 1024,
+total_bytes: 2 * 1024 * 1024 })` supplies the defaults; customize them per router.
+Every part counts, including overwritten values. These are additional limits:
+Axum's `DefaultBodyLimit` and `RouterConfig` body limits still apply. Invalid
+models/forms return 400, extractor size limits return 413, and invalid zero
+limits return 500. Error text omits uploaded values. The framework router's
+earlier total-body limit retains its existing framework validation response.
+
+Unlike Busboy's permissive text decoder, this extractor rejects invalid UTF-8;
+it does not implement legacy charset conversion. It preserves file bytes,
+including empty files, and does not JSON-parse text fields implicitly.
+`cli/tests/rust_multipart_extract_parity.mjs` compares seven cases against the
+actual TypeScript discriminator/content-parser source with Busboy, including
+repeated fields/files, Unicode, binary/empty files and filename-less octet streams.
+SDK multipart response decoding and MCP multipart remain separate open tasks.

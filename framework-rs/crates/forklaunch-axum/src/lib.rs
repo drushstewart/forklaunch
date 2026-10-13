@@ -8,6 +8,8 @@ mod docs;
 pub use docs::{ScalarDocument, ScalarSource};
 #[cfg(feature = "mcp")]
 mod mcp_runtime;
+#[cfg(feature = "multipart")]
+pub mod multipart;
 #[cfg(feature = "adapter")]
 pub mod router;
 #[cfg(feature = "adapter")]

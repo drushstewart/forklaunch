@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 default = ["adapter"]
+multipart = ["adapter", "axum/multipart", "dep:forklaunch-validation"]
 sse = ["adapter", "dep:futures-util", "dep:forklaunch-validation"]
 websocket = ["adapter", "axum/ws", "dep:forklaunch-ws", "dep:futures-util"]
 mcp = ["adapter", "dep:forklaunch-mcp", "tokio/sync", "tokio/time"]

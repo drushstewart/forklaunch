@@ -2096,3 +2096,21 @@ contract/OpenAPI artifacts, calling Rust and compiled TypeScript services.
 HTTP/MCP startup, initialization, discovery, invocation, Origin rejection and
 graceful shutdown pass. The owned generated workspace was removed.
 Checklist remains **632/682 (92.7%), 50 open**.
+
+
+### Typed multipart request extraction (2026-10-12)
+
+The opt-in Axum multipart feature supplies `Multipart<T>` with automatic Serde
+decoding and garde validation, plus independent field/count/total byte limits.
+Files preserve bytes and filenames never become paths. Requests reject malformed
+MIME, missing/unknown fields, invalid UTF-8, model violations and size overflow
+before handler entry, without echoing uploaded values. Seven comparisons execute
+the actual TypeScript discriminator and Express content parser with Busboy; they
+cover Unicode, binary/empty/repeated files, repeated text and filename-less
+octet-stream classification. Legacy charset decoding and mixed text/file name
+collisions are explicitly outside this comparison's portable contract.
+All-feature Axum tests pass (48 library and three live integration tests), strict
+all-feature/all-target Clippy passes, and all 863 embedded source/template entries
+are packaged. CI runs the actual-parser comparison; owned fixture output cleans
+itself up. The multipart checkbox stays open for SDK response decoding.
+Checklist remains **632/682 (92.7%), 50 open**.
