@@ -1,0 +1,37 @@
+name: Rust public API inventory
+
+on:
+  pull_request:
+    paths:
+      - 'framework/**'
+      - 'blueprint/**'
+      - 'plan/RUST-TYPESCRIPT-PARITY-INVENTORY.md'
+      - 'plan/rust-typescript-public-api.json'
+      - 'scripts/*rust_api_inventory.mjs'
+      - '.github/workflows/rust_api_inventory.yml'
+  push:
+    branches: [main, rohin/rust-framework]
+    paths:
+      - 'framework/**'
+      - 'blueprint/**'
+      - 'plan/RUST-TYPESCRIPT-PARITY-INVENTORY.md'
+      - 'plan/rust-typescript-public-api.json'
+      - 'scripts/*rust_api_inventory.mjs'
+      - '.github/workflows/rust_api_inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/fl-api-inventory" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
+      - run: node scripts/test_rust_api_inventory.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-api-inventory/node_modules/.bin/tsc

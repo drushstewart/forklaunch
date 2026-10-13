@@ -12,6 +12,26 @@ Express/HyperExpress/Bun clones. Provider protocols and broker/storage formats
 require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
+The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
+It records 608 resolved declaration entry points and 1,662 declaration/re-export
+records across the 44 packages, with source locations, public service/member
+signatures, type aliases, explicit external re-export boundaries, private module
+sources and CLI bins. Counts include repeated declarations exposed by different
+packages; they are not counts of independent features or completed parity items.
+`scripts/rust_api_inventory.mjs` follows manifest type exports (including wildcard
+subpaths), build output/root directories and local source/re-export graphs. It
+checks the package table against tracked manifests. Regenerate with `TSC_BIN`
+pointing to TypeScript 5.9.3's `tsc`, then run
+`node scripts/test_rust_api_inventory.mjs`; CI checks for drift without executing
+application code or installing application dependencies.
+
+This is a syntactic source inventory, not a type checker or proof of equivalent
+Rust behavior. Imported aliases, external exports, computed schema/DTO shapes,
+class inheritance, compiler-generated declarations and dynamic runtime behavior
+still need semantic review. Private application source lists and binary paths are
+capability leads, not public npm exports. Detailed Rust symbol/fixture mappings
+remain open under checklist item 849; this inventory does not close that item.
+
 | Source package | Rust implementation | Remaining scope / evidence |
 | --- | --- | --- |
 | [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Native builds and mixed Node/Bun Compose orchestration pass live HTTP/MCP, source reload and shutdown fixtures; automatic contract/SDK refresh remains. |
