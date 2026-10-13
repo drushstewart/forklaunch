@@ -254,3 +254,34 @@ pub(crate) async fn find_all<T: AuthTransaction>(
         }
     }
 }
+
+/// Preserve raw stored JSON equality for legacy non-string relationship values.
+/// Valid string relationships take the indexed path. Other values require paged
+/// traversal; missing fields remain distinct from explicitly stored nulls.
+pub(crate) async fn find_all_value<T: AuthTransaction>(
+    tx: &mut T,
+    model: Model,
+    field: &str,
+    value: &Value,
+) -> BlueprintResult<Vec<Value>> {
+    if let Some(value) = value.as_str() {
+        return find_all(tx, model, field, value).await;
+    }
+    if !model.indexed_fields().contains(&field) {
+        return Err(invalid());
+    }
+    let mut rows = Vec::new();
+    let mut after = None;
+    loop {
+        let page = tx.list_page(model, after, 256).await?;
+        rows.extend(
+            page.records
+                .into_iter()
+                .filter(|row| row.get(field) == Some(value)),
+        );
+        after = page.next;
+        if after.is_none() {
+            return Ok(rows);
+        }
+    }
+}

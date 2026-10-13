@@ -159,7 +159,7 @@ impl<S: AuthStore> OrganizationService<S> {
             return Err(BlueprintError::new("HTTP_BAD_REQUEST_EMPTY", "Bad Request"));
         };
         for model in [Model::Member, Model::Invitation] {
-            for row in tx.list(model).await? {
+            for row in crate::store::find_all(&mut tx, model, "organizationId", id).await? {
                 if row["organizationId"] == id {
                     tx.delete(model, text(&row, "id")?).await?;
                 }
@@ -175,8 +175,7 @@ pub(super) async fn find_member<T: AuthTransaction>(
     user: &str,
     organization: &str,
 ) -> BlueprintResult<Option<Value>> {
-    Ok(tx
-        .list(Model::Member)
+    Ok(crate::store::find_all(tx, Model::Member, "userId", user)
         .await?
         .into_iter()
         .find(|row| row["userId"] == user && row["organizationId"] == organization))

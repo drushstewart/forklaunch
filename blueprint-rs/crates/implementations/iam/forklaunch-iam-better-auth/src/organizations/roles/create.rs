@@ -27,8 +27,7 @@ impl<S: AuthStore> OrganizationService<S> {
         })?;
         let name = text(body, "role")?.to_lowercase();
         check_predefined(&name)?;
-        let member = tx
-            .list(Model::Member)
+        let member = crate::store::find_all(&mut tx, Model::Member, "organizationId", &org)
             .await?
             .into_iter()
             .find(|row| row["organizationId"] == org && row["userId"] == view.user["id"])
@@ -44,8 +43,7 @@ impl<S: AuthStore> OrganizationService<S> {
         }
         let permission = &body["permission"];
         check_permissions(&mut tx, &org, role, permission, "create").await?;
-        if tx
-            .list(Model::OrganizationRole)
+        if crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
             .await?
             .iter()
             .any(|row| row["organizationId"] == org && row["role"] == name)

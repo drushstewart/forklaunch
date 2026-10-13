@@ -32,8 +32,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .ok_or_else(missing)?;
         let email = text(body, "email")?.to_lowercase();
         crate::accounts::validate_email(&email)?;
-        let member = tx
-            .list(Model::Member)
+        let member = crate::store::find_all(&mut tx, Model::Member, "organizationId", org)
             .await?
             .into_iter()
             .find(|row| row["organizationId"] == org && row["userId"] == view.user["id"])

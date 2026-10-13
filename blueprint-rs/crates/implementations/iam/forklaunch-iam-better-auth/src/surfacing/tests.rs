@@ -76,3 +76,39 @@ pub(crate) async fn exercise<S: AuthStore>(store: Arc<S>) {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn legacy_non_string_relationship_equality_survives_indexing() {
+    let store = Arc::new(crate::store::memory::MemoryAuthStore::default());
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::Session, json!({"id":"legacy-session","userId":"legacy-user","activeOrganizationId":42,"createdAt":"2027-01-15T07:00:00Z","expiresAt":"2027-01-16T08:00:00Z"})).await.unwrap();
+    tx.insert(
+        Model::Member,
+        json!({"id":"legacy-member","userId":"legacy-user","organizationId":42,"role":"owner"}),
+    )
+    .await
+    .unwrap();
+    tx.insert(
+        Model::OrganizationRole,
+        json!({"id":"legacy-role","organizationId":42,"role":"owner","permission":"opaque"}),
+    )
+    .await
+    .unwrap();
+    tx.insert(
+        Model::OrganizationRole,
+        json!({"id":"string-role","organizationId":"42","role":"owner","permission":"wrong"}),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let now = DateTime::parse_from_rfc3339("2027-01-15T08:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    assert_eq!(
+        SurfacingService::new(store)
+            .surface_permissions("legacy-user", now)
+            .await
+            .unwrap(),
+        vec![json!("opaque")]
+    );
+}

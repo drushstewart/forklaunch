@@ -24,14 +24,14 @@ impl<S: AuthStore> OrganizationService<S> {
             .ok_or_else(unauthorized)?;
         let org = scope(org, &view.session)?;
         authorize(&mut tx, &org, text(&view.user, "id")?, true).await?;
-        let roles = tx
-            .list(Model::OrganizationRole)
-            .await?
-            .into_iter()
-            .filter(|row| row["organizationId"] == org)
-            .take(100)
-            .map(public)
-            .collect::<BlueprintResult<Vec<_>>>()?;
+        let roles =
+            crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
+                .await?
+                .into_iter()
+                .filter(|row| row["organizationId"] == org)
+                .take(100)
+                .map(public)
+                .collect::<BlueprintResult<Vec<_>>>()?;
         tx.commit().await?;
         Ok(json!(roles))
     }
@@ -64,8 +64,7 @@ impl<S: AuthStore> OrganizationService<S> {
                     .ok_or_else(not_found)?,
             )
         };
-        let role = tx
-            .list(Model::OrganizationRole)
+        let role = crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
             .await?
             .into_iter()
             .find(|row| row["organizationId"] == org && row[field] == key)
@@ -88,8 +87,7 @@ async fn authorize<T: AuthTransaction>(
     user: &str,
     list: bool,
 ) -> BlueprintResult<()> {
-    let member = tx
-        .list(Model::Member)
+    let member = crate::store::find_all(tx, Model::Member, "userId", user)
         .await?
         .into_iter()
         .find(|row| row["organizationId"] == org && row["userId"] == user)

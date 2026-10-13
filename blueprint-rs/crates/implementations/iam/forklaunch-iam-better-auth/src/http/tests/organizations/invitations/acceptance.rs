@@ -96,7 +96,7 @@ async fn persisted<S: AuthStore>(store: &Arc<S>, org: &str, session: &Value, tea
     assert_eq!(current["activeOrganizationId"], org);
     assert_eq!(current["activeTeamId"], team["id"]);
     assert_eq!(
-        tx.list(Model::Member)
+        crate::store::find_all(&mut tx, Model::Member, "organizationId", org)
             .await
             .unwrap()
             .iter()

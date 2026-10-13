@@ -37,15 +37,19 @@ impl<S: AuthStore> SurfacingService<S> {
         let permissions = if crate::keyring::verify::truthy(&organization)
             && crate::keyring::verify::truthy(&role)
         {
-            tx.list(Model::OrganizationRole)
-                .await?
-                .into_iter()
-                .filter(|row| {
-                    row.get("organizationId") == Some(&organization)
-                        && row.get("role") == Some(&role)
-                })
-                .map(|row| row.get("permission").cloned().unwrap_or(Value::Null))
-                .collect()
+            crate::store::find_all_value(
+                &mut tx,
+                Model::OrganizationRole,
+                "organizationId",
+                &organization,
+            )
+            .await?
+            .into_iter()
+            .filter(|row| {
+                row.get("organizationId") == Some(&organization) && row.get("role") == Some(&role)
+            })
+            .map(|row| row.get("permission").cloned().unwrap_or(Value::Null))
+            .collect()
         } else {
             vec![]
         };
@@ -58,8 +62,7 @@ async fn active_organization<T: AuthTransaction>(
     user_id: &str,
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
-    let mut sessions: Vec<_> = tx
-        .list(Model::Session)
+    let mut sessions: Vec<_> = crate::store::find_all(tx, Model::Session, "userId", user_id)
         .await?
         .into_iter()
         .filter(|row| {
@@ -94,8 +97,7 @@ async fn role<T: AuthTransaction>(
     if !crate::keyring::verify::truthy(organization) {
         return Ok(Value::Null);
     }
-    Ok(tx
-        .list(Model::Member)
+    Ok(crate::store::find_all(tx, Model::Member, "userId", user_id)
         .await?
         .into_iter()
         .find(|row| {

@@ -46,7 +46,7 @@ impl<S: AuthStore> OrganizationService<S> {
         }
         let mut members = Vec::new();
         let filter = filter::Filter::new(query)?;
-        for member in tx.list(Model::Member).await? {
+        for member in crate::store::find_all(&mut tx, Model::Member, "organizationId", &id).await? {
             if member["organizationId"] == id && filter.matches(&member)? {
                 members.push(member);
             }

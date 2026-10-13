@@ -81,8 +81,7 @@ impl<S: AuthStore> OrganizationService<S> {
         } else {
             None
         };
-        let count = tx
-            .list(Model::Member)
+        let count = crate::store::find_all(&mut tx, Model::Member, "organizationId", id)
             .await?
             .iter()
             .filter(|row| row["organizationId"] == id)

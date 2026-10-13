@@ -24,12 +24,12 @@ impl<S: AuthStore> OrganizationService<S> {
         let org = scope(body["organizationId"].as_str(), &view.session)?;
         let member_role = authorize(&mut tx, &org, text(&view.user, "id")?, "update").await?;
         let (field, key) = selector(body)?;
-        let rows: Vec<_> = tx
-            .list(Model::OrganizationRole)
-            .await?
-            .into_iter()
-            .filter(|row| row["organizationId"] == org && row[field] == key)
-            .collect();
+        let rows: Vec<_> =
+            crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
+                .await?
+                .into_iter()
+                .filter(|row| row["organizationId"] == org && row[field] == key)
+                .collect();
         let old = rows.first().ok_or_else(not_found)?;
         let old_permission = match old["permission"].as_str() {
             Some("") | None if old["permission"].is_null() || old["permission"] == "" => {
@@ -55,8 +55,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .map(str::to_lowercase);
         if let Some(name) = &name {
             check_predefined(name)?;
-            if tx
-                .list(Model::OrganizationRole)
+            if crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
                 .await?
                 .iter()
                 .any(|row| row["organizationId"] == org && row["role"] == *name)
@@ -117,16 +116,15 @@ impl<S: AuthStore> OrganizationService<S> {
                 "Cannot delete a pre-defined role",
             ));
         }
-        let rows: Vec<_> = tx
-            .list(Model::OrganizationRole)
-            .await?
-            .into_iter()
-            .filter(|row| row["organizationId"] == org && row[field] == key)
-            .collect();
+        let rows: Vec<_> =
+            crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
+                .await?
+                .into_iter()
+                .filter(|row| row["organizationId"] == org && row[field] == key)
+                .collect();
         let row = public(rows.first().ok_or_else(not_found)?.clone())?;
         let name = text(&row, "role")?;
-        if tx
-            .list(Model::Member)
+        if crate::store::find_all(&mut tx, Model::Member, "organizationId", &org)
             .await?
             .iter()
             .filter(|row| {
@@ -175,8 +173,7 @@ async fn authorize<T: AuthTransaction>(
     user: &str,
     action: &str,
 ) -> BlueprintResult<String> {
-    let member = tx
-        .list(Model::Member)
+    let member = crate::store::find_all(tx, Model::Member, "organizationId", org)
         .await?
         .into_iter()
         .find(|row| row["organizationId"] == org && row["userId"] == user)

@@ -47,8 +47,7 @@ impl<S: AuthStore> OrganizationService<S> {
             ));
         }
         let org = text(&invitation, "organizationId")?.to_owned();
-        let count = tx
-            .list(Model::Member)
+        let count = crate::store::find_all(&mut tx, Model::Member, "organizationId", &org)
             .await?
             .iter()
             .filter(|row| row["organizationId"] == org)

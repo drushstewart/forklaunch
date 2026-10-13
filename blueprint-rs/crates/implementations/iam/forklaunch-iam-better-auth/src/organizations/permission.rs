@@ -30,8 +30,7 @@ pub(super) async fn allowed_with_creator<T: AuthTransaction>(
             BTreeMap::from([("platform".to_owned(), actions)]),
         );
     }
-    for row in tx
-        .list(Model::OrganizationRole)
+    for row in crate::store::find_all(tx, Model::OrganizationRole, "organizationId", organization)
         .await?
         .into_iter()
         .filter(|row| row["organizationId"] == organization)

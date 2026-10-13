@@ -58,28 +58,33 @@ async fn joined<T: AuthTransaction>(
     Ok(Some(member))
 }
 async fn owner_count<T: AuthTransaction>(tx: &mut T, organization: &str) -> BlueprintResult<usize> {
-    Ok(tx
-        .list(Model::Member)
-        .await?
-        .iter()
-        .filter(|row| row["organizationId"] == organization)
-        .take(100)
-        .filter(|row| owns(row))
-        .count())
+    Ok(
+        crate::store::find_all(tx, Model::Member, "organizationId", organization)
+            .await?
+            .iter()
+            .filter(|row| row["organizationId"] == organization)
+            .take(100)
+            .filter(|row| owns(row))
+            .count(),
+    )
 }
 async fn delete_member<T: AuthTransaction>(tx: &mut T, member: &Value) -> BlueprintResult<()> {
     tx.delete(Model::Member, text(member, "id")?).await?;
     let user = text(member, "userId")?;
-    for mut team in tx
-        .list(Model::Team)
-        .await?
-        .into_iter()
-        .filter(|row| row["organizationId"] == member["organizationId"])
-        .take(100)
+    for mut team in crate::store::find_all(
+        tx,
+        Model::Team,
+        "organizationId",
+        text(member, "organizationId")?,
+    )
+    .await?
+    .into_iter()
+    .filter(|row| row["organizationId"] == member["organizationId"])
+    .take(100)
     {
         let id = text(&team, "id")?.to_owned();
         let mut removed = 0_i64;
-        for row in tx.list(Model::TeamMember).await? {
+        for row in crate::store::find_all(tx, Model::TeamMember, "teamId", &id).await? {
             if row["teamId"] == id && row["userId"] == user {
                 tx.delete(Model::TeamMember, text(&row, "id")?).await?;
                 removed += 1;

@@ -89,8 +89,7 @@ async fn full_graph<T: AuthTransaction>(
     limit: Option<i64>,
 ) -> BlueprintResult<Value> {
     let id = text(&organization, "id")?.to_owned();
-    let mut members: Vec<_> = tx
-        .list(Model::Member)
+    let mut members: Vec<_> = crate::store::find_all(tx, Model::Member, "organizationId", &id)
         .await?
         .into_iter()
         .filter(|row| row["organizationId"] == id)
@@ -123,7 +122,7 @@ async fn full_graph<T: AuthTransaction>(
     }
     organization["members"] = json!(members);
     organization["invitations"] = json!(
-        tx.list(Model::Invitation)
+        crate::store::find_all(tx, Model::Invitation, "organizationId", &id)
             .await?
             .into_iter()
             .filter(|row| row["organizationId"] == id)
@@ -131,7 +130,7 @@ async fn full_graph<T: AuthTransaction>(
             .collect::<Vec<_>>()
     );
     organization["teams"] = json!(
-        tx.list(Model::Team)
+        crate::store::find_all(tx, Model::Team, "organizationId", &id)
             .await?
             .into_iter()
             .filter(|row| row["organizationId"] == id)

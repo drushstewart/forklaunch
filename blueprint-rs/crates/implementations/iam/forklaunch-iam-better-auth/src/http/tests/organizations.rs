@@ -191,7 +191,7 @@ async fn mutations<S: AuthStore>(
     let mut tx = store.begin(false).await.unwrap();
     assert!(tx.get(Model::Organization, id).await.unwrap().is_none());
     assert!(
-        tx.list(Model::Member)
+        crate::store::find_all(&mut tx, Model::Member, "organizationId", id)
             .await
             .unwrap()
             .iter()

@@ -64,8 +64,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(|| BlueprintError::new("INVITATION_NOT_FOUND", "Invitation not found"))?;
         let org = text(&invitation, "organizationId")?;
-        let member = tx
-            .list(Model::Member)
+        let member = crate::store::find_all(&mut tx, Model::Member, "organizationId", org)
             .await?
             .into_iter()
             .find(|row| row["organizationId"] == org && row["userId"] == view.user["id"])

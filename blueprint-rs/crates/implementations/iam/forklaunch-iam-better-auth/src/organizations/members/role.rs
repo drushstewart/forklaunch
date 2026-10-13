@@ -134,19 +134,19 @@ async fn validate_roles<T: AuthTransaction>(
     if unknown.is_empty() {
         return Ok(());
     }
-    let found: Vec<_> = tx
-        .list(Model::OrganizationRole)
-        .await?
-        .into_iter()
-        .filter(|row| {
-            row["organizationId"] == organization
-                && unknown
-                    .iter()
-                    .any(|role| row["role"].as_str() == Some(role))
-        })
-        .take(100)
-        .filter_map(|row| row["role"].as_str().map(str::to_owned))
-        .collect();
+    let found: Vec<_> =
+        crate::store::find_all(tx, Model::OrganizationRole, "organizationId", organization)
+            .await?
+            .into_iter()
+            .filter(|row| {
+                row["organizationId"] == organization
+                    && unknown
+                        .iter()
+                        .any(|role| row["role"].as_str() == Some(role))
+            })
+            .take(100)
+            .filter_map(|row| row["role"].as_str().map(str::to_owned))
+            .collect();
     let invalid: Vec<_> = unknown
         .into_iter()
         .filter(|role| !found.contains(role))

@@ -68,8 +68,13 @@ the tenant write lock; this startup cost scales with the existing dataset.
 Deploy index-aware writers together, since old binaries do not maintain these
 claims. `reindex_relationships` also supports trusted key-rotation/backfill work.
 Signup/signin, session collection operations, linked-account listing/removal and
-organization membership checks/listing now use scoped indexes. Other handlers
-still require query migration before claiming scalable production parity.
+organization membership checks/listing now use scoped indexes. Member listing,
+mutations, organization deletion/full graphs, dynamic roles, invitation membership
+guards and application role/permission surfacing also use scoped relationship
+queries. Stored legacy non-string organization values retain JSON equality through
+a paged fallback; valid string relationships use indexes. Remaining team/provider/
+verification/compliance handlers still require migration before claiming scalable
+production parity.
 
 `keyring::KeyRing` initializes keys atomically, selects the newest live key,
 restores private keys from storage, rotates keys through trusted operator calls,

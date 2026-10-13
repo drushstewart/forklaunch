@@ -29,8 +29,7 @@ pub(super) async fn validate_roles<T: AuthTransaction>(
                 )
         })
         .collect::<Vec<_>>();
-    let found = tx
-        .list(Model::OrganizationRole)
+    let found = crate::store::find_all(tx, Model::OrganizationRole, "organizationId", org)
         .await?
         .into_iter()
         .filter(|row| {
@@ -94,8 +93,7 @@ pub(super) async fn ensure_not_member<T: AuthTransaction>(
     email: &str,
 ) -> BlueprintResult<()> {
     if let Some(user) = tx.find_unique(Model::User, "email", email).await?
-        && tx
-            .list(Model::Member)
+        && crate::store::find_all(tx, Model::Member, "organizationId", org)
             .await?
             .iter()
             .any(|row| row["organizationId"] == org && row["userId"] == user["id"])

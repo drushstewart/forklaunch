@@ -495,11 +495,13 @@ async fn exercise_pagination<S: AuthStore>(store: &S) {
     tx.commit().await.unwrap();
 }
 
-async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync::Arc<S>) {
+async fn seed_large_directory<S: AuthStore>(store: &S) {
     let mut tx = store.begin(true).await.unwrap();
     for index in 0..4100 {
         tx.insert(Model::User, json!({"id":format!("imported-{index}"),"email":format!("imported-{index}@fixture.test")})).await.unwrap();
         tx.insert(Model::Account, json!({"id":format!("imported-account-{index}"),"userId":format!("imported-{index}"),"providerId":"external","accountId":format!("external-{index}")})).await.unwrap();
+        tx.insert(Model::Member, json!({"id":format!("imported-member-{index}"),"userId":format!("imported-{index}"),"organizationId":"foreign-large-org","role":"member"})).await.unwrap();
+        tx.insert(Model::OrganizationRole, json!({"id":format!("imported-role-{index}"),"organizationId":"foreign-large-org","role":"owner","permission":"{"})).await.unwrap();
     }
     tx.insert(
         Model::Organization,
@@ -508,6 +510,10 @@ async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync:
     .await
     .unwrap();
     tx.commit().await.unwrap();
+}
+
+async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync::Arc<S>) {
+    seed_large_directory(store.as_ref()).await;
     exercise_pagination(store.as_ref()).await;
     let mut tx = store.begin(false).await.unwrap();
     assert!(
@@ -548,6 +554,13 @@ async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync:
     .unwrap();
     let login = service.sign_in(signin, "", "", now).await.unwrap();
     assert_eq!(grant.user, login.user);
+    exercise_large_organization_queries(
+        store.clone(),
+        login.session["token"].as_str().unwrap(),
+        login.user["id"].as_str().unwrap(),
+        now,
+    )
+    .await;
     let organizations = crate::organizations::OrganizationService::new(store.clone());
     assert_eq!(
         organizations
@@ -591,6 +604,109 @@ async fn exercise_large_unique_lookups<S: AuthStore + 'static>(store: std::sync:
     tx.commit().await.unwrap();
     #[cfg(feature = "http")]
     crate::http::tests::exercise_http(store).await;
+}
+
+async fn exercise_large_organization_queries<S: AuthStore>(
+    store: std::sync::Arc<S>,
+    token: &str,
+    user: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) {
+    let service = crate::organizations::OrganizationService::new(store.clone());
+    let org = service
+        .create(
+            token,
+            false,
+            &json!({"name":"Scoped organization","slug":"scoped-large-org"}),
+            now,
+        )
+        .await
+        .unwrap();
+    let id = org["id"].as_str().unwrap();
+    let listed = service
+        .list_members(token, false, &json!({"organizationId":id}), now)
+        .await
+        .unwrap();
+    assert_eq!(listed["total"], 1);
+    assert_eq!(listed["members"][0]["userId"], user);
+    let graph = service
+        .full(token, false, Some(id), None, None, now)
+        .await
+        .unwrap();
+    assert_eq!(graph["members"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        service
+            .has_permission(
+                token,
+                false,
+                &json!({"permissions":{"platform":["platform:read"]}}),
+                now
+            )
+            .await
+            .unwrap()["success"],
+        true
+    );
+    let mut tx = store.begin(true).await.unwrap();
+    let permission = json!({"ac":["read"],"organization":["delete"]}).to_string();
+    tx.insert(
+        Model::OrganizationRole,
+        json!({"id":"large-own-grant","organizationId":id,"role":"owner","permission":permission}),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        service
+            .list_organization_roles(token, false, Some(id), now)
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        service
+            .get_organization_role(
+                token,
+                false,
+                &json!({"organizationId":id,"roleName":"owner"}),
+                now
+            )
+            .await
+            .unwrap()["id"],
+        "large-own-grant"
+    );
+    let surfacing = crate::surfacing::SurfacingService::new(store.clone());
+    assert_eq!(surfacing.surface_role(user, now).await.unwrap(), "owner");
+    assert_eq!(
+        surfacing.surface_permissions(user, now).await.unwrap(),
+        vec![json!(permission)]
+    );
+    service.delete(token, false, id, now).await.unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(
+        tx.find_page(Model::Member, "organizationId", id, None, 1)
+            .await
+            .unwrap()
+            .records
+            .is_empty()
+    );
+    assert_eq!(
+        tx.find_page(
+            Model::Member,
+            "organizationId",
+            "foreign-large-org",
+            None,
+            4096
+        )
+        .await
+        .unwrap()
+        .records
+        .len(),
+        4096
+    );
+    tx.commit().await.unwrap();
 }
 
 #[tokio::test]
