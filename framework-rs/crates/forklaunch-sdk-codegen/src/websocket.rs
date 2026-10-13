@@ -12,6 +12,7 @@ use crate::{SchemaModels, compile_schema};
 pub struct SocketPayloadPlan {
     pub schema: Value,
     pub binary: bool,
+    pub json_encoding: bool,
     pub models: SchemaModels,
 }
 
@@ -63,6 +64,7 @@ fn payload(name: &str, entry: Option<&SocketSchemaEntry>) -> Result<SocketPayloa
         return Ok(SocketPayloadPlan {
             schema: entry.shape.clone(),
             binary: true,
+            json_encoding: false,
             models: SchemaModels {
                 rust_models: Vec::new(),
                 rust_aliases: vec![crate::RustTypeAliasTemplate {
@@ -84,6 +86,7 @@ fn payload(name: &str, entry: Option<&SocketSchemaEntry>) -> Result<SocketPayloa
     Ok(SocketPayloadPlan {
         schema: schema.clone(),
         binary: false,
+        json_encoding: entry.is_some_and(|entry| entry.json_encoding),
         models,
     })
 }
@@ -100,6 +103,13 @@ fn collection(
     }
     if entries.values().any(|entry| entry.binary) {
         bail!("Binary socket directions require exactly one explicit message entry");
+    }
+    let json_encoding = entries.values().next().unwrap().json_encoding;
+    if entries
+        .values()
+        .any(|entry| entry.json_encoding != json_encoding)
+    {
+        bail!("Socket message unions must use one wire encoding");
     }
     if entries.len() > 1024 {
         bail!("Socket message union exceeds 1024 alternatives");
@@ -157,7 +167,9 @@ fn collection(
         schemas.push(serde_json::from_str::<Value>(&relocated)?);
     }
     let schema = json!({"$schema": dialect, "anyOf": schemas});
-    payload(name, Some(&SocketSchemaEntry::new(schema)))
+    let mut entry = SocketSchemaEntry::new(schema);
+    entry.json_encoding = json_encoding;
+    payload(name, Some(&entry))
 }
 
 struct UnionBytes(usize);
@@ -177,6 +189,28 @@ impl std::io::Write for UnionBytes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_encoding_is_preserved_and_mixed_encodings_are_rejected() {
+        let mut contract = SocketContract::new("/json")
+            .with_client_message("string", SocketSchemaEntry::json(json!({"type":"string"})))
+            .with_client_message("null", SocketSchemaEntry::json(json!({"type":"null"})));
+        assert!(
+            SocketSdkPlan::from_contract(&contract)
+                .unwrap()
+                .outgoing
+                .json_encoding
+        );
+        contract
+            .client_messages
+            .get_mut("string")
+            .unwrap()
+            .json_encoding = false;
+        assert!(SocketSdkPlan::from_contract(&contract).is_err());
+        let mut entry = SocketSchemaEntry::binary();
+        entry.json_encoding = true;
+        assert!(!entry.valid_binary_shape());
+    }
 
     #[test]
     fn binary_metadata_is_explicit_and_rejects_ambiguous_constraints() {

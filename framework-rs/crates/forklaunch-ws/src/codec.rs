@@ -30,6 +30,7 @@ type Validator<T> = dyn Fn(&T) -> Result<(), String> + Send + Sync;
 
 /// Encodes messages as raw UTF-8 strings or JSON bytes, matching the TS helpers.
 /// Decoding first attempts JSON, then falls back to a lossy UTF-8 string.
+/// Use `with_json_encoding` for strict JSON media instead, including strings/null.
 /// A validator runs after decoding and before encoding; byte limits apply in both directions.
 pub struct PayloadCodec<T> {
     encoder: Encoder<T>,
@@ -53,12 +54,21 @@ impl<T: Serialize + DeserializeOwned> PayloadCodec<T> {
     #[must_use]
     pub fn serde() -> Self {
         Self {
-            encoder: encode_serde::<T>,
-            decoder: decode_serde::<T>,
+            encoder: encode_serde::<T, false>,
+            decoder: decode_serde::<T, false>,
             validator: Arc::new(|_| Ok(())),
             json_validator: None,
             max_bytes: DEFAULT_MAX_PAYLOAD_BYTES,
         }
+    }
+
+    /// Encode every value as JSON, including strings and null. Decode strictly
+    /// as UTF-8 JSON without the TypeScript raw-string fallback.
+    #[must_use]
+    pub fn with_json_encoding(mut self) -> Self {
+        self.encoder = encode_serde::<T, true>;
+        self.decoder = decode_serde::<T, true>;
+        self
     }
 
     /// Compile a JSON Schema once and validate original incoming values before
@@ -133,7 +143,8 @@ impl<T> PayloadCodec<T> {
     }
 
     /// # Errors
-    /// Rejects invalid values, null messages, serialization failures and excessive bytes.
+    /// Rejects invalid values, serialization failures and excessive bytes. Raw-string
+    /// compatibility mode additionally rejects null messages.
     pub fn encode(&self, value: &T) -> Result<Vec<u8>, PayloadError> {
         (self.validator)(value).map_err(PayloadError::Invalid)?;
         let bytes = (self.encoder)(value, self.max_bytes, self.json_validator.as_deref())?;
@@ -158,22 +169,26 @@ fn check_limit(bytes: usize, max_bytes: usize) -> Result<(), PayloadError> {
         Ok(())
     }
 }
-fn decode_serde<T: DeserializeOwned>(
+fn decode_serde<T: DeserializeOwned, const JSON: bool>(
     bytes: &[u8],
     validate: Option<&JsonValidator>,
 ) -> Result<T, PayloadError> {
     let text = String::from_utf8_lossy(bytes);
-    let value: Value = match serde_json::from_str(&text) {
-        Ok(value) => value,
-        Err(error) if serde_json::from_str::<&serde_json::value::RawValue>(&text).is_ok() => {
-            // RawValue checks JSON syntax iteratively, without numeric conversion
-            // or a recursive Value tree. Resource/number failures must not turn
-            // otherwise valid structured JSON into a schema-valid text message.
-            return Err(PayloadError::Invalid(format!(
-                "JSON payload exceeds representation limits: {error}"
-            )));
+    let value: Value = if JSON {
+        serde_json::from_slice(bytes).map_err(|error| PayloadError::Invalid(error.to_string()))?
+    } else {
+        match serde_json::from_str(&text) {
+            Ok(value) => value,
+            Err(error) if serde_json::from_str::<&serde_json::value::RawValue>(&text).is_ok() => {
+                // RawValue checks JSON syntax iteratively, without numeric conversion
+                // or a recursive Value tree. Resource/number failures must not turn
+                // otherwise valid structured JSON into a schema-valid text message.
+                return Err(PayloadError::Invalid(format!(
+                    "JSON payload exceeds representation limits: {error}"
+                )));
+            }
+            Err(_) => Value::String(text.into_owned()),
         }
-        Err(_) => Value::String(text.into_owned()),
     };
     if let Some(validate) = validate {
         let mut normalized = value.clone();
@@ -187,7 +202,7 @@ fn decode_serde<T: DeserializeOwned>(
     }
     serde_json::from_value(value).map_err(|error| PayloadError::Invalid(error.to_string()))
 }
-fn encode_serde<T: Serialize>(
+fn encode_serde<T: Serialize, const JSON: bool>(
     value: &T,
     max_bytes: usize,
     validate: Option<&JsonValidator>,
@@ -195,7 +210,11 @@ fn encode_serde<T: Serialize>(
     // JSON escaping can expand raw strings sixfold; the final wire bytes retain the exact limit.
     let mut output = LimitedBytes {
         bytes: Vec::new(),
-        limit: max_bytes.saturating_mul(6).saturating_add(2),
+        limit: if JSON {
+            max_bytes
+        } else {
+            max_bytes.saturating_mul(6).saturating_add(2)
+        },
         exceeded: false,
     };
     let result = serde_json::to_writer(&mut output, value);
@@ -208,6 +227,9 @@ fn encode_serde<T: Serialize>(
     if let Some(validate) = validate {
         normalize_integer_numbers(&mut serialized);
         validate(&serialized).map_err(PayloadError::Invalid)?;
+    }
+    if JSON {
+        return Ok(output.bytes);
     }
     match serialized {
         Value::String(value) => Ok(value.into_bytes()),
@@ -265,6 +287,47 @@ impl std::io::Write for LimitedBytes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_json_preserves_strings_null_and_strict_wire_bounds() {
+        let codec = PayloadCodec::<Value>::serde()
+            .with_json_encoding()
+            .with_max_bytes(32)
+            .unwrap();
+        for value in [
+            serde_json::json!(""),
+            serde_json::json!("123"),
+            serde_json::json!("null"),
+            serde_json::json!("水 🦀"),
+            Value::Null,
+        ] {
+            let bytes = codec.encode(&value).unwrap();
+            assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), value);
+            assert_eq!(codec.decode(&bytes).unwrap(), value);
+        }
+        for invalid in [
+            &b"raw text"[..],
+            &b"\"\xff\""[..],
+            &b""[..],
+            &b"null trailing"[..],
+        ] {
+            assert!(codec.decode(invalid).is_err());
+        }
+        let exact = PayloadCodec::<String>::serde()
+            .with_json_encoding()
+            .with_max_bytes(4)
+            .unwrap();
+        assert_eq!(exact.encode(&"ab".into()).unwrap(), b"\"ab\"");
+        assert!(exact.encode(&"abc".into()).is_err());
+        assert!(exact.decode(b"\"abc\"").is_err());
+        assert_eq!(
+            PayloadCodec::<String>::serde()
+                .encode(&"123".into())
+                .unwrap(),
+            b"123"
+        );
+        assert!(PayloadCodec::<Value>::serde().encode(&Value::Null).is_err());
+    }
 
     #[derive(Debug, PartialEq, Serialize, serde::Deserialize)]
     #[serde(tag = "type")]

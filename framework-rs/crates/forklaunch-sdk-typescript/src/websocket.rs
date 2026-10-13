@@ -76,6 +76,11 @@ pub fn generate_typescript_websocket_sdk_source(
     let schemas = serde_json::json!({"incoming":plan.incoming.schema,"outgoing":plan.outgoing.schema,"ping":plan.ping.schema,"pong":plan.pong.schema,"close":plan.close.schema});
     let binary = serde_json::json!({"incoming":plan.incoming.binary,"outgoing":plan.outgoing.binary,"ping":plan.ping.binary,"pong":plan.pong.binary,"close":false});
     let _ = writeln!(source, "const generatedSocketBinary = {binary};");
+    let json_encoding = serde_json::json!({"incoming":plan.incoming.json_encoding,"outgoing":plan.outgoing.json_encoding,"ping":plan.ping.json_encoding,"pong":plan.pong.json_encoding,"close":plan.close.json_encoding});
+    let _ = writeln!(
+        source,
+        "const generatedSocketJsonEncoding = {json_encoding};"
+    );
     let encoded = forklaunch_common::json_string(&schemas.to_string());
     let _ = writeln!(
         source,
@@ -91,7 +96,7 @@ pub fn generate_typescript_websocket_sdk_source(
         "export class {} extends SocketRuntime<SocketIncoming, SocketOutgoing, SocketPing, SocketPong, SocketClose> {{",
         options.client_name
     );
-    source.push_str("private constructor(url: string, options: SocketClientOptions) { super(url, generatedSocketSchemas, options, generatedSocketBinary); }\n");
+    source.push_str("private constructor(url: string, options: SocketClientOptions) { super(url, generatedSocketSchemas, options, generatedSocketBinary, generatedSocketJsonEncoding); }\n");
     let _ = writeln!(
         source,
         "static async connect(url: string, options: SocketClientOptions = {{}}): Promise<{}> {{",

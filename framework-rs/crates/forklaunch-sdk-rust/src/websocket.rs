@@ -69,7 +69,15 @@ pub fn generate_rust_websocket_sdk_source(
                 source,
                 "let {name} = serde_json::from_str({json:?}).map_err(|error| PayloadError::Invalid(format!(\"embedded schema: {{error}}\")))?;"
             );
-            let _ = writeln!(source, "let {name} = PayloadCodec::json_schema(&{name})?;");
+            let encoding = if payload.json_encoding {
+                ".with_json_encoding()"
+            } else {
+                ""
+            };
+            let _ = writeln!(
+                source,
+                "let {name} = PayloadCodec::json_schema(&{name})?{encoding};"
+            );
         }
     }
     source.push_str("Ok(SocketSchemas::new(incoming, outgoing)\n.with_ping(ping)\n.with_pong(pong)\n.with_close(close))\n}\n");

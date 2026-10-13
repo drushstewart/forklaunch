@@ -22,6 +22,13 @@ pub struct SocketSchemaEntry {
     /// Explicit raw bytes; never inferred from a JSON Schema format annotation.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub binary: bool,
+    /// Encode strings and null as JSON; reject non-JSON incoming bytes.
+    #[serde(
+        default,
+        rename = "jsonEncoding",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub json_encoding: bool,
     #[serde(flatten)]
     pub enrichment: AsyncApiEnrichment,
 }
@@ -31,7 +38,16 @@ impl SocketSchemaEntry {
         Self {
             shape,
             binary: false,
+            json_encoding: false,
             enrichment: AsyncApiEnrichment::default(),
+        }
+    }
+    /// Explicit JSON media encoding, including quoted strings and null.
+    #[must_use]
+    pub fn json(shape: Value) -> Self {
+        Self {
+            json_encoding: true,
+            ..Self::new(shape)
         }
     }
     /// Raw bytes without JSON interpretation. Message byte limits still apply.
@@ -45,7 +61,9 @@ impl SocketSchemaEntry {
     /// Reject contradictory schema assertions rather than silently discarding them.
     #[must_use]
     pub fn valid_binary_shape(&self) -> bool {
-        !self.binary || self.shape == serde_json::json!({"type":"string","format":"binary"})
+        !self.binary
+            || (!self.json_encoding
+                && self.shape == serde_json::json!({"type":"string","format":"binary"}))
     }
     /// Derive the same schema used by a framework-validated payload type.
     ///

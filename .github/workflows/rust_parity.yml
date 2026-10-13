@@ -46,6 +46,7 @@ on:
       - 'cli/tests/rust_ws_sdk_runtime.mjs'
       - 'cli/tests/rust_ws_binary_runtime.mjs'
       - 'cli/tests/rust_asyncapi_dialects_runtime.mjs'
+      - 'cli/tests/rust_ws_json_encoding_runtime.mjs'
       - 'cli/tests/rust_ws_typescript_sdk_runtime.mjs'
       - 'cli/tests/rust_asyncapi_import_runtime.sh'
       - 'cli/tests/rust_asyncapi_import_runtime.mjs'
@@ -209,6 +210,7 @@ on:
       - 'cli/tests/rust_ws_sdk_runtime.mjs'
       - 'cli/tests/rust_ws_binary_runtime.mjs'
       - 'cli/tests/rust_asyncapi_dialects_runtime.mjs'
+      - 'cli/tests/rust_ws_json_encoding_runtime.mjs'
       - 'cli/tests/rust_ws_typescript_sdk_runtime.mjs'
       - 'cli/tests/rust_asyncapi_import_runtime.sh'
       - 'cli/tests/rust_asyncapi_import_runtime.mjs'
@@ -440,6 +442,10 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_asyncapi_dialects_runtime.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_ws_json_encoding_runtime.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

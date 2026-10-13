@@ -74,7 +74,7 @@ public packages.
 | Native HTTP contract | `forklaunch.contract.v1`, generator `framework-rs` | Regenerate with the matching CLI when upgrading; unknown versions fail validation. |
 | TypeScript HTTP export | OpenAPI documents, including an explicit empty-key default version bundle | Named-version selection remains open. |
 | Portable socket contract | `formatVersion: 1` | JSON/text WebSocket profile; explicit raw binary metadata remains open. |
-| External AsyncAPI | 3.0.0 JSON WebSocket server profile | Event projects, other protocols/dialects and richer matching remain open. |
+| External AsyncAPI | 3.0.0 JSON/binary WebSocket server profile; five JSON Schema dialects | Event projects, other protocols/formats, upgrade auth/parameters, traits/replies and richer matching remain open. |
 | Generated TypeScript SDK | HTTP fetch/SSE and Node WebSocket packages | Consumer dependency versions are recorded in generated package.json; live service imports remain open. |
 | Generated Rust SDK | Matching bundled framework source, Rust edition 2024 | Registry installation compatibility remains unverified. |
 

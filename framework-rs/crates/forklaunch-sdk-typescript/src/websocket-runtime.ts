@@ -367,6 +367,7 @@ class SocketCodec<T> {
     schema: AnySchema,
     private readonly limit: number,
     private readonly binary = false,
+    private readonly jsonEncoding = false,
   ) {
     if (!binary) this.validate = socketValidator(schema);
   }
@@ -382,11 +383,12 @@ class SocketCodec<T> {
     if (bytes.length > this.limit)
       throw new Error('WebSocket payload byte limit');
     if (this.binary) return Uint8Array.from(bytes) as T;
-    const text = bytes.toString('utf8');
+    const text = this.jsonEncoding ? new TextDecoder('utf-8', {fatal:true, ignoreBOM:true}).decode(bytes) : bytes.toString('utf8');
     let value: unknown;
     try {
       value = JSON.parse(text);
     } catch {
+      if (this.jsonEncoding) throw new Error('Invalid JSON WebSocket payload');
       value = text;
     }
     return this.check(value);
@@ -400,13 +402,13 @@ class SocketCodec<T> {
     // Validate the serialized JSON projection, matching serde's outgoing values.
     socketJsonBounds(value, this.limit);
     const json = JSON.stringify(value);
-    if (json === undefined || value === null)
+    if (json === undefined || (!this.jsonEncoding && value === null))
       throw new Error('Null/undefined WebSocket messages are unsupported');
     if (Buffer.byteLength(json) > this.limit * 6 + 2)
       throw new Error('WebSocket payload byte limit');
     const projected: unknown = JSON.parse(json);
     this.check(projected);
-    const bytes = Buffer.from(typeof projected === 'string' ? projected : json);
+    const bytes = Buffer.from(!this.jsonEncoding && typeof projected === 'string' ? projected : json);
     if (bytes.length > this.limit)
       throw new Error('WebSocket payload byte limit');
     return bytes;
@@ -453,6 +455,7 @@ class SocketRuntime<I, O, P, Q, C> implements AsyncIterable<
     schemas: SocketSchemaSet,
     options: SocketClientOptions,
     binary: Partial<Record<keyof SocketSchemaSet, boolean>> = {},
+    jsonEncoding: Partial<Record<keyof SocketSchemaSet, boolean>> = {},
   ) {
     const handshakeTimeoutMs = socketTimeout(
       options.handshakeTimeoutMs,
@@ -490,26 +493,31 @@ class SocketRuntime<I, O, P, Q, C> implements AsyncIterable<
       schemas.incoming,
       this.options.maxMessageBytes,
       binary.incoming,
+      jsonEncoding.incoming,
     );
     this.outgoing = new SocketCodec(
       schemas.outgoing,
       this.options.maxMessageBytes,
       binary.outgoing,
+      jsonEncoding.outgoing,
     );
     this.pingCodec = new SocketCodec(
       schemas.ping,
       Math.min(125, this.options.maxMessageBytes),
       binary.ping,
+      jsonEncoding.ping,
     );
     this.pongCodec = new SocketCodec(
       schemas.pong,
       Math.min(125, this.options.maxMessageBytes),
       binary.pong,
+      jsonEncoding.pong,
     );
     this.closeCodec = new SocketCodec(
       schemas.close,
       Math.min(123, this.options.maxMessageBytes),
       binary.close,
+      jsonEncoding.close,
     );
     if (options.signal?.aborted) throw socketAbort();
     this.ws = new WebSocket(url, options.protocols ?? [], {

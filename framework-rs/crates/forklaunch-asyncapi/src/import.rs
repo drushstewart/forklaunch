@@ -21,7 +21,7 @@ struct Channel {
 
 /// Import an `AsyncAPI` 3.0 document explicitly describing a WebSocket server.
 /// Server receive/send operations become client outgoing/incoming contracts.
-/// JSON payloads must exclude raw strings and have provably disjoint message
+/// JSON payloads use explicit JSON encoding and provably disjoint message
 /// schemas. Binary directions require one canonical string/binary payload with
 /// application/octet-stream media. Missing directions are forbidden.
 ///
@@ -332,12 +332,7 @@ fn message_schema(document: &Value, pointer: &str) -> FrameworkResult<SocketSche
     };
     let schema = forklaunch_contract::bundle_document_schema(document, &schema_location)?;
     validate_payload_profile(&schema)?;
-    if allowed_types(&schema, &schema)?.contains("string") {
-        return Err(invalid(
-            "JSON string payload import requires explicit JSON wire encoding",
-        ));
-    }
-    Ok(SocketSchemaEntry::new(schema))
+    Ok(SocketSchemaEntry::json(schema))
 }
 
 fn check_servers(document: &Value, channel: &Map<String, Value>) -> FrameworkResult<()> {
@@ -417,7 +412,7 @@ fn direction_schema(
     selected: &BTreeSet<String>,
 ) -> FrameworkResult<SocketSchemaEntry> {
     if selected.is_empty() {
-        return Ok(SocketSchemaEntry::new(json!(false)));
+        return Ok(SocketSchemaEntry::json(json!(false)));
     }
     if !selected.is_disjoint(&channel.binary) {
         if selected.len() != 1 {
@@ -428,7 +423,7 @@ fn direction_schema(
         return Ok(SocketSchemaEntry::binary());
     }
     if selected.len() == 1 {
-        return Ok(SocketSchemaEntry::new(
+        return Ok(SocketSchemaEntry::json(
             channel.messages[selected.first().unwrap()].clone(),
         ));
     }
@@ -456,7 +451,7 @@ fn direction_schema(
     if let Some(declaration) = first.get("$schema") {
         schema["$schema"] = declaration.clone();
     }
-    Ok(SocketSchemaEntry::new(schema))
+    Ok(SocketSchemaEntry::json(schema))
 }
 
 fn require_disjoint_messages(messages: &BTreeMap<String, Value>) -> FrameworkResult<()> {
@@ -838,7 +833,6 @@ mod tests {
             "subset",
             "protocol",
             "server-binding",
-            "string",
             "headers",
             "address",
             "invalid-spec",
@@ -871,7 +865,6 @@ mod tests {
                 }
                 "protocol" => input["servers"]["local"]["protocol"] = json!("kafka"),
                 "server-binding" => input["servers"]["local"]["bindings"] = json!({"kafka":{}}),
-                "string" => input["components"]["schemas"]["Request"] = json!({"type":"string"}),
                 "headers" => {
                     input["components"]["messages"]["Request"]["headers"] =
                         json!({"type":"object"});
@@ -913,7 +906,6 @@ mod tests {
             "external",
             "multiple",
             "mixed",
-            "json-format",
         ] {
             let mut bad = input.clone();
             match mutation {
@@ -945,10 +937,6 @@ mod tests {
                         bad["components"]["schemas"]["Reply"] =
                             document()["components"]["schemas"]["Reply"].clone();
                     }
-                }
-                "json-format" => {
-                    bad["components"]["messages"]["Request"]["contentType"] =
-                        json!("application/json");
                 }
                 _ => unreachable!(),
             }

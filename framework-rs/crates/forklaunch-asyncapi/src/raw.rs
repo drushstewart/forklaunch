@@ -121,6 +121,8 @@ fn append_message(
     let mut message = json!({"name":name,"payload":payload});
     if entry.binary {
         message["contentType"] = json!("application/octet-stream");
+    } else if entry.json_encoding {
+        message["contentType"] = json!("application/json");
     }
     let channel = channels
         .entry(channel)

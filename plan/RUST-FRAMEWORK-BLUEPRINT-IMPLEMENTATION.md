@@ -727,7 +727,7 @@ Current CLI structure to build on:
 - [x] Add `.forklaunch/asyncapi/<service>/asyncapi.json` for raw WebSocket contract artifacts through `sdk generate --from socket-contract`, with custom project output paths.
 - [x] Export socket artifacts automatically from generated service registries, with checked module names, service title/version, custom contained output paths, unchanged-owned move/removal cleanup and preserved manual/edited artifacts. Relocated CLI and archive fixtures generate both SDKs from registered metadata and validate HTTP/MCP startup.
 - [x] Import explicit AsyncAPI 3.0.0 JSON WebSocket server documents through native/CLI generation/check/watch, offline official schema validation, bounded local-reference extraction, server/client direction mapping, disjoint message checks, input ownership and SDK rename/pruning. Relocated strict consumers/live peers and HTTP/MCP startup validate the supported profile.
-- [ ] Extend external AsyncAPI imports to event projects, additional payload formats/protocols, JSON string wire encoding, upgrade authentication/parameters, traits/replies and richer message matching. Explicit binary messages and the five supported JSON Schema dialects are implemented and validated below.
+- [ ] Extend external AsyncAPI imports to event projects, additional payload formats/protocols, upgrade authentication/parameters, traits/replies and richer message matching. Explicit binary messages, the five supported JSON Schema dialects and JSON string/null wire encoding are implemented and validated below.
 - [x] Prune unchanged obsolete socket modules during regeneration, with per-package hashes, read-only drift checks, all-service staging, preserved edits/untracked files/compiler options and symlink containment.
 - [x] Retire owned socket SDK files/AsyncAPI after an exported last-socket removal or explicit service deletion, removing Cargo members and empty directories while preserving edited/untracked files and compiler options. Live watch requires prior registry provenance plus a fresh empty framework contract, survives transient missing artifacts and restores both packages when sockets return. Shared pnpm package globs remain available for retained user packages.
 - [x] Rename socket artifacts and owned SDK packages with their service, preserving compiler options and retaining edited/untracked files at old SDK locations. Default/explicit default paths follow the new name, custom paths retain their location, occupied destinations reject before source mutation, strict consumers compile and renamed HTTP/MCP startup passes. Deletion also removes unchanged owned custom registry artifacts.
@@ -1801,3 +1801,33 @@ and all 772 embedded source/template entries pass. CI includes the new
 Checklist remains **624/682 (91.5%), 58 open**. This completes supported JSON
 Schema dialect imports within the broader AsyncAPI task; other formats/protocols,
 JSON string wire encoding, upgrade auth/parameters and traits/replies remain.
+
+
+### Explicit JSON WebSocket wire encoding (2026-10-12)
+
+`SocketSchemaEntry::json` / portable `jsonEncoding: true` now preserve JSON
+strings and null through shared SDK plans and both generated clients. Native
+`PayloadCodec::with_json_encoding` retains validators and byte limits while
+requiring strict UTF-8 JSON, including quotes/escapes in wire byte counts.
+External AsyncAPI JSON messages automatically select this mode. Native artifacts
+retain existing raw-string behavior by default; mixed raw/JSON alternatives and
+simultaneous binary/JSON flags are rejected. Explicit JSON exports carry JSON
+media even when another document default is configured.
+
+Validation passed: 84 selected framework tests and strict all-feature/all-target
+Clippy across WebSocket, AsyncAPI and SDK crates; all 12,960 existing actual
+TypeScript/native codec comparisons and the complete generated TypeScript
+WebSocket runtime fixture; both generated clients with 16 exact-wire string/null
+roundtrips, malformed-peer rejection and encoding/UTF-8/byte-limit checks. The
+five-dialect and imported-binary live fixtures also pass with the new codecs.
+The rebuilt CLI passes relocated import/check/watch, strict SDK consumers,
+live peers, rename/delete ownership, and generated HTTP/MCP startup/shutdown
+before and after rename. All 772 embedded package entries pass. CI includes
+`rust_ws_json_encoding_runtime.mjs`. User-facing generation and compatibility
+docs now describe the supported importer instead of labeling all imports pending.
+Logs: `/private/tmp/fl-ws-json-encoding-{tests,clippy,regression,runtime-final,dialects,binary,cli,package,lifecycle}.log`.
+
+Checklist remains **624/682 (91.5%), 58 open**. Binary messages, the five JSON
+Schema dialects and JSON string/null wire encoding are complete subparts of the
+external AsyncAPI task. Its event protocols, upgrade auth/parameters and
+traits/replies remain open; no full-parity claim is made.
