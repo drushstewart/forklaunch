@@ -727,7 +727,7 @@ Current CLI structure to build on:
 - [x] Add `.forklaunch/asyncapi/<service>/asyncapi.json` for raw WebSocket contract artifacts through `sdk generate --from socket-contract`, with custom project output paths.
 - [x] Export socket artifacts automatically from generated service registries, with checked module names, service title/version, custom contained output paths, unchanged-owned move/removal cleanup and preserved manual/edited artifacts. Relocated CLI and archive fixtures generate both SDKs from registered metadata and validate HTTP/MCP startup.
 - [x] Import explicit AsyncAPI 3.0.0 JSON WebSocket server documents through native/CLI generation/check/watch, offline official schema validation, bounded local-reference extraction, server/client direction mapping, disjoint message checks, input ownership and SDK rename/pruning. Relocated strict consumers/live peers and HTTP/MCP startup validate the supported profile.
-- [ ] Extend external AsyncAPI imports to event projects, other payload dialects/protocols, JSON string wire encoding, upgrade authentication/parameters, traits/replies and richer message matching.
+- [ ] Extend external AsyncAPI imports to event projects, additional payload formats/protocols, JSON string wire encoding, upgrade authentication/parameters, traits/replies and richer message matching. Explicit binary messages and the five supported JSON Schema dialects are implemented and validated below.
 - [x] Prune unchanged obsolete socket modules during regeneration, with per-package hashes, read-only drift checks, all-service staging, preserved edits/untracked files/compiler options and symlink containment.
 - [x] Retire owned socket SDK files/AsyncAPI after an exported last-socket removal or explicit service deletion, removing Cargo members and empty directories while preserving edited/untracked files and compiler options. Live watch requires prior registry provenance plus a fresh empty framework contract, survives transient missing artifacts and restores both packages when sockets return. Shared pnpm package globs remain available for retained user packages.
 - [x] Rename socket artifacts and owned SDK packages with their service, preserving compiler options and retaining edited/untracked files at old SDK locations. Default/explicit default paths follow the new name, custom paths retain their location, occupied destinations reject before source mutation, strict consumers compile and renamed HTTP/MCP startup passes. Deletion also removes unchanged owned custom registry artifacts.
@@ -1777,3 +1777,27 @@ runs both native-artifact and imported-binary modes. Logs:
 
 Checklist remains **624/682 (91.5%), 58 open**: this completes binary payload
 support within the broader external AsyncAPI item; its other profiles remain open.
+
+
+### External AsyncAPI JSON Schema dialects (2026-10-12)
+
+The importer now accepts Multi Format payloads for Draft 4, Draft 6, Draft 7,
+2019-09 and 2020-12 with explicit matching `schemaFormat`/`$schema` declarations.
+Document-local references and dialect-specific constraints survive extraction;
+message unions retain their dialect. Unknown/mismatched formats, nested mixed
+dialects and alternatives with different dialects fail checked import. Draft 4
+message discrimination no longer treats ignored `const` annotations as assertions;
+required enum tags provide actual discrimination.
+
+Validation passed: 45 AsyncAPI/codegen tests, strict AsyncAPI Clippy, generated
+TypeScript compilation and Rust compilation for all five dialects, ten live
+roundtrips across both SDKs and twenty invalid numeric-bound rejections. Native
+checks also cover references inside Multi Format schemas, Draft 4 unions and
+mixed-dialect rejection. The source document remains unchanged. The CLI rebuild
+and all 772 embedded source/template entries pass. CI includes the new
+`rust_asyncapi_dialects_runtime.mjs` fixture. Logs:
+`/private/tmp/fl-asyncapi-dialects-{tests-final,clippy-final,runtime,cli,package}.log`.
+
+Checklist remains **624/682 (91.5%), 58 open**. This completes supported JSON
+Schema dialect imports within the broader AsyncAPI task; other formats/protocols,
+JSON string wire encoding, upgrade auth/parameters and traits/replies remain.

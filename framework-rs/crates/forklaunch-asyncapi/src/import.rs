@@ -125,18 +125,39 @@ fn validate_document(document: &Value) -> FrameworkResult<()> {
     Ok(())
 }
 
+fn dialect_version(uri: &str) -> Option<&'static str> {
+    let uri = uri
+        .strip_prefix("https://")
+        .or_else(|| uri.strip_prefix("http://"))?;
+    match uri.trim_end_matches('#') {
+        "json-schema.org/draft-04/schema" => Some("draft-04"),
+        "json-schema.org/draft-06/schema" => Some("draft-06"),
+        "json-schema.org/draft-07/schema" => Some("draft-07"),
+        "json-schema.org/draft/2019-09/schema" => Some("2019-09"),
+        "json-schema.org/draft/2020-12/schema" => Some("2020-12"),
+        _ => None,
+    }
+}
+
+fn payload_dialect(schema: &Value) -> FrameworkResult<&'static str> {
+    match schema.get("$schema") {
+        None => Ok("draft-07"),
+        Some(value) => value
+            .as_str()
+            .and_then(dialect_version)
+            .ok_or_else(|| invalid("Unsupported imported JSON Schema dialect")),
+    }
+}
+
 fn validate_payload_profile(schema: &Value) -> FrameworkResult<()> {
+    let dialect = payload_dialect(schema)?;
     for location in forklaunch_contract::schema_locations(schema, false)? {
         let node = schema
             .pointer(&location)
             .ok_or_else(|| invalid("Imported schema location is missing"))?;
-        if let Some(dialect) = node.get("$schema")
-            && !dialect
-                .as_str()
-                .is_some_and(|dialect| dialect.contains("/draft-07/"))
-        {
+        if node.get("$schema").is_some() && payload_dialect(node)? != dialect {
             return Err(invalid(
-                "Imported message schemas currently require the Draft 7 profile",
+                "Mixed dialects within a message require resource-scope resolution",
             ));
         }
     }
@@ -291,13 +312,25 @@ fn message_schema(document: &Value, pointer: &str) -> FrameworkResult<SocketSche
     let payload = message
         .get("payload")
         .ok_or_else(|| invalid("Message payload schema is required"))?;
-    if payload.get("schemaFormat").is_some() {
-        return Err(invalid(
-            "Multi Format payload import requires an explicit dialect adapter",
-        ));
-    }
-    let schema =
-        forklaunch_contract::bundle_document_schema(document, &format!("{location}/payload"))?;
+    let schema_location = if let Some(format) = payload.get("schemaFormat") {
+        let schema = payload
+            .get("schema")
+            .ok_or_else(|| invalid("Multi Format schema is required"))?;
+        let dialect = schema
+            .get("$schema")
+            .and_then(Value::as_str)
+            .and_then(dialect_version)
+            .ok_or_else(|| invalid("Multi Format schemas require an explicit supported $schema"))?;
+        if format.as_str() != Some(format!("application/schema+json;version={dialect}").as_str()) {
+            return Err(invalid(
+                "Multi Format schemaFormat must match the payload dialect",
+            ));
+        }
+        format!("{location}/payload/schema")
+    } else {
+        format!("{location}/payload")
+    };
+    let schema = forklaunch_contract::bundle_document_schema(document, &schema_location)?;
     validate_payload_profile(&schema)?;
     if allowed_types(&schema, &schema)?.contains("string") {
         return Err(invalid(
@@ -399,10 +432,17 @@ fn direction_schema(
             channel.messages[selected.first().unwrap()].clone(),
         ));
     }
+    let first = &channel.messages[selected.first().unwrap()];
+    let dialect = payload_dialect(first)?;
     let mut variants = Vec::new();
     let mut budget = OutputBudget(32 * 1024 * 1024);
     for pointer in selected {
         let schema = &channel.messages[pointer];
+        if payload_dialect(schema)? != dialect {
+            return Err(invalid(
+                "Message alternatives in one direction must use the same dialect",
+            ));
+        }
         budget.reserve(schema)?;
         let index = variants.len().to_string();
         let relocated =
@@ -412,7 +452,11 @@ fn direction_schema(
                 .map_err(|_| invalid("Imported schema relocation failed"))?,
         );
     }
-    Ok(SocketSchemaEntry::new(json!({"oneOf":variants})))
+    let mut schema = json!({"oneOf":variants});
+    if let Some(declaration) = first.get("$schema") {
+        schema["$schema"] = declaration.clone();
+    }
+    Ok(SocketSchemaEntry::new(schema))
 }
 
 fn require_disjoint_messages(messages: &BTreeMap<String, Value>) -> FrameworkResult<()> {
@@ -501,7 +545,9 @@ fn string_tags<'a>(
     schema: &'a Value,
 ) -> FrameworkResult<Option<BTreeSet<&'a str>>> {
     let schema = dereference_schema(root, schema)?;
-    if let Some(value) = schema.get("const").and_then(Value::as_str) {
+    if payload_dialect(root)? != "draft-04"
+        && let Some(value) = schema.get("const").and_then(Value::as_str)
+    {
         return Ok(Some(BTreeSet::from([value])));
     }
     Ok(schema
@@ -927,6 +973,99 @@ mod tests {
             artifact.sockets["chat"].server_messages["chat_send"].shape,
             json!(false)
         );
+    }
+
+    #[test]
+    fn multi_format_dialects_preserve_numeric_bounds_and_reject_mismatches() {
+        for (version, uri) in [
+            ("draft-04", "http://json-schema.org/draft-04/schema#"),
+            ("draft-06", "http://json-schema.org/draft-06/schema#"),
+            ("draft-07", "http://json-schema.org/draft-07/schema#"),
+            ("2019-09", "https://json-schema.org/draft/2019-09/schema"),
+            ("2020-12", "https://json-schema.org/draft/2020-12/schema"),
+        ] {
+            let mut input = document();
+            input["operations"].as_object_mut().unwrap().remove("reply");
+            input["channels"]["chat"]["messages"]
+                .as_object_mut()
+                .unwrap()
+                .remove("reply");
+            let bound = if version == "draft-04" {
+                json!({"type":"number","minimum":0,"exclusiveMinimum":true})
+            } else {
+                json!({"type":"number","exclusiveMinimum":0})
+            };
+            input["components"]["messages"]["Request"]["payload"] = json!({
+                "schemaFormat":format!("application/schema+json;version={version}"),
+                "schema":{"$schema":uri,"type":"object","required":["value"],"definitions":{"Bound":bound},"properties":{"value":{"$ref":"#/components/messages/Request/payload/schema/definitions/Bound"}}}
+            });
+            let artifact = import_server_websocket_asyncapi(&input).unwrap();
+            let schema = &artifact.sockets["chat"].client_messages["chat_receive"].shape;
+            let codec = PayloadCodec::<Value>::json_schema(schema).unwrap();
+            assert!(codec.encode(&json!({"value":1})).is_ok(), "{version}");
+            assert!(codec.encode(&json!({"value":0})).is_err(), "{version}");
+            assert!(codec.encode(&json!({"value":-1})).is_err(), "{version}");
+            for bad in [
+                json!("application/avro"),
+                json!("application/schema+json;version=unknown"),
+                json!(format!(
+                    "application/schema+json;version={}",
+                    if version == "draft-04" {
+                        "draft-07"
+                    } else {
+                        "draft-04"
+                    }
+                )),
+            ] {
+                input["components"]["messages"]["Request"]["payload"]["schemaFormat"] = bad;
+                assert!(import_server_websocket_asyncapi(&input).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn draft4_message_unions_preserve_dialect_and_do_not_use_ignored_const_tags() {
+        let mut input = document();
+        for name in ["Request", "Reply"] {
+            let mut schema = input["components"]["schemas"][name].clone();
+            schema["$schema"] = json!("http://json-schema.org/draft-04/schema#");
+            input["components"]["messages"][name]["payload"] = json!({
+                "schemaFormat":"application/schema+json;version=draft-04", "schema":schema
+            });
+        }
+        assert!(import_server_websocket_asyncapi(&input).is_err());
+        for (name, tag) in [("Request", "request"), ("Reply", "reply")] {
+            input["components"]["messages"][name]["payload"]["schema"]["properties"]["kind"] =
+                json!({"enum":[tag]});
+        }
+        input["operations"]["accept"]["messages"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"$ref":"#/channels/chat/messages/reply"}));
+        let artifact = import_server_websocket_asyncapi(&input).unwrap();
+        let schema = &artifact.sockets["chat"].client_messages["chat_receive"].shape;
+        assert_eq!(schema["$schema"], "http://json-schema.org/draft-04/schema#");
+        let codec = PayloadCodec::<Value>::json_schema(schema).unwrap();
+        assert!(
+            codec
+                .encode(&json!({"kind":"request","message":"hello"}))
+                .is_ok()
+        );
+        assert!(
+            codec
+                .encode(&json!({"kind":"reply","accepted":true}))
+                .is_ok()
+        );
+        assert!(
+            codec
+                .encode(&json!({"kind":"other","message":"hello"}))
+                .is_err()
+        );
+        input["components"]["messages"]["Reply"]["payload"]["schemaFormat"] =
+            json!("application/schema+json;version=draft-07");
+        input["components"]["messages"]["Reply"]["payload"]["schema"]["$schema"] =
+            json!("http://json-schema.org/draft-07/schema#");
+        assert!(import_server_websocket_asyncapi(&input).is_err());
     }
 
     #[test]

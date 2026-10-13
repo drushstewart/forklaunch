@@ -1807,3 +1807,27 @@ runs both native-artifact and imported-binary modes. Logs:
 
 Checklist remains **624/682 (91.5%), 58 open**: this completes binary payload
 support within the broader external AsyncAPI item; its other profiles remain open.
+
+
+### External AsyncAPI JSON Schema dialects (2026-10-12)
+
+The importer now accepts Multi Format payloads for Draft 4, Draft 6, Draft 7,
+2019-09 and 2020-12 with explicit matching `schemaFormat`/`$schema` declarations.
+Document-local references and dialect-specific constraints survive extraction;
+message unions retain their dialect. Unknown/mismatched formats, nested mixed
+dialects and alternatives with different dialects fail checked import. Draft 4
+message discrimination no longer treats ignored `const` annotations as assertions;
+required enum tags provide actual discrimination.
+
+Validation passed: 45 AsyncAPI/codegen tests, strict AsyncAPI Clippy, generated
+TypeScript compilation and Rust compilation for all five dialects, ten live
+roundtrips across both SDKs and twenty invalid numeric-bound rejections. Native
+checks also cover references inside Multi Format schemas, Draft 4 unions and
+mixed-dialect rejection. The source document remains unchanged. The CLI rebuild
+and all 772 embedded source/template entries pass. CI includes the new
+`rust_asyncapi_dialects_runtime.mjs` fixture. Logs:
+`/private/tmp/fl-asyncapi-dialects-{tests-final,clippy-final,runtime,cli,package}.log`.
+
+Checklist remains **624/682 (91.5%), 58 open**. This completes supported JSON
+Schema dialect imports within the broader AsyncAPI task; other formats/protocols,
+JSON string wire encoding, upgrade auth/parameters and traits/replies remain.
