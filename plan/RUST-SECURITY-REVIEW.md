@@ -227,3 +227,15 @@ errors retain sanitized helper errors. Live TCP tests independently verify signe
 claims and confirm revocation, callback count, failure redaction and graceful
 shutdown. Applications remain responsible for external key publication/rotation,
 verification configuration, actual callback algorithm enforcement and deadlines.
+
+
+Basic compatibility and explicit verifier errors (2026-10-13): compatibility is
+selected only by trusted application code. It reproduces TS's permissive Node
+base64 and first-two-colon behavior; it does not alter strict native parsing.
+Credential rejection cannot create a principal or reach the handler. Callback
+passwords are never included in public errors. `with_response_authenticator`
+accepts only server callbacks and successful sessions still undergo RBAC/custom
+authorization. Cookie routes retain their dedicated verifier. Explicit response
+errors must contain public text; applications must not forward provider errors
+or secrets verbatim. Live TCP HTTP/MCP tests verify missing/malformed/denied
+credentials, successful typed sessions, subsequent role denial and shutdown.

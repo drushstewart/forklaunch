@@ -1,4 +1,5 @@
-//! Opt-in authorization rules for already verified TypeScript-style sessions.
+//! Opt-in TypeScript credential parsing and verified-session authorization.
+pub mod basic;
 use crate::Principal;
 use forklaunch_contract::AccessLevel;
 use forklaunch_http::{ErrorKind, ErrorResponse};

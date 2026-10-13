@@ -109,6 +109,26 @@ status and public message; the native HTTP response remains a JSON envelope.
 Applications resolve grants before invoking this policy. HMAC routes have no
 session and bypass the session policy in TypeScript.
 
+`forklaunch_auth::typescript::basic::verify_basic` explicitly enables the
+TypeScript synchronous Basic-login parsing profile. It matches case-sensitive
+prefixes, first-space token selection, Node base64 decoding, replacement UTF-8
+and the first two colon-delimited fields. Thus `user:pass:extra` checks password
+`pass`; the strict native `parse_basic` retains `pass:extra`. Compatibility is
+opt-in and does not change that default. A trusted synchronous callback must
+verify the parsed username/password before the function returns a principal.
+Missing/malformed credentials return 401 and denied login returns 403, with the
+TypeScript public messages. Async/custom decoders and session-schema validation
+remain separate integration responsibilities.
+
+Use `RouterConfig::with_response_authenticator` when credential verification
+needs explicit `ErrorResponse` statuses/messages, including this Basic verifier.
+It returns an `AuthenticatedSession` only after verification; normal RBAC or a
+configured authorizer still runs afterward. It replaces `with_authenticator`
+and vice versa; cookie routes retain their dedicated session verifier. Callback
+errors must contain public text only. Native responses remain structured JSON,
+including when forwarded through MCP. Actual middleware comparisons and live
+HTTP/MCP tests cover parsing, rejection, verified subjects and subsequent RBAC.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

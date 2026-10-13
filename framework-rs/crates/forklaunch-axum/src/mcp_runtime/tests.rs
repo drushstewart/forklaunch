@@ -160,3 +160,128 @@ async fn assert_closed(base: &str) {
             .is_err()
     );
 }
+
+fn basic_routers(entered: Arc<AtomicUsize>) -> (axum::Router, axum::Router) {
+    use crate::session::Session;
+    use forklaunch_auth::typescript::basic::verify_basic;
+    use forklaunch_contract::RbacConfig;
+    let observed = entered;
+    let config = RouterConfig::default().with_response_authenticator(|request, _| async move {
+        let principal = verify_basic(
+            request.headers.get("authorization").map(String::as_str),
+            None,
+            |user, password| user == "user" && password == "pass",
+        )?;
+        let claims = json!({"sub":principal.subject});
+        Ok(AuthenticatedSession::new(principal, claims))
+    });
+    let application = ForkLaunchRouter::new(ServiceInfo::new("basic-fixture", "1.0.0"))
+        .get(
+            RouteContract::get("Profile", "Verified profile", "/profile")
+                .with_access(AccessLevel::Authenticated)
+                .with_response(200, Some(BodyContract::json("Profile"))),
+            move |Session::<Value>(claims)| {
+                let entered = observed.clone();
+                async move {
+                    entered.fetch_add(1, Ordering::SeqCst);
+                    Json(claims)
+                }
+            },
+        )
+        .get(
+            RouteContract::get("Admin", "Requires admin role", "/admin")
+                .with_access(AccessLevel::Protected)
+                .with_rbac(RbacConfig {
+                    allowed_roles: vec!["admin".into()],
+                    ..RbacConfig::default()
+                }),
+            || async { "unreachable" },
+        )
+        .with_config(config);
+    application
+        .into_routers_with_mcp(McpServerOptions::new("basic-fixture", "1.0.0"))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn explicit_basic_verification_guards_live_http_and_mcp_sessions() {
+    let entered = Arc::new(AtomicUsize::new(0));
+    let (http, mcp) = basic_routers(entered.clone());
+    let http_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mcp_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let http_base = format!("http://{}", http_listener.local_addr().unwrap());
+    let mcp_base = format!("http://{}", mcp_listener.local_addr().unwrap());
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let serving = tokio::spawn(serve_listeners(
+        http_listener,
+        http,
+        Some((mcp_listener, mcp)),
+        async {
+            let _ = stopped.await;
+        },
+    ));
+    let client = reqwest::Client::new();
+    for (header, status, message) in [
+        (None, 401, "Authorization token required."),
+        (
+            Some("basic dXNlcjpwYXNz"),
+            401,
+            "Invalid Authorization token format.",
+        ),
+        (
+            Some("Basic dXNlcjo="),
+            401,
+            "Invalid Authorization token format.",
+        ),
+        (
+            Some("Basic dXNlcjp3cm9uZw=="),
+            403,
+            "Invalid Authorization login.",
+        ),
+        (Some("Basic dXNlcjpwYXNzOmV4dHJh"), 200, ""),
+    ] {
+        let mut http = client.get(format!("{http_base}/profile"));
+        let mut mcp = client.post(format!("{mcp_base}/mcp"))
+            .header("accept", "application/json, text/event-stream")
+            .header("mcp-protocol-version", "2025-11-25")
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"profile","arguments":{}}}));
+        if let Some(header) = header {
+            http = http.header("authorization", header);
+            mcp = mcp.header("authorization", header);
+        }
+        let response = http.send().await.unwrap();
+        assert_eq!(response.status().as_u16(), status);
+        let body = response.text().await.unwrap();
+        let result: Value = mcp.send().await.unwrap().json().await.unwrap();
+        if status == 200 {
+            assert_eq!(
+                serde_json::from_str::<Value>(&body).unwrap(),
+                json!({"sub":"user"})
+            );
+            assert_eq!(result["result"]["structuredContent"], json!({"sub":"user"}));
+        } else {
+            assert!(body.contains(message));
+            assert_eq!(result["result"]["isError"], true);
+            assert_eq!(entered.load(Ordering::SeqCst), 0);
+        }
+    }
+    assert_eq!(entered.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        client
+            .get(format!("{http_base}/admin"))
+            .basic_auth("user", Some("pass"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(2), serving)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_closed(&http_base).await;
+    assert_closed(&mcp_base).await;
+}

@@ -14,7 +14,7 @@ use std::{
     },
 };
 
-use crate::session::{AuthenticatedSession, Authenticator, Authorizer};
+use crate::session::{AuthenticatedSession, Authenticator, Authorizer, ResponseAuthenticator};
 use axum::{
     Router,
     body::{Body as AxumBody, to_bytes},
@@ -83,6 +83,8 @@ pub struct RouterConfig {
     pub cors: Option<CorsLayer>,
     /// Credential verifier for routes requiring authentication. Missing verifiers fail closed.
     pub authenticator: Option<Authenticator>,
+    /// Optional verifier with explicit safe HTTP errors; takes precedence when set.
+    pub response_authenticator: Option<ResponseAuthenticator>,
     /// Optional replacement for native RBAC, invoked only after authentication.
     pub authorizer: Option<Authorizer>,
     /// Inject a configured collector to export HTTP traces and metrics.
@@ -108,6 +110,7 @@ impl Default for RouterConfig {
             servers: Vec::new(),
             cors: None,
             authenticator: None,
+            response_authenticator: None,
             authorizer: None,
             telemetry: None,
         }
@@ -124,7 +127,28 @@ impl RouterConfig {
         F: Fn(FrameworkRequest, RouteContract) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = Result<AuthenticatedSession, AuthError>> + Send + 'static,
     {
+        self.response_authenticator = None;
         self.authenticator = Some(Arc::new(move |request, contract| {
+            Box::pin(verifier(request, contract))
+        }));
+        self
+    }
+
+    /// Configures trusted credential verification with explicit public errors.
+    /// Successful sessions still pass normal authorization and cannot be supplied
+    /// by client headers. The callback must keep secrets out of error messages.
+    /// Replaces a verifier set by `with_authenticator`; cookie sessions retain
+    /// their dedicated verifier. Responses use the native structured error format.
+    #[must_use]
+    pub fn with_response_authenticator<F, Fut>(mut self, verifier: F) -> Self
+    where
+        F: Fn(FrameworkRequest, RouteContract) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<AuthenticatedSession, ErrorResponse>>
+            + Send
+            + 'static,
+    {
+        self.authenticator = None;
+        self.response_authenticator = Some(Arc::new(move |request, contract| {
             Box::pin(verifier(request, contract))
         }));
         self
@@ -555,7 +579,7 @@ impl ForkLaunchRouter {
         let state = Arc::new(ValidationState::from_registry(
             &registry,
             config.body_limit,
-            config.authenticator,
+            (config.authenticator, config.response_authenticator),
             config.authorizer,
             telemetry.clone(),
             &config.version_body_hooks,
@@ -763,6 +787,7 @@ struct ValidationState {
     local_validation: HashSet<String>,
     body_limit: usize,
     authenticator: Option<Authenticator>,
+    response_authenticator: Option<ResponseAuthenticator>,
     authorizer: Option<Authorizer>,
     telemetry: OpenTelemetryCollector,
 }
@@ -771,7 +796,7 @@ impl ValidationState {
     fn from_registry(
         registry: &ContractRegistry,
         body_limit: usize,
-        authenticator: Option<Authenticator>,
+        authenticators: (Option<Authenticator>, Option<ResponseAuthenticator>),
         authorizer: Option<Authorizer>,
         telemetry: OpenTelemetryCollector,
         hooks: &forklaunch_http::VersionBodyHooksRegistry,
@@ -802,7 +827,8 @@ impl ValidationState {
             versions,
             local_validation,
             body_limit,
-            authenticator,
+            authenticator: authenticators.0,
+            response_authenticator: authenticators.1,
             authorizer,
             telemetry,
         }
@@ -855,7 +881,7 @@ async fn authenticate_contract(
     contract: &RouteContract,
     parts: &Parts,
     framework_request: &FrameworkRequest,
-) -> Result<AuthenticatedSession, AuthError> {
+) -> Result<AuthenticatedSession, ErrorResponse> {
     if let Some(AuthConfig::Cookie { name }) = &contract.auth {
         #[cfg(feature = "cookie-session")]
         let result = crate::cookie_session::authenticate(parts, name).await;
@@ -864,12 +890,15 @@ async fn authenticate_contract(
             let _ = (parts, name);
             Err(AuthError::MissingCredentials)
         };
-        result
+        result.map_err(|error| authentication_error(contract, &error))
+    } else if let Some(verifier) = &state.response_authenticator {
+        verifier(framework_request.clone(), contract.clone()).await
     } else {
         match &state.authenticator {
             Some(verifier) => verifier(framework_request.clone(), contract.clone()).await,
             None => Err(AuthError::MissingCredentials),
         }
+        .map_err(|error| authentication_error(contract, &error))
     }
 }
 
@@ -926,17 +955,14 @@ async fn validate_contract(
     if requires_auth {
         let authenticated =
             authenticate_contract(&state, &contract, &parts, &framework_request).await;
-        let result = authenticated
-            .map_err(|error| authentication_error(&contract, &error))
-            .and_then(|session| {
-                if let Some(authorizer) = &state.authorizer {
-                    authorizer(&session, &contract)?;
-                } else if let Some(rbac) = &contract.rbac {
-                    authorize(&session.principal, rbac)
-                        .map_err(|error| error.to_error_response())?;
-                }
-                Ok(session)
-            });
+        let result = authenticated.and_then(|session| {
+            if let Some(authorizer) = &state.authorizer {
+                authorizer(&session, &contract)?;
+            } else if let Some(rbac) = &contract.rbac {
+                authorize(&session.principal, rbac).map_err(|error| error.to_error_response())?;
+            }
+            Ok(session)
+        });
         match result {
             Ok(session) => {
                 parts.extensions.insert(session);

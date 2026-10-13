@@ -1,0 +1,30 @@
+//! Compare opt-in Basic verification against the actual TypeScript middleware.
+use forklaunch_auth::typescript::basic::verify_basic;
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::io::{self, Read};
+
+#[derive(Deserialize)]
+struct Case {
+    header: Option<String>,
+    prefix: Option<String>,
+    accepted: bool,
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = String::new();
+    io::stdin().read_to_string(&mut input)?;
+    let cases: Vec<Case> = serde_json::from_str(&input)?;
+    let output: Vec<Value> = cases.into_iter().map(|case| {
+        let mut calls = Vec::new();
+        let result = verify_basic(case.header.as_deref(), case.prefix.as_deref(), |user, password| {
+            calls.push(json!([user, password]));
+            case.accepted
+        });
+        match result {
+            Ok(principal) => json!({"status":200,"message":null,"subject":principal.subject,"calls":calls}),
+            Err(error) => json!({"status":error.to_response().status_code,"message":error.message,"subject":null,"calls":calls}),
+        }
+    }).collect();
+    println!("{}", serde_json::to_string(&output)?);
+    Ok(())
+}

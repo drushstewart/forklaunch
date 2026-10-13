@@ -4112,3 +4112,25 @@ remain open. Both generated native worker components currently execute a combine
 consumer/control process; distinct HTTP-only/consumer-only roles are not implied.
 The companion deployment guide records these limits. The checklist remains
 657/682 (96.3%), 25 open.
+
+
+Basic credential compatibility receipt (2026-10-13): opt-in
+`forklaunch_auth::typescript::basic::verify_basic` matches 815 actual TypeScript
+middleware cases for missing/empty headers, exact/custom prefixes, first-space
+selection, Node's two base64 alphabets/ignored bytes/padding/trailing bits,
+UTF-16 low-byte input, replacement UTF-8, empty/extra colon fields and accepted or
+rejected synchronous login callbacks. No principal is returned before successful
+verification. Strict native `parse_basic` remains unchanged.
+
+`RouterConfig::with_response_authenticator` carries safe application-selected
+credential errors through native HTTP/MCP, followed by ordinary authorization.
+The existing verifier API and cookie verifier behavior remain available. Native
+errors retain structured JSON; this does not close the TS text-error envelope gate.
+All 96 affected auth/Axum tests plus the new live HTTP/MCP Basic test pass,
+as do strict all-feature/all-target Clippy and the 1,495 session-policy comparisons.
+Generated relocated run `Fud7KV` validates Basic/JWT/policy cases over HTTP and MCP,
+both SDK compilers and the complete shared/separate listener startup/shutdown
+matrix. All 938 embedded assets are packaged. Logs:
+`/private/tmp/fl-typescript-basic-{parity,adapter-tests,sockets,clippy,generated,package,rbac-regression}.log`.
+Async/custom Basic resource decoders, session-schema validation and remaining
+credential/error transports remain open; checklist stays 657/682 (96.3%), 25 open.

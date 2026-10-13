@@ -11,7 +11,7 @@ let errors='';server.stderr.on('data',chunk=>errors+=chunk);
 const timer=setTimeout(()=>server.kill('SIGKILL'),60000);
 try {
  const base=await new Promise((resolve,reject)=>{let output='';server.stdout.on('data',chunk=>{output+=chunk;const match=output.match(/listening on (http:\/\/[^\s]+)/);if(match)resolve(match[1]);});server.once('exit',()=>reject(Error(errors)));});
- await probeMcp(base,['checkPermissions','checkScope','checkFeatures','checkUnconfigured']);
+ await probeMcp(base,['checkPermissions','checkScope','checkFeatures','checkUnconfigured','checkBasic']);
  const cases=[
   ['permissions',{permissions:['read']},200],['permissions',{roles:['admin']},403],
   ['scope',{scopes:['team']},200],['scope',{scopes:['admin']},403],['scope',{scopes:['team','unknown']},403],
@@ -31,6 +31,22 @@ try {
   const response=await fetch(`${base}/policy/permissions`,{headers});assert.equal(response.status,status);
   const result=await mcpRpc(base,'tools/call',{name:'checkPermissions',arguments:{}},headers);assert.equal(result.isError,true);
  }
+ for(const [credential,status,message] of [
+  [null,401,'Authorization token required.'],
+  ['basic '+Buffer.from('fixture-user:fixture-password').toString('base64'),401,'Invalid Authorization token format.'],
+  ['Basic '+Buffer.from('fixture-user:wrong').toString('base64'),403,'Invalid Authorization login.'],
+  ['Basic '+Buffer.from('fixture-user:').toString('base64'),401,'Invalid Authorization token format.'],
+  ['Basic '+Buffer.from('fixture-user:fixture-password:discarded').toString('base64'),200,null],
+ ]) {
+  const headers=credential===null?{}:{authorization:credential};
+  const response=await fetch(`${base}/policy/basic`,{headers});
+  assert.equal(response.status,status);
+  const body=await response.json();
+  const result=await mcpRpc(base,'tools/call',{name:'checkBasic',arguments:{}},headers);
+  assert.equal(result.isError,status!==200);
+  if(status===200){assert.deepEqual(body,{subject:'fixture-user'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
+  else assert.ok(JSON.stringify(body).includes(message));
+ }
  server.kill('SIGTERM');const [code,signal]=await exited;assert.equal(code,0,`${signal}: ${errors}`);
- console.log('PASS generated verified-session authorization: HTTP/MCP permissions, exact scopes, subscriptions, features, missing policies, rejected credentials and graceful shutdown');
+ console.log('PASS generated verified-session authorization: HTTP/MCP Basic login, permissions, exact scopes, subscriptions, features, missing policies, rejected credentials and graceful shutdown');
 } finally {clearTimeout(timer);if(server.exitCode===null&&!server.signalCode){server.kill('SIGKILL');await exited.catch(()=>{});}}

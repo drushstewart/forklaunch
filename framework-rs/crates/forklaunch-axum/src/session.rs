@@ -29,6 +29,13 @@ pub type AuthenticationFuture =
 pub type Authenticator =
     Arc<dyn Fn(FrameworkRequest, RouteContract) -> AuthenticationFuture + Send + Sync>;
 
+/// Credential verification with application-selected safe HTTP errors.
+pub type ResponseAuthenticationFuture = Pin<
+    Box<dyn Future<Output = Result<AuthenticatedSession, forklaunch_http::ErrorResponse>> + Send>,
+>;
+pub type ResponseAuthenticator =
+    Arc<dyn Fn(FrameworkRequest, RouteContract) -> ResponseAuthenticationFuture + Send + Sync>;
+
 /// Application-owned authorization for an already verified, enriched session.
 pub type Authorizer = Arc<
     dyn Fn(&AuthenticatedSession, &RouteContract) -> Result<(), forklaunch_http::ErrorResponse>
