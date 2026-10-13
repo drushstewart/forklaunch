@@ -227,11 +227,7 @@ async fn find_token<T: AuthTransaction>(tx: &mut T, token: &str) -> BlueprintRes
     if token.is_empty() {
         return Ok(None);
     }
-    Ok(tx
-        .list(Model::Session)
-        .await?
-        .into_iter()
-        .find(|row| row["token"].as_str() == Some(token)))
+    tx.find_unique(Model::Session, "token", token).await
 }
 pub(crate) async fn load<T: AuthTransaction>(
     tx: &mut T,

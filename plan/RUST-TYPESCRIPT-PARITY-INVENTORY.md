@@ -2254,3 +2254,28 @@ final run exits normally without force termination.
 This closes the multipart/expanded-generator MCP item, not the separate
 versioned-API or broad route/schema conformance gates. Checklist:
 **645/682 (94.6%), 37 open**.
+
+### Indexed opaque-session authentication
+
+Better Auth exact token lookup now uses the memory unique-field index and
+rotating PostgreSQL blind indexes. Fetch/refresh, single-token revocation and
+sign-out no longer load the session model. Opening a PostgreSQL store rebuilds
+legacy token claims under the tenant write lock in 256-record pages. Duplicate
+or corrupt legacy records fail startup with transactional rollback. Coordinated
+index-aware writer rollout is required; old binaries do not maintain claims.
+Token uniqueness is a deliberate stricter constraint than the configured TS
+entity's unindexed token field, preventing ambiguous credential ownership.
+
+Memory and restricted-role encrypted PostgreSQL authenticate and revoke with
+4,100 sessions while the legacy list still fails closed. The PostgreSQL fixture
+removes token claims from the legacy dataset, reopens the store and validates
+backfill beyond 4,096 rows. All 30 native tests and strict all-target Clippy pass;
+the separate database test passes. Actual Better Auth comparison retains 63
+checks/48 body/storage matches. A rebuilt CLI generates the latest migrations
+and sources, and the relocated app passes both SDKs, actual frontend clients,
+HTTP/MCP listener/startup/shutdown, restart and rename/delete.
+Logs: `/private/tmp/fl-session-index-tests.log`, `fl-session-index-postgres.log`,
+`fl-session-index-parity.log`, `fl-session-index-clippy.log`,
+`fl-session-index-runtime.log`. The owned database and generated workspace were
+removed after completion. Account/member indexes and session collection queries
+remain open. Checklist remains **645/682 (94.6%), 37 open**.

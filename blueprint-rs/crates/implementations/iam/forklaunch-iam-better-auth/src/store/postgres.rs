@@ -67,12 +67,38 @@ impl PostgresAuthStore {
                 "Authentication runtime requires a role without SUPERUSER or BYPASSRLS",
             ));
         }
-        Ok(Self {
+        let store = Self {
             pool,
             tenant,
             encryptor,
             audit,
-        })
+        };
+        // Existing encrypted sessions predate token indexes. Rebuild under the
+        // same tenant write lock before exposing the store to authentication.
+        // Duplicate/corrupt legacy tokens fail startup and roll back all claims.
+        store.reindex_session_tokens().await?;
+        Ok(store)
+    }
+    /// Rebuild token indexes for this trusted tenant in bounded pages. Call on
+    /// startup (also done by `new`) and when rotating retained encryption keys.
+    /// Deploy writers with token-index support together; legacy binaries do not
+    /// maintain these claims and must not write concurrently after backfill.
+    /// # Errors
+    /// Rejects undecryptable records, duplicate tokens and database failures.
+    pub async fn reindex_session_tokens(&self) -> BlueprintResult<()> {
+        let mut tx = self.begin(true).await?;
+        let mut after = None;
+        loop {
+            let page = tx.list_page(Model::Session, after, 256).await?;
+            for row in &page.records {
+                tx.claims(Model::Session, row).await?;
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
+            }
+        }
+        tx.commit().await
     }
     /// # Errors
     /// Rejects empty audit correlation IDs.

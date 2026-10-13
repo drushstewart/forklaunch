@@ -151,3 +151,19 @@ and unique-field indexes, but still clones its transaction snapshot in memory.
 The existing `list()` remains capped and fails closed for oversized models.
 Session/account/member services that still use it need separate indexed-query
 migration; this primitive does not yet remove their production scan limits.
+
+Better Auth session-token authentication now uses exact unique indexes in memory
+and rotating encrypted blind indexes in PostgreSQL. Fetch, refresh, single-token
+revocation and sign-out no longer scan the whole session model. Unknown tokens
+remain indistinguishable from revoked tokens; corrupt/transplanted index matches
+are checked against the decrypted record before returning it.
+
+`PostgresAuthStore::new` backfills existing session-token claims under the tenant
+write lock in 256-record pages before returning the store. The public
+`reindex_session_tokens()` operation also supports maintenance/key rotation.
+Backfill is transactional: duplicate legacy tokens or undecryptable rows reject
+startup and roll back the claims. This uniqueness check is deliberately stricter
+than the configured TypeScript entity's unindexed token field. Roll out
+index-aware writers together; older binaries do not maintain token claims and
+must not keep writing after backfill. Session-list/revoke-all and account/member
+queries still have separate indexed-query work outstanding.

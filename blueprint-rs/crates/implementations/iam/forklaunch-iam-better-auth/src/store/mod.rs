@@ -45,6 +45,7 @@ impl Model {
         match self {
             Self::User => &["email", "subscription"],
             Self::Organization => &["slug"],
+            Self::Session => &["token"],
             _ => &[],
         }
     }

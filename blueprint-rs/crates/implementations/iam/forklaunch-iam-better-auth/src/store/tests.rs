@@ -48,10 +48,12 @@ async fn exercise_transactions<S: AuthStore>(store: &S) {
                 .unwrap()
                 .is_none()
         );
-        assert!(
+        assert_eq!(
             tx.find_unique(Model::Session, "token", "private-session-token")
                 .await
-                .is_err()
+                .unwrap()
+                .unwrap()["id"],
+            "session-1"
         );
         assert!(
             tx.find_unique(Model::User, "email OR 1=1", "ignored")
@@ -172,6 +174,75 @@ async fn exercise_many<T: AuthTransaction>(tx: &mut T) {
             .await
             .is_err()
     );
+}
+
+async fn exercise_large_session_tokens<S: AuthStore + 'static>(store: std::sync::Arc<S>) {
+    let now = chrono::DateTime::<chrono::Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(
+        Model::User,
+        json!({"id":"indexed-session-user","email":"indexed-session-user@fixture.test"}),
+    )
+    .await
+    .unwrap();
+    for index in 0..4100 {
+        let mut session =
+            crate::sessions::new_session("indexed-session-user", "", "", now).unwrap();
+        session["id"] = json!(format!("indexed-session-{index}"));
+        session["token"] = json!(format!("indexed-token-{index}"));
+        tx.insert(Model::Session, session).await.unwrap();
+    }
+    tx.commit().await.unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(tx.list(Model::Session).await.is_err());
+    assert_eq!(
+        tx.find_unique(Model::Session, "token", "indexed-token-4099")
+            .await
+            .unwrap()
+            .unwrap()["id"],
+        "indexed-session-4099"
+    );
+    tx.commit().await.unwrap();
+    {
+        let mut tx = store.begin(true).await.unwrap();
+        let mut duplicate = tx
+            .get(Model::Session, "indexed-session-4099")
+            .await
+            .unwrap()
+            .unwrap();
+        duplicate["id"] = json!("duplicate-token");
+        assert!(tx.insert(Model::Session, duplicate).await.is_err());
+    }
+    let service = crate::sessions::SessionService::new(store);
+    assert_eq!(
+        service
+            .get("indexed-token-4099", false, false, now)
+            .await
+            .unwrap()
+            .unwrap()
+            .user["id"],
+        "indexed-session-user"
+    );
+    assert!(
+        service
+            .get("indexed-token-missing", false, false, now)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    service.sign_out("indexed-token-4099").await.unwrap();
+    assert!(
+        service
+            .get("indexed-token-4099", false, false, now)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn memory_session_authentication_exceeds_model_scan_bound() {
+    exercise_large_session_tokens(std::sync::Arc::new(memory::MemoryAuthStore::default())).await;
 }
 
 async fn exercise_pagination<S: AuthStore>(store: &S) {
@@ -556,6 +627,33 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     .await
     .unwrap();
     exercise_large_unique_lookups(Arc::new(bulk.clone())).await;
+    exercise_large_session_tokens(Arc::new(bulk.clone())).await;
+    // Emulate pre-index encrypted sessions, then rebuild all 4,099 live tokens
+    // in bounded pages with a newly opened runtime store.
+    sqlx::query("DELETE FROM fl_better_auth.unique_claims WHERE tenant_id=$1 AND model='session'")
+        .bind(bulk_tenant.id())
+        .execute(&owner)
+        .await
+        .unwrap();
+    let reopened = PostgresAuthStore::new(
+        pool.clone(),
+        bulk_tenant.clone(),
+        key.clone(),
+        AuditContext::system("session-backfill"),
+    )
+    .await
+    .unwrap();
+    let mut indexed = reopened.begin(false).await.unwrap();
+    assert_eq!(
+        indexed
+            .find_unique(Model::Session, "token", "indexed-token-4098")
+            .await
+            .unwrap()
+            .unwrap()["id"],
+        "indexed-session-4098"
+    );
+    indexed.commit().await.unwrap();
+
     // A transplanted index must not authenticate a different valid encrypted row.
     let moved_indexes: Vec<String> = sqlx::query_scalar("UPDATE fl_better_auth.unique_claims SET id='imported-0' WHERE tenant_id=$1 AND model='user' AND field='email' AND id='imported-4099' RETURNING blind_index")
         .bind(bulk_tenant.id()).fetch_all(&owner).await.unwrap();
