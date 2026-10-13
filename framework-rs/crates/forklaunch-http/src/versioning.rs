@@ -13,8 +13,6 @@ use std::sync::Arc;
 mod form;
 #[path = "versioning_multipart.rs"]
 mod multipart;
-#[path = "versioning_multipart_schema.rs"]
-mod multipart_schema;
 pub use multipart::MultipartLimits;
 
 /// Available to local handlers and as an Axum request extension.
@@ -254,12 +252,11 @@ fn compile_body(
     let Some(schema) = decode_schema(&body.schema, remaining_bytes)? else {
         return Ok(None);
     };
-    let mut validator = schema_validation::compile(&schema)?;
-    if body.kind == BodyKind::Multipart
-        && let Some(runtime) = multipart_schema::lower(&schema)?
-    {
-        validator = schema_validation::compile(&runtime)?;
-    }
+    let validator = if body.kind == BodyKind::Multipart {
+        schema_validation::compile_multipart(&schema)?
+    } else {
+        schema_validation::compile(&schema)?
+    };
     if !matches!(body.kind, BodyKind::File | BodyKind::Binary) {
         return Ok(Some(BodyValidator::Value(validator)));
     }
@@ -268,42 +265,11 @@ fn compile_body(
     }
     // OpenAPI's binary string describes opaque wire bytes, not UTF-8 text.
     // Do not silently discard assertions that cannot apply to that representation.
-    if opaque_binary_schema(&schema) {
+    if schema_validation::opaque_binary_schema(&schema) {
         Ok(Some(BodyValidator::Opaque))
     } else {
         Err("Versioned binary/file schemas require an opaque binary string, a byte-array schema, or a boolean schema".into())
     }
-}
-fn opaque_binary_schema(schema: &Value) -> bool {
-    schema.as_object().is_some_and(|object| {
-        object.get("type").and_then(Value::as_str) == Some("string")
-            && object.get("format").and_then(Value::as_str) == Some("binary")
-            // The TS file exporter represents Buffer/ArrayBuffer/Blob guards as
-            // empty alternatives. Only this exact legacy File marker is opaque.
-            && object.get("oneOf").is_none_or(|alternatives| {
-                object.get("title").and_then(Value::as_str) == Some("File")
-                    && *alternatives == serde_json::json!([{}, {}, {}, {"type":["string"]}])
-            })
-            && object.keys().all(|key| {
-                matches!(
-                    key.as_str(),
-                    "type"
-                        | "format"
-                        | "oneOf"
-                        | "$schema"
-                        | "$id"
-                        | "$comment"
-                        | "title"
-                        | "description"
-                        | "default"
-                        | "examples"
-                        | "example"
-                        | "deprecated"
-                        | "readOnly"
-                        | "writeOnly"
-                )
-            })
-    })
 }
 
 impl Variant {

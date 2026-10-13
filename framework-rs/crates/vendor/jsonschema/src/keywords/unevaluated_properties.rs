@@ -432,6 +432,31 @@ fn compile_pending_property_validators<'a, F: Json>(
     let pending = Arc::new(OnceLock::new());
     ctx.cache_pending_property_validators_for_schema(parent, pending.clone());
 
+    let replacement = ctx.rewrite_schema(parent)?;
+    let empty = Map::new();
+    let effective = match replacement.as_deref() {
+        Some(Value::Object(object)) => object,
+        Some(_) => &empty,
+        None => parent,
+    };
+    let validators =
+        compile_property_assertions(ctx, effective).map_err(ValidationError::to_owned)?;
+
+    // Initialize the pending node. This should always succeed since we just created it.
+    pending
+        .set(validators)
+        .expect("pending node should not be initialized yet");
+
+    // Remove from pending cache
+    ctx.remove_pending_property_validators_for_schema(parent);
+
+    Ok(pending)
+}
+
+fn compile_property_assertions<'a, F: Json>(
+    ctx: &compiler::Context<'_, F>,
+    parent: &'a Map<String, Value>,
+) -> Result<PropertyValidators<F>, ValidationError<'a>> {
     let applicator = ctx.has_vocabulary(&Vocabulary::Applicator);
 
     let validators = PropertyValidators {
@@ -481,15 +506,7 @@ fn compile_pending_property_validators<'a, F: Json>(
         },
     };
 
-    // Initialize the pending node. This should always succeed since we just created it.
-    pending
-        .set(validators)
-        .expect("pending node should not be initialized yet");
-
-    // Remove from pending cache
-    ctx.remove_pending_property_validators_for_schema(parent);
-
-    Ok(pending)
+    Ok(validators)
 }
 
 /// Every cell is initialized before compilation returns, so validation never sees an empty one.

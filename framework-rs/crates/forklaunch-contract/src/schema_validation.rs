@@ -2,6 +2,10 @@
 use serde_json::Value;
 use std::sync::Arc;
 
+#[path = "schema_validation_file.rs"]
+mod file;
+pub use file::opaque_binary_schema;
+
 pub type JsonValidator = dyn Fn(&Value) -> Result<(), String> + Send + Sync;
 
 /// Compile the shared AJV-compatible validation profile once.
@@ -9,6 +13,18 @@ pub type JsonValidator = dyn Fn(&Value) -> Result<(), String> + Send + Sync;
 /// # Errors
 /// Rejects malformed schemas, unresolved references and resource limits.
 pub fn compile(schema: &Value) -> Result<Arc<JsonValidator>, String> {
+    compile_profile(schema, false)
+}
+
+/// Compile multipart file assertions without rewriting resources or literal data.
+/// All other JSON Schema behavior follows the shared offline profile.
+/// # Errors
+/// Rejects malformed schemas, unsupported file assertions and resource limits.
+pub fn compile_multipart(schema: &Value) -> Result<Arc<JsonValidator>, String> {
+    compile_profile(schema, true)
+}
+
+fn compile_profile(schema: &Value, multipart: bool) -> Result<Arc<JsonValidator>, String> {
     schema_budget(schema)?;
     // Match the TypeScript AJV full-format profile: email domains
     // require a dot, rather than accepting local-only mailboxes.
@@ -28,6 +44,9 @@ pub fn compile(schema: &Value) -> Result<Arc<JsonValidator>, String> {
                 .size_limit(1024 * 1024)
                 .dfa_size_limit(1024 * 1024),
         );
+    if multipart {
+        options = options.with_schema_rewriter(file::rewrite);
+    }
     if schema.get("$schema").is_none() {
         options = options.with_draft(jsonschema::Draft::Draft7);
     }

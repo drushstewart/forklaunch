@@ -334,6 +334,27 @@ fn compile_pending_items_validators<'a, F: Json>(
     let pending = Arc::new(OnceLock::new());
     ctx.cache_pending_items_validators_for_schema(parent, pending.clone());
 
+    let replacement = ctx.rewrite_schema(parent)?;
+    let empty = Map::new();
+    let effective = match replacement.as_deref() {
+        Some(Value::Object(object)) => object,
+        Some(_) => &empty,
+        None => parent,
+    };
+    let validators = compile_items_assertions(ctx, effective).map_err(ValidationError::to_owned)?;
+
+    pending
+        .set(validators)
+        .expect("pending node should not be initialized yet");
+    ctx.remove_pending_items_validators_for_schema(parent);
+
+    Ok(pending)
+}
+
+fn compile_items_assertions<'a, F: Json>(
+    ctx: &compiler::Context<'_, F>,
+    parent: &'a Map<String, Value>,
+) -> Result<ItemsValidators<F>, ValidationError<'a>> {
     let applicator = ctx.has_vocabulary(&Vocabulary::Applicator);
 
     let unevaluated = compile_unevaluated(ctx, parent)?;
@@ -394,12 +415,7 @@ fn compile_pending_items_validators<'a, F: Json>(
         one_of,
     };
 
-    pending
-        .set(validators)
-        .expect("pending node should not be initialized yet");
-    ctx.remove_pending_items_validators_for_schema(parent);
-
-    Ok(pending)
+    Ok(validators)
 }
 
 /// Every cell is initialized before compilation returns, so validation never sees an empty one.

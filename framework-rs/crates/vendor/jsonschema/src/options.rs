@@ -16,8 +16,13 @@ use crate::{
 use ahash::{AHashMap, AHashSet};
 use email_address::Options as EmailAddressOptions;
 use referencing::{Draft, Retrieve};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::{fmt, marker::PhantomData, sync::Arc};
+
+// ForkLaunch opt-in: adapt assertion representations at their original resource
+// location, without rewriting the source registry or literal instance data.
+pub(crate) type SchemaRewriter =
+    dyn Fn(&Map<String, Value>) -> Result<Option<Value>, String> + Send + Sync;
 
 /// Configuration options for JSON Schema validation.
 ///
@@ -36,6 +41,7 @@ pub struct ValidationOptions<'i, R = Arc<dyn Retrieve>, F: Json = SerdeJson> {
     pub(crate) validate_schema: bool,
     ignore_unknown_formats: bool,
     keywords: AHashMap<String, Arc<dyn KeywordFactory<F>>>,
+    schema_rewriter: Option<Arc<SchemaRewriter>>,
     vocabularies: AHashSet<String>,
     pattern_options: PatternEngineOptions,
     email_options: Option<EmailAddressOptions>,
@@ -59,6 +65,7 @@ impl<R: Clone, F: Json> Clone for ValidationOptions<'_, R, F> {
             validate_schema: self.validate_schema,
             ignore_unknown_formats: self.ignore_unknown_formats,
             keywords: self.keywords.clone(),
+            schema_rewriter: self.schema_rewriter.clone(),
             vocabularies: self.vocabularies.clone(),
             pattern_options: self.pattern_options,
             email_options: self.email_options,
@@ -81,6 +88,7 @@ impl<F: Json> Default for ValidationOptions<'_, Arc<dyn Retrieve>, F> {
             validate_schema: true,
             ignore_unknown_formats: true,
             keywords: AHashMap::default(),
+            schema_rewriter: None,
             vocabularies: AHashSet::default(),
             pattern_options: PatternEngineOptions::default(),
             email_options: None,
@@ -104,6 +112,7 @@ impl<F: Json> Default for ValidationOptions<'_, Arc<dyn referencing::AsyncRetrie
             validate_schema: true,
             ignore_unknown_formats: true,
             keywords: AHashMap::default(),
+            schema_rewriter: None,
             vocabularies: AHashSet::default(),
             pattern_options: PatternEngineOptions::default(),
             email_options: None,
@@ -431,6 +440,30 @@ impl<'i, R, F: Json> ValidationOptions<'i, R, F> {
     pub(crate) const fn are_unknown_formats_ignored(&self) -> bool {
         self.ignore_unknown_formats
     }
+    /// Adapt a schema node's assertions at compilation time.
+    ///
+    /// Returning `None` preserves standard compilation. A replacement is compiled
+    /// at the original node's location, draft and resource scope; the source
+    /// registry, reference targets and literal instance data remain unchanged.
+    /// Resource IDs and references continue to resolve against the original
+    /// schema. The callback must be deterministic. Replacements adapt assertions,
+    /// rather than introducing
+    /// new resources. The callback also applies to referenced schema nodes.
+    ///
+    /// This extension is disabled by default. Callback errors reject compilation.
+    #[must_use]
+    pub fn with_schema_rewriter<Rewrite>(mut self, rewrite: Rewrite) -> Self
+    where
+        Rewrite: Fn(&Map<String, Value>) -> Result<Option<Value>, String> + Send + Sync + 'static,
+    {
+        self.schema_rewriter = Some(Arc::new(rewrite));
+        self
+    }
+
+    pub(crate) fn get_schema_rewriter(&self) -> Option<&Arc<SchemaRewriter>> {
+        self.schema_rewriter.as_ref()
+    }
+
     /// Register a custom keyword validator.
     ///
     /// ## Example
@@ -815,6 +848,7 @@ impl<'i, F: Json> ValidationOptions<'i, Arc<dyn referencing::AsyncRetrieve>, F> 
             validate_schema: self.validate_schema,
             ignore_unknown_formats: self.ignore_unknown_formats,
             keywords: self.keywords,
+            schema_rewriter: self.schema_rewriter,
             vocabularies: self.vocabularies,
             pattern_options: self.pattern_options,
             email_options: self.email_options,
@@ -1226,6 +1260,62 @@ mod tests {
     use referencing::{Registry, Resource, Retrieve, Uri};
     use serde_json::{json, Value};
     use test_case::test_case;
+
+    #[test]
+    fn schema_rewriter_preserves_source_and_evaluated_properties() {
+        let schema = json!({"$schema":"https://json-schema.org/draft/2020-12/schema", "$id":"https://example.invalid/root", "$defs":{"record":{"$id":"record","x-record":true}}, "allOf":[{"$ref":"record"}], "unevaluatedProperties":false});
+        let original = schema.clone();
+        let validator = crate::options().with_schema_rewriter(|object| {
+            Ok(object.contains_key("x-record").then(|| json!({"type":"object","properties":{"value":{"type":"integer"}},"required":["value"]})))
+        }).build(&schema).unwrap();
+        assert!(validator.is_valid(&json!({"value":3})));
+        assert!(!validator.is_valid(&json!({"value":"3"})));
+        assert!(!validator.is_valid(&json!({"value":3,"extra":0})));
+        assert!(!validator.is_valid(&json!({})));
+        assert_eq!(schema, original);
+        assert!(!crate::validator_for(&schema)
+            .unwrap()
+            .is_valid(&json!({"value":3})));
+    }
+
+    #[test]
+    fn schema_rewriter_disables_source_dispatch_and_item_fusion() {
+        let rewrite = |object: &Map<String, Value>| {
+            Ok(object
+                .get("const")
+                .filter(|v| **v == json!("old"))
+                .map(|_| json!({"const":"new"})))
+        };
+        for schema in [
+            json!({"oneOf":[{"type":"object","properties":{"kind":{"const":"old"}},"required":["kind"]},{"type":"object","properties":{"kind":{"const":"other"}},"required":["kind"]}]}),
+            json!({"type":"array","items":{"const":"old"}}),
+        ] {
+            let validator = crate::options()
+                .with_schema_rewriter(rewrite)
+                .build(&schema)
+                .unwrap();
+            let (valid, invalid) = if schema.get("oneOf").is_some() {
+                (json!({"kind":"new"}), json!({"kind":"old"}))
+            } else {
+                (json!(["new"]), json!(["old"]))
+            };
+            assert!(validator.is_valid(&valid));
+            assert!(!validator.is_valid(&invalid));
+            assert!(!crate::validator_for(&schema).unwrap().is_valid(&valid));
+            assert!(crate::validator_for(&schema).unwrap().is_valid(&invalid));
+        }
+    }
+
+    #[test]
+    fn schema_rewriter_reports_compile_errors() {
+        let result = crate::options()
+            .with_schema_rewriter(|_| Err("unsupported assertion".into()))
+            .build(&json!({"type":"string"}));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported assertion"));
+    }
 
     fn custom(s: &str) -> bool {
         s.ends_with("42!")

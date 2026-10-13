@@ -45,7 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 responses: vec![ResponseContract::new(200, None)],
             });
         }
-        let plan = VersionedRoutePlan::compile(&contract)?;
+        let plan = VersionedRoutePlan::compile(&contract)
+            .map_err(|error| format!("fixture {}: {error}", output.len()))?;
         let mut cases = Vec::new();
         for case in fixture["cases"].as_array().unwrap() {
             let request = FrameworkRequest::new(

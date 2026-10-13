@@ -530,13 +530,12 @@ with the typed Axum extractor, including caller-installed limit extensions.
 Text fields become strings and file fields become byte arrays; repeated names
 use the last part, and overwritten parts still count toward limits. The matcher
 polls only ready memory and does not start an executor. Handlers retain the exact
-original body. Native byte-array schemas and unscoped opaque-file annotations
-are supported, including local references stored in definitions or literal
-metadata. Opaque files accept binary and text parts, matching the TypeScript file
+original body. Native byte-array schemas and opaque-file annotations are supported, including
+resource IDs, anchors and references stored in definitions or literal metadata. Opaque files accept binary and text parts, matching the TypeScript file
 validator. The exact legacy `File` marker emitted for its instance guards is
 recognized; other string assertions still fail registration. Source/export
-schemas and literal values are preserved. Resource-scoped opaque-file
-annotations remain incomplete.
+schemas and literal values are preserved. Multipart assertions compile at their
+original resource location, including evaluated-item tracking and mixed drafts.
 
 Parser failures remain fatal when schema validation is disabled, including for
 named body schemas without embedded JSON Schema. Form parameter and multipart

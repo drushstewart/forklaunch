@@ -80,3 +80,14 @@ schema-object analysis now honors `forklaunch-ajv-ref-siblings` when registering
 IDs beside references, matching the existing ID extraction/compiler policy.
 Borrowed/owned registry regressions and actual AJV/native/generated comparisons
 cover these paths. URI syntax checks still reject malformed source references.
+
+The optional runtime `with_schema_rewriter` hook adapts assertion nodes at their
+original draft, location and resource scope. The default is absent. ForkLaunch
+uses it only for multipart opaque-file validation; JSON/socket validation keeps
+the original profile. Source registries, references and literal metadata remain
+unchanged. Evaluated-item/property tracking uses the same adapted assertions,
+and source-only optimizations are disabled for this profile. Rewritten values
+stay owned throughout compilation so pointer-keyed caches cannot reuse freed
+child addresses. The hook must be deterministic and cannot introduce resources.
+Regression tests cover scoped references, evaluated properties, discriminator
+and item optimizations, callback errors and unchanged default validation.

@@ -60,6 +60,15 @@ try{
     const schema={$schema:dialect,type:'object',required:['label','file'],properties:{label:{type:'string'},file:storage==='direct'?file:{$ref:`#/${storage}/file`}},...(storage==='direct'?{}:{[storage]:{file}})};
     versions.push({kind:'multipart',versions:[{name:'file',schema}],cases:[bytes]});
    }
+   const legacy=dialect.includes('draft-0'),id=dialect.includes('draft-04')?'id':'$id',defs=legacy?'definitions':'$defs';
+   for(const fragment of ['', '#bytes', ...(legacy?['#/bytes']:[])]) {
+    const reference=`file.json${fragment}`;
+    const target={...file,[id]:legacy?reference:'file.json',...(!legacy&&fragment?{$anchor:'bytes'}:{})};
+    const schema={$schema:dialect,[id]:'https://example.invalid/root.json',type:'object',required:['file'],properties:{file:{$ref:reference}},[defs]:{File:target}};
+    versions.push({kind:'multipart',versions:[{name:'file',schema}],cases:[bytes]});
+   }
+   const literal={$schema:dialect,[id]:'https://example.invalid/literal.json',type:'object',required:['file'],properties:{file:{$ref:'#/default/file'}},default:{file}};
+   versions.push({kind:'multipart',versions:[{name:'file',schema:literal}],cases:[bytes]});
   }
  }
  const selected=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(versions),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));

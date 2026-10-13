@@ -3295,3 +3295,28 @@ and graceful shutdown. Receipts:
 Checklist is still **652/682 (95.6%), 30 open**, verified from the checklist file.
 Remaining versioning work is narrowed to scoped opaque-file schemas, configurable
 parser/charset behavior and request transformations.
+
+
+### 2026-10-13 — Resource-scoped multipart file assertions
+
+Multipart opaque-file assertions now compile at their original resource scope,
+with IDs, anchors, literal-metadata references and mixed resource drafts intact.
+The opt-in validator hook preserves the source registry and exported schemas;
+evaluated-item/property tracking sees the adapted assertions. Default JSON and
+socket validation remain unchanged. Rewritten nodes stay owned through compile
+cache teardown, and source-only optimizations are disabled for this profile.
+
+Validation: **271 actual TypeScript parser/file-validator/native comparisons**
+across five drafts and scoped/unscoped reference layouts, plus seven typed
+multipart extractor comparisons; 24 contract, 27 HTTP and 59 Axum unit tests;
+strict Clippy; 1,995 default and 1,990 compatibility vendor tests; 13,908 actual
+TypeScript/AJV/native codec comparisons; 201 mixed-draft cases (198 AJV agreements,
+three recorded existing contains/unevaluatedItems differences); 902 package files.
+Generated `run.8VOTWn` uses a resource-scoped anchored attachment and passes HTTP
+and MCP startup, discovery, calls, raw byte preservation, both typed SDKs through
+all three artifacts and native generators, and graceful shutdown. Receipts:
+`/private/tmp/fl-scoped-{actual,native,clippy,vendor-default,vendor-compat,codec,mixed,generated,package}.log`.
+
+Checklist remains **652/682 (95.6%), 30 open**. The scoped-file gap is closed;
+configurable parsers/charsets and request transformations still keep the broader
+versioning gate open.

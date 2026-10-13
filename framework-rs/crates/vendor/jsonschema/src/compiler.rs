@@ -10,7 +10,7 @@ use crate::{
         BoxedValidator, BuiltinKeyword, Keyword,
     },
     node::{PendingSchemaNode, SchemaNode},
-    options::{PatternEngineOptions, ValidationOptions},
+    options::{PatternEngineOptions, SchemaRewriter, ValidationOptions},
     paths::{Location, LocationSegment},
     types::{JsonType, JsonTypeSet},
     validator::Validate,
@@ -83,6 +83,7 @@ pub(crate) trait CompilationOptions<F: Json> {
         content_encoding: &str,
     ) -> Option<ContentEncodingConverterType>;
     fn get_keyword_factory(&self, name: &str) -> Option<&Arc<dyn KeywordFactory<F>>>;
+    fn get_schema_rewriter(&self) -> Option<&Arc<SchemaRewriter>>;
     fn get_format(&self, format: &str) -> Option<(&String, &Arc<dyn Format>)>;
     fn pattern_options(&self) -> PatternEngineOptions;
     fn email_options(&self) -> Option<&email_address::Options>;
@@ -118,6 +119,10 @@ impl<R, F: Json> CompilationOptions<F> for ValidationOptions<'_, R, F> {
 
     fn get_keyword_factory(&self, name: &str) -> Option<&Arc<dyn KeywordFactory<F>>> {
         ValidationOptions::get_keyword_factory(self, name)
+    }
+
+    fn get_schema_rewriter(&self) -> Option<&Arc<SchemaRewriter>> {
+        ValidationOptions::get_schema_rewriter(self)
     }
 
     fn get_format(&self, format: &str) -> Option<(&String, &Arc<dyn Format>)> {
@@ -278,6 +283,8 @@ fn deferred_key(resolved: &Resolved<'_>, alias: &Arc<Uri<String>>) -> AliasCache
 /// Shared caches reused across every `Context` derived from a schema root.
 struct SharedContextState<'a, F: Json = SerdeJson> {
     seen: SharedSet<Arc<Uri<String>>>,
+    /// Keep rewritten child addresses stable until all pointer-keyed caches are dropped.
+    rewritten_schemas: RefCell<Vec<Arc<Value>>>,
     location_nodes: SharedCache<NodeCacheKey, CachedNode<F>>,
     alias_nodes: SharedCache<AliasCacheKey, CachedNode<F>>,
     alias_placeholders: SharedCache<Arc<Uri<String>>, PendingSchemaNode<F>>,
@@ -321,6 +328,7 @@ impl<F: Json> SharedContextState<'_, F> {
     fn new(capacity: usize) -> Self {
         Self {
             seen: RefCell::new(AHashSet::new()),
+            rewritten_schemas: RefCell::new(Vec::new()),
             location_nodes: RefCell::new(AHashMap::with_capacity(capacity)),
             alias_nodes: RefCell::new(AHashMap::new()),
             alias_placeholders: RefCell::new(AHashMap::new()),
@@ -611,9 +619,29 @@ impl<'a, F: Json> Context<'a, F> {
     pub(crate) fn get_keyword_factory(&self, name: &str) -> Option<&Arc<dyn KeywordFactory<F>>> {
         self.config.get_keyword_factory(name)
     }
-    /// Whether a custom keyword takes over this keyword.
+    pub(crate) fn rewrite_schema(
+        &self,
+        schema: &Map<String, Value>,
+    ) -> Result<Option<Arc<Value>>, ValidationError<'static>> {
+        match self.config.get_schema_rewriter() {
+            Some(rewrite) => {
+                let replacement = rewrite(schema)
+                    .map_err(ValidationError::custom)?
+                    .map(Arc::new);
+                if let Some(value) = &replacement {
+                    self.shared
+                        .rewritten_schemas
+                        .borrow_mut()
+                        .push(Arc::clone(value));
+                }
+                Ok(replacement)
+            }
+            None => Ok(None),
+        }
+    }
+    /// Whether custom validation makes source-only keyword optimizations unsafe.
     pub(crate) fn is_keyword_overridden(&self, name: &str) -> bool {
-        self.get_keyword_factory(name).is_some()
+        self.config.get_schema_rewriter().is_some() || self.get_keyword_factory(name).is_some()
     }
     pub(crate) fn get_format(&self, format: &str) -> Option<(&String, &Arc<dyn Format>)> {
         self.config.get_format(format)
@@ -1572,6 +1600,24 @@ fn compile_with_internal<'a, F: Json>(
 }
 
 fn compile_without_cache<'a, F: Json>(
+    ctx: &Context<F>,
+    resource: ResourceRef<'a>,
+) -> Result<SchemaNode<F>, ValidationError<'a>> {
+    if let Some(parent) = resource.contents().as_object() {
+        if let Some(replacement) = ctx.rewrite_schema(parent)? {
+            // Resolve against the original resource; the hook does not run again
+            // on this node. Child nodes still pass through normal compilation.
+            return compile_schema_assertions(
+                ctx,
+                ResourceRef::new(&replacement, resource.draft()),
+            )
+            .map_err(ValidationError::to_owned);
+        }
+    }
+    compile_schema_assertions(ctx, resource)
+}
+
+fn compile_schema_assertions<'a, F: Json>(
     ctx: &Context<F>,
     resource: ResourceRef<'a>,
 ) -> Result<SchemaNode<F>, ValidationError<'a>> {
