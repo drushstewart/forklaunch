@@ -306,6 +306,7 @@ enum ResponseDecoder {
     Json,
     Text,
     Binary,
+    Multipart,
     Sse,
 }
 impl ResponseDecoder {
@@ -315,6 +316,7 @@ impl ResponseDecoder {
             Self::Json => "json",
             Self::Text => "text",
             Self::Binary => "binary",
+            Self::Multipart => "multipart",
             Self::Sse => "sse",
         }
     }
@@ -713,12 +715,17 @@ fn build_sdk_operation(
     };
     let fallback_schema = match decoder {
         ResponseDecoder::Empty => json!({"type":"null"}),
-        ResponseDecoder::Text | ResponseDecoder::Binary => json!({"type":"string"}),
+        ResponseDecoder::Text | ResponseDecoder::Binary | ResponseDecoder::Multipart => {
+            json!({"type":"string"})
+        }
         ResponseDecoder::Json | ResponseDecoder::Sse => json!({}),
     };
     let response_schema = if matches!(
         decoder,
-        ResponseDecoder::Empty | ResponseDecoder::Text | ResponseDecoder::Binary
+        ResponseDecoder::Empty
+            | ResponseDecoder::Text
+            | ResponseDecoder::Binary
+            | ResponseDecoder::Multipart
     ) {
         &fallback_schema
     } else {
@@ -728,10 +735,18 @@ fn build_sdk_operation(
     let response_type_pascal = rust_type_name(&response_type);
     let (rust_models, mut rust_aliases, mut rust_response_type) =
         rust_types_from_schema(&response_type_pascal, response_schema);
-    if decoder == ResponseDecoder::Binary {
+    if matches!(
+        decoder,
+        ResponseDecoder::Binary | ResponseDecoder::Multipart
+    ) {
         for alias in &mut rust_aliases {
             if alias.name == rust_response_type {
-                alias.target_type = "Vec<u8>".into();
+                alias.target_type = if decoder == ResponseDecoder::Multipart {
+                    "MultipartResponse"
+                } else {
+                    "Vec<u8>"
+                }
+                .into();
             }
         }
     }
@@ -762,6 +777,7 @@ fn build_sdk_operation(
                 ResponseDecoder::Empty => "undefined".into(),
                 ResponseDecoder::Text => "string".into(),
                 ResponseDecoder::Binary => "Uint8Array".into(),
+                ResponseDecoder::Multipart => "FormData".into(),
                 ResponseDecoder::Json => ts_type_from_schema(response_schema),
                 ResponseDecoder::Sse => {
                     format!("AsyncIterable<{}>", ts_type_from_schema(response_schema))
@@ -773,6 +789,7 @@ fn build_sdk_operation(
             json_response: decoder == ResponseDecoder::Json,
             text_response: decoder == ResponseDecoder::Text,
             binary_response: decoder == ResponseDecoder::Binary,
+            multipart_response: decoder == ResponseDecoder::Multipart,
             streaming_response: decoder == ResponseDecoder::Sse,
             response_kind: decoder.as_str().into(),
             content_type: response.content_type.clone(),
@@ -979,6 +996,7 @@ fn response_contracts(route: &JsonValue) -> Result<Vec<SdkResponseContract>> {
             Some("text") => ResponseDecoder::Text,
             Some("binary" | "file") => ResponseDecoder::Binary,
             Some("serverSentEvent") => ResponseDecoder::Sse,
+            Some("multipart") => ResponseDecoder::Multipart,
             Some(kind) => bail!("Unsupported SDK response body kind {kind}"),
         };
         let schema = body
@@ -992,14 +1010,17 @@ fn response_contracts(route: &JsonValue) -> Result<Vec<SdkResponseContract>> {
                     ResponseDecoder::Empty | ResponseDecoder::Json => "application/json",
                     ResponseDecoder::Text => "text/plain",
                     ResponseDecoder::Binary => "application/octet-stream",
+                    ResponseDecoder::Multipart => "multipart/form-data",
                     ResponseDecoder::Sse => "text/event-stream",
                 }),
         )?;
         if (content_type == "text/event-stream") != (decoder == ResponseDecoder::Sse) {
             bail!("SSE SDK responses require the serverSentEvent body kind and text/event-stream");
         }
-        if content_type.starts_with("multipart/") {
-            bail!("Multipart SDK response transport remains unsupported");
+        if (decoder == ResponseDecoder::Multipart && content_type != "multipart/form-data")
+            || (content_type.starts_with("multipart/") && decoder != ResponseDecoder::Multipart)
+        {
+            bail!("Multipart SDK responses require multipart body kind and multipart/form-data");
         }
         if contracts
             .insert(
@@ -1110,7 +1131,12 @@ fn check_sdk_outputs(app_root: &Path, target: &str, services: &[SdkService]) -> 
             let crate_dir = app_root.join("sdks").join("rust").join(&package_name);
             compare_generated_file(
                 &crate_dir.join("Cargo.toml"),
-                &rust_sdk_cargo_toml(&package_name, &service.name, service_has_multipart(service)),
+                &rust_sdk_cargo_toml(
+                    &package_name,
+                    &service.name,
+                    service_has_multipart(service),
+                    service_has_multipart_response(service),
+                ),
                 &mut stale_outputs,
             )?;
             compare_generated_file(
@@ -1262,7 +1288,12 @@ fn generate_rust_sdks(app_root: &Path, services: &[SdkService]) -> Result<()> {
         create_dir_all(crate_dir.join("src"))?;
         super::write_if_changed(
             crate_dir.join("Cargo.toml"),
-            rust_sdk_cargo_toml(&package_name, &service.name, service_has_multipart(service)),
+            rust_sdk_cargo_toml(
+                &package_name,
+                &service.name,
+                service_has_multipart(service),
+                service_has_multipart_response(service),
+            ),
         )?;
         super::write_if_changed(crate_dir.join("src").join("lib.rs"), rust_sdk(service)?)?;
         add_rust_workspace_member(
@@ -1285,11 +1316,31 @@ fn service_has_multipart(service: &SdkService) -> bool {
     })
 }
 
-fn rust_sdk_cargo_toml(package_name: &str, service_name: &str, multipart: bool) -> String {
+fn service_has_multipart_response(service: &SdkService) -> bool {
+    service.routers.iter().any(|router| {
+        router.operations.iter().any(|op| {
+            op.responses
+                .iter()
+                .any(|response| response.multipart_response)
+        })
+    })
+}
+
+fn rust_sdk_cargo_toml(
+    package_name: &str,
+    service_name: &str,
+    multipart: bool,
+    multipart_response: bool,
+) -> String {
+    let response_dependencies = if multipart_response {
+        "multer = \"3.1\"\nfutures-util = \"0.3\"\n"
+    } else {
+        ""
+    };
     let multipart_feature = if multipart { ", \"multipart\"" } else { "" };
     format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\nauthors.workspace = true\ndescription = \"Generated Rust SDK for {}\"\n\n[dependencies]\nreqwest = {{ version = \"0.13.2\", features = [\"json\", \"query\"{}] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
-        package_name, service_name, multipart_feature
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\nauthors.workspace = true\ndescription = \"Generated Rust SDK for {}\"\n\n[dependencies]\nreqwest = {{ version = \"0.13.2\", features = [\"json\", \"query\"{}] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n{}",
+        package_name, service_name, multipart_feature, response_dependencies
     )
 }
 
@@ -1400,6 +1451,7 @@ fn rust_sdk(service: &SdkService) -> Result<String> {
             )?,
             has_operations: !operations.is_empty(),
             has_multipart,
+            has_multipart_response: service_has_multipart_response(service),
             has_sse,
             sse_source: if has_sse {
                 rust_sse_source()?
@@ -1524,6 +1576,7 @@ mod wire_name_tests {
                 .unwrap(),
                 has_operations: false,
                 has_multipart: false,
+                has_multipart_response: false,
                 has_sse: false,
                 sse_source: String::new(),
                 has_serde: !models.is_empty(),
@@ -1736,10 +1789,11 @@ mod response_media_tests {
     }
 
     #[test]
-    fn streaming_and_multipart_responses_fail_explicitly() {
+    fn inconsistent_streaming_and_multipart_response_media_fail_explicitly() {
         for body in [
             json!({"kind":"text","contentType":"text/event-stream"}),
-            json!({"kind":"multipart"}),
+            json!({"kind":"multipart","contentType":"multipart/mixed"}),
+            json!({"kind":"text","contentType":"multipart/form-data"}),
         ] {
             assert!(
                 response_contracts(&json!({"responses":[{"statusCode":200,"body":body}]})).is_err()
@@ -2016,7 +2070,7 @@ mod request_media_tests {
         assert!(source.contains("multipart: input.body,"));
         assert!(source.contains("name.eq_ignore_ascii_case(\"content-type\")"));
         let cargo: toml::Value =
-            toml::from_str(&rust_sdk_cargo_toml("uploads-sdk", "uploads", true)).unwrap();
+            toml::from_str(&rust_sdk_cargo_toml("uploads-sdk", "uploads", true, false)).unwrap();
         assert!(
             cargo["dependencies"]["reqwest"]["features"]
                 .as_array()
@@ -2075,6 +2129,7 @@ mod union_model_tests {
                 .unwrap(),
                 has_operations: false,
                 has_multipart: false,
+                has_multipart_response: false,
                 has_sse: false,
                 sse_source: String::new(),
                 has_serde: !models.is_empty(),

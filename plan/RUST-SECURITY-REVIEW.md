@@ -86,7 +86,8 @@ source review. A passing gate means there are no **unreviewed** findings.
 - **Generated SDKs:** path/query values are encoded, multipart boundaries belong
   to the encoder, caller cancellation is preserved and SSE event buffers are
   bounded. Base URLs and fetch/HTTP clients are trusted caller configuration.
-  Ordinary non-streaming response bodies are buffered; applications needing a
+  Multipart responses have explicit byte/part bounds. Other ordinary
+  non-streaming response bodies are buffered; applications needing a
   strict total response-size policy must supply/enforce it at their transport.
   Cookie/redirect behavior follows the selected fetch/reqwest client; explicit
   cross-origin authentication policy remains application-owned.

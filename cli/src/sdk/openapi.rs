@@ -228,7 +228,7 @@ fn media_body(response: &Value, request: bool) -> Result<Value> {
     let base_media_type = media_type.split(';').next().unwrap_or_default().trim();
     let kind = if base_media_type == "application/json" || base_media_type.ends_with("+json") {
         "json"
-    } else if request && base_media_type == "multipart/form-data" {
+    } else if base_media_type == "multipart/form-data" {
         "multipart"
     } else if !request && base_media_type == "text/event-stream" {
         "serverSentEvent"

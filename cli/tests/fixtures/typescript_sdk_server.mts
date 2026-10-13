@@ -4,7 +4,21 @@ import { createServer } from 'node:http';
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://fixture.invalid');
-  if (request.method === 'POST' && url.pathname === '/multipart') {
+  if (url.pathname.startsWith('/multipart-response/')) {
+    const mode=url.pathname.slice('/multipart-response/'.length);
+    const form=new FormData();
+    if(mode!=='empty') {
+      form.append('label','hello 水');form.append('label','again');
+      form.append('file',new Blob([new Uint8Array([0,255,128,13,10])]),'data.bin');
+      form.append('file',new Blob([]),'empty.bin');
+    }
+    if(mode==='many') for(let i=0;i<1025;i++) form.append('repeated','x');
+    const encoded=new Response(form);let bytes=Buffer.from(await encoded.arrayBuffer());
+    if(mode==='invalid') bytes=Buffer.from('not a multipart form');
+    if(mode==='truncated') bytes=bytes.subarray(0,bytes.length-40);
+    response.writeHead(200,{'content-type':mode==='wrong'?'text/plain':mode==='missing'?'multipart/form-data':encoded.headers.get('content-type')!});
+    response.end(bytes);
+  } else if (request.method === 'POST' && url.pathname === '/multipart') {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const bytes = Buffer.concat(chunks);

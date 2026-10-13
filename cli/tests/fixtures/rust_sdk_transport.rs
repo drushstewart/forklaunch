@@ -3,6 +3,9 @@ use forklaunch_http::{Body, FrameworkRequest, FrameworkResponse, LocalRouter};
 
 pub fn contracts() -> Vec<RouteContract> {
     vec![
+        RouteContract::get("Get Multipart Response", "Multipart response", "/multipart-response/:mode")
+            .with_param(FieldContract::required("mode", "String"))
+            .with_response(200, Some(BodyContract { kind: BodyKind::Multipart, schema: SchemaRef::named("Form"), content_type: Some("multipart/form-data".into()) })),
         RouteContract::delete("Delete User", "Empty 204 response", "/users/:id")
             .with_param(FieldContract {
                 name: "id".into(),
@@ -80,7 +83,12 @@ pub fn register(router: &mut LocalRouter) {
             200
         };
         router.register(contract, move |request: FrameworkRequest| {
-            Ok(if path == "/multipart" {
+            Ok(if path == "/multipart-response/:mode" {
+                let mode=request.params.get("mode").map(String::as_str).unwrap_or("valid");
+                let bytes=multipart_response(mode);
+                let mime=if mode=="wrong" { "text/plain" } else if mode=="missing" { "multipart/form-data" } else { "multipart/form-data; boundary=\"reply\"" };
+                FrameworkResponse::new(200).with_header("content-type",mime).with_body(Body::Binary(bytes))
+            } else if path == "/multipart" {
                 let bytes = match request.body { Body::Binary(bytes) => bytes, Body::Text(value) => value.into_bytes(), Body::Empty => Vec::new() };
                 let content_type = request.headers.get("content-type").cloned().unwrap_or_default();
                 FrameworkResponse::json(200, serde_json::json!({"contentType": content_type, "bytes": bytes}).to_string())
@@ -153,4 +161,20 @@ fn json_body(name: &str, schema: &str) -> BodyContract {
         schema: SchemaRef::named(name).with_json_schema(schema),
         content_type: Some("application/json".into()),
     }
+}
+
+fn multipart_response(mode: &str) -> Vec<u8> {
+    if mode=="many" {
+        let mut bytes=b"--reply\r\nContent-Disposition: form-data; name=\"label\"\r\n\r\nx\r\n".repeat(1025);
+        bytes.extend_from_slice(b"--reply--\r\n");return bytes;
+    }
+    if mode=="empty" { return b"--reply--\r\n".to_vec(); }
+    if mode=="invalid" { return b"not a multipart form".to_vec(); }
+    let mut bytes=b"--reply\r\nContent-Disposition: form-data; name=\"label\"\r\n\r\n".to_vec();
+    bytes.extend_from_slice("hello 水".as_bytes());
+    bytes.extend_from_slice(b"\r\n--reply\r\nContent-Disposition: form-data; name=\"label\"\r\n\r\nagain\r\n--reply\r\nContent-Disposition: form-data; name=\"file\"; filename=\"data.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n");
+    bytes.extend_from_slice(&[0,255,128,13,10]);
+    bytes.extend_from_slice(b"\r\n--reply\r\nContent-Disposition: form-data; name=\"file\"; filename=\"empty.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n\r\n--reply--\r\n");
+    if mode=="truncated" { bytes.truncate(bytes.len()-14); }
+    bytes
 }

@@ -24,6 +24,7 @@ export type ForkLaunchSdkConfig = {
   serviceBaseUrls?: Partial<Record<string, string>>;
   fetch?: typeof fetch;
   maxSseEventBytes?: number;
+  maxMultipartResponseBytes?: number;
   headers?: ForkLaunchHeaders;
   beforeRequest?: (request: ForkLaunchSdkRequestMeta) => ForkLaunchSdkRequestMeta | Promise<ForkLaunchSdkRequestMeta>;
 };
@@ -36,7 +37,7 @@ export type ForkLaunchSdkRequestMeta = {
   path: string;
   requestKind?: 'json' | 'text' | 'binary' | 'urlEncoded' | 'multipart';
   requestContentType?: string;
-  responseKinds?: Partial<Record<number, 'empty' | 'json' | 'text' | 'binary' | 'sse'>>;
+  responseKinds?: Partial<Record<number, 'empty' | 'json' | 'text' | 'binary' | 'sse' | 'multipart'>>;
   input: {
     params?: Record<string, ForkLaunchPathValue>;
     query?: Record<string, ForkLaunchQueryValue>;
@@ -386,6 +387,38 @@ function sseEvents(response: Response, maxEventBytes = 1048576, onClose: () => v
 }
 
 
+async function decodeMultipartResponse(response: Response, maxBytes = 8388608): Promise<FormData> {
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || contentType.split(';')[0].trim().toLowerCase() !== 'multipart/form-data') {
+    try { await cancelResponseBody(response); } catch { /* Preserve validation error. */ }
+    throw new TypeError('Invalid multipart response media or byte limit');
+  }
+  const reader = responseReader(response);
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      if (value.byteLength > maxBytes - length) throw new RangeError('Multipart response exceeds byte limit');
+      length += value.byteLength;
+      chunks.push(value);
+    }
+  } catch (error) {
+    try { await reader.cancel(); } catch { /* Preserve original error. */ }
+    throw error;
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  const form = await new Response(bytes, { headers: { 'content-type': contentType } }).formData();
+  let count = 0;
+  form.forEach(() => { if (++count > 1024) throw new RangeError('Multipart response exceeds part limit'); });
+  return form;
+}
+
+
 
 export type CatalogItemsGetItemRequest = ForkLaunchSdkRequest<{ "id": string }, { "includeDetails"?: boolean }, never, { "x-request-id"?: string } & ForkLaunchHeaders>;
 
@@ -500,6 +533,8 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
       if (contentType !== 'text/event-stream') { try { await cancelResponseBody(response); } catch { /* Preserve the media error. */ } throw new TypeError('Expected text/event-stream response'); }
       parsedResponse = sseEvents(response, config.maxSseEventBytes, releaseRequest);
       streamOwned = true;
+    } else if (kind === 'multipart') {
+      parsedResponse = await decodeMultipartResponse(response, config.maxMultipartResponseBytes);
     } else if (kind === 'binary') {
       parsedResponse = new Uint8Array(await response.arrayBuffer());
     } else {

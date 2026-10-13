@@ -351,4 +351,31 @@ including empty files, and does not JSON-parse text fields implicitly.
 `cli/tests/rust_multipart_extract_parity.mjs` compares seven cases against the
 actual TypeScript discriminator/content-parser source with Busboy, including
 repeated fields/files, Unicode, binary/empty files and filename-less octet streams.
-SDK multipart response decoding and MCP multipart remain separate open tasks.
+Multipart SDK response decoding is described below; broader MCP conformance
+remains tracked independently.
+
+
+### Multipart SDK responses
+
+Both native and CLI generators decode declared `multipart/form-data` responses.
+TypeScript returns `FormData`; Rust returns `MultipartResponse { parts }`, an
+ordered list of names, optional filenames/content types and byte vectors. Repeated
+names, binary files and empty files are retained. No part is written to disk.
+Multipart/mixed is rejected during generation. The transport result is not an
+automatic JSON DTO conversion or validation of individual part schemas.
+
+Responses are buffered with an **8 MiB** default wire-byte limit and **1,024**
+parts. TypeScript config `maxMultipartResponseBytes` and Rust client builder
+`with_multipart_response_limit(bytes)` customize the positive byte limit. Wrong
+media, missing/invalid boundaries, truncation and limit violations reject the
+call; early transport failures release the response. TypeScript supports native
+fetch and injected cross-fetch byte streams and retains request abort signals.
+
+Rust generated crates add `multer = "3.1"` and `futures-util = "0.3"` only when
+responses require them. Consumers of standalone native-generated source must
+provide those dependencies alongside reqwest, Serde and Serde JSON.
+
+`cli/tests/rust_http_runtime.sh` compiles both artifact formats and both native
+generators, runs multipart cases against Rust and TypeScript servers and checks
+HTTP/MCP startup and graceful shutdown. The TypeScript native runtime uses the
+platform FormData parser; Rust uses multer.

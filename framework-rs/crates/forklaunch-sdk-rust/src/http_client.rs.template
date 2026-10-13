@@ -69,6 +69,7 @@ fn path_with_params(path: &str, params: &BTreeMap<String, String>) -> String {
 #[derive(Debug)]
 pub enum SdkError {
     Transport(reqwest::Error),
+    {{#has_multipart_response}}Multipart(&'static str),{{/has_multipart_response}}
     {{#has_sse}}Sse(sse::SseError),
     Decode(serde_json::Error),
     Stream(&'static str),{{/has_sse}}
@@ -78,6 +79,7 @@ impl fmt::Display for SdkError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Transport(error) => write!(formatter, "{error}"),
+            {{#has_multipart_response}}Self::Multipart(message) => formatter.write_str(message),{{/has_multipart_response}}
             {{#has_sse}}Self::Sse(error) => write!(formatter, "{error}"),
             Self::Decode(error) => write!(formatter, "{error}"),
             Self::Stream(error) => formatter.write_str(error),{{/has_sse}}
@@ -89,6 +91,7 @@ impl Error for SdkError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Transport(error) => Some(error),
+            {{#has_multipart_response}}Self::Multipart(_) => None,{{/has_multipart_response}}
             {{#has_sse}}Self::Sse(error) => Some(error),
             Self::Decode(error) => Some(error),
             Self::Stream(_) => None,{{/has_sse}}
@@ -152,6 +155,7 @@ pub enum {{responses_type}} {
 #[derive(Clone)]
 pub struct {{client_name}} {
     base_url: String,
+    {{#has_multipart_response}}max_multipart_response_bytes: usize,{{/has_multipart_response}}
     {{#has_sse}}max_sse_event_bytes: usize,{{/has_sse}}
     {{^has_operations}}_{{/has_operations}}http: reqwest::Client,
     default_headers: BTreeMap<String, String>,
@@ -181,6 +185,7 @@ impl {{client_name}} {
     pub fn with_http_client(base_url: impl Into<String>, http: reqwest::Client) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
+            {{#has_multipart_response}}max_multipart_response_bytes: 8388608,{{/has_multipart_response}}
             {{#has_sse}}max_sse_event_bytes: 1048576,{{/has_sse}}
             {{^has_operations}}_http: {{/has_operations}}http,
             default_headers: BTreeMap::new(),
@@ -189,6 +194,13 @@ impl {{client_name}} {
         }
     }
 
+    {{#has_multipart_response}}
+    pub fn with_multipart_response_limit(mut self, max_bytes: usize) -> Result<Self, SdkError> {
+        if max_bytes == 0 { return Err(SdkError::Multipart("Invalid multipart response limit")); }
+        self.max_multipart_response_bytes = max_bytes;
+        Ok(self)
+    }
+    {{/has_multipart_response}}
     {{#has_sse}}
     pub fn with_sse_event_limit(mut self, max_event_bytes: usize) -> Result<Self, SdkError> {
         if max_event_bytes == 0 { return Err(sse::SseError::InvalidLimit.into()); }
@@ -335,6 +347,9 @@ impl {{client_name}} {
 {{#streaming_response}}
             {{status_code}} => Ok({{responses_type}}::{{status_variant}}(Box::new(SdkEventStream::from_response(response, self.max_sse_event_bytes)?))),
 {{/streaming_response}}
+{{#multipart_response}}
+            {{status_code}} => Ok({{responses_type}}::{{status_variant}}(decode_multipart_response(response, self.max_multipart_response_bytes).await?)),
+{{/multipart_response}}
 {{#binary_response}}
             {{status_code}} => Ok({{responses_type}}::{{status_variant}}(response.bytes().await?.to_vec())),
 {{/binary_response}}
@@ -348,3 +363,44 @@ impl {{client_name}} {
 
 {{/operations}}
 }
+{{#has_multipart_response}}
+/// Ordered multipart form parts; repeated names and file metadata are preserved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MultipartResponse {
+    pub parts: Vec<MultipartResponsePart>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MultipartResponsePart {
+    pub name: String,
+    pub file_name: Option<String>,
+    pub content_type: Option<String>,
+    pub bytes: Vec<u8>,
+}
+async fn decode_multipart_response(mut response: reqwest::Response, max_bytes: usize) -> Result<MultipartResponse, SdkError> {
+    let mime = response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|value| value.to_str().ok())
+        .ok_or(SdkError::Multipart("Missing multipart response content type"))?;
+    if !mime.split(';').next().unwrap_or_default().trim().eq_ignore_ascii_case("multipart/form-data") {
+        return Err(SdkError::Multipart("Expected multipart/form-data response"));
+    }
+    let boundary = multer::parse_boundary(mime).map_err(|_| SdkError::Multipart("Invalid multipart response boundary"))?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if chunk.len() > max_bytes.saturating_sub(bytes.len()) {
+            return Err(SdkError::Multipart("Multipart response exceeds byte limit"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let stream = futures_util::stream::once(std::future::ready(Ok::<_, std::io::Error>(bytes)));
+    let mut multipart = multer::Multipart::new(stream, boundary);
+    let mut parts = Vec::new();
+    while let Some(field) = multipart.next_field().await.map_err(|_| SdkError::Multipart("Invalid multipart response"))? {
+        if parts.len() >= 1024 { return Err(SdkError::Multipart("Multipart response exceeds part limit")); }
+        let name = field.name().ok_or(SdkError::Multipart("Multipart response part has no name"))?.to_owned();
+        let file_name = field.file_name().map(str::to_owned);
+        let content_type = field.content_type().map(ToString::to_string);
+        let bytes = field.bytes().await.map_err(|_| SdkError::Multipart("Invalid multipart response part"))?.to_vec();
+        parts.push(MultipartResponsePart { name, file_name, content_type, bytes });
+    }
+    Ok(MultipartResponse { parts })
+}
+{{/has_multipart_response}}

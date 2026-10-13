@@ -19,6 +19,7 @@ use crate::RustSdkOptions;
 /// The generated crate requires reqwest (`json`, `query`, and `multipart` when
 /// used), serde (`derive`) and `serde_json`. JSON request bodies remain encoded
 /// strings; binary bodies and multipart forms use their owned transport types.
+/// Multipart responses additionally require multer 3.1 and futures-util 0.3.
 ///
 /// # Errors
 /// Rejects invalid schemas/media, unsupported request streams, duplicate names,
@@ -45,6 +46,7 @@ pub fn generate_rust_http_sdk_source(
         "new".to_string(),
         "with_http_client".into(),
         "with_sse_event_limit".into(),
+        "with_multipart_response_limit".into(),
         "with_default_header".into(),
         "with_bearer_token".into(),
         "with_jwt".into(),
@@ -113,6 +115,11 @@ pub fn generate_rust_http_sdk_source(
         )?,
         has_operations: !operations.is_empty(),
         has_multipart,
+        has_multipart_response: operations.iter().any(|op| {
+            op.responses
+                .iter()
+                .any(|response| response.multipart_response)
+        }),
         has_sse,
         has_serde: !operations.is_empty(),
         client_name: options.client_struct.clone(),
@@ -239,6 +246,8 @@ fn reserved_type_names() -> BTreeSet<String> {
         "SdkError",
         "SdkAuth",
         "SdkEventStream",
+        "MultipartResponse",
+        "MultipartResponsePart",
         "SdkRequestHook",
         "String",
         "Vec",
@@ -309,6 +318,8 @@ mod tests {
             "String",
             "SdkAuth",
             "SdkEventStream",
+            "MultipartResponse",
+            "MultipartResponsePart",
             "Deserialize",
         ] {
             assert!(

@@ -2114,3 +2114,29 @@ all-feature/all-target Clippy passes, and all 863 embedded source/template entri
 are packaged. CI runs the actual-parser comparison; owned fixture output cleans
 itself up. The multipart checkbox stays open for SDK response decoding.
 Checklist remains **632/682 (92.7%), 50 open**.
+
+
+### Multipart SDK response decoding (2026-10-12)
+
+CLI contract/OpenAPI generation and both framework-native emitters now decode
+`multipart/form-data` responses into TypeScript FormData or Rust ordered part
+records. Names, repeated parts, filenames and binary/empty file bytes survive.
+Decoding enforces a configurable positive 8 MiB default wire-byte bound and a
+1,024-part bound. Wrong media, absent/invalid boundaries, malformed/truncated
+bodies and excessive bytes/parts fail. Multipart/mixed remains explicitly
+unsupported; parts are transport values, not automatically validated JSON DTOs.
+Rust uses multer; TypeScript uses the platform FormData parser with bounded
+Web/Node stream collection and cancellation. Generated Cargo dependencies are
+conditional. Standalone native source documents its required dependencies.
+
+The full relocated HTTP fixture passes both artifact formats, both native SDK
+generators, native/injected cross-fetch, positive/zero byte limits, excessive
+part count, malformed cases and abort signals against Rust and compiled
+TypeScript services. Native generated Rust Clippy is strict. HTTP/MCP startup,
+initialization/discovery/invocation, Origin rejection and graceful shutdown pass.
+All 84 CLI SDK tests and 32 framework codegen/SDK tests pass, as do strict
+framework SDK Clippy and 864 packaged source/template checks. Reviewed snapshots
+include the preceding diagnostic redaction and the new response runtime. Owned
+generated workspaces were removed. Together with typed extraction, this closes
+the multipart runtime/SDK checkbox. Broad MIME/MCP/schema conformance stays open.
+Checklist: **633/682 (92.8%), 49 open**.

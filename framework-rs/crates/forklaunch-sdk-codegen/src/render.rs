@@ -1,5 +1,6 @@
-use super::models::RustTypeAliasTemplate;
 use ramhorns::Content;
+
+use super::models::RustTypeAliasTemplate;
 
 #[derive(Content, Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)]
@@ -13,6 +14,7 @@ pub struct SdkResponseVariant {
     pub json_response: bool,
     pub text_response: bool,
     pub binary_response: bool,
+    pub multipart_response: bool,
     pub streaming_response: bool,
     pub response_kind: String,
     pub content_type: String,
@@ -24,6 +26,7 @@ pub struct RustSdkTemplate {
     pub model_source: String,
     pub has_operations: bool,
     pub has_multipart: bool,
+    pub has_multipart_response: bool,
     pub has_sse: bool,
     pub sse_source: String,
     pub has_serde: bool,

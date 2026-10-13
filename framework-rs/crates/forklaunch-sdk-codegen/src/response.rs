@@ -26,6 +26,7 @@ pub fn compile_response(
         BodyKind::Json => ("json", "application/json"),
         BodyKind::Text => ("text", "text/plain"),
         BodyKind::Binary | BodyKind::File => ("binary", "application/octet-stream"),
+        BodyKind::Multipart => ("multipart", "multipart/form-data"),
         BodyKind::ServerSentEvent => ("sse", "text/event-stream"),
         _ => bail!(
             "Unsupported SDK response body kind {}",
@@ -41,23 +42,30 @@ pub fn compile_response(
     if (content_type == "text/event-stream") != (decoder == "sse") {
         bail!("SSE SDK responses require the serverSentEvent body kind and text/event-stream");
     }
-    if content_type.starts_with("multipart/") {
-        bail!("Multipart SDK response transport remains unsupported");
+    if (decoder == "multipart" && content_type != "multipart/form-data")
+        || (content_type.starts_with("multipart/") && decoder != "multipart")
+    {
+        bail!("Multipart SDK responses require multipart body kind and multipart/form-data");
     }
     let decoder = if empty { "empty" } else { decoder };
     let schema = match decoder {
         "empty" => SchemaRef::named("Null").with_json_schema(json!({"type":"null"}).to_string()),
-        "text" | "binary" => SchemaRef::named("String"),
+        "text" | "binary" | "multipart" => SchemaRef::named("String"),
         _ => SchemaRef {
             name: response.body.clone().unwrap_or_default(),
             json_schema: response.body_json_schema.clone(),
         },
     };
     let mut models = compile_schema_ref(root_name, &schema)?;
-    if decoder == "binary" {
+    if matches!(decoder, "binary" | "multipart") {
         for alias in &mut models.rust_aliases {
             if alias.name == models.rust_type {
-                alias.target_type = "Vec<u8>".into();
+                alias.target_type = if decoder == "multipart" {
+                    "MultipartResponse"
+                } else {
+                    "Vec<u8>"
+                }
+                .into();
             }
         }
     }
@@ -69,6 +77,7 @@ pub fn compile_response(
     let response_body_type = match decoder {
         "empty" => "undefined".into(),
         "binary" => "Uint8Array".into(),
+        "multipart" => "FormData".into(),
         "sse" => format!("AsyncIterable<{}>", models.typescript_type),
         _ => models.typescript_type.clone(),
     };
@@ -83,6 +92,7 @@ pub fn compile_response(
             json_response: decoder == "json",
             text_response: decoder == "text",
             binary_response: decoder == "binary",
+            multipart_response: decoder == "multipart",
             streaming_response: decoder == "sse",
             response_kind: decoder.into(),
             content_type,

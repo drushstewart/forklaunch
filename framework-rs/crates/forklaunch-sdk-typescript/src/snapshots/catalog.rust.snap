@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SdkRequest {
     pub method: &'static str,
     pub url: String,
@@ -19,6 +19,20 @@ pub struct SdkRequest {
     pub body_bytes: Option<Vec<u8>>,
 
     pub content_type: &'static str,
+}
+
+impl fmt::Debug for SdkRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("SdkRequest")
+            .field("method", &self.method)
+            .field("has_url", &!self.url.is_empty())
+            .field("query_fields", &self.query.keys().collect::<Vec<_>>())
+            .field("header_names", &self.headers.keys().collect::<Vec<_>>())
+            .field("has_body", &self.body.is_some())
+            .field("has_body_bytes", &self.body_bytes.is_some())
+
+            .finish_non_exhaustive()
+    }
 }
 
 
@@ -56,12 +70,14 @@ fn path_with_params(path: &str, params: &BTreeMap<String, String>) -> String {
 pub enum SdkError {
     Transport(reqwest::Error),
 
+
 }
 
 impl fmt::Display for SdkError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Transport(error) => write!(formatter, "{error}"),
+
 
         }
     }
@@ -72,13 +88,14 @@ impl Error for SdkError {
         match self {
             Self::Transport(error) => Some(error),
 
+
         }
     }
 }
 
 impl From<reqwest::Error> for SdkError {
     fn from(error: reqwest::Error) -> Self {
-        Self::Transport(error)
+        Self::Transport(error.without_url())
     }
 }
 
@@ -167,12 +184,23 @@ pub type GetItemStatus404Response = String;
 
 
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GetItemRequest {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
     pub body: Option<String>,
+}
+
+impl fmt::Debug for GetItemRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("GetItemRequest")
+            .field("param_names", &self.params.keys().collect::<Vec<_>>())
+            .field("query_names", &self.query.keys().collect::<Vec<_>>())
+            .field("header_names", &self.headers.keys().collect::<Vec<_>>())
+            .field("has_body", &self.body.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -186,12 +214,23 @@ pub enum GetItemResponses {
 }
 
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateItemRequest {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
     pub body: Option<String>,
+}
+
+impl fmt::Debug for CreateItemRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("CreateItemRequest")
+            .field("param_names", &self.params.keys().collect::<Vec<_>>())
+            .field("query_names", &self.query.keys().collect::<Vec<_>>())
+            .field("header_names", &self.headers.keys().collect::<Vec<_>>())
+            .field("has_body", &self.body.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -203,12 +242,23 @@ pub enum CreateItemResponses {
 }
 
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeleteItemRequest {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
     pub body: Option<String>,
+}
+
+impl fmt::Debug for DeleteItemRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("DeleteItemRequest")
+            .field("param_names", &self.params.keys().collect::<Vec<_>>())
+            .field("query_names", &self.query.keys().collect::<Vec<_>>())
+            .field("header_names", &self.headers.keys().collect::<Vec<_>>())
+            .field("has_body", &self.body.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -224,6 +274,7 @@ pub enum DeleteItemResponses {
 pub struct ForkLaunchClient {
     base_url: String,
 
+
     http: reqwest::Client,
     default_headers: BTreeMap<String, String>,
     auth: Option<SdkAuth>,
@@ -234,8 +285,8 @@ impl fmt::Debug for ForkLaunchClient {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ForkLaunchClient")
-            .field("base_url", &self.base_url)
-            .field("default_headers", &self.default_headers)
+            .field("has_base_url", &!self.base_url.is_empty())
+            .field("default_header_names", &self.default_headers.keys().collect::<Vec<_>>())
             .field("has_auth", &self.auth.is_some())
             .field("has_request_hook", &self.request_hook.is_some())
             .finish()
@@ -253,12 +304,14 @@ impl ForkLaunchClient {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
 
+
             http,
             default_headers: BTreeMap::new(),
             auth: None,
             request_hook: None,
         }
     }
+
 
 
 
@@ -380,7 +433,9 @@ impl ForkLaunchClient {
 
 
 
+
             404 => Ok(GetItemResponses::Status404(response.text().await?)),
+
 
 
 
@@ -463,6 +518,7 @@ impl ForkLaunchClient {
 
 
 
+
             _ => Ok(CreateItemResponses::Error {
                 status,
                 message: response.text().await?,
@@ -536,6 +592,7 @@ impl ForkLaunchClient {
                 let _ = response.bytes().await?;
                 Ok(DeleteItemResponses::Status204(()))
             },
+
 
 
 
