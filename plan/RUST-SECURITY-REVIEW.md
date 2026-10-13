@@ -277,3 +277,16 @@ validate session shape and bind a principal before normal authorization. Actual
 TypeScript comparisons cover both callback success and failure across header and
 claim shapes. Native JSON error envelopes and strict built-in JWT verification
 remain unchanged.
+
+
+Worker control-service role review (2026-10-13): the generated control entry
+point runs before any job-backend connection, queue construction or retention.
+Tokenless mode exposes only health/readiness; authenticated commands require a
+distributed publisher and retain constant-time bearer checking and scoped Redis
+publication. The process never subscribes as a consumer, so remote drain does not
+terminate it and readiness is explicitly local. Publisher counts do not imply
+acknowledgement. Shutdown retains the existing bounded HTTP drain. CLI capability
+metadata is withdrawn when sync detects unsupported custom/legacy entry points;
+platform argv selection requires an explicit compatible native worker role and
+never invokes a shell. Real Redis tests verify publication scope, two-consumer
+fanout without an extra subscriber, storage-independent startup and shutdown.

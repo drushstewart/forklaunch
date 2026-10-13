@@ -189,6 +189,13 @@ pub(crate) struct ProjectMetadata {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) worker_type: Option<String>,
+    /// Generated durable worker supports a separate control-only executable role.
+    #[serde(
+        rename = "workerControlService",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) worker_control_service: Option<bool>,
     /// Backend hosting type. Optional — defaults to "ecs-fargate" on the platform
     /// when absent. Allowed: "ecs-fargate" | "ecs-ec2".
     #[serde(

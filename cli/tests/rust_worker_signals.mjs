@@ -28,12 +28,12 @@ async function signal(action, overrides={}) {
   // Administrative publication must work with unavailable queue storage.
   return command(['--signal',action],{DATABASE_URL:'postgres://127.0.0.1:1/unavailable', REDIS_URL:'redis://127.0.0.1:1/',...overrides});
 }
-async function start(overrides={}) {
+async function start(overrides={},args=[]) {
   const reserve=createServer();
   await new Promise(resolve=>reserve.listen(0,'127.0.0.1',resolve));
   const address=`127.0.0.1:${reserve.address().port}`;
   await new Promise(resolve=>reserve.close(resolve));
-  const child=spawn(binary,[],{env:{...environment,WORKER_HTTP_ADDR:address,WORKER_CONTROL_TOKEN:token,...overrides},stdio:['ignore','pipe','pipe']});
+  const child=spawn(binary,args,{env:{...environment,WORKER_HTTP_ADDR:address,WORKER_CONTROL_TOKEN:token,...overrides},stdio:['ignore','pipe','pipe']});
   const record={child,exit:once(child,'exit'),error:'',base:`http://${address}`};
   records.push(record);
   child.stdout.resume(); child.stderr.on('data',chunk=>record.error+=chunk);
@@ -67,6 +67,7 @@ try {
   await assert.rejects(signal('pause',{WORKER_SIGNAL_REDIS_URL:''}));
   assert.equal((await signal('pause')).subscribers,0);
   const first=await start(), second=await start();
+  const management=await start({DATABASE_URL:'postgres://127.0.0.1:1/unavailable',REDIS_URL:'redis://127.0.0.1:1/'},['--control-service']);
   const isolated=await start({TENANT_ID:`${role}-b`});
   assert.equal((await signal('pause')).subscribers,2);
   await Promise.all([waitState(first,'paused'),waitState(second,'paused')]);
@@ -76,7 +77,7 @@ try {
   assert.equal((await signal('drain',{WORKER_SIGNAL_NAMESPACE:'other-namespace'})).subscribers,0);
   assert.equal((await call(first,'/control/resume','POST','wrong')).status,401);
   await waitState(second,'paused');
-  const resumed=await call(first,'/control/resume','POST');
+  const resumed=await call(management,'/control/resume','POST');
   assert.equal(resumed.status,202);
   assert.equal((await resumed.json()).subscribers,2);
   await Promise.all([waitState(first,'running'),waitState(second,'running')]);
@@ -90,10 +91,15 @@ try {
   while((await command(['--inspect','held'])).status!=='Completed') {
     assert.ok(Date.now()<deadline,'resumed workers did not process job'); await sleep(25);
   }
-  const drained=await call(second,'/control/drain','POST');
+  const drained=await call(management,'/control/drain','POST');
   assert.equal(drained.status,202);
   assert.equal((await drained.json()).subscribers,2);
   await Promise.all([exited(first),exited(second)]);
+  await waitState(management,'running');
+  assert.equal((await call(management,'/ready')).status,200);
+  assert.equal((await (await call(management,'/control/pause','POST')).json()).subscribers,0);
+  management.child.kill('SIGTERM');
+  await exited(management);
   await waitState(isolated,'running');
   // Late subscribers do not inherit an earlier pause/drain command.
   const restarted=await start();

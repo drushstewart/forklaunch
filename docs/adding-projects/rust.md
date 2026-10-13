@@ -692,6 +692,24 @@ The listener stays available during handler drain with readiness 503, then shuts
 
 For library use, enable `forklaunch-worker-database`'s `http-control` feature and use `http::run` with an optional `HttpConfig` and retention policy, or mount `http::router` with your own `WorkerControl` in an existing server. Generated-process tests cover listener conflicts, health-only operation, bearer authentication, pause/resume, readiness during drain, and coordination with retention against both durable backends.
 
+### Separate control-service role
+
+Generated PostgreSQL, Redis, BullMQ and Kafka workers accept `--control-service`
+with `WORKER_HTTP_ADDR`. This mode serves health/readiness without opening job
+storage, claiming jobs or running retention. Without a control token, commands
+return 404. A token requires `WORKER_SIGNAL_REDIS_URL`,
+`WORKER_SIGNAL_NAMESPACE`, `TENANT_ID` and the same queue scope as the consumers.
+Commands publish to that group without adding a subscriber; subscriber counts
+are not acknowledgements. Readiness describes the control process, and draining
+remote consumers does not stop it. SIGTERM shuts it down cleanly.
+
+Scaffolding and sync record `workerControlService` only when installed worker
+sources expose the generated entry point. Releases then carry explicit
+`nativeWorkerRole: "control"` and `"consumer"` metadata; the companion platform
+starts the service component with `--control-service`. Legacy manifests keep the
+previous command. These management endpoints do not expose MCP or application
+SDK methods. Actual ECS scaling and load-balancer acceptance remain unverified.
+
 ## Atomic batch delivery claims
 
 Both durable adapters implement `AsyncWorkerQueue::claim_batch(queue, lease_duration, limit)` for limits 1–1000. Each atomic operation returns currently eligible jobs in delivery order, with a fresh independent token per job. Concurrent claimers receive disjoint live deliveries. Each lease is acknowledged, renewed, or failed independently, and the existing retry budget and tenant fences apply. An empty queue returns an empty vector. PostgreSQL uses a locked selection and transactional update; Redis validates the entire selected batch before acquiring its deliveries. PostgreSQL requires the built-in `gen_random_uuid` function available in PostgreSQL 13 and later; integration tests use PostgreSQL 16.

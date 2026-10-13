@@ -169,6 +169,40 @@ fn server_error() -> BlueprintError {
     BlueprintError::new("worker_http_error", "Worker HTTP server failed")
 }
 
+/// Serve management HTTP without creating consumers, leases, or retention jobs.
+/// Readiness describes this control process, not remote consumers or their queue.
+/// Authenticated controls require a distributed publisher; they never mutate a
+/// local consumer. A tokenless listener exposes only health/readiness.
+/// # Errors
+/// Rejects controls without a publisher, invalid config, and bind/server errors.
+pub async fn serve_management<F>(
+    config: &HttpConfig,
+    publisher: Option<SignalPublisher>,
+    shutdown: F,
+) -> BlueprintResult<()>
+where
+    F: Future<Output = ()> + Send,
+{
+    config.validate()?;
+    if config.control_token.is_some() && publisher.is_none() {
+        return Err(BlueprintError::new(
+            "worker_management_publisher_required",
+            "Management controls require a distributed signal publisher",
+        ));
+    }
+    let control = WorkerControl::new();
+    let lifecycle = async {
+        loop {
+            let state = control.state();
+            if state == WorkerState::Draining {
+                return Ok(());
+            }
+            control.changed(state).await;
+        }
+    };
+    serve_controlled(&control, Some(config), publisher, lifecycle, shutdown).await
+}
+
 /// Runs optional HTTP alongside controlled consumers and retention. The listener
 /// stays available during handler drain, with readiness returning 503. Server
 /// errors stop claims and drain work; HTTP shutdown is bounded to five seconds.
@@ -365,6 +399,28 @@ mod tests {
             address: "127.0.0.1:0".parse().unwrap(),
             control_token: token.map(str::to_owned),
         }
+    }
+    #[tokio::test]
+    async fn management_requires_distributed_controls_and_shuts_down_without_work() {
+        let error = serve_management(&config(Some(TOKEN)), None, std::future::pending())
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "worker_management_publisher_required");
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            serve_management(&config(None), None, async {}),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut occupied = config(None);
+        occupied.address = listener.local_addr().unwrap();
+        assert!(
+            serve_management(&occupied, None, std::future::pending())
+                .await
+                .is_err()
+        );
     }
     #[tokio::test]
     async fn controls_require_explicit_bearer_and_drain_remains_irreversible() {

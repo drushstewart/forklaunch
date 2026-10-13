@@ -29,10 +29,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
-    if !args.is_empty() && !(args.len() == 3 && args[0] == "--enqueue")
+    if !args.is_empty() && args != ["--control-service"] && !(args.len() == 3 && args[0] == "--enqueue")
         && !(args.len() == 2 && matches!(args[0].as_str(), "--inspect" | "--dead-letters" | "--retry" | "--signal"))
         && !(args.len() == 3 && matches!(args[0].as_str(), "--purge-completed" | "--purge-failed")) {
-        return Err("Expected --signal pause/resume/drain, no arguments, --enqueue ID JSON, --inspect ID, --dead-letters LIMIT, --retry ID, or --purge-completed/--purge-failed AGE_SECONDS LIMIT".into());
+        return Err("Expected --signal pause/resume/drain, no arguments, --control-service, --enqueue ID JSON, --inspect ID, --dead-letters LIMIT, --retry ID, or --purge-completed/--purge-failed AGE_SECONDS LIMIT".into());
+    }
+    if args == ["--control-service"] {
+        let http = http_config()?.ok_or("--control-service requires WORKER_HTTP_ADDR")?;
+        signals::serve_management(&http, shutdown()).await?;
+        return Ok(());
     }
     if args.first().map(String::as_str) == Some("--signal") {
         signals::publish(&args[1]).await?;

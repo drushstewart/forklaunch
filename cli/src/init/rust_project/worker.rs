@@ -246,6 +246,15 @@ pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
 pub(super) fn mark(root: &Path, name: &str, backend: Backend) -> Result<()> {
     let path = root.join(".forklaunch/manifest.toml");
     let mut manifest = read_manifest_value(&path)?;
+    let directory = root
+        .join(crate_path_for_project(&manifest, name).unwrap_or_else(|| format!("crates/{name}")));
+    // Sync preserves application-owned sources. Do not advertise a new role for
+    // an older/custom main that has not adopted the generated entry point.
+    let supports_control = read_to_string(directory.join("src/main.rs")).is_ok_and(|source| {
+        source.contains("if args == [\"--control-service\"]")
+            && source.contains("signals::serve_management")
+    }) && read_to_string(directory.join("src/signals.rs"))
+        .is_ok_and(|source| source.contains("pub async fn serve_management"));
     let project = project_table_mut(&mut manifest, name).context("Expected worker project")?;
     project.insert("variant".into(), Value::String(backend.variant().into()));
     let metadata = project
@@ -253,6 +262,11 @@ pub(super) fn mark(root: &Path, name: &str, backend: Backend) -> Result<()> {
         .or_insert_with(|| Value::Table(Map::new()))
         .as_table_mut()
         .context("Expected worker metadata")?;
+    if supports_control {
+        metadata.insert("workerControlService".into(), Value::Boolean(true));
+    } else {
+        metadata.remove("workerControlService");
+    }
     metadata.insert(
         "workerType".into(),
         Value::String(

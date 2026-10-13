@@ -40,6 +40,15 @@ behavior; this lifecycle fixture does not require live external services.
 
 The shared runner supports `control::WorkerControl` for process-local pause/resume and irreversible drain. The optional `http-control` feature adds health/readiness and bearer-authenticated controls; `http::run` coordinates server lifetime, retention, and active handler drain. Generated workers enable the listener only when `WORKER_HTTP_ADDR` is set; see the [Rust project documentation](../docs/adding-projects/rust.md#worker-http-health-and-controls).
 
+Generated durable workers also accept `--control-service`: the same executable
+serves health/readiness and optional distributed controls without opening job
+storage, claiming work or running retention. `http::serve_management` exposes this
+lifecycle to custom applications. A control token requires a signal publisher;
+without a token only health/readiness are exposed. Readiness describes the
+management process, not remote consumer health. CLI release metadata selects the
+control role separately from consumers when generated sources advertise support.
+Legacy releases retain their previous command; actual ECS rollout remains open.
+
 The official BullMQ adapter also supports [lazy age retention](https://docs.bullmq.io/guide/queues/auto-removal-of-jobs) and [stalled-job recovery](https://docs.bullmq.io/guide/jobs/stalled), tested against actual TypeScript producers/consumers under Redis ACLs. Configure upstream queue/job retention policies through `BullMqOptions.queue`; age values are seconds. Worker options select lock/stall intervals and maximum stalls/starts. Failure observers receive original processing and preprocessor events even after automatic removal. A feature-gated patch to the pinned official worker emits outcome data before its existing failure notification; both notifications use the same original snapshot and Redis wire semantics. The vendored dependency retains upstream source/license provenance and documents the outcome hook and option compatibility patch in `crates/vendor/bullmq-official/FORKLAUNCH_PATCH.md`.
 
 BullMQ queue defaults also support simple deduplication, TTL throttling and

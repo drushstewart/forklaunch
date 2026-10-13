@@ -243,6 +243,8 @@ pub(crate) struct ServiceDefinition {
     pub runtime: Option<Runtime>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub binary: Option<String>,
+    #[serde(rename = "nativeWorkerRole", skip_serializing_if = "Option::is_none")]
+    pub native_worker_role: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -550,6 +552,16 @@ fn project_build_context(
     Some(manifest.modules_path.clone())
 }
 
+fn project_native_worker_role(project: &ProjectEntry, role: &str) -> Option<String> {
+    (project_is_rust(project)
+        && project
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.worker_control_service)
+            == Some(true))
+    .then(|| role.to_owned())
+}
+
 fn project_worker_type(project: &ProjectEntry) -> String {
     project
         .metadata
@@ -723,6 +735,7 @@ pub(crate) fn generate_release_manifest(
                 dockerfile: Some(project_dockerfile(app_root, manifest, project)),
                 runtime: project_is_rust(project).then_some(Runtime::Tokio),
                 binary: project_native_binary(project),
+                native_worker_role: None,
             });
         } else if project.r#type == ProjectType::Worker {
             let runtime_deps = project_runtime_deps.get(&project.name).cloned();
@@ -860,6 +873,7 @@ pub(crate) fn generate_release_manifest(
                 dockerfile: Some(project_dockerfile(app_root, manifest, project)),
                 runtime: project_is_rust(project).then_some(Runtime::Tokio),
                 binary: project_native_binary(project),
+                native_worker_role: project_native_worker_role(project, "control"),
             });
 
             let worker_type_str = project_worker_type(project);
@@ -902,6 +916,7 @@ pub(crate) fn generate_release_manifest(
                 dockerfile: Some(project_dockerfile(app_root, manifest, project)),
                 runtime: project_is_rust(project).then_some(Runtime::Tokio),
                 binary: project_native_binary(project),
+                native_worker_role: project_native_worker_role(project, "consumer"),
             });
         }
     }
@@ -1397,6 +1412,10 @@ mod tests {
         assert_eq!(worker.build_context, Some(".".to_string()));
         assert_eq!(worker.runtime, Some(Runtime::Tokio));
         assert_eq!(worker.binary.as_deref(), Some("email-worker"));
+        assert!(
+            worker.native_worker_role.is_none(),
+            "legacy workers retain their original command"
+        );
         let ServiceConfigEnum::Worker(worker_config) = &worker.config else {
             panic!("email worker should have worker config");
         };
@@ -1414,6 +1433,11 @@ mod tests {
             manifest.runtime = runtime.to_string();
             manifest.modules_path = "modules".to_string();
             manifest.language = Some("mixed".to_string());
+            for project in &mut manifest.projects {
+                if project.r#type == ProjectType::Worker {
+                    project.metadata.as_mut().unwrap().worker_control_service = Some(true);
+                }
+            }
             manifest.projects[0].metadata.as_mut().unwrap().crate_name =
                 Some("accounts-native".into());
             let mut legacy = manifest.projects[0].clone();
@@ -1445,6 +1469,11 @@ mod tests {
             for service in release.services {
                 let legacy = service.id == "legacy-api";
                 let serialized = serde_json::to_value(&service).unwrap();
+                match service.id.as_str() {
+                    "email-worker-service" => assert_eq!(serialized["nativeWorkerRole"], "control"),
+                    "email-worker-worker" => assert_eq!(serialized["nativeWorkerRole"], "consumer"),
+                    _ => assert!(serialized.get("nativeWorkerRole").is_none()),
+                }
                 if legacy {
                     assert!(serialized.get("runtime").is_none());
                     assert!(serialized.get("binary").is_none());

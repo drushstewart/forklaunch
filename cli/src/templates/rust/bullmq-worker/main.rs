@@ -27,10 +27,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
-    if !args.is_empty() && args != ["--migrate"]
+    if !args.is_empty() && args != ["--migrate"] && args != ["--control-service"]
         && !(args.len() == 3 && args[0] == "--enqueue")
         && !(args.len() == 2 && matches!(args[0].as_str(), "--peek" | "--dead-letters" | "--signal")) {
-        return Err("Expected no arguments, --migrate, --enqueue ID JSON, --peek LIMIT, --dead-letters LIMIT, or --signal pause/resume/drain".into());
+        return Err("Expected no arguments, --control-service, --migrate, --enqueue ID JSON, --peek LIMIT, --dead-letters LIMIT, or --signal pause/resume/drain".into());
+    }
+    if args == ["--control-service"] {
+        let http = http_config()?.ok_or("--control-service requires WORKER_HTTP_ADDR")?;
+        signals::serve_management(&http, shutdown()).await?;
+        return Ok(());
     }
     if args.first().map(String::as_str) == Some("--signal") { signals::publish(&args[1]).await?; return Ok(()); }
     let queue_name = env::var("WORKER_QUEUE").unwrap_or_else(|_| WORKER_NAME.to_owned());

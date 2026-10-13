@@ -61,6 +61,7 @@ assert 'jobsProcess' not in sdk
 assert 'HealthGet' not in sdk
 PYTHON
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug/jobs"))')"
+node "$SCRIPT_DIR/rust_worker_control_service.mjs" "$BINARY"
 node "$SCRIPT_DIR/rust_worker_runtime.mjs" "$BINARY" stub
 cp "$SCRIPT_DIR/fixtures/rust_worker_handler.rs" crates/jobs/src/handler.rs
 printf '\npub const USER_OWNED_MARKER: &str = "preserved";\n' >> crates/jobs/src/handler.rs
@@ -87,6 +88,19 @@ run_cli change worker --path "$RUN_ROOT/lifecycle-app/crates/email-jobs" -t redi
 grep -q USER_OWNED_MARKER "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/handler.rs"
 grep -q 'marker = "preserved"' "$RUN_ROOT/lifecycle-app/crates/email-jobs/Cargo.toml"
 cargo test --manifest-path "$RUN_ROOT/lifecycle-app/Cargo.toml" --workspace
+# Sync must preserve custom sources and withdraw unsupported control-role metadata.
+cp "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/main.rs" "$RUN_ROOT/original-worker-main.rs"
+python3 - "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/main.rs" <<'PYTHON'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]);p.write_text(p.read_text().replace('--control-service','--custom-control-entry'))
+PYTHON
+run_cli sync worker email-jobs --path "$RUN_ROOT/lifecycle-app"
+! grep -q 'workerControlService = true' "$RUN_ROOT/lifecycle-app/.forklaunch/manifest.toml"
+grep -q -- '--custom-control-entry' "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/main.rs"
+cp "$RUN_ROOT/original-worker-main.rs" "$RUN_ROOT/lifecycle-app/crates/email-jobs/src/main.rs"
+run_cli sync worker email-jobs --path "$RUN_ROOT/lifecycle-app"
+grep -q 'workerControlService = true' "$RUN_ROOT/lifecycle-app/.forklaunch/manifest.toml"
 run_cli delete worker email-jobs --path "$RUN_ROOT/lifecycle-app" --continue
 test ! -d "$RUN_ROOT/lifecycle-app/crates/email-jobs"
 test ! -d "$RUN_ROOT/lifecycle-app/sdks/rust/email-jobs-sdk"

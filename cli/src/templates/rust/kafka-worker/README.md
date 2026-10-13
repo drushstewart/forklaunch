@@ -42,3 +42,18 @@ running without replay or automatic desired-state restoration.
 strings. Keep it out of logs. Delivery-critical offset, transaction and isolation
 settings cannot be overridden. OpenAPI and SDK exports contain no application
 routes until application HTTP contracts are added separately.
+
+
+## Separate control service
+
+Run this executable with `--control-service` and `WORKER_HTTP_ADDR` to serve
+health/readiness without connecting to job storage, claiming jobs or running
+retention. Without `WORKER_CONTROL_TOKEN`, controls return 404. Authenticated
+controls additionally require the distributed signal configuration above; they
+publish to consumers without becoming a consumer or signal subscriber. Readiness
+describes this control process, not remote queue health. Draining consumers does
+not stop the control service; SIGTERM stops it cleanly.
+
+New release manifests advertise distinct control and consumer roles when the
+installed generated sources support this entry point. Older/custom sources keep
+their existing command. The health/control server does not expose MCP tools.

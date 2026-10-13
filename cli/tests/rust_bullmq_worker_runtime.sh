@@ -33,6 +33,7 @@ grep -q 'workerType = "bullmq"' .forklaunch/manifest.toml
 cargo build --workspace
 TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory))')"
 node "$SCRIPT_DIR/rust_mcp_service_startup.mjs" "$TARGET_DIR/debug/api"
+node "$SCRIPT_DIR/rust_worker_control_service.mjs" "$TARGET_DIR/debug/jobs"
 node "$SCRIPT_DIR/rust_bullmq_worker_runtime.mjs" "$TARGET_DIR/debug/jobs" stub
 cp "$SCRIPT_DIR/fixtures/rust_worker_handler.rs" crates/jobs/src/handler.rs
 cargo build -p jobs

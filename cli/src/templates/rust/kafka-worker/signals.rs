@@ -69,3 +69,17 @@ where H: JobHandler, F: Future<Output = ()> + Send {
         }
     }
 }
+
+// This role never connects to the job backend or subscribes as a consumer.
+pub async fn serve_management<F>(config: &HttpConfig, shutdown: F) -> Result<(), Error>
+where F: Future<Output = ()> + Send {
+    let publisher: Option<SignalPublisher> = if let Some((url, namespace, tenant, queue)) = configuration()? {
+        let publisher = RedisSignalPublisher::connect(&url, &namespace, &tenant, &queue, &SignalOptions::default()).await?;
+        Some(Arc::new(move |signal| {
+            let publisher = publisher.clone();
+            Box::pin(async move { publisher.broadcast(signal).await })
+        }))
+    } else { None };
+    http::serve_management(config, publisher, shutdown).await?;
+    Ok(())
+}

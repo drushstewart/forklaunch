@@ -4238,3 +4238,37 @@ matrix. All 940 embedded assets are packaged. Logs:
 `/private/tmp/fl-jwt-resource-{tests,parity,clippy,generated,package}.log`.
 Broader session-schema/callback and error-envelope work remains open; checklist
 remains 657/682 (96.3%), 25 open.
+
+
+Native worker role receipt (2026-10-13): generated PostgreSQL, Redis, BullMQ and
+Kafka executables now accept `--control-service` before opening job storage.
+This serves management HTTP without consumers, leases or retention. Tokenless
+mode exposes health/readiness only; authenticated controls require a scoped
+Redis publisher. The process does not subscribe, stays running after remote drain,
+and reports local readiness rather than remote queue health. Subscriber counts
+remain delivery fanout counts, not acknowledgements. Management routes expose no
+MCP/application SDK methods.
+
+Scaffolding/sync advertise `workerControlService` only when installed sources
+support the entry point. New releases carry explicit control/consumer roles;
+legacy/custom sources retain their old command. A source-preservation regression
+withdraws unsupported metadata and restores it after re-adoption. Companion
+platform commit `5774b2bbc` preserves roles through schemas, validates compatible
+runtime/component combinations and selects direct argv with `--control-service`
+only for the control component.
+
+All 1,101 CLI tests and six worker HTTP tests pass, with strict worker Clippy.
+Generated Redis run `sQqS08` verifies real two-consumer fanout, storage-independent
+control startup, no extra subscriber, post-drain availability, normal consumer
+lease/retry/isolation behavior and relocation/rename/backend-change/delete.
+Generated matrix `rw_v_b0r` builds all four backends, starts each control role with
+unavailable job storage, checks configuration rejection and graceful SIGTERM,
+compiles both SDK targets, and passes the companion service's complete HTTP/MCP
+startup/discovery/invocation/shutdown matrix. All 940 embedded assets are packaged.
+Platform validation passes 22 native-command/generated-program tests, six schema
+tests and the full deployment-worker type check. Logs:
+`/private/tmp/fl-worker-control-{tests,clippy,redis-generated,matrix-build,matrix-runtime,matrix-mcp,matrix-sdk,source-capability,package}.log`,
+`/private/tmp/fl-worker-role-cli-tests.log`, and
+`/private/tmp/fl-platform-worker-role-{generated-tests,schema,worker-types}.log`.
+Actual AWS tasks/load balancers/scaling, migration jobs and tenant/runtime-role
+provisioning remain unverified. Checklist remains 657/682 (96.3%), 25 open.

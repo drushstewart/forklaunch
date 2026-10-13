@@ -50,3 +50,18 @@ disconnect, overflow, or malformed messages cause graceful drain and an error ex
 There is no automatic reconnect or durable desired-state restoration: restart the
 worker explicitly; a restarted worker begins running. Use a unique namespace for
 each environment and Redis ACLs; Redis database numbers do not isolate Pub/Sub.
+
+
+## Separate control service
+
+Run this executable with `--control-service` and `WORKER_HTTP_ADDR` to serve
+health/readiness without connecting to job storage, claiming jobs or running
+retention. Without `WORKER_CONTROL_TOKEN`, controls return 404. Authenticated
+controls additionally require the distributed signal configuration above; they
+publish to consumers without becoming a consumer or signal subscriber. Readiness
+describes this control process, not remote queue health. Draining consumers does
+not stop the control service; SIGTERM stops it cleanly.
+
+New release manifests advertise distinct control and consumer roles when the
+installed generated sources support this entry point. Older/custom sources keep
+their existing command. The health/control server does not expose MCP tools.

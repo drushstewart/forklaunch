@@ -76,6 +76,7 @@ assert json.loads(Path('.forklaunch/contracts/jobs/contract.json').read_text())[
 assert json.loads(Path('.forklaunch/openapi/jobs/openapi.json').read_text())['paths']=={}
 PYTHON
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug/jobs"))')"
+node "$SCRIPT_DIR/rust_worker_control_service.mjs" "$BINARY"
 node "$SCRIPT_DIR/rust_kafka_worker_runtime.mjs" "$BINARY" stub
 cp "$SCRIPT_DIR/fixtures/rust_kafka_worker_handler.rs" crates/jobs/src/handler.rs
 printf '\npub const USER_OWNED_MARKER: &str = "preserved";\n' >> crates/jobs/src/handler.rs
