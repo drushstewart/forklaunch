@@ -75,6 +75,8 @@ on:
       - 'cli/src/templates/sdk/typescript/safeStringify.ts'
       - 'cli/tests/rust_query_transport_parity.mjs'
       - 'cli/tests/rust_mcp_body_parity.mjs'
+      - 'cli/tests/rust_mcp_transport_parity.mjs'
+      - 'cli/tests/fixtures/mcp_transport.ts'
       - 'framework/core/src/http/router/discriminateBody.ts'
       - 'cli/src/templates/sdk/typescript/index.ts'
       - 'cli/src/templates/sdk/typescript/sse.ts'
@@ -249,6 +251,8 @@ on:
       - 'cli/src/templates/sdk/typescript/safeStringify.ts'
       - 'cli/tests/rust_query_transport_parity.mjs'
       - 'cli/tests/rust_mcp_body_parity.mjs'
+      - 'cli/tests/rust_mcp_transport_parity.mjs'
+      - 'cli/tests/fixtures/mcp_transport.ts'
       - 'framework/core/src/http/router/discriminateBody.ts'
       - 'cli/src/templates/sdk/typescript/index.ts'
       - 'cli/src/templates/sdk/typescript/sse.ts'
@@ -453,6 +457,9 @@ jobs:
           cp cli/tests/fixtures/canonical-iam/package.json "$RUNNER_TEMP/fl-canonical-http/package.json"
           npm install --prefix "$RUNNER_TEMP/fl-canonical-http" --ignore-scripts
       - run: node cli/tests/rust_canonical_http_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_mcp_transport_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_multipart_extract_parity.mjs

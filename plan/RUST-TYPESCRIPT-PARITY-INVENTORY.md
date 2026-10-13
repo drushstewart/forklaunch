@@ -2230,3 +2230,27 @@ The owned PostgreSQL container was removed after validation.
 Account/session/member query migration and encrypted lookup backfill remain
 open. The existing full-model list still rejects oversized results, preventing
 silent authorization truncation. Checklist remains **644/682 (94.4%), 38 open**.
+
+### Actual MCP transport/body conformance
+
+`rust_mcp_transport_parity.mjs` bundles the repository generator and Zod validator
+against pinned FastMCP 4.22.4/Zod 4.6.7/MCP SDK 1.32.1. The official client
+initializes and discovers the actual FastMCP server over InMemoryTransport;
+32 tool calls proxy to a live HTTP receiver. No validator or FastMCP substitute
+is used. Multipart text/Unicode/newline/name handling and rejected non-string
+shapes, file/binary bytes, form composites, JSON/text and custom media match the
+native encoder. The existing generator-only fixture independently checks exact
+multipart framing. Native MCP tests invoke the real multipart/form/file HTTP
+extractors behind authentication guards.
+
+All 32 actual transport cases and all 18 native MCP tests pass. CI installs the
+shared pinned fixture dependencies and runs the new transport comparison.
+Sessions, HTTP connections and temporary sources close/clean up on completion.
+Logs: `/private/tmp/fl-mcp-transport-final.log`, `fl-mcp-transport-native.log`.
+An initial fixture run exposed a retained FastMCP ping timer; retaining and
+closing the session returned by `connect` fixes fixture shutdown. The clean
+final run exits normally without force termination.
+
+This closes the multipart/expanded-generator MCP item, not the separate
+versioned-API or broad route/schema conformance gates. Checklist:
+**645/682 (94.6%), 37 open**.

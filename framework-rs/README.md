@@ -423,3 +423,11 @@ invalid, missing and foreign-resource anchors fail before generation. Older
 Draft 4/6/7 schemas do not gain modern `$anchor` semantics. Resource `$id`,
 external retrieval and dynamic references remain unsupported in SDK imports;
 checked AsyncAPI payload imports retain their separate conservative profile.
+
+`cli/tests/rust_mcp_transport_parity.mjs` runs 32 calls through the real pinned
+FastMCP server, repository Zod validator/generator and official MCP client, then
+compares live HTTP body bytes with the native MCP encoder. Set
+`FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES` to the installed canonical-iam fixture
+prefix. The MCP link uses the official in-memory transport; forwarded HTTP is a
+loopback TCP server. This complements native HTTP/MCP listener/startup tests and
+the lower-level exact multipart-framing fixture.
