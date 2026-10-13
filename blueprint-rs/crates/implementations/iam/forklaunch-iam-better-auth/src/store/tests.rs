@@ -240,9 +240,102 @@ async fn exercise_large_session_tokens<S: AuthStore + 'static>(store: std::sync:
     );
 }
 
+// Reuses the >4096-row token fixture after its legacy-index backfill checks.
+async fn exercise_large_session_collections<S: AuthStore + 'static>(store: std::sync::Arc<S>) {
+    let now = chrono::DateTime::<chrono::Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let service = crate::sessions::SessionService::new(store.clone());
+    let current = "indexed-token-0";
+    let mut tx = store.begin(false).await.unwrap();
+    let mut preserved = Vec::new();
+    let mut after = None;
+    loop {
+        let page = tx.list_page(Model::Session, after, 256).await.unwrap();
+        preserved.extend(
+            page.records
+                .into_iter()
+                .filter(|row| row["userId"] != "indexed-session-user"),
+        );
+        after = page.next;
+        if after.is_none() {
+            break;
+        }
+    }
+    tx.commit().await.unwrap();
+    let rows = service.list(current, false, now).await.unwrap();
+    assert_eq!(rows.as_array().unwrap().len(), 4099);
+    assert_eq!(rows[4098]["token"], "indexed-token-4098");
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(
+        Model::User,
+        json!({"id":"foreign-session-user","email":"foreign@fixture.test"}),
+    )
+    .await
+    .unwrap();
+    let foreign = crate::sessions::new_session("foreign-session-user", "", "", now).unwrap();
+    tx.insert(Model::Session, foreign.clone()).await.unwrap();
+    let mut expired = tx
+        .get(Model::Session, "indexed-session-4098")
+        .await
+        .unwrap()
+        .unwrap();
+    expired["expiresAt"] = json!(now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+    tx.replace(Model::Session, expired).await.unwrap();
+    tx.commit().await.unwrap();
+    let foreign_token = foreign["token"].as_str().unwrap();
+    service
+        .revoke_one(current, foreign_token, false, now)
+        .await
+        .unwrap();
+    service
+        .revoke_one(current, "missing", false, now)
+        .await
+        .unwrap();
+    service
+        .revoke_one(current, "indexed-token-4097", false, now)
+        .await
+        .unwrap();
+    assert!(
+        service
+            .get("indexed-token-4097", false, false, now)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    service.revoke_others(current, false, now).await.unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    assert_eq!(
+        tx.list(Model::Session).await.unwrap().len(),
+        preserved.len() + 3
+    );
+    assert!(
+        tx.get(Model::Session, "indexed-session-4098")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    tx.commit().await.unwrap();
+    assert_eq!(
+        service
+            .list(current, false, now)
+            .await
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    service.revoke_all(current, false, now).await.unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    preserved.push(foreign);
+    assert_eq!(tx.list(Model::Session).await.unwrap(), preserved);
+    tx.commit().await.unwrap();
+}
+
 #[tokio::test]
 async fn memory_session_authentication_exceeds_model_scan_bound() {
-    exercise_large_session_tokens(std::sync::Arc::new(memory::MemoryAuthStore::default())).await;
+    let store = std::sync::Arc::new(memory::MemoryAuthStore::default());
+    exercise_large_session_tokens(store.clone()).await;
+    exercise_large_session_collections(store).await;
 }
 
 async fn exercise_pagination<S: AuthStore>(store: &S) {
@@ -653,6 +746,8 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
         "indexed-session-4098"
     );
     indexed.commit().await.unwrap();
+
+    exercise_large_session_collections(Arc::new(reopened)).await;
 
     // A transplanted index must not authenticate a different valid encrypted row.
     let moved_indexes: Vec<String> = sqlx::query_scalar("UPDATE fl_better_auth.unique_claims SET id='imported-0' WHERE tenant_id=$1 AND model='user' AND field='email' AND id='imported-4099' RETURNING blind_index")

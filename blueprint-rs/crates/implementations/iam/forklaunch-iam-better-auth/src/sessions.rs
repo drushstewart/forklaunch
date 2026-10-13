@@ -98,9 +98,19 @@ impl<S: AuthStore> SessionService<S> {
             ));
         }
         let mut sessions = Vec::new();
-        for session in tx.list(Model::Session).await? {
-            if session["userId"] == current.user["id"] && field_time(&session, "expiresAt")? > now {
-                sessions.push(public_session(&session));
+        let mut after = None;
+        loop {
+            let page = tx.list_page(Model::Session, after, 256).await?;
+            for session in page.records {
+                if session["userId"] == current.user["id"]
+                    && field_time(&session, "expiresAt")? > now
+                {
+                    sessions.push(public_session(&session));
+                }
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
             }
         }
         tx.commit().await?;
@@ -155,19 +165,38 @@ impl<S: AuthStore> SessionService<S> {
             tx.commit().await?;
             return Err(unauthorized());
         };
-        for session in tx.list(Model::Session).await? {
-            if session["userId"] != current.user["id"] {
-                continue;
-            }
-            let candidate = field_text(&session, "token")?;
-            let remove = match mode {
-                Revoke::One(target) => candidate == target,
-                Revoke::All => true,
-                Revoke::Others => candidate != token && field_time(&session, "expiresAt")? > now,
-            };
-            if remove {
+        if let Revoke::One(target) = mode {
+            if let Some(session) = find_token(&mut tx, target).await?
+                && session["userId"] == current.user["id"]
+            {
                 tx.delete(Model::Session, field_text(&session, "id")?)
                     .await?;
+            }
+        } else {
+            let mut after = None;
+            loop {
+                let page = tx.list_page(Model::Session, after, 256).await?;
+                for session in page.records {
+                    if session["userId"] != current.user["id"] {
+                        continue;
+                    }
+                    let remove = match mode {
+                        Revoke::All => true,
+                        Revoke::Others => {
+                            field_text(&session, "token")? != token
+                                && field_time(&session, "expiresAt")? > now
+                        }
+                        Revoke::One(_) => unreachable!(),
+                    };
+                    if remove {
+                        tx.delete(Model::Session, field_text(&session, "id")?)
+                            .await?;
+                    }
+                }
+                after = page.next;
+                if after.is_none() {
+                    break;
+                }
             }
         }
         tx.commit().await?;

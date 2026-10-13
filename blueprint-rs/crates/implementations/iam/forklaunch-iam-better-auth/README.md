@@ -51,8 +51,10 @@ compatible across key rotation, and commits audit events with mutations. The
 Use a migration owner to initialize it and grant the runtime role schema usage,
 table DML and sequence usage, without SUPERUSER/BYPASSRLS. Request-specific audit
 contexts require a nonempty correlation ID. Graph relationships and cascades
-belong to the auth service. Model scans currently fail above 4096 records;
-indexed queries/pagination remain necessary for larger deployments.
+belong to the auth service. Whole-model scans fail above 4096 records; callers
+can traverse insertion-ordered 256-record pages within a transaction. Exact
+user/organization/session unique-field lookups use indexes. Account and member
+query migration remains necessary for scalable deployments.
 
 `keyring::KeyRing` initializes keys atomically, selects the newest live key,
 restores private keys from storage, rotates keys through trusted operator calls,
@@ -70,8 +72,13 @@ pass. The actual configured HTTP fixture compares 48 native response bodies and
 stored states after session operations; credential endpoints seed identical
 records, so this does not claim native sign-up/sign-in. Signed cookie extraction
 is exercised at the fixture boundary. The `http` feature integrates production
-session cookie headers/clearing and CSRF/Origin guards; the CLI preset remains open. Session queries
-currently use the explicitly bounded store scan; indexed lookup remains open.
+session cookie headers/clearing and CSRF/Origin guards, including the generated
+CLI preset. Token reads, sign-out and single-session revocation use exact indexed
+lookups. Session lists and bulk revocation traverse bounded storage pages under
+one transaction, preserving insertion order, foreign-user isolation and expired
+session semantics beyond 4096 rows. Collection operations still scan the tenant's
+sessions; listing materializes the matching response array. User-scoped indexes
+remain necessary to reduce large-tenant latency.
 
 `accounts::CredentialService` provides atomic native email signup/signin. Scrypt
 runs in a shared bounded blocking pool outside tenant write locks; concurrent
