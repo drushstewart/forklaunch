@@ -131,6 +131,12 @@ session and bind its principal before returning an `AuthenticatedSession`.
 Explicit decoder errors must contain public text. Cancellation drops the decoder
 future without retrying it. Session-schema validation remains application-owned.
 
+`typescript::jwt::verify_jwt_resource` awaits a trusted JWT verifier or custom
+resource decoder with the same prefix/first-token rules (default `Bearer`). It
+rejects all falsy JSON results and converts callback failures to the TypeScript
+403 without exposing their details. It does not verify signatures itself: supply
+a real credential verifier and validate/bind the returned session before use.
+
 Use `RouterConfig::with_response_authenticator` when credential verification
 needs explicit `ErrorResponse` statuses/messages, including this Basic verifier.
 It returns an `AuthenticatedSession` only after verification; normal RBAC or a

@@ -1,5 +1,6 @@
 //! Opt-in TypeScript credential parsing and verified-session authorization.
 pub mod basic;
+pub mod jwt;
 use crate::Principal;
 use forklaunch_contract::AccessLevel;
 use forklaunch_http::{ErrorKind, ErrorResponse};
@@ -111,4 +112,27 @@ fn granted(grants: &[String], allowed: Option<&[String]>, forbidden: Option<&[St
 }
 fn denied(message: &str) -> ErrorResponse {
     ErrorResponse::new(ErrorKind::Forbidden, message)
+}
+
+fn authorization_token<'a>(
+    header: Option<&'a str>,
+    token_prefix: &str,
+) -> Result<&'a str, ErrorResponse> {
+    let header = header.ok_or_else(|| {
+        ErrorResponse::new(ErrorKind::Unauthorized, "Authorization token required.")
+    })?;
+    let mut parts = header.split(' ');
+    let prefix = parts.next().unwrap_or_default();
+    let token = parts.next().ok_or_else(invalid_token_format)?;
+    if prefix.is_empty() || prefix != token_prefix {
+        return Err(invalid_token_format());
+    }
+    Ok(token)
+}
+
+fn invalid_token_format() -> ErrorResponse {
+    ErrorResponse::new(
+        ErrorKind::Unauthorized,
+        "Invalid Authorization token format.",
+    )
 }

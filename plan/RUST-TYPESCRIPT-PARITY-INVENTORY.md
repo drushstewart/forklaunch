@@ -4218,3 +4218,23 @@ coverage. All 939 embedded assets remain packaged. Logs:
 `/private/tmp/fl-basic-resource-{tests,parity,clippy,generated,runtime,startup,package}.log`.
 Session schemas, broader callbacks and error envelopes remain open; checklist is
 657/682 (96.3%), 25 open.
+
+
+JWT custom resource verifier receipt (2026-10-13): the opt-in
+`typescript::jwt::verify_jwt_resource` awaits a trusted verifier/decoder after
+exact Bearer/custom prefix and first-token checks. Falsy JSON results reject
+verification; callback errors become the TypeScript generic 403 without exposing
+provider details. The application must verify credentials in the callback and
+validate/bind the returned session before authorization. This adds no implicit
+payload-only decoder and leaves strict built-in JWT verification unchanged.
+
+All 32 auth tests and strict all-feature/all-target Clippy pass. The shared
+actual-source credential fixture now checks 1,931 cases (864 new JWT callback
+cases), covering error redaction, falsy/structured claims and header precedence.
+Generated relocated run `TNYJ4G` compiles both SDKs, runs vendored OIDC tests, and
+passes real signed/expired/invalid JWT callbacks, role checks and trusted claims
+over HTTP/MCP alongside the Basic/RBAC cases and complete listener/startup/shutdown
+matrix. All 940 embedded assets are packaged. Logs:
+`/private/tmp/fl-jwt-resource-{tests,parity,clippy,generated,package}.log`.
+Broader session-schema/callback and error-envelope work remains open; checklist
+remains 657/682 (96.3%), 25 open.

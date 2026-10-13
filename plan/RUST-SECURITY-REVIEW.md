@@ -266,3 +266,14 @@ must contain public text. Cancellation drops the callback future without retries
 The generated fixture verifies credentials before session shape/role checks and
 never authorizes malformed or null sessions. Native structured error envelopes
 remain unchanged; TypeScript response-body equivalence is not claimed here.
+
+
+JWT custom resource verification review (2026-10-13): an opt-in trusted async
+callback verifies the first raw token after exact Bearer/custom prefix checks.
+This callback owns signature and claim verification; the helper is not a JWT
+payload decoder. Falsy JSON results reject authentication, and callback failures
+become a generic 403 without logging or exposing their details. Applications
+validate session shape and bind a principal before normal authorization. Actual
+TypeScript comparisons cover both callback success and failure across header and
+claim shapes. Native JSON error envelopes and strict built-in JWT verification
+remain unchanged.

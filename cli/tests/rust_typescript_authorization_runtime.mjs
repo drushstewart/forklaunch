@@ -11,7 +11,7 @@ let errors='';server.stderr.on('data',chunk=>errors+=chunk);
 const timer=setTimeout(()=>server.kill('SIGKILL'),60000);
 try {
  const base=await new Promise((resolve,reject)=>{let output='';server.stdout.on('data',chunk=>{output+=chunk;const match=output.match(/listening on (http:\/\/[^\s]+)/);if(match)resolve(match[1]);});server.once('exit',()=>reject(Error(errors)));});
- await probeMcp(base,['checkPermissions','checkScope','checkFeatures','checkUnconfigured','checkBasic','checkResource']);
+ await probeMcp(base,['checkPermissions','checkScope','checkFeatures','checkUnconfigured','checkBasic','checkResource','checkJwtResource']);
  const cases=[
   ['permissions',{permissions:['read']},200],['permissions',{roles:['admin']},403],
   ['scope',{scopes:['team']},200],['scope',{scopes:['admin']},403],['scope',{scopes:['team','unknown']},403],
@@ -57,6 +57,17 @@ try {
   assert.equal(result.isError,status!==200);
   if(status===200){assert.deepEqual(body,{subject:'resource-user',team:'verified-team'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
  }
+ for(const [credential,status] of [[null,401],['bearer invalid',401],['Bearer invalid',403],[`Bearer ${token({roles:['admin'],exp:1})}`,403],[`Bearer ${token({roles:['reader']})}`,403],[`Bearer ${token({roles:['admin']})} ignored`,200]]) {
+  const headers=credential===null?{}:{authorization:credential};
+  const response=await fetch(`${base}/policy/jwt-resource`,{headers});
+  assert.equal(response.status,status,'JWT resource');
+  const body=await response.json();
+  assert.ok(!JSON.stringify(body).includes('private verification details'));
+  const result=await mcpRpc(base,'tools/call',{name:'checkJwtResource',arguments:{}},headers);
+  assert.equal(result.isError,status!==200);
+  assert.ok(!JSON.stringify(result).includes('private verification details'));
+  if(status===200){assert.deepEqual(body,{subject:'fixture-subject',team:'jwt-verified-team'});assert.deepEqual(JSON.parse(result.content[0].text),body);}
+ }
  server.kill('SIGTERM');const [code,signal]=await exited;assert.equal(code,0,`${signal}: ${errors}`);
- console.log('PASS generated verified-session authorization: HTTP/MCP Basic login and async resource verification, permissions, exact scopes, subscriptions, features, missing policies, rejected credentials and graceful shutdown');
+ console.log('PASS generated verified-session authorization: HTTP/MCP Basic login and async Basic/JWT resource verification, permissions, exact scopes, subscriptions, features, missing policies, rejected credentials and graceful shutdown');
 } finally {clearTimeout(timer);if(server.exitCode===null&&!server.signalCode){server.kill('SIGKILL');await exited.catch(()=>{});}}

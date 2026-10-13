@@ -1,4 +1,5 @@
 //! Opt-in compatibility with TypeScript Basic login and custom resource decoders.
+use super::authorization_token;
 use crate::Principal;
 use forklaunch_http::{ErrorKind, ErrorResponse};
 use std::future::Future;
@@ -21,7 +22,7 @@ pub fn verify_basic(
     token_prefix: Option<&str>,
     login: impl FnOnce(&str, &str) -> bool,
 ) -> Result<Principal, ErrorResponse> {
-    let token = basic_token(header, token_prefix)?;
+    let token = authorization_token(header, token_prefix.unwrap_or("Basic"))?;
     let bytes = decode_node_base64(token);
     let decoded = String::from_utf8_lossy(&bytes);
     let mut credentials = decoded.split(':');
@@ -61,7 +62,7 @@ pub async fn verify_basic_resource<'a, Fut>(
 where
     Fut: Future<Output = Result<serde_json::Value, ErrorResponse>>,
 {
-    let token = basic_token(header, token_prefix)?;
+    let token = authorization_token(header, token_prefix.unwrap_or("Basic"))?;
     let claims = decode(token).await?;
     if claims.is_null() {
         return Err(ErrorResponse::new(
@@ -70,22 +71,6 @@ where
         ));
     }
     Ok(claims)
-}
-
-fn basic_token<'a>(
-    header: Option<&'a str>,
-    token_prefix: Option<&str>,
-) -> Result<&'a str, ErrorResponse> {
-    let header = header.ok_or_else(|| {
-        ErrorResponse::new(ErrorKind::Unauthorized, "Authorization token required.")
-    })?;
-    let mut parts = header.split(' ');
-    let prefix = parts.next().unwrap_or_default();
-    let token = parts.next().ok_or_else(invalid_format)?;
-    if prefix.is_empty() || prefix != token_prefix.unwrap_or("Basic") {
-        return Err(invalid_format());
-    }
-    Ok(token)
 }
 
 fn invalid_format() -> ErrorResponse {

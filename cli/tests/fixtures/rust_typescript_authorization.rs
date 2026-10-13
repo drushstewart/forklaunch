@@ -4,6 +4,7 @@ use forklaunch_auth::{
     typescript::{
         TypeScriptRbacPolicy,
         basic::{verify_basic, verify_basic_resource},
+        jwt::verify_jwt_resource,
     },
     verify_jwt_hs256,
 };
@@ -20,6 +21,7 @@ pub fn contracts() -> Vec<RouteContract> {
         "unconfigured",
         "basic",
         "resource",
+        "jwt-resource",
     ]
     .into_iter()
     .map(|name| {
@@ -47,6 +49,25 @@ pub fn contracts() -> Vec<RouteContract> {
 pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
     let config = RouterConfig::default()
         .with_response_authenticator(|request, contract| async move {
+            if contract.operation_name == "checkJwtResource" {
+                let claims = verify_jwt_resource(
+                    request.headers.get("authorization").map(String::as_str),
+                    None,
+                    |token| async move {
+                        tokio::task::yield_now().await;
+                        let principal = verify_jwt_hs256(token, SECRET).map_err(|_| {
+                            ErrorResponse::new(ErrorKind::Internal, "private verification details")
+                        })?;
+                        Ok(json!({"sub":principal.subject, "roles":principal.roles, "team":"jwt-verified-team"}))
+                    },
+                ).await?;
+                let subject = claims.get("sub").and_then(Value::as_str)
+                    .ok_or_else(|| ErrorResponse::new(ErrorKind::Validation, "invalid session"))?;
+                let mut principal = forklaunch_auth::Principal::new(subject);
+                principal.roles = serde_json::from_value(claims["roles"].clone())
+                    .map_err(|_| ErrorResponse::new(ErrorKind::Validation, "invalid session"))?;
+                return Ok(AuthenticatedSession::new(principal, claims));
+            }
             if contract.operation_name == "checkResource" {
                 let claims = verify_basic_resource(
                     request.headers.get("authorization").map(String::as_str),
@@ -86,7 +107,7 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
         })
         .with_authorizer(|session, contract| {
             let policy = match contract.operation_name.as_str() {
-                "checkResource" => TypeScriptRbacPolicy {
+                "checkResource" | "checkJwtResource" => TypeScriptRbacPolicy {
                     allowed_roles: Some(vec!["admin".into()]),
                     ..Default::default()
                 },
