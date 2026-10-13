@@ -32,7 +32,7 @@ impl SocketSdkPlan {
     /// Error/context metadata describe framework events, not wire messages.
     ///
     /// # Errors
-    /// Rejects invalid paths, schemas, references, mixed union dialects and limits.
+    /// Rejects invalid paths, schemas, references, unsupported dialects and limits.
     pub fn from_contract(contract: &SocketContract) -> Result<Self> {
         if !contract.path.starts_with('/')
             || contract.path.contains(['?', '#'])
@@ -154,22 +154,34 @@ fn collection(
         serde_json::to_writer(&mut bytes, &entry.shape)
             .context("Socket message union exceeds 32 MiB")?;
     }
-    let mut schemas = Vec::with_capacity(entries.len());
-    let mut dialect = None;
+    let mut checked = Vec::with_capacity(entries.len());
+    let mut dialects = std::collections::BTreeSet::new();
     for (index, entry) in entries.values().enumerate() {
-        // Validate the standalone graph before rebasing its document-local refs.
-        let checked = payload(&format!("{name}Variant{index}"), Some(entry))?;
-        let current = checked
-            .schema
-            .get("$schema")
-            .and_then(Value::as_str)
-            .unwrap_or("http://json-schema.org/draft-07/schema#");
-        if dialect.as_deref().is_some_and(|dialect| dialect != current) {
-            bail!("Socket message unions must use one JSON Schema dialect");
-        }
-        dialect = Some(current.to_owned());
+        let plan = payload(&format!("{name}Variant{index}"), Some(entry))?;
+        dialects.insert(
+            plan.schema
+                .get("$schema")
+                .and_then(Value::as_str)
+                .unwrap_or("http://json-schema.org/draft-07/schema#")
+                .to_owned(),
+        );
+        checked.push(plan.schema);
+    }
+    let mixed = dialects.len() > 1;
+    let dialect = if mixed {
+        "https://json-schema.org/draft/2020-12/schema"
+    } else {
+        dialects.first().unwrap().as_str()
+    };
+    let mut schemas = Vec::with_capacity(checked.len());
+    for (index, schema) in checked.into_iter().enumerate() {
+        let schema = if mixed {
+            crate::schema::runtime_schema_2020(&schema)?
+        } else {
+            schema
+        };
         let relocated = forklaunch_contract::relocate_schema_json_unscoped(
-            &checked.schema.to_string(),
+            &schema.to_string(),
             &["anyOf", &index.to_string()],
         );
         schemas.push(serde_json::from_str::<Value>(&relocated)?);
@@ -427,12 +439,11 @@ mod tests {
     }
 
     #[test]
-    fn malformed_constraints_scopes_and_mixed_dialects_fail_before_generation() {
+    fn malformed_constraints_and_scopes_fail_before_generation() {
         for schema in [
             json!({"type":"string","minLength":-1}),
             json!({"$ref":"#/missing"}),
             json!({"$id":"https://example.test/schema","$ref":"unbundled"}),
-            json!({"$schema":"https://json-schema.org/draft/2020-12/schema", "$id":"https://schemas.test/root", "type":"object", "properties":{"legacy":{"$schema":"http://json-schema.org/draft-04/schema#", "id":"legacy", "type":"number", "minimum":1, "exclusiveMinimum":true}}}),
         ] {
             let contract = SocketContract::new("/chat")
                 .with_client_message("input", SocketSchemaEntry::new(schema));
@@ -441,6 +452,10 @@ mod tests {
         let contract = SocketContract::new("/chat")
             .with_client_message("draft7", SocketSchemaEntry::new(json!({"type":"string"})))
             .with_client_message("draft2020", SocketSchemaEntry::new(json!({"$schema":"https://json-schema.org/draft/2020-12/schema","type":"integer"})));
-        assert!(SocketSdkPlan::from_contract(&contract).is_err());
+        let plan = SocketSdkPlan::from_contract(&contract).unwrap();
+        let codec = PayloadCodec::<Value>::json_schema(&plan.outgoing.schema).unwrap();
+        assert!(codec.decode(br#""hello""#).is_ok());
+        assert!(codec.decode(b"1").is_ok());
+        assert!(codec.decode(b"true").is_err());
     }
 }

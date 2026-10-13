@@ -9,7 +9,7 @@ fn main() -> anyhow::Result<()> {
     let inputs: Vec<serde_json::Value> = serde_json::from_str(&input)?;
     let output = inputs.iter().map(|entry| {
         let input = &entry["schema"];
-        let bundled = schema::bundle(input, input, &mut schema::ExpansionBudget::default())?;
+        let bundled = if entry["runtime"] == true { schema::scoped_runtime_schema(input)? } else { schema::bundle(input, input, &mut schema::ExpansionBudget::default())? };
         let original = forklaunch_ws::codec::PayloadCodec::<serde_json::Value>::json_schema(input)?;
         let compiled = forklaunch_ws::codec::PayloadCodec::<serde_json::Value>::json_schema(&bundled)?;
         let cases = entry["cases"].as_array().unwrap();

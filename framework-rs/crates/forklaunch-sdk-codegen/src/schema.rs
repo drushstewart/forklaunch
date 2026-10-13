@@ -98,11 +98,18 @@ pub(crate) fn scoped_runtime_schema(schema: &Value) -> Result<Value> {
     let effective = standalone_runtime_schema(schema, &mut budget)?;
     let resources = resources::Resources::index(&effective, &mut budget)?;
     if resources.needs_runtime_bundle() {
-        resources.check_runtime_dialects()?;
-        bundle(&effective, &effective, &mut budget)
+        bundle_with_profile(&effective, &effective, &mut budget, true, true)
     } else {
         clone_literal(schema, &mut budget)
     }
+}
+
+/// Convert an already checked standalone message before joining mixed drafts.
+#[allow(dead_code)] // Shared CLI source only generates HTTP models.
+pub(crate) fn runtime_schema_2020(schema: &Value) -> Result<Value> {
+    let mut budget = ExpansionBudget::default();
+    let effective = standalone_runtime_schema(schema, &mut budget)?;
+    bundle_runtime_profile(&effective, &effective, &mut budget, true, true, true)
 }
 
 /// Standalone socket codecs default to Draft 7; HTTP model schemas retain
@@ -151,17 +158,32 @@ fn bundle_with_profile(
     resource_ids: bool,
     runtime: bool,
 ) -> Result<Value> {
+    bundle_runtime_profile(schema, document, budget, resource_ids, runtime, false)
+}
+
+fn bundle_runtime_profile(
+    schema: &Value,
+    document: &Value,
+    budget: &mut ExpansionBudget,
+    resource_ids: bool,
+    runtime: bool,
+    translate: bool,
+) -> Result<Value> {
     let mut graph = Graph {
         document,
         budget,
         resource_ids,
         runtime,
-        runtime_dialect: None,
+        runtime_dialects: BTreeSet::new(),
+        translate,
         names: BTreeMap::new(),
         definitions: Map::new(),
         resources: None,
     };
     let mut root = graph.visit(schema, 0, &resources::Bindings::new())?;
+    if runtime && !translate && graph.runtime_dialects.len() > 1 {
+        return bundle_runtime_profile(schema, document, graph.budget, resource_ids, true, true);
+    }
     // TypeScript cannot represent a cycle consisting only of aliases/unions.
     // Object properties and array items provide the necessary structural guard.
 
@@ -214,6 +236,12 @@ fn bundle_with_profile(
             .context("Referenced schema must be an object")?
             .insert("$defs".into(), Value::Object(graph.definitions));
     }
+    if translate {
+        if root.is_boolean() {
+            root = json!({"allOf": [root]});
+        }
+        root["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
+    }
     Ok(root)
 }
 
@@ -242,7 +270,8 @@ struct Graph<'a> {
     resources: Option<resources::Resources>,
     resource_ids: bool,
     runtime: bool,
-    runtime_dialect: Option<String>,
+    runtime_dialects: BTreeSet<String>,
+    translate: bool,
 }
 
 impl Graph<'_> {
@@ -270,21 +299,22 @@ impl Graph<'_> {
         let dialect = resources.dialect(schema).to_owned();
         if self.runtime && (!dialect.is_empty() || !object.contains_key("$ref")) {
             let dialect = resources::dialect_key(&dialect);
-            if self
-                .runtime_dialect
-                .as_deref()
-                .is_some_and(|previous| previous != dialect)
-            {
-                bail!("Runtime resource bundling requires one JSON Schema dialect");
-            }
-            if self.runtime_dialect.is_none() {
+            if !self.runtime_dialects.contains(dialect) {
                 self.budget.bytes = self
                     .budget
                     .bytes
                     .checked_sub(dialect.len())
                     .context("SDK schema graph exceeds 32 MiB")?;
-                self.runtime_dialect = Some(dialect.to_owned());
+                self.runtime_dialects.insert(dialect.to_owned());
             }
+        }
+        if self.translate
+            && !matches!(
+                resources::dialect_key(&dialect),
+                "draft-04" | "draft-06" | "draft-07" | "2019-09" | "2020-12"
+            )
+        {
+            bail!("Mixed runtime schemas require a supported JSON Schema dialect");
         }
         let draft4 = dialect.contains("/draft-04/");
         let resource_key = if draft4 { "id" } else { "$id" };
@@ -381,7 +411,8 @@ impl Graph<'_> {
                 sibling_references.push(resolved);
             } else {
                 for (key, value) in object {
-                    if key != reference_key
+                    if !(self.translate && key == "$schema")
+                        && key != reference_key
                         && key != resource_key
                         && !matches!(
                             key.as_str(),
@@ -402,7 +433,10 @@ impl Graph<'_> {
         }
         let mut result = Map::new();
         for (key, value) in object {
-            if key == resource_key || reference_keys.contains(&key.as_str()) {
+            if key == resource_key
+                || reference_keys.contains(&key.as_str())
+                || (self.translate && key == "$schema")
+            {
                 continue;
             }
             // Older dialects treat later validation keywords as annotations.
@@ -482,8 +516,43 @@ impl Graph<'_> {
                 .context("Schema allOf must be an array")?
                 .extend(sibling_references);
         }
+        if self.translate {
+            translate_runtime_keywords(&mut result, &dialect)?;
+        }
         Ok(Value::Object(result))
     }
+}
+
+/// References are resolved against the original resource graph before keyword
+/// conversion, so moving tuple schemas cannot change pointer identities.
+fn translate_runtime_keywords(object: &mut Map<String, Value>, dialect: &str) -> Result<()> {
+    let draft = resources::dialect_key(dialect);
+    if draft == "draft-04" {
+        for (exclusive, inclusive) in [
+            ("exclusiveMinimum", "minimum"),
+            ("exclusiveMaximum", "maximum"),
+        ] {
+            if let Some(flag) = object.remove(exclusive) {
+                let flag = flag
+                    .as_bool()
+                    .context("Draft 4 exclusive bounds must be booleans")?;
+                if flag && let Some(bound) = object.remove(inclusive) {
+                    object.insert(exclusive.into(), bound);
+                }
+            }
+        }
+    }
+    if draft != "2020-12" {
+        let tail = object.remove("additionalItems");
+        if object.get("items").is_some_and(Value::is_array) {
+            let tuple = object.remove("items").unwrap();
+            object.insert("prefixItems".into(), tuple);
+            if let Some(tail) = tail {
+                object.insert("items".into(), tail);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Assign operation-independent, service-scoped names after importing the schema.
@@ -814,6 +883,34 @@ fn lower(value: &mut Value, prefix: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mixed_runtime_translation_uses_reachable_resources_only() {
+        let unused = json!({"$schema":"http://json-schema.org/draft-07/schema#",
+        "$id":"https://schemas.test/root", "type":"string", "definitions":{
+            "Unused":{"$schema":"https://schemas.test/custom", "$id":"unused", "type":"number"}
+        }});
+        assert_eq!(
+            scoped_runtime_schema(&unused).unwrap()["$schema"],
+            unused["$schema"]
+        );
+        let mut reachable = unused;
+        reachable["$ref"] = json!("unused");
+        assert!(
+            scoped_runtime_schema(&reachable)
+                .unwrap_err()
+                .to_string()
+                .contains("supported JSON Schema dialect")
+        );
+        let no_ids = json!({"$schema":"https://json-schema.org/draft/2020-12/schema", "properties":{
+            "legacy":{"$schema":"http://json-schema.org/draft-04/schema#", "minimum":1, "exclusiveMinimum":true}
+        }});
+        let original = no_ids.clone();
+        let compiled = scoped_runtime_schema(&no_ids).unwrap();
+        assert_eq!(compiled["properties"]["legacy"]["exclusiveMinimum"], 1);
+        assert!(compiled["properties"]["legacy"].get("$schema").is_none());
+        assert_eq!(no_ids, original);
+    }
 
     #[test]
     fn inactive_dialect_keywords_do_not_index_resources_or_validate_annotations() {

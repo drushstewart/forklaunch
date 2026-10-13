@@ -3014,3 +3014,40 @@ tests, strict clippy/docs, formatting and 890 packaged sources pass. Evidence:
 `fl-schema-permissive-{parity,sockets,typescript,referencing,referencing-default,vendor,default,unit,cli,clippy,docs,package,generated-pointer4,generated-pointer6,generated-pointer7}.log`.
 Checklist remains **651/682 (95.5%), 31 open**. Mixed-dialect runtime translation
 is the remaining identified resource-import boundary.
+
+### 2026-10-13 — Mixed runtime resource drafts and socket unions
+
+The runtime graph now collects reachable dialects and translates mixed Draft
+4/6/7/2019-09/2020-12 resources to 2020-12. References bind against the original
+resource index before conversion, preserving tuple-pointer identities, lexical
+IDs and dynamic/recursive bindings. Draft 4 boolean exclusive bounds become
+numeric bounds; legacy tuple items and additionalItems become prefixItems and
+items. Existing inactive-keyword filtering preserves older draft behavior.
+Only reachable resources trigger conversion, unsupported reachable dialects
+fail explicitly, and caller-owned schemas remain unchanged. Message unions
+also convert differing standalone drafts before relocating their references.
+
+The new CI fixture checks 201 original/translated native cases, including all
+20 ordered draft pairs, recursion, bounds, tuple tails, property dependencies,
+inactive annotations and evaluated locations. Independent per-resource AJV
+engines verify original constraints; AJV 2020 agrees with 198 translated cases.
+Three cases explicitly record AJV's pre-existing behavior of marking every
+array item evaluated after contains, versus native matching-index tracking.
+This difference is reproducible without translation and remains part of the
+separate schema-constraint/emitter gate; resource support does not imply all
+validator implementations agree.
+
+The expanded socket fixture compiles 36 clients per language and passes 108
+live roundtrips, including mixed resources, mixed message unions and external
+AsyncAPI imports. The generated mixed-schema service passes both artifact
+formats, both native SDK generators, typed Rust/TypeScript consumers and live
+HTTP/MCP startup, discovery, invocation, Origin rejection and shutdown.
+The existing 240 resource cases and 12 composed-reference allErrors checks,
+13 TypeScript model fixtures (21 accepted/35 rejected values), 13,908 actual
+TypeScript/native codec comparisons, 40 shared compiler/5 Rust SDK/8 TypeScript
+SDK unit tests, 1,096 CLI tests, strict clippy and 890 packaged sources pass.
+Evidence: `fl-schema-mixed-{sockets,http,types,codecs,units,cli-final,clippy-final,package}.log`.
+
+The resource-import gate is complete for the documented offline profiles.
+Checklist: **652/682 (95.6%), 30 open**. Broader validation/emitter, provider,
+module, deployment and publishing gates remain open.

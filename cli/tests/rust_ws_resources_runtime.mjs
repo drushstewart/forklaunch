@@ -13,7 +13,7 @@ const deps=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDE
 const {WebSocketServer}=deps('ws');
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-resources-'));
 const env={...process.env,CARGO_INCREMENTAL:'0',CARGO_TARGET_DIR:path.resolve(root,process.env.CARGO_TARGET_DIR??'framework-rs/target')};
-const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7','siblings','composed2020','composed2019','uri4','uri6','uri7','pointer4','pointer6','pointer7'];
+const modes=['plain','legacy','dynamic','recursive','fragment4','fragment6','fragment7','siblings','composed2020','composed2019','uri4','uri6','uri7','pointer4','pointer6','pointer7','mixed','mixedunion'];
 const sockets=new Set();
 let server,child;
 try {
@@ -26,6 +26,15 @@ try {
   for(const [name,type] of [['text','string'],['count','integer']]) {
    let schema={$schema:mode==='legacy'?'http://json-schema.org/draft-04/schema#':mode==='recursive'?'https://json-schema.org/draft/2019-09/schema':mode==='dynamic'?'https://json-schema.org/draft/2020-12/schema':'http://json-schema.org/draft-07/schema#',
     [mode==='legacy'?'id':'$id']:'https://schemas.fixture.test/reused',type:'object',additionalProperties:false,required:['value'],properties:{value:{type,...(type==='string'?{minLength:1}:{minimum:1})},next:{$ref:'#'}}};
+   if(mode==='mixed') {
+    schema.$schema='https://json-schema.org/draft/2020-12/schema';
+    schema.properties.value={$schema:'http://json-schema.org/draft-04/schema#',id:'value',type,...(type==='string'?{minLength:1}:{minimum:0,exclusiveMinimum:true})};
+   }
+   if(mode==='mixedunion' && type==='integer') {
+    schema.$schema='http://json-schema.org/draft-04/schema#';
+    schema.id=schema.$id;delete schema.$id;
+    schema.properties.value={type,minimum:0,exclusiveMinimum:true};
+   }
    if(mode==='dynamic') {schema.$dynamicAnchor='node';schema.properties.next={$dynamicRef:'#node'};}
    if(mode==='recursive') {schema.$recursiveAnchor=true;schema.properties.next={$recursiveRef:'#'};}
    if(mode.startsWith('composed')) {
@@ -75,13 +84,12 @@ try {
  await writeFile(input,JSON.stringify(externalDocument));
  const imported=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',maxBuffer:16*1024*1024,timeout:300000}));
  assert.deepEqual(imported.asyncapi,externalDocument);
- for(const kind of ['duplicate','missing','mixed']) {
+ for(const kind of ['duplicate','missing']) {
   const invalid=structuredClone(externalDocument);
   if(kind==='duplicate') invalid.components.schemas.duplicate=structuredClone(invalid.components.schemas.plain_resource);
   if(kind==='missing') invalid.components.schemas.plain.$ref='https://unbundled.fixture.invalid/schema';
-  if(kind==='mixed') invalid.components.schemas.legacy.$schema='https://json-schema.org/draft/2020-12/schema';
   await writeFile(input,JSON.stringify(invalid));
-  assert.throws(()=>execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',stdio:'pipe',timeout:300000}),error=>new RegExp(kind==='duplicate'?'Duplicate schema resource ID':kind==='missing'?'not bundled':'one JSON Schema dialect').test(error.stderr));
+  assert.throws(()=>execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',stdio:'pipe',timeout:300000}),error=>new RegExp(kind==='duplicate'?'Duplicate schema resource ID':'not bundled').test(error.stderr));
  }
 
  for(const mode of modes) for(const language of ['rust','typescript']) generated[language][`socket_${mode}_import`]=imported[language][`socket_${mode}`];

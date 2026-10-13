@@ -87,6 +87,7 @@ impl Resources {
                             .bytes
                             .checked_sub(declared.len())
                             .context("SDK schema resource index exceeds 32 MiB")?;
+                        result.scope_keywords |= dialect_key(declared) != dialect_key(&dialect);
                         declared.clone_into(&mut dialect);
                     }
                     let draft4 = dialect.contains("draft-04");
@@ -309,18 +310,6 @@ impl Resources {
             bail!(
                 "Resource-aware references to literal data or schema containers require explicit schema definitions"
             );
-        }
-        Ok(())
-    }
-
-    pub(super) fn check_runtime_dialects(&self) -> Result<()> {
-        let expected = dialect_key(&self.default_dialect);
-        if self
-            .dialects
-            .values()
-            .any(|value| dialect_key(value) != expected)
-        {
-            bail!("Runtime resource bundling requires one JSON Schema dialect");
         }
         Ok(())
     }
@@ -569,7 +558,12 @@ mod tests {
         let mut invalid = document.clone();
         invalid.pointer_mut(location).unwrap()["$schema"] =
             json!("http://json-schema.org/draft-07/schema#");
-        assert!(super::super::bundle_document_resources(&invalid, location).is_err());
+        assert_eq!(
+            super::super::bundle_document_resources(&invalid, location)
+                .unwrap()
+                .unwrap()["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
     }
 
     #[test]

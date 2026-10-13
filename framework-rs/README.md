@@ -478,9 +478,14 @@ and resource-aware references into literal data/schema dictionaries. WebSocket
 SDK unions and raw AsyncAPI export resolve each standalone resource graph before
 relocation; resource-free schemas retain their original annotation/pointer layout.
 `forklaunch_sdk_codegen::bundle_schema_resources` exposes this bounded operation.
-Runtime relocation requires one dialect within each message; mixed embedded
-dialects remain a model-import capability until runtime constraints can be
-translated without changing their meaning. An explicit rejection is preferable to
-silently generating a model for the wrong schema resource. Run
+Mixed reachable Draft 4/6/7/2019-09/2020-12 resources and mixed-draft message
+unions are translated to 2020-12 after resolving original resource identities.
+Draft 4 exclusive bounds and legacy tuple/tail rules retain their validation
+meaning; inactive keywords remain annotations. Unreachable definitions do not
+force translation, and unsupported reachable dialects fail explicitly.
+`cli/tests/rust_schema_mixed_parity.mjs` compares original/translated native
+validation with independent AJV engines. Its receipt records AJV's existing
+`contains`/`unevaluatedItems` discrepancy separately from resource conversion.
+Run
 `cli/tests/rust_schema_resources_runtime.sh` for live recursive Rust/TypeScript
 SDK checks from contract and OpenAPI artifacts, including HTTP/MCP startup.

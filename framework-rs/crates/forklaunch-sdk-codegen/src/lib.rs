@@ -15,9 +15,10 @@ pub use models::{
 /// Resolve bundled resource IDs and dynamic scopes into document-local references.
 /// Resource-free schemas retain their original annotations and pointer layout.
 /// This prepares standalone schemas for relocation into another document.
+/// Mixed supported drafts are translated to 2020-12.
 ///
 /// # Errors
-/// Rejects mixed runtime dialects, unsupported scopes, missing resources, unguarded recursion and
+/// Rejects unsupported scopes, missing resources, unguarded recursion and
 /// schema expansion limits. No network or file retrieval occurs.
 pub fn bundle_schema_resources(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
     schema::scoped_runtime_schema(value)
