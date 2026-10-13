@@ -2416,3 +2416,9 @@ mapping now matches all 44 actual HTTP/storage comparisons; the live HTTP/MCP
 regression also verifies replay rejection. All 14 encrypted-ORM/native compliance
 comparisons passed. Evidence: `/private/tmp/fl-auth-provider-index-*.log`.
 Keyring and retention scans remain open; checklist stays 646/682 (94.7%).
+
+Generated provider-query validation also passed: both SDKs, eight actual frontend
+client scenarios (80 HTTP actions), HTTP/MCP shared/separate/disabled listeners,
+root/custom/URL namespaces, self-JWKS, persistence, shutdown and rename/delete.
+All 868 embedded sources passed. The completed owned workspace `run.VztQJh` was
+removed; runtime and package evidence use the same provider-index log prefix.
