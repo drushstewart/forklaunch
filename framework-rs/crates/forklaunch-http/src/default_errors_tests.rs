@@ -187,3 +187,103 @@ fn direct_local_framework_errors_obey_selected_returned_response_media() {
     // this proves selected status/envelope admission, not pre-context correlation.
     assert_eq!(response.status_code, 400);
 }
+
+#[test]
+fn versioned_registrations_pin_every_branch_and_project_only_missing_statuses() {
+    let original = route()
+        .with_version(VersionedContract {
+            version: "first".into(),
+            request: RequestContract::default(),
+            responses: vec![ResponseContract::new(201, None)],
+        })
+        .with_version(VersionedContract {
+            version: "last".into(),
+            request: RequestContract::default(),
+            responses: vec![ResponseContract::new(202, None)],
+        });
+    for statuses in [vec![404], vec![400, 500], vec![201, 500], vec![500, 500]] {
+        assert!(
+            DefaultErrorResponses::default()
+                .insert_versioned(&original, &statuses, 128, Duration::from_secs(1))
+                .is_err()
+        );
+    }
+    let mut profiles = DefaultErrorResponses::default();
+    profiles
+        .insert_versioned(&original, &[404, 500], 128, Duration::from_secs(1))
+        .unwrap();
+    profiles
+        .validate_routes(std::slice::from_ref(&original))
+        .unwrap();
+    profiles
+        .validate_execution(&original, ParserErrorFormat::Json)
+        .unwrap();
+    let mut stale = original.clone();
+    stale.versions.get_mut("first").unwrap().request.query.push(
+        forklaunch_contract::FieldContract::required("changed", "Changed"),
+    );
+    assert!(profiles.validate_route(&stale).is_err());
+    let mut registry = ContractRegistry::new();
+    registry.register(original.clone());
+    let effective = profiles.project(&registry).unwrap().unwrap();
+    assert_eq!(registry.routes()[0], original);
+    assert_eq!(effective.routes()[0].responses, original.responses);
+    for version in effective.routes()[0].versions.values() {
+        assert_eq!(version.responses.len(), 3);
+        assert_eq!(version.responses[1], declaration(404));
+        assert_eq!(version.responses[2], declaration(500));
+    }
+    let artifact = effective.into_artifact().to_json();
+    assert!(artifact.contains("text/plain"));
+    assert!(artifact.contains("first") && artifact.contains("last"));
+    let mut changed = ContractRegistry::new();
+    changed.register(stale);
+    assert!(profiles.project(&changed).is_err());
+    let mut declared = original.clone();
+    declared
+        .versions
+        .get_mut("last")
+        .unwrap()
+        .responses
+        .push(declaration(500));
+    assert!(
+        DefaultErrorResponses::default()
+            .insert_versioned(&declared, &[404, 500], 128, Duration::from_secs(1))
+            .is_err()
+    );
+}
+
+#[test]
+fn local_versioned_default_errors_normalize_after_selection_and_preserve_head() {
+    for method in [HttpMethod::Get, HttpMethod::Head] {
+        let original = route().with_version(VersionedContract {
+            version: "only".into(),
+            request: RequestContract::default(),
+            responses: vec![ResponseContract::new(200, None)],
+        });
+        let mut profiles = DefaultErrorResponses::default();
+        profiles
+            .insert_versioned(&original, &[404, 500], 128, Duration::from_secs(1))
+            .unwrap();
+        let mut router = LocalRouter::new();
+        router.register(original, |request: FrameworkRequest| {
+            assert_eq!(request.version.as_ref().unwrap().version, "only");
+            Ok(FrameworkResponse::json(404, "\"message\"").with_header("x-test", "keep"))
+        });
+        let result = router
+            .execute_with_response_profiles(
+                FrameworkRequest::new(method, "/default", RequestContext::new("version")),
+                ParserErrorFormat::Json,
+                ResponseStatusErrorFormat::Json,
+                &profiles,
+            )
+            .unwrap();
+        assert_eq!(result.status_code, 404);
+        assert_eq!(result.headers["x-test"], "keep");
+        if method == HttpMethod::Head {
+            assert_eq!(result.body, Body::Empty);
+        } else {
+            assert_eq!(result.body.as_text(), Some("message"));
+        }
+    }
+}

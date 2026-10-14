@@ -1182,6 +1182,46 @@ impl ContractRegistry {
         Ok(())
     }
 
+    /// Add a response to one explicitly named version without changing other branches.
+    /// Existing identical declarations are retained.
+    /// # Errors
+    /// Rejects missing/ambiguous operations, missing versions and conflicting statuses.
+    pub fn declare_version_response(
+        &mut self,
+        method: HttpMethod,
+        operation_name: &str,
+        version: &str,
+        response: ResponseContract,
+    ) -> Result<(), String> {
+        let indices: Vec<_> = self
+            .routes
+            .iter()
+            .enumerate()
+            .filter(|(_, route)| route.method == method && route.operation_name == operation_name)
+            .map(|(index, _)| index)
+            .collect();
+        if indices.len() != 1 {
+            return Err("Response declaration must identify exactly one route".into());
+        }
+        let branch = self.routes[indices[0]]
+            .versions
+            .get_mut(version)
+            .ok_or_else(|| "Response declaration requires an existing version".to_owned())?;
+        if let Some(existing) = branch
+            .responses
+            .iter()
+            .find(|item| item.status_code == response.status_code)
+        {
+            return if existing == &response {
+                Ok(())
+            } else {
+                Err("Conflicting response declaration".into())
+            };
+        }
+        branch.responses.push(response);
+        Ok(())
+    }
+
     /// Register a raw socket contract for portable service artifact exports.
     /// Pass a `forklaunch_ws::SocketContract` or equivalent serialized metadata.
     /// This records metadata; applications compose their runtime upgrade handlers.

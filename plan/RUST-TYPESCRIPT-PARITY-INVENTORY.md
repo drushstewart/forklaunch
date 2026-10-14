@@ -7217,3 +7217,29 @@ packaged-install integration fixture additionally checks presence of the newer
 query/version/validation runtime files, managed model stream/DTO sources, JWKS/
 expiry modules and scoped ecommerce source/migrations9–10. Full fresh archive
 execution is the next proof; syntax/source assertions alone do not claim it passed.
+
+
+## Bounded versioned default-error declarations (2026-10-14)
+
+DefaultErrorResponses.insert_versioned adds selected missing default string errors
+to every exported version only when absent from the root and all branches. It
+requires500 selected and initially rejects400, whose generic version-selection
+diagnostics remain outside the exact TS text profile. Existing auth/parser-format
+guards apply, including a TS parser requirement when any version parses a body.
+Registration snapshots original version declarations and rejects stale/ambiguous
+profiles. The additive registry projection changes exported declarations; runtime
+selection and caller response callbacks retain original compiled schemas. This
+prevents projected default statuses from leaking into matched callback snapshots.
+
+Actual144 TS version/default outcomes and120 native/local Error-mode comparison
+pairs pass, including24 HEAD pairs, finite text/JSON-string/empty behavior and
+safe rejection of object responses. None/Warning retain their existing behavior
+and are not normalized by this Error-only profile. Callback/header preservation,
+original matched snapshots, local selected errors, stale declarations and metadata
+projection are tested. All-feature Axum140/contract24/HTTP61 tests and strict
+HTTP/Axum all-feature/all-target Clippy pass; canonical366/zero OpenAPI differences
+and108 versioned-response pairs/20 retained early-origin diagnostic differences
+pass again: /private/tmp/fl-version-defaults-*.log. A first oracle caught projected
+snapshot leakage and was corrected before final proof. CI runs the live fixture.
+This supports bounded missing404/500 and guarded401/403 declarations; it does not
+claim arbitrary explicit-schema unions, versioned400 or generic diagnostic parity.

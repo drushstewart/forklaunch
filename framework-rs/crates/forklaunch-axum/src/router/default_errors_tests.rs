@@ -38,69 +38,87 @@ fn request() -> FrameworkRequest {
 }
 #[tokio::test]
 async fn collected_error_bodies_have_finite_bounds_and_preserve_unrelated_metadata() {
-    for (body, media, status) in [
-        ("\"value\"", "application/json", 404),
-        ("value", "text/plain", 404),
-        ("", "text/plain", 404),
-        ("{}", "application/json", 500),
-        ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "text/plain", 500),
-        ("PRIVATE", "application/octet-stream", 500),
-        ("PRIVATE", "image/png", 500),
-    ] {
-        let mut response = (axum::http::StatusCode::NOT_FOUND, body).into_response();
-        response
-            .headers_mut()
-            .insert("content-type", media.parse().unwrap());
-        response
-            .headers_mut()
-            .append("set-cookie", HeaderValue::from_static("a=1"));
-        response
-            .headers_mut()
-            .append("set-cookie", HeaderValue::from_static("b=2"));
-        response
-            .headers_mut()
-            .insert("x-result", HeaderValue::from_static("keep"));
-        response
-            .headers_mut()
-            .insert("etag", HeaderValue::from_static("stale"));
-        response.extensions_mut().insert(42_u32);
-        let response = normalize(&profiles(), &route(), &request(), response).await;
-        assert_eq!(response.status().as_u16(), status);
-        assert_eq!(response.headers().get_all("set-cookie").iter().count(), 2);
-        assert_eq!(response.headers()["x-result"], "keep");
-        assert_eq!(response.extensions().get::<u32>(), Some(&42));
-        if !body.is_empty() {
-            assert!(!response.headers().contains_key("etag"));
-        }
-        let bytes = to_bytes(response.into_body(), 8192).await.unwrap();
-        assert!(!String::from_utf8_lossy(&bytes).contains("PRIVATE"));
-        if body == "\"value\"" {
-            assert_eq!(bytes, "value");
+    struct Pending;
+    impl http_body::Body for Pending {
+        type Data = bytes::Bytes;
+        type Error = std::io::Error;
+        fn poll_frame(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+        ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+            Poll::Pending
         }
     }
-    for body in [Body::from(vec![0xff]), Body::new(Pending)] {
-        let response = Response::builder()
-            .status(404)
-            .header("content-type", "text/plain")
-            .body(body)
-            .unwrap();
-        let response = normalize(&profiles(), &route(), &request(), response).await;
-        assert_eq!(response.status(), 500);
-        assert_eq!(
-            response.headers()["content-type"],
-            "text/plain; charset=utf-8"
-        );
-    }
-}
-struct Pending;
-impl http_body::Body for Pending {
-    type Data = bytes::Bytes;
-    type Error = std::io::Error;
-    fn poll_frame(
-        self: Pin<&mut Self>,
-        _: &mut Context<'_>,
-    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
-        Poll::Pending
+    for versioned in [false, true] {
+        let mut contract = route();
+        let selected = if versioned {
+            let responses = contract.responses.clone();
+            contract = contract.with_version(forklaunch_contract::VersionedContract {
+                version: "only".into(),
+                request: forklaunch_contract::RequestContract::default(),
+                responses,
+            });
+            let mut selected = DefaultErrorResponses::default();
+            selected
+                .insert_versioned(&contract, &[404, 500], 32, Duration::from_millis(20))
+                .unwrap();
+            selected
+        } else {
+            profiles()
+        };
+        for (body, media, status) in [
+            ("\"value\"", "application/json", 404),
+            ("value", "text/plain", 404),
+            ("", "text/plain", 404),
+            ("{}", "application/json", 500),
+            ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "text/plain", 500),
+            ("PRIVATE", "application/octet-stream", 500),
+            ("PRIVATE", "image/png", 500),
+        ] {
+            let mut response = (axum::http::StatusCode::NOT_FOUND, body).into_response();
+            response
+                .headers_mut()
+                .insert("content-type", media.parse().unwrap());
+            response
+                .headers_mut()
+                .append("set-cookie", HeaderValue::from_static("a=1"));
+            response
+                .headers_mut()
+                .append("set-cookie", HeaderValue::from_static("b=2"));
+            response
+                .headers_mut()
+                .insert("x-result", HeaderValue::from_static("keep"));
+            response
+                .headers_mut()
+                .insert("etag", HeaderValue::from_static("stale"));
+            response.extensions_mut().insert(42_u32);
+            let response = normalize(&selected, &contract, &request(), response).await;
+            assert_eq!(response.status().as_u16(), status);
+            assert_eq!(response.headers().get_all("set-cookie").iter().count(), 2);
+            assert_eq!(response.headers()["x-result"], "keep");
+            assert_eq!(response.extensions().get::<u32>(), Some(&42));
+            if !body.is_empty() {
+                assert!(!response.headers().contains_key("etag"));
+            }
+            let bytes = to_bytes(response.into_body(), 8192).await.unwrap();
+            assert!(!String::from_utf8_lossy(&bytes).contains("PRIVATE"));
+            if body == "\"value\"" {
+                assert_eq!(bytes, "value");
+            }
+        }
+        for body in [Body::from(vec![0xff]), Body::new(Pending)] {
+            let response = Response::builder()
+                .status(404)
+                .header("content-type", "text/plain")
+                .body(body)
+                .unwrap();
+            let response = normalize(&selected, &contract, &request(), response).await;
+            assert_eq!(response.status(), 500);
+            assert_eq!(
+                response.headers()["content-type"],
+                "text/plain; charset=utf-8"
+            );
+        }
     }
 }
 #[tokio::test]

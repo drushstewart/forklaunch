@@ -12,12 +12,13 @@ use std::{
 #[derive(Clone)]
 struct Registration {
     responses: Vec<ResponseContract>,
+    versions: Vec<forklaunch_contract::VersionedContract>,
     statuses: BTreeSet<u16>,
     max_bytes: usize,
     timeout: Duration,
 }
 
-/// Opt-in missing default error statuses for unversioned routes. Only selected
+/// Opt-in missing default error statuses for explicitly registered routes. Only selected
 /// statuses are added; explicit declarations and unselected statuses remain
 /// unchanged. In error-validation mode finite plain text, JSON-encoded strings
 /// and empty responses are accepted. JSON strings become plain text, matching
@@ -75,6 +76,7 @@ impl DefaultErrorResponses {
             key,
             Registration {
                 responses: route.responses.clone(),
+                versions: Vec::new(),
                 statuses: selected,
                 max_bytes,
                 timeout,
@@ -83,9 +85,45 @@ impl DefaultErrorResponses {
         Ok(())
     }
 
+    /// Register missing default strings in every version, with finite collection bounds.
+    /// Requires selected 500 so normalization failures also have a truthful text declaration.
+    /// Original version schemas remain available to caller-owned response validators.
+    /// No request-selection diagnostic equivalence or explicit-schema unions are implied.
+    /// # Errors
+    /// Rejects unversioned routes, selected 400, missing 500, any status already declared
+    /// at the root or in any version, duplicate operations and nonpositive bounds.
+    pub fn insert_versioned(
+        &mut self,
+        route: &RouteContract,
+        statuses: &[u16],
+        max_bytes: usize,
+        timeout: Duration,
+    ) -> Result<(), String> {
+        if route.versions.is_empty()
+            || statuses.contains(&400)
+            || !statuses.contains(&500)
+            || route.versions.values().any(|version| {
+                version
+                    .responses
+                    .iter()
+                    .any(|response| statuses.contains(&response.status_code))
+            })
+        {
+            return Err("Versioned default errors require missing statuses in every version, selected 500 and no selected 400".into());
+        }
+        let mut unversioned = route.clone();
+        unversioned.versions.clear();
+        self.insert(&unversioned, statuses, max_bytes, timeout)?;
+        self.entries
+            .get_mut(&key(route))
+            .ok_or_else(|| "Missing default error registration".to_owned())?
+            .versions = route.versions.values().cloned().collect();
+        Ok(())
+    }
+
     /// Verify profile registrations against original route declarations.
     /// # Errors
-    /// Rejects missing/ambiguous routes, versioned routes or changed responses.
+    /// Rejects missing/ambiguous routes or changed response/version declarations.
     pub fn validate_routes(&self, routes: &[RouteContract]) -> Result<(), String> {
         for (key, entry) in &self.entries {
             let matches: Vec<_> = routes
@@ -93,11 +131,11 @@ impl DefaultErrorResponses {
                 .filter(|route| self::key(route) == *key)
                 .collect();
             if matches.len() != 1
-                || !matches[0].versions.is_empty()
+                || !versions_match(matches[0], entry)
                 || matches[0].responses != entry.responses
             {
                 return Err(
-                    "Default error profile no longer matches exactly one unversioned route".into(),
+                    "Default error profile no longer matches exactly one original route".into(),
                 );
             }
         }
@@ -106,10 +144,10 @@ impl DefaultErrorResponses {
 
     /// Verify the original declaration for one local route, when registered.
     /// # Errors
-    /// Rejects stale or versioned registrations.
+    /// Rejects stale response or version registrations.
     pub fn validate_route(&self, route: &RouteContract) -> Result<(), String> {
         if let Some(entry) = self.entries.get(&key(route))
-            && (!route.versions.is_empty() || route.responses != entry.responses)
+            && (!versions_match(route, entry) || route.responses != entry.responses)
         {
             return Err("Default error profile no longer matches its route".into());
         }
@@ -133,7 +171,11 @@ impl DefaultErrorResponses {
             return Err("Selected 400 requires the TypeScript parser profile and no incompatible native request diagnostics".into());
         }
         if self.limits(route, 500).is_some()
-            && route.request.body.is_some()
+            && (route.request.body.is_some()
+                || route
+                    .versions
+                    .values()
+                    .any(|version| version.request.body.is_some()))
             && parser_format != crate::ParserErrorFormat::TypeScriptText
         {
             return Err(
@@ -163,8 +205,8 @@ impl DefaultErrorResponses {
                 {
                     return Err("Default error profile declarations changed".into());
                 }
-                if !route.versions.is_empty() {
-                    return Err("Default error profiles do not support versions".into());
+                if !versions_match(route, entry) {
+                    return Err("Default error profile versions changed".into());
                 }
                 if route.options.response_validation != ValidationMode::Error {
                     continue;
@@ -180,11 +222,22 @@ impl DefaultErrorResponses {
                             "Default error profile conflicts with an existing response".into()
                         );
                     }
-                    projected.declare_response(
-                        route.method,
-                        &route.operation_name,
-                        declaration(*status),
-                    )?;
+                    if entry.versions.is_empty() {
+                        projected.declare_response(
+                            route.method,
+                            &route.operation_name,
+                            declaration(*status),
+                        )?;
+                    } else {
+                        for version in &entry.versions {
+                            projected.declare_version_response(
+                                route.method,
+                                &route.operation_name,
+                                &version.version,
+                                declaration(*status),
+                            )?;
+                        }
+                    }
                 }
             }
         }
@@ -251,13 +304,17 @@ impl DefaultErrorResponses {
             }
             return Ok(response);
         }
+        let versioned = self
+            .entries
+            .get(&key(route))
+            .is_some_and(|entry| !entry.versions.is_empty());
         let text = match &response.body {
             Body::Empty => return Ok(response),
             Body::Binary(bytes) => {
                 return Err(if bytes.len() > max_bytes {
                     safe_failure(correlation_id)
                 } else {
-                    invalid_type("object", correlation_id)
+                    invalid_type("object", correlation_id, versioned)
                 });
             }
             Body::Text(text) => text,
@@ -291,6 +348,7 @@ impl DefaultErrorResponses {
                             serde_json::Value::String(_) => unreachable!(),
                         },
                         correlation_id,
+                        versioned,
                     ));
                 }
                 Err(_) => return Err(safe_failure(correlation_id)),
@@ -351,8 +409,13 @@ fn clear_representation_headers(headers: &mut Headers) {
 fn safe_failure(correlation_id: &str) -> FrameworkResponse {
     typescript_parser_error_response(500, correlation_id)
 }
-fn invalid_type(received: &str, correlation_id: &str) -> FrameworkResponse {
-    FrameworkResponse::text(500, format!("Invalid response:\nResponse validation failed with the following errors:\n1. Path: Union Schema Variant 0\n   Message: Expected string, received {received}\n\n2. Path: Union Schema Variant 1\n   Message: Expected string, received {received}\n\nCorrelation id: {correlation_id}"))
+fn invalid_type(received: &str, correlation_id: &str, versioned: bool) -> FrameworkResponse {
+    let second = if versioned {
+        "Invalid input".to_owned()
+    } else {
+        format!("Expected string, received {received}")
+    };
+    FrameworkResponse::text(500, format!("Invalid response:\nResponse validation failed with the following errors:\n1. Path: Union Schema Variant 0\n   Message: Expected string, received {received}\n\n2. Path: Union Schema Variant 1\n   Message: {second}\n\nCorrelation id: {correlation_id}"))
         .with_header("content-type", "text/plain; charset=utf-8")
 }
 
@@ -376,4 +439,8 @@ fn safe_request_presence(route: &RouteContract) -> bool {
                     })
                 })
         })
+}
+
+fn versions_match(route: &RouteContract, entry: &Registration) -> bool {
+    route.versions.values().eq(entry.versions.iter())
 }

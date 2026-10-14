@@ -1003,7 +1003,9 @@ impl ValidationState {
             .iter()
             .map(|route| (route_key(route.method, &route.openapi_path), route.clone()))
             .collect();
-        let versions = registry
+        // Runtime selection and callback schemas retain original declarations.
+        // Effective response exports may add opt-in default error statuses.
+        let versions = declared_registry
             .routes()
             .iter()
             .map(|route| {
@@ -1026,7 +1028,7 @@ impl ValidationState {
             default_error_responses: Arc::new(config.default_error_responses.clone()),
             routes,
             versions,
-            pre_auth_versions: registry
+            pre_auth_versions: declared_registry
                 .routes()
                 .iter()
                 .filter(|route| hooks.selection_before_authentication(route))
