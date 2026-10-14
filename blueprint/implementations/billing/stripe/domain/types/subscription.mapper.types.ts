@@ -35,6 +35,11 @@ export type StripeSubscriptionMappers<
     ) => Promise<InferEntity<Entities['CreateSubscriptionMapper']>>;
   };
   UpdateSubscriptionMapper: {
+    /** Validate consumed provider references before a subsequent mutation. */
+    validateProviderUpdate?: (
+      dto: Dto['UpdateSubscriptionMapper'],
+      provider: Stripe.Subscription
+    ) => Promise<void>;
     /** Configured preflight; changing customer ownership needs a separate workflow. */
     validateUpdate?: (
       dto: Dto['UpdateSubscriptionMapper'],

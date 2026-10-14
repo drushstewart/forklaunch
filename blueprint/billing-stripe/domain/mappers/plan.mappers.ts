@@ -4,7 +4,10 @@ import { EntityManager } from '@mikro-orm/core';
 import Stripe from 'stripe';
 import { Plan } from '../../persistence/entities/plan.entity';
 import { PlanSchemas } from '../schemas';
-import { validateProviderCreation } from './providerCreation';
+import {
+  validateProviderCreation,
+  validateProviderReference
+} from './providerCreation';
 
 const CreatePlanEntityMapper = requestMapper({
   schemaValidator,
@@ -73,6 +76,15 @@ const PlanEntityMapper = responseMapper({
 });
 
 export const UpdatePlanMapper = {
+  validateProviderUpdate: async (
+    _dto: Parameters<typeof UpdatePlanEntityMapper.toEntity>[0],
+    provider: Stripe.Plan
+  ) => {
+    const product = provider.product;
+    validateProviderReference(
+      typeof product === 'string' ? product : product?.id
+    );
+  },
   ...UpdatePlanEntityMapper,
   validateUpdate: async (
     dto: Parameters<typeof UpdatePlanEntityMapper.toEntity>[0]

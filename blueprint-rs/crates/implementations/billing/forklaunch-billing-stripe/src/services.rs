@@ -121,6 +121,7 @@ impl<S: BillingStore> PlanService for StripeBillingService<S> {
             .as_str()
             .or_else(|| existing_product["id"].as_str())
             .ok_or_else(invalid_response)?;
+        validate_provider_reference(product_id)?;
         let mut overrides = json!({"product":product_id,"interval":request.cadence.as_ref().map_or_else(||existing["interval"].clone(),|v|json!(v)),"currency":request.currency.as_ref().map_or_else(||existing["currency"].clone(),|v|json!(v))});
         if let Some(amount) = request
             .price
@@ -227,7 +228,9 @@ impl<S: BillingStore> SubscriptionService for StripeBillingService<S> {
             .ok_or_else(invalid_response)?
             .iter()
             .map(|item| {
-                let mut value = json!({"id":item["id"]});
+                let item_id = item["id"].as_str().ok_or_else(invalid_response)?;
+                validate_provider_reference(item_id)?;
+                let mut value = json!({"id":item_id});
                 if let Some(plan) = request
                     .product_id
                     .as_ref()
@@ -235,11 +238,15 @@ impl<S: BillingStore> SubscriptionService for StripeBillingService<S> {
                     .map(|v| json!(v))
                     .or_else(|| item.get("plan").and_then(|v| v.get("id")).cloned())
                 {
+                    // Only validate a provider fallback actually consumed by this update.
+                    if request.product_id.as_ref().is_none_or(String::is_empty) {
+                        validate_provider_reference(plan.as_str().ok_or_else(invalid_response)?)?;
+                    }
                     value["plan"] = plan;
                 }
-                value
+                Ok(value)
             })
-            .collect::<Vec<_>>();
+            .collect::<BlueprintResult<Vec<_>>>()?;
         let fields = merge_fields(request.provider_fields.take(), json!({"items":items}))?;
         let provider = self
             .client
@@ -587,13 +594,21 @@ fn validate_read_identity(provider: &Value, expected: &str, kind: &str) -> Bluep
     Ok(())
 }
 
-fn validate_creation_shape(provider: &Value, kind: &str) -> BlueprintResult<()> {
-    let id = provider_id(provider)?;
-    if id
-        .trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
-        .is_empty()
-        || provider["object"].as_str() != Some(kind)
+fn validate_provider_reference(id: &str) -> BlueprintResult<()> {
+    if id.len() > 1024
+        || id.chars().any(char::is_control)
+        || id
+            .trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
+            .is_empty()
     {
+        return Err(invalid_response());
+    }
+    Ok(())
+}
+
+fn validate_creation_shape(provider: &Value, kind: &str) -> BlueprintResult<()> {
+    validate_provider_reference(provider_id(provider)?)?;
+    if provider["object"].as_str() != Some(kind) {
         return Err(invalid_response());
     }
     Ok(())

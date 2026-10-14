@@ -203,6 +203,11 @@ export class StripeSubscriptionService<
       existingStripeSubscription
     );
 
+    await this.mappers.UpdateSubscriptionMapper.validateProviderUpdate?.(
+      subscriptionDto,
+      existingStripeSubscription
+    );
+
     const updatedSubscription = await this.stripeClient.subscriptions.update(
       subscriptionEntity.externalId,
       {

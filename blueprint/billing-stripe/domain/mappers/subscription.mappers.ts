@@ -5,7 +5,10 @@ import Stripe from 'stripe';
 import { Subscription } from '../../persistence/entities/subscription.entity';
 import { PartyEnum } from '../enum/party.enum';
 import { SubscriptionSchemas } from '../schemas';
-import { validateProviderCreation } from './providerCreation';
+import {
+  validateProviderCreation,
+  validateProviderReference
+} from './providerCreation';
 
 const CreateSubscriptionEntityMapper = requestMapper({
   schemaValidator,
@@ -80,6 +83,21 @@ export const SubscriptionMapper = {
 };
 
 export const UpdateSubscriptionMapper = {
+  validateProviderUpdate: async (
+    dto: Parameters<typeof UpdateSubscriptionEntityMapper.toEntity>[0],
+    provider: Stripe.Subscription
+  ) => {
+    const items = provider.items?.data;
+    if (!Array.isArray(items))
+      throw new Error('Invalid Stripe billing response');
+    for (const item of items) {
+      validateProviderReference(item?.id);
+      // Preserve the wrapper's truthy override precedence and optional omission.
+      if (!dto.productId && item.plan?.id !== undefined) {
+        validateProviderReference(item.plan.id);
+      }
+    }
+  },
   ...UpdateSubscriptionEntityMapper,
   validateUpdate: async (
     dto: Parameters<typeof UpdateSubscriptionEntityMapper.toEntity>[0],

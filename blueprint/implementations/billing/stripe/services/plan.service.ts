@@ -157,6 +157,11 @@ export class StripePlanService<
       existingPlan
     );
 
+    await this.mappers.UpdatePlanMapper.validateProviderUpdate?.(
+      planDto,
+      existingPlan
+    );
+
     const existingProduct = existingPlan.product;
     if (!existingProduct) {
       throw new Error('Plan product not found');

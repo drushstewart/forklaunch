@@ -7843,3 +7843,25 @@ IAM client112-action proof was not unnecessarily repeated for this conversion-
 only slice; focused response/SSE/validator tests cover the changed paths. The
 source inventory now records612 entrypoints/1674 declarations across44 packages,
 with zero unresolved entries; syntax coverage does not close semantic gate849.
+
+
+## Consumed Plan and Subscription references before mutations (2026-10-14)
+
+Configured optional validateProviderUpdate hooks now reject unusable Plan product
+references before DELETE/replacement and Subscription item IDs/consumed fallback
+plan IDs before POST. Native mirrors the guards. A shared private reference
+validator preserves nonblank/control/UTF-8 byte rules used by creation shape
+checks. String/expanded product IDs are supported. Subscription absent fallback
+plans remain omitted, empty items remain valid, and truthy caller product
+overrides bypass unused fallback validation. Generic custom hook-absent sequences
+and valid provider-effect ordering are unchanged. No alias/account authority is
+inferred from provider fields.
+
+81 actual-source cases,353 configured regressions,22 update-identity cases,186
+creation-shape cases and12-root strict TypeScript checks pass. Two focused native
+tests and the creation matrix,170 legacy operations and strict billing all-target/
+all-feature Clippy pass. Invalid references cause one provider GET and zero
+mutating requests/local writes, preserving caller input and local snapshots.
+Logs: /private/tmp/fl-billing-consumed-references{,-configured,-update,-creation,
+-types,-native,-legacy170,-clippy}.log. CI runs the new fixture. Broader consumed
+provider fields, complete validators and public UUID mutation mapping remain open.
