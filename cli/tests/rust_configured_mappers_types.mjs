@@ -47,10 +47,14 @@ const roots=[
  'blueprint/implementations/billing/stripe/services/plan.service.ts',
  'blueprint/implementations/billing/stripe/services/subscription.service.ts',
  'blueprint/implementations/billing/stripe/services/paymentLink.service.ts',
+ 'blueprint/implementations/billing/stripe/services/checkoutSession.service.ts',
+ 'blueprint/implementations/billing/stripe/services/billingPortal.service.ts',
  'blueprint/implementations/ecommerce/stripe/services/payment.service.ts',
  'blueprint/billing-stripe/domain/mappers/plan.mappers.ts',
  'blueprint/billing-stripe/domain/mappers/subscription.mappers.ts',
  'blueprint/billing-stripe/domain/mappers/paymentLink.mappers.ts',
+ 'blueprint/billing-stripe/domain/mappers/checkoutSession.mappers.ts',
+ 'blueprint/billing-stripe/domain/mappers/billingPortal.mappers.ts',
  'blueprint/ecommerce-stripe/domain/mappers/payment.mappers.ts'
 ];
 const temporary=await mkdtemp(path.join(os.tmpdir(),'fl-configured-mappers-types-'));

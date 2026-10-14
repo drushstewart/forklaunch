@@ -105,8 +105,10 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-asyncapi/src/ASYNCAPI_SPEC_NOTICE').is_file(), 'Packaged AsyncAPI schema attribution missing'
         assert root.joinpath('crates/forklaunch-ws/tests/transport.rs').is_file(), 'Packaged WebSocket transport tests missing'
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
+        for source in ['forklaunch-http/src/simple_query.rs', 'forklaunch-http/src/versioning_prepared.rs', 'forklaunch-http/src/versioned_response.rs', 'forklaunch-validation/src/zod_string.rs', 'forklaunch-validation/src/zod_number.rs', 'forklaunch-validation/src/zod_array.rs']:
+            assert root.joinpath('crates', source).is_file(), f'Packaged query/version/validation runtime source missing: {source}'
     else:
-        for source in ['src/model_gateway.rs', 'examples/model_gateway.rs', 'src/preview_model_gateway.rs', 'examples/preview_model_gateway.rs']:
+        for source in ['src/model_gateway.rs', 'src/model_gateway/stream.rs', 'src/model_gateway/dto.rs', 'examples/model_gateway.rs', 'src/preview_model_gateway.rs', 'examples/preview_model_gateway.rs']:
             assert root.joinpath('crates/forklaunch-blueprint-core', source).is_file(), f'Packaged model gateway source missing: {source}'
         for source in ['Cargo.toml', 'src/credentials.rs', 'src/cookies.rs', 'src/jwt.rs', 'src/keyring.rs', 'src/sessions.rs', 'src/accounts.rs', 'src/accounts/password.rs', 'src/origins.rs', 'src/origins/policy.rs', 'src/http.rs', 'src/http/application.rs', 'src/http/application/tests.rs', 'src/http/request.rs', 'src/http/tests.rs', 'examples/http_parity.rs', 'src/store/postgres.rs', 'migrations/0001_auth.sql']:
             assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged Better Auth foundation missing: {source}'
@@ -115,6 +117,12 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/vendor/bullmq-official/LICENSE').is_file(), 'Packaged BullMQ license missing'
         assert root.joinpath('crates/vendor/bullmq-official/Cargo.lock').is_file(), 'Packaged BullMQ protocol test lock missing'
         assert root.joinpath('crates/vendor/bullmq-official/FORKLAUNCH_PATCH.md').is_file(), 'Packaged BullMQ provenance missing'
+        for source in ['src/keyring/adapter.rs', 'src/keyring/adapter/tests.rs', 'src/keyring/repository.rs', 'src/keyring/repository/session.rs', 'src/http/jwt_expiration.rs']:
+            assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged JWKS/expiry source missing: {source}'
+        for source in ['migrations/9_payment_provider_bindings.sql', 'migrations/10_scoped_cancellation_receipts.sql', 'src/postgres/provider_bindings.rs', 'src/postgres/provider_bindings/scoped_cancellation.rs']:
+            assert root.joinpath('crates/implementations/ecommerce/forklaunch-ecommerce-base', source).is_file(), f'Packaged scoped ecommerce storage missing: {source}'
+        for source in ['src/context.rs', 'src/bound_reads.rs', 'src/scoped_cancellation.rs', 'README.md']:
+            assert root.joinpath('crates/implementations/ecommerce/forklaunch-ecommerce-stripe', source).is_file(), f'Packaged scoped Stripe source missing: {source}'
     for path in root.rglob('*'):
         assert not path.is_symlink(), f'Packaged source retained a symlink: {path}'
         if path.is_file():

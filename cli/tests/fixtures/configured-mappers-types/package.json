@@ -2,7 +2,7 @@
   "name": "forklaunch-configured-mappers-type-fixture",
   "version": "1.0.0",
   "private": true,
-  "description": "Isolated repository-pinned compiler and declarations for eight configured billing/ecommerce roots",
+  "description": "Isolated repository-pinned compiler and declarations for twelve configured billing/ecommerce roots",
   "dependencies": {
     "@types/body-parser": "1.19.6",
     "@types/bun": "1.4.2",

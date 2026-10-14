@@ -7208,3 +7208,12 @@ audits, unique and lookup claims are all zero after cleanup:
 and removed; its metadata and source-ready preauth dependency patch remain for
 precise provenance. The subsequent additive public-only slice has separate focused
 proof and is not claimed inside that earlier binary.
+
+
+The permanent strict configured source fixture now covers12 roots, adding checkout
+and portal services/mappers to the prior eight. Real pinned compiler/declarations
+still produce zero diagnostics: /private/tmp/fl-configured-twelve-roots.log. The
+packaged-install integration fixture additionally checks presence of the newer
+query/version/validation runtime files, managed model stream/DTO sources, JWKS/
+expiry modules and scoped ecommerce source/migrations9–10. Full fresh archive
+execution is the next proof; syntax/source assertions alone do not claim it passed.
