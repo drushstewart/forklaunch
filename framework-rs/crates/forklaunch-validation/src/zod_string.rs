@@ -1,6 +1,9 @@
 //! Strict Zod v3 string operations over the UTF-8 JSON value domain.
 use crate::ParseError;
 use serde_json::Value;
+#[path = "zod_string_format.rs"]
+mod format;
+pub use format::ZodStringFormat;
 
 /// Ordered operations for `ForkLaunch`'s Zod v3 strict string schema.
 /// Length bounds are exact unsigned 32-bit integers; they count UTF-16 code
@@ -19,6 +22,7 @@ pub enum ZodStringStep {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ZodStringRule<'a> {
     Step(ZodStringStep),
+    Format(ZodStringFormat),
     StartsWith(&'a str),
     EndsWith(&'a str),
     Includes {
@@ -166,6 +170,7 @@ fn evaluate<'a, 'r>(
 
 fn literal_error(value: &str, rule: ZodStringRule<'_>) -> Option<String> {
     match rule {
+        ZodStringRule::Format(format) => format.rejection(value),
         ZodStringRule::StartsWith(needle) if !value.starts_with(needle) => {
             Some(format!("Invalid input: must start with \"{needle}\""))
         }

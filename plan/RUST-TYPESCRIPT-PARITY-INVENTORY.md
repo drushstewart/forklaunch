@@ -8282,3 +8282,20 @@ generated fake accepted these UUIDs; that fixture proves lifecycle/transport,
 not usable Stripe references. Trusted customer registration, scoped customer/Plan
 resolution and an explicit generated operation/outcome adapter remain work.
 The immutable416d checkpoint excludes this subsequently validated Plan source.
+
+
+## Exact native UUID/email string formats (2026-10-14)
+
+ZodStringFormat adds bounded UUID/email runtime grammars to ordered string rules
+and per-check messages. UUID accepts hyphenated hexadecimal groups without a
+version/variant restriction. Email follows actual Zod v3 ASCII behavior, including
+internal apostrophes and domain trailing hyphens; it rejects percent signs,
+Unicode and repeated dots. These are runtime grammars, not DNS/delivery checks
+or arbitrary regex/schema-emitter parity.
+
+81036 actual-source/native comparisons, validation24, strict all-feature/all-target
+Clippy, literal string7140 and custom-message2352 regressions pass. CI runs the
+format oracle. Logs /private/tmp/fl-zod-string-formats-{parity,tests,clippy,rules,
+messages}.log; frozen hashes /private/tmp/fl-zod-string-formats-source-sha256.json.
+The separate TS email OpenAPI projection correction awaits canonical366 validation.
+No broad checklist gate is closed by this slice.
