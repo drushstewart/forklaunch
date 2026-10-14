@@ -10,7 +10,8 @@ mod paused_effect;
 mod payment_link_creation;
 pub use paused_effect::{PausedEffectAcknowledgement, PausedSubscriptionEffectSnapshot};
 pub use payment_link_creation::{
-    PaymentLinkCreationClaim, PaymentLinkCreationReservation, PaymentLinkCreationStatus,
+    ManagedPaymentLinkPublication, PaymentLinkCreationClaim, PaymentLinkCreationReservation,
+    PaymentLinkCreationStatus,
 };
 
 type BindingRow = (

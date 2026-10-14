@@ -1,6 +1,8 @@
 //! Bounded Stripe billing transport. API version matches the repository's Stripe
 //! SDK 22.6.2; mutation retries are disabled to avoid duplicate provider effects.
 mod context;
+#[cfg(feature = "postgres-identity")]
+pub(crate) mod managed_creation;
 pub use context::VerifiedStripeContext;
 use forklaunch_blueprint_core::{
     BlueprintError, BlueprintResult,

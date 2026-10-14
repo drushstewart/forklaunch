@@ -5,7 +5,7 @@ use forklaunch_billing_base::services::postgres::{
 };
 use forklaunch_billing_interface::services::{CreatePaymentLinkDto, PaymentLinkDto};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
@@ -14,8 +14,8 @@ use uuid::Uuid;
 /// This version permits only `line_items` with price/quantity and normal payment
 /// methods/currency. Delegation, transfers, fees, metadata and unknown options fail.
 pub struct BoundPaymentLinkCreationProfile {
-    scope: StripeBindingScope,
-    prices: BTreeSet<String>,
+    pub(crate) scope: StripeBindingScope,
+    pub(crate) prices: BTreeSet<String>,
 }
 impl BoundPaymentLinkCreationProfile {
     /// # Errors
@@ -49,7 +49,7 @@ pub enum BoundPaymentLinkCreationOutcome {
         operation_id: Uuid,
     },
 }
-fn invalid() -> BlueprintError {
+pub(crate) fn invalid() -> BlueprintError {
     BlueprintError::new(
         "billing_bound_creation_invalid",
         "Invalid bound payment link creation",
@@ -61,7 +61,7 @@ fn provider_id(id: &str, prefix: &str) -> bool {
         && id.len() <= 128
         && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
-fn fields(
+pub(crate) fn fields(
     profile: &BoundPaymentLinkCreationProfile,
     request: &CreatePaymentLinkDto,
 ) -> BlueprintResult<Value> {
@@ -112,7 +112,7 @@ fn fields(
         json!({"line_items":items,"currency":request.currency,"payment_method_types":request.payment_methods}),
     )
 }
-fn completed(
+pub(crate) fn completed(
     operation_id: Uuid,
     record: Value,
 ) -> BlueprintResult<BoundPaymentLinkCreationOutcome> {

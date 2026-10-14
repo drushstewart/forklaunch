@@ -8148,3 +8148,39 @@ and focused strict types pass (/private/tmp/fl-managed-creation-context.log;
 hashes /private/tmp/fl-managed-creation-context-source-sha256.json). Native
 publication must require current==historical==sealed configuration/generation;
 that native integration is in progress, not covered by the platform receipt.
+
+
+## Managed UUID creation and inspect-only native publication (2026-10-14)
+
+An explicit ManagedBoundPaymentLinkCreationProfile pins current gateway creation
+configuration before sealing a local UUID intent. Canonical form bytes and an
+opaque native hash bind the authenticated instance/org, tenant, operation/public
+UUID, account/mode/APIversion/generation/profile and copied gateway configuration.
+Local semantic scope excludes ephemeral issuedAt/expiresAt; clock-advanced exact
+duplicates never regain dispatch. Only the confirmed original reservation ticket
+can send one signed create RPC. Recovery obtains a separate opaque publication
+capability from encrypted actor-owned intent and calls remote inspect only.
+Current==historical==sealed remote configuration/generation and exact envelopes
+are checked; pending publication also requires unchanged normalized local approved
+prices. A single native transaction publishes UUID record/alias/audit/receipt,
+with deadline checks after locks/writes. Direct APIs/default routes stay compatible.
+
+Actual companion protocol/HMAC/canonical-byte harness plus restricted native PG
+matrix pass (5.80s), including lost acknowledgements, provider/result faults,
+cancellation, stale generation/config, local price changes, rollback and replay.
+The remote journal in this wire fixture is an owned memory boundary; actual remote
+PostgreSQL/barrier/lost-ack proof is separately recorded in the companion61 tests.
+This is not a cross-database atomic transaction. Canonical unit, direct creation
+regression17.75s, legacy170 and strict base/Stripe all-feature/all-target Clippy pass.
+Zero owned fixture roles remain. Logs:
+/private/tmp/fl-managed-creation-native-wire-pg-final.log,
+/private/tmp/fl-managed-creation-native-unit.log,
+/private/tmp/fl-managed-creation-direct-regression.log,
+/private/tmp/fl-managed-creation-native-{legacy170,clippy}.log.
+Exact11-path hashes /private/tmp/fl-managed-creation-native-source-sha256.json.
+The checked-in wire fixture requires explicit FORKLAUNCH_PLATFORM_ROOT, TypeScript
+and an owned PostgreSQL URL; its ignored native test is not silently presented as
+an automatically executed cross-repository CI test. Normal all-target checks still
+compile it. Full production bootstrap, generated default UUID ownership across all
+families, managed mutations and unresolved-provider administrative recovery remain
+open. No live Stripe/cloud operation was performed.

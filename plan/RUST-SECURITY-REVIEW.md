@@ -1012,3 +1012,17 @@ actions preserved. This supersedes the pending generated proof above; it is not
 an immutable archive or browser-enforcement claim. Elapsed-clock characterization
 confirmed existing rotation expiry, so no unproven session lifetime change was
 introduced. Detailed logs and source hashes are in the parity inventory.
+
+
+## Managed creation publication capability (2026-10-14)
+
+Signed creation-context binds the current remote profile/configuration before
+local encrypted reservation. A newly committed non-cloneable dispatch ticket
+cannot be recreated through inspection. The separate publication capability
+exposes no dispatch/idempotency accessor, admits only explicitly marked managed
+intents, and rechecks native actor/scope/approved prices and exact current remote
+configuration before local UUID/alias/audit/receipt publication. Historical
+completion is not ongoing provider authority. Remote observation and local commit
+remain separate transactions; timeout or stale/ambiguous completion stays
+inspectable without an automatic provider repeat. Actual HMAC/native PG and
+separate real platform journal proofs are distinguished in the inventory.
