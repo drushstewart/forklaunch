@@ -4584,3 +4584,36 @@ Tests explicitly use MemoryStore. Reusing it across router instances is not a
 process-restart durability claim. Production durable-store generation and OAuth/
 OIDC flows remain open; the broader checklist stays **658/682 (96.5%), 24 open**.
 Logs: `/private/tmp/fl-iam-browser-{postgres-final,clippy-final,shared,generated,package,release-final,inventory}.log`.
+
+
+### 2026-10-13 — Generated durable encrypted browser sessions
+
+`PostgresCookieStore` now implements the shared session-store interface using
+hashed cookie IDs, encrypted server-side records, tenant RLS and a server-owned
+namespace. Sealed payloads bind record ID, namespace and indexed expiry. Collision
+retries cannot overwrite an existing session, and updates cannot recreate deleted
+or expired cookies. Retained encryption keys support rotation; expiry cleanup is
+explicit and tenant/namespace scoped. Debug/errors omit keys and record contents,
+and records are bounded to 64 KiB. Migration 3 adds the browser session table.
+
+Generated IAM enables this store only when SESSION_COOKIE_ORIGIN is a valid exact
+HTTPS origin. It shares the existing encryption key ring and uses the service name
+as namespace; service rename requires browser re-login. Cookie persistence and IAM
+writes are separate transactions, so failed cleanup can leave an unreachable
+credential until its normal expiry. Operators grant runtime CRUD on the new table
+and schedule expiry cleanup. No production MemoryStore fallback is introduced.
+
+Three restricted-role PostgreSQL suites pass bearer/browser lifecycle plus durable
+storage isolation, RLS, ciphertext/namespace/expiry swapping, retained-key rotation,
+ID collisions, expiry cleanup, size limits and stale-write rejection. Strict IAM/
+sample Clippy and workspace formatting pass. Fresh relocated run `2qSPQB` uses the
+actual generated PostgreSQL wiring and proves a browser cookie survives process
+shutdown/restart, rejects the other tenant and is invalid after logout. It also
+passes invalid-origin startup rejection, signed/opaque sessions, both SDKs,
+directory/compliance HTTP/MCP operations and CLI rename/delete. Packaging checks
+**958** embedded source/template assets; CLI tests pass **1,101**, release-tool
+tests pass **9** cases and
+the source inventory remains current. Public-key hosting, identity/provider
+integration and OAuth/OIDC still have their documented boundaries. No registry
+upload or deployment occurred. Checklist remains **658/682 (96.5%), 24 open**.
+Logs: `/private/tmp/fl-iam-cookie-store-{postgres,clippy-final,format,generated,package,release,inventory,cli-tests}.log`.

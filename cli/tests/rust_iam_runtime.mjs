@@ -32,7 +32,7 @@ databaseUrl.username = role;
 databaseUrl.password = 'parity-test-only';
 const sessionKeys=['SESSION_JWT_PRIVATE_KEY_PEM','SESSION_JWT_KEY_ID','SESSION_JWT_ISSUER','SESSION_JWT_AUDIENCE'];
 function environment(tenant,classified=false,signed=tenant==='a') {
-  const env={...process.env,FORKLAUNCH_FIXTURE_CLASSIFIED_IAM:classified?'1':'0',DATABASE_URL:databaseUrl.toString(),TENANT_ID:`${role}-${tenant}`,HOST:'127.0.0.1',SERVICE_PORT:'0',ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience};
+  const env={...process.env,SESSION_COOKIE_ORIGIN:'https://iam.example.test',FORKLAUNCH_FIXTURE_CLASSIFIED_IAM:classified?'1':'0',DATABASE_URL:databaseUrl.toString(),TENANT_ID:`${role}-${tenant}`,HOST:'127.0.0.1',SERVICE_PORT:'0',ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience};
   for(const key of sessionKeys)delete env[key];
   if(signed)Object.assign(env,{SESSION_JWT_PRIVATE_KEY_PEM:privateKey.export({format:'pem',type:'pkcs8'}),SESSION_JWT_KEY_ID:jwk.kid,SESSION_JWT_ISSUER:issuer,SESSION_JWT_AUDIENCE:audience});
   return env;
@@ -87,6 +87,9 @@ async function browserSessions(base) {
   assert.equal((await request('logout',{method:'POST',cookie,proof:payload.csrfToken})).status,204);
   assert.equal((await request('session',{cookie})).status,401);
   console.log('PASS mounted browser IAM: CSRF and Origin rejection, secure cookie rotation, current grants, no bearer exposure, separate bearer policy and logout');
+  const fresh=await request('csrf'),freshCookie=sessionCookie(fresh),freshProof=(await fresh.json()).csrfToken;
+  const persistent=await request('login',{method:'POST',cookie:freshCookie,proof:freshProof});assert.equal(persistent.status,200);
+  return {cookie:sessionCookie(persistent),proof:(await persistent.json()).csrfToken};
 }
 
 try {
@@ -94,6 +97,8 @@ try {
     {...environment('a',false,false),SESSION_JWT_KEY_ID:'partial'},
     {...environment('a'),SESSION_JWT_PRIVATE_KEY_PEM:'PRIVATE-SENTINEL'},
     {...environment('a'),SESSION_JWT_AUDIENCE:''},
+    {...environment('a'),SESSION_COOKIE_ORIGIN:'http://insecure.example.test'},
+    {...environment('a'),SESSION_COOKIE_ORIGIN:''},
   ])await assert.rejects(promisify(execFile)(process.argv[2],[],{env:settings,timeout:15000,maxBuffer:1024*1024}),error=>{
     assert.equal(error.code,1);assert.ok(!error.stdout.includes('listening on'));assert.ok(!error.stderr.includes('PRIVATE-SENTINEL'));return true;
   });
@@ -102,7 +107,8 @@ try {
   const tools=await probeMcp(first.baseUrl,['listUsers','getSessionUser','createUser','getUser','getBatchPermissions','surfaceUserRoles']);
   assert.equal(tools.length,40);
   await probeMcp(second.baseUrl,['listUsers']);
-  await browserSessions(first.baseUrl);
+  const browserIdentity = await browserSessions(first.baseUrl);
+  assert.equal((await fetch(second.baseUrl+'/auth/browser/session',{headers:{cookie:browserIdentity.cookie}})).status,401);
   const publicSdk = createForkLaunchSdk({ baseUrl: first.baseUrl });
   const discovery=await publicSdk.iam.discovery.getauthmethods();assert.equal(discovery.code,204);assert.equal(discovery.response,undefined);
   const mcpDiscovery=await mcpRpc(first.baseUrl,'tools/call',{name:'getauthmethods',arguments:{}});assert.equal(mcpDiscovery.isError,false,JSON.stringify(mcpDiscovery));
@@ -208,6 +214,12 @@ try {
   first.child.kill('SIGTERM');
   assert.equal((await first.exited)[0], 0);
   const restarted = await start('a');
+  const browserAfterRestart=await fetch(restarted.baseUrl+'/auth/browser/session',{headers:{cookie:browserIdentity.cookie}});
+  assert.equal(browserAfterRestart.status,200);assert.equal((await browserAfterRestart.json()).sub,'user-1');
+  const browserLogout=await fetch(restarted.baseUrl+'/auth/browser/logout',{method:'POST',headers:{cookie:browserIdentity.cookie,'x-csrf-token':browserIdentity.proof,origin:'https://iam.example.test'}});
+  assert.equal(browserLogout.status,204);
+  assert.equal((await fetch(restarted.baseUrl+'/auth/browser/session',{headers:{cookie:browserIdentity.cookie}})).status,401);
+  console.log('PASS encrypted PostgreSQL browser session survives process restart, rejects other tenant and revokes on logout');
   const restartedSdk = createForkLaunchSdk({ baseUrl: restarted.baseUrl, headers: { authorization: `Bearer ${token}` } });
   assert.equal((await restartedSdk.iam.users.getSessionUser({ params: { id: 'user-1' } })).response.email, 'member@example.com');
   assert.equal((await call(restarted.baseUrl,`/organization/${fixture.organization.id}`,'GET',undefined,200,auth)).id,fixture.organization.id);

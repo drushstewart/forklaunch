@@ -5,6 +5,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(feature = "browser-sessions")]
+pub mod browser_sessions;
 pub mod credentials;
 pub mod directory;
 #[cfg(feature = "jwt-sessions")]

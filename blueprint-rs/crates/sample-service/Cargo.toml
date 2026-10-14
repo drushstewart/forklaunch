@@ -9,7 +9,7 @@ repository.workspace = true
 
 [features]
 default = []
-browser-sessions = ["postgres", "forklaunch-iam-axum/browser-sessions", "dep:tower-sessions"]
+browser-sessions = ["postgres", "forklaunch-iam-axum/browser-sessions", "forklaunch-iam-base/browser-sessions", "dep:tower-sessions"]
 postgres = ["forklaunch-iam-base/postgres", "dep:sqlx", "dep:tokio"]
 
 [[example]]

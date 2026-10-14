@@ -450,3 +450,34 @@ bearer tests pass with the extracted common verifier. The shared cookie suite
 also verifies authenticated HTTP/MCP transport behavior. Tests use MemoryStore
 only as an explicit fixture; reusing it across router instances is not evidence
 of durable storage across process restarts.
+
+
+### Durable encrypted IAM browser sessions (2026-10-13)
+
+Migration 3 adds a tenant-RLS cookie table keyed by tenant, server-owned namespace
+and SHA-256 cookie-ID digest. Cookie records, including their backing IAM bearer
+credential, are sealed with the existing tenant encryption key ring. The sealed
+payload binds namespace, original record ID and indexed expiry; mismatches,
+corrupt records and unavailable keys return sanitized storage failures. No raw
+cookie IDs or credentials are stored in cleartext. Debug output omits pool/key/
+identity data. Plaintext records are bounded to 64 KiB; encoded input is bounded
+before decryption. Runtime stores reject SUPERUSER/BYPASSRLS roles.
+
+Creation retries bounded random ID collisions without overwriting another record.
+Save only updates an existing, unexpired record. It cannot reinsert a deleted
+cookie after logout/rotation or refresh an already expired record. Indexed expiry
+uses whole Unix seconds and the database clock; expiration may precede the record's
+fractional timestamp by less than one second. Expired-record purge affects only
+the trusted tenant/namespace. Applications schedule expiry cleanup themselves.
+Cookie and IAM ledger writes remain separate transactions; failure cleanup is
+best effort, and an unreachable credential can remain until ordinary IAM expiry.
+
+Generated IAM enables browser routes only with a valid exact HTTPS
+SESSION_COOKIE_ORIGIN, using the service name as namespace and __Host-iam cookie.
+A rename requires re-login. The configured encryption key ring is shared with
+the encrypted directory store. Operators must apply migrations and grant runtime
+CRUD on the browser table. TLS termination and trusted-origin CORS remain
+application responsibilities. OAuth/OIDC flows are not implied by durable cookie
+storage. Restricted-role tests cover ID collisions, encryption/redaction, RLS,
+record/namespace/expiry swapping, retained-key rotation, expiry, oversize rejection
+and deletion/expiry resurrection prevention, alongside the browser lifecycle.

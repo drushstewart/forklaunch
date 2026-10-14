@@ -1,7 +1,8 @@
 use super::*;
 use axum::response::Response;
+use forklaunch_core::persistence::encryption::FieldEncryptor;
 use forklaunch_iam_axum::browser::BrowserIam;
-use tower_sessions::MemoryStore;
+use forklaunch_iam_base::browser_sessions::PostgresCookieStore;
 
 const ORIGIN: &str = "https://iam.example.test";
 
@@ -68,7 +69,14 @@ async fn active_sessions(fixture: &Fixture) -> i64 {
 #[ignore = "requires FORKLAUNCH_TEST_POSTGRES_URL; exercised in parity CI"]
 async fn postgres_iam_http_browser_cookie_csrf_rotation_and_revocation() {
     let fixture = Fixture::new().await;
-    let store = MemoryStore::default();
+    let store = PostgresCookieStore::new(
+        fixture.pool.clone(),
+        TenantContext::new(format!("{}-a", fixture.role)).unwrap(),
+        "browser-lifecycle",
+        Arc::new(FieldEncryptor::new("browser-fixture-only").unwrap()),
+    )
+    .await
+    .unwrap();
     let browser =
         BrowserIam::new(fixture.first.clone(), store.clone(), "__Host-iam", ORIGIN).unwrap();
     let app = browser.into_router();

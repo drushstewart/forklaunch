@@ -59,7 +59,7 @@ impl Fixture {
             .execute(&owner)
             .await
             .unwrap();
-        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions TO {role}")).execute(&owner).await.unwrap();
+        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_browser_sessions TO {role}")).execute(&owner).await.unwrap();
         let set_role = format!("SET ROLE {role}");
         let pool = PgPoolOptions::new()
             .max_connections(2)
@@ -96,6 +96,7 @@ impl Fixture {
 
     async fn close(self) {
         for table in [
+            "fl_iam_browser_sessions",
             "fl_iam_sessions",
             "fl_iam_users",
             "fl_iam_roles",
@@ -301,3 +302,7 @@ async fn assert_authenticated_reads(first: &Router, token: &str) {
 #[cfg(feature = "browser-sessions")]
 #[path = "support/iam_browser.rs"]
 mod browser;
+
+#[cfg(feature = "browser-sessions")]
+#[path = "support/iam_cookie_store.rs"]
+mod cookie_store;

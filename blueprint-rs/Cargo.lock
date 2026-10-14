@@ -1417,6 +1417,7 @@ name = "forklaunch-iam-base"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "async-trait",
  "chrono",
  "forklaunch-blueprint-core",
  "forklaunch-core",
@@ -1429,6 +1430,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "tokio",
+ "tower-sessions",
  "uuid",
 ]
 

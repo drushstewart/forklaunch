@@ -48,7 +48,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         None => store,
     };
     let store = Arc::new(store);
-    let directory=PostgresDirectoryStore::new(pool.clone(),tenant,Arc::new(FieldEncryptor::from_env()?),AuditContext::system("iam-startup")).await?;
+    let encryptor = Arc::new(FieldEncryptor::from_env()?);
+    let browser = match env::var("SESSION_COOKIE_ORIGIN") {
+        Ok(origin) => {
+            let cookie_store = forklaunch_iam_base::browser_sessions::PostgresCookieStore::new(
+                pool.clone(), tenant.clone(), {{crate_module}}::SERVICE_NAME, encryptor.clone(),
+            ).await?;
+            Some(forklaunch_iam_axum::browser::BrowserIam::new(store.clone(), cookie_store, "__Host-iam", &origin)?)
+        }
+        Err(env::VarError::NotPresent) => None,
+        Err(env::VarError::NotUnicode(_)) => return Err("Invalid browser session origin".into()),
+    };
+    let directory=PostgresDirectoryStore::new(pool.clone(),tenant,encryptor,AuditContext::system("iam-startup")).await?;
     let secret = env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?;
     let jwks = RemoteJwks::new(RemoteJwksConfig::new(
         env::var("JWKS_PUBLIC_KEY_URL").map_err(|_| "JWKS_PUBLIC_KEY_URL is required")?,
@@ -67,6 +78,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
     let router = forklaunch_iam_axum::directory::iam_router(store, directory, auth, service_info());
+    let router = match browser { Some(browser) => browser.mount(router), None => router };
     {{crate_module}}::routes::register_router(router).serve_with_default_mcp(listener, shutdown()).await?;
     pool.close().await;
     Ok(())
