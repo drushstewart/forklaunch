@@ -42,20 +42,7 @@ pub(super) type Observer = Arc<dyn Fn(&AuthApiError) + Send + Sync>;
 pub(super) struct ErrorMetadata(BTreeMap<String, String>);
 impl ErrorMetadata {
     pub(super) fn from_error(error: &BlueprintError) -> Self {
-        let mut fields = BTreeMap::new();
-        for field in ["code", "constraint", "table", "column"] {
-            if let Some(value) = error.details.get(field).and_then(serde_json::Value::as_str)
-                && !value.is_empty()
-                && value.len() <= 128
-                && value
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
-                && (field != "code" || value.len() == 5)
-            {
-                fields.insert(field.to_owned(), value.to_owned());
-            }
-        }
-        Self(fields)
+        Self(crate::error_origin::database_metadata(error))
     }
 }
 

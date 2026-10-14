@@ -7,11 +7,16 @@ pub struct FaultStore<S> {
     pub store: Arc<S>,
     pub read: Option<Model>,
     pub delete: Option<Model>,
+    pub insert: Option<Model>,
+    pub begin: bool,
+    pub commit: bool,
 }
 pub struct FaultTransaction<T> {
     inner: T,
     read: Option<Model>,
     delete: Option<Model>,
+    insert: Option<Model>,
+    commit: bool,
 }
 impl<S: AuthStore> AuthStore for FaultStore<S> {
     type Transaction<'a>
@@ -19,10 +24,15 @@ impl<S: AuthStore> AuthStore for FaultStore<S> {
     where
         Self: 'a;
     async fn begin(&self, write: bool) -> BlueprintResult<Self::Transaction<'_>> {
+        if self.begin {
+            return Err(read_failure());
+        }
         Ok(FaultTransaction {
             inner: self.store.begin(write).await?,
             read: self.read,
             delete: self.delete,
+            insert: self.insert,
+            commit: self.commit,
         })
     }
 }
@@ -103,6 +113,9 @@ impl<T: AuthTransaction> AuthTransaction for FaultTransaction<T> {
         self.inner.list(model).await
     }
     async fn insert(&mut self, model: Model, value: Value) -> BlueprintResult<()> {
+        if self.insert == Some(model) {
+            return Err(read_failure());
+        }
         self.inner.insert(model, value).await
     }
     async fn replace(&mut self, model: Model, value: Value) -> BlueprintResult<()> {
@@ -118,6 +131,9 @@ impl<T: AuthTransaction> AuthTransaction for FaultTransaction<T> {
         self.inner.delete(model, id).await
     }
     async fn commit(self) -> BlueprintResult<()> {
+        if self.commit {
+            return Err(read_failure());
+        }
         self.inner.commit().await
     }
 }

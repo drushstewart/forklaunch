@@ -9,6 +9,7 @@ use crate::{
 };
 use axum::{
     Json, Router,
+    body::Body,
     extract::{Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     response::{IntoResponse, Response},
@@ -374,10 +375,15 @@ async fn dispatch<S: AuthStore + 'static>(
         )
             .into_response(),
         Err(error) => {
-            if error.code == "HTTP_INTERNAL_EMPTY" {
+            let response = failure_for_path(&error, &path);
+            if error.code == "HTTP_INTERNAL_EMPTY"
+                || (path == "/sign-up/email"
+                    && response.status().is_server_error()
+                    && !crate::error_origin::is_handled(&error))
+            {
                 pending.clear();
             }
-            failure_for_path(&error, &path)
+            response
         }
     };
     for (name, value) in &pending {
@@ -429,9 +435,7 @@ async fn handle<S: AuthStore + 'static>(
     }
     let sessions = SessionService::new(app.store.clone());
     if path == "/sign-out" {
-        sessions.sign_out(&token).await?;
-        clear(app.cookie, pending)?;
-        return Ok(json!({"success":true}));
+        return sign_out(app, &token, pending).await;
     }
     let disable_refresh = query
         .get("disableRefresh")
@@ -560,6 +564,22 @@ fn set_cookie(headers: &mut HeaderMap, cookie: &str) -> BlueprintResult<()> {
     );
     Ok(())
 }
+async fn sign_out<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    token: &str,
+    pending: &mut HeaderMap,
+) -> BlueprintResult<Value> {
+    if !token.is_empty()
+        && let Err(error) = SessionService::new(app.store.clone()).sign_out(token).await
+    {
+        crate::error_origin::log_handled_failure("/sign-out", &error);
+    }
+    for cookie in app.cookie.clear_session() {
+        set_cookie(pending, &cookie)?;
+    }
+    Ok(json!({"success":true}))
+}
+
 fn clear(cookie: SessionCookie, headers: &mut HeaderMap) -> BlueprintResult<()> {
     for cookie in cookie.clear_all() {
         set_cookie(headers, &cookie)?;
@@ -567,6 +587,21 @@ fn clear(cookie: SessionCookie, headers: &mut HeaderMap) -> BlueprintResult<()> 
     Ok(())
 }
 fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
+    if path == "/sign-up/email" {
+        let mut response = failure(error);
+        if response.status().is_server_error() && !crate::error_origin::is_handled(error) {
+            // The actual signup endpoint leaves unexpected adapter/transaction
+            // errors to the router's empty500 boundary. Keep private diagnostics.
+            *response.body_mut() = Body::empty();
+            response
+                .headers_mut()
+                .remove(axum::http::header::CONTENT_TYPE);
+            response
+                .headers_mut()
+                .remove(axum::http::header::CONTENT_LENGTH);
+        }
+        return response;
+    }
     if error.code == "INVALID_TOKEN" && path == "/reset-password" {
         return (
             StatusCode::BAD_REQUEST,
@@ -714,7 +749,9 @@ fn failure_response(error: &BlueprintError) -> Response {
         | "INVALID_ERROR_CALLBACK_URL"
         | "INVALID_NEW_USER_CALLBACK_URL"
         | "CROSS_SITE_NAVIGATION_LOGIN_BLOCKED" => StatusCode::FORBIDDEN,
-        "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" => StatusCode::UNPROCESSABLE_ENTITY,
+        "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" | "FAILED_TO_CREATE_USER" => {
+            StatusCode::UNPROCESSABLE_ENTITY
+        }
         "UNSUPPORTED_MEDIA_TYPE" => StatusCode::UNSUPPORTED_MEDIA_TYPE,
         "METHOD_NOT_ALLOWED_DEFER_SESSION_REQUIRED" => StatusCode::METHOD_NOT_ALLOWED,
         "PAYLOAD_TOO_LARGE" => StatusCode::PAYLOAD_TOO_LARGE,

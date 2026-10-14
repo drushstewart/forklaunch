@@ -874,3 +874,15 @@ logging can still record those public fields: deployments must configure that
 logging according to their data policy. SQL identifiers/operators are fixed
 allowlisted fragments, tenant/organization selection remains mandatory, and
 invalid input/database failures produce the existing sanitized wire response.
+
+Signup catches user-row creation failures as handled `FAILED_TO_CREATE_USER` (422).
+Unexpected account/session or transaction failures return an empty 500 without
+cookies and invoke an installed unexpected-only observer. Signout HTTP is
+best-effort: storage failures still return success and expire the three session
+cookies, while the strict service API retains errors and transaction rollback.
+A successful HTTP signout during a storage failure does not prove server-side
+revocation: the rolled-back persisted session remains valid until separately
+revoked or expired, even though this browser has cleared its cookies.
+Handled-failure diagnostics contain only static route and allowlisted structural
+metadata. The fault oracle uses actual Better Auth handlers with an owned adapter;
+its transaction-completion injection is not a PostgreSQL COMMIT-failure test.

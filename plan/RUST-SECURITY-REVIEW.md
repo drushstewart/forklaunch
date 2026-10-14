@@ -692,3 +692,16 @@ metadata, callback panic isolation and trace/callback counts. Actual-source
 oracles cover get-session, individual/all/other session revocation and invalid
 permission schema versus invalid JSON. External struct literal callers must
 migrate to error constructors; no storage migration is required.
+
+
+Signup/signout fault review (2026-10-13): only signup user insertion failures
+become handled 422 errors. Account/session creation and transaction failures
+remain unexpected, with empty 500 responses, no cookies and one callback under
+the reference mode. HTTP signout now mirrors the reference by clearing its three
+session cookies and returning success despite storage errors; the strict service
+API still returns errors. A failed deletion can leave the persisted session
+valid, so HTTP success is not proof of server-side revocation. Native tests verify
+rollback and exact independent cookie expectations, including secure variants.
+Diagnostics use sanitized structural fields, never raw errors or credentials.
+Transaction-completion injection is an adapter fixture, not a real PostgreSQL
+COMMIT-failure receipt.

@@ -5895,3 +5895,25 @@ The core README required an explicit template symlink, which is now present.
 Receipt: `/private/tmp/fl-current-parity-package-list.txt`.
 This listing is not a new full source-archive installation test. Checklist remains
 **660/682 (96.8%), 22 open**.
+
+## Signup/signout fault boundary receipt (2026-10-13)
+
+The actual configured auth source distinguishes user creation from later signup
+failures. Native user insertion errors now return handled 422 FAILED_TO_CREATE_USER;
+account/session creation and transaction-entry/completion errors retain empty
+unexpected 500 responses without cookies and invoke the selected callback once.
+Existing validation/duplicate responses are unchanged. HTTP signout suppresses
+read/delete failures and clears exactly session_token, session_data and
+dont_remember; oauth_state is not part of this reference signout operation.
+The strict SessionService result remains available, and failed deletions retain
+the rolled-back persisted session. Browser cookie clearing is not proof of
+server revocation when storage fails.
+
+Seven actual-source injected branches, eight native observer tests, a final
+focused run covering seven signup cases and ten signout variants, and strict
+IAM all-feature/all-target Clippy pass. Shared sanitized diagnostics live outside
+the HTTP module so domain services do not depend on the adapter. The new actual
+fixture is wired into CI. Receipts:
+`/private/tmp/fl-iam-fault-boundaries-{ts,native,final,clippy}.log`.
+Adapter transaction-completion injection and native memory rollback do not claim
+a real PostgreSQL COMMIT-failure simulation. Gate 918 remains open.

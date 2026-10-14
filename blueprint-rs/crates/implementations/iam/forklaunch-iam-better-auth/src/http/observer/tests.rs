@@ -3,6 +3,8 @@ use crate::{
     http::AuthRateLimitOptions,
     store::{AuthCursor, AuthPage, AuthTransaction, AuthWindow, Model, memory::MemoryAuthStore},
 };
+#[path = "fault_boundaries.rs"]
+mod fault_boundaries;
 #[path = "fault_store.rs"]
 mod fault_store;
 use axum::{
@@ -300,6 +302,9 @@ async fn unexpected_mode_matches_session_and_revocation_catch_boundaries() {
                 store: store.clone(),
                 read,
                 delete,
+                insert: None,
+                begin: false,
+                commit: false,
             }),
             "http://localhost:3000".into(),
             vec![42; 32],

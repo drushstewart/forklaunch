@@ -121,6 +121,20 @@ impl SessionCookie {
         .map(|suffix| self.named_header(&format!("{prefix}{suffix}"), "", Some(0)))
         .collect()
     }
+    /// Clears the three session cookies used by Better Auth's sign-out endpoint.
+    /// An in-progress OAuth state cookie is independent of signing out.
+    #[cfg(feature = "http")]
+    pub(crate) fn clear_session(self) -> Vec<String> {
+        let prefix = if self.secure {
+            "__Secure-better-auth."
+        } else {
+            "better-auth."
+        };
+        ["session_token", "session_data", "dont_remember"]
+            .iter()
+            .map(|suffix| self.named_header(&format!("{prefix}{suffix}"), "", Some(0)))
+            .collect()
+    }
     #[must_use]
     pub const fn name(self) -> &'static str {
         if self.secure {

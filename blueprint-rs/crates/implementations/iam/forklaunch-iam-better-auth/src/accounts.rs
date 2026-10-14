@@ -147,7 +147,18 @@ impl<S: AuthStore> CredentialService<S> {
                 user[field] = value.clone();
             }
         }
-        tx.insert(Model::User, user.clone()).await?;
+        tx.insert(Model::User, user.clone())
+            .await
+            .map_err(|error| {
+                #[cfg(feature = "http")]
+                crate::error_origin::log_handled_failure("/sign-up/email", &error);
+                #[cfg(not(feature = "http"))]
+                let _ = error;
+                crate::error_origin::handled(BlueprintError::new(
+                    "FAILED_TO_CREATE_USER",
+                    "Failed to create user",
+                ))
+            })?;
         tx.insert(Model::Account,json!({"id":uuid::Uuid::new_v4().to_string(),"userId":id,"accountId":id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
         let session = new_session(&id, ip, agent, now)?;
         tx.insert(Model::Session, session.clone()).await?;
