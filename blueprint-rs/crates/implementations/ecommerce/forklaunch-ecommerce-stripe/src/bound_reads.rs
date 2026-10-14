@@ -1,4 +1,4 @@
-//! Opt-in direct Stripe inspection; no provider or local payment mutations.
+//! Opt-in scoped Stripe inspection; no provider or local payment mutations.
 use crate::{StripePaymentService, context::mismatch};
 use forklaunch_blueprint_core::BlueprintResult;
 use forklaunch_ecommerce_base::postgres::{PaymentProviderScope, PostgresEcommerceStore};
@@ -27,22 +27,42 @@ impl StripePaymentService<PostgresEcommerceStore> {
         scope: &PaymentProviderScope,
         payment_id: &str,
     ) -> BlueprintResult<BoundPaymentIntentObservation> {
-        if self.connect.is_some() || scope.provider() != "stripe" {
+        self.inspect_bound_payment_intent_profile(scope, payment_id, false)
+            .await
+    }
+    /// Explicit Connect counterpart: verifies the same configured account on every
+    /// provider GET and retains all durable binding/freshness checks.
+    /// # Errors
+    /// Rejects missing/mismatched Connect configuration, scope, evidence or binding.
+    pub async fn inspect_bound_connected_payment_intent(
+        &self,
+        scope: &PaymentProviderScope,
+        payment_id: &str,
+    ) -> BlueprintResult<BoundPaymentIntentObservation> {
+        self.inspect_bound_payment_intent_profile(scope, payment_id, true)
+            .await
+    }
+    async fn inspect_bound_payment_intent_profile(
+        &self,
+        scope: &PaymentProviderScope,
+        payment_id: &str,
+        connected: bool,
+    ) -> BlueprintResult<BoundPaymentIntentObservation> {
+        if self.connect.is_some() != connected || scope.provider() != "stripe" {
             return Err(mismatch());
         }
         let context = self
             .client
-            .verify_direct_context(scope.merchant_id(), scope.livemode())
+            .verify_service_context(scope.merchant_id(), scope.livemode(), self.connect.as_ref())
             .await?;
         let binding = self
             .base
             .store()
             .payment_provider_binding(scope, payment_id)
             .await?;
-        context.ensure_current(&self.client)?;
-        let intent = self
-            .client
-            .retrieve_intent_in_context(&context, binding.provider_ref())
+        context.ensure_current(&self.client, self.connect.as_ref())?;
+        let intent = context
+            .retrieve(&self.client, self.connect.as_ref(), binding.provider_ref())
             .await?;
         let currency = intent["currency"].as_str().ok_or_else(mismatch)?;
         // Stripe currency is canonical lowercase; the administrative binding stores uppercase.
@@ -74,7 +94,7 @@ impl StripePaymentService<PostgresEcommerceStore> {
             .store()
             .payment_provider_binding(scope, payment_id)
             .await?;
-        context.ensure_current(&self.client)?;
+        context.ensure_current(&self.client, self.connect.as_ref())?;
         if current != binding {
             return Err(mismatch());
         }

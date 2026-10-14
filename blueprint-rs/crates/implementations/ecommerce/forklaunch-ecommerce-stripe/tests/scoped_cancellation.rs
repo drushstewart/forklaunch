@@ -8,7 +8,7 @@ use forklaunch_ecommerce_base::{
     postgres::{PaymentProviderScope, PostgresEcommerceStore, ScopedCancellationOutcome},
 };
 use forklaunch_ecommerce_interface::{CreatePaymentDto, PaymentDto, PaymentService, PaymentStatus};
-use forklaunch_ecommerce_stripe::{StripeClient, StripePaymentService};
+use forklaunch_ecommerce_stripe::{StripeClient, StripeConnect, StripePaymentService};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::{
@@ -22,6 +22,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 struct Fixture {
     body: Arc<Mutex<Value>>,
+    connected: bool,
     change: Arc<AtomicUsize>,
     calls: Arc<AtomicUsize>,
     owner: PgPool,
@@ -32,7 +33,10 @@ struct Fixture {
 }
 async fn provider(State(s): State<Fixture>, headers: HeaderMap) -> Json<Value> {
     assert_eq!(headers["authorization"], "Bearer owned-secret");
-    assert!(!headers.contains_key("stripe-account"));
+    assert_eq!(
+        headers.get("stripe-account").map(|v| v.to_str().unwrap()),
+        s.connected.then_some("acct_owned")
+    );
     s.calls.fetch_add(1, Ordering::SeqCst);
     match s.change.load(Ordering::SeqCst) {
         1 => {
@@ -105,6 +109,15 @@ async fn audit_count(owner: &PgPool, tenant: &str) -> i64 {
 #[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
 #[allow(clippy::too_many_lines)]
 async fn direct_scoped_cancellation_atomic_receipts_scope_cas_and_deadline() {
+    run_profile(false).await;
+}
+#[tokio::test]
+#[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
+async fn connected_scoped_cancellation_atomic_receipts_scope_cas_and_deadline() {
+    run_profile(true).await;
+}
+#[allow(clippy::too_many_lines)]
+async fn run_profile(connected: bool) {
     let owner = PgPoolOptions::new()
         .max_connections(5)
         .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
@@ -163,6 +176,7 @@ async fn direct_scoped_cancellation_atomic_receipts_scope_cas_and_deadline() {
     let terminal = json!({"id":"pi_owned","object":"payment_intent","livemode":false,"amount":105,"amount_received":0,"amount_capturable":0,"currency":"usd","metadata":{"orderId":"order"},"status":"canceled","canceled_at":1_700_000_000,"latest_charge":null});
     let state = Fixture {
         body: Arc::new(Mutex::new(terminal.clone())),
+        connected,
         change: Arc::new(AtomicUsize::new(0)),
         calls: Arc::new(AtomicUsize::new(0)),
         owner: owner.clone(),
@@ -174,11 +188,23 @@ async fn direct_scoped_cancellation_atomic_receipts_scope_cas_and_deadline() {
     let app = Router::new()
         .route(
             "/v1/account",
-            get(|| async { Json(json!({"object":"account","id":"acct_owned"})) }),
+            get(|State(s): State<Fixture>, headers: HeaderMap| async move {
+                assert_eq!(
+                    headers.get("stripe-account").map(|v| v.to_str().unwrap()),
+                    s.connected.then_some("acct_owned")
+                );
+                Json(json!({"object":"account","id":"acct_owned"}))
+            }),
         )
         .route(
             "/v1/balance",
-            get(|| async { Json(json!({"object":"balance","livemode":false})) }),
+            get(|State(s): State<Fixture>, headers: HeaderMap| async move {
+                assert_eq!(
+                    headers.get("stripe-account").map(|v| v.to_str().unwrap()),
+                    s.connected.then_some("acct_owned")
+                );
+                Json(json!({"object":"balance","livemode":false}))
+            }),
         )
         .route("/v1/payment_intents/pi_owned", get(provider))
         .with_state(state.clone());
@@ -191,7 +217,48 @@ async fn direct_scoped_cancellation_atomic_receipts_scope_cas_and_deadline() {
             .unwrap(),
     )
     .unwrap();
-    let service = StripePaymentService::new(base, client);
+    let service = Profile::new(base, client, connected);
+    if connected {
+        assert!(
+            service
+                .service
+                .reconcile_bound_cancelled_order_payment(&scope, "payment", actor(), Uuid::new_v4())
+                .await
+                .is_err()
+        );
+        let wrong_scope = PaymentProviderScope::administrative(
+            "stripe".into(),
+            "owned".into(),
+            "acct_other".into(),
+            false,
+        )
+        .unwrap();
+        assert!(
+            service
+                .reconcile_bound_cancelled_order_payment(
+                    &wrong_scope,
+                    "payment",
+                    actor(),
+                    Uuid::new_v4()
+                )
+                .await
+                .is_err()
+        );
+    } else {
+        assert!(
+            service
+                .service
+                .reconcile_bound_connected_cancelled_order_payment(
+                    &scope,
+                    "payment",
+                    actor(),
+                    Uuid::new_v4()
+                )
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(state.calls.load(Ordering::SeqCst), 0);
     for (key, value) in [
         ("status", json!("processing")),
         ("amount_received", json!(105)),
@@ -462,4 +529,42 @@ async fn direct_scoped_cancellation_atomic_receipts_scope_cas_and_deadline() {
         .execute(&owner)
         .await
         .unwrap();
+}
+
+struct Profile {
+    service: StripePaymentService<PostgresEcommerceStore>,
+    connected: bool,
+}
+impl Profile {
+    fn new(
+        base: BaseEcommerceService<PostgresEcommerceStore>,
+        client: StripeClient,
+        connected: bool,
+    ) -> Self {
+        let mut service = StripePaymentService::new(base, client);
+        if connected {
+            service = service.with_connect(StripeConnect::new("acct_owned".into(), 0).unwrap());
+        }
+        Self { service, connected }
+    }
+    async fn reconcile_bound_cancelled_order_payment(
+        &self,
+        scope: &PaymentProviderScope,
+        id: &str,
+        actor: AuditContext,
+        receipt: Uuid,
+    ) -> forklaunch_blueprint_core::BlueprintResult<ScopedCancellationOutcome> {
+        if self.connected {
+            self.service
+                .reconcile_bound_connected_cancelled_order_payment(scope, id, actor, receipt)
+                .await
+        } else {
+            self.service
+                .reconcile_bound_cancelled_order_payment(scope, id, actor, receipt)
+                .await
+        }
+    }
+    fn base(&self) -> &BaseEcommerceService<PostgresEcommerceStore> {
+        self.service.base()
+    }
 }

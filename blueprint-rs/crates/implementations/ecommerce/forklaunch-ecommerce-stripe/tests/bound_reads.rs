@@ -21,6 +21,7 @@ use std::{
 #[derive(Clone)]
 struct Fixture {
     response: Arc<Mutex<Value>>,
+    connected: bool,
     change: Arc<AtomicUsize>,
     calls: Arc<AtomicUsize>,
     context_calls: Arc<AtomicUsize>,
@@ -31,7 +32,10 @@ struct Fixture {
 }
 async fn intent(State(s): State<Fixture>, headers: HeaderMap) -> Json<Value> {
     assert_eq!(headers["authorization"], "Bearer owned-secret");
-    assert!(!headers.contains_key("stripe-account"));
+    assert_eq!(
+        headers.get("stripe-account").map(|v| v.to_str().unwrap()),
+        s.connected.then_some("acct_owned")
+    );
     s.calls.fetch_add(1, Ordering::SeqCst);
     if s.change.load(Ordering::SeqCst) == 1 {
         let binding = s
@@ -64,6 +68,15 @@ async fn intent(State(s): State<Fixture>, headers: HeaderMap) -> Json<Value> {
 #[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
 #[allow(clippy::too_many_lines)]
 async fn bound_direct_read_scopes_generation_and_never_mutates_payment() {
+    run_profile(false).await;
+}
+#[tokio::test]
+#[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
+async fn bound_connected_read_scopes_generation_and_never_mutates_payment() {
+    run_profile(true).await;
+}
+#[allow(clippy::too_many_lines)]
+async fn run_profile(connected_profile: bool) {
     let owner = PgPoolOptions::new()
         .max_connections(3)
         .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
@@ -121,6 +134,7 @@ async fn bound_direct_read_scopes_generation_and_never_mutates_payment() {
     let expected = json!({"id":"pi_owned","object":"payment_intent","livemode":false,"amount":105,"currency":"usd","metadata":{"orderId":"owned-order"},"status":"canceled","client_secret":"never-return","customer":"private-customer"});
     let state = Fixture {
         response: Arc::new(Mutex::new(expected.clone())),
+        connected: connected_profile,
         change: Arc::new(AtomicUsize::new(0)),
         calls: Arc::new(AtomicUsize::new(0)),
         context_calls: Arc::new(AtomicUsize::new(0)),
@@ -132,14 +146,22 @@ async fn bound_direct_read_scopes_generation_and_never_mutates_payment() {
     let app = Router::new()
         .route(
             "/v1/account",
-            get(|State(s): State<Fixture>| async move {
+            get(|State(s): State<Fixture>, headers: HeaderMap| async move {
+                assert_eq!(
+                    headers.get("stripe-account").map(|v| v.to_str().unwrap()),
+                    s.connected.then_some("acct_owned")
+                );
                 s.context_calls.fetch_add(1, Ordering::SeqCst);
                 Json(json!({"object":"account","id":"acct_owned"}))
             }),
         )
         .route(
             "/v1/balance",
-            get(|State(s): State<Fixture>| async move {
+            get(|State(s): State<Fixture>, headers: HeaderMap| async move {
+                assert_eq!(
+                    headers.get("stripe-account").map(|v| v.to_str().unwrap()),
+                    s.connected.then_some("acct_owned")
+                );
                 s.context_calls.fetch_add(1, Ordering::SeqCst);
                 Json(json!({"object":"balance","livemode":false}))
             }),
@@ -155,7 +177,39 @@ async fn bound_direct_read_scopes_generation_and_never_mutates_payment() {
             .unwrap(),
     )
     .unwrap();
-    let service = StripePaymentService::new(base, client.clone());
+    let service = Profile::new(base, client.clone(), connected_profile);
+    // Profile selection is explicit; neither API silently falls back.
+    if connected_profile {
+        assert!(
+            service
+                .service
+                .inspect_bound_payment_intent(&scope, "owned-payment")
+                .await
+                .is_err()
+        );
+        let wrong_scope = PaymentProviderScope::administrative(
+            "stripe".into(),
+            "owned".into(),
+            "acct_other".into(),
+            false,
+        )
+        .unwrap();
+        assert!(
+            service
+                .inspect_bound_payment_intent(&wrong_scope, "owned-payment")
+                .await
+                .is_err()
+        );
+    } else {
+        assert!(
+            service
+                .service
+                .inspect_bound_connected_payment_intent(&scope, "owned-payment")
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(state.context_calls.load(Ordering::SeqCst), 0);
     let observation = service
         .inspect_bound_payment_intent(&scope, "owned-payment")
         .await
@@ -226,7 +280,11 @@ async fn bound_direct_read_scopes_generation_and_never_mutates_payment() {
         .await
         .unwrap(),
     );
-    let other_service = StripePaymentService::new(BaseEcommerceService::new(other), client.clone());
+    let other_service = Profile::new(
+        BaseEcommerceService::new(other),
+        client.clone(),
+        connected_profile,
+    );
     let count = state.calls.load(Ordering::SeqCst);
     assert!(
         other_service
@@ -265,4 +323,40 @@ async fn bound_direct_read_scopes_generation_and_never_mutates_payment() {
         .execute(&owner)
         .await
         .unwrap();
+}
+
+struct Profile {
+    service: StripePaymentService<PostgresEcommerceStore>,
+    connected: bool,
+}
+impl Profile {
+    fn new(
+        base: BaseEcommerceService<PostgresEcommerceStore>,
+        client: StripeClient,
+        connected: bool,
+    ) -> Self {
+        let mut service = StripePaymentService::new(base, client);
+        if connected {
+            service = service.with_connect(StripeConnect::new("acct_owned".into(), 0).unwrap());
+        }
+        Self { service, connected }
+    }
+    async fn inspect_bound_payment_intent(
+        &self,
+        scope: &PaymentProviderScope,
+        id: &str,
+    ) -> forklaunch_blueprint_core::BlueprintResult<
+        forklaunch_ecommerce_stripe::bound_reads::BoundPaymentIntentObservation,
+    > {
+        if self.connected {
+            self.service
+                .inspect_bound_connected_payment_intent(scope, id)
+                .await
+        } else {
+            self.service.inspect_bound_payment_intent(scope, id).await
+        }
+    }
+    fn base(&self) -> &BaseEcommerceService<PostgresEcommerceStore> {
+        self.service.base()
+    }
 }

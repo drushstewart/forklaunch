@@ -1,4 +1,4 @@
-//! Direct-only operator repair for an explicitly cancelled local order.
+//! Direct/Connect operator repair for an explicitly cancelled local order.
 use crate::{StripePaymentService, context::mismatch, reconciliation::verify_cancellation};
 use forklaunch_blueprint_core::{AuditContext, BlueprintResult};
 use forklaunch_ecommerce_base::postgres::{
@@ -23,7 +23,37 @@ impl StripePaymentService<PostgresEcommerceStore> {
         actor: AuditContext,
         receipt_id: Uuid,
     ) -> BlueprintResult<ScopedCancellationOutcome> {
-        if self.connect.is_some()
+        self.reconcile_bound_cancelled_order_payment_profile(
+            scope, payment_id, actor, receipt_id, false,
+        )
+        .await
+    }
+    /// Explicit connected-account counterpart with the same no-charge evidence,
+    /// locked snapshot, receipt and postcommit ambiguity contract as the direct API.
+    /// # Errors
+    /// Rejects missing/mismatched Connect configuration, stale scope, charged or
+    /// ambiguous provider evidence, changed local state and failed audits.
+    pub async fn reconcile_bound_connected_cancelled_order_payment(
+        &self,
+        scope: &PaymentProviderScope,
+        payment_id: &str,
+        actor: AuditContext,
+        receipt_id: Uuid,
+    ) -> BlueprintResult<ScopedCancellationOutcome> {
+        self.reconcile_bound_cancelled_order_payment_profile(
+            scope, payment_id, actor, receipt_id, true,
+        )
+        .await
+    }
+    async fn reconcile_bound_cancelled_order_payment_profile(
+        &self,
+        scope: &PaymentProviderScope,
+        payment_id: &str,
+        actor: AuditContext,
+        receipt_id: Uuid,
+        connected: bool,
+    ) -> BlueprintResult<ScopedCancellationOutcome> {
+        if self.connect.is_some() != connected
             || scope.provider() != "stripe"
             || receipt_id.is_nil()
             || actor
@@ -36,23 +66,22 @@ impl StripePaymentService<PostgresEcommerceStore> {
         }
         let context = self
             .client
-            .verify_direct_context(scope.merchant_id(), scope.livemode())
+            .verify_service_context(scope.merchant_id(), scope.livemode(), self.connect.as_ref())
             .await?;
         let binding = self
             .base
             .store()
             .payment_provider_binding(scope, payment_id)
             .await?;
-        context.ensure_current(&self.client)?;
+        context.ensure_current(&self.client, self.connect.as_ref())?;
         let snapshot = self
             .base
             .store()
             .cancelled_order_payment_snapshot(&binding)
             .await?;
-        context.ensure_current(&self.client)?;
-        let intent = self
-            .client
-            .retrieve_intent_in_context(&context, binding.provider_ref())
+        context.ensure_current(&self.client, self.connect.as_ref())?;
+        let intent = context
+            .retrieve(&self.client, self.connect.as_ref(), binding.provider_ref())
             .await?;
         if intent.get("latest_charge") != Some(&Value::Null)
             || intent["currency"].as_str().is_none_or(|value| {
@@ -69,7 +98,7 @@ impl StripePaymentService<PostgresEcommerceStore> {
                 evidence,
                 actor,
                 receipt_id,
-                || context.ensure_current(&self.client),
+                || context.ensure_current(&self.client, self.connect.as_ref()),
             )
             .await
     }

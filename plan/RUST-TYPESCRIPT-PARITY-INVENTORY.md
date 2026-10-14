@@ -7041,3 +7041,28 @@ actual diagnostic regression and explicit native characterization. Public invent
 is regenerated/checked at44 packages,610 entrypoints,1669 declaration records,zero
 unresolved; the additional entry is the shared diagnostic helper module covered by
 the existing package wildcard. Auth-ordering/no-match envelopes remain further work.
+
+
+## Explicit Stripe Connect scoped inspection and no-charge repair (2026-10-14)
+
+Distinct connected-account APIs now verify GET /v1/account and /v1/balance with the
+same exact Stripe-Account header as the subsequent intent GET. Their sealed context
+binds the immutable client generation, copied Connect account/fee configuration,
+expected account/mode and five-second deadline. Wrong scope/configuration rejects
+before I/O. Existing direct APIs still reject Connect; callers explicitly choose
+the connected inspector or terminal-no-charge cancelled-order repair counterpart.
+Both profiles share the same private provider field checks, complete durable binding
+recheck, locked order/payment CAS, audit/receipt transaction and COMMIT ambiguity
+contract. No migration, provider write, reference clearing or monetary action is
+added. Managed-gateway and PayPal scope integration remain separate work.
+
+Two native context tests, four restricted PostgreSQL direct/connected twins,
+official Stripe22.6.2/native wire comparisons for both three-GET profiles and strict
+Stripe all-feature/all-target Clippy pass:
+/private/tmp/fl-ecommerce-connected-context-{unit,pg,wire,clippy}.log. The fixtures
+verify exact account headers on every read, foreign client/configuration rejection,
+wrong-profile zero I/O, binding/order ABA, final database/lock deadlines, terminal
+evidence denials, rollback, receipts and unchanged references. Existing CI fixture
+and ignored tests now exercise both profiles. All owned PG cases cleaned up their
+exact roles/rows. This is scoped local failure repair, not provider cancellation,
+refund/capture authority, broader charge-history reconciliation or live Stripe proof.

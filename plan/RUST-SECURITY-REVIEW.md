@@ -906,3 +906,13 @@ explicit recorded outcome. References remain intact; no provider write or financ
 action occurs. Restricted PG tests cover CAS/ABA, deadlines, tenant isolation,
 append-only receipts, rollback and additive migration compatibility. Broader charge
 histories and Connect/managed/PayPal flows remain outside this bounded profile.
+
+
+### Explicit connected ecommerce scope (2026-10-14)
+
+Connected inspection/terminal-no-charge repair now authenticate all provider reads
+under the same exact Stripe-Account and immutable client/configuration, with the
+same deadline and locked durable snapshot requirements as direct APIs. Direct
+methods still reject Connect. SDK/native and restricted PG twins cover wrong-profile
+zero I/O, header/config identity, ABA, deadlines and audit/receipt rollback. No
+provider write, financial authority or reference clearing is introduced.
