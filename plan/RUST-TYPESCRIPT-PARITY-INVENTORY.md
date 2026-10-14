@@ -6093,3 +6093,23 @@ role/process checks. This verifies the optional fixed JWKS path/grace/header
 production snapshot without enabling nondefault options in the preset; their
 separate differential fixtures supply option-specific proofs. It predates the
 new optional JWT subject callback and before-auth request-schema registration.
+
+## Optional JWT subject callback receipt (2026-10-14)
+
+AuthHttp::with_jwt_subject_resolver accepts a trusted async callback over an
+owned read-only snapshot of a verified persisted user/session. None falls back
+to the user ID and an empty string remains an empty subject. It runs before
+local or external signing; anonymous requests/header-disabled get-session skip
+it, while explicit token issuance retains it. Errors produce unexpected empty
+500 responses without key minting/signing or new cookies. Cookie/session
+identity and other claims are unchanged. Custom subjects can require separate
+application authorization mapping. Snapshot access may include the secret
+session token; Debug is redacted and there is no Serialize implementation.
+
+24 actual TypeScript local/external route cases, 20 native route combinations
+plus anonymous/context checks, four existing signer regressions and strict IAM
+Clippy pass: /private/tmp/fl-iam-jwt-subject-{ts,native,regression,clippy}.log.
+CI includes the actual-source fixture; configured preset defaults are unchanged.
+This optional hook postdates the latest generated preset receipt. Other payload
+hooks, independent key adapters, unsupported root/encoded namespaces and broad
+Better Auth coverage remain in gate918.

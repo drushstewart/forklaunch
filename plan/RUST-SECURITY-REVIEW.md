@@ -732,3 +732,13 @@ when schema validation is disabled. Parser verifier failures remain redacted,
 and original bytes/decoded values are exposed separately. Unsafe numeric and
 unrepresentable Unicode values fail explicitly within the supported profile;
 MCP and generic schema validation remain separate gates.
+
+
+Optional JWT subject callback review (2026-10-14): only verified persisted
+session/user snapshots reach the trusted resolver. Snapshots are read-only and
+Debug-redacted, but accessors may expose session tokens to server callback code,
+which must not log or return them. Subject changes affect token claims only;
+stored/cookie ownership remains unchanged. Hook failure precedes signing and
+local key creation, returns empty500 and reaches unexpected-error observation.
+Custom subject authorization mapping is application-owned. Actual/local/external
+fixtures cover these boundaries; the callback is disabled by default.

@@ -919,3 +919,19 @@ The builder rejects this rather than adding a differing public alias or a broad
 fallback. Unknown application namespaces
 remain subject to the application's registry/mount collision checks. Configure
 external clients and JWT verification URLs separately when relocating JWKS.
+
+`AuthHttp::with_jwt_subject_resolver` installs an optional asynchronous
+`jwt.getSubject` callback independently of local/external signing. It receives
+an owned, read-only `JwtSessionContext` after cookie verification and persisted
+session/user validation. `None` falls back to the user ID; `Some("")` preserves
+the empty subject. Only the JWT subject changes: persisted session ownership,
+cookie identity, session ID, email and organization claims remain unchanged.
+Custom subjects may require explicit application authorization mapping; they
+must not be treated as replacement stored user IDs. The configured preset leaves
+this hook unset. Header suppression skips the hook on session reads, while
+explicit token issuance still invokes it. Callback errors return an unexpected
+empty 500 without cookies before local key minting or external signing.
+The callback is trusted server code. Snapshot records can contain sensitive
+custom user fields and the secret session token; do not log or expose them.
+Context Debug output is redacted. Arbitrary payload-definition callbacks and
+custom JWKS adapter hooks remain separate options.

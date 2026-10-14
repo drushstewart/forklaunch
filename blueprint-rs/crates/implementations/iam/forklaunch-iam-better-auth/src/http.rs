@@ -30,7 +30,9 @@ mod credential;
 mod email;
 mod external_jwt;
 mod jwks_path;
+mod jwt_subject;
 pub use external_jwt::ExternalJwtSigner;
+pub use jwt_subject::JwtSessionContext;
 mod observer;
 mod organization;
 pub use observer::{AuthApiError, AuthApiErrorObserverMode};
@@ -56,6 +58,7 @@ pub struct AuthHttp<S> {
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
     jwt_header_disabled: bool,
+    subject_resolver: Option<jwt_subject::SubjectResolver>,
     jwks_grace_period: std::time::Duration,
     jwks_path: String,
     error_observer: Option<observer::Observer>,
@@ -92,6 +95,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             google: None,
             external_jwt: None,
             jwt_header_disabled: false,
+            subject_resolver: None,
             jwks_grace_period: std::time::Duration::from_secs(2_592_000),
             jwks_path: "/jwks".into(),
             error_observer: None,
@@ -362,10 +366,11 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(view.map_or(Value::Null, |view| view.body()))
     }
     async fn jwt(&self, view: &SessionView, now: DateTime<Utc>) -> BlueprintResult<String> {
+        let subject = self.jwt_subject(view).await?;
         if let Some(signer) = &self.external_jwt {
             let body = json!({"payload": {
                 "iat": now.timestamp(),
-                "sub": text(&view.user, "id")?,
+                "sub": subject,
                 "sessionId": text(&view.session, "id")?,
                 "email": text(&view.user, "email")?,
                 "activeOrganizationId": view.session["activeOrganizationId"]
@@ -377,7 +382,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         }
         KeyRing::new(self.store.clone(), self.auth_origin())
             .issue_session(
-                text(&view.user, "id")?,
+                &subject,
                 text(&view.user, "email")?,
                 view.session["activeOrganizationId"].as_str(),
                 Some(text(&view.session, "id")?),
