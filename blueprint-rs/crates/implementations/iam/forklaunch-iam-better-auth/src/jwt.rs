@@ -195,7 +195,9 @@ impl SigningKey {
             "iat": issued_at, "exp": expires_at, "iss": base_url, "aud": base_url,
             "sub": user_id, "email": email, "activeOrganizationId": active_organization_id
         });
-        if let Some(session_id) = session_id { payload["sessionId"] = Value::from(session_id); }
+        if let Some(session_id) = session_id {
+            payload["sessionId"] = Value::from(session_id);
+        }
         self.sign_payload(&payload)
     }
     /// Signs an already validated server-owned claims object.

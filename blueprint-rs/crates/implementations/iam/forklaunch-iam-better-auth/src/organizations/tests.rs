@@ -2,13 +2,13 @@ use super::*;
 mod additions;
 mod invitations;
 mod listing;
-mod window;
 mod members;
 mod permissions;
 mod roles;
 mod team_members;
 mod team_mutations;
 mod teams;
+mod window;
 
 pub(crate) async fn exercise_organizations<S: AuthStore>(store: Arc<S>) {
     let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
