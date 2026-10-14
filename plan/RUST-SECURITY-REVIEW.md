@@ -1026,3 +1026,11 @@ completion is not ongoing provider authority. Remote observation and local commi
 remain separate transactions; timeout or stale/ambiguous completion stays
 inspectable without an automatic provider repeat. Actual HMAC/native PG and
 separate real platform journal proofs are distinguished in the inventory.
+
+
+Backup disableSession success now consumes recovery/challenge authority without
+issuing a session or trusted-device cookie. The browser can retain an inert signed
+challenge cookie, but subsequent use fails. Authenticated verification retains its
+existing token. Atomic memory rollback/single-use, actual-client29 and full IAM118
+pass; no new storage/cryptographic primitive or schema was introduced. Restricted
+PG and generatedTCP receipts above remain explicitly scoped to earlier branches.

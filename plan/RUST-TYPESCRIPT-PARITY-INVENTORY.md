@@ -8201,3 +8201,28 @@ starting services. Metadata /private/tmp/fl-totp-cli-config-checkpoint.json;
 logs /private/tmp/fl-totp-cli-config-{tests,build}.log. Runtime shell assertions
 retain default/Compose propagation in the existing e2e flow. This local Compose
 proof does not verify AWS deployment or a production secret/configuration setup.
+
+
+## Backup verification without session issuance (2026-10-14)
+
+Additive BackupVerificationOptions and verify_backup_with_options support actual
+backup disableSession:true while preserving existing verify defaults. Pending
+success atomically consumes recovery code and challenge authority, returns user
+without token, and emits no session/trust/cookie. Authenticated success retains
+the current token and emits no replacement cookie. The inert challenge cookie
+can remain, matching upstream's separate consumed attempt capability behavior;
+subsequent verification cannot issue a session. Failures retain committed attempt
+counts; cancellation/commit faults retain transactional rollback.
+
+Permanent actual-source oracle now includes elapsed enrollment/disable rotations,
+stale signed dont_remember inheritance and trust clearing; no unneeded lifetime
+change was made after characterization. Actual-client/native29 calls, focused6
+with onePG ignored, full IAM118 passed/3PG ignored (64.48s), and strict all-feature/
+all-target Clippy pass. Logs /private/tmp/fl-two-factor-options-permanent.log and
+/private/tmp/fl-backup-options-{native,client,full,clippy}.log; frozen six-path
+hashes /private/tmp/fl-backup-options-freeze.json. Existing shared transaction
+lifecycle exercises failed-commit rollback/recovery single-use. Restricted PG was
+not repeated for this branch; no backend/schema/migration changed. GeneratedTCP
+proof above covers the earlier20-call profile; expanded29-call generated proof
+is pending the next fresh CLI checkpoint. OTP/custom parameters/other plugins
+remain open, and the immutable5a8 archive predates this change.

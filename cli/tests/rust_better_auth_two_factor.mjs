@@ -375,4 +375,166 @@ for (let index = 0; index < 4; index++) {
 console.log(
   'PASS actual two-factor plugin rate enforcement: 3 requests/10 seconds, fourth429 with X-Retry-After=10'
 );
+const observed = {};
+const ttl = (session) =>
+  (new RealDate(session.expiresAt) - new RealDate(session.createdAt)) / 1000;
+const activeTtl = async () =>
+  ttl(status(await request('/get-session'), 200).session);
+status(await request('/sign-out', {}), 200);
+status(
+  await request('/sign-in/email', { ...credentials, rememberMe: false }),
+  200
+);
+observed.ordinaryRememberFalseTtl = await activeTtl();
+const beforeEnrollment = status(await request('/get-session'), 200).session;
+clock += 300000;
+status(
+  await request('/two-factor/enable', { password: credentials.password }),
+  200
+);
+const edgeSecret = await symmetricDecrypt({
+  key: ctx.secretConfig,
+  data: reference.database.twoFactor[0].secret
+});
+const edgeCode = await createOTP(edgeSecret).totp();
+const enrolledFalse = await request('/two-factor/verify-totp', {
+  code: edgeCode
+});
+status(enrolledFalse, 200);
+observed.enrollmentRememberFalseTtl = await activeTtl();
+const afterEnrollment = status(await request('/get-session'), 200).session;
+observed.enrollmentPreservesExpiry =
+  beforeEnrollment.expiresAt === afterEnrollment.expiresAt;
+observed.enrollmentPreservesCreated =
+  beforeEnrollment.createdAt === afterEnrollment.createdAt;
+observed.enrollmentPersistentCookie = enrolledFalse.cookies
+  .find((c) => c.startsWith('better-auth.session_token='))
+  .includes('Max-Age=');
+status(await request('/sign-out', {}), 200);
+status(
+  await request('/sign-in/email', { ...credentials, rememberMe: false }),
+  200
+);
+observed.falseChallengeMarker = jar.has('better-auth.dont_remember');
+status(
+  await request('/sign-in/email', { ...credentials, rememberMe: true }),
+  200
+);
+observed.trueChallengeRetainsMarker = jar.has('better-auth.dont_remember');
+const inheritedCompletion = await request('/two-factor/verify-totp', {
+  code: edgeCode
+});
+status(inheritedCompletion, 200);
+observed.inheritedTrueChallengeTtl = await activeTtl();
+observed.inheritedTruePersistentCookie = inheritedCompletion.cookies
+  .find((c) => c.startsWith('better-auth.session_token='))
+  .includes('Max-Age=');
+status(await request('/sign-out', {}), 200);
+status(
+  await request('/sign-in/email', { ...credentials, rememberMe: false }),
+  200
+);
+const trustedCompletion = await request('/two-factor/verify-totp', {
+  code: edgeCode,
+  trustDevice: true
+});
+status(trustedCompletion, 200);
+observed.trustFalseTtl = await activeTtl();
+observed.trustFalsePersistentCookie = trustedCompletion.cookies
+  .find((c) => c.startsWith('better-auth.session_token='))
+  .includes('Max-Age=');
+observed.trustClearsMarker = !jar.has('better-auth.dont_remember');
+status(await request('/sign-out', {}), 200);
+status(
+  await request('/sign-in/email', { ...credentials, rememberMe: false }),
+  200
+);
+observed.trustedSigninFalseTtl = await activeTtl();
+const beforeDisable = status(await request('/get-session'), 200).session;
+clock += 300000;
+status(
+  await request('/two-factor/disable', { password: credentials.password }),
+  200
+);
+const afterDisable = status(await request('/get-session'), 200).session;
+observed.disablePreservesExpiry =
+  beforeDisable.expiresAt === afterDisable.expiresAt;
+observed.disablePreservesCreated =
+  beforeDisable.createdAt === afterDisable.createdAt;
+assert.deepEqual(observed, {
+  ordinaryRememberFalseTtl: 86400,
+  enrollmentRememberFalseTtl: 86400,
+  enrollmentPreservesExpiry: false,
+  enrollmentPreservesCreated: false,
+  enrollmentPersistentCookie: false,
+  falseChallengeMarker: true,
+  trueChallengeRetainsMarker: true,
+  inheritedTrueChallengeTtl: 86400,
+  inheritedTruePersistentCookie: false,
+  trustFalseTtl: 86400,
+  trustFalsePersistentCookie: false,
+  trustClearsMarker: true,
+  trustedSigninFalseTtl: 86400,
+  disablePreservesExpiry: false,
+  disablePreservesCreated: false
+});
+console.log(
+  'PASS elapsed session rotation, inherited dont_remember and transient trusted-device cookies'
+);
+const extraEnrollment = (
+  await client.twoFactor.enable({
+    password: credentials.password,
+    issuer: 'Custom / Ü: Issuer',
+    method: 'totp'
+  })
+).data;
+assert.equal(
+  new URL(extraEnrollment.totpURI).searchParams.get('issuer'),
+  'Custom / Ü: Issuer'
+);
+const extraSecret = await symmetricDecrypt({
+  key: ctx.secretConfig,
+  data: reference.database.twoFactor[0].secret
+});
+const extraCode = await createOTP(extraSecret).totp();
+assert.equal(
+  (await client.twoFactor.verifyTotp({ code: extraCode })).error,
+  null
+);
+assert.equal(
+  new URL(
+    (await client.twoFactor.getTotpUri({ password: credentials.password })).data
+      .totpURI
+  ).searchParams.get('issuer'),
+  'Better Auth'
+);
+const tokenBefore = (await client.getSession()).data.session.token;
+const countBefore = reference.database.session.length;
+const authBackup = await client.twoFactor.verifyBackupCode({
+  code: extraEnrollment.backupCodes[0],
+  disableSession: true,
+  trustDevice: true
+});
+assert.equal(authBackup.error, null);
+assert.equal(authBackup.data.token, tokenBefore);
+assert.equal(reference.database.session.length, countBefore);
+await client.signOut();
+await client.signIn.email(credentials);
+assert.equal(reference.database.session.length, countBefore - 1);
+const pendingBackup = await client.twoFactor.verifyBackupCode({
+  code: extraEnrollment.backupCodes[1],
+  disableSession: true,
+  trustDevice: true
+});
+assert.equal(pendingBackup.error, null);
+assert.ok(!Object.hasOwn(pendingBackup.data, 'token'));
+assert.ok(!jar.has('better-auth.session_token'));
+assert.ok(!jar.has('better-auth.trust_device'));
+assert.ok(jar.has('better-auth.two_factor'));
+const following = await client.twoFactor.verifyTotp({ code: extraCode });
+assert.equal(following.error.status, 401);
+assert.equal(following.error.code, 'INVALID_TWO_FACTOR_COOKIE');
+console.log(
+  'PASS follow-on actual client: issuer override/get-URI reset; authenticated disableSession retains token; challenged disableSession consumes code/attempt capability without session or trust, later TOTP401'
+);
 globalThis.Date = RealDate;

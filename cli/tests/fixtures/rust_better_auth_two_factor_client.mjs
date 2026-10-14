@@ -44,7 +44,8 @@ export async function exerciseTwoFactorClient({
     }
     history.push({
       status: response.status,
-      jwt: response.headers.get('set-auth-jwt')
+      jwt: response.headers.get('set-auth-jwt'),
+      cookies: response.headers.getSetCookie()
     });
     return response;
   };
@@ -140,6 +141,46 @@ export async function exerciseTwoFactorClient({
     401
   );
   ok(await client.twoFactor.verifyTotp({ code: await code() }));
+  const beforeSkip = ok(await client.getSession());
+  const authenticatedSkip = ok(
+    await client.twoFactor.verifyBackupCode({
+      code: enrolled.backupCodes[1],
+      disableSession: true,
+      trustDevice: true
+    })
+  );
+  assert.equal(authenticatedSkip.token, beforeSkip.session.token);
+  assert.deepEqual(history.at(-1).cookies, []);
+  ok(await client.signOut());
+  ok(await client.signIn.email(credentials));
+  const pendingSkip = ok(
+    await client.twoFactor.verifyBackupCode({
+      code: enrolled.backupCodes[2],
+      disableSession: true,
+      trustDevice: true
+    })
+  );
+  assert.ok(!Object.hasOwn(pendingSkip, 'token'));
+  assert.deepEqual(history.at(-1).cookies, []);
+  assert.ok(!jar.has('better-auth.session_token'));
+  assert.ok(!jar.has('better-auth.trust_device'));
+  assert.ok(jar.has('better-auth.two_factor'));
+  const consumed = await client.twoFactor.verifyTotp({ code: await code() });
+  assert.equal(consumed.error.status, 401);
+  assert.equal(consumed.error.code, 'INVALID_TWO_FACTOR_COOKIE');
+  ok(await client.signIn.email({ ...credentials, rememberMe: false }));
+  assert.ok(jar.has('better-auth.dont_remember'));
+  ok(await client.signIn.email({ ...credentials, rememberMe: true }));
+  assert.ok(jar.has('better-auth.dont_remember'));
+  ok(
+    await client.twoFactor.verifyTotp({ code: await code(), trustDevice: true })
+  );
+  const transientSessionCookie = history
+    .at(-1)
+    .cookies.find((cookie) => cookie.startsWith('better-auth.session_token='));
+  assert.ok(transientSessionCookie);
+  assert.ok(!transientSessionCookie.includes('Max-Age='));
+  assert.ok(!jar.has('better-auth.dont_remember'));
   ok(await client.twoFactor.disable({ password: credentials.password }));
   assert.equal(ok(await client.getSession()).user.twoFactorEnabled, false);
   console.log(

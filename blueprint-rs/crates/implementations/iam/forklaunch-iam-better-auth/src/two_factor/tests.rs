@@ -246,6 +246,66 @@ async fn lifecycle<S: AuthStore + 'static>(store: Arc<S>) {
             .code,
         "INVALID_BACKUP_CODE"
     );
+    let skip = BackupVerificationOptions {
+        disable_session: true,
+        trust_device: true,
+    };
+    let authenticated_skip = factor
+        .verify_backup_with_options(
+            &trusted_token,
+            "",
+            enrollment.body()["backupCodes"][1].as_str().unwrap(),
+            skip,
+            now,
+        )
+        .await
+        .unwrap();
+    assert_eq!(authenticated_skip.body()["token"], trusted_token);
+    assert!(authenticated_skip.session.is_none());
+    assert!(authenticated_skip.trust.is_none());
+    let pending_skip = challenge(&service, &factor, now).await;
+    let skip_code = enrollment.body()["backupCodes"][2].as_str().unwrap();
+    let before_sessions = rows(store.as_ref(), Model::Session).await;
+    assert!(
+        failed
+            .verify_backup_with_options("", pending_skip.identifier(), skip_code, skip, now)
+            .await
+            .is_err()
+    );
+    let skipped = factor
+        .verify_backup_with_options("", pending_skip.identifier(), skip_code, skip, now)
+        .await
+        .unwrap();
+    assert!(skipped.body().get("token").is_none());
+    assert!(skipped.session.is_none());
+    assert!(skipped.trust.is_none());
+    assert!(!skipped.clear_challenge);
+    assert_eq!(rows(store.as_ref(), Model::Session).await, before_sessions);
+    assert_eq!(
+        factor
+            .verify(
+                "",
+                pending_skip.identifier(),
+                &factor_code(store.as_ref(), now).await,
+                false,
+                true,
+                now
+            )
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "INVALID_TWO_FACTOR_COOKIE"
+    );
+    assert_eq!(
+        factor
+            .verify_backup_with_options(&trusted_token, "", skip_code, skip, now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "INVALID_BACKUP_CODE"
+    );
     for round in 0..2 {
         let pending = challenge(&service, &factor, now).await;
         for _ in 0..5 {
@@ -409,4 +469,30 @@ async fn pending_factor_expiry_disabled_user_and_backup_race() {
         "INVALID_TWO_FACTOR_COOKIE"
     );
     assert_eq!(rows(store.as_ref(), Model::Session).await.len(), 1);
+}
+
+#[tokio::test]
+async fn rotation_after_elapsed_time_resets_configured_session_dates() {
+    let store = MemoryAuthStore::default();
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let old = new_session("rotation-user", "", "", now).unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::Session, old.clone()).await.unwrap();
+    let later = now + Duration::minutes(5);
+    let rotated = enrollment::rotate(&mut tx, &json!({"id":"rotation-user"}), &old, later)
+        .await
+        .unwrap();
+    assert_eq!(time(&rotated, "createdAt").unwrap(), later);
+    assert_eq!(
+        time(&rotated, "expiresAt").unwrap(),
+        later + Duration::days(1)
+    );
+    assert_ne!(rotated["expiresAt"], old["expiresAt"]);
+    assert!(
+        tx.get(Model::Session, text(&old, "id").unwrap())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    tx.commit().await.unwrap();
 }

@@ -7,8 +7,7 @@
 //! Enabling protection affects subsequent password logins; existing sessions and
 //! social/provider flows retain their independently configured policy. Public
 //! service methods accept trusted server time, not caller-selected HTTP timestamps.
-//! OTP delivery, custom TOTP parameters and backup `disableSession` are not exposed
-//! by this initial typed profile. Recovery values are authorized disclosures and
+//! OTP delivery and custom TOTP parameters are not exposed by this typed profile. Recovery values are authorized disclosures and
 //! must not be logged; this module intentionally provides no secret-bearing Debug.
 mod crypto;
 mod enrollment;
@@ -25,6 +24,7 @@ use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Value, json};
 use std::sync::Arc;
+pub use verification::BackupVerificationOptions;
 use zeroize::Zeroizing;
 
 /// Trusted fixed defaults. No Debug/Serialize: the service holds signing secrets.

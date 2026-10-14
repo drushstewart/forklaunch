@@ -4,6 +4,16 @@ use super::{
     factor, invalid_challenge, json, new_session, output_user, secret, text, time, timestamp,
     unauthorized, verification_row,
 };
+/// Trusted recovery verification options. Defaults retain session issuance.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct BackupVerificationOptions {
+    /// Suppress session issuance and trusted-device cookies. A pending challenge
+    /// is consumed even though no authenticated session is issued.
+    pub disable_session: bool,
+    /// Issue a trusted-device cookie only when session issuance is enabled.
+    pub trust_device: bool,
+}
+
 impl<S: AuthStore> TwoFactorService<S> {
     /// Verifies the default TOTP or one recovery code against an authoritative
     /// session or signed-cookie challenge. Code timesteps are not replay-tracked;
@@ -19,6 +29,55 @@ impl<S: AuthStore> TwoFactorService<S> {
         code: &str,
         recovery: bool,
         trust_device: bool,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<FactorResponse> {
+        self.verify_inner(
+            session_token,
+            challenge,
+            code,
+            recovery,
+            trust_device,
+            false,
+            now,
+        )
+        .await
+    }
+
+    /// Verifies a recovery code with explicit session issuance options.
+    /// An authenticated caller keeps its existing token; a pending caller receives
+    /// only the user projection when session issuance is disabled. Both consume
+    /// the recovery code atomically, and pending proof cannot later mint a session.
+    /// # Errors
+    /// Uses the same failure counters and transactional rollback as [`Self::verify`].
+    pub async fn verify_backup_with_options(
+        &self,
+        session_token: &str,
+        challenge: &str,
+        code: &str,
+        options: BackupVerificationOptions,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<FactorResponse> {
+        self.verify_inner(
+            session_token,
+            challenge,
+            code,
+            true,
+            options.trust_device,
+            options.disable_session,
+            now,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    async fn verify_inner(
+        &self,
+        session_token: &str,
+        challenge: &str,
+        code: &str,
+        recovery: bool,
+        trust_device: bool,
+        disable_session: bool,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
         if code.len() > 128 {
@@ -150,6 +209,19 @@ impl<S: AuthStore> TwoFactorService<S> {
             row["lockedUntil"] = Value::Null;
             tx.delete(Model::Verification, text(&challenge_row, "id")?)
                 .await?;
+            if disable_session {
+                // Upstream consumes its separate attempt capability and leaves an
+                // inert cookie. Our single durable challenge is the capability:
+                // delete it atomically with the recovery code, without cookies.
+                response
+                    .body
+                    .as_object_mut()
+                    .ok_or_else(corrupt)?
+                    .remove("token");
+                tx.replace(Model::TwoFactor, row).await?;
+                tx.commit().await?;
+                return Ok(response);
+            }
             let mut next = new_session(
                 text(&user, "id")?,
                 challenge_row["ipAddress"].as_str().unwrap_or(""),

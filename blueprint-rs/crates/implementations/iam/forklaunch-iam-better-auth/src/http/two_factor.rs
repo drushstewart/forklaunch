@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     cookies::{cookie_value, sign_cookie_value, verify_cookie_value},
-    two_factor::{FactorResponse, TwoFactorService},
+    two_factor::{BackupVerificationOptions, FactorResponse, TwoFactorService},
 };
 const PATHS: [&str; 6] = [
     "/two-factor/enable",
@@ -81,12 +81,6 @@ pub(super) fn validate(path: &str, body: Option<&Value>) -> BlueprintResult<()> 
                 format!("[body.{field}] Invalid input: expected boolean"),
             ));
         }
-    }
-    if path == "/two-factor/verify-backup-code" && body["disableSession"] == true {
-        return Err(BlueprintError::new(
-            "VALIDATION_ERROR",
-            "disableSession is not supported by the default TOTP profile",
-        ));
     }
     if path == "/two-factor/enable" && body.get("issuer").is_some_and(|value| !value.is_string()) {
         return Err(BlueprintError::new(
@@ -176,7 +170,21 @@ pub(super) async fn handle<S: AuthStore + 'static>(
                 .disable(&token, password(), trust.as_deref(), now)
                 .await
         }
-        "/two-factor/verify-totp" | "/two-factor/verify-backup-code" => {
+        "/two-factor/verify-backup-code" => {
+            service
+                .verify_backup_with_options(
+                    &token,
+                    &signed(app, headers, "two_factor").unwrap_or_default(),
+                    body["code"].as_str().unwrap_or(""),
+                    BackupVerificationOptions {
+                        disable_session: body["disableSession"] == true,
+                        trust_device: body["trustDevice"] == true,
+                    },
+                    now,
+                )
+                .await
+        }
+        "/two-factor/verify-totp" => {
             service
                 .verify(
                     &token,
