@@ -45,6 +45,8 @@ on:
       - 'cli/tests/rust_benchmarks.mjs'
       - 'cli/tests/rust_security_audit.py'
       - 'cli/tests/rust_security_audit_test.py'
+      - 'scripts/rust_ecs_smoke_plan.py'
+      - 'scripts/test_rust_ecs_smoke_plan.py'
       - 'cli/tests/fixtures/rust_security_advisories.json'
       - 'cli/Cargo.toml'
       - 'cli/tests/fixtures/canonical-iam/**'
@@ -256,6 +258,8 @@ on:
       - 'cli/tests/rust_benchmarks.mjs'
       - 'cli/tests/rust_security_audit.py'
       - 'cli/tests/rust_security_audit_test.py'
+      - 'scripts/rust_ecs_smoke_plan.py'
+      - 'scripts/test_rust_ecs_smoke_plan.py'
       - 'cli/tests/fixtures/rust_security_advisories.json'
       - 'cli/Cargo.toml'
       - 'cli/tests/fixtures/canonical-iam/**'
@@ -1022,6 +1026,7 @@ jobs:
           workspaces: cli
       - run: cargo install cargo-audit --version 0.22.2 --locked
       - run: cargo generate-lockfile --manifest-path cli/Cargo.toml
+      - run: python3 -m unittest discover -s scripts -p test_rust_ecs_smoke_plan.py -v
       - run: python3 cli/tests/rust_security_audit_test.py
       - run: python3 cli/tests/rust_security_audit.py
         env:

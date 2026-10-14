@@ -4637,3 +4637,31 @@ Evidence: `/private/tmp/fl-stripe-failed-charge-{tests,postgres,clippy}.log`.
 Pending/ambiguous claims, paid/authorized prior charges, PayPal cancellation and
 canceled-order reference reconciliation remain open. Checklist stays
 **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — ARM64 container and offline ECS smoke artifacts
+
+A fresh generated dependency-free accounts service built using the generated
+Dockerfile for Linux ARM64, matching the companion platform's Fargate architecture.
+The native process passed the platform's curl health settings, HTTP health/OpenAPI,
+MCP initialization/discovery/health invocation and foreign-Origin rejection. SIGTERM
+exited cleanly with code zero; its owned container was removed. Image
+`forklaunch-rust-ecs-parity:local-validation` and generated workspace
+`/private/tmp/fl-rust-ecs-parity-yoqpv_u7` are retained for the pending cloud target.
+Logs: `/private/tmp/fl-rust-ecs-image-arm64-build.log` and
+`/private/tmp/fl-rust-ecs-local-runtime.log`. This is local container evidence.
+
+`scripts/rust_ecs_smoke_plan.py` now creates reviewable task-definition and service
+request JSON offline, with explicit target configuration, digest-pinned ECR image,
+ARM64/Fargate/awsvpc, direct native argv, cleared entrypoint and platform health
+settings. It requires an exact registered task revision before emitting a usable
+service request. Eight tests cover account/region/revision constraints, malformed
+network identifiers, unsafe inputs, collisions and actual CLI output. CI runs them.
+Resource existence, VPC membership, permissions and connectivity require target
+inspection; the tool neither contacts AWS nor provisions resources.
+
+The available AWS account was inspected read-only; its existing unrelated app
+cluster was left untouched. A dedicated test target is still awaiting the user's
+selection. No image push or AWS mutation occurred. Actual ECS/load balancer,
+provisioning, migration and scaling gates remain open; checklist stays
+**658/682 (96.5%), 24 open**.
