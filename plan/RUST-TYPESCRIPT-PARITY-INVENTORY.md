@@ -8429,3 +8429,20 @@ live-peer and surface checks pass independently. No product behavior changed for
 that harness correction. CI includes the new runtime fixture.
 Logs /private/tmp/fl-cross-reply-{cli-build,runtime,live-final,surfaces,unit,
 clippy-final}.log; three source hashes /private/tmp/fl-cross-reply-source-sha256.json.
+
+
+## Exact native Zod binary factory (2026-10-14)
+
+zod_binary returns explicit Vec<u8> from a strict JSON string, matching the actual
+Zod factory's Buffer.from(base64) conversion. Both alphabets, skipped invalid
+characters, first-padding termination and incomplete groups are preserved.
+UTF-16 code units contribute their low byte, including non-ASCII/astral cases;
+this is not UTF-8 base64 normalization or canonical-base64 validation. Raw input
+and existing native codecs remain unchanged. Lone surrogates and JavaScript
+Buffer objects remain outside the input Value string domain. No new dependency.
+
+259118 actual-source/native comparisons, validation25 tests, strict all-feature/
+all-target Clippy and UUID/email81036 regressions pass. CI runs the binary oracle.
+Logs /private/tmp/fl-zod-binary-{parity,tests,clippy,formats}.log; four source hashes
+/private/tmp/fl-zod-binary-source-sha256.json. Generic schema composition, remaining
+scalar/emitter behavior and broader media validation gates remain open.

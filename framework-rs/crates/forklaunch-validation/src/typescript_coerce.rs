@@ -13,6 +13,9 @@ use serde_json::Value;
 mod date;
 pub use date::{DateCoercionError, date_epoch_millis};
 
+#[path = "zod_binary.rs"]
+mod binary;
+pub use binary::zod_binary;
 #[path = "zod_string.rs"]
 mod strict_string;
 pub use strict_string::{
