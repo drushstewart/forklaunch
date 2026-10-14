@@ -6363,3 +6363,23 @@ regression pairs and strict HTTP/Auth Clippy pass:
 The existing HMAC tampering regression also passes after replacing deprecated
 GenericArray::as_slice with slice indexing; the constant-time comparison remains
 unchanged: /private/tmp/fl-auth-hmac-warning-test.log.
+
+
+## Managed model catalog/nonstreaming chat receipt (2026-10-14)
+
+The blueprint-core managed ModelGatewayClient now exposes fixed signed GET
+/models and POST /models/chat/completions routes. Catalogs and completions remain
+opaque JSON, preserving extras, primitives and omitted timestamps like the actual
+TypeScript unchecked casts. Monthly usage/budget and BAA fields remain platform
+claims, not independently verified client guarantees. Preview catalog validation
+is unchanged. Streaming, cancellation and typed chat DTOs remain open.
+
+46 actual TypeScript/native signed-wire comparisons pass, covering unchecked
+shapes, lossy UTF-8/BOM, large finite integers, malformed/empty JSON, non-2xx status
+and retry hints, chunked responses, fixed paths, exact-body HMAC and fresh nonces.
+Additional native checks verify the one-MiB advertised/chunked raw bound and
+closed-port transport failure. Strict all-feature/all-target blueprint-core
+Clippy passes: /private/tmp/fl-model-gateway-{wire,clippy}.log. Requests are not
+retried; remote error text is excluded. Existing TLS/loopback settings apply.
+Overflowing numbers/lone UTF-16 surrogates and JS serializer spelling stay outside
+the finite native JSON profile. No live platform model deployment was exercised.

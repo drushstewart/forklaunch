@@ -42,3 +42,21 @@ finite integers outside the JavaScript safe range to IEEE-754 values. The native
 JSON value representation does not support overflowing numbers (such as `1e400`)
 or lone UTF-16 surrogates; these responses fail decoding. JSON serialization
 spelling is not promised to match JavaScript byte for byte.
+
+
+With `instance-gateway`, `model_gateway::ModelGatewayClient` provides managed
+`models()` and nonstreaming `chat_completion(&Value)` requests over the existing
+instance-signed transport. It loads trusted managed settings through `from_env`
+or accepts an explicitly configured transport. Both methods retain opaque JSON,
+including extra fields and omitted `created`, matching the TypeScript unchecked
+response casts. Monthly budget, usage and BAA fields are platform claims rather
+than locally verified guarantees. Streaming and typed chat DTOs remain separate
+work; the preview client's stricter catalog continues to use its own API.
+
+Successful bodies have a one-MiB raw bound, including chunked responses. Browser
+UTF-8 replacement/BOM handling and finite large-integer rounding match the preview
+chat decoder. Overflowing numbers and lone UTF-16 surrogates remain unsupported.
+Refusals preserve status and positive finite retry hints while excluding remote
+response text. Every request uses a fresh HMAC nonce; redirects and automatic
+retries stay disabled. TLS/loopback policy and trusted credentials are inherited
+from `InstanceGatewayClient`.
