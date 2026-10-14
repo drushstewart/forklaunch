@@ -5,8 +5,9 @@ pub use default_errors::DefaultErrorResponses;
 pub mod sse;
 pub mod versioning;
 pub use versioning::{
-    BodyParserHooks, MultipartLimits, SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry,
-    VersionFieldHooks, VersionFieldValues, VersionedRoutePlan,
+    BodyParserHooks, JsonRequestParsers, MultipartLimits, ParsedJsonBody, SelectedVersion,
+    VersionBodyHooks, VersionBodyHooksRegistry, VersionFieldHooks, VersionFieldValues,
+    VersionedRoutePlan,
 };
 
 use std::{
@@ -128,6 +129,8 @@ pub struct FrameworkRequest {
     pub session: Option<serde_json::Value>,
     /// Last matching contract version and all matching declarations.
     pub version: Option<SelectedVersion>,
+    /// Independently parsed unversioned JSON; original wire bytes remain in `body`.
+    pub parsed_json: Option<ParsedJsonBody>,
 }
 
 impl FrameworkRequest {
@@ -143,6 +146,7 @@ impl FrameworkRequest {
             body: Body::Empty,
             session: None,
             version: None,
+            parsed_json: None,
         }
     }
 
@@ -557,19 +561,59 @@ impl LocalRouter {
     /// Returns an error if the handler fails or profile registrations are stale.
     pub fn execute_with_response_profiles(
         &self,
-        mut request: FrameworkRequest,
+        request: FrameworkRequest,
         parser_error_format: ParserErrorFormat,
         response_status_error_format: ResponseStatusErrorFormat,
         default_error_responses: &DefaultErrorResponses,
     ) -> FrameworkResult<FrameworkResponse> {
-        let explicit_head = request.method == HttpMethod::Head
+        self.execute_with_json_parsers(
+            request,
+            parser_error_format,
+            response_status_error_format,
+            default_error_responses,
+            &JsonRequestParsers::default(),
+        )
+    }
+
+    fn validate_json_parsers(&self, json_parsers: &JsonRequestParsers) -> FrameworkResult<()> {
+        if json_parsers.is_empty() {
+            return Ok(());
+        }
+        let contracts: Vec<_> = self
+            .routes
+            .iter()
+            .map(|route| route.contract.clone())
+            .collect();
+        json_parsers
+            .validate_routes(&contracts)
+            .map_err(|message| FrameworkError::new("invalid_json_parser", message))?;
+        Ok(())
+    }
+
+    fn has_explicit_head(&self, request: &FrameworkRequest) -> bool {
+        request.method == HttpMethod::Head
             && self.routes.iter().any(|route| {
                 route.contract.method == HttpMethod::Head
                     && !matches!(
                         match_path_checked(&route.contract.path, &request.path),
                         Ok(None)
                     )
-            });
+            })
+    }
+
+    /// Execute with explicit unversioned JSON parsing before schema validation.
+    /// # Errors
+    /// Returns handler errors or invalid registration errors.
+    pub fn execute_with_json_parsers(
+        &self,
+        mut request: FrameworkRequest,
+        parser_error_format: ParserErrorFormat,
+        response_status_error_format: ResponseStatusErrorFormat,
+        default_error_responses: &DefaultErrorResponses,
+        json_parsers: &JsonRequestParsers,
+    ) -> FrameworkResult<FrameworkResponse> {
+        self.validate_json_parsers(json_parsers)?;
+        let explicit_head = self.has_explicit_head(&request);
         for route in &self.routes {
             if route.contract.method != request.method
                 && !(request.method == HttpMethod::Head
@@ -596,6 +640,19 @@ impl LocalRouter {
                     .map_err(|message| FrameworkError::new("invalid_response_profile", message))?;
                 request.params = params;
                 normalize_framework_request_body(&route.contract, &mut request);
+                if let Err(response) = parse_local_json(
+                    json_parsers,
+                    &route.contract,
+                    &mut request,
+                    parser_error_format,
+                ) {
+                    return Ok(normalize_local_error(
+                        default_error_responses,
+                        &route.contract,
+                        response,
+                        &request.context.correlation_id,
+                    ));
+                }
                 let selected = route.versions.select(&request);
                 let contract = match selected {
                     Ok(Some((contract, version))) => {
@@ -716,9 +773,9 @@ pub fn validate_framework_request(
         &contract.request,
         request,
         request
-            .version
+            .parsed_json
             .as_ref()
-            .is_some_and(|version| version.parsed_body.is_some()),
+            .is_some_and(|parsed| parsed.value.is_some()),
     )
 }
 
@@ -1464,5 +1521,25 @@ mod path_encoding_tests {
                     .is_none()
             );
         }
+    }
+}
+
+fn parse_local_json(
+    parsers: &JsonRequestParsers,
+    route: &RouteContract,
+    request: &mut FrameworkRequest,
+    format: ParserErrorFormat,
+) -> Result<(), FrameworkResponse> {
+    match parsers.parse(route, request) {
+        Ok(Some(parsed)) => {
+            request.parsed_json = Some(parsed);
+            Ok(())
+        }
+        Ok(None) => Ok(()),
+        Err(error) => Err(validation_error_response_with_parser_format(
+            &[error],
+            &request.context.correlation_id,
+            format,
+        )),
     }
 }

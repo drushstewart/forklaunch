@@ -46,6 +46,7 @@ on:
       - 'cli/tests/rust_router_origin_parity.mjs'
       - 'cli/tests/rust_correlation_parity.mjs'
       - 'cli/tests/rust_cors_parity.mjs'
+      - 'cli/tests/rust_json_request_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -204,6 +205,7 @@ on:
       - 'cli/tests/rust_billing_payment_link_options.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_update.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
+      - 'cli/tests/rust_billing_cached_session_identity.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
       - 'cli/tests/fixtures/rust_billing_recurring_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
@@ -291,6 +293,7 @@ on:
       - 'cli/tests/rust_router_origin_parity.mjs'
       - 'cli/tests/rust_correlation_parity.mjs'
       - 'cli/tests/rust_cors_parity.mjs'
+      - 'cli/tests/rust_json_request_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -449,6 +452,7 @@ on:
       - 'cli/tests/rust_billing_payment_link_options.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_update.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
+      - 'cli/tests/rust_billing_cached_session_identity.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
       - 'cli/tests/fixtures/rust_billing_recurring_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
@@ -624,6 +628,9 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_cors_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_json_request_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/typescript_response_status_validation.mjs
@@ -880,6 +887,7 @@ jobs:
       - run: node cli/tests/rust_billing_payment_link_options.mjs
       - run: node cli/tests/rust_billing_payment_link_cache_update.mjs
       - run: node cli/tests/rust_billing_payment_link_cache_reads.mjs
+      - run: node cli/tests/rust_billing_cached_session_identity.mjs
       - run: node cli/tests/rust_billing_subscription_party_types.mjs
       - run: node cli/tests/rust_billing_checkout_uri.mjs
         env:

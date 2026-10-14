@@ -6025,3 +6025,27 @@ authority. 24 focused actual-source cases, 353 configured regressions, 12 update
 regressions, focused real-source typechecking, and 168 base/170 Stripe operations
 pass: /private/tmp/fl-payment-link-cache-reads*.log. CI includes the new fixture.
 Broad mapper/reconciliation gate855 remains open.
+
+## Unversioned framed JSON parser receipt (2026-10-14)
+
+Opt-in JsonRequestParsers registrations bind original unversioned request
+declarations, parser options and verifier/reviver hooks. Matching framed JSON
+is decoded before authentication and request callbacks, independently of schema
+validation mode. Original wire bytes remain separate from ParsedJsonBody parsed
+values/decompressed bytes. Auth callbacks observe the parsed body; framed empty
+JSON becomes an object and unframed/nonmatching media remains absent. LocalRouter
+provides an explicit execution API with identical framing rules. MCP is unchanged.
+
+192 actual-source comparisons (384 HTTP observations), 47 HTTP and 92 Axum lib
+tests, and strict all-target HTTP/Axum MCP/cookie-session Clippy pass. Eighteen
+unsupported numeric/Unicode outcomes are asserted separately: integral magnitudes
+outside JS safe range, nonfinite overflow and lone UTF-16 surrogates remain
+explicit bounded-profile limits. Finite decimal/exponent/subnormal values use
+correctly rounded parsing and comparisons inspect IEEE bits. JS response
+serialization, including signed-zero spelling, is not claimed. Generic schema
+diagnostic equality and broader parser/value profiles remain open. Existing
+versioned tests pass with float_roundtrip enabled. Logs:
+/private/tmp/fl-json-parser-{tests,clippy,parity}.log. CI includes the live oracle.
+FrameworkRequest gains parsed_json; constructor-based callers preserve forward
+compatibility. Registration metadata is validated before exposure and stale or
+duplicate registrations fail. Checklist remains 660/682 (96.8%),22open.

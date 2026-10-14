@@ -264,6 +264,23 @@ responses, where Express sends zero. Handlers porting incremental `res.vary`
 updates can seed headers from `TypeScriptCorsHeaders`; returned response headers
 override prepared defaults. Native CORS behavior remains the default.
 
+Register declared unversioned JSON routes in `JsonRequestParsers` and set
+`RouterConfig.json_request_parsers` to parse framed matching-media requests before
+authentication and request-schema callbacks. Parsing remains active when schema
+validation is disabled. Handlers can extract `ParsedJsonBody`; authenticators and
+framework handlers can inspect `FrameworkRequest.parsed_json`. Original wire
+bytes remain available independently from decoded bytes and parsed values.
+Unframed or nonmatching media skips parsing; framed empty JSON becomes `{}`.
+Parser options and verifier/reviver hooks reuse the versioned parser engine.
+The bounded value domain admits finite decimals/exponents, rejects integral
+magnitudes beyond JavaScript's safe range, overflow and lone UTF-16 surrogates.
+This does not implement generic JSON-schema validation or JavaScript response
+serialization (including signed-zero spelling). Native behavior is unchanged
+unless explicitly registered. LocalRouter offers `execute_with_json_parsers`
+with the same framing rules; MCP argument handling remains separate. Construct
+framework requests through `FrameworkRequest::new` when migrating callers that
+previously enumerated every public struct field.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

@@ -90,6 +90,8 @@ pub enum HandlerErrorFormat {
 pub struct RouterConfig {
     /// Application validators bound to declared unversioned request schemas.
     pub request_validators: RequestValidators,
+    /// Opt-in unversioned JSON parsers, run before authentication and schema callbacks.
+    pub json_request_parsers: forklaunch_http::JsonRequestParsers,
     /// Opt-in bounded validators for finite response bodies.
     pub response_validators: ResponseValidators,
     /// Selected missing default error-string responses with finite collection bounds.
@@ -152,6 +154,7 @@ impl Default for RouterConfig {
         Self {
             version_body_hooks: forklaunch_http::VersionBodyHooksRegistry::default(),
             request_validators: RequestValidators::default(),
+            json_request_parsers: forklaunch_http::JsonRequestParsers::default(),
             response_validators: ResponseValidators::default(),
             default_error_responses: DefaultErrorResponses::default(),
             #[cfg(feature = "cookie-session")]
@@ -558,6 +561,10 @@ impl ForkLaunchRouter {
             ..
         } = child;
         self.config
+            .json_request_parsers
+            .extend(config.json_request_parsers)
+            .expect("duplicate JSON parser registration");
+        self.config
             .version_body_hooks
             .extend(config.version_body_hooks);
         self.config
@@ -913,6 +920,7 @@ struct ValidationState {
     response_validators: ResponseValidators,
     default_error_responses: Arc<DefaultErrorResponses>,
     request_validators: RequestValidators,
+    json_request_parsers: forklaunch_http::JsonRequestParsers,
     routes: HashMap<String, RouteContract>,
     versions: HashMap<String, forklaunch_http::VersionedRoutePlan>,
     local_validation: HashSet<String>,
@@ -965,6 +973,10 @@ impl ValidationState {
         local_validation: HashSet<String>,
     ) -> Self {
         config
+            .json_request_parsers
+            .validate_routes(declared_registry.routes())
+            .expect("invalid JSON parser registration");
+        config
             .request_validators
             .validate_routes(declared_registry.routes())
             .expect("invalid request validator registration");
@@ -1001,6 +1013,7 @@ impl ValidationState {
             .collect();
         Self {
             request_validators: config.request_validators.clone(),
+            json_request_parsers: config.json_request_parsers.clone(),
             response_validators: config.response_validators.clone(),
             default_error_responses: Arc::new(config.default_error_responses.clone()),
             routes,
@@ -1152,10 +1165,27 @@ async fn validate_matched_contract(
         Err(error) => return formatted_body_read_error(&error, state.parser_error_format, &parts),
     };
 
-    let framework_request = match state.build_request(&contract, &parts, &bytes) {
+    let mut framework_request = match state.build_request(&contract, &parts, &bytes) {
         Ok(request) => request,
         Err(response) => return framework_response_to_axum(response),
     };
+    match state
+        .json_request_parsers
+        .parse(&contract, &framework_request)
+    {
+        Ok(Some(parsed)) => {
+            parts.extensions.insert(parsed.clone());
+            framework_request.parsed_json = Some(parsed);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            return framework_response_to_axum(validation_error_response_with_parser_format(
+                &[error],
+                &framework_request.context.correlation_id,
+                state.parser_error_format,
+            ));
+        }
+    }
     let requires_auth = contract.auth.is_some()
         || contract.rbac.is_some()
         || contract.access != AccessLevel::Public;
@@ -1468,6 +1498,10 @@ fn build_framework_request(
         };
     }
 
+    request.parsed_json = parts
+        .extensions
+        .get::<forklaunch_http::ParsedJsonBody>()
+        .cloned();
     request.version = parts
         .extensions
         .get::<forklaunch_http::SelectedVersion>()
@@ -2209,3 +2243,6 @@ mod extended_method_tests {
 
 #[cfg(test)]
 mod request_context_tests;
+
+#[cfg(test)]
+mod json_request_tests;

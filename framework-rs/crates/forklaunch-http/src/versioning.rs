@@ -27,6 +27,9 @@ mod multipart;
 #[path = "versioning_wire.rs"]
 mod wire;
 pub use multipart::MultipartLimits;
+#[path = "versioning_json_request.rs"]
+mod json_request;
+pub use json_request::{JsonRequestParsers, ParsedJsonBody};
 
 /// Available to local handlers and as an Axum request extension.
 #[derive(Debug, Clone, PartialEq, Eq)]
