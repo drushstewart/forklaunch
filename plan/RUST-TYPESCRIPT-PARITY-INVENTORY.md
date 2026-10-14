@@ -5949,3 +5949,27 @@ The actual configured oracle, three native external-JWT tests and strict IAM
 Clippy pass: /private/tmp/fl-iam-jwt-header-{native,clippy,ts}.log.
 All three differential fixtures are included in CI. Broad gates remain open;
 checklist remains 660/682 (96.8%), 22 open.
+
+## Cache-only PaymentLink update and JWKS grace receipt (2026-10-14)
+
+Configured billing-base PaymentLink updates now use an optional validated
+toCachedDto hook when database backup is disabled. Public identities are checked
+before/after mapping, known dates are restored from JSON caches, and invalid
+patches/cache rows fail before writes. Backup and custom mapper fallback retain
+the existing entity path. This does not enable Stripe mutations from cached
+references or resolve the Stripe wrapper's duplicate update mapping.
+12 focused actual-source cases, 353 configured mapper cases, 168 base and 170
+Stripe operations and focused real-source typechecking pass. Logs:
+/private/tmp/fl-payment-link-cache-update{,-configured,-types,-base,-legacy}.log.
+
+KeyRing and AuthHttp accept a validated Duration JWKS grace period, preserving
+the default 30 days, strict expiry boundary, no-expiry visibility, signing-key
+eligibility and remote-JWKS behavior. Whole nonnegative milliseconds within
+signed range form the supported typed subset; JavaScript negative/nonfinite
+values and sub-millisecond configuration are explicitly outside it.
+70 actual TypeScript visibility comparisons, 40 native boundary cases, invalid
+configuration checks, four HTTP/external-JWT tests, the existing full default
+key lifecycle and strict IAM Clippy pass. Logs:
+/private/tmp/fl-iam-jwks-grace-{ts,boundary,http,clippy}.log. The initial native
+log contains a corrected fixture-only key-id mismatch; final boundary rerun
+is green. Both new fixtures are wired into CI. Checklist remains 660/682,22open.

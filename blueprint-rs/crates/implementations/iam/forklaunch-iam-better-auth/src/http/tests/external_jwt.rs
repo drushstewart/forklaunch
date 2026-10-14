@@ -253,7 +253,9 @@ async fn disabled_session_jwt_header_skips_signing_but_keeps_explicit_token_and_
         )
         .unwrap()
         .with_clock(move || now)
-        .with_jwt_header_disabled(true);
+        .with_jwt_header_disabled(true)
+        .with_jwks_grace_period(std::time::Duration::ZERO)
+        .unwrap();
         if external {
             app = app.with_external_jwt_signer(
                 ExternalJwtSigner::new(
@@ -342,4 +344,64 @@ async fn disabled_session_jwt_header_skips_signing_but_keeps_explicit_token_and_
             assert_eq!(body["keys"].as_array().unwrap().len(), 1);
         }
     }
+}
+
+#[tokio::test]
+async fn http_jwks_grace_is_applied_without_minting_or_reenabling_retired_keys() {
+    use axum::body::{Body, to_bytes};
+    use tower::ServiceExt;
+    let store = Arc::new(MemoryAuthStore::default());
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let ring = crate::keyring::KeyRing::new(store.clone(), "http://localhost:3000");
+    ring.jwks(now).await.unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    let mut row = tx.list(Model::Jwks).await.unwrap().remove(0);
+    row["expiresAt"] = json!(now.to_rfc3339());
+    tx.replace(Model::Jwks, row).await.unwrap();
+    tx.commit().await.unwrap();
+    for millis in [0, 1] {
+        let router = AuthHttp::new(
+            store.clone(),
+            "http://localhost:3000".into(),
+            vec![42; 32],
+            vec![],
+        )
+        .unwrap()
+        .with_clock(move || now)
+        .with_jwks_grace_period(std::time::Duration::from_millis(millis))
+        .unwrap()
+        .router();
+        let response = router
+            .oneshot(Request::builder().uri("/jwks").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+        assert_eq!(
+            body["keys"].as_array().unwrap().len(),
+            usize::from(millis > 0)
+        );
+    }
+    let mut tx = store.begin(false).await.unwrap();
+    assert_eq!(tx.list(Model::Jwks).await.unwrap().len(), 1);
+    tx.commit().await.unwrap();
+    ring.with_jwks_grace_period(std::time::Duration::from_secs(86400))
+        .unwrap()
+        .issue("user", "user@example.test", None, now)
+        .await
+        .unwrap();
+    let mut tx = store.begin(false).await.unwrap();
+    assert_eq!(
+        tx.list(Model::Jwks).await.unwrap().len(),
+        2,
+        "publication grace cannot make expired key eligible to sign"
+    );
+    tx.commit().await.unwrap();
+    assert!(
+        AuthHttp::new(store, "http://localhost:3000".into(), vec![42; 32], vec![])
+            .unwrap()
+            .with_jwks_grace_period(std::time::Duration::from_nanos(1))
+            .is_err()
+    );
 }

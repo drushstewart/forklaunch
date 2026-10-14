@@ -1370,31 +1370,31 @@
                   "name": "getPaymentLink",
                   "signature": "async getPaymentLink({\n    id\n  }: IdDto): Promise<MapperDomains['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 179
+                  "line": 186
                 },
                 {
                   "name": "expirePaymentLink",
                   "signature": "async expirePaymentLink({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 196
+                  "line": 203
                 },
                 {
                   "name": "handlePaymentSuccess",
                   "signature": "async handlePaymentSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 212
+                  "line": 219
                 },
                 {
                   "name": "handlePaymentFailure",
                   "signature": "async handlePaymentFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 227
+                  "line": 234
                 },
                 {
                   "name": "listPaymentLinks",
                   "signature": "async listPaymentLinks(\n    idsDto?: IdsDto,\n    maxValidatedRecords?: number\n  ): Promise<MapperDomains['PaymentLinkMapper'][]>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 242
+                  "line": 249
                 }
               ]
             }

@@ -83,6 +83,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             return Err(BlueprintError::new("HTTP_NOT_FOUND", "Not Found"));
         }
         crate::keyring::KeyRing::new(self.store.clone(), self.auth_origin())
+            .with_jwks_grace_period(self.jwks_grace_period)?
             .jwks(now)
             .await
     }

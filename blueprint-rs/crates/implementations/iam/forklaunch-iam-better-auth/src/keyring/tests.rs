@@ -2,6 +2,7 @@ mod sign;
 mod verify;
 use super::*;
 use crate::store::memory::MemoryAuthStore;
+use chrono::Duration;
 
 pub(crate) async fn exercise_key_lifecycle<S: AuthStore>(store: Arc<S>) {
     let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
@@ -166,4 +167,74 @@ pub(crate) async fn exercise_large<S: AuthStore>(store: Arc<S>) {
         }
     }
     tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn configured_grace_period_uses_strict_millisecond_boundaries() {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let store = Arc::new(MemoryAuthStore::default());
+    let ring = KeyRing::new(store.clone(), "https://auth.example.test");
+    ring.jwks(now).await.unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    let source = tx.list(Model::Jwks).await.unwrap().remove(0);
+    tx.delete(Model::Jwks, source["id"].as_str().unwrap())
+        .await
+        .unwrap();
+    let offsets = [
+        None,
+        Some(-2_592_000_001),
+        Some(-2_592_000_000),
+        Some(-1001),
+        Some(-1000),
+        Some(-1),
+        Some(0),
+        Some(1),
+        Some(1000),
+        Some(1001),
+    ];
+    for (index, offset) in offsets.iter().enumerate() {
+        let mut row = source.clone();
+        row["id"] = json!(format!("key-{index}"));
+        let mut public: Value = serde_json::from_str(row["publicKey"].as_str().unwrap()).unwrap();
+        public["kid"] = row["id"].clone();
+        row["publicKey"] = json!(public.to_string());
+        row["expiresAt"] = offset.map_or(Value::Null, |offset| {
+            json!(timestamp(now + Duration::milliseconds(offset)))
+        });
+        tx.insert(Model::Jwks, row).await.unwrap();
+    }
+    tx.commit().await.unwrap();
+    for millis in [2_592_000_000, 0, 1, 1000] {
+        let configured = KeyRing::new(store.clone(), "https://auth.example.test")
+            .with_jwks_grace_period(std::time::Duration::from_millis(millis))
+            .unwrap();
+        let actual = configured.jwks(now).await.unwrap();
+        let expected: Vec<_> = offsets
+            .iter()
+            .enumerate()
+            .filter(|(_, offset)| {
+                offset.is_none_or(|offset| i128::from(offset) + i128::from(millis) > 0)
+            })
+            .map(|(index, _)| json!(format!("key-{index}")))
+            .collect();
+        assert_eq!(
+            actual["keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|key| key["kid"].clone())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        if millis == 2_592_000_000 {
+            assert_eq!(actual, ring.jwks(now).await.unwrap());
+        }
+    }
+    for invalid in [std::time::Duration::from_nanos(1), std::time::Duration::MAX] {
+        assert!(
+            KeyRing::new(store.clone(), "https://auth.example.test")
+                .with_jwks_grace_period(invalid)
+                .is_err()
+        );
+    }
 }

@@ -7,7 +7,7 @@ use base64::{
     Engine,
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
 };
-use chrono::{DateTime, Duration, SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Value, json};
 use std::{cmp::Reverse, sync::Arc};
@@ -24,6 +24,7 @@ pub(crate) mod verify;
 pub struct KeyRing<S> {
     store: Arc<S>,
     base_url: String,
+    grace_millis: i64,
 }
 impl<S: AuthStore> KeyRing<S> {
     #[must_use]
@@ -31,7 +32,17 @@ impl<S: AuthStore> KeyRing<S> {
         Self {
             store,
             base_url: base_url.into(),
+            grace_millis: 2_592_000_000,
         }
+    }
+
+    /// Sets the publication grace period for expired public keys. This does
+    /// not permit expired private keys to issue new tokens.
+    /// # Errors
+    /// Rejects sub-millisecond precision or durations exceeding signed milliseconds.
+    pub fn with_jwks_grace_period(mut self, period: std::time::Duration) -> BlueprintResult<Self> {
+        self.grace_millis = grace_millis(period)?;
+        Ok(self)
     }
 
     /// Issues claims from an authenticated persisted session. Callers supply
@@ -92,7 +103,7 @@ impl<S: AuthStore> KeyRing<S> {
     }
 
     /// Publishes live keys and expired keys still within the actual default
-    /// 30-day grace period, within the configured adapter's first 100 records.
+    /// configured grace period (30 days by default), within the configured adapter's first 100 records.
     /// An empty store initializes one key atomically.
     /// An existing store containing only retired keys may publish an empty set,
     /// matching Better Auth; token issuance then provisions a new live key.
@@ -111,9 +122,10 @@ impl<S: AuthStore> KeyRing<S> {
                 None => true,
                 Some(expires) => {
                     expires
-                        .checked_add_signed(Duration::days(30))
+                        .timestamp_millis()
+                        .checked_add(self.grace_millis)
                         .ok_or_else(key_error)?
-                        > now
+                        > now.timestamp_millis()
                 }
             };
             if visible {
@@ -270,4 +282,20 @@ fn key_error() -> BlueprintError {
         "better_auth_key_error",
         "Unable to use authentication signing key",
     )
+}
+
+// Validate once before any storage access; retain exact whole milliseconds.
+pub(crate) fn grace_millis(period: std::time::Duration) -> BlueprintResult<i64> {
+    if !period.subsec_nanos().is_multiple_of(1_000_000) {
+        return Err(BlueprintError::new(
+            "better_auth_invalid_config",
+            "JWKS grace period must use whole milliseconds",
+        ));
+    }
+    i64::try_from(period.as_millis()).map_err(|_| {
+        BlueprintError::new(
+            "better_auth_invalid_config",
+            "JWKS grace period exceeds supported milliseconds",
+        )
+    })
 }

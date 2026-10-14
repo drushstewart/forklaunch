@@ -55,6 +55,7 @@ pub struct AuthHttp<S> {
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
     jwt_header_disabled: bool,
+    jwks_grace_period: std::time::Duration,
     error_observer: Option<observer::Observer>,
     error_observer_mode: AuthApiErrorObserverMode,
     secret: Zeroizing<Vec<u8>>,
@@ -89,6 +90,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             google: None,
             external_jwt: None,
             jwt_header_disabled: false,
+            jwks_grace_period: std::time::Duration::from_secs(2_592_000),
             error_observer: None,
             error_observer_mode: AuthApiErrorObserverMode::default(),
             secret,
@@ -109,6 +111,15 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     pub const fn with_jwt_header_disabled(mut self, disabled: bool) -> Self {
         self.jwt_header_disabled = disabled;
         self
+    }
+    /// Sets how long expired public keys remain in the local JWKS response.
+    /// Token signing eligibility and remote-JWKS suppression are unchanged.
+    /// # Errors
+    /// Rejects sub-millisecond precision or durations exceeding signed milliseconds.
+    pub fn with_jwks_grace_period(mut self, period: std::time::Duration) -> BlueprintResult<Self> {
+        crate::keyring::grace_millis(period)?;
+        self.jwks_grace_period = period;
+        Ok(self)
     }
     /// Sets a trusted fixed authentication namespace. A path already present
     /// in `base_url` takes precedence, matching Better Auth's URL resolution.

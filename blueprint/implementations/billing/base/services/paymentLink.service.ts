@@ -131,10 +131,33 @@ export class BasePaymentLinkService<
 
     const cacheKey = this.createCacheKey(paymentLinkDto.id);
     const existingLink = (
-      await this.cache.readRecord<MapperEntities['PaymentLinkMapper']>(cacheKey)
+      await this.cache.readRecord<MapperDomains['PaymentLinkMapper']>(cacheKey)
     )?.value;
     if (!existingLink) {
       throw new Error('Payment link not found');
+    }
+    if (
+      !this.enableDatabaseBackup &&
+      this.mappers.UpdatePaymentLinkMapper.toCachedDto
+    ) {
+      if (existingLink.id !== paymentLinkDto.id) {
+        throw new Error('Cached payment link identity cannot change');
+      }
+      const updated = await this.mappers.UpdatePaymentLinkMapper.toCachedDto(
+        paymentLinkDto,
+        existingLink,
+        args[0] instanceof EntityManager ? args[0] : this.em,
+        ...(args[0] instanceof EntityManager ? args.slice(1) : args)
+      );
+      if (updated.id !== paymentLinkDto.id) {
+        throw new Error('Cached payment link identity cannot change');
+      }
+      await this.cache.putRecord({
+        key: cacheKey,
+        value: updated,
+        ttlMilliseconds: this.cache.getTtlMilliseconds()
+      });
+      return updated;
     }
     const paymentLink = await this.mappers.UpdatePaymentLinkMapper.toEntity(
       paymentLinkDto,

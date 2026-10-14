@@ -28,6 +28,13 @@ export type PaymentLinkMappers<
     ) => Promise<InferEntity<MapperEntities['CreatePaymentLinkMapper']>>;
   };
   UpdatePaymentLinkMapper: {
+    /** Optional local cache-only mapping; never grants provider mutation authority. */
+    toCachedDto?: (
+      dto: MapperDomains['UpdatePaymentLinkMapper'],
+      existing: MapperDomains['PaymentLinkMapper'],
+      em: EntityManager,
+      ...args: unknown[]
+    ) => Promise<MapperDomains['PaymentLinkMapper']>;
     entity: MapperEntities['UpdatePaymentLinkMapper'];
     toEntity: (
       dto: MapperDomains['UpdatePaymentLinkMapper'],

@@ -893,3 +893,13 @@ behavior but skip JWT signing and the automatic JWT/expose response headers.
 Explicit `/token` and `/jwks` behavior is unchanged, including external signer
 failures and remote-JWKS suppression. The configured generated preset leaves
 this option off. Separately configured CORS expose headers are unchanged.
+
+`KeyRing::with_jwks_grace_period` and `AuthHttp::with_jwks_grace_period` accept
+`std::time::Duration` for public-key publication grace (default 30 days).
+Expired keys remain visible only while `expiresAt + grace > now`, compared in
+whole milliseconds. This never extends private-key signing eligibility or enables
+a local JWKS endpoint when using a remote signer. The typed subset excludes
+JavaScript negative/NaN/infinite option values, rejects sub-millisecond durations
+and values exceeding signed 64-bit milliseconds before storage access, and reports
+checked timestamp overflow as an error. Existing first-100-key publication bounds
+remain unchanged; no custom getJwks/createJwk adapter hooks are implied.
