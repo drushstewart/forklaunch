@@ -593,3 +593,14 @@ correlation. MCP now forwards envelope correlation with precedence over tool
 arguments. Generated HTTP/MCP and restricted PostgreSQL tests cover grant changes,
 organization movement, invalid/unpersisted JWTs, disable/unlink/revoke/delete and
 restart. This remains an explicit mode; default JWT-claims behavior is separate.
+
+
+Scoped checkout read review (2026-10-13): direct account/mode evidence and explicit
+tenant-local durable ownership precede the provider object fetch. The provider
+object/customer and exact binding generation are checked; expiry is rechecked
+after both network and database work. Joined statement snapshots avoid returning
+a binding already revoked/replaced before that read, while future revocation is
+not locked out. Sensitive decryption requires an audited actor and rolls back on
+audit denial. Cache-only ownership and local customer UUID inference are rejected.
+Provider financial mutations and managed identity context remain unimplemented
+by this opt-in read path. Restricted-role race/failure tests and Clippy pass.

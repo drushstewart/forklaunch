@@ -5276,3 +5276,27 @@ owned command fixture to read identity from the explicit Cargo manifest instead
 of treating the manifest pathname as a package name. No product release behavior
 changed. Receipt: `/private/tmp/fl-rust-current-release.log`.
 Checklist remains **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Scoped durable Stripe checkout reads
+
+The opt-in `postgres-identity` feature adds `get_bound_checkout_session` for
+explicit public UUID aliases. Each read verifies the direct Stripe account/mode,
+resolves tenant/account/mode/deployment/kind ownership, then fetches only the
+bound provider object. Object ID/type, subscription mode and customer ownership
+are checked. A final joined database statement reads the exact binding generation
+and encrypted durable record, appends a sensitive-read audit, and is followed by
+another context-expiry check. Public aliases leave storage IDs/ciphertext intact.
+This is a point-in-time read; it does not lock out future revocation.
+
+All **17 base/Stripe regression tests**, including restricted PostgreSQL integration,
+and strict all-target Clippy pass. Coverage includes unbound/foreign scopes,
+malformed/deleted customers, replacement during the provider GET, audit denial,
+expired context and unchanged encrypted storage. CI runs the new ignored PG test.
+Logs: `/private/tmp/fl-billing-bound-read-{postgres,clippy,regression}.log`.
+
+This API requires durable ownership and an existing Stripe customer reference;
+local customer UUIDs need their own trusted mapping and fail closed here. Existing
+cache-based trait reads, managed gateway mode, HTTP routes and provider mutations
+are not switched automatically. Broader identity/wrapper integration remains
+open. Checklist: **660/682 (96.8%), 22 open**.

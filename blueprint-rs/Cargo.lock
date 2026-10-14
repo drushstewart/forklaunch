@@ -1248,13 +1248,16 @@ dependencies = [
  "forklaunch-billing-base",
  "forklaunch-billing-interface",
  "forklaunch-blueprint-core",
+ "forklaunch-core",
  "hmac",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
+ "sqlx",
  "subtle",
  "tokio",
+ "uuid",
  "zeroize",
 ]
 

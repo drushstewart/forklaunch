@@ -1,14 +1,16 @@
 //! Explicit administrative identity provisioning. No provider verification,
-//! inferred key context, automatic backfill, or runtime wrapper integration.
+//! inferred key context or automatic backfill. Provider wrappers must separately
+//! authenticate scope before resolving and reading a binding.
 use super::{PostgresBillingStore, db_error, invalid, validate_id};
-use crate::services::BillingKind;
+use crate::services::{BillingKind, Scope};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 /// Trusted server configuration, never an HTTP DTO or a claim extracted from
-/// providerFields. Current Stripe transport does not authenticate this scope;
-/// administrators must provision it explicitly against their configured account.
+/// providerFields. Construction does not authenticate this scope; administrators
+/// provision it explicitly against their configured account, and provider wrappers
+/// must independently verify the configured account and mode.
 #[derive(Clone, PartialEq, Eq)]
 pub struct StripeBindingScope {
     deployment_label: String,
@@ -16,6 +18,14 @@ pub struct StripeBindingScope {
     livemode: bool,
 }
 impl StripeBindingScope {
+    #[must_use]
+    pub fn account_id(&self) -> &str {
+        &self.account_id
+    }
+    #[must_use]
+    pub const fn livemode(&self) -> bool {
+        self.livemode
+    }
     /// # Errors
     /// Rejects empty/unsafe labels and non-account identifiers. This validates
     /// syntax only; it does not prove control of an account or API key mode.
@@ -93,6 +103,38 @@ impl PostgresBillingStore {
             return Err(invalid());
         }
         Ok(actor)
+    }
+    /// Reads and audits durable ownership joined to exactly this binding generation.
+    /// Captures binding and record in one statement snapshot. Does not
+    /// authenticate a provider context; callers must verify it around network/DB work.
+    /// # Errors
+    /// Rejects missing actors, foreign tenants, revoked/replaced aliases, invalid
+    /// ciphertext and audit failures. Cache-only ownership is never read here.
+    pub async fn read_stripe_bound_record(
+        &self,
+        binding: &DurableStripeBinding,
+    ) -> BlueprintResult<serde_json::Value> {
+        self.binding_actor()?;
+        if binding.tenant != self.tenant.id() {
+            return Err(conflict());
+        }
+        let mut tx = self.transaction().await?;
+        let row:Option<sqlx::types::Json<serde_json::Value>> = sqlx::query_scalar("SELECT r.data FROM fl_billing.provider_bindings b JOIN fl_billing.records r ON r.tenant_id=b.tenant_id AND r.scope=b.scope AND r.kind=b.kind AND r.id=b.storage_id WHERE b.tenant_id=$1 AND b.kind=$2 AND b.public_id=$3::uuid AND b.binding_id=$4::uuid AND b.storage_id=$5 AND b.provider_id=$6 AND b.deployment_label=$7 AND b.account_id=$8 AND b.livemode=$9")
+            .bind(self.tenant.id()).bind(binding.kind.as_str()).bind(binding.public_id.to_string()).bind(binding.binding_id.to_string())
+            .bind(&binding.storage_id).bind(&binding.provider_id).bind(&binding.scope.deployment_label).bind(&binding.scope.account_id).bind(binding.scope.livemode)
+            .fetch_optional(&mut *tx).await.map_err(db_error)?;
+        let value = self
+            .decode(
+                &mut tx,
+                Scope::Durable,
+                binding.kind,
+                &binding.storage_id,
+                row.ok_or_else(conflict)?.0,
+                "provider_binding_read",
+            )
+            .await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(value)
     }
     /// Trusted administrative provisioning ONLY, not a provider-evidence verifier.
     /// The caller explicitly asserts the provider/account/mode association. Requires
