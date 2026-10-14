@@ -1,6 +1,8 @@
 //! Application-supplied validators for declared unversioned request schemas.
-use forklaunch_contract::{RequestContract, RouteContract, ValidationMode};
-use forklaunch_http::{FrameworkRequest, FrameworkResponse};
+use forklaunch_contract::{
+    ContractRegistry, RequestContract, ResponseContract, RouteContract, ValidationMode,
+};
+use forklaunch_http::{ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse};
 use std::{collections::BTreeMap, sync::Arc};
 
 type Validator = dyn Fn(&FrameworkRequest, Option<&str>) -> Option<FrameworkResponse> + Send + Sync;
@@ -8,6 +10,7 @@ type Validator = dyn Fn(&FrameworkRequest, Option<&str>) -> Option<FrameworkResp
 #[derive(Clone)]
 struct Registration {
     schema: RequestContract,
+    rejection: Option<ResponseContract>,
     validate: Arc<Validator>,
 }
 
@@ -45,10 +48,75 @@ impl RequestValidators {
             key,
             Registration {
                 schema: route.request.clone(),
+                rejection: None,
                 validate: Arc::new(validate),
             },
         );
         Ok(())
+    }
+
+    /// Register explicit rejection metadata alongside a validator. The declaration
+    /// appears in the router registry, exported contracts, SDKs and `OpenAPI`.
+    /// Runtime rejection status and media type must match; mismatches become a
+    /// safe native 500 response. Body schema validation remains caller-owned.
+    /// # Errors
+    /// Rejects invalid error statuses, missing media types and conflicting route
+    /// response declarations, in addition to normal registration constraints.
+    pub fn insert_with_rejection(
+        &mut self,
+        route: &RouteContract,
+        rejection: ResponseContract,
+        validate: impl Fn(&FrameworkRequest, Option<&str>) -> Option<FrameworkResponse>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Result<(), String> {
+        if !(400..=599).contains(&rejection.status_code)
+            || rejection.body.as_ref().is_some_and(|body| {
+                body.content_type
+                    .as_deref()
+                    .is_none_or(|value| !valid_media_type(value))
+            })
+        {
+            return Err(
+                "Rejection declarations require an error status and explicit body media type"
+                    .into(),
+            );
+        }
+        check_conflict(route, &rejection)?;
+        self.insert(route, validate)?;
+        self.entries
+            .get_mut(&key(route))
+            .ok_or("Missing inserted validator")?
+            .rejection = Some(rejection);
+        Ok(())
+    }
+
+    pub(super) fn project(
+        &self,
+        registry: &ContractRegistry,
+    ) -> Result<Option<ContractRegistry>, String> {
+        if !self.entries.values().any(|entry| entry.rejection.is_some()) {
+            return Ok(None);
+        }
+        let mut projected = registry.clone();
+        for route in registry.routes() {
+            if let Some(rejection) = self
+                .entries
+                .get(&key(route))
+                .and_then(|entry| entry.rejection.as_ref())
+            {
+                check_conflict(route, rejection)?;
+                if route.options.request_validation == ValidationMode::Error {
+                    projected.declare_response(
+                        route.method,
+                        &route.operation_name,
+                        rejection.clone(),
+                    )?;
+                }
+            }
+        }
+        Ok(Some(projected))
     }
 
     pub(super) fn validate_routes(&self, routes: &[RouteContract]) -> Result<(), String> {
@@ -63,6 +131,9 @@ impl RequestValidators {
             let route = matches[0];
             if !route.versions.is_empty() || route.request != registration.schema {
                 return Err("Request validator schema no longer matches its route".into());
+            }
+            if let Some(rejection) = &registration.rejection {
+                check_conflict(route, rejection)?;
             }
         }
         Ok(())
@@ -86,10 +157,76 @@ impl RequestValidators {
         if route.options.request_validation != ValidationMode::Error {
             return None;
         }
-        self.entries
-            .get(&key(route))
-            .and_then(|entry| (entry.validate)(request, raw_query))
+        let entry = self.entries.get(&key(route))?;
+        let response = (entry.validate)(request, raw_query)?;
+        if entry
+            .rejection
+            .as_ref()
+            .is_some_and(|declared| !matches_rejection(declared, &response))
+        {
+            return Some(
+                ErrorResponse::new(ErrorKind::Internal, "internal server error")
+                    .with_correlation_id(request.context.correlation_id.clone())
+                    .to_response(),
+            );
+        }
+        Some(response)
     }
+}
+
+fn check_conflict(route: &RouteContract, rejection: &ResponseContract) -> Result<(), String> {
+    if route
+        .responses
+        .iter()
+        .any(|response| response.status_code == rejection.status_code && response != rejection)
+    {
+        Err("Conflicting validator rejection response declaration".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn valid_media_type(value: &str) -> bool {
+    let Some((kind, subtype)) = value
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .split_once('/')
+    else {
+        return false;
+    };
+    let token = |value: &str| {
+        !value.is_empty()
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
+    };
+    token(kind) && token(subtype) && axum::http::HeaderValue::from_str(value).is_ok()
+}
+
+fn matches_rejection(declared: &ResponseContract, response: &FrameworkResponse) -> bool {
+    if declared.status_code != response.status_code {
+        return false;
+    }
+    let Some(body) = &declared.body else {
+        return response.body.is_empty();
+    };
+    let actual = response
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        .map(|(_, value)| value.as_str());
+    actual
+        .zip(body.content_type.as_deref())
+        .is_some_and(|(actual, expected)| {
+            actual
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .eq_ignore_ascii_case(expected.split(';').next().unwrap_or_default().trim())
+        })
 }
 
 fn key(route: &RouteContract) -> String {
@@ -214,3 +351,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "request_rejection_tests.rs"]
+mod rejection_tests;

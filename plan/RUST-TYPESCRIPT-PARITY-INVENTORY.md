@@ -5419,3 +5419,23 @@ Full platform bootstrap/typecheck, live Stripe and cloud deployment remain
 unvalidated. Durable alias reads still require explicit trusted ownership and
 provider-customer mappings; broader billing integration/reconciliation stays
 open. Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: explicit request-validator rejection contracts
+
+`RequestValidators::insert_with_rejection` attaches caller-owned response metadata
+to the effective contract registry, OpenAPI, SDK and MCP exports. Existing route
+declarations cannot be overwritten; replacing configuration removes only its
+contributed metadata. Runtime status/media mismatches return a sanitized 500.
+Body-schema correctness remains the callback author's responsibility, and empty
+text bodies remain valid. Warning/disabled validators do not add rejection docs.
+
+Verified: 64 Axum and 24 contract tests, strict Clippy including MCP, eight focused
+request-validation tests after review, and updated then normally verified 152
+live TypeScript/Rust HTTP outcomes. Canonical differences fall from four to three
+by documenting the existing GET /users query 400 callback. List 404 and both 500
+differences remain; no unreachable response was added to force equality. Logs:
+`/private/tmp/fl-request-rejection-{tests,clippy,clippy-mcp,canonical-update,canonical}.log`
+and `/private/tmp/fl-request-rejection-review-{tests,clippy}.log`.
+
+Checklist remains **660/682 (96.8%), 22 open**.

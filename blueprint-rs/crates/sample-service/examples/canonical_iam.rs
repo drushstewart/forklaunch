@@ -186,9 +186,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|route| route.path == "/users")
         .unwrap();
-    config
-        .request_validators
-        .insert(list, canonical_query::reject)?;
+    config.request_validators.insert_with_rejection(
+        list,
+        ResponseContract::new(
+            400,
+            Some(BodyContract {
+                kind: forklaunch_blueprint_core::contract::BodyKind::Text,
+                schema: forklaunch_blueprint_core::contract::SchemaRef::named("String"),
+                content_type: Some("text/plain".into()),
+            }),
+        ),
+        canonical_query::reject,
+    )?;
     let count = Arc::clone(&query_calls);
     let iam = iam.map_route("/users", move |route| {
         let count = Arc::clone(&count);

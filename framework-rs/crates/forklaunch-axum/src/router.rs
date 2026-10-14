@@ -240,6 +240,7 @@ mod versioning_tests;
 pub struct ForkLaunchRouter {
     base_path: String,
     registry: ContractRegistry,
+    projected_registry: Option<ContractRegistry>,
     routes: HashMap<String, MethodRouter>,
     extended_routes: HashMap<String, HashMap<String, MethodRouter>>,
     config: RouterConfig,
@@ -275,6 +276,7 @@ impl ForkLaunchRouter {
         Self {
             base_path: "/".to_owned(),
             registry: ContractRegistry::for_service(service.contract()),
+            projected_registry: None,
             routes: HashMap::new(),
             extended_routes: HashMap::new(),
             config: RouterConfig::default(),
@@ -365,6 +367,7 @@ impl ForkLaunchRouter {
         Self {
             base_path: "/".to_owned(),
             registry: ContractRegistry::new(),
+            projected_registry: None,
             routes: HashMap::new(),
             extended_routes: HashMap::new(),
             config: RouterConfig::default(),
@@ -381,10 +384,21 @@ impl ForkLaunchRouter {
     }
 
     /// Overrides the cross-cutting router configuration.
+    /// # Panics
+    /// Panics if explicit validator rejection metadata conflicts with a route.
     #[must_use]
     pub fn with_config(mut self, config: RouterConfig) -> Self {
         self.config = config;
+        self.refresh_rejection_contracts();
         self
+    }
+
+    fn refresh_rejection_contracts(&mut self) {
+        self.projected_registry = self
+            .config
+            .request_validators
+            .project(&self.registry)
+            .expect("invalid request validator response declaration");
     }
 
     /// Install native version body callbacks without replacing other router options.
@@ -433,6 +447,7 @@ impl ForkLaunchRouter {
             "duplicate route method and path"
         );
         self.registry.register(contract);
+        self.refresh_rejection_contracts();
         if let Ok(filter) = axum::routing::MethodFilter::try_from(
             Method::from_bytes(method.as_str().as_bytes()).expect("valid method"),
         ) {
@@ -544,6 +559,7 @@ impl ForkLaunchRouter {
             }
         }
 
+        self.refresh_rejection_contracts();
         self
     }
 
@@ -581,10 +597,14 @@ impl ForkLaunchRouter {
         Ok(self)
     }
 
-    /// Borrows the underlying contract registry (useful for SDK/OpenAPI export).
+    /// Borrows the effective registry, including explicit validator rejection
+    /// declarations, for consistent contract, SDK and `OpenAPI` export.
     #[must_use]
     pub const fn registry(&self) -> &ContractRegistry {
-        &self.registry
+        match &self.projected_registry {
+            Some(registry) => registry,
+            None => &self.registry,
+        }
     }
 
     /// Builds the final [`axum::Router`] with validation, docs, and middleware.
@@ -593,7 +613,8 @@ impl ForkLaunchRouter {
     /// Panics on invalid or overlapping paths, including documentation endpoints.
     pub fn into_router(self) -> Router {
         let Self {
-            registry,
+            registry: declared_registry,
+            projected_registry,
             routes,
             mut extended_routes,
             config,
@@ -601,6 +622,8 @@ impl ForkLaunchRouter {
             local_validation,
             ..
         } = self;
+
+        let registry = projected_registry.unwrap_or_else(|| declared_registry.clone());
 
         internal::validate(&internal_mounts, &registry, &config)
             .expect("invalid internal HTTP mount");
@@ -652,6 +675,7 @@ impl ForkLaunchRouter {
             .clone()
             .unwrap_or_else(|| OpenTelemetryCollector::new("forklaunch-http"));
         let state = Arc::new(ValidationState::from_registry(
+            &declared_registry,
             &registry,
             &config,
             telemetry.clone(),
@@ -735,7 +759,7 @@ impl ForkLaunchRouter {
         {
             return Err("MCP endpoint conflicts with documentation".into());
         }
-        let registry = self.registry.clone();
+        let registry = self.registry().clone();
         let http = self.into_router();
         let transport = forklaunch_mcp::server::http_transport(http.clone(), &registry, options)?;
         Ok((http, transport))
@@ -900,6 +924,7 @@ impl ValidationState {
     }
 
     fn from_registry(
+        declared_registry: &ContractRegistry,
         registry: &ContractRegistry,
         config: &RouterConfig,
         telemetry: OpenTelemetryCollector,
@@ -907,15 +932,15 @@ impl ValidationState {
     ) -> Self {
         config
             .request_validators
-            .validate_routes(registry.routes())
+            .validate_routes(declared_registry.routes())
             .expect("invalid request validator registration");
         config
             .response_validators
-            .validate_routes(registry.routes())
+            .validate_routes(declared_registry.routes())
             .expect("invalid response validator registration");
         let hooks = &config.version_body_hooks;
         hooks
-            .validate_routes(registry.routes())
+            .validate_routes(declared_registry.routes())
             .expect("invalid body hook registration");
         let routes = registry
             .routes()

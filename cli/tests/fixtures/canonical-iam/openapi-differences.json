@@ -1,18 +1,6 @@
 [
   {
     "operation": "GET /users",
-    "status": "400",
-    "typescript": {
-      "text/plain": {
-        "type": [
-          "string"
-        ]
-      }
-    },
-    "rust": null
-  },
-  {
-    "operation": "GET /users",
     "status": "404",
     "typescript": {
       "text/plain": {

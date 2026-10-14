@@ -1142,6 +1142,46 @@ impl ContractRegistry {
         self.routes.push(route);
     }
 
+    /// Add an explicit response to one unversioned method/operation contract.
+    /// Existing identical declarations are retained; metadata is never overwritten.
+    /// # Errors
+    /// Rejects missing/ambiguous operations, versioned routes and conflicting statuses.
+    pub fn declare_response(
+        &mut self,
+        method: HttpMethod,
+        operation_name: &str,
+        response: ResponseContract,
+    ) -> Result<(), String> {
+        let indices: Vec<_> = self
+            .routes
+            .iter()
+            .enumerate()
+            .filter(|(_, route)| route.method == method && route.operation_name == operation_name)
+            .map(|(index, _)| index)
+            .collect();
+        if indices.len() != 1 {
+            return Err("Response declaration must identify exactly one route".into());
+        }
+        let route = &mut self.routes[indices[0]];
+        if !route.versions.is_empty() {
+            return Err("Response declaration requires an unversioned route".into());
+        }
+        let mut declared = false;
+        for existing in &route.responses {
+            if existing.status_code == response.status_code {
+                if existing != &response {
+                    return Err("Conflicting response declaration".into());
+                }
+                declared = true;
+            }
+        }
+        if declared {
+            return Ok(());
+        }
+        route.responses.push(response);
+        Ok(())
+    }
+
     /// Register a raw socket contract for portable service artifact exports.
     /// Pass a `forklaunch_ws::SocketContract` or equivalent serialized metadata.
     /// This records metadata; applications compose their runtime upgrade handlers.
