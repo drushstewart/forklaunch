@@ -85,7 +85,7 @@ impl PostgresBillingStore {
     ) -> BlueprintResult<String> {
         self.encryptor.seal(&json!({"kind":"plan_creation","operationId":operation.to_string(),"field":field,"value":value}).to_string(),self.tenant.id(),"[Billing creation journal]").map_err(|_|storage_error())
     }
-    fn open_plan_creation(
+    pub(super) fn open_plan_creation(
         &self,
         operation: Uuid,
         field: &str,

@@ -13,6 +13,10 @@ pub use provider_bindings::{
     PaymentLinkCreationStatus, StripeBindingScope, StripeSubscriptionOwnership,
 };
 pub use provider_bindings::{PlanCreationClaim, PlanCreationReservation, PlanCreationStatus};
+pub use provider_bindings::{
+    SubscriptionCreationClaim, SubscriptionCreationPending, SubscriptionCreationReservation,
+    SubscriptionDependencySnapshot,
+};
 pub use webhooks::{PendingWebhook, WebhookResolution};
 
 use super::{

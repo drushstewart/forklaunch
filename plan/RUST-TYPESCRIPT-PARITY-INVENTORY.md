@@ -8485,3 +8485,39 @@ Logs /private/tmp/fl-otp-{delivery-oracle,client-native,full-iam,clippy,
 final-postgres}.log;16 exact frozen hashes /private/tmp/fl-otp-full-freeze.json;
 final binary provenance /private/tmp/fl-otp-final-pg-zxq1rysi/receipt.json.
 Custom digits/periods/storage, background dispatch and other plugins remain open.
+
+
+## Subscription reservation and durable dependency barriers (2026-10-14)
+
+Stage A adds an immutable encrypted Subscription reservation with persistent
+claims on exact Customer/Plan local bodies, binding generations and completed
+sealed Plan creation provenance. Confirmed commit returns a nonclone reservation;
+inspection/replay never reconstruct dispatch authority. There is no provider
+POST, dispatcher, completion or release API yet. Claims have no TTL and survive
+unknown COMMIT outcomes. The external Party association remains administrative.
+Whole envelopes are bounded before cloning/canonicalization: depth32,8192nodes,
+conservative escaped256KiB (larger than Plan64KiB because two encrypted snapshots
+and sealed provenance are included). Invalid inputs perform no reservation/audit.
+
+Migration10 preinitializes private claim counters for old/new dependencies.
+Mutation triggers lock/read the current counter through UPDATE RETURNING,
+preventing predating statement snapshots from missing a committed reservation.
+Record update/delete, binding revoke/rebind/delete and table truncation are
+barred while claimed. Guards use the actual OLD tenant, not caller GUC visibility.
+Counter SECURITY DEFINER functions have fixed search_path and no PUBLIC EXECUTE;
+private FORCE-RLS policy belongs only the migration owner. Runtime must be a
+distinct non-inheriting non-owner; journal/claim mutations and truncation are denied.
+
+Two isolated PostgreSQL matrices pass with non-superuser/non-BYPASSRLS migration
+owner and restricted runtime even with ALL TABLES grants. They verify backfill
+retains ciphertext, READ COMMITTED/REPEATABLE READ mutation/claim races, one-ticket
+concurrent reserve, immutable/private guards, wrong/empty tenant visibility, ABA,
+stale Plan provenance, foreign actor/tenant, actually blocked-lock expiry, audit/
+freshness rollback and real lost reservation COMMIT acknowledgment. Bounded-input
+unit, strict base/Stripe all-feature/all-target Clippy5.60s, Customer PG10.64s and
+Plan PG12.73s regressions pass. Fixture databases/roles removed. Logs
+/private/tmp/fl-subscription-foundation-{pg-final,unit,clippy-second,
+customer-regression,plan-regression}.log; six hashes
+/private/tmp/fl-subscription-foundation-source-sha256.json. CI runs both PG tests.
+Stage B still needs reviewed finite collection/readback policy and atomic
+publication with validated claim release; this foundation does not close billing.

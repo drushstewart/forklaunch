@@ -1549,6 +1549,7 @@ jobs:
           RUSTDOCFLAGS: -D warnings
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-base --all-features --test services -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-base --all-features --test subscription_creation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_checkout -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_payment_link -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_creation -- --ignored
