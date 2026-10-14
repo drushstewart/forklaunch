@@ -24,6 +24,14 @@ assert.ok(
 );
 const source = await betterAuthOrm(root, dependencies);
 const { persistence, entities, core } = source;
+const {
+  AUTH_ENCRYPTION_CONTEXT,
+  AUTH_ENCRYPTION_POLICY,
+  createAuthEncryptionOrm,
+  withAuthEncryptionPolicy
+} = source.load(
+  'blueprint/iam-better-auth/domain/utils/authEncryptionPolicy.util.ts'
+);
 const require = createRequire(path.join(dependencies, 'package.json'));
 const jose = await import(pathToFileURL(require.resolve('jose')));
 persistence.registerEncryptor(
@@ -48,7 +56,12 @@ const context = (callback) =>
 let checks = 0;
 try {
   await orm.schema.create();
-  const options = { dependencies, orm, entities, persistence };
+  const options = {
+    dependencies,
+    orm: createAuthEncryptionOrm(orm),
+    entities,
+    persistence
+  };
   let reference = await betterAuthReference(root, options);
   const client = reference.client();
   async function call(route, body, status = 200) {
@@ -81,6 +94,7 @@ try {
   );
   assert.equal(jwt.payload.sub, userId);
   assert.equal(jwt.payload.email, credentials.email);
+  assert.equal(jwt.payload.sessionId, session.body.session.id);
   checks++;
   await call(
     '/sign-in/email',
@@ -100,54 +114,115 @@ try {
   assert.ok(
     events.some(
       (event) =>
-        event.field === 'Account.password' && event.tenantId === 'orm-fixture'
+        event.field === 'Account.password' &&
+        event.tenantId === AUTH_ENCRYPTION_CONTEXT
     )
   );
   assert.ok(
     events.some(
       (event) =>
-        event.field === 'Jwks.privateKey' && event.tenantId === 'orm-fixture'
+        event.field === 'Jwks.privateKey' &&
+        event.tenantId === AUTH_ENCRYPTION_CONTEXT
     )
   );
   checks++;
+  // Auth identities and signing keys belong to the IAM service. The adapter
+  // establishes that context even without a tenant or inside another org scope.
+  for (const tenant of [undefined, 'other-tenant']) {
+    await core.RequestContext.create(orm.em, async () => {
+      const read = async () => {
+        const before = persistence.getCurrentTenantId();
+        const found = await authContext.adapter.findOne({
+          model: 'account',
+          where: [{ field: 'id', value: account.id }]
+        });
+        assert.equal(found.password, account.password);
+        assert.equal(persistence.getCurrentTenantId(), before);
+      };
+      if (tenant) await persistence.withEncryptionContext(tenant, read);
+      else await read();
+    });
+  }
+  checks += 2;
+  // Direct ORM access still requires the correct encryption owner.
   await assert.rejects(
-    core.RequestContext.create(orm.em, () =>
-      authContext.adapter.findOne({
-        model: 'account',
-        where: [{ field: 'id', value: account.id }]
-      })
+    core.RequestContext.create(
+      orm.em,
+      async () =>
+        (await orm.em.findOne(entities.Account, { id: account.id })).password
+          .deanon
     ),
     /tenant|context/i
   );
   await assert.rejects(
-    core.RequestContext.create(orm.em, () =>
-      persistence.withEncryptionContext('other-tenant', () =>
-        authContext.adapter.findOne({
-          model: 'account',
-          where: [{ field: 'id', value: account.id }]
-        })
-      )
+    context(
+      async () =>
+        (await orm.em.findOne(entities.Account, { id: account.id })).password
+          .deanon
     ),
     /decrypt|corrupt|key/i
   );
   checks += 2;
+  // Markers are inspected before hydration, including after a record has been
+  // cached. Never reinterpret legacy ciphertext as service-owned ciphertext.
+  for (const marker of [null, 'legacy-org-policy']) {
+    await orm.em
+      .getConnection()
+      .execute(
+        `update "${schema}".account set encryption_policy=? where id=?`,
+        [marker, account.id]
+      );
+    await assert.rejects(
+      context(() =>
+        authContext.adapter.findOne({
+          model: 'account',
+          where: [{ field: 'id', value: account.id }]
+        })
+      ),
+      /Legacy auth encryption policy/
+    );
+  }
+  await orm.em
+    .getConnection()
+    .execute(`update "${schema}".account set encryption_policy=? where id=?`, [
+      AUTH_ENCRYPTION_POLICY,
+      account.id
+    ]);
+  checks += 2;
   const raw = await orm.em
     .getConnection()
-    .execute(`select password from "${schema}".account`);
+    .execute(`select password,encryption_policy from "${schema}".account`);
+  assert.equal(raw[0].encryption_policy, AUTH_ENCRYPTION_POLICY);
   assert.match(raw[0].password, /^v4:/);
   assert.ok(!raw[0].password.includes(account.password));
   const keys = await orm.em
     .getConnection()
-    .execute(`select private_key from "${schema}".jwks`);
+    .execute(`select private_key,encryption_policy from "${schema}".jwks`);
+  assert.equal(keys[0].encryption_policy, AUTH_ENCRYPTION_POLICY);
   assert.match(keys[0].private_key, /^v4:/);
   assert.ok(!keys[0].private_key.includes('"d":'));
   checks++;
-  await context(async () => {
-    const entity = await orm.em.findOne(entities.Account, { id: account.id });
-    assert.ok(persistence.isCompliantField(entity.password));
-    assert.equal(JSON.stringify(entity.password), '{}');
-    assert.ok(entity.createdAt instanceof Date);
-  });
+  await orm.em
+    .getConnection()
+    .execute(`update "${schema}".jwks set encryption_policy=null`);
+  await assert.rejects(
+    context(() => authContext.adapter.findMany({ model: 'jwks' })),
+    /Legacy auth encryption policy/
+  );
+  await orm.em
+    .getConnection()
+    .execute(`update "${schema}".jwks set encryption_policy=?`, [
+      AUTH_ENCRYPTION_POLICY
+    ]);
+  checks++;
+  await context(() =>
+    withAuthEncryptionPolicy(async () => {
+      const entity = await orm.em.findOne(entities.Account, { id: account.id });
+      assert.ok(persistence.isCompliantField(entity.password));
+      assert.equal(JSON.stringify(entity.password), '{}');
+      assert.ok(entity.createdAt instanceof Date);
+    })
+  );
   checks++;
   const linked = await context(() =>
     authContext.adapter.transaction(async (transaction) => {
@@ -214,6 +289,40 @@ try {
     );
   for (const value of Object.values(stored[0])) assert.match(value, /^v4:/);
   checks++;
+  const organization = await call('/organization/create', {
+    name: 'ORM Organization',
+    slug: `orm-${crypto.randomUUID()}`,
+    domain: 'orm.example.test'
+  });
+  const scopedSession = await call('/get-session');
+  const scope = {
+    userId,
+    organizationId: organization.body.id,
+    sessionId: scopedSession.body.session.id
+  };
+  const scopeCases = [
+    [scope, 'owner'],
+    [{ ...scope, sessionId: scope.sessionId.toUpperCase() }, 'owner'],
+    [{ ...scope, organizationId: scope.organizationId.toUpperCase() }, null],
+    [{ ...scope, userId: scope.userId.toUpperCase() }, null],
+    [{ ...scope, sessionId: crypto.randomUUID() }, null]
+  ];
+  const scopedResults = [];
+  for (const [selected, role] of scopeCases) {
+    const result = await context(async () => ({
+      role: await reference.surfacing.surfaceRole(selected),
+      permissions: Array.from(
+        await reference.surfacing.surfacePermissions(selected)
+      )
+    }));
+    assert.equal(result.role, role);
+    assert.deepEqual(
+      result.permissions,
+      role ? ['platform:read', 'platform:write'] : []
+    );
+    scopedResults.push(result);
+    checks++;
+  }
   // Import actual ORM-adapter records into the native protocol store. This
   // exercises real encrypted-column reads, dates, hashes and session cookies.
   const bridge = nativeAuthBridge(root);
@@ -222,13 +331,27 @@ try {
     for (const [model, field] of [
       ['user', 'users'],
       ['account', 'accounts'],
-      ['session', 'sessions']
+      ['session', 'sessions'],
+      ['organization', 'organizations'],
+      ['member', 'members'],
+      ['organizationRole', 'organizationRoles']
     ]) {
       seed[field] = await context(() =>
         authContext.adapter.findMany({ model })
       );
     }
     await bridge.native(seed);
+    for (const [index, [selected]] of scopeCases.entries()) {
+      assert.deepEqual(
+        await bridge.native({
+          op: 'surface',
+          now: Date.now(),
+          scope: selected
+        }),
+        scopedResults[index]
+      );
+      checks++;
+    }
     const cookie = [...client.cookies]
       .map(([name, value]) => `${name}=${value}`)
       .join('; ');
@@ -257,6 +380,7 @@ try {
       { issuer: 'http://localhost:3000', audience: 'http://localhost:3000' }
     );
     assert.equal(nativeJwt.payload.sub, userId);
+    assert.equal(nativeJwt.payload.sessionId, actualSession.body.session.id);
     checks++;
     const nativeAccounts = await nativeRequest('/list-accounts');
     assert.equal(nativeAccounts.status, 200);

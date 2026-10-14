@@ -233,7 +233,7 @@ async fn live_http_mcp_route_keys_claim_purpose_browser_cookie_and_shutdown() {
     let init = rpc(&client,&base,"initialize",json!({"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"fixture","version":"1"}})).await;
     assert_eq!(init["result"]["serverInfo"]["name"], "relay-fixture");
     let tools = rpc(&client, &base, "tools/list", json!({})).await;
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 7);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 9);
     let mcp_body = json!({"nonce":"relay-mcp","tokens":{"access_token":"fixture-token"}});
     let signed = sign(path, &mcp_body.to_string(), "instance-1", INSTANCE);
     let invoked = rpc(&client,&base,"tools/call",json!({"name":contracts()[0].operation_name,"arguments":{"body":mcp_body,"headers":{"authorization":signed}}})).await;

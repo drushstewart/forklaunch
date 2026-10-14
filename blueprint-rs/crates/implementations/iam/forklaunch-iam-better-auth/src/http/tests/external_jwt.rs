@@ -132,7 +132,7 @@ async fn live_external_signing_requires_session_and_never_publishes_or_persists_
                 assert_eq!(
                     claims,
                     json!({"iat":now.timestamp(),"exp":now.timestamp()+900,
-                    "sub":"external-user","email":"external@fixture.test","activeOrganizationId":null,
+                    "sub":"external-user","sessionId":session["id"],"email":"external@fixture.test","activeOrganizationId":null,
                     "iss":"http://localhost:3000","aud":"http://localhost:3000"})
                 );
             }

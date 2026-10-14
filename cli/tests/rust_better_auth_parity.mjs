@@ -175,17 +175,16 @@ assert.equal(full.teams.length, 1);
 assert.equal(full.teams[0].name, 'Fixture Org');
 assert.equal(full.teams[0].memberCount, 1);
 assert.equal(full.members[0].user.id, user.id);
-assert.equal(await surfacing.surfaceRole(user.id), 'owner');
-assert.equal((await surfacing.surfacePermissions(user.id)).length, 0);
+const scopedAuthorization = {userId:user.id, organizationId:organization.id, sessionId:session.session.id};
+assert.equal(await surfacing.surfaceRole(scopedAuthorization), 'owner');
+assert.deepEqual(Array.from(await surfacing.surfacePermissions(scopedAuthorization)), ['platform:read','platform:write']);
 database.organizationRole.push({
   id: 'fixture-role',
   organizationId: organization.id,
   role: 'owner',
   permission: '{"platform":["platform:read"]}',
 });
-assert.deepEqual(Array.from(await surfacing.surfacePermissions(user.id)), [
-  '{"platform":["platform:read"]}',
-]);
+assert.deepEqual(Array.from(await surfacing.surfacePermissions(scopedAuthorization)), ['platform:read','platform:write']);
 database.organizationRole.length = 0;
 await expect(
   other,

@@ -45,6 +45,20 @@ impl<S: AuthStore> KeyRing<S> {
         organization: Option<&str>,
         now: DateTime<Utc>,
     ) -> BlueprintResult<String> {
+        self.issue_session(user_id, email, organization, None, now)
+            .await
+    }
+    /// Issue claims for an exact authenticated persisted session.
+    /// # Errors
+    /// Returns sanitized storage, key or timestamp failures.
+    pub async fn issue_session(
+        &self,
+        user_id: &str,
+        email: &str,
+        organization: Option<&str>,
+        session_id: Option<&str>,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<String> {
         let issued_at = u64::try_from(now.timestamp()).map_err(|_| key_error())?;
         let mut tx = self.store.begin(true).await?;
         let rows = tx.list_page(Model::Jwks, None, 100).await?.records;
@@ -65,7 +79,14 @@ impl<S: AuthStore> KeyRing<S> {
         } else {
             mint(&mut tx, now).await?
         };
-        let token = key.issue(&self.base_url, user_id, email, organization, issued_at)?;
+        let token = key.issue_session(
+            &self.base_url,
+            user_id,
+            email,
+            organization,
+            session_id,
+            issued_at,
+        )?;
         tx.commit().await?;
         Ok(token)
     }

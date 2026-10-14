@@ -60,28 +60,17 @@ const native = (input) =>
     child.stdin.write(`${JSON.stringify(input)}\n`);
   });
 const stamp = (offset) => new RealDate(now + offset).toISOString();
-const userId = 'surface-user';
-const session = (id, org, created = 0, expiry = 10000, owner = userId) => ({
-  id,
-  userId: owner,
-  activeOrganizationId: org,
-  createdAt: stamp(created),
-  expiresAt: stamp(expiry)
-});
-const member = (id, org, role, owner = userId) => ({
-  id,
-  userId: owner,
-  organizationId: org,
-  role
-});
-const grant = (id, org, role, permission) => ({
-  id,
-  organizationId: org,
-  role,
-  permission
-});
+const userId = 'a1000000-0000-4000-8000-000000000001';
+const org1 = 'a2000000-0000-4000-8000-000000000001';
+const org2 = 'a2000000-0000-4000-8000-000000000002';
+const session1 = 'a3000000-0000-4000-8000-000000000001';
+const session2 = 'a3000000-0000-4000-8000-000000000002';
+const scope = { userId, organizationId: org1, sessionId: session1 };
+const session = (id, org, created = 0, expiry = 10000, owner = userId) => ({ id,userId:owner,activeOrganizationId:org,createdAt:stamp(created),expiresAt:stamp(expiry) });
+const member = (id, org, role, owner = userId) => ({id,userId:owner,organizationId:org,role});
+const grant = (id, org, role, permission) => ({id,organizationId:org,role,permission});
 let checks = 0;
-async function compare(sessions, members = [], roles = []) {
+async function compare(sessions, members = [], roles = [], selected = scope) {
   reference.database.session.splice(0, Infinity, ...sessions);
   reference.database.member.splice(0, Infinity, ...members);
   reference.database.organizationRole.splice(0, Infinity, ...roles);
@@ -94,11 +83,11 @@ async function compare(sessions, members = [], roles = []) {
   });
   const expected = JSON.parse(
     JSON.stringify({
-      role: await reference.surfacing.surfaceRole(userId),
-      permissions: await reference.surfacing.surfacePermissions(userId)
+      role: await reference.surfacing.surfaceRole(selected),
+      permissions: await reference.surfacing.surfacePermissions(selected)
     })
   );
-  const actual = await native({ op: 'surface', now, userId });
+  const actual = await native({ op: 'surface', now, scope:selected });
   assert.deepEqual(
     actual,
     expected,
@@ -108,83 +97,30 @@ async function compare(sessions, members = [], roles = []) {
 }
 try {
   await compare([]);
-  const members = [member('m1', 'one', 'owner'), member('m2', 'two', 'admin')];
-  const roles = [
-    grant('r1', 'one', 'owner', '{"platform":["platform:read"]}'),
-    grant('r2', 'one', 'owner', 'opaque raw grant'),
-    grant('r3', 'two', 'admin', 'two grant'),
-    grant('r4', 'one', 'admin', 'wrong-role'),
-    grant('r5', 'other', 'owner', 'wrong-org')
-  ];
-  await compare([session('s1', 'one')], members, roles);
-  await compare(
-    [session('s1', 'one'), session('s2', 'two', 1)],
-    members,
-    roles
-  );
-  await compare(
-    [session('s1', 'one'), session('s2', 'two', -1)],
-    members,
-    roles
-  );
-  await compare(
-    [session('s1', 'one'), session('s2', 'two', 0)],
-    members,
-    roles
-  );
-  await compare(
-    [session('s2', 'two', 0), session('s1', 'one', 0)],
-    members,
-    roles
-  );
-  for (const org of [null, '', false, 0, 'missing', 'one']) {
-    for (const expiry of [-1, 0, 1]) {
-      await compare(
-        [session('old', 'one', -10), session('new', org, 10, expiry)],
-        members,
-        roles
-      );
+  const members = [member('m1', org1, 'owner'),member('m2', org2, 'viewer')];
+  const sessions = [session(session1,org1),session(session2,org2,100)];
+  const roles = [grant('r1',org1,'owner','ignored builtin override'),grant('r2',org1,'custom','opaque raw grant'),grant('r3',org2,'custom','wrong organization')];
+  await compare(sessions,members,roles);
+  await compare(sessions,members,roles,{...scope,sessionId:session1.toUpperCase()});
+  await compare(sessions,members,roles,{...scope,organizationId:org1.toUpperCase()});
+  await compare(sessions,[...members,member("uppercase-user",org1,"viewer",userId.toUpperCase())],roles,{...scope,userId:userId.toUpperCase()});
+  await compare(sessions,members,roles,{...scope,organizationId:org2,sessionId:session2});
+  for (const field of ['userId','organizationId','sessionId']) {
+    for (const value of [null,'',42,false,'not-a-uuid','00000000-0000-0000-0000-000000000000']) {
+      await compare(sessions,members,roles,{...scope,[field]:value});
     }
   }
-  await compare(
-    [session('one', 'one'), session('foreign', 'two', 10, 10000, 'other')],
-    members,
-    roles
-  );
-  await compare(
-    [session('one', 'one')],
-    [member('first', 'one', 'admin'), ...members],
-    roles
-  );
-  for (const role of [
-    null,
-    '',
-    false,
-    0,
-    'owner,admin',
-    'OWNER',
-    'member',
-    'owner'
-  ]) {
-    await compare([session('one', 'one')], [member('one', 'one', role)], roles);
+  for (const selected of [null,{},userId]) await compare(sessions,members,roles,selected);
+  for (const expiry of [-1,0,1]) await compare([session(session1,org1,0,expiry),session(session2,org2)],members,roles);
+  for (const org of [null,'',org2]) await compare([session(session1,org),session(session2,org1)],members,roles);
+  for (const owner of ['other',null]) await compare([session(session1,org1,0,10000,owner),session(session2,org1)],members,roles);
+  for (const role of ['owner','admin','editor','viewer','system','custom','owner,admin','OWNER','member','',null,false,0]) {
+    await compare(sessions,[member('m1',org1,role)],roles);
   }
-  await compare([session('one', 'one')], members, [
-    ...roles,
-    grant('duplicate', 'one', 'owner', 'opaque raw grant')
-  ]);
-  await compare([session('one', 'one')], members, [
-    grant('empty', 'one', 'owner', ''),
-    grant('null', 'one', 'owner', null),
-    { id: 'omitted', organizationId: 'one', role: 'owner' }
-  ]);
-  await compare(
-    [
-      { ...session('one', 'one'), expiresAt: 'invalid-date' },
-      session('two', 'two', -1)
-    ],
-    members,
-    roles
-  );
+  await compare(sessions,[],roles);
+  await compare(sessions,[member('m1',org2,'owner')],roles);
+  await compare(sessions,[member('m1',org1,'custom')],[...roles,grant('duplicate',org1,'custom','opaque raw grant')]);
+  await compare([{...session(session1,org1),expiresAt:'invalid'},session(session2,org1)],members,roles);
   console.log(
     `Configured Better Auth application surfacing: ${checks} actual service result comparisons passed`
   );

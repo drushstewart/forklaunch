@@ -4,7 +4,7 @@ Native Better Auth with encrypted tenant-bound PostgreSQL, cookie sessions,
 credentials, Google OAuth, organizations, teams, roles and permissions. The 70
 configured raw auth routes default to `/api/auth`. Set `BETTER_AUTH_BASE_PATH`
 to a fixed namespace (use `/` for root); a path already present in `BETTER_AUTH_URL` takes
-precedence. Five application contracts
+precedence. Seven application contracts
 provide public discovery, HMAC role/permission surfacing and system-role JWT
 compliance export/erasure through HTTP and MCP.
 
@@ -15,7 +15,7 @@ DATABASE_URL="$DATABASE_OWNER_URL" cargo run -p {{{name}}} -- --migrate
 ```
 
 Grant the runtime role USAGE on schema `fl_better_auth`, SELECT/INSERT/UPDATE/DELETE
-on its `records`, `unique_claims` and `audit` tables, and USAGE on
+on its `records`, `unique_claims`, `lookup_claims` and `audit` tables, and USAGE on
 `fl_better_auth.records_sequence_seq`. The runtime role must have neither
 SUPERUSER nor BYPASSRLS. Export the settings in `.env.example` before running
 `cargo run -p {{{name}}}`. Set `BETTER_AUTH_URL` to the public origin; configure
@@ -27,9 +27,16 @@ audience equal to the canonical configured origin.
 include the application API and the complete BetterAuth API as separate sources.
 Raw auth
 routes keep cookie/CSRF semantics and remain outside the MCP tool registry.
-Role/permission surfacing verifies request HMAC; compliance JWTs resolve their
-system role from current stored organization membership rather than token role
-claims. Classified exports preserve opaque fields; erasure deletes classified
+Role/permission surfacing verifies request HMAC. Use
+`/user/:id/organizations/:organizationId/sessions/:sessionId/surface-roles`
+or the corresponding `surface-permissions` route. All three identifiers come
+from verified authentication claims and are included in the signed path. The
+legacy user-only routes return empty lists. Session JWTs carry `sessionId`;
+authorization checks that exact live session, its active organization, and
+current membership. Missing scope, revoked sessions or removed membership
+grant no access. Compliance requires the current stored `system` role; token
+role claims cannot bypass this check. Classified exports preserve opaque fields;
+erasure deletes classified
 Account/Jwks rows and retains unclassified User/Session records.
 
 HTTP and MCP share the listener by default. Set `MCP_ENABLED=false` to disable

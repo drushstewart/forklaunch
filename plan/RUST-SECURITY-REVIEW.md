@@ -70,6 +70,15 @@ source review. A passing gate means there are no **unreviewed** findings.
   Legacy v2/v3 deterministic encryption preserves TS equality behavior and leaks
   equality. Prefer random-nonce v4 `seal` plus blind indexes for new fields.
   The v4 `anon` metadata is clear and unauthenticated; it cannot authorize access.
+- **Better Auth identity storage:** merged TypeScript main binds accounts and
+  signing keys to the IAM service encryption context, independently of the
+  current organization. The real PostgreSQL adapter fixture verifies context
+  restoration, direct wrong-context decryption rejection, encrypted password/key
+  columns, and fail-closed legacy account/key policy markers. Existing ciphertext
+  requires an explicit migration. Native auth storage separately binds encrypted
+  records and forced RLS to its startup-configured `TenantContext`; request claims
+  cannot select that storage namespace. Decoded-record protocol interoperability
+  does not imply shared MikroORM/native ciphertext tables.
 - **Secrets/artifacts:** contract auth metadata describes the method without
   embedding signing secrets. Runtime key/configuration injection belongs to the
   application. The SDK exposes caller-owned headers/hooks and should not receive

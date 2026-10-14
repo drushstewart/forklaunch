@@ -309,6 +309,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             let body = json!({"payload": {
                 "iat": now.timestamp(),
                 "sub": text(&view.user, "id")?,
+                "sessionId": text(&view.session, "id")?,
                 "email": text(&view.user, "email")?,
                 "activeOrganizationId": view.session["activeOrganizationId"]
             }});
@@ -318,10 +319,11 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             return Ok(text(&result, "token")?.to_owned());
         }
         KeyRing::new(self.store.clone(), self.auth_origin())
-            .issue(
+            .issue_session(
                 text(&view.user, "id")?,
                 text(&view.user, "email")?,
                 view.session["activeOrganizationId"].as_str(),
+                Some(text(&view.session, "id")?),
                 now,
             )
             .await

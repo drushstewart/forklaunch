@@ -165,18 +165,23 @@ export async function betterAuthReference(root, options = {}) {
     .filter(([, endpoint]) => !endpoint.path)
     .map(([name]) => name)
     .sort();
-  const matches = (row, filters) =>
+  const matches = (row, filters, entity) =>
     Object.entries(filters).every(([field, expected]) => {
       const value = row[field === 'user' ? 'userId' : field];
       if (expected && typeof expected === 'object' && '$ne' in expected)
         return expected.$ne === null ? value != null : value !== expected.$ne;
       if (expected && typeof expected === 'object' && '$gt' in expected)
         return new Date(value) > expected.$gt;
+      // These columns use PostgreSQL UUID equality. Organization/member links
+      // are text columns and deliberately retain exact case-sensitive equality.
+      if (entity === 'session' && ['id', 'user', 'userId'].includes(field)
+          && typeof value === 'string' && typeof expected === 'string')
+        return value.toLowerCase() === expected.toLowerCase();
       return value === expected;
     });
   const em = {
     async find(entity, filters) {
-      return database[entity].filter((row) => matches(row, filters));
+      return database[entity].filter((row) => matches(row, filters, entity));
     },
     async findOne(entity, filters, options) {
       const rows = [...(await this.find(entity, filters))];

@@ -344,6 +344,7 @@
       "entries": [],
       "files": [],
       "moduleSources": [
+        "blueprint/iam-better-auth/__test__/authEncryptionPolicy.test.ts",
         "blueprint/iam-better-auth/__test__/betterAuthErrorLogging.test.ts",
         "blueprint/iam-better-auth/__test__/encryptionContext.test.ts",
         "blueprint/iam-better-auth/__test__/test-utils.ts",
@@ -361,11 +362,14 @@
         "blueprint/iam-better-auth/domain/guards/isBetterAuthRequest.guard.ts",
         "blueprint/iam-better-auth/domain/services/surfacing.service.ts",
         "blueprint/iam-better-auth/domain/types/betterAuth.types.ts",
+        "blueprint/iam-better-auth/domain/utils/authEncryptionPolicy.util.ts",
+        "blueprint/iam-better-auth/domain/utils/authorizationScope.util.ts",
         "blueprint/iam-better-auth/domain/utils/betterAuthAdapter.util.ts",
         "blueprint/iam-better-auth/domain/utils/betterAuthBaseUrl.util.ts",
         "blueprint/iam-better-auth/domain/utils/betterAuthErrorLogging.util.ts",
         "blueprint/iam-better-auth/domain/utils/betterAuthRedirect.util.ts",
         "blueprint/iam-better-auth/domain/utils/encryptionContext.util.ts",
+        "blueprint/iam-better-auth/domain/utils/organizationRoleStatements.util.ts",
         "blueprint/iam-better-auth/index.ts",
         "blueprint/iam-better-auth/jest.config.ts",
         "blueprint/iam-better-auth/migrations/Migration00000000000000.ts",
@@ -14213,7 +14217,7 @@
               "name": "generateOpenApiSpecs",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/openApiV3Generator/openApiV3Generator.ts",
-              "line": 334
+              "line": 347
             }
           ]
         },

@@ -1,7 +1,11 @@
-//! The five configured application contracts share HTTP/MCP validation and
+//! The seven configured application contracts share HTTP/MCP validation and
 //! authentication. Raw Better Auth routes remain under their internal namespace.
 use super::AuthHttp;
-use crate::{compliance::ComplianceService, store::AuthStore, surfacing::SurfacingService};
+use crate::{
+    compliance::ComplianceService,
+    store::AuthStore,
+    surfacing::{AuthorizationScope, SurfacingService},
+};
 use axum::{
     Json,
     extract::Path,
@@ -51,32 +55,7 @@ pub fn registry(name: &str, version: &str) -> ContractRegistry {
                 "type":"object", "required":properties.keys().collect::<Vec<_>>(), "properties":properties
             })))),
     );
-    for (name, path, field, summary) in [
-        (
-            "Surface User Roles",
-            "surface-roles",
-            "name",
-            "Surfaces the org-scoped roles for a user in their active organization",
-        ),
-        (
-            "Surface User Permissions",
-            "surface-permissions",
-            "slug",
-            "Surfaces the org-scoped permissions for a user in their active organization",
-        ),
-    ] {
-        let parameter = FieldContract::required("id", "String");
-        registry.register(
-            RouteContract::get(name, summary, format!("/user/:id/{path}"))
-                .with_access(AccessLevel::Internal)
-                .with_auth(AuthConfig::Hmac(HmacAuth::new().with_header_name("authorization")))
-                .with_param(parameter)
-                .with_response(200, Some(body(&name.replace(' ', ""), &json!({
-                    "type":"array", "items":{"type":"object", "required":[field], "properties":{field:{"type":"string"}}}
-                }))))
-                .with_response(500, Some(text())),
-        );
-    }
+    register_surfacing(&mut registry);
     for (name, path, erase, schema) in [
         (
             "ExportUserData",
@@ -121,6 +100,69 @@ pub fn registry(name: &str, version: &str) -> ContractRegistry {
     }
     registry
 }
+fn operation(registry: &ContractRegistry, name: &str) -> RouteContract {
+    registry
+        .routes()
+        .iter()
+        .find(|route| route.name == name)
+        .cloned()
+        .expect("configured application contract")
+}
+
+fn register_surfacing(registry: &mut ContractRegistry) {
+    for (name, path, field, summary, scoped) in [
+        (
+            "Surface User Roles",
+            "surface-roles",
+            "name",
+            "Retired user-only lookup; returns no roles until the client is upgraded",
+            false,
+        ),
+        (
+            "Surface User Permissions",
+            "surface-permissions",
+            "slug",
+            "Retired user-only lookup; returns no permissions until the client is upgraded",
+            false,
+        ),
+        (
+            "Surface Scoped User Roles",
+            "surface-roles",
+            "name",
+            "Surface current membership for the exact authenticated session and organization",
+            true,
+        ),
+        (
+            "Surface Scoped User Permissions",
+            "surface-permissions",
+            "slug",
+            "Surface current permissions for the exact authenticated session and organization",
+            true,
+        ),
+    ] {
+        let parameter = FieldContract::required("id", "String");
+        let path = if scoped {
+            format!("/user/:id/organizations/:organizationId/sessions/:sessionId/{path}")
+        } else {
+            format!("/user/:id/{path}")
+        };
+        let mut route = RouteContract::get(name, summary, path)
+                .with_access(AccessLevel::Internal)
+                .with_auth(AuthConfig::Hmac(HmacAuth::new().with_header_name("authorization")))
+                .with_param(parameter)
+                .with_response(200, Some(body(&name.replace(' ', ""), &json!({
+                    "type":"array", "items":{"type":"object", "required":[field], "properties":{field:{"type":"string"}}}
+                }))))
+                .with_response(500, Some(text()));
+        if scoped {
+            route = route
+                .with_param(FieldContract::required("organizationId", "String"))
+                .with_param(FieldContract::required("sessionId", "String"));
+        }
+        registry.register(route);
+    }
+}
+
 fn body(name: &str, schema: &Value) -> BodyContract {
     let mut body = BodyContract::json(name);
     body.schema.json_schema = Some(schema.to_string());
@@ -144,7 +186,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         let settings = redirects::Settings::new(&self);
         settings.mount(self.router())
     }
-    /// Combines five application operations with the raw auth namespace. Roles
+    /// Combines seven application operations with the raw auth namespace. Roles
     /// resolve from the trusted store, following configured TS callbacks.
     /// # Panics
     /// Only missing package-owned metadata can panic.
@@ -152,61 +194,65 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     pub fn application_router(self, auth: HmacJwksAuth, info: ServiceInfo) -> ForkLaunchRouter {
         let config = self.application_config(auth);
         let store = self.store.clone();
-        let clock = self.clock.clone();
         let contracts = registry(&info.name, &info.version);
-        let contract = |name| {
-            contracts
-                .routes()
-                .iter()
-                .find(|route| route.name == name)
-                .cloned()
-                .expect("configured application contract")
-        };
-        let roles = store.clone();
-        let roles_clock = clock.clone();
-        let permissions = store.clone();
-        let permissions_clock = clock;
+        let contract = |name| operation(&contracts, name);
+        let scoped_roles = store.clone();
+        let scoped_roles_clock = self.clock.clone();
+        let scoped_permissions = store.clone();
+        let scoped_permissions_clock = self.clock.clone();
         let exporter = store.clone();
         let eraser = store;
         let router = ForkLaunchRouter::new(info)
             .get(contract("GetAuthMethods"), || async { Json(discovery()) })
+            .get(contract("Surface User Roles"), || async { Json(json!([])) })
+            .get(contract("Surface User Permissions"), || async {
+                Json(json!([]))
+            })
             .get(
-                contract("Surface User Roles"),
-                move |Path(id): Path<String>| {
-                    let store = roles.clone();
-                    let now = roles_clock();
+                contract("Surface Scoped User Roles"),
+                move |Path((user_id, organization_id, session_id)): Path<(
+                    String,
+                    String,
+                    String,
+                )>| {
+                    let store = scoped_roles.clone();
+                    let now = scoped_roles_clock();
                     async move {
-                        match SurfacingService::new(store).surface_role(&id, now).await {
-                            Ok(role) => Json(if crate::keyring::verify::truthy(&role) {
-                                json!([{"name":role}])
-                            } else {
-                                json!([])
-                            })
-                            .into_response(),
-                            Err(error) => failure(&error),
-                        }
+                        scoped_surface(
+                            store,
+                            AuthorizationScope {
+                                user_id,
+                                organization_id,
+                                session_id,
+                            },
+                            now,
+                            false,
+                        )
+                        .await
                     }
                 },
             )
             .get(
-                contract("Surface User Permissions"),
-                move |Path(id): Path<String>| {
-                    let store = permissions.clone();
-                    let now = permissions_clock();
+                contract("Surface Scoped User Permissions"),
+                move |Path((user_id, organization_id, session_id)): Path<(
+                    String,
+                    String,
+                    String,
+                )>| {
+                    let store = scoped_permissions.clone();
+                    let now = scoped_permissions_clock();
                     async move {
-                        match SurfacingService::new(store)
-                            .surface_permissions(&id, now)
-                            .await
-                        {
-                            Ok(permissions) => Json(
-                                permissions
-                                    .into_iter()
-                                    .map(|value| json!({"slug":value}))
-                                    .collect::<Vec<_>>(),
-                            )
-                            .into_response(),
-                            Err(error) => failure(&error),
-                        }
+                        scoped_surface(
+                            store,
+                            AuthorizationScope {
+                                user_id,
+                                organization_id,
+                                session_id,
+                            },
+                            now,
+                            true,
+                        )
+                        .await
                     }
                 },
             )
@@ -263,15 +309,11 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             let store = roles_store.clone();
             let now = roles_clock();
             async move {
-                let Some(user) = claims
-                    .get("sub")
-                    .and_then(Value::as_str)
-                    .filter(|value| !value.is_empty())
-                else {
+                let Some(scope) = AuthorizationScope::from_payload(&claims) else {
                     return Ok(vec![]);
                 };
                 let role = SurfacingService::new(store)
-                    .surface_role(user, now)
+                    .surface_role_scoped(&scope, now)
                     .await
                     .map_err(|_| AuthError::InvalidCredentials)?;
                 Ok(role
@@ -295,6 +337,38 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         config
     }
 }
+
+async fn scoped_surface<S: AuthStore>(
+    store: Arc<S>,
+    scope: AuthorizationScope,
+    now: chrono::DateTime<chrono::Utc>,
+    permissions: bool,
+) -> Response {
+    let service = SurfacingService::new(store);
+    if permissions {
+        match service.surface_permissions_scoped(&scope, now).await {
+            Ok(values) => Json(
+                values
+                    .into_iter()
+                    .map(|value| json!({"slug":value}))
+                    .collect::<Vec<_>>(),
+            )
+            .into_response(),
+            Err(error) => failure(&error),
+        }
+    } else {
+        match service.surface_role_scoped(&scope, now).await {
+            Ok(value) => Json(if crate::keyring::verify::truthy(&value) {
+                json!([{"name":value}])
+            } else {
+                json!([])
+            })
+            .into_response(),
+            Err(error) => failure(&error),
+        }
+    }
+}
+
 fn root_namespaces() -> Vec<String> {
     // The fixed preset's OpenAPI paths supply the raw namespaces. These public
     // metadata/helper routes may be hidden by the upstream OpenAPI generator.

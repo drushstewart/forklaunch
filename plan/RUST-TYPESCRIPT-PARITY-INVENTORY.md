@@ -4882,3 +4882,41 @@ tenant/customer mismatch, concurrent one-winner completion, reopened receipt
 visibility, backup-disabled expiry and partially completed backup updates.
 Evidence: `/private/tmp/fl-billing-checkout-repair-{provider,postgres,clippy,regression}.log`.
 Gate858 remains open; checklist stays **659/682 (96.6%), 23 open**.
+
+
+### 2026-10-13 — Main integration and exact-session Better Auth authorization
+
+Main is merged through `c5a4248d1` in merge commit `ac1f18e2a`, preserving the
+existing adapter integration and main's auth encryption policy. All **1,120 CLI
+tests** pass. The regenerated API inventory and regression check pass at
+44 packages, 608 entry points and 1,662 declaration/re-export records.
+
+Native application authorization now uses validated user/organization/session
+scope from verified claims, checks that exact unexpired session and current
+membership, and never selects a different session. Authenticated issuance adds
+the persisted `sessionId`, including external signing. Old low-level helpers
+without session scope confer no scoped privileges. Two new HMAC routes sign
+all three scope components; legacy user-only routes return empty grants. Builtin
+roles supply configured platform permissions; custom role values remain opaque.
+Seven application contracts are exposed alongside the 70 raw auth routes.
+
+Session primary/foreign-key comparisons follow PostgreSQL UUID case semantics;
+organization/member text links retain exact matching. Actual PostgreSQL tests
+confirm uppercase session IDs work, uppercase organization/user text membership
+links do not broaden access, and wrong sessions fail. Updated CI pins the actual
+MikroORM adapter at 0.5.11. Service-bound account/key encryption is verified with
+context restoration, legacy marker rejection, encrypted columns, transaction
+rollback and restart. Decoded real ORM records are consumed by native auth;
+this does not assert interchangeable encrypted storage schemas.
+
+Validation passes **52** actual TypeScript authorization comparisons, **7**
+application contracts / **13** response schemas, **26** JWT/JWKS comparisons,
+**49** configured protocol checks, **41** real PostgreSQL/ORM/native checks, two
+native scope tests, 20 native HTTP/MCP tests and the final five-mount application
+fixture. Strict all-feature/all-target Clippy passes. Rebuilt CLI and packaging
+checks cover 977 embedded sources/templates. The generated scoped-route/runtime
+rerun is in progress and will have its own receipt. Evidence:
+`/private/tmp/fl-better-auth-scoped-{unit,http,application-final,conformance,contracts,jwt,reference,clippy}.log`,
+`/private/tmp/fl-rust-scoped-orm.log`, `/private/tmp/fl-rust-main-cli-tests.log`,
+`/private/tmp/fl-rust-main-package.log`. Broader Better Auth options/hooks and
+other parity gates remain open: **659/682 (96.6%), 23 open**.

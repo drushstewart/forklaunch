@@ -60,6 +60,7 @@ for (const organizationId of [null, 'organization-fixture-id']) {
   const input = {
     baseURL: reference.config.baseURL,
     userId: 'user-fixture-id',
+    sessionId: '33000000-0000-4000-8000-000000000001',
     email: 'fixture@example.test',
     organizationId,
     issuedAt,
@@ -95,6 +96,7 @@ for (const organizationId of [null, 'organization-fixture-id']) {
   });
   assert.deepEqual(verified.payload, {
     sub: input.userId,
+    sessionId: input.sessionId,
     email: input.email,
     activeOrganizationId: organizationId,
     iat: issuedAt,
@@ -129,7 +131,7 @@ for (const organizationId of [null, 'organization-fixture-id']) {
       options: { baseURL: input.baseURL },
       session: {
         user: { id: input.userId, email: input.email, firstName: 'Excluded' },
-        session: { activeOrganizationId: organizationId },
+        session: { id: input.sessionId, activeOrganizationId: organizationId },
       },
     },
   };

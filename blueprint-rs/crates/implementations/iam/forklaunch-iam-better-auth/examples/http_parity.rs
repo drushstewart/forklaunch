@@ -258,8 +258,9 @@ async fn main() {
                     forklaunch_iam_better_auth::surfacing::SurfacingService::new(store.clone());
                 let now =
                     DateTime::<Utc>::from_timestamp_millis(input["now"].as_i64().unwrap()).unwrap();
-                let user = input["userId"].as_str().unwrap();
-                json!({"role": service.surface_role(user, now).await.unwrap(), "permissions": service.surface_permissions(user, now).await.unwrap()})
+                if let Ok(scope) = serde_json::from_value::<forklaunch_iam_better_auth::surfacing::AuthorizationScope>(input["scope"].clone()) {
+                    json!({"role": service.surface_role_scoped(&scope, now).await.unwrap(), "permissions": service.surface_permissions_scoped(&scope, now).await.unwrap()})
+                } else { json!({"role":null,"permissions":[]}) }
             }
             "set" => set_password(store.clone(), &input).await,
             "addMember" => add_member(store.clone(), &input).await,

@@ -18,11 +18,12 @@ fn main() {
         SigningKey::generate("fixture-persistent-key-id").unwrap()
     };
     let token = key
-        .issue(
+        .issue_session(
             input["baseURL"].as_str().unwrap(),
             input["userId"].as_str().unwrap(),
             input["email"].as_str().unwrap(),
             input["organizationId"].as_str(),
+            input["sessionId"].as_str(),
             input["issuedAt"].as_u64().unwrap(),
         )
         .unwrap();

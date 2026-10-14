@@ -168,11 +168,35 @@ impl SigningKey {
         active_organization_id: Option<&str>,
         issued_at: u64,
     ) -> BlueprintResult<String> {
+        self.issue_session(
+            base_url,
+            user_id,
+            email,
+            active_organization_id,
+            None,
+            issued_at,
+        )
+    }
+    /// Issue configured claims including the authenticated session identifier.
+    /// An absent session ID intentionally grants no scoped application access.
+    /// # Errors
+    /// Rejects timestamp overflow or serialization failures.
+    pub fn issue_session(
+        &self,
+        base_url: &str,
+        user_id: &str,
+        email: &str,
+        active_organization_id: Option<&str>,
+        session_id: Option<&str>,
+        issued_at: u64,
+    ) -> BlueprintResult<String> {
         let expires_at = issued_at.checked_add(900).ok_or_else(key_error)?;
-        self.sign_payload(&json!({
+        let mut payload = json!({
             "iat": issued_at, "exp": expires_at, "iss": base_url, "aud": base_url,
             "sub": user_id, "email": email, "activeOrganizationId": active_organization_id
-        }))
+        });
+        if let Some(session_id) = session_id { payload["sessionId"] = Value::from(session_id); }
+        self.sign_payload(&payload)
     }
     /// Signs an already validated server-owned claims object.
     /// # Errors

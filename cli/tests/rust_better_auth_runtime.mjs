@@ -210,7 +210,7 @@ try {
     const application = await (
       await call(service.base, config.sources[0].url)
     ).json();
-    assert.equal(Object.keys(application.paths).length, 6);
+    assert.equal(Object.keys(application.paths).length, 8);
   }
   assert.equal(
     (
@@ -218,16 +218,18 @@ try {
         'getauthmethods',
         'surfaceUserRoles',
         'surfaceUserPermissions',
+        'surfaceScopedUserRoles',
+        'surfaceScopedUserPermissions',
         'exportuserdata',
         'eraseuserdata'
       ])
     ).length,
-    6
+    8
   );
   assert.equal(
     (await probeMcp(second.mcp, ['getauthmethods'], '/tools', second.base))
       .length,
-    6
+    8
   );
   const sdk = createForkLaunchSdk({ baseUrl: first.base });
   const discovery = await sdk.iam.discovery.getauthmethods();
@@ -260,7 +262,8 @@ try {
   const session = await call(first.base, '/api/auth/get-session', {
     headers: { cookie }
   });
-  assert.equal((await session.json()).user.id, identity.user.id);
+  const sessionView = await session.json();
+  assert.equal(sessionView.user.id, identity.user.id);
   const token = session.headers.get('set-auth-jwt');
   const jwks = await (await call(first.base, '/api/auth/jwks')).json();
   const popup = await call(
@@ -306,6 +309,7 @@ try {
     JSON.parse(Buffer.from(payload, 'base64url')).sub,
     identity.user.id
   );
+  assert.equal(JSON.parse(Buffer.from(payload,'base64url')).sessionId,sessionView.session.id);
   assert.equal(
     await (
       await call(second.base, `${second.authPath}/get-session`, {
@@ -336,6 +340,33 @@ try {
     });
     assert.equal(result.isError, false);
     assert.deepEqual(JSON.parse(result.content[0].text), []);
+  }
+  const organization = await (await call(first.base, '/api/auth/organization/create', {
+    method:'POST', headers:{cookie,origin,'content-type':'application/json'},
+    body:JSON.stringify({name:'Scoped generated organization',slug:`scoped-${randomUUID()}`,domain:'generated.example.test'})
+  })).json();
+  const scopedSession = await call(first.base,'/api/auth/get-session',{headers:{cookie}});
+  const scopedClaims = JSON.parse(Buffer.from(scopedSession.headers.get('set-auth-jwt').split('.')[1],'base64url'));
+  assert.equal(scopedClaims.sessionId,sessionView.session.id);
+  assert.equal(scopedClaims.activeOrganizationId,organization.id);
+  for (const [suffix,method,expected] of [
+    ['surface-roles','surfaceScopedUserRoles',[{name:'owner'}]],
+    ['surface-permissions','surfaceScopedUserPermissions',[{slug:'platform:read'},{slug:'platform:write'}]],
+  ]) {
+    const params={id:identity.user.id,organizationId:organization.id,sessionId:sessionView.session.id};
+    const path=`/user/${params.id}/organizations/${params.organizationId}/sessions/${params.sessionId}/${suffix}`;
+    const authorization=hmac(path);
+    assert.deepEqual(await (await call(first.base,path,{headers:{authorization}})).json(),expected);
+    const typed=await sdk.iam.user[method]({params,headers:{authorization}});
+    assert.equal(typed.code,200);assert.deepEqual(typed.response,expected);
+    const rpc=await mcpRpc(first.base,'tools/call',{name:method,arguments:{params,headers:{authorization}}});
+    assert.equal(rpc.isError,false);assert.deepEqual(JSON.parse(rpc.content[0].text),expected);
+    const tampered=path.replace(organization.id,randomUUID());
+    await call(first.base,tampered,{headers:{authorization}},401);
+    const wrongSession=path.replace(sessionView.session.id,randomUUID());
+    assert.deepEqual(await (await call(first.base,wrongSession,{headers:{authorization:hmac(wrongSession)}})).json(),[]);
+    const legacy=`/user/${identity.user.id}/${suffix}`;
+    assert.deepEqual(await (await call(first.base,legacy,{headers:{authorization:hmac(legacy)}})).json(),[]);
   }
   for (const [path, method] of [
     ['export', 'GET'],

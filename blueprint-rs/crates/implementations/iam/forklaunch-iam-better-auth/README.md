@@ -3,13 +3,22 @@
 This crate implements the configured Better Auth 1.7.6 protocol: compatible
 scrypt hashes and signed cookies, asymmetric JWT/JWKS, all 70 raw authentication
 HTTP routes, organizations, teams, memberships, invitations and dynamic roles.
-The `application-http` feature adds the five configured HTTP/MCP application
+The `application-http` feature adds the seven configured HTTP/MCP application
 contracts. CLI generation accepts `--module iam-better-auth` for native Rust.
 The application feature includes the two custom internal popup helpers.
 Scalar docs include both application contracts and the complete BetterAuth API.
 Fixed auth namespaces, including root mounts, are configurable. Dynamic/encoded namespaces,
 complete ORM/hooks and broader nondefault options remain parity work. The sections below retain
 validation history; the latest entries describe current coverage.
+
+Application authorization uses the exact verified user/organization/session
+scope and current stored membership. Session JWTs include the persisted session
+ID. Scoped HMAC routes include all three identifiers in their signed paths;
+legacy user-only lookups return no grants. Builtin roles expose their configured
+platform permissions, while custom-role permission strings remain opaque.
+Session primary keys and user foreign keys use SQL UUID equality; organization
+and member text fields retain case-sensitive comparisons. Retired low-level
+JWT helpers without a session ID cannot confer scoped application privileges.
 
 Generate a native application with this preset:
 

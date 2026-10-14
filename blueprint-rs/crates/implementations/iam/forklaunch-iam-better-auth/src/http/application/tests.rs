@@ -9,6 +9,8 @@ use forklaunch_auth::{
     request_hmac::{SignedBody, generate_hmac_auth_header},
 };
 const SECRET: &[u8] = b"application-http-test-secret-32-characters";
+const ORG: &str = "22000000-0000-4000-8000-000000000001";
+const SESSION: &str = "33000000-0000-4000-8000-000000000001";
 const USER: &str = "11000000-0000-4000-8000-000000000001";
 
 #[test]
@@ -123,21 +125,21 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
     ] {
         tx.insert(Model::User, row).await.unwrap();
     }
-    tx.insert(Model::Session, json!({"id":"active","userId":USER,"activeOrganizationId":"org","createdAt":now.to_rfc3339(),"expiresAt":(now+chrono::Duration::hours(1)).to_rfc3339()})).await.unwrap();
+    tx.insert(Model::Session, json!({"id":SESSION,"userId":USER,"activeOrganizationId":ORG,"createdAt":now.to_rfc3339(),"expiresAt":(now+chrono::Duration::hours(1)).to_rfc3339()})).await.unwrap();
     tx.insert(
         Model::Member,
-        json!({"id":"member","userId":USER,"organizationId":"org","role":"system"}),
+        json!({"id":"member","userId":USER,"organizationId":ORG,"role":"system"}),
     )
     .await
     .unwrap();
-    tx.insert(Model::OrganizationRole, json!({"id":"permission","organizationId":"org","role":"system","permission":"{\"account\":[\"read\"]}"})).await.unwrap();
+    tx.insert(Model::OrganizationRole, json!({"id":"permission","organizationId":ORG,"role":"system","permission":"{\"account\":[\"read\"]}"})).await.unwrap();
     tx.insert(Model::Account, json!({"id":"credential","userId":"subject","password":"private-password","accessToken":null})).await.unwrap();
     tx.commit().await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let ring = KeyRing::new(store.clone(), &base);
     let token = ring
-        .issue(USER, "system@fixture.test", Some("org"), now)
+        .issue_session(USER, "system@fixture.test", Some(ORG), Some(SESSION), now)
         .await
         .unwrap();
     let outsider = ring
@@ -223,7 +225,7 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
     );
     let tools = rpc(&client, &base, "tools/list", json!({})).await;
     let tools = tools["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 5);
+    assert_eq!(tools.len(), 7);
     let contracts = registry("better-auth-application", "1.0");
     for route in contracts.routes() {
         assert!(
@@ -246,14 +248,21 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
         super::discovery(),
         "{discovery}"
     );
-    for (suffix, expected) in [
-        ("surface-roles", json!([{"name":"system"}])),
+    for (scoped, suffix, expected) in [
+        (false, "surface-roles", json!([])),
+        (false, "surface-permissions", json!([])),
+        (true, "surface-roles", json!([{"name":"system"}])),
         (
+            true,
             "surface-permissions",
-            json!([{"slug":"{\"account\":[\"read\"]}"}]),
+            json!([{"slug":"platform:read"},{"slug":"platform:write"}]),
         ),
     ] {
-        let path = format!("/user/{USER}/{suffix}");
+        let path = if scoped {
+            format!("/user/{USER}/organizations/{ORG}/sessions/{SESSION}/{suffix}")
+        } else {
+            format!("/user/{USER}/{suffix}")
+        };
         assert_eq!(
             client
                 .get(format!("{base}{path}"))
@@ -275,10 +284,23 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
         let name = &contracts
             .routes()
             .iter()
-            .find(|route| route.path.ends_with(suffix))
+            .find(|route| {
+                route.path.ends_with(suffix) && route.path.contains("/organizations/") == scoped
+            })
             .unwrap()
             .operation_name;
-        let call = rpc(&client, &base, "tools/call", json!({"name":name,"arguments":{"params":{"id":USER},"headers":{"authorization":header}}})).await;
+        let params = if scoped {
+            json!({"id":USER,"organizationId":ORG,"sessionId":SESSION})
+        } else {
+            json!({"id":USER})
+        };
+        let call = rpc(
+            &client,
+            &base,
+            "tools/call",
+            json!({"name":name,"arguments":{"params":params,"headers":{"authorization":header}}}),
+        )
+        .await;
         assert_eq!(call["result"]["isError"], false, "{call}");
         assert_eq!(
             serde_json::from_str::<Value>(call["result"]["content"][0]["text"].as_str().unwrap())
@@ -306,6 +328,28 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
         assert_eq!(replay.status(), 401);
     }
     let export = format!("{base}/compliance/export/subject");
+    for (organization, session_id) in [
+        (Some(ORG), None),
+        (Some(ORG), Some("malformed")),
+        (Some(ORG), Some("33000000-0000-4000-8000-000000000002")),
+        (None, Some(SESSION)),
+    ] {
+        let unscoped = ring
+            .issue_session(USER, "system@fixture.test", organization, session_id, now)
+            .await
+            .unwrap();
+        assert_eq!(
+            client
+                .get(&export)
+                .bearer_auth(unscoped)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            403
+        );
+    }
+
     assert_eq!(client.get(&export).send().await.unwrap().status(), 401);
     assert_eq!(
         client
@@ -333,7 +377,7 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
     let mut tx = store.begin(true).await.unwrap();
     tx.replace(
         Model::Member,
-        json!({"id":"member","userId":USER,"organizationId":"org","role":"member"}),
+        json!({"id":"member","userId":USER,"organizationId":ORG,"role":"member"}),
     )
     .await
     .unwrap();
@@ -351,7 +395,7 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
     let mut tx = store.begin(true).await.unwrap();
     tx.replace(
         Model::Member,
-        json!({"id":"member","userId":USER,"organizationId":"org","role":"system"}),
+        json!({"id":"member","userId":USER,"organizationId":ORG,"role":"system"}),
     )
     .await
     .unwrap();
@@ -398,7 +442,7 @@ async fn application_surfaces(base_path: &str, url_path: &str) {
         .json::<Value>()
         .await
         .unwrap();
-    assert_eq!(openapi["paths"].as_object().unwrap().len(), 5);
+    assert_eq!(openapi["paths"].as_object().unwrap().len(), 7);
     let docs = client.get(format!("{base}/docs")).send().await.unwrap();
     assert_eq!(docs.status(), 200);
     assert_eq!(docs.headers()["content-type"], "text/html; charset=utf-8");

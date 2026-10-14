@@ -799,10 +799,10 @@ async fn exercise_large_organization_queries<S: AuthStore>(
         "large-own-grant"
     );
     let surfacing = crate::surfacing::SurfacingService::new(store.clone());
-    assert_eq!(surfacing.surface_role(user, now).await.unwrap(), "owner");
+    assert!(surfacing.surface_role(user, now).await.unwrap().is_null());
     assert_eq!(
         surfacing.surface_permissions(user, now).await.unwrap(),
-        vec![json!(permission)]
+        Vec::<Value>::new()
     );
     service.delete(token, false, id, now).await.unwrap();
     let mut tx = store.begin(false).await.unwrap();
@@ -1010,14 +1010,14 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     let isolated_surfacing = crate::surfacing::SurfacingService::new(Arc::new(store.clone()));
     assert_eq!(
         isolated_surfacing
-            .surface_role("surface-owner", chrono::Utc::now())
+            .surface_role_scoped(&crate::surfacing::tests::scope(), chrono::Utc::now())
             .await
             .unwrap(),
         Value::Null
     );
     assert!(
         isolated_surfacing
-            .surface_permissions("surface-owner", chrono::Utc::now())
+            .surface_permissions_scoped(&crate::surfacing::tests::scope(), chrono::Utc::now())
             .await
             .unwrap()
             .is_empty()
