@@ -6541,3 +6541,24 @@ format check passed; two historical IAM formatting issues were separately fixed
 in5f8ccab0e after this immutable checkpoint. Finished owned extraction/install
 and detached verification workspaces are removed after process/cwd checks; the
 crate artifact and logs are retained.
+
+
+## Current IAM PostgreSQL follow-up receipt (2026-10-14)
+
+Both ignored IAM PostgreSQL tests pass against the owned local test database
+in256.78 seconds. The exact already-validated all-feature test executable was
+copied and run directly, allowing the archive Cargo build to continue independently.
+Binary SHA256710b5c6c51712d961fd15c19ce0a871fb479667c20f15f1e2d0aa24c212a88e5
+corresponds to the current lifetime slice atd406df5617a20017a26498aeeafb6dd378239c59.
+This includes encrypted durable storage, indexed large-record lookups, roles/
+permissions/session behavior, tenant isolation, rotation, audits/transactions and
+the corrected live HTTP/MCP signout assertions. The diagnostic-observer test uses
+a transaction-local TEMP table and rollback; the long storage test owns a unique
+restricted role and isolated tenants.
+
+Post-run verification confirms the exact owned role is absent and its fixture
+records/audit/unique_claims/lookup_claims are zero. The copied executable's hash was
+rechecked before removal. Logs and metadata:
+/private/tmp/fl-iam-pg-validated-{run,list,cleanup}.log and
+/private/tmp/fl-iam-pg-validated-metadata.json. No cloud/vendor service was used;
+this does not close broader Better Auth adapter/options coverage.
