@@ -14,6 +14,10 @@ export type PaymentLinkMappers<
   >
 > = {
   PaymentLinkMapper: {
+    /** Validate and restore declared DTO fields after a JSON cache read. */
+    normalizeCachedDto?: (
+      value: MapperDomains['PaymentLinkMapper']
+    ) => MapperDomains['PaymentLinkMapper'];
     entity: MapperEntities['PaymentLinkMapper'];
     toDto: (
       entity: InferEntity<MapperEntities['PaymentLinkMapper']>

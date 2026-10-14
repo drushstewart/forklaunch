@@ -9,6 +9,10 @@ export type StripePaymentLinkMappers<
   Dto extends StripePaymentLinkDtos<StatusEnum>
 > = {
   PaymentLinkMapper: {
+    /** Validate and restore declared DTO fields after a JSON cache read. */
+    normalizeCachedDto?: (
+      value: Dto['PaymentLinkMapper']
+    ) => Dto['PaymentLinkMapper'];
     entity: Entities['PaymentLinkMapper'];
     toDto: (
       entity: InferEntity<Entities['PaymentLinkMapper']>

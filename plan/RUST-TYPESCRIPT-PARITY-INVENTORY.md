@@ -6009,4 +6009,19 @@ the bare mount. Native explicitly rejects it; the actual oracle retains this
 remaining gap. Encoded/dynamic/query/fragment paths, conflicting owned namespaces
 and arbitrary upstream route-shadowing behavior also remain unsupported. Unknown
 application namespaces are subject to registry/mount collision checks.
-Gate918 remains open and checklist remains660/682 (96.8%),22open.
+Gate 918 remains open and checklist remains 660/682 (96.8%), 22 open.
+
+## Cached PaymentLink DTO normalization receipt (2026-10-14)
+
+Configured base/Stripe PaymentLink response mappers now expose an optional
+normalizeCachedDto hook. Base get/list normalizes each selected row once, checks
+cache-key/public identity and rejects hooks that change identity. Declared
+createdAt/updatedAt fields become Dates from JSON caches; nested provider strings
+and extension data remain intact. Reads perform no cache rewrites or ORM access.
+Existing Stripe retained-reference evidence checks and whole-list preflight
+remain independent, rejecting malformed dates/identities before provider GETs.
+Custom mapper fallback is unchanged; no cached reference acquires mutation
+authority. 24 focused actual-source cases, 353 configured regressions, 12 update
+regressions, focused real-source typechecking, and 168 base/170 Stripe operations
+pass: /private/tmp/fl-payment-link-cache-reads*.log. CI includes the new fixture.
+Broad mapper/reconciliation gate855 remains open.

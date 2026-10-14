@@ -183,6 +183,27 @@ export class BasePaymentLinkService<
     return updatedLinkDto;
   }
 
+  private normalizeCachedPaymentLink(
+    value: MapperDomains['PaymentLinkMapper'],
+    cacheKey: string
+  ): MapperDomains['PaymentLinkMapper'] {
+    const normalize = this.mappers.PaymentLinkMapper.normalizeCachedDto;
+    if (!normalize) return value;
+    if (
+      !value ||
+      typeof value.id !== 'string' ||
+      !value.id.trim() ||
+      this.createCacheKey(value.id) !== cacheKey
+    ) {
+      throw new Error('Cached payment link identity does not match');
+    }
+    const normalized = normalize(value);
+    if (normalized.id !== value.id) {
+      throw new Error('Cached payment link identity cannot change');
+    }
+    return normalized;
+  }
+
   async getPaymentLink({
     id
   }: IdDto): Promise<MapperDomains['PaymentLinkMapper']> {
@@ -196,8 +217,7 @@ export class BasePaymentLinkService<
       throw new Error('Payment link not found');
     }
 
-    // Return cached DTO directly - no need to convert to entity and back
-    return paymentLink.value;
+    return this.normalizeCachedPaymentLink(paymentLink.value, cacheKey);
   }
 
   async expirePaymentLink({ id }: IdDto): Promise<void> {
@@ -291,7 +311,7 @@ export class BasePaymentLinkService<
             'Cached payment link is missing or its identity does not match'
           );
         }
-        return paymentLink.value;
+        return this.normalizeCachedPaymentLink(paymentLink.value, key);
       })
     );
   }

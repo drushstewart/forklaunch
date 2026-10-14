@@ -203,6 +203,7 @@ on:
       - 'cli/tests/rust_billing_recurring_options.mjs'
       - 'cli/tests/rust_billing_payment_link_options.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_update.mjs'
+      - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
       - 'cli/tests/fixtures/rust_billing_recurring_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
@@ -447,6 +448,7 @@ on:
       - 'cli/tests/rust_billing_recurring_options.mjs'
       - 'cli/tests/rust_billing_payment_link_options.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_update.mjs'
+      - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
       - 'cli/tests/fixtures/rust_billing_recurring_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
@@ -877,6 +879,7 @@ jobs:
       - run: node cli/tests/rust_billing_recurring_options.mjs
       - run: node cli/tests/rust_billing_payment_link_options.mjs
       - run: node cli/tests/rust_billing_payment_link_cache_update.mjs
+      - run: node cli/tests/rust_billing_payment_link_cache_reads.mjs
       - run: node cli/tests/rust_billing_subscription_party_types.mjs
       - run: node cli/tests/rust_billing_checkout_uri.mjs
         env:

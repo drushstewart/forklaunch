@@ -42,7 +42,7 @@ const UpdatePaymentLinkEntityMapper = requestMapper({
   }
 });
 
-export const PaymentLinkMapper = responseMapper({
+const PaymentLinkEntityMapper = responseMapper({
   schemaValidator,
   schema: PaymentLinkSchemas.PaymentLinkSchema(
     PaymentMethodEnum,
@@ -59,6 +59,28 @@ export const PaymentLinkMapper = responseMapper({
     }
   }
 });
+
+export const PaymentLinkMapper = {
+  ...PaymentLinkEntityMapper,
+  normalizeCachedDto: (
+    value: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>
+  ) => {
+    const parsed = schemaValidator.parse(
+      schemaValidator.schemify(
+        PaymentLinkSchemas.PaymentLinkSchema(
+          PaymentMethodEnum,
+          CurrencyEnum,
+          StatusEnum
+        )
+      ),
+      value
+    );
+    if (!parsed.ok) {
+      throw new Error('Invalid cached payment link response');
+    }
+    return { ...value, ...parsed.value };
+  }
+};
 
 export const UpdatePaymentLinkMapper = {
   ...UpdatePaymentLinkEntityMapper,

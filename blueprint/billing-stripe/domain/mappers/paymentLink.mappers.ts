@@ -99,6 +99,18 @@ function cachedPaymentLinkEvidence(
 
 export const PaymentLinkMapper = {
   ...PaymentLinkEntityMapper,
+  normalizeCachedDto: (
+    value: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>
+  ) => {
+    const parsed = schemaValidator.parse(
+      schemaValidator.schemify(PaymentLinkSchemas.PaymentLinkSchema(StatusEnum)),
+      value
+    );
+    if (!parsed.ok) {
+      throw new Error('Invalid cached payment link response');
+    }
+    return { ...value, ...parsed.value };
+  },
   validateCachedRead: (
     existing: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>
   ) => {

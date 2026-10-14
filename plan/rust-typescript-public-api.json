@@ -1138,7 +1138,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/base/domain/types/paymentLink.mapper.types.ts",
               "line": 5,
-              "type": "{\n  PaymentLinkMapper: {\n    entity: MapperEntities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<MapperEntities['PaymentLinkMapper']>\n    ) => Promise<MapperDomains['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    entity: MapperEntities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: MapperDomains['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    /** Optional local cache-only mapping; never grants provider mutation authority. */\n    toCachedDto?: (\n      dto: MapperDomains['UpdatePaymentLinkMapper'],\n      existing: MapperDomains['PaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<MapperDomains['PaymentLinkMapper']>;\n    entity: MapperEntities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: MapperDomains['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['UpdatePaymentLinkMapper']>>;\n  };\n}"
+              "type": "{\n  PaymentLinkMapper: {\n    /** Validate and restore declared DTO fields after a JSON cache read. */\n    normalizeCachedDto?: (\n      value: MapperDomains['PaymentLinkMapper']\n    ) => MapperDomains['PaymentLinkMapper'];\n    entity: MapperEntities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<MapperEntities['PaymentLinkMapper']>\n    ) => Promise<MapperDomains['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    entity: MapperEntities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: MapperDomains['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    /** Optional local cache-only mapping; never grants provider mutation authority. */\n    toCachedDto?: (\n      dto: MapperDomains['UpdatePaymentLinkMapper'],\n      existing: MapperDomains['PaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<MapperDomains['PaymentLinkMapper']>;\n    entity: MapperEntities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: MapperDomains['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['UpdatePaymentLinkMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -1370,31 +1370,31 @@
                   "name": "getPaymentLink",
                   "signature": "async getPaymentLink({\n    id\n  }: IdDto): Promise<MapperDomains['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 186
+                  "line": 207
                 },
                 {
                   "name": "expirePaymentLink",
                   "signature": "async expirePaymentLink({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 203
+                  "line": 223
                 },
                 {
                   "name": "handlePaymentSuccess",
                   "signature": "async handlePaymentSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 219
+                  "line": 239
                 },
                 {
                   "name": "handlePaymentFailure",
                   "signature": "async handlePaymentFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 234
+                  "line": 254
                 },
                 {
                   "name": "listPaymentLinks",
                   "signature": "async listPaymentLinks(\n    idsDto?: IdsDto,\n    maxValidatedRecords?: number\n  ): Promise<MapperDomains['PaymentLinkMapper'][]>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
-                  "line": 249
+                  "line": 269
                 }
               ]
             }
@@ -2346,7 +2346,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/paymentLink.mapper.types.ts",
               "line": 6,
-              "type": "{\n  PaymentLinkMapper: {\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
+              "type": "{\n  PaymentLinkMapper: {\n    /** Validate and restore declared DTO fields after a JSON cache read. */\n    normalizeCachedDto?: (\n      value: Dto['PaymentLinkMapper']\n    ) => Dto['PaymentLinkMapper'];\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
             }
           ]
         },
