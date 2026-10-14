@@ -209,6 +209,24 @@ try{
   }
  }
  console.log('PASS20live response-validator outcomes: trusted body/header diagnostics, ordering, local/Axum and explicit empty500 preservation');
+ // Two independent failures followed by valid output ensure no shared validation mutation.
+ for(const adapter of ['axum','local'])for(const mode of ['invalid','invalid','valid','declared']){
+  const wire=[];
+  for(const url of [ts,rust]){
+   const response=await fetch(`${url}/status/${adapter}/${mode}`,{headers:{'x-correlation-id':'status-fixture'}});
+   wire.push({status:response.status,text:await response.text(),type:response.headers.get('content-type')});
+  }
+  assert.deepEqual(wire[1],wire[0]);
+  assert.equal(wire[0].status,mode==='valid'?200:500);
+  assert.equal(wire[0].text,mode==='invalid'?'Internal server error:\n\nCorrelation id: status-fixture':'accepted');
+ }
+ for(let attempt=0;attempt<2;attempt++){
+  const response=await fetch(ts+'/status/express418',{headers:{'x-correlation-id':'status-fixture'}});
+  assert.equal(response.status,418);
+  assert.equal(response.headers.get('content-type'),'text/plain; charset=utf-8');
+  assert.equal(await response.text(),'Request could not be processed:\n\nCorrelation id: status-fixture');
+ }
+ console.log('PASS 16 live undocumented-status/profile outcomes and two Express final-error reentrancy regressions');
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);

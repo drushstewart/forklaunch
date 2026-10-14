@@ -332,6 +332,16 @@ pub enum ParserErrorFormat {
     TypeScriptText,
 }
 
+/// Wire profile for framework-detected undocumented response statuses.
+/// This does not rewrite arbitrary handler errors or documented responses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ResponseStatusErrorFormat {
+    #[default]
+    Json,
+    /// Redacted TypeScript final exception diagnostic with correlation ID.
+    TypeScriptText,
+}
+
 /// Render a parser rejection in the final TypeScript exception-handler format.
 #[must_use]
 pub fn typescript_parser_error_response(status: u16, correlation_id: &str) -> FrameworkResponse {
@@ -508,8 +518,25 @@ impl LocalRouter {
     /// Returns an error when the matched handler fails before producing a response.
     pub fn execute_with_parser_error_format(
         &self,
+        request: FrameworkRequest,
+        parser_error_format: ParserErrorFormat,
+    ) -> FrameworkResult<FrameworkResponse> {
+        self.execute_with_error_formats(
+            request,
+            parser_error_format,
+            ResponseStatusErrorFormat::Json,
+        )
+    }
+
+    /// Execute with explicit parser and undocumented-response-status profiles.
+    /// Other schema diagnostics and handler failures retain their native behavior.
+    /// # Errors
+    /// Returns an error when the matched handler fails before producing a response.
+    pub fn execute_with_error_formats(
+        &self,
         mut request: FrameworkRequest,
         parser_error_format: ParserErrorFormat,
+        response_status_error_format: ResponseStatusErrorFormat,
     ) -> FrameworkResult<FrameworkResponse> {
         let explicit_head = request.method == HttpMethod::Head
             && self.routes.iter().any(|route| {
@@ -570,7 +597,14 @@ impl LocalRouter {
                 let mut response = route.handler.call(request)?;
                 let response_errors = validate_framework_response(&contract, &response);
                 if !response_errors.is_empty() {
-                    return Ok(validation_error_response(&response_errors, &correlation_id));
+                    return Ok(match response_status_error_format {
+                        ResponseStatusErrorFormat::Json => {
+                            validation_error_response(&response_errors, &correlation_id)
+                        }
+                        ResponseStatusErrorFormat::TypeScriptText => {
+                            typescript_parser_error_response(500, &correlation_id)
+                        }
+                    });
                 }
                 if head {
                     response.body = Body::Empty;

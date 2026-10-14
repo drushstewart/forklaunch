@@ -622,3 +622,22 @@ reads validate cache identity and provider object/mode/customer evidence while
 preserving application IDs. This repairs public UUID forwarding to Stripe but
 does not establish account ownership from cache data. Managed rebinding requires
 the separate scoped gateway protocol; existing mutation paths remain separate.
+
+
+Final diagnostic reentrancy review (2026-10-13): actual TypeScript probes found
+that an undeclared error status could re-enter response validation from the
+final exception handler and fall through to an HTML stack trace. Final framework
+diagnostics now bypass enriched send using the raw Express sender, while normal
+handler responses retain validation. Repeated 418 failures and the cross-runtime
+201/declared-response cases pass without exposing handler body or stack details.
+The opt-in native status diagnostic is redacted and correlated; it does not
+rewrite arbitrary handler failures.
+
+
+Directory audit context review (2026-10-13): authentication, handler CRUD and
+compliance now share the framework request context. Generated restricted-role
+audits separately verify snapshot reads and actual handler operations, including
+HTTP/MCP create/read/update/delete and compliance export/erase. Verified directory
+actors and HMAC service actors retain their originating correlation; absent
+headers use the framework-generated request ID. No caller-supplied actor is
+accepted through this context propagation.

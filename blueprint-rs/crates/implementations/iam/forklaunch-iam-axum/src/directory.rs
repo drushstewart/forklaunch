@@ -7,7 +7,8 @@ use axum::{
 };
 use forklaunch_auth::{AuthError, Principal, parse_bearer};
 use forklaunch_axum::{
-    ForkLaunchRouter, RouterConfig, module_auth::HmacJwksAuth, session::AuthenticatedSession,
+    ForkLaunchRouter, RequestContext, RouterConfig, module_auth::HmacJwksAuth,
+    session::AuthenticatedSession,
 };
 use forklaunch_blueprint_core::{
     AuditContext, BlueprintError, BlueprintResult,
@@ -157,11 +158,12 @@ fn add_routes(
             let store = store.clone();
             let compliance = compliance.clone();
             let handler = move |Extension(session): Extension<AuthenticatedSession>,
+                                Extension(context): Extension<RequestContext>,
                                 Path(subject): Path<String>| {
                 let store = store.clone();
                 let compliance = compliance.clone();
                 async move {
-                    compliance_response(&store, &compliance, &session, &subject, erase)
+                    compliance_response(&store, &compliance, &session, &context, &subject, erase)
                         .await
                         .unwrap_or_else(|error| failure(&error))
                 }
@@ -179,10 +181,12 @@ fn add_routes(
             HttpMethod::Post => router.post(
                 contract.clone(),
                 move |Extension(session): Extension<AuthenticatedSession>,
+                      Extension(context): Extension<RequestContext>,
                       Json(input): Json<Value>| {
                     dispatch(
                         store.clone(),
                         session,
+                        context,
                         handler_contract.clone(),
                         input,
                         mode,
@@ -192,10 +196,12 @@ fn add_routes(
             HttpMethod::Put => router.put(
                 contract.clone(),
                 move |Extension(session): Extension<AuthenticatedSession>,
+                      Extension(context): Extension<RequestContext>,
                       Json(input): Json<Value>| {
                     dispatch(
                         store.clone(),
                         session,
+                        context,
                         handler_contract.clone(),
                         input,
                         mode,
@@ -205,12 +211,15 @@ fn add_routes(
             HttpMethod::Get if contract.request.params.is_empty() => router.get(
                 contract.clone(),
                 move |Extension(session): Extension<AuthenticatedSession>,
+                      Extension(context): Extension<RequestContext>,
                       RawQuery(query): RawQuery| {
                     let store = store.clone();
                     let contract = handler_contract.clone();
                     async move {
                         match query_input(query.as_deref()) {
-                            Ok(input) => dispatch(store, session, contract, input, mode).await,
+                            Ok(input) => {
+                                dispatch(store, session, context, contract, input, mode).await
+                            }
                             Err(error) => failure(&error),
                         }
                     }
@@ -219,10 +228,12 @@ fn add_routes(
             HttpMethod::Get => router.get(
                 contract.clone(),
                 move |Extension(session): Extension<AuthenticatedSession>,
+                      Extension(context): Extension<RequestContext>,
                       Path(id): Path<String>| {
                     dispatch(
                         store.clone(),
                         session,
+                        context,
                         handler_contract.clone(),
                         json!({"id":id}),
                         mode,
@@ -232,12 +243,15 @@ fn add_routes(
             HttpMethod::Delete if contract.request.params.is_empty() => router.delete(
                 contract.clone(),
                 move |Extension(session): Extension<AuthenticatedSession>,
+                      Extension(context): Extension<RequestContext>,
                       RawQuery(query): RawQuery| {
                     let store = store.clone();
                     let contract = handler_contract.clone();
                     async move {
                         match query_input(query.as_deref()) {
-                            Ok(input) => dispatch(store, session, contract, input, mode).await,
+                            Ok(input) => {
+                                dispatch(store, session, context, contract, input, mode).await
+                            }
                             Err(error) => failure(&error),
                         }
                     }
@@ -246,10 +260,12 @@ fn add_routes(
             HttpMethod::Delete => router.delete(
                 contract.clone(),
                 move |Extension(session): Extension<AuthenticatedSession>,
+                      Extension(context): Extension<RequestContext>,
                       Path(id): Path<String>| {
                     dispatch(
                         store.clone(),
                         session,
+                        context,
                         handler_contract.clone(),
                         json!({"id":id}),
                         mode,
@@ -265,12 +281,13 @@ async fn compliance_response(
     store: &PostgresDirectoryStore,
     config: &DirectoryCompliance,
     session: &AuthenticatedSession,
+    context: &RequestContext,
     subject: &str,
     erase: bool,
 ) -> BlueprintResult<Response> {
     let store = store.with_audit_context(AuditContext::actor(
         &session.principal.subject,
-        uuid::Uuid::new_v4().to_string(),
+        context.correlation_id.clone(),
     ))?;
     let service = DirectoryComplianceService::new(Arc::new(store), config.clone());
     let incomplete = || {
@@ -326,11 +343,12 @@ fn query_input(query: Option<&str>) -> BlueprintResult<Value> {
 async fn dispatch(
     store: Arc<PostgresDirectoryStore>,
     session: AuthenticatedSession,
+    context: RequestContext,
     contract: RouteContract,
     input: Value,
     mode: DirectoryAuthorizationMode,
 ) -> Response {
-    match call(&store, &session, &contract, input, mode).await {
+    match call(&store, &session, &context, &contract, input, mode).await {
         Ok(response) => response,
         Err(error) => failure(&error),
     }
@@ -338,13 +356,14 @@ async fn dispatch(
 async fn call(
     store: &PostgresDirectoryStore,
     session: &AuthenticatedSession,
+    context: &RequestContext,
     contract: &RouteContract,
     input: Value,
     mode: DirectoryAuthorizationMode,
 ) -> BlueprintResult<Response> {
     let store = store.with_audit_context(AuditContext::actor(
         &session.principal.subject,
-        uuid::Uuid::new_v4().to_string(),
+        context.correlation_id.clone(),
     ))?;
     let mut service = BaseIamDirectory::new(Arc::new(store));
     let operation = contract.operation_name.as_str();

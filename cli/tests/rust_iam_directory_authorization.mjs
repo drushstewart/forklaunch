@@ -31,6 +31,11 @@ export async function probeDirectoryAuthorization({start,environment,call,jwt,fi
   const tracedMcp=await mcpRpc(server.baseUrl,'tools/call',{name:'getRole',arguments:{params:{id:fixture.role.id}}},{authorization,'x-correlation-id':'directory-auth-mcp-correlation'});
   assert.equal(tracedMcp.isError,false);
   await action('verify-correlation');
+  const verifyAudits=cases=>promisify(execFile)(path.join(path.dirname(binary),'examples','seed'),['--verify-audits',JSON.stringify(cases)],{env:process.env,timeout:30000,maxBuffer:1024*1024});
+  const auditBase={tenant:'directory',actor:fixture.users[0].id};
+  // One role read occurs in authorization hydration and another in the CRUD handler.
+  await verifyAudits(['directory-auth-http-correlation','directory-auth-mcp-correlation'].map(correlation=>({...auditBase,kind:'role',record:fixture.role.id,correlation,operation:'read',minimum:2})));
+
   // Issued JWT has credential users:read/member grants, not these directory grants.
   const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url'));
   assert.deepEqual(claims.roles,['member']);assert.deepEqual(claims.permissions,['users:read']);
@@ -42,6 +47,30 @@ export async function probeDirectoryAuthorization({start,environment,call,jwt,fi
   await call(server.baseUrl,'/role','PUT',{id:fixture.role.id,name:'admin'});
   await call(server.baseUrl,`/organization/${fixture.organization.id}`,'GET',undefined,200,authorization);
   await call(server.baseUrl,'/role','PUT',{id:fixture.role.id,name:'platform:read'});
+  for(const [transport,correlation] of [['http','directory-crud-http'],['mcp','directory-crud-mcp'],['http',null],['mcp',null]]) {
+    const headers={authorization,...(correlation?{'x-correlation-id':correlation}:{})};
+    const body={id:member.id,firstName:'Audited'};
+    if(transport==='http') {
+      const response=await fetch(server.baseUrl+'/user',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
+      assert.equal(response.status,200,await response.text());
+    }else{
+      const response=await mcpRpc(server.baseUrl,'tools/call',{name:'updateUser',arguments:{body}},headers);assert.equal(response.isError,false,JSON.stringify(response));
+    }
+    await verifyAudits([{...auditBase,kind:'user',record:member.id,correlation,operation:'update',minimum:correlation?1:transport==='mcp'?2:1}]);
+  }
+  for(const transport of ['http','mcp']) {
+    await call(server.baseUrl,'/user','POST',{email:`audit-${transport}@example.test`,password:'ignored',firstName:'Disposable',lastName:'Audit',organization:fixture.organization.id,roles:[]},201,undefined,{'x-correlation-id':`directory-create-${transport}`});
+    const created=await verifyAudits([{tenant:'directory',actor:'service:default',kind:'user',correlation:`directory-create-${transport}`,operation:'create'}]);
+    const records=JSON.parse(created.stdout)[0];assert.equal(records.length,1);const disposable={id:records[0]};
+    const correlation=`directory-delete-${transport}`,headers={authorization,'x-correlation-id':correlation};
+    if(transport==='http') {
+      const response=await fetch(server.baseUrl+`/user/${disposable.id}`,{method:'DELETE',headers,signal:AbortSignal.timeout(10000)});assert.equal(response.status,200,await response.text());
+    }else{
+      const response=await mcpRpc(server.baseUrl,'tools/call',{name:'deleteUser',arguments:{params:{id:disposable.id}}},headers);assert.equal(response.isError,false,JSON.stringify(response));
+    }
+    await verifyAudits([{...auditBase,kind:'user',record:disposable.id,correlation,operation:'delete'}]);
+  }
+
   await action('move-organization');
   await call(server.baseUrl,`/user/${member.id}`,'GET',undefined,404,authorization);
   await call(server.baseUrl,`/user/${outsider.id}`,'GET',undefined,200,authorization);

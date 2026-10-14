@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import {readFileSync} from 'node:fs';
 import {generateKeyPairSync,sign,verify,createHmac,randomUUID} from 'node:crypto';
 import http from 'node:http';
+import path from 'node:path';
 import { createForkLaunchSdk } from './sdks/typescript/dist/index.js';
 
 const directory=JSON.parse(readFileSync('iam-directory-fixture.json','utf8'));
@@ -22,11 +23,12 @@ function jwt(subject=directory.a.users[0].id,roles=['admin','platform:read'],per
  return `Bearer ${header}.${payload}.${sign('RSA-SHA256',Buffer.from(`${header}.${payload}`),privateKey).toString('base64url')}`;
 }
 function hmac(path,method='GET',body) {const ts=new Date().toISOString(),nonce=randomUUID();return `HMAC keyId=default ts=${ts} nonce=${nonce} signature=${createHmac('sha256',secret).update(`${method}\n${path}\n${body===undefined?'undefined':body+'\n'}${ts}\n${nonce}`).digest('base64')}`;}
-async function call(base,path,method='GET',body,status=200,auth) {
+async function call(base,path,method='GET',body,status=200,auth,extraHeaders={}) {
  const raw=body===undefined?undefined:JSON.stringify(body);
- const response=await fetch(base+path,{method,body:raw,headers:{authorization:auth??hmac(path.split('?')[0],method,raw),...(raw?{'content-type':'application/json'}:{})},signal:AbortSignal.timeout(10000)});
+ const response=await fetch(base+path,{method,body:raw,headers:{...extraHeaders,authorization:auth??hmac(path.split('?')[0],method,raw),...(raw?{'content-type':'application/json'}:{})},signal:AbortSignal.timeout(10000)});
  assert.equal(response.status,status,await response.clone().text());return response.headers.get('content-type')?.includes('application/json')?response.json():response.text();
 }
+const verifyAudits=cases=>promisify(execFile)(path.join(path.dirname(process.argv[2]),'examples','seed'),['--verify-audits',JSON.stringify(cases)],{env:process.env,timeout:30000,maxBuffer:1024*1024});
 const processes = [];
 const role = process.env.FORKLAUNCH_TEST_ROLE;
 const databaseUrl = new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);
@@ -238,18 +240,28 @@ try {
   await probeMcp(classified.baseUrl, ['exportuserdata', 'eraseuserdata']);
   const system = jwt(directory.a.users[0].id, ['system']);
   await call(classified.baseUrl, `/compliance/export/${outsider.id}`, 'GET', undefined, 403, jwt());
-  const data = await call(classified.baseUrl, `/compliance/export/${outsider.id}`, 'GET', undefined, 200, system);
+  const data = await call(classified.baseUrl, `/compliance/export/${outsider.id}`, 'GET', undefined, 200, system,{'x-correlation-id':'compliance-export-http'});
   assert.equal(data.userId, outsider.id);
   assert.deepEqual(Object.keys(data.entities.User[0]).sort(), ['email', 'firstName', 'id']);
   assert.equal(data.entities.User[0].email, outsider.email);
-  const exported = await mcpRpc(classified.baseUrl, 'tools/call', {name:'exportuserdata',arguments:{params:{userId:outsider.id}}}, {authorization:system});
+  const exported = await mcpRpc(classified.baseUrl, 'tools/call', {name:'exportuserdata',arguments:{params:{userId:outsider.id}}}, {authorization:system,'x-correlation-id':'compliance-export-mcp'});
   assert.equal(exported.isError, false, JSON.stringify(exported));
   assert.deepEqual(JSON.parse(exported.content[0].text), data);
-  const erased = await mcpRpc(classified.baseUrl, 'tools/call', {name:'eraseuserdata',arguments:{params:{userId:outsider.id}}}, {authorization:system});
+  const erased = await mcpRpc(classified.baseUrl, 'tools/call', {name:'eraseuserdata',arguments:{params:{userId:outsider.id}}}, {authorization:system,'x-correlation-id':'compliance-erase-mcp'});
   assert.equal(erased.isError, false, JSON.stringify(erased));
   assert.deepEqual(JSON.parse(erased.content[0].text), {entitiesAffected:['User'],recordsDeleted:1,failures:[]});
   await call(classified.baseUrl, `/compliance/export/${outsider.id}`, 'GET', undefined, 404, system);
   await call(classified.baseUrl, `/compliance/erase/${outsider.id}`, 'DELETE', undefined, 404, system);
+  const auditActor=directory.a.users[0].id;
+  await verifyAudits([
+    ...['compliance-export-http','compliance-export-mcp'].map(correlation=>({tenant:'a',actor:auditActor,kind:'user',record:outsider.id,correlation,operation:'read'})),
+    {tenant:'a',actor:auditActor,kind:'user',record:outsider.id,correlation:'compliance-erase-mcp',operation:'delete'},
+  ]);
+  await call(classified.baseUrl,'/user','POST',{email:'compliance-audit@example.test',password:'ignored',firstName:'Audit',lastName:'Subject',roles:[]},201,undefined,{'x-correlation-id':'compliance-create-http'});
+  const created=await verifyAudits([{tenant:'a',actor:'service:default',kind:'user',correlation:'compliance-create-http',operation:'create'}]);
+  const records=JSON.parse(created.stdout)[0];assert.equal(records.length,1);const disposable={id:records[0]};
+  await call(classified.baseUrl,`/compliance/erase/${disposable.id}`,'DELETE',undefined,200,system,{'x-correlation-id':'compliance-erase-http'});
+  await verifyAudits([{tenant:'a',actor:auditActor,kind:'user',record:disposable.id,correlation:'compliance-erase-http',operation:'delete'}]);
   console.log('PASS application-configured encrypted IAM compliance over HTTP/MCP: explicit fields, system-role authorization, export, erase and repeated-operation 404');
 
 } finally {

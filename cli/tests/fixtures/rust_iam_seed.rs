@@ -15,7 +15,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let role = std::env::var("FORKLAUNCH_TEST_ROLE")?;
     assert!(role.starts_with("fl_gen_") && role.len() < 63 && role.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     let owner = PgPoolOptions::new().max_connections(2).connect(&owner_url).await?;
-    if std::env::args().nth(1).as_deref() == Some("--directory-auth") {
+    if std::env::args().nth(1).as_deref() == Some("--verify-audits") {
+        verify_audits(&owner_url,&role,&std::env::args().nth(2).ok_or("missing audit cases")?).await?;
+    } else if std::env::args().nth(1).as_deref() == Some("--directory-auth") {
         directory_auth_action(&owner_url, &role, &std::env::args().nth(2).ok_or("missing action")?).await?;
     } else if std::env::args().nth(1).as_deref() == Some("--bind-oidc") {
         let issuer = std::env::args().nth(2).ok_or("missing fixture issuer")?;
@@ -121,4 +123,26 @@ async fn directory_auth_action(url: &str, role: &str, action: &str) -> Result<()
     }
     pool.close().await;
     Ok(())
+}
+
+async fn verify_audits(url:&str,role:&str,input:&str)->Result<(),Box<dyn std::error::Error>> {
+    let set_role=format!("SET ROLE {role}");
+    let pool=PgPoolOptions::new().max_connections(2).after_connect(move |connection,_| {
+        let query=set_role.clone();Box::pin(async move {sqlx::query(&query).execute(connection).await?;Ok(())})
+    }).connect(url).await?;
+    let cases:Vec<Value>=serde_json::from_str(input)?;
+    let mut matched_records=Vec::new();
+    for case in cases {
+        let suffix=case["tenant"].as_str().ok_or("missing audit tenant")?;
+        assert!(["a","b","directory"].contains(&suffix));
+        let tenant=TenantContext::new(format!("{role}-{suffix}"))?;
+        let mut tx=forklaunch_core::persistence::begin_tenant_transaction(&pool,&tenant).await?;
+        let records:Vec<String>=sqlx::query_scalar("SELECT record_id FROM fl_iam_directory_audit WHERE tenant_id=$1 AND actor_id=$2 AND kind=$3 AND ($4::text IS NULL OR record_id=$4) AND (($5::text IS NULL AND correlation_id LIKE 'forklaunch-%') OR correlation_id=$5) AND operation=$6")
+            .bind(tenant.id()).bind(case["actor"].as_str().ok_or("missing actor")?).bind(case["kind"].as_str().ok_or("missing kind")?).bind(case["record"].as_str()).bind(case["correlation"].as_str()).bind(case["operation"].as_str().ok_or("missing operation")?).fetch_all(&mut *tx).await?;
+        let count=records.len() as i64;
+        matched_records.push(records);
+        assert!(count>=case["minimum"].as_i64().unwrap_or(1),"actual directory audit context mismatch: {case}; count={count}");tx.commit().await?;
+    }
+    println!("{}",serde_json::to_string(&matched_records)?);
+    pool.close().await;Ok(())
 }

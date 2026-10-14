@@ -18,6 +18,17 @@ app.get('/users/:id', {
   const found=users.find(user=>user.id===req.params.id);
   if(found) res.status(200).json(found); else res.status(404).send();
 });
+// Undocumented success status exercises final-error handling; declared500 remains valid.
+for(const adapter of ['axum','local'])app.get('/status/'+adapter+'/:mode',{
+ name:'Status '+adapter,summary:'Status',options:{openapi:false},params:{mode:string},
+ responses:{200:string,500:string}
+},(req,res)=>{
+ const status=req.params.mode==='invalid'?201:req.params.mode==='declared'?500:200;
+ res.type('text/plain').status(status).send(status===201?'PRIVATE_STATUS_PAYLOAD':'accepted');
+});
+app.get('/status/express418',{
+ name:'Undeclared418',summary:'Final diagnostic',options:{openapi:false},responses:{200:string}
+},(_req,res)=>res.status(418).send('PRIVATE_STATUS_PAYLOAD'));
 let queryCalls=0;
 app.get('/users', {
   name:'List Users',summary:'List users',access:'authenticated',auth,

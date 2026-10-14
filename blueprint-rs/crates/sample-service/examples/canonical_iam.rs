@@ -3,12 +3,14 @@
 mod canonical_query;
 #[path = "support/canonical_response.rs"]
 mod canonical_response;
+#[path = "support/canonical_status.rs"]
+mod canonical_status;
 use forklaunch_auth::{
     JwtClaims, issue_jwt_hs256, typescript::jwt::verify_jwt_resource, verify_jwt_hs256,
 };
 use forklaunch_axum::{
-    AuthErrorFormat, ForkLaunchRouter, HandlerErrorFormat, ParserErrorFormat, RouterConfig,
-    session::AuthenticatedSession,
+    AuthErrorFormat, ForkLaunchRouter, HandlerErrorFormat, ParserErrorFormat,
+    ResponseStatusErrorFormat, RouterConfig, session::AuthenticatedSession,
 };
 use forklaunch_blueprint_core::{
     contract::{
@@ -39,6 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth_error_format: AuthErrorFormat::TypeScriptText,
         handler_error_format: HandlerErrorFormat::TypeScriptText,
         parser_error_format: ParserErrorFormat::TypeScriptText,
+        response_status_error_format: ResponseStatusErrorFormat::TypeScriptText,
         body_limit: 128,
         ..RouterConfig::default()
     }
@@ -221,7 +224,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_config(config)
         .nest("/errors", errors)
         .nest("/parser", parser_router)
-        .nest("/response", canonical_response::router());
+        .nest("/response", canonical_response::router())
+        .nest("/status", canonical_status::router());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     println!("READY http://{}", listener.local_addr()?);
     axum::serve(listener, assembled.into_router())

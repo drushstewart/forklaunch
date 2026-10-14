@@ -5471,3 +5471,49 @@ Logs: `/private/tmp/fl-checkout-configured-stripe-services.log`,
 Configured mutations still need explicit ownership/identity integration, and
 remaining URI/schema/mapping boundaries stay open. Checklist: **660/682 (96.8%),
 22 open**.
+
+
+### 2026-10-13: undocumented-response diagnostics and error-handler reentrancy
+
+The opt-in `ResponseStatusErrorFormat::TypeScriptText` covers framework-detected
+undocumented response statuses in local and Axum handlers, including selected
+versions. Existing JSON defaults and documented handler responses remain intact.
+The profile currently preserves native rejection status 500; TypeScript's
+selection of an existing 4xx/5xx status, default error-string union and empty
+`.send()` bypass are separate remaining semantics.
+
+Actual-source probes also exposed TypeScript final-error reentrancy: the final
+diagnostic was validated against the same failing route, causing Express to emit
+an HTML stack trace. The final framework diagnostic now uses the raw Express
+sender, retaining status selection, redaction and correlation. Ordinary handler
+response validation still runs. Repeated rejection requests remain independent.
+
+Verified: 68 Axum and 40 HTTP tests, strict Clippy, 168 cross-runtime HTTP
+outcomes and two repeated TypeScript 418 regression cases. Three canonical
+OpenAPI differences remain explicit. Receipts:
+`/private/tmp/fl-status-error-{oracle,tests,canonical,clippy}.log`.
+Checklist remains **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: request correlation through directory CRUD and compliance
+
+Axum handlers now receive the same `RequestContext` used by authentication and
+validation. Directory CRUD and compliance operations reuse that correlation with
+the verified actor, replacing independently generated audit IDs. Generated
+HTTP/MCP probes check actual create/read/update/delete audits (separate from
+stored-session snapshot reads), explicit and generated correlations, HMAC service
+actors, directory actors and classified compliance export/erase audits.
+
+Verified: focused explicit/generated/public context regressions, 67 Axum tests
+at the IAM checkpoint, strict IAM/framework Clippy, then full generated IAM
+HTTP/MCP, both SDKs, OIDC/browser sessions, encrypted persistence, restart,
+revocation and rename/sync/delete lifecycle. The new fixture was corrected to
+the declared create contract (201 text); created IDs are recovered from exactly
+one tenant/actor/correlation/create audit row before subsequent exact-ID checks.
+Logs: `/private/tmp/fl-iam-crud-context-{native,regression,clippy,framework-clippy,generated}.log`.
+
+The fresh generated billing checkpoint also passes HTTP/MCP startup, both SDKs,
+encrypted storage, restart, managed configuration and complete CLI lifecycle:
+`/private/tmp/fl-rust-current-billing-runtime.log`. Package verification includes
+1011 embedded Rust source/template assets. Checklist remains **660/682 (96.8%),
+22 open**.

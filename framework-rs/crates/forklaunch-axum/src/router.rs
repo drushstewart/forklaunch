@@ -33,7 +33,7 @@ use forklaunch_contract::{
 use forklaunch_core::{ServiceInfo, telemetry::OpenTelemetryCollector};
 use forklaunch_http::{
     Body as FrameworkBody, ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse,
-    LocalRouter, ParserErrorFormat, RequestContext, match_path_checked,
+    LocalRouter, ParserErrorFormat, RequestContext, ResponseStatusErrorFormat, match_path_checked,
     typescript_parser_error_response, validate_framework_request, validation_error_response,
     validation_error_response_with_parser_format,
 };
@@ -125,6 +125,8 @@ pub struct RouterConfig {
     pub handler_error_format: HandlerErrorFormat,
     /// Final wire representation for request-parser and transport-limit failures.
     pub parser_error_format: ParserErrorFormat,
+    /// Wire format for framework-detected undocumented response statuses.
+    pub response_status_error_format: ResponseStatusErrorFormat,
     /// Inject a configured collector to export HTTP traces and metrics.
     pub telemetry: Option<OpenTelemetryCollector>,
 }
@@ -155,6 +157,7 @@ impl Default for RouterConfig {
             auth_error_format: AuthErrorFormat::Json,
             handler_error_format: HandlerErrorFormat::Json,
             parser_error_format: ParserErrorFormat::Json,
+            response_status_error_format: ResponseStatusErrorFormat::Json,
             telemetry: None,
         }
     }
@@ -233,6 +236,8 @@ impl RouterConfig {
 }
 
 mod internal;
+#[cfg(test)]
+mod response_status_tests;
 #[cfg(test)]
 mod versioning_tests;
 
@@ -334,7 +339,16 @@ impl ForkLaunchRouter {
                         .get::<ParserErrorFormat>()
                         .copied()
                         .unwrap_or_default();
-                    match handlers.execute_with_parser_error_format(request, parser_format) {
+                    let response_status_format = parts
+                        .extensions
+                        .get::<ResponseStatusErrorFormat>()
+                        .copied()
+                        .unwrap_or_default();
+                    match handlers.execute_with_error_formats(
+                        request,
+                        parser_format,
+                        response_status_format,
+                    ) {
                         Ok(response) => framework_response_to_axum(response),
                         Err(error) => {
                             tracing::error!(error = %error, correlation_id, "local request handler failed");
@@ -890,6 +904,7 @@ struct ValidationState {
     auth_error_format: AuthErrorFormat,
     handler_error_format: HandlerErrorFormat,
     parser_error_format: ParserErrorFormat,
+    response_status_error_format: ResponseStatusErrorFormat,
     telemetry: OpenTelemetryCollector,
 }
 
@@ -972,6 +987,7 @@ impl ValidationState {
             auth_error_format: config.auth_error_format,
             handler_error_format: config.handler_error_format,
             parser_error_format: config.parser_error_format,
+            response_status_error_format: config.response_status_error_format,
             telemetry,
         }
     }
@@ -1139,8 +1155,11 @@ async fn execute_validated(
     mut framework_request: FrameworkRequest,
     next: Next,
 ) -> Response {
+    // Handlers use the same context that authentication and validation observed.
+    parts.extensions.insert(framework_request.context.clone());
     parts.extensions.insert(state.handler_error_format);
     parts.extensions.insert(state.parser_error_format);
+    parts.extensions.insert(state.response_status_error_format);
     // LocalRouter owns selection and response validation for its handlers.
     // Authentication and the transport body limit still run above, but runtime
     // callbacks must execute exactly once and may change the selected schema.
@@ -1178,7 +1197,12 @@ async fn execute_validated(
     let response = next
         .run(Request::from_parts(parts, AxumBody::from(bytes)))
         .await;
-    let response = validate_response_status(&contract, response, &correlation_id);
+    let response = validate_response_status(
+        &contract,
+        response,
+        &correlation_id,
+        state.response_status_error_format,
+    );
     state
         .response_validators
         .validate(&contract, &framework_request, response)
@@ -1292,6 +1316,7 @@ fn validate_response_status(
     contract: &RouteContract,
     response: Response,
     correlation_id: &str,
+    format: ResponseStatusErrorFormat,
 ) -> Response {
     if contract.options.response_validation != ValidationMode::Error
         || contract.responses.is_empty()
@@ -1309,6 +1334,9 @@ fn validate_response_status(
     }
 
     tracing::error!(status, operation = %contract.operation_name, correlation_id, "handler returned undocumented status");
+    if format == ResponseStatusErrorFormat::TypeScriptText {
+        return framework_response_to_axum(typescript_parser_error_response(500, correlation_id));
+    }
     framework_response_to_axum(
         ErrorResponse::new(ErrorKind::Internal, "internal server error")
             .with_correlation_id(correlation_id.to_owned())
@@ -2105,3 +2133,6 @@ mod extended_method_tests {
             });
     }
 }
+
+#[cfg(test)]
+mod request_context_tests;
