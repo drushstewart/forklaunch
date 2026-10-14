@@ -64,7 +64,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
  if(process.env.FORKLAUNCH_VERSION_QUERY_ORACLE_ONLY==='1')console.log(`PASS ${oracle.length} actual Express version query observations`);
  else {
   run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','version_query_parity']);
-  const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/version_query_parity'),[]);
+  const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/version_query_parity'),[]);
   let exact=0,errors=0;
   for(const expected of oracle)for(const surface of ['native','local']) {
    const response=await fetch(rust+'/'+surface+expected.path);

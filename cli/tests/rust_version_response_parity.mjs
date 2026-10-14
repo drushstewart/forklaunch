@@ -57,7 +57,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
 
  const ts=await start(process.execPath,['service.mjs']);
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','version_response_parity']);
- const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/version_response_parity'),[]);
+ const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/version_response_parity'),[]);
  let count=0;
  for(const mode of ['none','warning','error'])for(const match of ['both','first','last'])for(const [status,body] of [[201,'first'],[202,'last'],[203,'old'],[203,'new'],[203,'invalid'],[204,'empty']]){
  const path='/'+mode+'/'+status+'/'+body+'?match='+match;const expectedResponse=await fetch(ts+path,{headers:{'x-correlation-id':'versions-oracle'}});const expected={status:expectedResponse.status,selected:expectedResponse.headers.get('x-selected'),body:await expectedResponse.text()};

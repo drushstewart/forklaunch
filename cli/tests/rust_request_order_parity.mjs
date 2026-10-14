@@ -58,7 +58,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
 
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','request_order_parity']);
  const ts=await start(process.execPath,['service.mjs']);
- const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/request_order_parity'),[]);
+ const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/request_order_parity'),[]);
  let comparisons=0;
  for(const mode of ['none','warning','error'])for(const auth of [false,true])for(const query of ['', '?limit=bad','?limit=','?limit=2','?limit=2&limit=3']){
   const results=[];

@@ -57,7 +57,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
 
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','request_fields_parity']);
  const ts=await start(process.execPath,['service.mjs']);
- const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/request_fields_parity'),[]);
+ const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/request_fields_parity'),[]);
  const cases=[['2','?extra=keep',{}],['2','?limit=3&extra=keep',{'x-flag':'true','x-count':'2','x-extra':'keep'}],['2','?limit=',{'x-flag':'false','x-count':'0','x-extra':'keep'}],['2','?limit=bad',{'x-flag':'true','x-count':'2','x-extra':'keep'}],['bad','?limit=3',{'x-flag':'true','x-count':'2'}],['2','?limit=2&limit=3',{'x-flag':'false','x-count':'0'}],['2','?limit=2',{'x-flag':'bad','x-count':'2','x-extra':'keep'}],['2','?limit=2',{'x-flag':'false','x-count':'','x-absent':'provided'}]];
  let comparisons=0;
  for(const mode of ['none','warning','error'])for(const auth of [false,true])for(const [id,query,headers] of cases){

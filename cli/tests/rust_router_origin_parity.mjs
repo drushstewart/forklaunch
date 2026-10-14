@@ -57,7 +57,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
  run(join(dependencies,'node_modules/.bin/esbuild'),['service.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=service.mjs']);
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','router_origin_parity']);
  const ts=await start(process.execPath,['service.mjs']);
- const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/router_origin_parity'),[]);
+ const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/router_origin_parity'),[]);
  const paths=['/missing','/missing?private=never-render','/missing/a%20b',"/missing/a&b'c",'/missing/%E2%98%83','/missing/%GG','/missing/%A','/missing/%','/missing/%00','/missing/a%2Fb','/missing/a`b{c}','/missing/%ff','/missing/%A%20','/missing/%G%20','/missing/%A[','/missing/%A|','/missing/%A~'];
  const matrix=[];
  for(const method of ['GET','HEAD','POST','PATCH','DELETE'])for(const path of paths)matrix.push([method,path]);

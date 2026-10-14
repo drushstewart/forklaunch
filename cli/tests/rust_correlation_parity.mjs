@@ -62,7 +62,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
  run(join(dependencies,'node_modules/.bin/esbuild'),['service.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=service.mjs']);
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','correlation_parity']);
  const ts=await start(process.execPath,['service.mjs']);
- const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/correlation_parity'),[]);
+ const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/correlation_parity'),[]);
 
  const variants=[{}, {'x-request-id':'request-only'}, {'x-correlation-id':'supplied','x-request-id':'independent'}, {'x-correlation-id':'','x-request-id':'request-only'}, {'x-correlation-id':' \t '}, {'x-correlation-id':'  padded  '}, {'x-correlation-id':['first','second']}, {'x-correlation-id':['','second']}, {'x-correlation-id':'0'}, ...[0x80,0xe9,0xff].map(byte=>({'x-correlation-id':'caf'+String.fromCharCode(byte)}))];
  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;

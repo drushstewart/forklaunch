@@ -58,7 +58,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
 
  const ts=await start(process.execPath,['service.mjs']);
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','response_warning_parity']);
- const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/response_warning_parity'),[]);
+ const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/response_warning_parity'),[]);
  let count=0;
  for(const mode of ['none','warning','error'])for(const kind of ['valid','body','header','body-header'])for(let repeat=0;repeat<2;repeat++){
  const outcomes=[];

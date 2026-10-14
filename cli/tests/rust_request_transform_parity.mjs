@@ -58,7 +58,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
 
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','request_transform_parity']);
  const ts=await start(process.execPath,['service.mjs']);
- const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/request_transform_parity'),[]);
+ const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/request_transform_parity'),[]);
  const inputs=[{amount:'12.5',extra:true},{amount:'',label:'explicit',extra:true},{amount:null},{amount:'bad',extra:true},{amount:'2',label:3,extra:true},{},null,[]];
  let comparisons=0;
  for(const mode of ['none','warning','error']){

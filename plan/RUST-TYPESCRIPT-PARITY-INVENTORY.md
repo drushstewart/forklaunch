@@ -6957,3 +6957,16 @@ RLS, rotation, audit atomicity,32k indexed lookups and live HTTP/MCP sessions pa
 Restricted fixture roles are absent; matching records/audits/unique/lookup claims
 are all zero (/private/tmp/fl-jwks-repository-pg-cleanup.log). The copied binary
 was hash-verified again and removed; later source work is outside this receipt.
+
+
+## Framework fixture executable discovery correction (2026-10-14)
+
+Eleven framework-manifest HTTP differential fixtures now default to the executable
+under framework-rs/target, matching Cargo metadata. They previously looked under
+blueprint-rs/target unless an explicit shared CARGO_TARGET_DIR was set, which local
+parity runs provided but clean CI did not. Explicit target overrides still work.
+The framework CI job now sets its absolute cached framework target consistently,
+including canonical comparisons that build a blueprint example from that job.
+All eleven scripts pass syntax checks and their defaults match actual offline
+Cargo metadata. Their existing semantic receipts used the explicit shared target
+and remain valid; this fixes clean-environment artifact discovery.

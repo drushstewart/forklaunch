@@ -73,7 +73,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
  let comparisons=0, unsupported=0;
  for(const strict of [true,false])for(const reviver of [false,true]){
   const ts=await start(process.execPath,['service.mjs',String(strict),String(reviver)]);
-  const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/json_request_parity'),[String(strict),String(reviver)]);
+  const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/json_request_parity'),[String(strict),String(reviver)]);
   for(const [name,headers,body,framing='length'] of cases)for(const [mode,auth] of [['none',false],['warning',false],['none',true]]){
    const results=[];
    for(const url of [ts,rust]){

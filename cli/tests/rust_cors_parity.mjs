@@ -64,7 +64,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
  const configs=[{}, {origin:'https://fixed.example'}, {origin:true}, {origin:['https://allowed.example']}, {origin:false}, {credentials:true}, {origin:['https://allowed.example'],credentials:true}, {methods:['GET','PATCH'],allowedHeaders:['X-One','X-Two'],exposedHeaders:['X-Result'],maxAge:0}, {preflightContinue:true}, {optionsSuccessStatus:200}];
  for(const config of configs){
   const ts=await start(process.execPath,['service.mjs',JSON.stringify(config)]);
-  const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/cors_parity'),[JSON.stringify(config)]);
+  const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/cors_parity'),[JSON.stringify(config)]);
   for(const input of [{},{origin:'https://allowed.example'},{origin:'https://denied.example'},{origin:'null'},{origin:'https://allowed.example','access-control-request-method':'PATCH','access-control-request-headers':'X-One, x-two'}])for(const [method,path] of [['GET','/ok'],['HEAD','/ok'],['GET','/error'],['GET','/missing'],['OPTIONS','/explicit'],['OPTIONS','/ok'],['OPTIONS','/missing'],['OPTIONS','/param/%GG'],['GET','/override']]){
    const results=[];
    for(const url of [ts,rust]){
