@@ -58,6 +58,7 @@ on:
       - 'cli/tests/rust_zod_number_parity.mjs'
       - 'cli/tests/rust_zod_array_parity.mjs'
       - 'cli/tests/rust_version_query_parity.mjs'
+      - 'cli/tests/ts_version_request_diagnostics.mjs'
       - 'cli/tests/rust_configured_mappers_types.mjs'
       - 'cli/tests/fixtures/configured-mappers-types/**'
       - 'cli/tests/typescript_response_status_validation.mjs'
@@ -334,6 +335,7 @@ on:
       - 'cli/tests/rust_zod_number_parity.mjs'
       - 'cli/tests/rust_zod_array_parity.mjs'
       - 'cli/tests/rust_version_query_parity.mjs'
+      - 'cli/tests/ts_version_request_diagnostics.mjs'
       - 'cli/tests/rust_configured_mappers_types.mjs'
       - 'cli/tests/fixtures/configured-mappers-types/**'
       - 'cli/tests/typescript_response_status_validation.mjs'
@@ -716,6 +718,10 @@ jobs:
       - run: node cli/tests/rust_version_query_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/ts_version_request_diagnostics.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_VERSION_DIAGNOSTICS_NATIVE: '1'
       - run: node cli/tests/rust_zod_string_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

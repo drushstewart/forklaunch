@@ -11461,6 +11461,11 @@
           "source": "framework/core/src/http/mcpGenerator/mcpGenerator.ts"
         },
         {
+          "subpath": "./http/middleware/internal/validationDiagnostic",
+          "target": "lib/http/middleware/internal/validationDiagnostic.d.ts",
+          "source": "framework/core/src/http/middleware/internal/validationDiagnostic.ts"
+        },
+        {
           "subpath": "./http/middleware/request/auth.middleware",
           "target": "lib/http/middleware/request/auth.middleware.d.ts",
           "source": "framework/core/src/http/middleware/request/auth.middleware.ts"
@@ -13715,6 +13720,23 @@
           ]
         },
         {
+          "source": "framework/core/src/http/middleware/internal/validationDiagnostic.ts",
+          "exports": [
+            {
+              "name": "isValidationDiagnostic",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/middleware/internal/validationDiagnostic.ts",
+              "line": 5
+            },
+            {
+              "name": "sendValidationDiagnostic",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/middleware/internal/validationDiagnostic.ts",
+              "line": 9
+            }
+          ]
+        },
+        {
           "source": "framework/core/src/http/middleware/request/auth.middleware.ts",
           "exports": [
             {
@@ -13789,7 +13811,7 @@
               "name": "parse",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/middleware/request/parse.middleware.ts",
-              "line": 30
+              "line": 31
             }
           ]
         },
@@ -13869,7 +13891,7 @@
               "name": "enrichExpressLikeSend",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/middleware/response/enrichExpressLikeSend.middleware.ts",
-              "line": 52
+              "line": 53
             }
           ]
         },

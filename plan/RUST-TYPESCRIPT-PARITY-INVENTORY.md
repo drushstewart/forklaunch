@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 608 resolved declaration entry points and 1,662 declaration/re-export
+It records 610 resolved declaration entry points and 1,669 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -7007,3 +7007,37 @@ ignored PG case is wired into CI. Existing template directory/README symlinks ex
 the new migration/source. All owned PG fixtures clean up their exact roles and rows.
 This finite direct no-charge repair does not close the broad interrupted-capture/
 cancelled-reference gate or prove live provider/cloud behavior.
+
+
+## TypeScript versioned request-diagnostic correction (2026-10-14)
+
+Actual Express auditing found that a request-version rejection could itself enter
+application response validation before selected-version metadata existed, collapsing
+intended diagnostics to generic400 or raising500 even with response validation
+None. The request parser now sends its framework-created text diagnostic within a
+synchronous per-response WeakSet scope; the enriched sender bypasses application
+response validation only for marked string diagnostics and cleans the scope in
+finally, preserving nested sends and exception cleanup. Genuine handler responses
+still validate normally. Missing selected version uses empty response metadata,
+allowing None/Warning handler sends and preserving Error-mode rejection of an
+undocumented response. No route metadata or request-controlled bypass flag is set.
+
+54 actual-source cases pass repeated failure/success requests, all validation modes,
+authentication preservation and genuine handler schema rejection; an instrumented
+validator rejects any accidental diagnostic validation. Native characterization
+checks90 requests:52 exact successes and38 existing diagnostic differences,
+including six auth-before-version status differences. Those differences stay
+explicitly open; this TS correctness fix is not native no-match parity closure.
+Prior36 observations: /private/tmp/fl-version-request-errors-audit.log. Final proof:
+/private/tmp/fl-version-diagnostics-{native,configured-types,headers,clippy}.log.
+All eight permanent configured service/mapper roots typecheck with zero errors;
+the obsolete ad-hoc13-ambient-error log is not a successful type-check receipt.
+
+Canonical366 live outcomes and zero normalized OpenAPI differences,144 whole-request
+field transforms,57 JSON body transforms,24 Warning-mode pairs,108 version-response
+pairs/20 known early-origin differences and54 raw-header pairs all pass again:
+/private/tmp/fl-version-diagnostics-rust_*.log and the headers log. CI includes the
+actual diagnostic regression and explicit native characterization. Public inventory
+is regenerated/checked at44 packages,610 entrypoints,1669 declaration records,zero
+unresolved; the additional entry is the shared diagnostic helper module covered by
+the existing package wildcard. Auth-ordering/no-match envelopes remain further work.
