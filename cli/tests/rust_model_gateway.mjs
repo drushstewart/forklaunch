@@ -50,13 +50,13 @@ try{
  else{
   if(!process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY)execFileSync('cargo',['build','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-blueprint-core','--features','instance-gateway','--example','model_gateway'],{cwd:root,stdio:'inherit',timeout:180000});
   const binary=process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY??path.join(process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target'),'debug/examples/model_gateway');
-  const extras=[{kind:'models',name:'cap-content-length',raw:' '.repeat(1048577)},{kind:'chat',body,name:'cap-chunked',raw:' '.repeat(1048577),chunked:true}];
+  const extras=[];for(const chunked of [false,true])for(const bytes of [1048576,1048577])extras.push({kind:chunked?'chat':'models',...(chunked?{body}:{}),name:'raw-cap-'+bytes,raw:JSON.stringify(catalog).padEnd(bytes,' '),chunked,valid:bytes===1048576});
   queue=[...cases,...extras];const child=spawn(binary,[],{cwd:root,stdio:['pipe','pipe','inherit']});let output='';child.stdout.on('data',chunk=>output+=chunk);
   child.stdin.end(JSON.stringify({base,actions:queue.map(({kind,body})=>({kind,body}))}));
   const exit=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',resolve);});assert.equal(exit,0);if(failure)throw failure;assert.equal(queue.length,0);
   const actual=JSON.parse(output);assert.equal(actual.length,cases.length+extras.length);
   cases.forEach((item,index)=>{const value=actual[index];if(value.error){assert.doesNotMatch(value.description,/private|credential|fixture-secret/);delete value.description;delete value.code;}assert.deepEqual(value,expected[index],item.name);});
-  for(const value of actual.slice(cases.length)){assert.equal(value.error,true);assert.equal(value.code,'provider_invalid_response');assert.equal(value.status,null);}
+  extras.forEach((item,index)=>{const value=actual[cases.length+index];if(item.valid)assert.deepEqual(value,{ok:catalog});else{assert.equal(value.error,true);assert.equal(value.code,'provider_invalid_response');assert.equal(value.status,null);}});
   assert.equal(nonces.size,cases.length*2+extras.length);
   const unavailable=createServer();await new Promise(resolve=>unavailable.listen(0,'127.0.0.1',resolve));const closed=`http://127.0.0.1:${unavailable.address().port}`;await new Promise(resolve=>unavailable.close(resolve));
   const child2=spawn(binary,[],{cwd:root,stdio:['pipe','pipe','inherit']});let output2='';child2.stdout.on('data',chunk=>output2+=chunk);child2.stdin.end(JSON.stringify({base:closed,actions:[{kind:'models'}]}));assert.equal(await new Promise(resolve=>child2.once('exit',resolve)),0);const failed=JSON.parse(output2)[0];assert.equal(failed.error,true);assert.equal(failed.status,null);assert.doesNotMatch(failed.description,/fixture-secret/);

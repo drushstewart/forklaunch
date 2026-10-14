@@ -50,6 +50,9 @@ on:
       - 'cli/tests/rust_request_order_parity.mjs'
       - 'cli/tests/rust_request_transform_parity.mjs'
       - 'cli/tests/rust_request_fields_parity.mjs'
+      - 'cli/tests/rust_response_warning_parity.mjs'
+      - 'cli/tests/ts_response_header_arrays.mjs'
+      - 'cli/tests/rust_simple_query_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -181,6 +184,7 @@ on:
       - 'cli/tests/rust_better_auth_jwks_path.mjs'
       - 'cli/tests/rust_better_auth_jwt_subject.mjs'
       - 'cli/tests/rust_better_auth_jwt_payload.mjs'
+      - 'cli/tests/rust_better_auth_jwt_expiration.mjs'
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
@@ -209,6 +213,9 @@ on:
       - 'cli/tests/rust_billing_recurring_options.mjs'
       - 'cli/tests/rust_billing_payment_link_options.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_update.mjs'
+      - 'cli/tests/rust_billing_payment_link_update_preflight.mjs'
+      - 'cli/tests/rust_billing_plan_update_preflight.mjs'
+      - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_cached_session_identity.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
@@ -225,6 +232,7 @@ on:
       - 'cli/tests/rust_platform_events_parity.mjs'
       - 'cli/tests/rust_instance_gateway_configuration.mjs'
       - 'cli/tests/rust_preview_model_gateway.mjs'
+      - 'cli/tests/rust_model_gateway.mjs'
       - 'cli/tests/rust_actual_http_fixture.mjs'
       - 'cli/tests/rust_billing_stripe_services_parity.mjs'
       - 'cli/tests/rust_billing_stripe_webhook_parity.mjs'
@@ -303,6 +311,9 @@ on:
       - 'cli/tests/rust_request_order_parity.mjs'
       - 'cli/tests/rust_request_transform_parity.mjs'
       - 'cli/tests/rust_request_fields_parity.mjs'
+      - 'cli/tests/rust_response_warning_parity.mjs'
+      - 'cli/tests/ts_response_header_arrays.mjs'
+      - 'cli/tests/rust_simple_query_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -434,6 +445,7 @@ on:
       - 'cli/tests/rust_better_auth_jwks_path.mjs'
       - 'cli/tests/rust_better_auth_jwt_subject.mjs'
       - 'cli/tests/rust_better_auth_jwt_payload.mjs'
+      - 'cli/tests/rust_better_auth_jwt_expiration.mjs'
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
@@ -462,6 +474,9 @@ on:
       - 'cli/tests/rust_billing_recurring_options.mjs'
       - 'cli/tests/rust_billing_payment_link_options.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_update.mjs'
+      - 'cli/tests/rust_billing_payment_link_update_preflight.mjs'
+      - 'cli/tests/rust_billing_plan_update_preflight.mjs'
+      - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_cached_session_identity.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
@@ -478,6 +493,7 @@ on:
       - 'cli/tests/rust_platform_events_parity.mjs'
       - 'cli/tests/rust_instance_gateway_configuration.mjs'
       - 'cli/tests/rust_preview_model_gateway.mjs'
+      - 'cli/tests/rust_model_gateway.mjs'
       - 'cli/tests/rust_actual_http_fixture.mjs'
       - 'cli/tests/rust_billing_stripe_services_parity.mjs'
       - 'cli/tests/rust_billing_stripe_webhook_parity.mjs'
@@ -652,6 +668,15 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_request_fields_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_response_warning_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/ts_response_header_arrays.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_simple_query_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/typescript_response_status_validation.mjs
@@ -873,6 +898,11 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_preview_model_gateway.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_model_gateway.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_instance_gateway_configuration.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -904,13 +934,38 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_dto_types.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_portal_options.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_recurring_options.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_payment_link_options.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_payment_link_cache_update.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_payment_link_update_preflight.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_plan_update_preflight.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_subscription_update_preflight.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_payment_link_cache_reads.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_cached_session_identity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_subscription_party_types.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_checkout_uri.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -1111,6 +1166,10 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_jwt_payload.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_jwt_expiration.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
