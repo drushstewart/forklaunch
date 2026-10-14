@@ -6872,3 +6872,32 @@ ad-hoc type-check prefix (42MiB) were removed after verifying no active process
 used them. Restricted test roles were absent after cleanup. Logs and checkpoint
 metadata remain in /private/tmp/fl-oct14-ecommerce-checkpoint-proof.json; the
 permanent source type fixture replaces the deleted ad-hoc configuration.
+
+
+## Read-only direct Stripe ecommerce context (2026-10-14)
+
+An explicit opt-in ecommerce client profile now authenticates direct account and
+mode with GET /v1/account and /v1/balance under the same immutable credentials and
+transport. Its opaque observation binds one client generation and expires five
+seconds after verification starts. No key-prefix inference or Connect header is
+used. New postgres-feature inspect_bound_payment_intent rejects Connect before
+all I/O, resolves the provisioned tenant administrative binding, checks exact
+intent ID/type/mode/amount/canonical currency/order metadata and rechecks the
+entire binding, generation and deadline after the final database wait. Its small
+result omits client secrets, raw provider data and customer/address fields.
+
+The direct-context native test, restricted PostgreSQL test, official pinned Stripe
+22.6.2/native three-GET wire comparison, and strict base/Stripe all-feature,
+all-target Clippy pass: /private/tmp/fl-ecommerce-direct-context-{unit,pg,wire,clippy}.log.
+The database fixture proves tenant/identity/shape rejection, binding replacement
+ABA rejection, expiry while waiting for final database access, Connect zero I/O,
+SELECT-only successful inspection and unchanged payment. CI runs the official SDK
+comparison and explicit ignored PostgreSQL test. Source/template documentation
+records trusted expectations and the sensitive low-level raw-read boundary.
+
+This read-only API has no public route or write capability. Administrative tenant
+assignment remains an operator assertion. Neither a status observation nor this
+context authorizes capture/refund/cancellation/reference clearing or cancelled-
+order repair. Existing reconciliation APIs keep their prior evidence requirements
+and do not automatically use it. Connect, managed gateway and PayPal integration
+remain separate work; remote provider changes can race after the final check.

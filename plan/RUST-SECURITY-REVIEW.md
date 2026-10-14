@@ -882,3 +882,14 @@ consistency observations; a race remains after the final check, previously issue
 secrets are not revoked, and no provider cancellation or monetary action occurs.
 See the dated inventory receipt for exact checkpoint and preserved failure/final
 logs.
+
+
+### Read-only direct ecommerce provider context (2026-10-14)
+
+The opt-in Stripe inspector binds authenticated account/mode reads to an immutable
+client and a five-second observation window, then checks the administrative
+binding's complete generation/identity before returning a redacted observation.
+Restricted PG tests reject replacement ABA and expiry after final database waits;
+Connect rejects before I/O. This grants no monetary or repair authority and has
+no public route. Operator tenant assignment and remote post-check changes remain
+outside this proof. Existing reconciliation APIs are unchanged; see inventory.

@@ -1,6 +1,9 @@
 //! Stripe `PaymentIntents` and direct Connect charges backed by the atomic
 //! ecommerce store. Client secrets are response-only and never persisted.
 #![forbid(unsafe_code)]
+#[cfg(feature = "postgres")]
+pub mod bound_reads;
+pub mod context;
 pub mod reconciliation;
 pub mod tax;
 pub mod webhook;
@@ -21,6 +24,7 @@ use zeroize::Zeroizing;
 pub struct StripeClient {
     http: ProviderHttpClient,
     secret: Arc<Zeroizing<String>>,
+    generation: Arc<()>,
 }
 impl std::fmt::Debug for StripeClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -66,6 +70,7 @@ impl StripeClient {
         Ok(Self {
             http,
             secret: Arc::new(Zeroizing::new(secret)),
+            generation: Arc::new(()),
         })
     }
     /// # Errors

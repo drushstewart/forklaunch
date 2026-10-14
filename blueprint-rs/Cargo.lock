@@ -1517,6 +1517,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "forklaunch-blueprint-core",
+ "forklaunch-core",
  "forklaunch-ecommerce-base",
  "forklaunch-ecommerce-interface",
  "hmac",
@@ -1524,8 +1525,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sqlx",
  "tokio",
  "tracing",
+ "uuid",
  "zeroize",
 ]
 

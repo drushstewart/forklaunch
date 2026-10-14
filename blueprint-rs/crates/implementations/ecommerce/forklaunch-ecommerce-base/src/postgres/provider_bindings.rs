@@ -53,7 +53,7 @@ impl PaymentProviderScope {
 }
 /// Opaque tenant-bound generation and immutable payment relation. Not a mutation
 /// capability or authenticated provider evidence; no HTTP deserialization exists.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PaymentProviderBinding {
     tenant_id: String,
     payment_id: String,
@@ -80,6 +80,18 @@ impl PaymentProviderBinding {
     #[must_use]
     pub fn scope(&self) -> &PaymentProviderScope {
         &self.scope
+    }
+    #[must_use]
+    pub fn order_id(&self) -> &str {
+        &self.order_id
+    }
+    #[must_use]
+    pub const fn amount_cents(&self) -> i64 {
+        self.amount_cents
+    }
+    #[must_use]
+    pub fn currency(&self) -> &str {
+        &self.currency
     }
 }
 fn label(value: &str) -> bool {
