@@ -2489,111 +2489,111 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
               "line": 123,
-              "type": "Omit<\n  CreateCheckoutSessionDto<\n    typeof PaymentMethodEnum,\n    typeof CurrencyEnum,\n    StatusEnum\n  >,\n  'providerFields' | 'uri'\n> & {\n  uri: string;\n  stripeFields: Omit<\n    StripeCheckoutSessionCreateParams,\n    CheckoutSessionOmissions\n  >;\n}"
+              "type": "Omit<\n  CreateCheckoutSessionDto<\n    typeof PaymentMethodEnum,\n    typeof CurrencyEnum,\n    StatusEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields: Omit<\n    StripeCheckoutSessionCreateParams,\n    CheckoutSessionOmissions\n  >;\n}"
             },
             {
               "name": "StripeUpdateCheckoutSessionDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 138,
+              "line": 137,
               "type": "Omit<\n  UpdateCheckoutSessionDto<\n    typeof PaymentMethodEnum,\n    typeof CurrencyEnum,\n    StatusEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields?: Omit<\n    StripeCheckoutSessionCreateParams,\n    CheckoutSessionOmissions\n  >;\n}"
             },
             {
               "name": "StripeCheckoutSessionDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 152,
-              "type": "Omit<\n  CheckoutSessionDto<typeof PaymentMethodEnum, typeof CurrencyEnum, StatusEnum>,\n  'providerFields' | 'uri'\n> & {\n  uri: string;\n  stripeFields: StripeCheckoutSession;\n}"
+              "line": 151,
+              "type": "Omit<\n  CheckoutSessionDto<typeof PaymentMethodEnum, typeof CurrencyEnum, StatusEnum>,\n  'providerFields'\n> & {\n  stripeFields: StripeCheckoutSession;\n}"
             },
             {
               "name": "StripeCheckoutSessionDtos",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 160,
+              "line": 158,
               "type": "{\n  CheckoutSessionMapper: StripeCheckoutSessionDto<StatusEnum>;\n  CreateCheckoutSessionMapper: StripeCreateCheckoutSessionDto<StatusEnum>;\n  UpdateCheckoutSessionMapper: StripeUpdateCheckoutSessionDto<StatusEnum>;\n}"
             },
             {
               "name": "StripeCreatePaymentLinkDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 167,
+              "line": 165,
               "type": "Omit<\n  CreatePaymentLinkDto<\n    typeof PaymentMethodEnum,\n    typeof CurrencyEnum,\n    StatusEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields: StripePaymentLinkCreateParams;\n}"
             },
             {
               "name": "StripeUpdatePaymentLinkDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 178,
+              "line": 176,
               "type": "Omit<\n  UpdatePaymentLinkDto<\n    typeof PaymentMethodEnum,\n    typeof CurrencyEnum,\n    StatusEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields?: StripePaymentLinkUpdateParams;\n}"
             },
             {
               "name": "StripePaymentLinkDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 189,
+              "line": 187,
               "type": "Omit<\n  PaymentLinkDto<typeof PaymentMethodEnum, typeof CurrencyEnum, StatusEnum>,\n  'providerFields'\n> & {\n  stripeFields: StripePaymentLink;\n}"
             },
             {
               "name": "StripePaymentLinkDtos",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 196,
+              "line": 194,
               "type": "{\n  PaymentLinkMapper: StripePaymentLinkDto<StatusEnum>;\n  CreatePaymentLinkMapper: StripeCreatePaymentLinkDto<StatusEnum>;\n  UpdatePaymentLinkMapper: StripeUpdatePaymentLinkDto<StatusEnum>;\n}"
             },
             {
               "name": "StripeCreatePlanDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 205,
+              "line": 203,
               "type": "Omit<\n  CreatePlanDto<\n    typeof PlanCadenceEnum,\n    typeof CurrencyEnum,\n    typeof BillingProviderEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields: Omit<StripePlanCreateParams, PlanOmissions>;\n}"
             },
             {
               "name": "StripeUpdatePlanDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 216,
+              "line": 214,
               "type": "Omit<\n  UpdatePlanDto<\n    typeof PlanCadenceEnum,\n    typeof CurrencyEnum,\n    typeof BillingProviderEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields?: Omit<StripePlanUpdateParams, PlanOmissions>;\n}"
             },
             {
               "name": "StripePlanDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 227,
+              "line": 225,
               "type": "Omit<\n  PlanDto<\n    typeof PlanCadenceEnum,\n    typeof CurrencyEnum,\n    typeof BillingProviderEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields: StripeProduct;\n}"
             },
             {
               "name": "StripePlanDtos",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 238,
+              "line": 236,
               "type": "{\n  PlanMapper: StripePlanDto;\n  CreatePlanMapper: StripeCreatePlanDto;\n  UpdatePlanMapper: StripeUpdatePlanDto;\n}"
             },
             {
               "name": "StripeCreateSubscriptionDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 247,
+              "line": 245,
               "type": "Omit<\n  CreateSubscriptionDto<PartyType, typeof BillingProviderEnum>,\n  'providerFields'\n> & {\n  stripeFields: Omit<StripeSubscriptionCreateParams, SubscriptionOmissions>;\n}"
             },
             {
               "name": "StripeUpdateSubscriptionDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 254,
+              "line": 252,
               "type": "Omit<\n  UpdateSubscriptionDto<PartyType, typeof BillingProviderEnum>,\n  'providerFields'\n> & {\n  stripeFields?: Omit<StripeSubscriptionUpdateParams, SubscriptionOmissions>;\n}"
             },
             {
               "name": "StripeSubscriptionDto",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 261,
+              "line": 259,
               "type": "Omit<\n  SubscriptionDto<PartyType, typeof BillingProviderEnum>,\n  'providerFields'\n> & {\n  stripeFields: StripeSubscription;\n}"
             },
             {
               "name": "StripeSubscriptionDtos",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
-              "line": 268,
+              "line": 266,
               "type": "{\n  SubscriptionMapper: StripeSubscriptionDto<PartyType>;\n  CreateSubscriptionMapper: StripeCreateSubscriptionDto<PartyType>;\n  UpdateSubscriptionMapper: StripeUpdateSubscriptionDto<PartyType>;\n}"
             }
           ]

@@ -2954,7 +2954,6 @@
           "customerId",
           "currency",
           "paymentMethods",
-          "uri",
           "expiresAt",
           "status"
         ],
@@ -3197,7 +3196,6 @@
           "customerId",
           "currency",
           "paymentMethods",
-          "uri",
           "expiresAt",
           "status"
         ],

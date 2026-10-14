@@ -20,7 +20,7 @@ export const CreateCheckoutSessionMapper = requestMapper({
         customerId: dto.customerId,
         paymentMethods: dto.paymentMethods,
         currency: dto.currency,
-        uri: dto.uri,
+        uri: dto.uri ?? null,
         successRedirectUri: dto.successRedirectUri ?? null,
         cancelRedirectUri: dto.cancelRedirectUri ?? null,
         expiresAt: dto.expiresAt,
@@ -61,6 +61,7 @@ const CheckoutSessionEntityMapper = responseMapper({
     toDto: async (entity) => {
       return {
         ...entity,
+        uri: entity.uri ?? undefined,
         successRedirectUri: entity.successRedirectUri ?? undefined,
         cancelRedirectUri: entity.cancelRedirectUri ?? undefined,
         stripeFields: entity.providerFields

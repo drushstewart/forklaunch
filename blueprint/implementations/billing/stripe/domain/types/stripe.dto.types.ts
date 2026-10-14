@@ -126,9 +126,8 @@ export type StripeCreateCheckoutSessionDto<StatusEnum> = Omit<
     typeof CurrencyEnum,
     StatusEnum
   >,
-  'providerFields' | 'uri'
+  'providerFields'
 > & {
-  uri: string;
   stripeFields: Omit<
     StripeCheckoutSessionCreateParams,
     CheckoutSessionOmissions
@@ -151,9 +150,8 @@ export type StripeUpdateCheckoutSessionDto<StatusEnum> = Omit<
 
 export type StripeCheckoutSessionDto<StatusEnum> = Omit<
   CheckoutSessionDto<typeof PaymentMethodEnum, typeof CurrencyEnum, StatusEnum>,
-  'providerFields' | 'uri'
+  'providerFields'
 > & {
-  uri: string;
   stripeFields: StripeCheckoutSession;
 };
 

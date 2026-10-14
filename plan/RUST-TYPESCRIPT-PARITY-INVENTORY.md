@@ -5600,3 +5600,27 @@ outcomes and 20 warnings. Receipts:
 Default error-string admission and empty-send semantics remain separate work;
 three canonical document differences remain. Checklist: **660/682 (96.8%),
 22 open**.
+
+
+### 2026-10-13: optional Stripe checkout URI across runtime and contracts
+
+Configured Stripe checkout create/response schemas and DTOs now admit an absent
+URI, matching native optional values and provider sessions without a URL.
+Nullable entity storage writes SQL NULL; response mappers normalize it to an
+absent DTO field. Native contract generation no longer forces URI into Stripe's
+required fields. Existing applications with database backup must apply the
+reviewed nullability migration before deploying nullable writers; the generated
+[checkout URI migration guide](../blueprint/billing-stripe/CHECKOUT_URI_MIGRATION.md)
+explains deployment and rollback. Customer identity semantics are unchanged.
+
+Verified: 32 actual Zod/TypeBox schema, mapper and JSON-cache lifecycle cases;
+actual configured MikroORM entity under a restricted PostgreSQL role, including
+old NOT NULL rejection and upgrade; 305 configured regressions; focused strict
+service types; 66 actual TS/native routes and 28 validator/OpenAPI DTO schemas.
+The reviewed contract snapshot changes exactly two required-field entries. CI
+runs the new fixture with TypeBox and PostgreSQL and watches private billing
+module sources. Receipts: `/private/tmp/fl-checkout-uri{,-configured,-types,-contracts}.log`.
+
+The separate TypeBox versus Zod create stripeFields-presence discrepancy remains
+open, along with provider customer mapping and mutation reconciliation.
+Checklist: **660/682 (96.8%), 22 open**.
