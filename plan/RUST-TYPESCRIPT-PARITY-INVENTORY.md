@@ -6657,3 +6657,21 @@ regressions pass: /private/tmp/fl-model-stream-{core,wire,clippy,preview-regress
 The signing helper refactor moves existing exact body/path/query HMAC construction
 without changing serialization. Typed chat DTOs and live hosted model deployment
 remain separate work. The installed archive8f628 predates this streaming API.
+
+
+## Ordered strict Zod string profile receipt (2026-10-14)
+
+An explicit reusable strict-string helper now matches the repository's zod/v3
+factory for ordered Trim/Min/Max/Length steps, UTF-16 code-unit lengths and default
+strict JSON type/constraint diagnostics. Constraint ordering is preserved: trim
+before min and min before trim intentionally differ, and multiple failures retain
+declaration order. It reuses proven ECMAScript whitespace handling. Native JSON
+Schema and TypeBox/AJV Unicode-scalar length policies remain unchanged.
+
+31,510 actual-source/native outcomes,135 all-feature Axum plus13 validation tests
+and strict all-feature/all-target Clippy pass:
+/private/tmp/fl-zod-string-{parity,all-tests,clippy}.log. Whole-request callback tests
+prove successful trimmed body/query projections commit atomically in all three
+modes; failure preserves all original sections and markers. This is strict JSON
+string input with u32 limits, not generic Zod, regex/case folding/custom messages,
+JavaScript object coercion or lone-surrogate support.

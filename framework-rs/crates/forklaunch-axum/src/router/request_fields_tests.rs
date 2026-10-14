@@ -244,3 +244,77 @@ fn whole_request_registration_requires_json_for_bodies_and_cannot_move_after_aut
             .is_err()
     );
 }
+
+#[test]
+fn strict_zod_string_transform_commits_all_sections_atomically() {
+    use forklaunch_validation::typescript_coerce::{ZodStringStep, zod_string};
+    for mode in [
+        ValidationMode::None,
+        ValidationMode::Warning,
+        ValidationMode::Error,
+    ] {
+        for (label, succeeds) in [("  ab  ", true), (" a ", false)] {
+            let mut route = RouteContract::post("Strings", "Strings", "/strings")
+                .with_request_body(BodyContract::json("Input"));
+            route.options.request_validation = mode;
+            let mut parsers = JsonRequestParsers::default();
+            parsers.insert(&route, BodyParserHooks::default()).unwrap();
+            let mut validators = RequestValidators::default();
+            validators
+                .insert_request_transform(&route, &parsers, rejection(), |request, _| {
+                    let fields = RequestFieldValues {
+                        query: [("limit".into(), json!(7))].into(),
+                        ..RequestFieldValues::default()
+                    };
+                    let input = request
+                        .parsed_json
+                        .as_ref()
+                        .unwrap()
+                        .value
+                        .as_deref()
+                        .unwrap();
+                    let label = zod_string(
+                        input.get("label"),
+                        &[ZodStringStep::Trim, ZodStringStep::Min(2)],
+                    )
+                    .map_err(|errors| FrameworkResponse::text(400, errors[0].message.clone()))?;
+                    Ok(RequestTransformOutput {
+                        fields,
+                        body: Some(json!({"label": label})),
+                    })
+                })
+                .unwrap();
+            let wire = json!({"label":label,"extra":"preserved on failure"}).to_string();
+            let mut request =
+                FrameworkRequest::new(HttpMethod::Post, "/strings", RequestContext::new("strings"))
+                    .with_header("content-type", "application/json")
+                    .with_header("content-length", wire.len().to_string())
+                    .with_body(FrameworkBody::Text(wire.clone()));
+            request.raw_query = Some("limit=raw".into());
+            request.parsed_json = parsers.parse(&route, &request).unwrap();
+            let before = request.clone();
+            let response = validators.transform_request(&route, &mut request, Some("limit=raw"));
+            assert_eq!(
+                response.is_some(),
+                !succeeds && mode == ValidationMode::Error
+            );
+            assert_eq!(request.body.as_text(), Some(wire.as_str()));
+            assert_eq!(request.raw_query, before.raw_query);
+            if succeeds {
+                assert_eq!(
+                    request.parsed_fields.as_ref().unwrap().values().query["limit"],
+                    json!(7)
+                );
+                assert_eq!(
+                    request.parsed_json.as_ref().unwrap().value.as_deref(),
+                    Some(&json!({"label":"ab"}))
+                );
+                assert!(request.parsed_json.as_ref().unwrap().is_transformed());
+            } else {
+                assert_eq!(request, before);
+                assert!(request.parsed_fields.is_none());
+                assert!(!request.parsed_json.as_ref().unwrap().is_transformed());
+            }
+        }
+    }
+}

@@ -13,6 +13,10 @@ use serde_json::Value;
 mod date;
 pub use date::{DateCoercionError, date_epoch_millis};
 
+#[path = "zod_string.rs"]
+mod strict_string;
+pub use strict_string::{ZodStringStep, zod_string};
+
 /// Coerce a JSON value with the actual `ForkLaunch` Zod number preprocessing.
 /// `None` represents JavaScript undefined. Infinities and signed zero are
 /// preserved, as accepted by Zod v3's unconstrained number schema.
