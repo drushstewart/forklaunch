@@ -5563,3 +5563,21 @@ archive workspace was removed by the passing harness. Committed generated
 billing `run.Jr7VIh` and IAM `run.dTQtrb`/`run.7W1Dep` workspaces were also removed
 after process/database-role checks; logs were retained. Checklist remains
 **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: empty directory logical-group normalization
+
+Bounded filters now admit empty logical groups with actual MikroORM SQL
+normalization. Empty AND is an omitted SQL fragment, empty OR is false, and
+negating an omitted group is false. Omission remains distinct from SQL UNKNOWN
+and Boolean true: `Any([All([]), predicate])` matches only the predicate.
+Mandatory tenant/organization restrictions remain outside these expressions.
+This supersedes the earlier unsupported-empty-group limitation.
+
+Verified: 3282 actual MikroORM/PostgreSQL-to-native comparisons, including
+exhaustive binary groups and unary negation through depth two over empty and
+ordinary/nullable predicates; 20 native tests; restricted PostgreSQL scope,
+audit and rollback tests; strict Clippy. Receipts:
+`/private/tmp/fl-iam-empty-filter-{native,pg,orm,clippy}.log`. Broader arbitrary
+filters, indexed traversal and custom persistence remain open. Checklist:
+**660/682 (96.8%), 22 open**.

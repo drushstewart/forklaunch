@@ -291,6 +291,26 @@ async fn bounded_filters_preserve_order_scope_and_projection_rollback() {
     let rows = work.list::<Users>(Some(&ids), &filter).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, user);
+    assert_eq!(
+        work.list::<Users>(None, &F::All(vec![]))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        work.list::<Users>(None, &F::Any(vec![]))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        work.list::<Users>(None, &F::Not(Box::new(F::Any(vec![]))))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     let context = Context {
         organization: rows[0].organization.clone().unwrap(),
         prefix: "list".into(),
@@ -313,6 +333,18 @@ async fn bounded_filters_preserve_order_scope_and_projection_rollback() {
         })),
     ]);
     assert!(work.list::<Users>(None, &broad).await.unwrap().is_empty());
+    assert!(
+        work.list::<Users>(None, &F::All(vec![]))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        work.list::<Users>(None, &F::Not(Box::new(F::Any(vec![]))))
+            .await
+            .unwrap()
+            .is_empty()
+    );
     work.commit().await.unwrap();
     let mut work = service.unit_of_work().await.unwrap();
     let org = work
@@ -324,7 +356,7 @@ async fn bounded_filters_preserve_order_scope_and_projection_rollback() {
         ..context
     };
     assert!(
-        work.mapped_list::<Users, _>(&Mapper, None, &filter, &context)
+        work.mapped_list::<Users, _>(&Mapper, None, &F::All(vec![]), &context)
             .await
             .is_err()
     );
@@ -406,8 +438,6 @@ async fn malformed_or_overbudget_predicates_fail_before_storage_reads() {
         deep = F::Not(Box::new(deep));
     }
     for filter in [
-        F::All(vec![]),
-        F::Any(vec![]),
         deep,
         F::Any(vec![leaf; 257]),
         F::Compare {

@@ -68,11 +68,14 @@ enum Truth {
     True,
     False,
     Unknown,
+    // MikroORM omits empty conjunction SQL, including inside disjunctions.
+    // This is distinct from a concrete true expression.
+    Omitted,
 }
 impl Truth {
     fn negate(self) -> Self {
         match self {
-            Self::True => Self::False,
+            Self::True | Self::Omitted => Self::False,
             Self::False => Self::True,
             Self::Unknown => Self::Unknown,
         }
@@ -80,7 +83,8 @@ impl Truth {
 }
 impl<F: DirectoryField> DirectoryFilter<F> {
     /// Validate budgets and field/operator compatibility before reading rows.
-    /// Empty logical groups are rejected; empty membership is admitted.
+    /// Empty AND emits no predicate; empty OR is false. Nested groups follow
+    /// `MikroORM` SQL-fragment omission, so OR ignores an empty AND child.
     /// # Errors
     /// Rejects excessive depth/nodes/values/bytes, malformed UUIDs, or using a
     /// collection field as a scalar (or scalar field as a relationship).
@@ -103,9 +107,6 @@ impl<F: DirectoryField> DirectoryFilter<F> {
         }
         let (field, items) = match self {
             Self::All(children) | Self::Any(children) => {
-                if children.is_empty() {
-                    return Err(invalid());
-                }
                 for child in children {
                     child.validate_inner(depth + 1, nodes, values, bytes)?;
                 }
@@ -148,29 +149,38 @@ impl<F: DirectoryField> DirectoryFilter<F> {
         Ok(())
     }
     pub(super) fn matches(&self, row: &Value, remaining: &mut usize) -> BlueprintResult<bool> {
-        Ok(self.evaluate(row, remaining)? == Truth::True)
+        Ok(matches!(
+            self.evaluate(row, remaining)?,
+            Truth::True | Truth::Omitted
+        ))
     }
     fn evaluate(&self, row: &Value, remaining: &mut usize) -> BlueprintResult<Truth> {
         spend(remaining)?;
         match self {
             Self::All(children) => {
-                let mut result = Truth::True;
+                let mut result = Truth::Omitted;
                 for child in children {
                     match child.evaluate(row, remaining)? {
                         Truth::False => return Ok(Truth::False),
                         Truth::Unknown => result = Truth::Unknown,
-                        Truth::True => {}
+                        Truth::True if result == Truth::Omitted => result = Truth::True,
+                        Truth::True | Truth::Omitted => {}
                     }
                 }
                 Ok(result)
             }
             Self::Any(children) => {
-                let mut result = Truth::False;
+                let mut result = if children.is_empty() {
+                    Truth::False
+                } else {
+                    Truth::Omitted
+                };
                 for child in children {
                     match child.evaluate(row, remaining)? {
                         Truth::True => return Ok(Truth::True),
                         Truth::Unknown => result = Truth::Unknown,
-                        Truth::False => {}
+                        Truth::False if result == Truth::Omitted => result = Truth::False,
+                        Truth::False | Truth::Omitted => {}
                     }
                 }
                 Ok(result)

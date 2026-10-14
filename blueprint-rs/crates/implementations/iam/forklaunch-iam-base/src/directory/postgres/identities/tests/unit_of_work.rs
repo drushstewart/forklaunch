@@ -48,6 +48,34 @@ async fn directory_unit_of_work_restricted_postgres_graph_audit_rollback() {
         .unwrap();
     assert_eq!(matched.len(), 1);
     assert_eq!(matched[0].id, user);
+    assert_eq!(
+        work.list::<Users>(None, &DirectoryFilter::All(vec![]))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        work.list::<Users>(None, &DirectoryFilter::Any(vec![]))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        work.list::<Users>(
+            None,
+            &DirectoryFilter::Any(vec![
+                DirectoryFilter::All(vec![]),
+                DirectoryFilter::Compare {
+                    field: UserField::Email,
+                    test: Predicate::Eq("missing@example.test".into())
+                },
+            ])
+        )
+        .await
+        .unwrap()
+        .is_empty()
+    );
     work.commit().await.unwrap();
     let prior_filter = counts(&f).await;
     let mut work = service.unit_of_work().await.unwrap();

@@ -25,6 +25,15 @@ const users=[
 const cmp=(field,test)=>({compare:{field,test}}),related=(field,ids)=>({related:{field,ids}});
 const cases=[];
 function add(name,filter,extra={}){cases.push({name,kind:'user',filter,...extra});}
+add('empty AND', {all:[]});
+add('empty OR', {any:[]});
+add('NOT empty AND', {not:{all:[]}});
+add('NOT empty OR', {not:{any:[]}});
+add('empty AND scoped', {all:[]}, {scope:id(1)});
+add('NOT empty OR scoped', {not:{any:[]}}, {scope:id(1)});
+add('AND empty OR', {all:[{any:[]},cmp('firstName',{eq:'Alpha'})]});
+add('OR empty AND', {any:[{all:[]},cmp('firstName',{eq:'Alpha'})]});
+add('nested empty identities', {all:[{all:[]},{any:[{any:[]},cmp('firstName',{eq:'Alpha'})]}]});
 add('case-sensitive email',cmp('email',{eq:'Case@example.test'}));
 add('case-sensitive email negation',cmp('email',{ne:'Case@example.test'}));
 add('nullable ne is unknown',cmp('phoneNumber',{ne:'123'}));
@@ -58,6 +67,15 @@ add('permission relation',related('permissionIds',[id(3)]),{kind:'role'});
 add('permission literal',cmp('slug',{eq:'platform:read'}),{kind:'permission'});
 add('organization null',cmp('logoUrl','isNull'),{kind:'organization'});
 add('organization status',cmp('status',{eq:'active'}),{kind:'organization'});
+// Exhaust every unary/binary logical shape through depth two over empty
+// groups plus concrete true/false/NULL-producing predicates. PostgreSQL is
+// the oracle for omitted SQL fragments, including nested OR and negation.
+const atoms=[{all:[]},{any:[]},cmp('firstName',{eq:'Alpha'}),cmp('phoneNumber',{eq:'123'})];
+const firstLevel=[...atoms,...atoms.map(not=>({not}))];
+for(const all of atoms)for(const right of atoms)for(const op of ['all','any'])firstLevel.push({[op]:[all,right]});
+let logicalIndex=0;
+for(const child of firstLevel)add(`logical unary ${logicalIndex++}`,{not:child});
+for(const left of firstLevel)for(const right of firstLevel)for(const op of ['all','any'])add(`logical binary ${logicalIndex++}`,{[op]:[left,right]});
 const fields={organizationId:'organization',roleIds:'roles',permissionIds:'permissions'};
 function query(filter){
  if(filter.all)return {$and:filter.all.map(query)};
@@ -81,11 +99,10 @@ try{
   const clauses=[query(item.filter)];if(item.scope)clauses.push({organization:item.scope});if(item.ids)clauses.push({id:{$in:item.ids}});
   const rows=await orm.em.fork().find(entities[item.kind],{$and:clauses});expected.push({ids:rows.map(row=>row.id).sort()});
  }
- // Empty logical groups have special ORM normalization. This bounded API rejects
- // both rather than inventing a different broadening rule; membership stays exact.
+ // Check the underlying ORM identities directly as well as native comparisons.
  const emptyGroups={};
  for(const key of ['$and','$or'])emptyGroups[key]=(await orm.em.fork().find(source.entities.User,{[key]:[]})).length;
- assert.deepEqual(emptyGroups,{'$and':4,'$or':0},'actual ORM empty AND matches all and empty OR matches none; native intentionally rejects both');
+ assert.deepEqual(emptyGroups,{'$and':4,'$or':0},'actual ORM empty AND matches all and empty OR matches none');
  await assert.rejects(()=>orm.em.fork().find(source.entities.User,{id:'not-a-uuid'}));
  const input={organizations,permissions,roles,users,cases};
  if(process.env.FORKLAUNCH_TEST_IAM_FILTER_CAPTURE)writeFileSync(process.env.FORKLAUNCH_TEST_IAM_FILTER_CAPTURE,JSON.stringify({input,expected}));
