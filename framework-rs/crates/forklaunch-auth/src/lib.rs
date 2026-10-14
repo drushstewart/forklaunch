@@ -244,7 +244,7 @@ pub fn hmac_verify(secret: &[u8], payload: &[u8], signature: &str) -> bool {
     mac.update(payload);
     let expected = mac.finalize().into_bytes();
 
-    expected.len() == provided.len() && bool::from(expected.as_slice().ct_eq(provided.as_slice()))
+    expected.len() == provided.len() && bool::from(expected[..].ct_eq(provided.as_slice()))
 }
 
 /// Enforces an [`RbacConfig`] against a principal.

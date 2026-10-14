@@ -16,31 +16,13 @@ use forklaunch_contract::{
 use forklaunch_core::ServiceInfo;
 use forklaunch_http::{
     BodyParserHooks, ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse,
+    parse_typescript_simple_query,
 };
 use forklaunch_validation::{
     ParseError, typescript_coerce, typescript_request_validation_error_response,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-fn query(raw: Option<&str>) -> BTreeMap<String, Value> {
-    let mut values = BTreeMap::new();
-    for (key, value) in form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
-        let value = Value::String(value.into_owned());
-        match values.entry(key.into_owned()) {
-            std::collections::btree_map::Entry::Vacant(entry) => {
-                entry.insert(value);
-            }
-            std::collections::btree_map::Entry::Occupied(mut entry) => match entry.get_mut() {
-                Value::Array(values) => values.push(value),
-                old => {
-                    let first = old.clone();
-                    *old = json!([first, value]);
-                }
-            },
-        }
-    }
-    values
-}
 fn number(value: Option<&Value>, path: &[&str], errors: &mut Vec<ParseError>) -> Option<Value> {
     typescript_coerce::number(value)
         .map(|number| json!(number))
@@ -61,7 +43,7 @@ fn transform(
     if let Some(value) = number(params.as_ref(), &["params", "id"], &mut errors) {
         output.fields.params.insert("id".into(), value);
     }
-    let query = query(raw);
+    let query = parse_typescript_simple_query(raw);
     let limit = query.get("limit").cloned().unwrap_or_else(|| json!(7));
     if let Some(value) = number(Some(&limit), &["query", "limit"], &mut errors) {
         output.fields.query.insert("limit".into(), value);
@@ -133,7 +115,7 @@ async fn report(
                 .into_iter()
                 .map(|(key, value)| (key, json!(value)))
                 .collect(),
-            query: query(raw.as_deref()),
+            query: parse_typescript_simple_query(raw.as_deref()),
             headers: headers
                 .iter()
                 .filter_map(|(key, value)| {

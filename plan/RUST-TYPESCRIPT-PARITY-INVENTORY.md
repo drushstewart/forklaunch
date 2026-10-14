@@ -6343,3 +6343,23 @@ restart and relocation/lifecycle checks:
 all-module suite stopped at the stale cookie assertions and is not claimed green;
 checks after that point still require the corrected archive rerun. Finished owned
 billing/auth fixture workspaces were removed after active-process checks.
+
+
+## Default simple-query projection receipt (2026-10-14)
+
+`forklaunch_http::parse_typescript_simple_query` supplies an explicit pure
+projection matching Express's default Node querystring parser: repeated values
+become arrays; brackets, dots and prototype-named keys remain literal; malformed
+percent escapes and lossy UTF-8 match Node. The 1,000-segment budget counts empty
+ampersand segments before skipping them. Native wire maps remain unchanged; the
+whole-request transform example now uses the helper against retained raw_query.
+Extended/custom query parsers, object prototypes/key enumeration and lone UTF-16
+surrogates remain outside this API.
+
+65,857 actual Node/native cases (including exhaustive encoded one/two-byte pairs),
+23 actual default Express HTTP observations,50 HTTP tests,144 whole-request field
+regression pairs and strict HTTP/Auth Clippy pass:
+/private/tmp/fl-simple-query-{parity,tests,auth-clippy,fields-regression}.log.
+The existing HMAC tampering regression also passes after replacing deprecated
+GenericArray::as_slice with slice indexing; the constant-time comparison remains
+unchanged: /private/tmp/fl-auth-hmac-warning-test.log.

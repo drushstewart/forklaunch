@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod simple_query;
+pub use simple_query::parse_typescript_simple_query;
 mod request_fields;
 pub use request_fields::{ParsedRequestFields, RequestFieldValues, RequestTransformOutput};
 pub mod default_errors;
