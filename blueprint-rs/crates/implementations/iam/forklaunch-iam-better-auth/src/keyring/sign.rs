@@ -229,3 +229,24 @@ pub(super) fn custom_payload(
     }
     Ok(result)
 }
+
+// Same local JOSE claim setters, without repository selection or side effects.
+pub(super) fn resolved_payload(
+    body: Option<&Value>,
+    now: DateTime<Utc>,
+    base: &str,
+) -> BlueprintResult<Value> {
+    schema::validate(body)?;
+    let body = body.ok_or_else(|| error("Invalid signing input"))?;
+    let clock = json!(now.timestamp())
+        .as_f64()
+        .ok_or_else(|| error("Invalid signing time"))?;
+    let expiry = claims::expiry(&body["payload"], &body["overrideOptions"], clock)?;
+    claims::build(
+        &body["payload"],
+        &body["overrideOptions"],
+        expiry,
+        base,
+        clock,
+    )
+}

@@ -18,6 +18,8 @@ mod config;
 pub mod custom;
 pub use config::KeyPairConfig;
 mod repository;
+mod resolved;
+pub use resolved::ResolvedSigningKey;
 mod sign;
 #[cfg(test)]
 use repository::KeyRepository;

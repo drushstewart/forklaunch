@@ -143,6 +143,7 @@ on:
       - 'cli/tests/rust_better_auth_jwks_rotation.mjs'
       - 'cli/tests/rust_better_auth_signing_algorithm.mjs'
       - 'cli/tests/rust_better_auth_external_signing_context.mjs'
+      - 'cli/tests/rust_better_auth_resolved_key.mjs'
       - 'cli/tests/rust_better_auth_reset_password.mjs'
       - 'cli/tests/rust_better_auth_set_password.mjs'
       - 'cli/tests/rust_better_auth_organizations.mjs'
@@ -441,6 +442,7 @@ on:
       - 'cli/tests/rust_better_auth_jwks_rotation.mjs'
       - 'cli/tests/rust_better_auth_signing_algorithm.mjs'
       - 'cli/tests/rust_better_auth_external_signing_context.mjs'
+      - 'cli/tests/rust_better_auth_resolved_key.mjs'
       - 'cli/tests/rust_better_auth_reset_password.mjs'
       - 'cli/tests/rust_better_auth_set_password.mjs'
       - 'cli/tests/rust_better_auth_organizations.mjs'
@@ -1365,6 +1367,9 @@ jobs:
       - run: node cli/tests/rust_better_auth_frontend_composition.mjs
       - run: node cli/tests/rust_sdk_reference_coercion.mjs
       - run: node cli/tests/rust_better_auth_external_signing_context.mjs
+        env:
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_resolved_key.mjs
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_iam_directory_parity.mjs

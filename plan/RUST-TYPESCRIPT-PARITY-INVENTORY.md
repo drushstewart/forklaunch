@@ -7865,3 +7865,27 @@ mutating requests/local writes, preserving caller input and local snapshots.
 Logs: /private/tmp/fl-billing-consumed-references{,-configured,-update,-creation,
 -types,-native,-legacy170,-clippy}.log. CI runs the new fixture. Broader consumed
 provider fields, complete validators and public UUID mutation mapping remain open.
+
+
+## Trusted caller-resolved signing capability (2026-10-14)
+
+Opaque ResolvedSigningKey imports validated private record material once and has
+no Debug/Serialize/Clone interface. KeyRing.sign_jwt_with_resolved_key reuses its
+ID/algorithm and existing claim builders without storage reads, adapter callbacks
+or minting. Record expiry/removal is deliberately not rechecked, matching actual
+caller-resolved upstream key reuse; the trusted caller owns capability lifetime.
+Existing strict key-ID selection and external HTTP/context signing remain
+unchanged. This local API does not select or override an HTTP signer. Raw resolved
+JSON/public-only records cannot construct the typed capability; arbitrary local
+JOSE header/crit/b64 options remain outside this entrypoint.
+
+The actual Better Auth/JOSE oracle proves initial resolution versus zero reuse
+reads/creates, resolved ID/algorithm authority, expiration/removal behavior,
+public/mismatched key failures and external-signer precedence. Native resolved2,
+custom signer5, HTTP external4 and strict ID2 tests plus strict all-target/
+all-feature IAM Clippy pass. Native signatures use the independent public ECDSA
+verifier; upstream tokens use JOSE. No claim of a new native-token-to-JS verifier
+roundtrip is made. Existing signing-protocol interoperability was not repeated.
+Logs: /private/tmp/fl-resolved-key-{ts,native,custom,external,pin,clippy}.log.
+Record bounds remain ID512 bytes/PKCS8 6144 bytes; existing claim validation is
+reused without inventing a new claim-size guarantee. CI runs the actual oracle.
