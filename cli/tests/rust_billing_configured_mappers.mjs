@@ -14,6 +14,8 @@ for(const variant of ['base','stripe']){
  actual=actualValidator(root,(spec,file,load)=>{
   if(spec==='@forklaunch/validator/zod')return actual.statics;
   if(spec==='@forklaunch/blueprint-core')return {schemaValidator:actual.validator};
+  if(spec==='@forklaunch/core/http')return {evaluateTelemetryOptions:()=>({enabled:{}})};
+  if(spec==='@forklaunch/core/cache')return {createCacheKey:prefix=>id=>prefix+':'+id};
   if(spec==='@forklaunch/core/mappers')return {...load(path.join(root,'framework/core/src/mappers/mapper.ts')),...load(path.join(root,'framework/core/src/mappers/mapServiceSchemas.ts'))};
   if(spec==='@forklaunch/internal')return load(path.join(root,'framework/internal/src/serviceSchemaResolver.ts'));
   if(spec===`@forklaunch/implementation-billing-${variant}/schemas`)return load(path.join(root,`blueprint/implementations/billing/${variant}/domain/schemas/index.ts`));
@@ -24,7 +26,7 @@ for(const variant of ['base','stripe']){
    if(!entities.has(name))entities.set(name,{[exportName]:{name}});
    return entities.get(name);
   }
-  if(spec==='@mikro-orm/core')return {wrap:entity=>({toPOJO:()=>({...entity})})};
+  if(spec==='@mikro-orm/core')return {EntityManager:class {},wrap:entity=>({toPOJO:()=>({...entity})})};
  });
  const samples={
   plan:{name:'Configured plan',price:1200,cadence:variant==='base'?'MONTHLY':'month',currency:'USD',externalId:'prod_fixture',billingProvider:'stripe',active:true},
@@ -52,6 +54,38 @@ for(const variant of ['base','stripe']){
   if(variant==='stripe')assert.equal(dto.stripeFields.id,'provider_fixture');
   if(family==='plan')assert.equal(dto.price,1200);
   if(family==='paymentLink')assert.equal(dto.amount,1200);cases++;
+  if(['checkoutSession','billingPortal'].includes(family)){
+   const Service=actual.load(path.join(root,`blueprint/implementations/billing/base/services/${family}.service.ts`))[`Base${name}Service`];
+   const suffix=family==='billingPortal'?'BillingPortalSession':name;
+   for(const enableDatabaseBackup of [false,true]){
+    let writes=0,persisted=0;
+    const {safeStringify}=actual.load(path.join(root,'framework/common/src/safeStringify.ts'));
+    const {safeParse}=actual.load(path.join(root,'framework/common/src/safeParse.ts'));
+    const cacheRows=new Map(),cache={getTtlMilliseconds:()=>60000,async putRecord({key,value}){writes++;cacheRows.set(key,safeStringify(value));},async readRecord(key){return cacheRows.has(key)?{value:safeParse(cacheRows.get(key))}:null;}};
+    const readOnlyEm={create:em.create,persist(){persisted++;return {async flush(){}};},async findOneOrFail(){throw Error('cache read must not query a database entity');},assign(){throw Error('cache read must not mutate an entity');}};
+    const service=new Service(readOnlyEm,cache,{},actual.validator,mappers,{enableDatabaseBackup});
+    const provider={id:'provider_cache_fixture',url:'https://fixture.test/provider',opaqueTimestamp:'2026-01-01T00:00:00.000Z'};
+    const created=await service[`create${suffix}`](samples[family],provider);
+    const cached=await service[`get${suffix}`]({id:created.id});
+    assert.deepEqual(JSON.parse(JSON.stringify(cached)),JSON.parse(JSON.stringify(created)));assert.equal(writes,1);assert.equal(persisted,Number(enableDatabaseBackup));cases++;
+    assert.ok(cached.expiresAt instanceof Date);assert.notEqual(cached.expiresAt,created.expiresAt);assert.equal(cached.expiresAt.getTime(),created.expiresAt.getTime());
+    if(variant==='stripe')assert.deepEqual(JSON.parse(JSON.stringify(cached.stripeFields)),provider);
+    const key=[...cacheRows.keys()][0],serialized=cacheRows.get(key),withTiming={...JSON.parse(serialized),createdAt:'2026-01-01T00:00:00.000Z',updatedAt:1767225600000};
+    cacheRows.set(key,JSON.stringify(withTiming));
+    const timed=await service[`get${suffix}`]({id:created.id});
+    assert.ok(timed.createdAt instanceof Date);assert.ok(timed.updatedAt instanceof Date);assert.equal(timed.createdAt.getTime(),1767225600000);assert.equal(timed.updatedAt.getTime(),1767225600000);assert.equal(cacheRows.get(key),JSON.stringify(withTiming));cases++;
+    for(const invalid of [undefined,null,false,{},'not-a-date','9999999999999999999999']){
+     cacheRows.set(key,JSON.stringify({...withTiming,expiresAt:invalid}));
+     await assert.rejects(service[`get${suffix}`]({id:created.id}));cases++;
+    }
+    for(const field of ['createdAt','updatedAt']){
+     cacheRows.set(key,JSON.stringify({...withTiming,[field]:'not-a-date'}));
+     await assert.rejects(service[`get${suffix}`]({id:created.id}));cases++;
+    }
+    cacheRows.set(key,serialized);
+    await assert.rejects(service[`get${suffix}`]({id:randomUUID()}));cases++;
+   }
+  }
   if(['checkoutSession','paymentLink'].includes(family)){
    // Exercise actual configured schemas and mapper calls for every retained and
    // emitted status, rather than substituting a permissive fixture enum.
@@ -81,5 +115,5 @@ for(const variant of ['base','stripe']){
   }
  }
 }
-console.log(`PASS ${cases} actual configured billing mapper cases: emitted/retained status acceptance, unknown-status rejection, schema resolution, HTTP-boundary unknown fields, optional provider payloads, local UUIDs, response mapping, ownership and missing-row failures`);
+console.log(`PASS ${cases} actual configured billing mapper cases: cache DTO reads without ORM access, emitted/retained status acceptance, unknown-status rejection, schema resolution, HTTP-boundary unknown fields, optional provider payloads, local UUIDs, response mapping, ownership and missing-row failures`);
 console.log('AUDIT Stripe checkout/payment-link/portal configured TS mappers discard provider IDs; native cache services retain provider IDs so later provider calls remain valid. Native provider payloads require objects and native scalar coercions remain stricter.');

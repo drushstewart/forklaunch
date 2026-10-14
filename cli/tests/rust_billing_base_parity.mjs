@@ -8,6 +8,7 @@ import vm from 'node:vm';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..'),require=createRequire(import.meta.url);
 const compiler=process.env.TSC_BIN??path.join(root,'framework/node_modules/.bin/tsc');
 const ts=require(require.resolve('typescript',{paths:[path.dirname(await realpath(compiler))]}));
+const cacheDtoExports={};vm.runInNewContext(ts.transpileModule(await readFile(path.join(root,'blueprint/implementations/billing/base/utils/cachedSessionDto.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:cacheDtoExports,Date});
 const clone=value=>value===undefined?undefined:structuredClone(value);
 function matches(row,where={}){return Object.entries(where).every(([key,value])=>value&&typeof value==='object'&&'$in'in value?value.$in.includes(row[key]):row[key]===value);}
 // Only ORM, cache and generic mapper boundaries are owned. Business rules execute
@@ -33,7 +34,7 @@ class Cache {
  async listKeys(prefix){return[...this.rows.keys()].filter(key=>key.startsWith(prefix));}
 }
 const names=['Plan','Subscription','CheckoutSession','PaymentLink','BillingPortal'],entities=Object.fromEntries(names.map(name=>[name,name]));
-const classes={};for(const name of names){const exports={};vm.runInNewContext(ts.transpileModule(await readFile(path.join(root,'blueprint/implementations/billing/base/services',name[0].toLowerCase()+name.slice(1)+'.service.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Date,require(spec){if(spec==='@mikro-orm/core')return{EntityManager};if(spec==='@forklaunch/core/http')return{evaluateTelemetryOptions:()=>({enabled:{}})};if(spec==='@forklaunch/core/cache')return{createCacheKey:prefix=>id=>prefix+':'+id};if(spec.endsWith('/persistence/entities'))return entities;throw Error('Unexpected runtime import '+spec);}});classes[name]=exports['Base'+name+'Service'];}
+const classes={};for(const name of names){const exports={};vm.runInNewContext(ts.transpileModule(await readFile(path.join(root,'blueprint/implementations/billing/base/services',name[0].toLowerCase()+name.slice(1)+'.service.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Date,require(spec){if(spec==='../utils/cachedSessionDto')return cacheDtoExports;if(spec==='@mikro-orm/core')return{EntityManager};if(spec==='@forklaunch/core/http')return{evaluateTelemetryOptions:()=>({enabled:{}})};if(spec==='@forklaunch/core/cache')return{createCacheKey:prefix=>id=>prefix+':'+id};if(spec.endsWith('/persistence/entities'))return entities;throw Error('Unexpected runtime import '+spec);}});classes[name]=exports['Base'+name+'Service'];}
 const actions=[],add=(service,method,input={})=>actions.push({service,method,input});
 const plan={id:'plan1',name:'Pro',price:1999,cadence:'month',currency:'USD',externalId:'price1',billingProvider:'stripe',active:true,features:['api'],providerFields:{nested:{value:1}}};
 add('Plan','createPlan',plan);add('Plan','createPlan',{...plan,id:'plan2',externalId:'price2',name:'Team'});

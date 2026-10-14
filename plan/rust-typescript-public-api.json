@@ -1173,43 +1173,43 @@
               "name": "BaseBillingPortalService",
               "kind": "ClassDeclaration",
               "source": "blueprint/implementations/billing/base/services/billingPortal.service.ts",
-              "line": 20,
+              "line": 21,
               "members": [
                 {
                   "name": "em",
                   "signature": "public em: EntityManager;",
                   "source": "blueprint/implementations/billing/base/services/billingPortal.service.ts",
-                  "line": 31
+                  "line": 32
                 },
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    em: EntityManager,\n    cache: TtlCache,\n    openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    schemaValidator: SchemaValidator,\n    mappers: BillingPortalMappers<MapperEntities, MapperDomains>,\n    options?: {\n      telemetry?: TelemetryOptions;\n      enableDatabaseBackup?: boolean;\n    }\n  )",
                   "source": "blueprint/implementations/billing/base/services/billingPortal.service.ts",
-                  "line": 37
+                  "line": 38
                 },
                 {
                   "name": "createBillingPortalSession",
                   "signature": "async createBillingPortalSession(\n    billingPortalDto: CreateBillingPortalDto,\n    ...args: unknown[]\n  ): Promise<MapperDomains['BillingPortalMapper']>",
                   "source": "blueprint/implementations/billing/base/services/billingPortal.service.ts",
-                  "line": 65
+                  "line": 66
                 },
                 {
                   "name": "getBillingPortalSession",
                   "signature": "async getBillingPortalSession(\n    idDto: IdDto\n  ): Promise<MapperDomains['BillingPortalMapper']>",
                   "source": "blueprint/implementations/billing/base/services/billingPortal.service.ts",
-                  "line": 98
+                  "line": 99
                 },
                 {
                   "name": "updateBillingPortalSession",
                   "signature": "async updateBillingPortalSession(\n    billingPortalDto: UpdateBillingPortalDto,\n    ...args: unknown[]\n  ): Promise<MapperDomains['BillingPortalMapper']>",
                   "source": "blueprint/implementations/billing/base/services/billingPortal.service.ts",
-                  "line": 121
+                  "line": 119
                 },
                 {
                   "name": "expireBillingPortalSession",
                   "signature": "async expireBillingPortalSession(idDto: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/billingPortal.service.ts",
-                  "line": 171
+                  "line": 169
                 }
               ]
             }
@@ -1222,49 +1222,49 @@
               "name": "BaseCheckoutSessionService",
               "kind": "ClassDeclaration",
               "source": "blueprint/implementations/billing/base/services/checkoutSession.service.ts",
-              "line": 18,
+              "line": 19,
               "members": [
                 {
                   "name": "em",
                   "signature": "public em: EntityManager;",
                   "source": "blueprint/implementations/billing/base/services/checkoutSession.service.ts",
-                  "line": 40
+                  "line": 41
                 },
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    em: EntityManager,\n    cache: TtlCache,\n    openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    schemaValidator: SchemaValidator,\n    mappers: CheckoutSessionMappers<\n      PaymentMethodEnum,\n      CurrencyEnum,\n      StatusEnum,\n      MapperEntities,\n      MapperDomains\n    >,\n    options?: {\n      telemetry?: TelemetryOptions;\n      enableDatabaseBackup?: boolean;\n    }\n  )",
                   "source": "blueprint/implementations/billing/base/services/checkoutSession.service.ts",
-                  "line": 52
+                  "line": 53
                 },
                 {
                   "name": "createCheckoutSession",
                   "signature": "async createCheckoutSession(\n    checkoutSessionDto: CreateCheckoutSessionDto<\n      PaymentMethodEnum,\n      CurrencyEnum,\n      StatusEnum\n    >,\n    ...args: unknown[]\n  ): Promise<MapperDomains['CheckoutSessionMapper']>",
                   "source": "blueprint/implementations/billing/base/services/checkoutSession.service.ts",
-                  "line": 86
+                  "line": 87
                 },
                 {
                   "name": "getCheckoutSession",
                   "signature": "async getCheckoutSession({\n    id\n  }: IdDto): Promise<MapperDomains['CheckoutSessionMapper']>",
                   "source": "blueprint/implementations/billing/base/services/checkoutSession.service.ts",
-                  "line": 124
+                  "line": 125
                 },
                 {
                   "name": "expireCheckoutSession",
                   "signature": "async expireCheckoutSession({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/checkoutSession.service.ts",
-                  "line": 142
+                  "line": 140
                 },
                 {
                   "name": "handleCheckoutSuccess",
                   "signature": "async handleCheckoutSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/checkoutSession.service.ts",
-                  "line": 152
+                  "line": 150
                 },
                 {
                   "name": "handleCheckoutFailure",
                   "signature": "async handleCheckoutFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/checkoutSession.service.ts",
-                  "line": 171
+                  "line": 169
                 }
               ]
             }

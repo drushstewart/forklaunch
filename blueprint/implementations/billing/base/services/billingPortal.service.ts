@@ -16,6 +16,7 @@ import { EntityManager } from '@mikro-orm/core';
 import { BaseBillingDtos } from '../domain/types/baseBillingDto.types';
 import { BaseBillingEntities } from '../domain/types/baseBillingEntity.types';
 import { BillingPortalMappers } from '../domain/types/billingPortal.mapper.types';
+import { cachedSessionDto } from '../utils/cachedSessionDto';
 
 export class BaseBillingPortalService<
   SchemaValidator extends AnySchemaValidator,
@@ -110,12 +111,9 @@ export class BaseBillingPortalService<
       throw new Error('Session not found');
     }
 
-    return this.mappers.BillingPortalMapper.toDto(
-      await this.mappers.UpdateBillingPortalMapper.toEntity(
-        billingPortalDetails.value,
-        this.em
-      )
-    );
+    // Creation already mapped this DTO. A cache-only session has no database
+    // entity for the update mapper to load, and a read must not mutate one.
+    return cachedSessionDto(billingPortalDetails.value);
   }
 
   async updateBillingPortalSession(
