@@ -50,8 +50,8 @@ instance-signed transport. It loads trusted managed settings through `from_env`
 or accepts an explicitly configured transport. Both methods retain opaque JSON,
 including extra fields and omitted `created`, matching the TypeScript unchecked
 response casts. Monthly budget, usage and BAA fields are platform claims rather
-than locally verified guarantees. Typed chat DTOs remain separate work; the
-preview client's stricter catalog continues to use its own API.
+than locally verified guarantees. The preview client's stricter catalog continues
+to use its own API.
 
 Successful bodies have a one-MiB raw bound, including chunked responses. Browser
 UTF-8 replacement/BOM handling and finite large-integer rounding match the preview
@@ -86,3 +86,30 @@ Explicit `cancel()` or dropping the stream releases the response body and ends
 native reading; later `next()` after cancellation returns `None`. This is stronger
 than the upstream generator's reader-release-only behavior. Dropping a pending
 `next()` future alone is not a substitute for dropping/cancelling its stream.
+
+
+Opt-in `model_gateway` DTOs mirror the declared managed interfaces:
+`GatewayChatMessage`/`GatewayChatRole`, `GatewayChatRequest`,
+`GatewayChatCompletion`/`GatewayChatCompletionChoice`/`GatewayCompletionMessage`,
+`GatewayUsage`, `GatewayChatChunk`/`GatewayChatChunkChoice`/`GatewayChatDelta`, and
+`GatewayModels`/`GatewayModel`. Use `serde_json::to_value` before the existing
+opaque request methods and `serde_json::from_value` on a response or stream item.
+This explicit decoding validates required fields and types; it is stricter than
+TypeScript's unchecked response casts. No default network behavior changes.
+Managed completion `created` is required here; the separate preview response may
+omit it.
+
+`GatewayPresence::Missing` omits an optional property. `Present(Value::Null)`
+preserves null in optional unknown JSON fields; `Present(None)` preserves null
+in nullable chunk content/finish reason. Required nullable completion fields must
+be present. Unknown properties roundtrip in each DTO's public `extra` map,
+including shapes whose TypeScript declarations lack an index signature. Inserting
+a declared property into `extra` fails serialization, even when that property is
+otherwise omitted. This prevents reserved keys from silently replacing typed data.
+
+Declared numeric fields use finite `f64`, including fractional values and browser
+rounding of unsafe integers; nonfinite values fail serialization. This is a JSON
+subset, not JavaScript arbitrary `unknown`/prototype/function/undefined support.
+Existing opaque JSON limits on overflowing numbers and lone UTF-16 surrogates
+remain. JSON serializer spelling and signed request bytes are not promised to be
+identical across languages.

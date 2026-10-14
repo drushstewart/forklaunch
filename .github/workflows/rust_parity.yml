@@ -237,6 +237,7 @@ on:
       - 'cli/tests/rust_preview_model_gateway.mjs'
       - 'cli/tests/rust_model_gateway.mjs'
       - 'cli/tests/rust_model_gateway_stream.mjs'
+      - 'cli/tests/rust_model_gateway_dtos.mjs'
       - 'cli/tests/rust_actual_http_fixture.mjs'
       - 'cli/tests/rust_billing_stripe_services_parity.mjs'
       - 'cli/tests/rust_billing_stripe_webhook_parity.mjs'
@@ -502,6 +503,7 @@ on:
       - 'cli/tests/rust_preview_model_gateway.mjs'
       - 'cli/tests/rust_model_gateway.mjs'
       - 'cli/tests/rust_model_gateway_stream.mjs'
+      - 'cli/tests/rust_model_gateway_dtos.mjs'
       - 'cli/tests/rust_actual_http_fixture.mjs'
       - 'cli/tests/rust_billing_stripe_services_parity.mjs'
       - 'cli/tests/rust_billing_stripe_webhook_parity.mjs'
@@ -920,6 +922,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_model_gateway_stream.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_model_gateway_dtos.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_instance_gateway_configuration.mjs

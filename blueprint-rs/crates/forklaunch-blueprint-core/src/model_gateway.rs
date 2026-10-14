@@ -1,8 +1,14 @@
 //! Managed model catalog and chat over the instance-signed gateway.
+mod dto;
 mod stream;
 use crate::{
     BlueprintResult,
     instance_gateway::{InstanceGatewayClient, InstanceGatewayRequestError},
+};
+pub use dto::{
+    GatewayChatChunk, GatewayChatChunkChoice, GatewayChatCompletion, GatewayChatCompletionChoice,
+    GatewayChatDelta, GatewayChatMessage, GatewayChatRequest, GatewayChatRole,
+    GatewayCompletionMessage, GatewayModel, GatewayModels, GatewayPresence, GatewayUsage,
 };
 use reqwest::Method;
 use serde_json::Value;

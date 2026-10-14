@@ -6689,3 +6689,21 @@ errors remain recorded at this checkpoint. No clean full-typecheck claim is made
 /private/tmp/fl-response-header-types-oracle.log and
 /private/tmp/fl-response-header-full-roots-types.log. The string-profile CI step
 also explicitly selects its installed compiler and validator dependency roots.
+
+
+## Managed gateway typed DTO receipt (2026-10-14)
+
+Serde-only managed gateway DTOs now cover chat requests/messages, completions/
+choices/messages/usage, chunks/choices/deltas and model catalogs. Presence explicitly
+distinguishes missing fields from present null values. Required nullable fields
+must be present; managed completion created is required while preview remains
+unchanged. Unknown extras survive, and reserved-name collisions are rejected
+before serialization. Numbers use f64 within the native JSON profile.
+
+These DTOs opt into typed serialization/decoding through existing serde helpers;
+they do not add network methods or pretend TypeScript's unchecked response casts
+perform runtime validation. Default opaque client APIs remain unchanged. Fourteen
+core tests,19 actual TypeScript/native JSON roundtrips and strict core all-feature/
+all-target Clippy pass: /private/tmp/fl-model-dto-{ts,native,wire,clippy}.log.
+The typed decoder is intentionally stricter than unchecked casts; arbitrary JS
+values and byte-identical JS serializer spelling remain outside this layer.

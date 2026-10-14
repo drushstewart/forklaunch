@@ -1,7 +1,10 @@
 //! Owned model gateway wire fixture; no provider credentials or external calls.
 use forklaunch_blueprint_core::{
     instance_gateway::InstanceGatewayClient,
-    model_gateway::{ModelGatewayClient, ModelStreamLimits},
+    model_gateway::{
+        GatewayChatChunk, GatewayChatCompletion, GatewayChatRequest, GatewayModels,
+        ModelGatewayClient, ModelStreamLimits,
+    },
 };
 use serde_json::{Value, json};
 use std::io::{self, Read};
@@ -20,6 +23,10 @@ async fn main() {
     let client = ModelGatewayClient::new(transport);
     let mut results = Vec::new();
     for action in input["actions"].as_array().unwrap() {
+        if action["kind"] == "dto" {
+            results.push(dto(action));
+            continue;
+        }
         if action["kind"] == "stream" {
             results.push(stream(&client, action).await);
             continue;
@@ -79,5 +86,20 @@ async fn stream(client: &ModelGatewayClient, action: &Value) -> Value {
         Err(error) => {
             json!({"error":true,"status":error.status,"retryAfterSeconds":error.retry_after_seconds,"code":error.code,"description":error.to_string(),"items":items})
         }
+    }
+}
+
+fn dto(action: &Value) -> Value {
+    fn roundtrip<T: serde::de::DeserializeOwned + serde::Serialize>(value: Value) -> Value {
+        serde_json::from_value::<T>(value)
+            .and_then(serde_json::to_value)
+            .unwrap()
+    }
+    match action["shape"].as_str().unwrap() {
+        "request" => roundtrip::<GatewayChatRequest>(action["body"].clone()),
+        "completion" => roundtrip::<GatewayChatCompletion>(action["body"].clone()),
+        "chunk" => roundtrip::<GatewayChatChunk>(action["body"].clone()),
+        "models" => roundtrip::<GatewayModels>(action["body"].clone()),
+        _ => panic!("unknown DTO fixture shape"),
     }
 }
