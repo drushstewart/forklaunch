@@ -1,3 +1,4 @@
+mod unit_of_work;
 use super::*;
 use crate::{directory::service::BaseIamDirectory, postgres::PostgresIamService};
 use forklaunch_blueprint_core::AuditContext;

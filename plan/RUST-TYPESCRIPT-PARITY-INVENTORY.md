@@ -5300,3 +5300,28 @@ local customer UUIDs need their own trusted mapping and fail closed here. Existi
 cache-based trait reads, managed gateway mode, HTTP routes and provider mutations
 are not switched automatically. Broader identity/wrapper integration remains
 open. Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Typed directory mapper and transaction extensions
+
+`BaseIamDirectory::unit_of_work` provides an explicit caller-owned transaction
+for the four existing directory families. Sealed entity markers bind each family's
+create/update/read DTOs; custom mapper hooks accept typed application input, output
+and context while operating within the same tenant/audit/organization scope.
+Related operations see staged writes and commit together. Returned errors,
+projection failures, canceled futures and caught mapper panics poison the unit,
+preventing later commit of partial graph/audit changes. Core mapping, password
+ignoring, relationship validation, encryption and identity deletion restrictions
+remain in force. No raw connection or arbitrary SQL/table extension is exposed.
+
+Five focused tests, 19 base regressions, restricted PostgreSQL graph/audit rollback,
+strict all-target Clippy, minimal-feature compilation and an actual TypeScript
+custom-mapper oracle pass. The oracle covers caller EntityManager/extra arguments,
+custom projection and deferred service flush; it records that TS permission
+update omits extra arguments. Native context propagation is uniform. Actual
+atomic rollback is proven against PostgreSQL, not inferred from the owned TS ORM
+fixture. CI runs the new oracle and ignored PG test. Logs:
+`/private/tmp/fl-iam-unit-of-work-{native,pg,clippy,regression,minimal,ts}.log`.
+The committed generated IAM workspace was cleaned after process/role checks.
+Safe filter extensions and broader custom persistence semantics remain open;
+checklist **660/682 (96.8%), 22 open**.

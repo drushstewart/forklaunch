@@ -26,6 +26,19 @@ impl<S: DirectoryStore + 'static> BaseIamDirectory<S> {
             organization_scope: None,
         }
     }
+    /// Begins a caller-owned atomic directory transaction with this service's
+    /// trusted tenant, audit context and organization scope. Commit explicitly;
+    /// dropping it or any failed operation prevents partial graph persistence.
+    /// # Errors
+    /// Returns the store's transaction error.
+    pub async fn unit_of_work(
+        &self,
+    ) -> BlueprintResult<super::unit_of_work::DirectoryUnitOfWork<S::Transaction<'_>>> {
+        Ok(super::unit_of_work::DirectoryUnitOfWork::new(
+            self.store.begin(true).await?,
+            self.organization_scope.clone(),
+        ))
+    }
     /// Restrict user reads and mutations to a server-resolved organization.
     #[must_use]
     pub fn with_organization_scope(mut self, organization: String) -> Self {

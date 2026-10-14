@@ -9,6 +9,7 @@ pub mod memory;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod service;
+pub mod unit_of_work;
 
 /// Persisted directory entity families. Session users/roles remain separate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
