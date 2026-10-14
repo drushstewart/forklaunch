@@ -7531,3 +7531,27 @@ write/retry;170 legacy comparisons and strict all-feature/all-target billing
 Clippy pass: /private/tmp/fl-billing-post-effect-identity{,-types,-native,-legacy170,
 -clippy}.log and corresponding named regression logs. CI runs the focused fixture.
 Interrupted effects and broader configured provider response semantics remain open.
+
+
+## Trusted signing algorithm selection (2026-10-14)
+
+KeyRing.sign_jwt_with_algorithm selects the newest live matching effective
+algorithm with one reader invocation and no latest-other-algorithm fallback.
+Existing matching keys may be used without advertisement; only missing-key
+creation requires the configured primary or a trusted additional profile. Typed
+extras are bounded to16, unique supported algorithms, no nested lists or per-extra
+rotation. Shared rotation applies. Shallow jwks overrides clear inherited extras;
+the constrained API rejects raw keyPairConfigs rather than accepting new mint
+authority from JSON. Expired/public-only/unknown profile boundaries are tested.
+
+Trusted create callbacks remain authoritative, including a returned algorithm
+different from the requested generation profile. This is explicitly tested and
+documented, rather than falsely guaranteeing an algorithm after custom creation.
+Existing exact key-ID assertions stay strict and never mint replacements. No HTTP
+algorithm-selection authority or default backend transaction changes are added.
+Ten actual JOSE cases, five focused native tests,105 all-feature IAM tests with
+two explicit ignored PG tests, and strict all-target Clippy pass:
+/private/tmp/fl-jwks-algorithm-{ts,focused,native,clippy}.log. The source receipt is
+52288e9ca plus the six-path IAM delta, distinct from immutable archive proof.
+CI runs the actual oracle. Resolved-key/external-signer metadata and malformed
+legacy formats beyond the typed profile remain separately unclaimed.

@@ -1093,3 +1093,23 @@ boundary. Invalid configured expiration arithmetic fails before repository I/O;
 this bounded native configuration rejects unsupported clocks/overflow instead of
 persisting an invalid JavaScript Date. Custom callbacks retain persistence and
 synchronization ownership; no cross-store atomicity is implied.
+
+`KeyRing::sign_jwt_with_algorithm` adds a trusted server-only algorithm constraint.
+It reads once, selects the newest live matching key and never falls back to a
+key with another algorithm. Existing matching keys remain usable even when not
+advertised for creation. Missing keys can be created only for the configured
+primary or profiles supplied by `KeyPairConfig::with_additional_profiles`.
+The typed list rejects duplicate/primary algorithms, more than 16 entries,
+nested lists and per-extra rotation intervals; the shared rotation policy applies.
+An expired matching key is excluded, so an advertised profile may be minted on
+next use. Explicit ID pinning still refuses expired IDs without replacement.
+
+A `jwks` override clears inherited additional profiles through the same shallow
+replacement semantics as other key options. The constrained API rejects raw
+`keyPairConfigs` instead of treating request-shaped JSON as new advertisement;
+use the trusted typed configuration. Selecting a public-only record fails without
+minting. A trusted custom creation callback still owns its returned key, including
+its algorithm: actual Better Auth uses that return even if it differs from the
+requested generation profile. No extra callback call or default-store write is
+invented to enforce a different contract. Applications requiring stricter remote
+key provisioning must enforce that constraint inside their trusted callback.

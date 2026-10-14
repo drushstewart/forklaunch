@@ -6,6 +6,7 @@ pub struct KeyPairConfig {
     algorithm: String,
     bits: usize,
     rotation_millis: Option<i64>,
+    additional: Vec<Self>,
 }
 impl Default for KeyPairConfig {
     fn default() -> Self {
@@ -13,6 +14,7 @@ impl Default for KeyPairConfig {
             algorithm: "EdDSA".into(),
             bits: 2048,
             rotation_millis: None,
+            additional: Vec::new(),
         }
     }
 }
@@ -41,7 +43,32 @@ impl KeyPairConfig {
             algorithm: algorithm.into(),
             bits: rsa_bits,
             rotation_millis: None,
+            additional: Vec::new(),
         })
+    }
+    /// Advertises additional profiles eligible for lazy algorithm-constrained minting.
+    /// # Errors
+    /// Rejects more than 16 profiles, duplicate/primary algorithms, nested lists,
+    /// and per-extra rotation intervals; the shared parent interval applies.
+    pub fn with_additional_profiles(mut self, profiles: Vec<Self>) -> BlueprintResult<Self> {
+        let mut seen = std::collections::BTreeSet::new();
+        seen.insert(self.algorithm.clone());
+        if profiles.len() > 16
+            || profiles.iter().any(|profile| {
+                !profile.additional.is_empty()
+                    || profile.rotation_millis.is_some()
+                    || !seen.insert(profile.algorithm.clone())
+            })
+        {
+            return Err(key_error());
+        }
+        self.additional = profiles;
+        Ok(self)
+    }
+    pub(super) fn additional_profile(&self, algorithm: &str) -> Option<&Self> {
+        self.additional
+            .iter()
+            .find(|profile| profile.algorithm == algorithm)
     }
     /// Sets automatic expiry for newly created local keys. Zero disables expiry.
     /// Existing records retain their persisted expiry; no timer or rewrite is added.
@@ -117,6 +144,8 @@ pub(super) fn public(row: &Value, fallback: &str) -> BlueprintResult<Value> {
     super::public_key(&normalized)
 }
 
+#[cfg(test)]
+mod algorithm_tests;
 #[cfg(test)]
 mod rotation_tests;
 #[cfg(test)]

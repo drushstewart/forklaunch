@@ -81,6 +81,18 @@ impl<'a, S: AuthStore> KeySession<'a, S> {
             .by_id(id)
             .await
     }
+    pub(in super::super) async fn by_algorithm(
+        &mut self,
+        algorithm: &str,
+        fallback: &str,
+    ) -> BlueprintResult<Option<KeyRecord>> {
+        for row in self.live_candidates().await? {
+            if row.effective_algorithm(fallback)? == algorithm {
+                return Ok(Some(row));
+            }
+        }
+        Ok(None)
+    }
     pub(in super::super) async fn select(
         &mut self,
         primary: &str,
