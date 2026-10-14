@@ -208,7 +208,7 @@ export type StripeCreatePlanDto = Omit<
   >,
   'providerFields'
 > & {
-  stripeFields: Omit<StripePlanCreateParams, PlanOmissions>;
+  stripeFields?: Omit<StripePlanCreateParams, PlanOmissions>;
 };
 
 export type StripeUpdatePlanDto = Omit<
@@ -246,7 +246,7 @@ export type StripeCreateSubscriptionDto<PartyType> = Omit<
   CreateSubscriptionDto<PartyType, typeof BillingProviderEnum>,
   'providerFields'
 > & {
-  stripeFields: Omit<StripeSubscriptionCreateParams, SubscriptionOmissions>;
+  stripeFields?: Omit<StripeSubscriptionCreateParams, SubscriptionOmissions>;
 };
 
 export type StripeUpdateSubscriptionDto<PartyType> = Omit<

@@ -2237,19 +2237,19 @@
               "name": "UpdateSubscriptionSchema",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/zod/subscription.schema.ts",
-              "line": 39
+              "line": 40
             },
             {
               "name": "SubscriptionSchema",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/zod/subscription.schema.ts",
-              "line": 60
+              "line": 61
             },
             {
               "name": "StripeSubscriptionServiceSchemas",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/zod/subscription.schema.ts",
-              "line": 79
+              "line": 80
             }
           ]
         },
@@ -2545,7 +2545,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
               "line": 203,
-              "type": "Omit<\n  CreatePlanDto<\n    typeof PlanCadenceEnum,\n    typeof CurrencyEnum,\n    typeof BillingProviderEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields: Omit<StripePlanCreateParams, PlanOmissions>;\n}"
+              "type": "Omit<\n  CreatePlanDto<\n    typeof PlanCadenceEnum,\n    typeof CurrencyEnum,\n    typeof BillingProviderEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields?: Omit<StripePlanCreateParams, PlanOmissions>;\n}"
             },
             {
               "name": "StripeUpdatePlanDto",
@@ -2573,7 +2573,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
               "line": 245,
-              "type": "Omit<\n  CreateSubscriptionDto<PartyType, typeof BillingProviderEnum>,\n  'providerFields'\n> & {\n  stripeFields: Omit<StripeSubscriptionCreateParams, SubscriptionOmissions>;\n}"
+              "type": "Omit<\n  CreateSubscriptionDto<PartyType, typeof BillingProviderEnum>,\n  'providerFields'\n> & {\n  stripeFields?: Omit<StripeSubscriptionCreateParams, SubscriptionOmissions>;\n}"
             },
             {
               "name": "StripeUpdateSubscriptionDto",
