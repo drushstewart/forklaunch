@@ -43,20 +43,22 @@ export class StripePaymentLinkService<
   SchemaValidator extends AnySchemaValidator,
   StatusEnum,
   Entities extends StripePaymentLinkEntities,
-  Dto extends StripePaymentLinkDtos<StatusEnum> =
-    StripePaymentLinkDtos<StatusEnum>
-> implements PaymentLinkService<
-  PaymentMethodEnum,
-  typeof CurrencyEnum,
-  StatusEnum,
-  {
-    CreatePaymentLinkDto: StripeCreatePaymentLinkDto<StatusEnum>;
-    UpdatePaymentLinkDto: StripeUpdatePaymentLinkDto<StatusEnum>;
-    PaymentLinkDto: StripePaymentLinkDto<StatusEnum>;
-    IdDto: IdDto;
-    IdsDto: IdsDto;
-  }
-> {
+  Dto extends
+    StripePaymentLinkDtos<StatusEnum> = StripePaymentLinkDtos<StatusEnum>
+> implements
+    PaymentLinkService<
+      PaymentMethodEnum,
+      typeof CurrencyEnum,
+      StatusEnum,
+      {
+        CreatePaymentLinkDto: StripeCreatePaymentLinkDto<StatusEnum>;
+        UpdatePaymentLinkDto: StripeUpdatePaymentLinkDto<StatusEnum>;
+        PaymentLinkDto: StripePaymentLinkDto<StatusEnum>;
+        IdDto: IdDto;
+        IdsDto: IdsDto;
+      }
+    >
+{
   basePaymentLinkService: BasePaymentLinkService<
     SchemaValidator,
     PaymentMethodEnum,
@@ -134,7 +136,9 @@ export class StripePaymentLinkService<
       currency: paymentLinkDto.currency as string
     });
 
-    await this.mappers.CreatePaymentLinkMapper.validateProviderCreate?.(session);
+    await this.mappers.CreatePaymentLinkMapper.validateProviderCreate?.(
+      session
+    );
 
     const paymentLink = await this.basePaymentLinkService.createPaymentLink(
       {
@@ -177,6 +181,17 @@ export class StripePaymentLinkService<
         payment_method_types: paymentLinkDto.paymentMethods
       }
     );
+
+    const toLocalUpdate = this.mappers.UpdatePaymentLinkMapper.toLocalUpdate;
+    if (toLocalUpdate) {
+      const patch = await toLocalUpdate(paymentLinkDto, session);
+      return this.basePaymentLinkService.updatePaymentLink(
+        patch,
+        this.em,
+        session,
+        ...args
+      );
+    }
 
     const paymentLink = await this.basePaymentLinkService.updatePaymentLink(
       await this.mappers.PaymentLinkMapper.toDto(

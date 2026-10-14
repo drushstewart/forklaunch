@@ -104,7 +104,9 @@ export const PaymentLinkMapper = {
     value: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>
   ) => {
     const parsed = schemaValidator.parse(
-      schemaValidator.schemify(PaymentLinkSchemas.PaymentLinkSchema(StatusEnum)),
+      schemaValidator.schemify(
+        PaymentLinkSchemas.PaymentLinkSchema(StatusEnum)
+      ),
       value
     );
     if (!parsed.ok) {
@@ -135,6 +137,63 @@ export const PaymentLinkMapper = {
 
 export const UpdatePaymentLinkMapper = {
   ...UpdatePaymentLinkEntityMapper,
+  toLocalUpdate: async (
+    dto: Parameters<typeof UpdatePaymentLinkEntityMapper.toEntity>[0],
+    provider: Stripe.PaymentLink
+  ) => {
+    validateProviderCreation(provider, 'payment_link');
+    if (provider.id !== dto.id) {
+      throw new Error('Invalid Stripe billing response');
+    }
+    let amount = 0;
+    const data = provider.line_items?.data;
+    if (data !== undefined) {
+      if (!Array.isArray(data))
+        throw new Error('Invalid Stripe billing response');
+      for (const item of data) {
+        if (
+          typeof item?.amount_total !== 'number' ||
+          !Number.isFinite(item.amount_total)
+        ) {
+          throw new Error('Invalid Stripe billing response');
+        }
+        amount += item.amount_total;
+        if (!Number.isFinite(amount))
+          throw new Error('Invalid Stripe billing response');
+      }
+    }
+    return { ...dto, amount, stripeFields: provider };
+  },
+  toCachedDto: async (
+    dto: Parameters<typeof UpdatePaymentLinkEntityMapper.toEntity>[0],
+    existing: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>,
+    _em: EntityManager
+  ) => {
+    const current = schemaValidator.parse(
+      schemaValidator.schemify(
+        PaymentLinkSchemas.PaymentLinkSchema(StatusEnum)
+      ),
+      existing
+    );
+    const patch = schemaValidator.parse(
+      schemaValidator.schemify(
+        PaymentLinkSchemas.UpdatePaymentLinkSchema(StatusEnum)
+      ),
+      dto
+    );
+    if (!current.ok || !patch.ok || current.value.id !== patch.value.id) {
+      throw new Error('Invalid cached payment link update');
+    }
+    const updated = { ...existing, ...current.value, ...patch.value };
+    const result = schemaValidator.parse(
+      schemaValidator.schemify(
+        PaymentLinkSchemas.PaymentLinkSchema(StatusEnum)
+      ),
+      updated
+    );
+    if (!result.ok) throw new Error('Invalid cached payment link response');
+    return { ...updated, ...result.value };
+  },
   validateCachedUpdate: async (
     dto: Parameters<typeof UpdatePaymentLinkEntityMapper.toEntity>[0],
     existing: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>
@@ -174,7 +233,10 @@ export const CreatePaymentLinkMapper = {
     const { id, amount, ...inputSchema } =
       PaymentLinkSchemas.CreatePaymentLinkSchema(StatusEnum);
     const input = schemaValidator.parse(
-      schemaValidator.schemify({ ...inputSchema, ...(dto.amount == null ? {} : { amount }) }),
+      schemaValidator.schemify({
+        ...inputSchema,
+        ...(dto.amount == null ? {} : { amount })
+      }),
       dto
     );
     if (!input.ok) {

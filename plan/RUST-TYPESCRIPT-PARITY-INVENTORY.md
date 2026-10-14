@@ -7739,3 +7739,25 @@ cookie jar and scoped fetch forwarding are owned fixture components; actual SDK,
 AJV and Better Auth clients execute against live native HTTP. Neither browser
 coverage nor HTTP SDK access to MCP is implied. CI installs pinned bundling/
 validation dependencies and runs the composition fixture.
+
+
+## PaymentLink provider update result and single local mapping (2026-10-14)
+
+Configured Stripe PaymentLink updates now expose an optional toLocalUpdate hook
+which validates the already-applied provider result before local persistence:
+exact dispatched ID, payment_link object kind and numeric finite/nonoverflowing
+consumed totals. The wrapper preserves the caller patch and public ID and invokes
+Base.update once. A schema-checked configured toCachedDto hook performs cache-only
+updates with zero ORM calls; database backup maps once. Generic hook-absent mappers
+retain their historical sequence. Native rejects mismatched returned IDs/kinds
+instead of redirecting the local update to an arbitrary provider response ID.
+
+36 actual-source cases,30 preflight cases,353 configured regressions and12-root
+TypeScript7 strict types pass. The native loopback covers10 invalid results and
+a valid boundary, preserving exactly one provider POST and zero local writes on
+invalid results;170 legacy operations and strict all-feature/all-target billing
+Clippy pass. Logs: /private/tmp/fl-payment-link-update-result{,-preflight,
+-configured,-types,-native,-legacy170,-clippy}.log. CI runs the new source fixture.
+Formatting changed no semantics. Provider effects already exist at rejection;
+no retry/compensation is promised. Original dispatch IDs remain unchanged, so
+UUID/provider mutation resolution and account ownership still keep gate855 open.

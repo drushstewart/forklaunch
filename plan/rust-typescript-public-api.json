@@ -2347,7 +2347,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/paymentLink.mapper.types.ts",
               "line": 6,
-              "type": "{\n  PaymentLinkMapper: {\n    /** Validate and restore declared DTO fields after a JSON cache read. */\n    normalizeCachedDto?: (\n      value: Dto['PaymentLinkMapper']\n    ) => Dto['PaymentLinkMapper'];\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.PaymentLink) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePaymentLinkMapper']) => Promise<void>;\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    /** Validate a patch against the normalized cached DTO before provider I/O.\n     * This hook does not resolve provider IDs or authorize provider mutations.\n     */\n    validateCachedUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper']\n    ) => Promise<void>;\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
+              "type": "{\n  PaymentLinkMapper: {\n    /** Validate and restore declared DTO fields after a JSON cache read. */\n    normalizeCachedDto?: (\n      value: Dto['PaymentLinkMapper']\n    ) => Dto['PaymentLinkMapper'];\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.PaymentLink) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePaymentLinkMapper']) => Promise<void>;\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    /** Validate the already-applied provider result and prepare one local update.\n     * Does not resolve aliases or establish provider account ownership.\n     */\n    toLocalUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      provider: Stripe.PaymentLink\n    ) => Promise<Dto['UpdatePaymentLinkMapper']>;\n    toCachedDto?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    /** Validate a patch against the normalized cached DTO before provider I/O.\n     * This hook does not resolve provider IDs or authorize provider mutations.\n     */\n    validateCachedUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper']\n    ) => Promise<void>;\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2880,55 +2880,55 @@
                   "name": "basePaymentLinkService",
                   "signature": "basePaymentLinkService: BasePaymentLinkService<\n    SchemaValidator,\n    PaymentMethodEnum,\n    CurrencyEnum,\n    StatusEnum,\n    Entities,\n    Dto\n  >;",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 60
+                  "line": 62
                 },
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    stripeClient: Stripe,\n    em: EntityManager,\n    cache: TtlCache,\n    openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    schemaValidator: SchemaValidator,\n    mappers: StripePaymentLinkMappers<StatusEnum, Entities, Dto>,\n    readonly options?: {\n      enableDatabaseBackup?: boolean;\n      /** Trusted configured-cache list limit; defaults to 100, maximum 1000. */\n      maxConfiguredListRecords?: number;\n      telemetry?: TelemetryOptions;\n    }\n  )",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 80
+                  "line": 82
                 },
                 {
                   "name": "createPaymentLink",
                   "signature": "async createPaymentLink(\n    paymentLinkDto: StripeCreatePaymentLinkDto<StatusEnum>,\n    ...args: unknown[]\n  ): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 124
+                  "line": 126
                 },
                 {
                   "name": "updatePaymentLink",
                   "signature": "async updatePaymentLink(\n    paymentLinkDto: StripeUpdatePaymentLinkDto<StatusEnum>,\n    ...args: unknown[]\n  ): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 160
+                  "line": 164
                 },
                 {
                   "name": "getPaymentLink",
                   "signature": "async getPaymentLink({ id }: IdDto): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 205
+                  "line": 220
                 },
                 {
                   "name": "expirePaymentLink",
                   "signature": "async expirePaymentLink({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 226
+                  "line": 241
                 },
                 {
                   "name": "handlePaymentSuccess",
                   "signature": "async handlePaymentSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 235
+                  "line": 250
                 },
                 {
                   "name": "handlePaymentFailure",
                   "signature": "async handlePaymentFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 244
+                  "line": 259
                 },
                 {
                   "name": "listPaymentLinks",
                   "signature": "async listPaymentLinks(idsDto?: IdsDto): Promise<Dto['PaymentLinkMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 253
+                  "line": 268
                 }
               ]
             }
@@ -24288,6 +24288,11 @@
           "source": "framework/universal-sdk/index.ts"
         },
         {
+          "subpath": "./src/core/coerceReferenced",
+          "target": "lib/src/core/coerceReferenced.d.ts",
+          "source": "framework/universal-sdk/src/core/coerceReferenced.ts"
+        },
+        {
           "subpath": "./src/core/coerceSpecialTypes",
           "target": "lib/src/core/coerceSpecialTypes.d.ts",
           "source": "framework/universal-sdk/src/core/coerceSpecialTypes.ts"
@@ -24363,6 +24368,57 @@
           ]
         },
         {
+          "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
+          "exports": [
+            {
+              "name": "SchemaCursor",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
+              "line": 3,
+              "members": [
+                {
+                  "name": "schema",
+                  "signature": "schema: unknown;",
+                  "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
+                  "line": 4
+                },
+                {
+                  "name": "base",
+                  "signature": "base: string;",
+                  "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
+                  "line": 5
+                }
+              ]
+            },
+            {
+              "name": "SchemaResolver",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
+              "line": 7,
+              "members": [
+                {
+                  "name": "reference",
+                  "signature": "reference(cursor: SchemaCursor, ref: string): SchemaCursor;",
+                  "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
+                  "line": 8
+                },
+                {
+                  "name": "child",
+                  "signature": "child(cursor: SchemaCursor, schema: unknown): SchemaCursor;",
+                  "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
+                  "line": 9
+                }
+              ]
+            },
+            {
+              "name": "coerceReferenced",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
+              "line": 15
+            }
+          ]
+        },
+        {
           "source": "framework/universal-sdk/src/core/coerceSpecialTypes.ts",
           "exports": [
             {
@@ -24430,19 +24486,25 @@
               "name": "ResponseSchemas",
               "kind": "ClassDeclaration",
               "source": "framework/universal-sdk/src/core/responseSchema.ts",
-              "line": 8,
+              "line": 10,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    private readonly source: Ajv,\n    private readonly factory?: () => Ajv\n  )",
                   "source": "framework/universal-sdk/src/core/responseSchema.ts",
-                  "line": 10
+                  "line": 12
+                },
+                {
+                  "name": "coerce",
+                  "signature": "coerce(document: OpenAPIObject, pointer: string, schema: AnySchema, input: Record<string, unknown>): unknown",
+                  "source": "framework/universal-sdk/src/core/responseSchema.ts",
+                  "line": 17
                 },
                 {
                   "name": "validator",
                   "signature": "validator(\n    document: OpenAPIObject,\n    pointer: string,\n    schema: AnySchema\n  ): ValidateFunction",
                   "source": "framework/universal-sdk/src/core/responseSchema.ts",
-                  "line": 15
+                  "line": 49
                 }
               ]
             },
@@ -24450,7 +24512,7 @@
               "name": "schemaPointer",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/responseSchema.ts",
-              "line": 65
+              "line": 93
             }
           ]
         },
@@ -24575,31 +24637,31 @@
               "name": "UniversalSdk",
               "kind": "ClassDeclaration",
               "source": "framework/universal-sdk/src/universalSdk.ts",
-              "line": 25,
+              "line": 24,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    private host: string,\n    private ajv: Ajv,\n    private registryOptions: RegistryOptions,\n    private contentTypeParserMap:\n      Record<string, ResponseContentParserType> | undefined,\n    responseAjvFactory?: () => Ajv\n  )",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 36
+                  "line": 35
                 },
                 {
                   "name": "create",
                   "signature": "static async create(\n    host: string,\n    registryOptions: RegistryOptions,\n    contentTypeParserMap?: Record<string, ResponseContentParserType>\n  )",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 52
+                  "line": 51
                 },
                 {
                   "name": "executeFetchCall",
                   "signature": "async executeFetchCall(\n    path: string,\n    request?: RequestType & {\n      method:\n        | 'get'\n        | 'post'\n        | 'put'\n        | 'patch'\n        | 'delete'\n        | 'options'\n        | 'head'\n        | 'trace';\n    } & {\n      version?: string;\n    }\n  ): Promise<ResponseType>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 75
+                  "line": 74
                 },
                 {
                   "name": "executeSdkCall",
                   "signature": "async executeSdkCall(\n    sdkPath: string,\n    request?: RequestType\n  ): Promise<ResponseType>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 115
+                  "line": 114
                 }
               ]
             }

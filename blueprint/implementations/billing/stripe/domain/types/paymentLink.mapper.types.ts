@@ -38,6 +38,19 @@ export type StripePaymentLinkMappers<
     ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;
   };
   UpdatePaymentLinkMapper: {
+    /** Validate the already-applied provider result and prepare one local update.
+     * Does not resolve aliases or establish provider account ownership.
+     */
+    toLocalUpdate?: (
+      dto: Dto['UpdatePaymentLinkMapper'],
+      provider: Stripe.PaymentLink
+    ) => Promise<Dto['UpdatePaymentLinkMapper']>;
+    toCachedDto?: (
+      dto: Dto['UpdatePaymentLinkMapper'],
+      existing: Dto['PaymentLinkMapper'],
+      em: EntityManager,
+      ...args: unknown[]
+    ) => Promise<Dto['PaymentLinkMapper']>;
     /** Validate a patch against the normalized cached DTO before provider I/O.
      * This hook does not resolve provider IDs or authorize provider mutations.
      */

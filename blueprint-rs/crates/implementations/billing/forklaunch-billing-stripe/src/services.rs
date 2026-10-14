@@ -405,7 +405,7 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
             .client
             .update(StripeResource::PaymentLink, &request.id, &fields)
             .await?;
-        request.id = provider_id(&provider)?.into();
+        validate_read_identity(&provider, &request.id, "payment_link")?;
         request.amount = Some(line_amount(&provider)?);
         request.provider_fields = Some(provider);
         self.base.update_payment_link(request).await
@@ -465,7 +465,7 @@ impl<S: BillingStore> BillingPortalService for StripeBillingService<S> {
             .await?;
         validate_creation_shape(&provider, "billing_portal.session")?;
         request.id = Some(provider_id(&provider)?.into());
-        request.uri = provider_uri(&provider)?;
+        request.uri = Some(portal_uri(&provider)?);
         request.expires_at = Utc::now() + Duration::minutes(5);
         request.provider_fields = Some(provider);
         self.base.create_billing_portal_session(request).await
@@ -489,7 +489,7 @@ impl<S: BillingStore> BillingPortalService for StripeBillingService<S> {
             .create(StripeResource::BillingPortal, &fields)
             .await?;
         validate_creation_shape(&provider, "billing_portal.session")?;
-        request.uri = provider_uri(&provider)?;
+        request.uri = Some(portal_uri(&provider)?);
         request.expires_at = Some(Utc::now() + Duration::minutes(5));
         request.provider_fields = Some(provider);
         self.base.update_billing_portal_session(request).await
@@ -526,6 +526,17 @@ fn product(provider: &Value) -> BlueprintResult<Value> {
         .get("product")
         .filter(|v| v.is_object() || v.is_string())
         .cloned()
+        .ok_or_else(invalid_response)
+}
+fn portal_uri(provider: &Value) -> BlueprintResult<String> {
+    provider["url"]
+        .as_str()
+        .filter(|value| {
+            !value
+                .trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
+                .is_empty()
+        })
+        .map(str::to_owned)
         .ok_or_else(invalid_response)
 }
 fn provider_uri(provider: &Value) -> BlueprintResult<Option<String>> {
