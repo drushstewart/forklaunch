@@ -983,3 +983,13 @@ still overrides the configured expiry, and subject policy runs last. Persisted
 sessions and cookies retain their existing expiration. Nonfinite numbers are
 rejected before storage/signing; JavaScript external callbacks accepting such
 non-JSON values are outside this typed configuration subset.
+
+The internal key repository now provides one boundary for default-store key
+reads, creation and retirement across issuance, signing, verification and JWKS
+publication. A new key's rotation expiry is included in its initial encrypted
+insert; there is no subsequent expiry-only update/audit mutation. Signing restores
+and validates the record returned by repository creation rather than retaining the
+pre-persistence generated key. Tenant-bound transactions, default 100-key lookup
+window, rollback and post-creation claim-failure persistence remain in effect.
+This is preparation for coherent custom `getJwks`/`createJwk` support, not an exposed
+custom-adapter API: default encrypted storage remains the only repository backend.

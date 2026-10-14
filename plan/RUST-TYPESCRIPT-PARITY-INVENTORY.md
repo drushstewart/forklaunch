@@ -6926,3 +6926,31 @@ Focused tests also prove absent-input defaults receive None once, no-match invok
 no handler, each field callback runs once, and raw/default maps stay intact. The
 actual-source differential is wired into CI; versioned error/body diagnostics
 remain a separate gate.
+
+
+## Coherent internal JWKS repository foundation (2026-10-14)
+
+Default key issuance/signing, verification, publication and retirement now share
+one private tenant-transaction repository boundary. Creation restores/validates
+the returned persisted record before signing. Rotation expiry is calculated before
+creation and included in the initial encrypted insert, eliminating the prior
+expiry-only update/audit mutation. The default encrypted backend,100-key read
+window, transactional rollback and post-create claim-failure persistence remain.
+No public custom adapter hook is exposed yet; this foundation avoids a misleading
+publication-only callback that would leave signing/verification on another source.
+
+An actual installed Better Auth oracle validates28 independent default/custom
+getJwks/createJwk lookup cases and proves returned replacement key/id determine a
+verified signature, expiry reaches creation, and callback/invalid-material failure
+propagates. This records upstream requirements for later native hooks, not native
+custom-adapter parity. All80 native IAM tests pass (two PG cases ignored by that
+command), including returned record/expiry/rollback/claim-failure checks; strict
+all-feature/all-target Clippy passes:
+/private/tmp/fl-jwks-repository-{ts,native,clippy}.log. The oracle is wired into CI.
+
+The exact validated all-feature binary is copied for an independent direct run
+of both ignored PostgreSQL cases, currently pending. Its SHA256 is
+fb31b75a53d411b56d9f98b3f6860d9da7dd34ca1c739552ecab51a3e15d0875;
+metadata /private/tmp/fl-jwks-repository-pg-binary.json and run log
+/private/tmp/fl-jwks-repository-pg-run.log will retain the final result. Later
+source work cannot change this copied binary.

@@ -3,8 +3,8 @@ mod claims;
 mod duration;
 mod schema;
 use super::{
-    AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, KeyRing, Model, Utc,
-    Value, json, mint_config, optional_time, required_time, restore,
+    AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, KeyRepository, KeyRing,
+    Utc, Value, json, mint_config,
 };
 use std::cmp::Reverse;
 impl<S: AuthStore> KeyRing<S> {
@@ -30,18 +30,18 @@ impl<S: AuthStore> KeyRing<S> {
             .as_str()
             .unwrap_or("EdDSA");
         let mut candidates = Vec::new();
-        for row in tx.list_page(Model::Jwks, None, 100).await?.records {
-            if optional_time(&row, "expiresAt")?.is_none_or(|expiry| expiry > now) {
-                candidates.push((required_time(&row, "createdAt")?, row));
+        for row in KeyRepository::new(&mut tx).read_default_window().await? {
+            if row.expires_at()?.is_none_or(|expiry| expiry > now) {
+                candidates.push((row.created_at()?, row));
             }
         }
         candidates.sort_by_key(|(created, _)| Reverse(*created));
         let selected = candidates
             .iter()
-            .find(|(_, row)| row["alg"] == primary || row["alg"].is_null())
+            .find(|(_, row)| row.matches_algorithm(primary))
             .or_else(|| candidates.first());
         let key = if let Some((_, row)) = selected {
-            restore(row)?
+            row.signing_key()?
         } else {
             let curve = match primary {
                 "EdDSA" | "Ed25519" => "Ed25519",
@@ -68,8 +68,7 @@ impl<S: AuthStore> KeyRing<S> {
             } else {
                 2048
             };
-            let key = mint_config(&mut tx, now, primary, bits).await?;
-            if let Some(interval) = options["jwks"]["rotationInterval"]
+            let expires_at = if let Some(interval) = options["jwks"]["rotationInterval"]
                 .as_f64()
                 .filter(|interval| *interval != 0.0)
             {
@@ -82,19 +81,11 @@ impl<S: AuthStore> KeyRing<S> {
                     .map_err(|_| error("Invalid key expiration"))?;
                 let expires = DateTime::<Utc>::from_timestamp_millis(millis)
                     .ok_or_else(|| error("Invalid key expiration"))?;
-                let mut row = tx
-                    .get(
-                        Model::Jwks,
-                        key.public_jwk()["kid"]
-                            .as_str()
-                            .ok_or_else(|| error("Missing signing key"))?,
-                    )
-                    .await?
-                    .ok_or_else(|| error("Missing signing key"))?;
-                row["expiresAt"] = json!(super::timestamp(expires));
-                tx.replace(Model::Jwks, row).await?;
-            }
-            key
+                Some(expires)
+            } else {
+                None
+            };
+            mint_config(&mut tx, now, primary, bits, expires_at).await?
         };
         // Better Auth persists a newly minted key even if later claim setters fail.
         tx.commit().await?;
