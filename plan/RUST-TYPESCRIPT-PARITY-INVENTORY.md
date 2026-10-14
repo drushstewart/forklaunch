@@ -6865,3 +6865,10 @@ number/array/numeric-expiry and TS response-ID slices; those have separate sourc
 receipts and are not claimed as included in this generated proof. Final-check
 races, previously issued secrets and provider cancellation/refund remain outside
 the guard. Broad gates remain open at660/682.
+
+
+Completed owned ecommerce checkpoint/generated trees (63MiB) and superseded
+ad-hoc type-check prefix (42MiB) were removed after verifying no active process
+used them. Restricted test roles were absent after cleanup. Logs and checkpoint
+metadata remain in /private/tmp/fl-oct14-ecommerce-checkpoint-proof.json; the
+permanent source type fixture replaces the deleted ad-hoc configuration.
