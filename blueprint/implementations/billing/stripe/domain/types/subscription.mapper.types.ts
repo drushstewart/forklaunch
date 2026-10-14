@@ -9,6 +9,8 @@ export type StripeSubscriptionMappers<
   Dto extends StripeSubscriptionDtos<PartyTypeEnum>
 > = {
   SubscriptionMapper: {
+    /** Trusted persisted party discriminators for local subscription lookups. */
+    partyTypes?: Readonly<{ user: string; organization: string }>;
     entity: Entities['SubscriptionMapper'];
     toDto: (
       entity: InferEntity<Entities['SubscriptionMapper']>

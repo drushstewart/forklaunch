@@ -705,3 +705,19 @@ rollback and exact independent cookie expectations, including secure variants.
 Diagnostics use sanitized structural fields, never raw errors or credentials.
 Transaction-completion injection is an adapter fixture, not a real PostgreSQL
 COMMIT-failure receipt.
+
+
+Static CORS and billing/JWT options review (2026-10-14): compatibility CORS is
+explicit opt-in and mutually exclusive with native CorsLayer configuration.
+Reflected and allowlisted origins remain trusted operator policy; dynamic origin
+code is outside this static surface. The 204 Content-Length transport difference
+is asserted in differential tests rather than hidden by normalization.
+PaymentLink create structural checks run before SDK/HTTP provider calls and
+preserve nested options; they are not complete provider payload validation.
+Base cache-only update hooks validate public identities and DTOs without granting
+cached provider references mutation authority. Optional JWT-header suppression
+skips signer/storage side effects, while explicit token issuance remains enabled.
+Configurable JWKS grace changes only public-key publication, not expired-key
+signing eligibility. Typed durations reject unsupported precision/range before
+storage access. Actual-source and focused native proofs are recorded in the
+parity inventory; broader authentication/provider gates remain open.

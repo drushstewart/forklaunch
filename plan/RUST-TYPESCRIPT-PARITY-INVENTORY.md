@@ -5973,3 +5973,22 @@ key lifecycle and strict IAM Clippy pass. Logs:
 /private/tmp/fl-iam-jwks-grace-{ts,boundary,http,clippy}.log. The initial native
 log contains a corrected fixture-only key-id mismatch; final boundary rerun
 is green. Both new fixtures are wired into CI. Checklist remains 660/682,22open.
+
+## Configured subscription lookup and generated integration correction (2026-10-14)
+
+Configured base/Stripe subscription mappers now advertise trusted lowercase
+party discriminators consumed by the base lookup service. Generic/custom mappers
+keep uppercase fallback. Metadata is validated and copied before use, retaining
+active filtering and user/organization isolation. 28 actual configured cases,
+353 configured regressions, focused service typechecking and 168 base/170 Stripe
+operations pass: /private/tmp/fl-subscription-party-types*.log.
+
+The first fresh generated billing run passed HTTP/MCP startup, initialization,
+discovery, health invocation and Origin rejection for both billing and stripe.
+It then caught a genuine integration error: new malformed PaymentLink options
+were rejected before provider I/O but mapped to HTTP500. The adapter now maps
+that exact validation code to sanitized400; unknown failures remain sanitized500.
+A focused response/body-secrecy test and strict Axum Clippy pass:
+/private/tmp/fl-payment-link-options-http400{,-clippy}.log.
+The failing generated log is /private/tmp/fl-oct14-billing-generated.log; it is
+not a completed runtime receipt. A rebuilt generated rerun remains required.

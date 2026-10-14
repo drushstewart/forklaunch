@@ -1162,7 +1162,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/base/domain/types/subscription.mapper.types.ts",
               "line": 5,
-              "type": "{\n  SubscriptionMapper: {\n    entity: MapperEntities['SubscriptionMapper'];\n    toDto: (\n      entity: InferEntity<MapperEntities['SubscriptionMapper']>\n    ) => Promise<MapperDomains['SubscriptionMapper']>;\n  };\n  CreateSubscriptionMapper: {\n    entity: MapperEntities['CreateSubscriptionMapper'];\n    toEntity: (\n      dto: MapperDomains['CreateSubscriptionMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['CreateSubscriptionMapper']>>;\n  };\n  UpdateSubscriptionMapper: {\n    entity: MapperEntities['UpdateSubscriptionMapper'];\n    toEntity: (\n      dto: MapperDomains['UpdateSubscriptionMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['UpdateSubscriptionMapper']>>;\n  };\n}"
+              "type": "{\n  SubscriptionMapper: {\n    /** Trusted persisted party discriminators for local subscription lookups. */\n    partyTypes?: Readonly<{ user: string; organization: string }>;\n    entity: MapperEntities['SubscriptionMapper'];\n    toDto: (\n      entity: InferEntity<MapperEntities['SubscriptionMapper']>\n    ) => Promise<MapperDomains['SubscriptionMapper']>;\n  };\n  CreateSubscriptionMapper: {\n    entity: MapperEntities['CreateSubscriptionMapper'];\n    toEntity: (\n      dto: MapperDomains['CreateSubscriptionMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['CreateSubscriptionMapper']>>;\n  };\n  UpdateSubscriptionMapper: {\n    entity: MapperEntities['UpdateSubscriptionMapper'];\n    toEntity: (\n      dto: MapperDomains['UpdateSubscriptionMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['UpdateSubscriptionMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -1468,67 +1468,67 @@
                   "name": "constructor",
                   "signature": "constructor(\n    em: EntityManager,\n    openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    schemaValidator: SchemaValidator,\n    mappers: SubscriptionMappers<\n      PartyType,\n      BillingProviderType,\n      MapperEntities,\n      Dto\n    >,\n    readonly options?: {\n      telemetry?: TelemetryOptions;\n    }\n  )",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 46
+                  "line": 48
                 },
                 {
                   "name": "createSubscription",
                   "signature": "async createSubscription(\n    subscriptionDto: CreateSubscriptionDto<PartyType, BillingProviderType>,\n    em?: EntityManager,\n    ...args: unknown[]\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 73
+                  "line": 91
                 },
                 {
                   "name": "getSubscription",
                   "signature": "async getSubscription(\n    idDto: IdDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 97
+                  "line": 115
                 },
                 {
                   "name": "findSubscriptionIdByExternalId",
                   "signature": "async findSubscriptionIdByExternalId(\n    { externalId }: { externalId: string },\n    em?: EntityManager\n  ): Promise<IdDto | null>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 119
+                  "line": 137
                 },
                 {
                   "name": "getUserSubscription",
                   "signature": "async getUserSubscription(\n    { id }: IdDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 131
+                  "line": 149
                 },
                 {
                   "name": "getOrganizationSubscription",
                   "signature": "async getOrganizationSubscription(\n    { id }: IdDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 152
+                  "line": 170
                 },
                 {
                   "name": "updateSubscription",
                   "signature": "async updateSubscription(\n    subscriptionDto: UpdateSubscriptionDto<PartyType, BillingProviderType>,\n    em?: EntityManager,\n    ...args: unknown[]\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 172
+                  "line": 190
                 },
                 {
                   "name": "deleteSubscription",
                   "signature": "async deleteSubscription(\n    idDto: { id: string },\n    em?: EntityManager\n  ): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 198
+                  "line": 216
                 },
                 {
                   "name": "listSubscriptions",
                   "signature": "async listSubscriptions(\n    idsDto?: IdsDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper'][]>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 215
+                  "line": 233
                 },
                 {
                   "name": "cancelSubscription",
                   "signature": "async cancelSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 238
+                  "line": 256
                 },
                 {
                   "name": "resumeSubscription",
                   "signature": "async resumeSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/subscription.service.ts",
-                  "line": 255
+                  "line": 273
                 }
               ]
             }
@@ -2646,7 +2646,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/subscription.mapper.types.ts",
               "line": 6,
-              "type": "{\n  SubscriptionMapper: {\n    entity: Entities['SubscriptionMapper'];\n    toDto: (\n      entity: InferEntity<Entities['SubscriptionMapper']>\n    ) => Promise<Dto['SubscriptionMapper']>;\n  };\n  CreateSubscriptionMapper: {\n    entity: Entities['CreateSubscriptionMapper'];\n    toEntity: (\n      dto: Dto['CreateSubscriptionMapper'],\n      em: EntityManager,\n      stripeSubscription: Stripe.Subscription,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateSubscriptionMapper']>>;\n  };\n  UpdateSubscriptionMapper: {\n    entity: Entities['UpdateSubscriptionMapper'];\n    toEntity: (\n      dto: Dto['UpdateSubscriptionMapper'],\n      em: EntityManager,\n      stripeSubscription: Stripe.Subscription,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateSubscriptionMapper']>>;\n  };\n}"
+              "type": "{\n  SubscriptionMapper: {\n    /** Trusted persisted party discriminators for local subscription lookups. */\n    partyTypes?: Readonly<{ user: string; organization: string }>;\n    entity: Entities['SubscriptionMapper'];\n    toDto: (\n      entity: InferEntity<Entities['SubscriptionMapper']>\n    ) => Promise<Dto['SubscriptionMapper']>;\n  };\n  CreateSubscriptionMapper: {\n    entity: Entities['CreateSubscriptionMapper'];\n    toEntity: (\n      dto: Dto['CreateSubscriptionMapper'],\n      em: EntityManager,\n      stripeSubscription: Stripe.Subscription,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateSubscriptionMapper']>>;\n  };\n  UpdateSubscriptionMapper: {\n    entity: Entities['UpdateSubscriptionMapper'];\n    toEntity: (\n      dto: Dto['UpdateSubscriptionMapper'],\n      em: EntityManager,\n      stripeSubscription: Stripe.Subscription,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateSubscriptionMapper']>>;\n  };\n}"
             }
           ]
         },

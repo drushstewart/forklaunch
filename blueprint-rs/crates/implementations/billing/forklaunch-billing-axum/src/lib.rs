@@ -205,7 +205,9 @@ fn invalid() -> BlueprintError {
 fn failure(error: &BlueprintError) -> Response {
     let (status, message) = match error.code.as_str() {
         "billing_not_found" => (StatusCode::NOT_FOUND, "Billing record not found"),
-        "billing_validation" | "billing_invalid_webhook" => {
+        "billing_validation"
+        | "billing_invalid_webhook"
+        | "billing_invalid_payment_link_options" => {
             (StatusCode::BAD_REQUEST, "Invalid billing request")
         }
         "billing_conflict" | "billing_event_conflict" => {
@@ -531,5 +533,27 @@ async fn execute<
             )))
         }
         _ => Err(invalid()),
+    }
+}
+
+#[cfg(test)]
+mod failure_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn invalid_payment_link_options_are_sanitized_client_errors() {
+        let response = failure(&BlueprintError::new(
+            "billing_invalid_payment_link_options",
+            "secret provider payload must not escape",
+        ));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        assert_eq!(body.as_ref(), b"Invalid billing request");
+        assert_eq!(
+            failure(&BlueprintError::new("billing_unknown", "private")).status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 }
