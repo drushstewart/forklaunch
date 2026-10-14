@@ -143,6 +143,11 @@ impl<S: BillingStore> BaseBillingService<S> {
         Ok(self)
     }
     #[must_use]
+    pub const fn database_backup_enabled(&self) -> bool {
+        self.database_backup
+    }
+
+    #[must_use]
     pub const fn with_database_backup(mut self, enabled: bool) -> Self {
         self.database_backup = enabled;
         self

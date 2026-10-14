@@ -172,7 +172,7 @@ impl PostgresBillingStore {
         tx.commit().await.map_err(db_error)
     }
 
-    async fn lock_webhook(
+    pub(super) async fn lock_webhook(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         provider: &str,
@@ -187,7 +187,7 @@ impl PostgresBillingStore {
                 .map_err(db_error)?;
         if locked { Ok(()) } else { Err(busy()) }
     }
-    async fn complete_webhook(
+    pub(super) async fn complete_webhook(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         provider: &str,

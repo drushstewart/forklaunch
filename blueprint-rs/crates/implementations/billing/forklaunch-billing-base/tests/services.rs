@@ -1,3 +1,6 @@
+#[cfg(feature = "postgres")]
+#[path = "support/checkout_repair.rs"]
+mod checkout_repair;
 use forklaunch_billing_base::services::{
     BaseBillingService, BillingKind, BillingStore, Scope, memory::MemoryBillingStore,
 };
@@ -873,6 +876,19 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     assert!(actors.iter().all(|(actor, correlation)| actor.as_deref()
         == Some("service:billing-fixture")
         && correlation == "billing-fixture-correlation"));
+    checkout_repair::exercise(store.clone(), &other, &owner, &role, tenant.id()).await;
+    assert!(
+        !reopened
+            .store()
+            .with_webhook_receipt(
+                "stripe",
+                "evt_repair-owned",
+                "checkout.session.completed",
+                || async { panic!("reopened replica must observe repair receipt") }
+            )
+            .await
+            .unwrap()
+    );
     drop(new_only);
     drop(reopened);
     drop(service);

@@ -4854,3 +4854,31 @@ handler execution after rejection. Checked OpenAPI snapshots remain enabled
 without update mode; the same **five** real document differences remain.
 Evidence: `/private/tmp/fl-parser-errors-{tests-final,clippy-final,canonical}.log`.
 Gate806 stays open; checklist remains **659/682 (96.6%), 23 open**.
+
+
+### 2026-10-13 — Verified interrupted checkout completion
+
+The Stripe billing crate's opt-in `postgres-reconciliation` feature adds
+`reconcile_checkout_webhook` for interrupted checkout completed/expired events.
+Two authenticated GETs bind the pending event ID/type to the current subscription
+checkout session, customer, live/test mode, terminal state and already-applied
+SUCCESS/FAILED metadata. Connected-account/context events are rejected. The API
+never repeats a provider mutation or treats checkout completion as payment
+settlement.
+
+Local repair requires an actor and existing encrypted local ownership matching
+the verified provider session/customer. An opaque snapshot binds tenant, exact
+pending attempt, encrypted cache/backup contents and row versions. Under the
+event lock, compare-and-swap rejects stale state; backup status changes, inspected
+cache removal, reconciliation audit, receipt and attempt removal commit together.
+Absent ownership, unavailable provider events, missing required backup, inconsistent
+statuses and other subscription/plan/payment-link/portal effects stay unresolved.
+
+Validation passes two provider evidence/wire tests, 32 provider-evidence denials,
+the restricted PostgreSQL suite, all 12 billing regression tests and strict
+all-feature/all-target Clippy. PostgreSQL checks cover failures after local writes
+and receipt insertion, rollback, same-content row replacement, stale attempts,
+tenant/customer mismatch, concurrent one-winner completion, reopened receipt
+visibility, backup-disabled expiry and partially completed backup updates.
+Evidence: `/private/tmp/fl-billing-checkout-repair-{provider,postgres,clippy,regression}.log`.
+Gate858 remains open; checklist stays **659/682 (96.6%), 23 open**.

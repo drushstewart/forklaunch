@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "postgres-reconciliation")]
+pub mod checkout_repair;
 pub mod client;
 pub mod services;
 pub mod synchronization;

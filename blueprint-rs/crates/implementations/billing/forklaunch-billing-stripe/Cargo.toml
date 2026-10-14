@@ -10,6 +10,7 @@ repository.workspace = true
 [features]
 default = []
 stripe-client = []
+postgres-reconciliation = ["forklaunch-billing-base/postgres"]
 
 [dependencies]
 forklaunch-billing-base = { version = "0.1.0", path = "../forklaunch-billing-base" }

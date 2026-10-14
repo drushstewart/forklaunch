@@ -1,6 +1,8 @@
 //! Tenant-isolated billing persistence and TTL cache. Provider payloads and opaque
 //! session URIs are encrypted; plaintext reads and actor audits commit together.
+mod checkout_repair;
 mod webhooks;
+pub use checkout_repair::CheckoutRepairSnapshot;
 pub use webhooks::{PendingWebhook, WebhookResolution};
 
 use super::{
