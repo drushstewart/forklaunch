@@ -1,4 +1,5 @@
 //! Ordered Zod v3 number constraints after `ForkLaunch` number preprocessing.
+use super::ZodMultipleOf;
 use crate::ParseError;
 use serde_json::Value;
 
@@ -32,6 +33,7 @@ pub enum ZodNumberStep {
     Max(ZodIntegerBound),
     Gt(ZodIntegerBound),
     Lt(ZodIntegerBound),
+    MultipleOf(ZodMultipleOf),
 }
 
 /// Apply ordered constraints after the existing JavaScript number coercion.
@@ -41,7 +43,7 @@ pub enum ZodNumberStep {
 /// negative zero and infinities unless a constraint excludes them.
 ///
 /// This is a bounded helper, not a general Zod or JSON Schema interpreter.
-/// Fractional/nonfinite bounds, multiple-of, custom messages,
+/// Fractional/nonfinite comparison bounds, custom messages,
 /// refinements and arbitrary JavaScript objects are not implemented. Successful
 /// nonfinite results cannot be represented as a JSON number; callers must not
 /// silently serialize them as null. Existing native validation stays unchanged.
@@ -52,6 +54,9 @@ pub fn zod_number(input: Option<&Value>, steps: &[ZodNumberStep]) -> Result<f64,
     let mut errors = Vec::new();
     for step in steps {
         match *step {
+            ZodNumberStep::MultipleOf(limit) if !limit.accepts(value) => {
+                errors.push(diagnostic(limit.diagnostic()));
+            }
             ZodNumberStep::Int if !value.is_finite() || value.fract() != 0.0 => {
                 errors.push(diagnostic("Expected integer, received float"));
             }

@@ -7998,3 +7998,29 @@ CI runs both the SDK oracle and ignored PostgreSQL matrix. Source hashes are
 retained at /private/tmp/fl-billing-bound-creation-source-sha256.json; validation's
 subsequent ryu-js lock edge is excluded from this billing receipt. Managed creation,
 full mapper semantics and interruption recovery remain open broad gates.
+
+
+## Zod v3 multipleOf runtime constraints (2026-10-14)
+
+The opt-in ordered number helper now supports bit-preserving ZodMultipleOf for
+all IEEE divisors, including negative, signed zero and nonfinite registrations.
+This runtime capability is separate from JSON Schema mathematical multipleOf.
+Actual Zod uses decimal formatting, fixed formatting and decimal parseInt prefix
+remainder; scientific spellings have deliberately preserved quirks (1e-7 rejects
+even zero/self, while 1e21 can admit small fractions). Checks preserve order,
+coercion/NaN early rejection, diagnostic spellings and accepted IEEE output bits.
+
+192816 actual ForkLaunch Zod v3/native comparisons and seven unusual constructor
+cases pass, including seeded IEEE values, adjacent rounding and ordered checks.
+The oracle caught a ryu-js1.0.3 fixed-format discrepancy for a tiny value; that
+formatter is not used. Only its ECMAScript shortest formatting is retained. Exact
+Rust fixed formatting is corrected at exact binary halfway cases using checked
+u128 IEEE scaling for JavaScript magnitude-up ties, without a big-integer package.
+Focused tests retain the discovered tiny-value, signed tie and exponent examples.
+Validation19 library tests, previous47090 number comparisons and strict
+all-feature/all-target validation Clippy pass. Logs:
+/private/tmp/fl-zod-multiple-{parity,tests,number-regression,clippy}.log;
+frozen hashes /private/tmp/fl-zod-multiple-source-sha256.json. CI runs the oracle.
+Fractional/nonfinite comparison bounds, arbitrary callbacks/custom messages and
+complete schema/emitter parity remain separate work. The 5a8 packaged checkpoint
+predates this source change.

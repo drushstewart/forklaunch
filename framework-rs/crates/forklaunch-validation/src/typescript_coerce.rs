@@ -17,6 +17,10 @@ pub use date::{DateCoercionError, date_epoch_millis};
 mod strict_string;
 pub use strict_string::{ZodStringStep, zod_string};
 
+#[path = "zod_multiple_of.rs"]
+mod multiple_of;
+pub use multiple_of::ZodMultipleOf;
+
 #[path = "zod_number.rs"]
 mod constrained_number;
 pub use constrained_number::{ZodIntegerBound, ZodNumberStep, zod_number};

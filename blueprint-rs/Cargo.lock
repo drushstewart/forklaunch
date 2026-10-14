@@ -1823,6 +1823,7 @@ dependencies = [
  "forklaunch-contract",
  "forklaunch-http",
  "garde",
+ "ryu-js",
  "schemars 0.8.22",
  "serde",
  "serde_json",
