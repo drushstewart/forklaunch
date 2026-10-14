@@ -10,6 +10,7 @@ mod fault_store;
 #[cfg(feature = "http")]
 mod http;
 mod otp;
+mod otp_options;
 #[cfg(feature = "postgres")]
 mod postgres;
 const PASSWORD: &str = "owned-totp-password";

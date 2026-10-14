@@ -23,8 +23,19 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     /// # Errors
     /// Rejects conflicting JWKS namespace or invalid trusted auth configuration.
     pub fn with_two_factor_otp(
+        self,
+        delivery: Arc<dyn crate::two_factor::OtpDelivery>,
+    ) -> BlueprintResult<Self> {
+        self.with_two_factor_otp_options(delivery, crate::two_factor::OtpOptions::default())
+    }
+    /// Enables delivered OTP with validated trusted policy. Existing code expiry
+    /// is persisted independently; verification uses this current attempt policy.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted auth configuration.
+    pub fn with_two_factor_otp_options(
         mut self,
         delivery: Arc<dyn crate::two_factor::OtpDelivery>,
+        options: crate::two_factor::OtpOptions,
     ) -> BlueprintResult<Self> {
         self = self.with_two_factor()?;
         self.two_factor = Some(Arc::new(
@@ -33,7 +44,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 self.secret.to_vec(),
                 "Better Auth".into(),
             )?
-            .with_otp_delivery(delivery),
+            .with_otp_delivery(delivery)
+            .with_otp_options(options),
         ));
         Ok(self)
     }

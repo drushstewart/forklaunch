@@ -168,8 +168,12 @@ five invalid attempts, and awaits delivery after encrypted storage commits.
 The hook receives a public user projection and the short-lived code, without a
 session token. Delivery targets never come from authentication input. See
 [the delivery API and failure semantics](../../blueprint-rs/crates/implementations/iam/forklaunch-iam-better-auth/README.md#optional-delivered-otp).
-Generated presets do not select a delivery channel. Custom OTP/TOTP parameters,
-background dispatch and broader plugins remain parity work.
+Generated presets do not select a delivery channel. Trusted applications can use
+`OtpOptions::new(digits, validity, allowed_attempts)` and
+`AuthHttp::with_two_factor_otp_options` to configure 1–32 digits, positive whole
+milliseconds and 1–100 invalid attempts. Existing codes retain their original
+expiry and digit length; verification uses the current attempt limit. Custom
+storage, TOTP parameters, background dispatch and broader plugins remain parity work.
 
 This preset serves one configured tenant. `AuthTransaction::find_unique` performs
 exact email/subscription and organization-slug lookups using the existing

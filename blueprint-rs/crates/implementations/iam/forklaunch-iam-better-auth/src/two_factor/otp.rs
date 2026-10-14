@@ -1,4 +1,4 @@
-//! Fixed six-digit delivered OTP profile with trusted default-await delivery.
+//! Bounded delivered OTP options with trusted default-await delivery.
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, FactorResponse, Model, TwoFactorService,
     Utc, Value, authenticated, corrupt, crypto, empty_response, enabled, enrollment, error, expiry,
@@ -7,6 +7,63 @@ use super::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::{future::Future, pin::Pin};
 use zeroize::Zeroizing;
+
+/// Trusted delivered-code policy. Defaults are six digits, 180 seconds and five
+/// failed attempts. These options are never accepted from an HTTP request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OtpOptions {
+    digits: u8,
+    validity_ms: i64,
+    allowed_attempts: u8,
+}
+impl Default for OtpOptions {
+    fn default() -> Self {
+        Self {
+            digits: 6,
+            validity_ms: 180_000,
+            allowed_attempts: 5,
+        }
+    }
+}
+impl OtpOptions {
+    /// Validity is a duration, unlike upstream's numeric minutes. Expiry is
+    /// persisted at send time; the current attempt policy is read at verification.
+    /// # Errors
+    /// Rejects digits outside 1..=32, attempts outside 1..=100, zero validity,
+    /// sub-millisecond precision, or durations exceeding signed milliseconds.
+    pub fn new(
+        digits: u8,
+        validity: std::time::Duration,
+        allowed_attempts: u8,
+    ) -> BlueprintResult<Self> {
+        let invalid = || error("better_auth_invalid_config", "Invalid OTP options");
+        let validity_ms = i64::try_from(validity.as_millis()).map_err(|_| invalid())?;
+        if !(1..=32).contains(&digits)
+            || !(1..=100).contains(&allowed_attempts)
+            || validity_ms == 0
+            || !validity.subsec_nanos().is_multiple_of(1_000_000)
+        {
+            return Err(invalid());
+        }
+        Ok(Self {
+            digits,
+            validity_ms,
+            allowed_attempts,
+        })
+    }
+    #[must_use]
+    pub fn digits(self) -> u8 {
+        self.digits
+    }
+    #[must_use]
+    pub fn validity(self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.validity_ms.unsigned_abs())
+    }
+    #[must_use]
+    pub fn allowed_attempts(self) -> u8 {
+        self.allowed_attempts
+    }
+}
 
 /// An owned delivery operation. Default dispatch awaits this future after the
 /// encrypted OTP transaction has committed; no storage lock survives dispatch.
@@ -101,16 +158,17 @@ fn identifier(key: &str) -> String {
     let hash = ring::digest::digest(&ring::digest::SHA256, key.as_bytes());
     format!("2fa-otp-{}", URL_SAFE_NO_PAD.encode(hash.as_ref()))
 }
-fn code() -> BlueprintResult<Zeroizing<String>> {
-    let mut value = Zeroizing::new(String::with_capacity(6));
-    while value.len() < 6 {
+fn code(digits: u8) -> BlueprintResult<Zeroizing<String>> {
+    let digits = usize::from(digits);
+    let mut value = Zeroizing::new(String::with_capacity(digits));
+    while value.len() < digits {
         for byte in crypto::random(16)?
             .iter()
             .copied()
             .filter(|byte| *byte < 250)
         {
             value.push(char::from(b'0' + byte % 10));
-            if value.len() == 6 {
+            if value.len() == digits {
                 break;
             }
         }
@@ -118,11 +176,18 @@ fn code() -> BlueprintResult<Zeroizing<String>> {
     Ok(value)
 }
 impl<S: AuthStore> TwoFactorService<S> {
-    /// Enables fixed-default delivered OTP using a trusted server-owned hook.
+    /// Enables delivered OTP using a trusted server-owned hook.
     /// Explicit Result failures are supported; Rust panics are not callback errors.
     #[must_use]
     pub fn with_otp_delivery(mut self, delivery: std::sync::Arc<dyn OtpDelivery>) -> Self {
         self.otp_delivery = Some(delivery);
+        self
+    }
+    /// Sets trusted OTP policy without changing delivery. Existing codes retain
+    /// their stored expiry; verification uses the newly selected attempt limit.
+    #[must_use]
+    pub fn with_otp_options(mut self, options: OtpOptions) -> Self {
+        self.otp_options = options;
         self
     }
     #[must_use]
@@ -130,7 +195,7 @@ impl<S: AuthStore> TwoFactorService<S> {
         self.otp_delivery.is_some()
     }
 
-    /// Persists a new fixed-profile OTP, replacing an older code for the same
+    /// Persists a new configured OTP, replacing an older code for the same
     /// authenticated session or signed challenge, then awaits trusted delivery.
     /// Canceling the caller after commit does not roll back the expiring code;
     /// delivery completion never issues an authenticated session.
@@ -147,10 +212,13 @@ impl<S: AuthStore> TwoFactorService<S> {
             .otp_delivery
             .as_ref()
             .ok_or_else(|| error("OTP_NOT_CONFIGURED", "otp isn't configured"))?;
-        let expires = expiry(now, 180)?;
+        let expires = now
+            .checked_add_signed(chrono::Duration::milliseconds(self.otp_options.validity_ms))
+            .map(super::timestamp)
+            .ok_or_else(|| error("better_auth_invalid_config", "OTP expiry is out of range"))?;
         let mut tx = self.store.begin(true).await?;
         let bound = authority(&mut tx, token, challenge, now).await?;
-        let code = code()?;
+        let code = code(self.otp_options.digits)?;
         let previous = verification_row(&mut tx, &bound.identifier).await?;
         let id = previous
             .as_ref()
@@ -215,8 +283,8 @@ impl<S: AuthStore> TwoFactorService<S> {
 
 impl<S: AuthStore> TwoFactorService<S> {
     /// Consumes a delivered OTP under the tenant transaction lock. Invalid codes
-    /// rearm the original expiry with an incremented counter; the sixth attempt
-    /// exhausts the default five-attempt budget. Success and session issuance are
+    /// rearm the original expiry with an incremented counter. Verification uses
+    /// the current configured attempt limit (default: five failed attempts). Success and session issuance are
     /// atomic. OTP-only users have no TOTP row or account-wide lock counter, as in
     /// the upstream default; existing TOTP rows share their account-wide counter.
     /// # Errors
@@ -265,7 +333,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             return Err(error("OTP_HAS_EXPIRED", "OTP has expired"));
         }
         let attempts = otp["attempts"].as_u64().ok_or_else(corrupt)?;
-        if attempts >= 5 {
+        if attempts >= u64::from(self.otp_options.allowed_attempts) {
             tx.commit().await?;
             return Err(error(
                 "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE",
@@ -273,7 +341,9 @@ impl<S: AuthStore> TwoFactorService<S> {
             ));
         }
         let expected = text(&otp, "value")?;
-        if expected.len() != 6 || !expected.bytes().all(|byte| byte.is_ascii_digit()) {
+        if !(1..=32).contains(&expected.len())
+            || !expected.bytes().all(|byte| byte.is_ascii_digit())
+        {
             return Err(corrupt());
         }
         let difference = expected

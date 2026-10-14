@@ -258,3 +258,5 @@ console.error = originalError;
 console.log(
   `PASS actual OTP: ${results.length} callback profiles; enrollment, replacement, replay, resend, five attempts, expiry equality, concurrent proof, default await/background dispatch`
 );
+
+await import('./fixtures/rust_better_auth_otp_options.mjs');

@@ -8521,3 +8521,30 @@ customer-regression,plan-regression}.log; six hashes
 /private/tmp/fl-subscription-foundation-source-sha256.json. CI runs both PG tests.
 Stage B still needs reviewed finite collection/readback policy and atomic
 publication with validated claim release; this foundation does not close billing.
+
+
+## Trusted OTP digit, validity and attempt options (2026-10-14)
+
+Validated OtpOptions admits 1..32 digits, positive whole-millisecond Duration and
+1..100 invalid attempts, preserving defaults6/180s/5. Existing delivery builders
+retain defaults; an additive HTTP builder accepts server-owned options. This
+explicit native subset does not claim upstream negative/nonfinite/zero coercion.
+Expiry persists at send and verification reads current attempt policy; changing
+digits never invalidates already issued bounded codes. Resend resets counters.
+Constructor and timestamp overflow fail before store work. No storage/schema or
+dependency changes. Preparation/delivery/default-off semantics are unchanged.
+
+Actual-source five callback/five option profiles and three no-hook ordering cases
+pass, including admitted endpoints1/32digits/100attempts, fractional-minute source
+validity, upstreamzero fallback, expiry equality/+1ms and changed attempt policy.
+Focused native6, final options2 and strict all-feature/all-target Clippy6.80s pass;
+existing TOTP lifecycle also passes. Tests verify invalid constructors, overflow,
+resend, changed policies and failed-commit reuse. No-hook enrollment correctly
+returns401 without session,400 invalid password, then400 unavailable OTP after a
+valid password. Storage backend/full IAM120 are not rerun for this bounded slice;
+the separately recorded fixed-profile PG/encryption/full-suite proof remains.
+An initial focused run caught a leftover six-digit stored-code assumption; the
+final code/tests preserve previously issued lengths across configuration changes.
+Logs /private/tmp/fl-otp-options-{native-final,final-source,clippy,actual}.log;
+ten frozen hashes /private/tmp/fl-otp-options-freeze.json. Existing CI oracle
+imports the new options helper. Custom storage, background and TOTP options remain open.

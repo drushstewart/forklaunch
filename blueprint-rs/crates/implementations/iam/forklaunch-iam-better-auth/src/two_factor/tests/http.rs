@@ -385,3 +385,123 @@ async fn disabled_otp_routes_preserve_validation_and_authority_order() {
         "OTP_HAS_EXPIRED"
     );
 }
+
+#[tokio::test]
+async fn no_hook_otp_enrollment_checks_session_then_password_then_configuration() {
+    let origin = "http://auth.fixture.test";
+    let mut browser = Browser {
+        router: AuthHttp::new(
+            Arc::new(MemoryAuthStore::default()),
+            origin.into(),
+            vec![42; 32],
+            vec![],
+        )
+        .unwrap()
+        .with_rate_limiting(false)
+        .with_two_factor()
+        .unwrap()
+        .router(),
+        jar: BTreeMap::new(),
+        origin: origin.into(),
+    };
+    let response = browser
+        .call(
+            "/two-factor/enable",
+            Some(json!({"method":"otp","password":PASSWORD})),
+        )
+        .await;
+    assert_eq!(
+        (response.0, response.1),
+        (401, json!({"code":"UNAUTHORIZED","message":"Unauthorized"}))
+    );
+    assert_eq!(
+        browser
+            .call(
+                "/sign-up/email",
+                Some(json!({"name":"OTP","firstName":"OTP","lastName":"User","email":"otp-order@example.test","password":PASSWORD}))
+            )
+            .await
+            .0,
+        200
+    );
+    for (password, code, message) in [
+        ("wrong", "INVALID_PASSWORD", "Invalid password"),
+        (PASSWORD, "OTP_NOT_CONFIGURED", "OTP is not available"),
+    ] {
+        let response = browser
+            .call(
+                "/two-factor/enable",
+                Some(json!({"method":"otp","password":password})),
+            )
+            .await;
+        assert_eq!(
+            (response.0, response.1),
+            (400, json!({"code":code,"message":message}))
+        );
+        assert!(response.2.get("set-cookie").is_none());
+    }
+}
+
+#[tokio::test]
+async fn http_otp_options_are_trusted_and_reach_delivery() {
+    let origin = "http://auth.fixture.test";
+    let delivery = Arc::new(otp::Delivery::default());
+    let mut browser = Browser {
+        router: AuthHttp::new(
+            Arc::new(MemoryAuthStore::default()),
+            origin.into(),
+            vec![42; 32],
+            vec![],
+        )
+        .unwrap()
+        .with_rate_limiting(false)
+        .with_two_factor_otp_options(
+            delivery.clone(),
+            OtpOptions::new(8, std::time::Duration::from_millis(1500), 1).unwrap(),
+        )
+        .unwrap()
+        .with_two_factor()
+        .unwrap()
+        .router(),
+        jar: BTreeMap::new(),
+        origin: origin.into(),
+    };
+    assert_eq!(
+        browser
+            .call(
+                "/sign-up/email",
+                Some(json!({"name":"OTP","firstName":"OTP","lastName":"User","email":"otp-options@example.test","password":PASSWORD}))
+            )
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/send-otp",
+                Some(json!({"digits":1,"allowedAttempts":100}))
+            )
+            .await
+            .0,
+        200
+    );
+    assert_eq!(delivery.last().len(), 8);
+    assert_eq!(
+        browser
+            .call("/two-factor/verify-otp", Some(json!({"code":"invalid"})))
+            .await
+            .1["code"],
+        "INVALID_CODE"
+    );
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/verify-otp",
+                Some(json!({"code":delivery.last()}))
+            )
+            .await
+            .1["code"],
+        "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE"
+    );
+}

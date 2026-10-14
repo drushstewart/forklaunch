@@ -13,7 +13,7 @@
 mod crypto;
 mod enrollment;
 mod otp;
-pub use otp::{OtpDelivery, OtpDeliveryContext, OtpDeliveryFuture};
+pub use otp::{OtpDelivery, OtpDeliveryContext, OtpDeliveryFuture, OtpOptions};
 pub(crate) mod signin;
 mod verification;
 use crate::{
@@ -36,6 +36,7 @@ pub struct TwoFactorService<S> {
     secret: Zeroizing<Vec<u8>>,
     issuer: String,
     otp_delivery: Option<Arc<dyn OtpDelivery>>,
+    otp_options: OtpOptions,
 }
 /// A successful state transition. Explicit wire projection can contain recovery
 /// credentials and must only be returned to the authorized browser.
@@ -126,6 +127,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             secret: Zeroizing::new(secret),
             issuer,
             otp_delivery: None,
+            otp_options: OtpOptions::default(),
         })
     }
     async fn password_snapshot(

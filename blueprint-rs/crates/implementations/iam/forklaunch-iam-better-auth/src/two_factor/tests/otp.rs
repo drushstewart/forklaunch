@@ -14,7 +14,7 @@ pub(super) struct Delivery {
 impl OtpDelivery for Delivery {
     fn prepare(&self, context: OtpDeliveryContext) -> BlueprintResult<OtpDeliveryFuture> {
         assert!(context.user().get("token").is_none());
-        assert_eq!(context.code().len(), 6);
+        assert!((1..=32).contains(&context.code().len()));
         assert!(context.code().bytes().all(|value| value.is_ascii_digit()));
         self.codes.lock().unwrap().push(context.code().to_owned());
         let mode = self.mode.load(Ordering::SeqCst);

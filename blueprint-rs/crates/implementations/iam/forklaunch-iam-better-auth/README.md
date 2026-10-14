@@ -1153,7 +1153,7 @@ panics are outside the callback contract. No optional background-task dispatcher
 is implemented. Cancellation after commit can leave the expiring code stored;
 it never issues a session or rolls back a code that may already have been delivered.
 
-The fixed profile uses six uniformly generated decimal digits, 180 seconds of
+The default profile uses six uniformly generated decimal digits, 180 seconds of
 validity (the exact expiry instant is still valid), and five failed attempts.
 Resending replaces the code for the same verified session or signed challenge;
 distinct challenges and tenants remain isolated. A successful verification and
@@ -1167,8 +1167,26 @@ Password sign-in advertises methods captured inside the challenge transaction.
 OTP-only users have no TOTP/recovery record and therefore no account-wide factor
 failure counter, matching upstream. Where a TOTP record exists, OTP failures share
 its account lockout. The per-code attempt bound and HTTP rate policy still apply.
-Custom digits/periods/storage callbacks, optional background dispatch, and other
+Custom storage callbacks, optional background dispatch, and other
 plugin options remain separate parity work. This profile protects subsequent
 password sign-ins; existing sessions and social/provider flows retain their own
 policy. The actual-client fixture uses an owned JSON-line HTTP-handler bridge;
 it does not claim browser delivery or transport behavior.
+
+`OtpOptions::new(digits, validity: std::time::Duration, allowed_attempts)` adds
+trusted policy through `TwoFactorService::with_otp_options` or
+`AuthHttp::with_two_factor_otp_options(delivery, options)`. It accepts 1–32 digits,
+1–100 attempts, and positive whole-millisecond durations representable as signed
+milliseconds. Timestamp addition is checked before storage reads or delivery;
+out-of-range expiry fails without a write. Upstream numeric minutes are represented
+as a Duration, so 0.025 minutes is `Duration::from_millis(1500)`. Negative, nonfinite,
+zero/fallback, and sub-millisecond JavaScript option values are outside this typed
+subset. Constructors reject unsupported values instead of broadening the policy.
+
+An issued code keeps its persisted expiry when policy changes. Verification uses
+the service's **current attempt limit**, matching upstream; changing digits does
+not reject an otherwise valid previously issued code. Resending resets attempts
+and uses the current validity/digits. Options are trusted server configuration,
+never request parameters. Default builders retain six digits / 180 seconds / five
+attempts. Custom OTP storage transforms and background dispatch remain separate
+unsupported options; the existing encrypted record format is unchanged.
