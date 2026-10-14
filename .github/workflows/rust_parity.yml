@@ -51,6 +51,7 @@ on:
       - 'cli/tests/rust_request_transform_parity.mjs'
       - 'cli/tests/rust_request_fields_parity.mjs'
       - 'cli/tests/rust_response_warning_parity.mjs'
+      - 'cli/tests/rust_version_response_parity.mjs'
       - 'cli/tests/ts_response_header_arrays.mjs'
       - 'cli/tests/rust_simple_query_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
@@ -313,6 +314,7 @@ on:
       - 'cli/tests/rust_request_transform_parity.mjs'
       - 'cli/tests/rust_request_fields_parity.mjs'
       - 'cli/tests/rust_response_warning_parity.mjs'
+      - 'cli/tests/rust_version_response_parity.mjs'
       - 'cli/tests/ts_response_header_arrays.mjs'
       - 'cli/tests/rust_simple_query_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
@@ -673,6 +675,9 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_response_warning_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_version_response_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/ts_response_header_arrays.mjs

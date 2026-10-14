@@ -106,7 +106,14 @@ pub(super) async fn validate(
                     FrameworkBody::Text(text.to_owned())
                 },
             };
-            (entry.validate)(request, &candidate).map(|_| "schema_rejection")
+            (entry.validate)(
+                request,
+                &candidate,
+                parts
+                    .extensions
+                    .get::<forklaunch_http::MatchedVersionResponses>(),
+            )
+            .map(|_| "schema_rejection")
         }
     });
     if let Some(reason) = reason {

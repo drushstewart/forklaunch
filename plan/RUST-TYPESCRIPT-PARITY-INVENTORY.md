@@ -6593,3 +6593,36 @@ test-only reference collision was corrected and its exact owned role/tenant clea
 Default application routes receive no administrative grants. Short-lived
 provider-account/mode verification, cancelled-order repair and reference retirement
 remain open; retain existing references for review until that integration exists.
+
+
+## Ordered matched-version response profile receipt (2026-10-14)
+
+ResponseValidators::insert_versioned now opts finite routes into status admission
+from every actually matched request version, with ordered duplicate-status schema
+branches shared through Arc metadata. The last selected request/handler/auth view
+is unchanged; default routes retain LastSelected behavior. Trusted callbacks own
+union body interpretation and diagnostics; successful parsed values never replace
+responses. Normal emitted registry/OpenAPI artifacts retain original declarations.
+Standalone LocalRouter's explicit execution API admits statuses and returns
+VersionedResponseOutcome; the Axum adapter executes registered finite callbacks
+using metadata from that same local execution, without rerunning version hooks.
+
+Private terminal provenance protects prehandler framework rejections and
+framework-converted handler errors from callback replacement. A missing selection
+after an executed handler remains guarded rather than fabricating matched branches.
+Opt-in undocumented-status diagnostics preserve unrelated application headers/
+extensions and remove stale representation headers. Empty/streaming/stale response
+registrations are rejected. Warning observation remains separately opt-in.
+
+108 exact actual TypeScript/native HTTP pairs across native/local handlers pass,
+including duplicate203 union alternatives, earlier201/later202 status admission,
+all modes and preserved request selection. Twenty additional prehandler comparisons
+verify status/origin only; their twenty existing diagnostic-body differences are
+explicit, not normalized into equality. Native baseline/profile tests cover early
+query/parser/media/body/auth errors and zero handler/callback calls. A full run of
+133 Axum+52 HTTP tests was followed by14 focused response regressions for the final
+converted-handler origin guard. Strict all-feature/all-target Clippy, canonical366
+outcomes/zero OpenAPI differences and Warning24 regression pairs pass:
+/private/tmp/fl-version-response-{tests,final-focused,parity,canonical,warning-regression,clippy,registration}.log.
+Generic versioned schema interpretation/error text and None/Warning request-mode
+no-match handler outcomes remain outside this finite profile's evidence.

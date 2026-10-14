@@ -372,29 +372,41 @@ impl ForkLaunchRouter {
                         .get::<Arc<DefaultErrorResponses>>()
                         .cloned()
                         .unwrap_or_default();
-                    match handlers.execute_with_response_profiles(
-                        request,
-                        parser_format,
-                        response_status_format,
-                        &default_errors,
-                    ) {
-                        Ok(response) => framework_response_to_axum(response),
+                    let versioned = parts
+                        .extensions
+                        .get::<response_validation::VersionedResponseValidation>()
+                        .is_some();
+                    let result = if versioned {
+                        handlers
+                            .execute_with_matched_response_versions(
+                                request,
+                                parser_format,
+                                response_status_format,
+                                &default_errors,
+                            )
+                            .map(|(response, outcome)| (response, Some(outcome)))
+                    } else {
+                        handlers
+                            .execute_with_response_profiles(
+                                request,
+                                parser_format,
+                                response_status_format,
+                                &default_errors,
+                            )
+                            .map(|response| (response, None))
+                    };
+                    match result {
+                        Ok((response, matched)) => {
+                            response_validation::attach_local_metadata(response, matched)
+                        }
                         Err(error) => {
                             tracing::error!(error = %error, correlation_id, "local request handler failed");
-                            let response = match error_format {
-                                HandlerErrorFormat::Json => {
-                                    ErrorResponse::new(ErrorKind::Internal, "internal server error")
-                                        .to_response()
-                                }
-                                HandlerErrorFormat::TypeScriptText => FrameworkResponse::text(
-                                    500,
-                                    format!(
-                                        "Internal server error:\n\nCorrelation id: {correlation_id}"
-                                    ),
-                                )
-                                .with_header("content-type", "text/plain; charset=utf-8"),
-                            };
-                            framework_response_to_axum(response)
+                            let response =
+                                local_handler_failure_response(error_format, &correlation_id);
+                            response_validation::attach_local_metadata(
+                                response,
+                                versioned.then(forklaunch_http::VersionedResponseOutcome::default),
+                            )
                         }
                     }
                 }
@@ -1275,6 +1287,12 @@ async fn execute_validated(
     parts
         .extensions
         .insert(state.default_error_responses.clone());
+    let union_responses = state.response_validators.is_versioned(&contract);
+    if union_responses {
+        parts
+            .extensions
+            .insert(response_validation::VersionedResponseValidation);
+    }
     // LocalRouter owns selection and response validation for its handlers.
     // Authentication and the transport body limit still run above, but runtime
     // callbacks must execute exactly once and may change the selected schema.
@@ -1305,11 +1323,29 @@ async fn execute_validated(
         return framework_response_to_axum(validation_error_response(&errors, &correlation_id));
     }
 
+    let matched = union_responses
+        .then(|| {
+            framework_request
+                .version
+                .as_ref()
+                .and_then(|selected| version_plan.matched_response_versions(selected))
+        })
+        .flatten();
+    let response_contract = matched.as_ref().map_or_else(
+        || contract.clone(),
+        |matched| matched.status_contract(&contract),
+    );
     let correlation_id = framework_request.context.correlation_id.clone();
-    let response = next
+    let mut response = next
         .run(Request::from_parts(parts, AxumBody::from(bytes)))
         .await;
-    let response = if state
+    if let Some(matched) = &matched {
+        response.extensions_mut().insert(matched.clone());
+    }
+    let original_metadata = matched
+        .as_ref()
+        .map(|_| (response.headers().clone(), response.extensions().clone()));
+    let mut response = if state
         .default_error_responses
         .limits(&contract, response.status().as_u16())
         .is_some()
@@ -1323,12 +1359,18 @@ async fn execute_validated(
         .await
     } else {
         validate_response_status(
-            &contract,
+            &response_contract,
             response,
             &correlation_id,
             state.response_status_error_format,
         )
     };
+    if let Some((headers, extensions)) = original_metadata {
+        response_validation::preserve_metadata(headers, extensions, &mut response);
+    }
+    if let Some(matched) = matched {
+        response.extensions_mut().insert(matched);
+    }
     finish_response(state, &contract, &framework_request, response).await
 }
 
@@ -1441,6 +1483,22 @@ fn select_contract_version(
 }
 
 /// Enforces that handlers only return status codes documented in the contract.
+fn local_handler_failure_response(
+    error_format: HandlerErrorFormat,
+    correlation_id: &str,
+) -> FrameworkResponse {
+    match error_format {
+        HandlerErrorFormat::Json => {
+            ErrorResponse::new(ErrorKind::Internal, "internal server error").to_response()
+        }
+        HandlerErrorFormat::TypeScriptText => FrameworkResponse::text(
+            500,
+            format!("Internal server error:\n\nCorrelation id: {correlation_id}"),
+        )
+        .with_header("content-type", "text/plain; charset=utf-8"),
+    }
+}
+
 fn validate_response_status(
     contract: &RouteContract,
     response: Response,

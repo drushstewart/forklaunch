@@ -1,5 +1,9 @@
 #![forbid(unsafe_code)]
 
+mod versioned_response;
+pub use versioned_response::{
+    MatchedVersionResponses, VersionResponseBranch, VersionedResponseOutcome,
+};
 mod simple_query;
 pub use simple_query::parse_typescript_simple_query;
 mod request_fields;
@@ -616,11 +620,56 @@ impl LocalRouter {
     /// Returns handler errors or invalid registration errors.
     pub fn execute_with_json_parsers(
         &self,
+        request: FrameworkRequest,
+        parser_error_format: ParserErrorFormat,
+        response_status_error_format: ResponseStatusErrorFormat,
+        default_error_responses: &DefaultErrorResponses,
+        json_parsers: &JsonRequestParsers,
+    ) -> FrameworkResult<FrameworkResponse> {
+        self.execute_configured(
+            request,
+            parser_error_format,
+            response_status_error_format,
+            default_error_responses,
+            json_parsers,
+            None,
+        )
+    }
+
+    /// Opt into all-matched-version response status admission. Returns ordered
+    /// response declarations for a caller-owned validator, without running hooks
+    /// twice or changing the handler's last selected request version. This method
+    /// does not validate response bodies; normal execution retains last-version
+    /// status admission. Default-error registrations still reject versioned routes.
+    /// # Errors
+    /// Returns handler failures or stale profile registration errors.
+    pub fn execute_with_matched_response_versions(
+        &self,
+        request: FrameworkRequest,
+        parser_error_format: ParserErrorFormat,
+        response_status_error_format: ResponseStatusErrorFormat,
+        default_error_responses: &DefaultErrorResponses,
+    ) -> FrameworkResult<(FrameworkResponse, VersionedResponseOutcome)> {
+        let mut matched = VersionedResponseOutcome::default();
+        let response = self.execute_configured(
+            request,
+            parser_error_format,
+            response_status_error_format,
+            default_error_responses,
+            &JsonRequestParsers::default(),
+            Some(&mut matched),
+        )?;
+        Ok((response, matched))
+    }
+
+    fn execute_configured(
+        &self,
         mut request: FrameworkRequest,
         parser_error_format: ParserErrorFormat,
         response_status_error_format: ResponseStatusErrorFormat,
         default_error_responses: &DefaultErrorResponses,
         json_parsers: &JsonRequestParsers,
+        mut matched_output: Option<&mut VersionedResponseOutcome>,
     ) -> FrameworkResult<FrameworkResponse> {
         self.validate_json_parsers(json_parsers)?;
         let explicit_head = self.has_explicit_head(&request);
@@ -695,23 +744,28 @@ impl LocalRouter {
                         &request.context.correlation_id,
                     ));
                 }
-                let correlation_id = request.context.correlation_id.clone();
-                let head = request.method == HttpMethod::Head;
-                let response = route.handler.call(request)?;
-                let mut response = match validate_local_response(
+                let contract = if let Some(output) = matched_output.as_mut() {
+                    output.handler_invoked = true;
+                    output.matched = request
+                        .version
+                        .as_ref()
+                        .and_then(|selected| route.versions.matched_response_versions(selected));
+                    output.matched.as_ref().map_or(contract.clone(), |matched| {
+                        matched.status_contract(&contract)
+                    })
+                } else {
+                    contract
+                };
+                return execute_local_handler(
+                    route,
+                    request,
                     &contract,
-                    response,
-                    &correlation_id,
                     response_status_error_format,
                     default_error_responses,
-                ) {
-                    Ok(response) => response,
-                    Err(response) => return Ok(response),
-                };
-                if head {
-                    response.body = Body::Empty;
-                }
-                return Ok(response);
+                    matched_output
+                        .as_ref()
+                        .is_some_and(|output| output.matched.is_some()),
+                );
             }
         }
 
@@ -719,6 +773,41 @@ impl LocalRouter {
             .with_correlation_id(request.context.correlation_id)
             .to_response())
     }
+}
+
+fn execute_local_handler(
+    route: &LocalRoute,
+    request: FrameworkRequest,
+    contract: &RouteContract,
+    response_status_error_format: ResponseStatusErrorFormat,
+    default_error_responses: &DefaultErrorResponses,
+    preserve_metadata: bool,
+) -> FrameworkResult<FrameworkResponse> {
+    let correlation_id = request.context.correlation_id.clone();
+    let head = request.method == HttpMethod::Head;
+    let response = route.handler.call(request)?;
+    let original_headers = preserve_metadata.then(|| response.headers.clone());
+    let mut response = match validate_local_response(
+        contract,
+        response,
+        &correlation_id,
+        response_status_error_format,
+        default_error_responses,
+    ) {
+        Ok(response) => response,
+        Err(mut response) => {
+            if let Some(mut headers) = original_headers {
+                headers.retain(|name, _| !MatchedVersionResponses::is_representation_header(name));
+                headers.extend(response.headers);
+                response.headers = headers;
+            }
+            return Ok(response);
+        }
+    };
+    if head {
+        response.body = Body::Empty;
+    }
+    Ok(response)
 }
 
 fn normalize_local_error(

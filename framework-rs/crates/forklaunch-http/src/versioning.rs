@@ -69,6 +69,7 @@ enum BodyValidator {
 #[derive(Default, Clone)]
 pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
+    response_plan: crate::versioned_response::VersionResponsePlan,
     parsers: forklaunch_contract::BodyParserOptions,
     parser_hooks: BodyParserHooks,
 }
@@ -79,7 +80,7 @@ impl std::fmt::Debug for VersionedRoutePlan {
             .field("variant_count", &self.variants.len())
             .field("parsers", &self.parsers)
             .field("parser_hooks", &self.parser_hooks)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 impl VersionedRoutePlan {
@@ -142,10 +143,20 @@ impl VersionedRoutePlan {
             });
         }
         Ok(Self {
+            response_plan: crate::versioned_response::VersionResponsePlan::compile(route),
             variants,
             parsers,
             parser_hooks: BodyParserHooks::default(),
         })
+    }
+
+    /// Shared response schemas for actual matched versions, without rerunning hooks.
+    #[must_use]
+    pub fn matched_response_versions(
+        &self,
+        selected: &SelectedVersion,
+    ) -> Option<crate::MatchedVersionResponses> {
+        self.response_plan.select(selected)
     }
 
     /// Install callbacks for the shared body parser.
