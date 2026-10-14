@@ -6430,3 +6430,22 @@ zero provider/ORM writes on invalid input, unchanged inputs, original valid
 provider sequence and optional custom fallback. The public API inventory remains
 44 packages/609 entrypoints/1,667 declaration records with no unresolved entries;
 line/signature changes are regenerated and checked.
+
+
+## Absolute JWT Date expiration receipt (2026-10-14)
+
+AuthHttp::with_jwt_expiration_at accepts a trusted millisecond-precision UTC
+instant, matching Better Auth's JavaScript Date option. It floors to Unix seconds
+including negative dates, is independent of payload iat, and allows past dates.
+Explicit payload exp wins; null exp falls back to the configured expiration.
+Payload/subject callbacks retain their precedence. Default fifteen-minute JWT
+lifetime, cookie identity and persisted session expiration are unchanged.
+Submillisecond values are explicitly rejected. Chrono's representable year range
+already fits the JavaScript Date range; native extremes are tested rather than
+claiming an unreachable out-of-range typed Date test.
+
+60 actual Better Auth local JOSE/external HTTP route comparisons, the native
+60-route matrix and date boundaries, combined payload/subject/expiration
+regressions and strict all-feature/all-target IAM Clippy pass:
+/private/tmp/fl-iam-jwt-expiration-{ts,native,regression,clippy}.log.
+Custom JWKS persistence/repository adapters remain separate unfinished work.

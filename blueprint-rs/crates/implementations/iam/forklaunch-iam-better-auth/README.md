@@ -952,3 +952,13 @@ does. Suppressed automatic JWT headers skip both callbacks; explicit `/token`
 still invokes them. Claims never alter persisted cookie/session ownership. Custom
 claim policies may require separate application authorization mapping. Never log
 or expose callback snapshots, which can contain secret session tokens.
+
+`AuthHttp::with_jwt_expiration_at(DateTime<Utc>)` is the typed counterpart of a
+trusted `jwt.expirationTime: Date`. It accepts millisecond-precision dates within
+JavaScript's Date range and floors milliseconds to Unix seconds, including dates
+before the epoch. An explicit payload `exp` still wins, while subject resolution
+runs last. Past expiration dates intentionally issue already-expired JWTs; cookie
+and persisted session lifetimes remain unchanged. Without this option, the
+configured 15-minute JWT lifetime remains. Invalid JavaScript dates and finer
+than millisecond native timestamps are outside this typed subset. Duration-string
+configuration on HTTP and custom JWKS adapter hooks are separate extensions.

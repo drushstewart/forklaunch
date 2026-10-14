@@ -32,15 +32,34 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     ) -> BlueprintResult<String> {
         let failure =
             || BlueprintError::new("HTTP_INTERNAL_EMPTY", "Unable to resolve JWT payload");
-        let resolver = self.payload_resolver.as_ref().ok_or_else(failure)?;
-        let custom = (resolver.0)(JwtSessionContext::from_view(view))
-            .await
-            .map_err(|_| failure())?;
+        let custom = if let Some(resolver) = &self.payload_resolver {
+            (resolver.0)(JwtSessionContext::from_view(view))
+                .await
+                .map_err(|_| failure())?
+        } else {
+            Some(Map::from_iter([
+                (
+                    "sessionId".into(),
+                    Value::String(super::text(&view.session, "id")?.into()),
+                ),
+                (
+                    "email".into(),
+                    Value::String(super::text(&view.user, "email")?.into()),
+                ),
+                (
+                    "activeOrganizationId".into(),
+                    view.session["activeOrganizationId"].clone(),
+                ),
+            ]))
+        };
         let mut payload = Map::new();
         payload.insert("iat".into(), json!(now.timestamp()));
         payload.extend(custom.unwrap_or_default());
         payload.insert("sub".into(), Value::String(self.jwt_subject(view).await?));
-        let body = json!({"payload": payload});
+        let mut body = json!({"payload": payload});
+        if let Some(expiration) = self.jwt_expiration_at {
+            body["overrideOptions"] = json!({"jwt":{"expirationTime":expiration}});
+        }
         let ring = KeyRing::new(self.store.clone(), self.auth_origin());
         let signed = if let Some(signer) = &self.external_jwt {
             ring.sign_jwt_with_signer(Some(&body), now, signer).await
