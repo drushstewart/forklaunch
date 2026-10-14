@@ -742,3 +742,14 @@ stored/cookie ownership remains unchanged. Hook failure precedes signing and
 local key creation, returns empty500 and reaches unexpected-error observation.
 Custom subject authorization mapping is application-owned. Actual/local/external
 fixtures cover these boundaries; the callback is disabled by default.
+
+
+Subscription binding foundation review (2026-10-14): migration6 stores an
+explicit administrative provider-customer/local-party assertion and copies it
+into append-only audit records. Provisioning locks and audited-decodes the owned
+durable row; reads reject changed external/party relations and sealed generations.
+Existing aliases/ciphertext and tenant RLS remain intact. This is not Stripe
+ownership verification and grants no provider mutation or webhook completion.
+Restricted-role tests verify migration compatibility, wrong-scope/tenant denial,
+revocation/reprovisioning, and audit-failure rollback. Authenticated provider
+inspection remains a separate required boundary.

@@ -6128,3 +6128,26 @@ and strict MCP/cookie-session all-target Clippy pass:
 /private/tmp/fl-request-order-{tests,parity,clippy}.log. CI includes the oracle.
 The latest generated-service proof predates this optional registration extension.
 Broad validation/auth/error gates remain open.
+
+## Durable subscription ownership foundation receipt (2026-10-14)
+
+Migration6 extends administrative Stripe bindings with subscription-only customer
+and local-party relation columns, including append-only audit records. Existing
+migration5 aliases/history, storage IDs and ciphertext remain unchanged. An
+opaque StripeSubscriptionOwnership and separate provision API require an existing
+locked durable row matching externalId/partyId/type. Generic provisioning rejects
+subscriptions without this relation. Read/revoke checks preserve sealed relation
+and generation, tenant scope, explicit actor and atomic audit requirements.
+
+This is an administrative assertion, not authenticated provider ownership proof.
+No HTTP call, alias backfill, subscription mutation, webhook replay or receipt
+completion is enabled. Future provider inspection must compare the asserted
+customer exactly under separately verified account/mode context.
+Restricted PostgreSQL tests cover migration compatibility, scoped ownership,
+reassignment/stale generations, RLS and audit rollback; four existing direct/
+managed checkout/PaymentLink PostgreSQL tests, base memory regressions and strict
+base/Stripe Clippy also pass. Logs:
+/private/tmp/fl-subscription-bindings-{pg,existing-pg,base,clippy,stripe-clippy}.log.
+The existing PostgreSQL CI suite invokes the new foundation proof. Generated
+startup receipts predate migration6; a new embedded snapshot remains required.
+Billing reconciliation gates855/858 remain open.

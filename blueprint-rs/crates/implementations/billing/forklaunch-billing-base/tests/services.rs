@@ -4,6 +4,9 @@ mod checkout_repair;
 #[cfg(feature = "postgres")]
 #[path = "support/provider_bindings.rs"]
 mod provider_bindings;
+#[cfg(feature = "postgres")]
+#[path = "support/subscription_bindings.rs"]
+mod subscription_bindings;
 use forklaunch_billing_base::services::{
     BaseBillingService, BillingKind, BillingStore, Scope, memory::MemoryBillingStore,
 };
@@ -893,6 +896,16 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
             .unwrap()
     );
     provider_bindings::exercise(
+        &store,
+        &other,
+        reopened.store(),
+        &owner,
+        &pool,
+        &role,
+        tenant.id(),
+    )
+    .await;
+    subscription_bindings::exercise(
         &store,
         &other,
         reopened.store(),
