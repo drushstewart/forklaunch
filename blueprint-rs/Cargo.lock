@@ -1401,6 +1401,7 @@ dependencies = [
  "forklaunch-blueprint-core",
  "forklaunch-core",
  "forklaunch-iam-interface",
+ "jsonwebtoken",
  "rand_core 0.6.4",
  "regex",
  "serde",

@@ -34,6 +34,8 @@ pub struct PostgresIamService {
     pool: PgPool,
     tenant: TenantContext,
     dummy_hash: Arc<String>,
+    #[cfg(feature = "jwt-sessions")]
+    jwt_issuer: Option<Arc<crate::jwt_sessions::RsaJwtSessionIssuer>>,
 }
 
 impl PostgresIamService {
@@ -72,6 +74,8 @@ impl PostgresIamService {
             pool,
             tenant,
             dummy_hash: Arc::new(dummy_hash),
+            #[cfg(feature = "jwt-sessions")]
+            jwt_issuer: None,
         })
     }
 
@@ -82,7 +86,21 @@ impl PostgresIamService {
             pool: self.pool.clone(),
             tenant,
             dummy_hash: Arc::clone(&self.dummy_hash),
+            #[cfg(feature = "jwt-sessions")]
+            jwt_issuer: self.jwt_issuer.clone(),
         }
+    }
+
+    /// Issue RSA-signed tokens for future logins. The complete token's digest is
+    /// still persisted; local session validation always checks current storage.
+    #[cfg(feature = "jwt-sessions")]
+    #[must_use]
+    pub fn with_jwt_session_issuer(
+        mut self,
+        issuer: Arc<crate::jwt_sessions::RsaJwtSessionIssuer>,
+    ) -> Self {
+        self.jwt_issuer = Some(issuer);
+        self
     }
 
     async fn transaction(&self) -> BlueprintResult<Transaction<'_, Postgres>> {
@@ -370,8 +388,9 @@ impl PostgresIamService {
         Ok(permissions)
     }
 
-    /// Verifies credentials and persists an opaque, one-hour session. Only a
-    /// SHA-256 token digest is stored; plaintext tokens are returned once.
+    /// Verifies credentials and persists a one-hour session. Tokens are opaque
+    /// unless a JWT issuer was explicitly configured. Only a SHA-256 token digest
+    /// is stored; plaintext tokens are returned once.
     ///
     /// # Errors
     /// Returns invalid credentials for unknown/disabled users and wrong passwords;
@@ -401,19 +420,62 @@ impl PostgresIamService {
         let user = user
             .filter(|user| !user.disabled && valid)
             .ok_or_else(invalid_credentials)?;
+        let (token, expiry) = self.persist_session(&mut tx, &user).await?;
+        tx.commit().await.map_err(storage_error)?;
+        Ok(Session {
+            id: token,
+            user_id: user.id,
+            expires_at_unix_seconds: expiry,
+        })
+    }
+
+    async fn persist_session(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        user: &User,
+    ) -> BlueprintResult<(String, u64)> {
+        #[cfg(feature = "jwt-sessions")]
+        if let Some(issuer) = &self.jwt_issuer {
+            let (now,): (i64,) =
+                sqlx::query_as("SELECT floor(extract(epoch FROM clock_timestamp()))::BIGINT")
+                    .fetch_one(&mut **tx)
+                    .await
+                    .map_err(storage_error)?;
+            let now = u64::try_from(now).map_err(storage_error)?;
+            let expires_at = now.checked_add(3600).ok_or_else(invalid_input)?;
+            let roles: Vec<(Json<Role>,)> = sqlx::query_as(
+                "SELECT role_json FROM fl_iam_roles WHERE tenant_id=$1 AND name=ANY($2) ORDER BY name",
+            ).bind(self.tenant.id()).bind(&user.roles)
+                .fetch_all(&mut **tx).await.map_err(storage_error)?;
+            let permissions = roles
+                .into_iter()
+                .flat_map(|(Json(role),)| role.permissions)
+                .map(|permission| format!("{}:{}", permission.resource, permission.action))
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let issuer = Arc::clone(issuer);
+            let owned_user = user.clone();
+            let tenant_id = self.tenant.id().to_owned();
+            let token = tokio::task::spawn_blocking(move || {
+                issuer.issue(&owned_user, &tenant_id, &permissions, now, expires_at)
+            })
+            .await
+            .map_err(storage_error)??;
+            sqlx::query("INSERT INTO fl_iam_sessions (tenant_id,token_hash,user_id,expires_at) VALUES ($1,$2,$3,to_timestamp($4::BIGINT::DOUBLE PRECISION))")
+                .bind(self.tenant.id()).bind(token_hash(&token)).bind(&user.id)
+                .bind(i64::try_from(expires_at).map_err(storage_error)?)
+                .execute(&mut **tx).await.map_err(storage_error)?;
+            return Ok((token, expires_at));
+        }
         let token = format!(
             "{}{}",
             uuid::Uuid::new_v4().simple(),
             uuid::Uuid::new_v4().simple()
         );
         let expiry: (i64,) = sqlx::query_as("INSERT INTO fl_iam_sessions (tenant_id,token_hash,user_id,expires_at) VALUES ($1,$2,$3,now()+interval '1 hour') RETURNING EXTRACT(EPOCH FROM expires_at)::BIGINT")
-            .bind(self.tenant.id()).bind(token_hash(&token)).bind(&user.id).fetch_one(&mut *tx).await.map_err(storage_error)?;
-        tx.commit().await.map_err(storage_error)?;
-        Ok(Session {
-            id: token,
-            user_id: user.id,
-            expires_at_unix_seconds: u64::try_from(expiry.0).map_err(storage_error)?,
-        })
+            .bind(self.tenant.id()).bind(token_hash(&token)).bind(&user.id).fetch_one(&mut **tx).await.map_err(storage_error)?;
+        Ok((token, u64::try_from(expiry.0).map_err(storage_error)?))
     }
 
     /// # Errors
@@ -533,6 +595,85 @@ mod tests {
         assert!(first.delete_user("user-1").await.unwrap());
         assert!(!first.delete_user("user-1").await.unwrap());
         assert!(second.get_user("user-1").await.unwrap().is_some());
+        pool.close().await;
+        sqlx::query(&format!("DROP OWNED BY {role}"))
+            .execute(&owner)
+            .await
+            .unwrap();
+        sqlx::query(&format!("DROP ROLE {role}"))
+            .execute(&owner)
+            .await
+            .unwrap();
+        owner.close().await;
+    }
+
+    #[cfg(feature = "jwt-sessions")]
+    #[tokio::test]
+    #[ignore = "requires FORKLAUNCH_TEST_POSTGRES_URL; exercised in container CI"]
+    async fn postgres_jwt_sessions_preserve_persistent_revocation_and_tenant_binding() {
+        let (owner, pool, role) = test_pools().await;
+        let first = PostgresIamService::new(
+            pool.clone(),
+            TenantContext::new(format!("jwt-a-{}", uuid::Uuid::new_v4().simple())).unwrap(),
+        )
+        .await
+        .unwrap()
+        .with_jwt_session_issuer(Arc::new(crate::jwt_sessions::tests::issuer()));
+        let second = first.for_tenant(
+            TenantContext::new(format!("jwt-b-{}", uuid::Uuid::new_v4().simple())).unwrap(),
+        );
+        crud_and_roles(&first, &second).await;
+        let session = first
+            .authenticate(Credentials {
+                email: "test@example.com".into(),
+                password: "password-1".into(),
+            })
+            .await
+            .unwrap();
+        let claims = crate::jwt_sessions::tests::verify(&session.id);
+        assert_eq!(claims["sub"], "user-1");
+        assert_eq!(claims["tenant_id"], first.tenant.id());
+        assert_eq!(claims["permissions"], serde_json::json!(["users:read"]));
+        assert_eq!(claims["exp"], session.expires_at_unix_seconds);
+        assert_eq!(
+            claims["exp"].as_u64().unwrap() - claims["iat"].as_u64().unwrap(),
+            3600
+        );
+        let mut tampered = session.id.clone();
+        tampered.push('x');
+        assert!(first.validate_session(&tampered).await.unwrap().is_none());
+        assert!(
+            second
+                .validate_session(&session.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        // Restarting without an issuer still validates stored sessions: their full
+        // digests and current user state, not unverified token claims, are authoritative.
+        let restarted = PostgresIamService::new(pool.clone(), first.tenant.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            restarted.validate_session(&session.id).await.unwrap(),
+            Some(session.clone())
+        );
+        assert!(restarted.revoke_session(&session.id).await.unwrap());
+        sessions(&first, &second).await;
+        rls_and_pool_context(&first, &pool).await;
+        let tenants = vec![first.tenant.id().to_owned(), second.tenant.id().to_owned()];
+        for table in [
+            "fl_iam_sessions",
+            "fl_iam_users",
+            "fl_iam_roles",
+            "fl_iam_organizations",
+        ] {
+            sqlx::query(&format!("DELETE FROM {table} WHERE tenant_id=ANY($1)"))
+                .bind(&tenants)
+                .execute(&owner)
+                .await
+                .unwrap();
+        }
         pool.close().await;
         sqlx::query(&format!("DROP OWNED BY {role}"))
             .execute(&owner)

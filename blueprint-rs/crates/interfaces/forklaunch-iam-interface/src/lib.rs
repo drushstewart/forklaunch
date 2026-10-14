@@ -268,7 +268,7 @@ pub mod contracts {
         registry
     }
 
-    /// IAM routes backed by persistent opaque sessions, including logout.
+    /// IAM routes backed by persistent bearer sessions, including logout.
     #[must_use]
     pub fn session_registry() -> ContractRegistry {
         let mut sessions = ContractRegistry::for_service(ServiceContract::new("iam", "0.1.0"));

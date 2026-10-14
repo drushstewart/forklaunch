@@ -1,6 +1,6 @@
 # {{{name}}}
 
-PostgreSQL IAM with tenant isolation, encrypted directory CRUD, Argon2id credentials, and persistent opaque bearer sessions.
+PostgreSQL IAM with tenant isolation, encrypted directory CRUD, Argon2id credentials, and persistent opaque or explicitly configured RS256 bearer sessions.
 
 Apply migrations using a schema-owner connection:
 
@@ -13,6 +13,23 @@ Grant the runtime role USAGE on the schema and SELECT/INSERT/UPDATE/DELETE on `f
 Create users and roles through `PostgresIamService`'s administrative methods in your application's trusted provisioning path. No default account or password is created.
 
 `POST /auth/login` accepts `{ "email": "...", "password": "..." }` and returns a session whose `id` is the bearer credential. Send `Authorization: Bearer <id>` for the legacy `/users`, `/organizations`, permission lookup, and logout routes. The legacy `/users/:id` SDK/MCP operation is `getSessionUser`. `POST /auth/logout` revokes the current session. `/health`, `/openapi.json`, and `/docs` are public. Login responses disable caching.
+
+Opaque sessions are the default. To issue RS256 JWTs, configure all four of
+`SESSION_JWT_PRIVATE_KEY_PEM`, `SESSION_JWT_KEY_ID`, `SESSION_JWT_ISSUER` and
+`SESSION_JWT_AUDIENCE`. Partial or invalid signing configuration rejects startup.
+Publish the matching public key at the trusted JWKS endpoint configured by token
+consumers; this module does not automatically publish keys. New tokens contain a
+unique `jti`, subject, tenant ID, issuance/expiry times, issuer/audience and a
+snapshot of server-resolved roles/permissions. Tokens expire after one hour and
+must fit the existing 4096-byte bearer limit. Email/password fields are omitted.
+
+Local session routes always check the full token's stored hash and current user
+state, preserving logout, password-change revocation, disabled users and tenant
+isolation. A valid signature alone cannot authenticate an unstored token there.
+Changing signing configuration affects future issuance; existing stored sessions
+retain their normal expiry/revocation lifecycle. Downstream stateless JWT consumers
+must separately enforce current grants/revocation and tenant policy when required.
+Directory identities remain separate from credential/session identities.
 
 The `/user`, `/role`, `/permission`, and `/organization` families expose the configured TypeScript module's thirty CRUD and grant-surfacing operations through HTTP and MCP. Internal routes verify request HMAC signatures; protected routes verify asymmetric JWKS JWTs and their declared roles or permissions. User reads/updates/deletes resolve the JWT subject's organization from storage and enforce it inside each directory transaction. Sensitive fields are encrypted with tenant- and record-bound envelopes; uniqueness claims support retained encryption keys, and successful reads/writes commit actor audits atomically. Directory users are separate from credential/session users; CRUD passwords are ignored as in the configured TypeScript mapper. Provision authentication identities through the repository API.
 

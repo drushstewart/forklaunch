@@ -7,6 +7,8 @@ use std::{
 
 pub mod credentials;
 pub mod directory;
+#[cfg(feature = "jwt-sessions")]
+pub mod jwt_sessions;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 

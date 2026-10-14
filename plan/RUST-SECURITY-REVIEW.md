@@ -387,3 +387,32 @@ decoding, as ordinary native/TS queue methods do. Count limits apply before
 filtering. Explicit TypeScript zero-count peeks read the whole current queue;
 the ordinary native zero-count method remains empty. These APIs accept nonnegative
 integer counts and do not emulate negative/fractional JavaScript inputs.
+
+
+### Optional base IAM RS256 sessions (2026-10-13)
+
+The `jwt-sessions` feature allows explicit RS256 issuance while preserving opaque
+sessions by default. All four signing environment variables must be present and
+valid; malformed keys, partial settings, empty/control-character metadata and
+oversized tokens fail closed with sanitized errors. Construction signs a local
+probe, and production signing runs on a blocking worker. No Debug implementation
+or private-key publication is provided. The checked-in RSA key is an existing
+public test fixture, used only by tests.
+
+The database clock determines issuance and the exact one-hour expiry stored in
+PostgreSQL. Tenant, subject, issuer, audience, unique jti and sorted server-resolved
+permission snapshots are signed. Email and password fields are omitted. Local
+session validation hashes the entire credential and checks persisted expiry,
+revocation and current user state under tenant RLS; it never accepts an unstored
+JWT based on signature alone. Password changes, disabled users and logout retain
+their existing invalidation behavior. Existing tokens survive signing-config
+changes until their normal expiry/revocation. External stateless JWT verification
+is a distinct trust boundary: callers must publish the public key and enforce
+current authorization, tenant binding and revocation where needed. Directory
+identities remain separate; cookie/CSRF and OAuth/OIDC lifecycle are not supplied
+by this issuance feature.
+
+Native signature/claim/error tests and restricted-role PostgreSQL tests cover
+exact expiry, cross-tenant rejection, tampering, restart persistence and revocation.
+The existing opaque-session PostgreSQL suite also passes. Generated fixture tests
+use independently generated Node RSA keys and cryptographic verification.

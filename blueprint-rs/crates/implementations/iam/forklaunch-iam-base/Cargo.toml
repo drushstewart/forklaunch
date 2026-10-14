@@ -10,6 +10,7 @@ repository.workspace = true
 [features]
 default = []
 postgres = ["dep:sqlx", "forklaunch-core/postgres", "forklaunch-core/encryption", "dep:sha2", "tokio/rt-multi-thread", "tokio/macros"]
+jwt-sessions = ["postgres", "dep:jsonwebtoken"]
 
 [dependencies]
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
@@ -27,6 +28,7 @@ regex = "1"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 sha2 = { version = "0.10", optional = true }
+jsonwebtoken = { version = "9", optional = true }
 
 [lints]
 workspace = true

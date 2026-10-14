@@ -42,7 +42,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
-    let store = Arc::new(PostgresIamService::new(pool.clone(), tenant.clone()).await?);
+    let store = PostgresIamService::new(pool.clone(), tenant.clone()).await?;
+    let store = match forklaunch_iam_base::jwt_sessions::RsaJwtSessionIssuer::from_env()? {
+        Some(issuer) => store.with_jwt_session_issuer(Arc::new(issuer)),
+        None => store,
+    };
+    let store = Arc::new(store);
     let directory=PostgresDirectoryStore::new(pool.clone(),tenant,Arc::new(FieldEncryptor::from_env()?),AuditContext::system("iam-startup")).await?;
     let secret = env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?;
     let jwks = RemoteJwks::new(RemoteJwksConfig::new(

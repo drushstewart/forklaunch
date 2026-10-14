@@ -4,7 +4,7 @@ import { spawn,execFile } from 'node:child_process';
 import {promisify} from 'node:util';
 import { once } from 'node:events';
 import {readFileSync} from 'node:fs';
-import {generateKeyPairSync,sign,createHmac,randomUUID} from 'node:crypto';
+import {generateKeyPairSync,sign,verify,createHmac,randomUUID} from 'node:crypto';
 import http from 'node:http';
 import { createForkLaunchSdk } from './sdks/typescript/dist/index.js';
 
@@ -30,9 +30,16 @@ const role = process.env.FORKLAUNCH_TEST_ROLE;
 const databaseUrl = new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);
 databaseUrl.username = role;
 databaseUrl.password = 'parity-test-only';
+const sessionKeys=['SESSION_JWT_PRIVATE_KEY_PEM','SESSION_JWT_KEY_ID','SESSION_JWT_ISSUER','SESSION_JWT_AUDIENCE'];
+function environment(tenant,classified=false,signed=tenant==='a') {
+  const env={...process.env,FORKLAUNCH_FIXTURE_CLASSIFIED_IAM:classified?'1':'0',DATABASE_URL:databaseUrl.toString(),TENANT_ID:`${role}-${tenant}`,HOST:'127.0.0.1',SERVICE_PORT:'0',ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience};
+  for(const key of sessionKeys)delete env[key];
+  if(signed)Object.assign(env,{SESSION_JWT_PRIVATE_KEY_PEM:privateKey.export({format:'pem',type:'pkcs8'}),SESSION_JWT_KEY_ID:jwk.kid,SESSION_JWT_ISSUER:issuer,SESSION_JWT_AUDIENCE:audience});
+  return env;
+}
 async function start(tenant, classified = false) {
   const child = spawn(process.argv[2], [], {
-    env: { ...process.env, FORKLAUNCH_FIXTURE_CLASSIFIED_IAM: classified ? '1' : '0', DATABASE_URL: databaseUrl.toString(), TENANT_ID: `${role}-${tenant}`, HOST: '127.0.0.1', SERVICE_PORT: '0', ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience },
+    env: environment(tenant,classified),
     stdio: ['ignore', 'pipe', 'pipe']
   });
   const exited = once(child, 'exit');
@@ -54,6 +61,13 @@ async function start(tenant, classified = false) {
 }
 
 try {
+  for(const settings of [
+    {...environment('a',false,false),SESSION_JWT_KEY_ID:'partial'},
+    {...environment('a'),SESSION_JWT_PRIVATE_KEY_PEM:'PRIVATE-SENTINEL'},
+    {...environment('a'),SESSION_JWT_AUDIENCE:''},
+  ])await assert.rejects(promisify(execFile)(process.argv[2],[],{env:settings,timeout:15000,maxBuffer:1024*1024}),error=>{
+    assert.equal(error.code,1);assert.ok(!error.stdout.includes('listening on'));assert.ok(!error.stderr.includes('PRIVATE-SENTINEL'));return true;
+  });
   const first = await start('a');
   const second = await start('b');
   const tools=await probeMcp(first.baseUrl,['listUsers','getSessionUser','createUser','getUser','getBatchPermissions','surfaceUserRoles']);
@@ -72,6 +86,28 @@ try {
   const login = await publicSdk.iam.auth.authenticate({ body: { email: 'member@example.com', password: 'first-password' } });
   assert.equal(login.code, 200);
   const token = login.response.id;
+  const parts=token.split('.');assert.equal(parts.length,3);
+  assert.equal(verify('RSA-SHA256',Buffer.from(parts.slice(0,2).join('.')),publicKey,Buffer.from(parts[2],'base64url')),true);
+  const claims=JSON.parse(Buffer.from(parts[1],'base64url'));
+  assert.deepEqual(JSON.parse(Buffer.from(parts[0],'base64url')),{typ:'JWT',alg:'RS256',kid:jwk.kid});
+  assert.equal(claims.sub,'user-1');assert.equal(claims.tenant_id,`${role}-a`);
+  assert.equal(claims.iss,issuer);assert.equal(claims.aud,audience);
+  assert.equal(claims.exp,login.response.expires_at_unix_seconds);assert.equal(claims.exp-claims.iat,3600);
+  assert.deepEqual(claims.roles,['member']);assert.deepEqual(claims.permissions,['users:read']);
+  assert.ok(!JSON.stringify(claims).includes('member@example.com'));
+  const again=await publicSdk.iam.auth.authenticate({body:{email:'member@example.com',password:'first-password'}});
+  assert.equal(again.code,200);assert.notEqual(again.response.id,token);
+  assert.notEqual(JSON.parse(Buffer.from(again.response.id.split('.')[1],'base64url')).jti,claims.jti);
+  assert.equal((await createForkLaunchSdk({baseUrl:first.baseUrl,headers:{authorization:`Bearer ${again.response.id}`}}).iam.auth.logout()).code,204);
+  // A valid signature alone is insufficient for a stored-session route.
+  assert.equal((await createForkLaunchSdk({baseUrl:first.baseUrl,headers:{authorization:jwt('user-1')}}).iam.users.listUsers({query:{}})).code,401);
+  const opaque=await createForkLaunchSdk({baseUrl:second.baseUrl}).iam.auth.authenticate({body:{email:'member@example.com',password:'second-password'}});
+  assert.equal(opaque.code,200);assert.match(opaque.response.id,/^[a-f0-9]{64}$/);
+  const opaqueSdk=createForkLaunchSdk({baseUrl:second.baseUrl,headers:{authorization:`Bearer ${opaque.response.id}`}});
+  assert.equal((await opaqueSdk.iam.users.listUsers({query:{}})).code,200);
+  assert.equal((await opaqueSdk.iam.auth.logout()).code,204);
+  console.log('PASS generated RS256 session issuance, Node signature/claim checks, unique tokens, rejected unstored JWTs, opaque defaults and fail-closed signing configuration');
+
   const sdk = createForkLaunchSdk({ baseUrl: first.baseUrl, headers: { authorization: `Bearer ${token}` } });
   const page = await sdk.iam.users.listUsers({ query: { limit: 1 } });
   assert.equal(page.code, 200);
@@ -90,7 +126,7 @@ try {
   const fixture=directory.a,auth=jwt(),user=fixture.users[0],member=fixture.users[1],outsider=fixture.users[2];
   assert.equal((await call(first.baseUrl,`/role/${fixture.role.id}`,'GET',undefined,200,auth)).permissions[0].id,fixture.permission.id);
   await call(first.baseUrl,`/role/${fixture.role.id}`,'GET',undefined,403,jwt(user.id,[],[]));
-  await call(first.baseUrl,`/role/${fixture.role.id}`,'GET',undefined,401,jwt(user.id,[],['platform:read'],{exp:1}));
+  await call(first.baseUrl,`/role/${fixture.role.id}`,'GET',undefined,403,jwt(user.id,[],['platform:read'],{exp:1}));
   const directoryClient=createForkLaunchSdk({baseUrl:first.baseUrl,headers:{authorization:auth}});
   const typedUser=await directoryClient.iam.user.getUser({params:{id:member.id}});
   assert.equal(typedUser.code,200);assert.equal(typedUser.response.roles[0].permissions[0].id,fixture.permission.id);

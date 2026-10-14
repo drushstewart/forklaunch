@@ -25,7 +25,7 @@ use forklaunch_iam_interface::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-/// Combines opaque session authentication with configured IAM directory CRUD.
+/// Combines stored bearer session authentication with configured IAM directory CRUD.
 /// Directory reads use JWKS JWTs; internal operations use request HMAC signatures.
 /// # Panics
 /// Only inconsistent package-owned route metadata can panic.

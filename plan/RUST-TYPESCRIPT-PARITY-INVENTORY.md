@@ -4528,3 +4528,30 @@ Redis/S3 factories, both SDKs, CLI ownership/lifecycle and the full HTTP/MCP
 startup/shutdown matrix. All **951** embedded source/template files pass packaging.
 Logs: `/private/tmp/fl-json-batch-{parity,clippy,tests,generated,package}.log`.
 Checklist remains **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Optional signed base IAM sessions
+
+Base IAM now supports explicitly configured RS256 bearer issuance via the
+`jwt-sessions` feature. Generated modules accept a complete private-key/key-ID/
+issuer/audience configuration and reject incomplete or invalid configuration
+before listening. Tokens bind tenant/subject, server-resolved roles/permissions,
+unique jti, issuer/audience and exact database-clock one-hour expiry. Full-token
+SHA-256 storage preserves the local revocation, disabled-user, password-change
+and tenant isolation checks. Opaque issuance remains the default. Public-key
+hosting, directory identity integration, cookie/CSRF and OAuth/OIDC flows remain
+open; downstream stateless JWT consumers require their own current-grant,
+revocation and tenant policy.
+
+Two native signer tests, restricted-role PostgreSQL signed and opaque session
+suites and strict all-feature Clippy pass. Fresh relocated generated run `Jd8inE`
+passes independent Node RSA signature/claim verification, unique issuance,
+rejection of valid-but-unstored JWTs, opaque fallback, invalid-config startup
+rejection, all directory HTTP/MCP operations, both SDKs, compliance, tenant
+isolation, restart/logout, graceful shutdown and rename/delete lifecycle. The
+expired directory-JWT fixture now expects the established TypeScript/Rust 403
+policy; stored-session failures remain 401. CLI tests pass **1,101**, embedded
+source packaging checks **953** assets and release-tool tests pass **9** cases.
+No registry upload or external deployment occurred.
+Logs: `/private/tmp/fl-iam-jwt-{unit,postgres,opaque,clippy,cli-tests,package,release-tests,generated-final}.log`.
+Checklist remains **658/682 (96.5%), 24 open**.

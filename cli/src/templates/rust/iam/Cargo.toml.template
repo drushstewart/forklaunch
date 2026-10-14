@@ -16,7 +16,7 @@ forklaunch-core = { path = "../../.forklaunch/framework-rs/crates/forklaunch-cor
 forklaunch-contract = { path = "../../.forklaunch/framework-rs/crates/forklaunch-contract" }
 forklaunch-openapi = { path = "../../.forklaunch/framework-rs/crates/forklaunch-openapi" }
 forklaunch-iam-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/forklaunch-iam-interface" }
-forklaunch-iam-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-base", features = ["postgres"] }
+forklaunch-iam-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-base", features = ["postgres", "jwt-sessions"] }
 forklaunch-iam-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-axum" }
 
 forklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth", features = ["remote-jwks"] }
