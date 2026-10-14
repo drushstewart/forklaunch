@@ -837,3 +837,34 @@ rechecked before removal. Logs and metadata:
 /private/tmp/fl-iam-pg-validated-{run,list,cleanup}.log and
 /private/tmp/fl-iam-pg-validated-metadata.json. No cloud/vendor service was used;
 this does not close broader Better Auth adapter/options coverage.
+
+
+## Ecommerce durable provider-scope foundation receipt (2026-10-14)
+
+Additive ecommerce migration9 records explicit administrative payment scope:
+tenant, provider, deployment, merchant/account, mode, reference, linked order,
+amount/currency and opaque generation. Provision compares the caller's payment
+snapshot against a locked durable row and verifies linked order key/body identity.
+Reads check payment/order key/body identity and the immutable local relation;
+revocation compares exact generation/scope. No provider call, payment/reference
+write, automatic backfill or public route is introduced. This is an administrator
+assertion, not provider ownership proof or permission to mutate money.
+
+Forced tenant RLS protects bindings; audit RLS permits only INSERT/SELECT even
+under broad non-bypass table grants. Actor/correlation are required; audit failure
+rolls back provisioning/revocation. Scoped reference uniqueness rejects duplicate
+local bindings. Foreign-key deletion cascades remove bindings when payment/order
+records are deleted, preventing delete/recreate revival while retaining audit.
+Same-record relation changes restored later may match again; effect workflows
+must independently compare current snapshots and generation under locks.
+
+Restricted PostgreSQL foundation proof passes, including exact old migrations1–8
+followed by9, opaque ciphertext/legacy nullable audit preservation, tenants,
+key/body identity, grant rollback, append-only audits, uniqueness, revoke/reprovision
+ABA and delete/recreate. Both existing reconciliation PG tests, seven base
+regressions and strict all-feature/all-target Clippy pass:
+/private/tmp/fl-ecommerce-bindings-{pg,reconciliation,base,clippy}.log. An initial
+test-only reference collision was corrected and its exact owned role/tenant cleaned.
+Default application routes receive no administrative grants. Short-lived
+provider-account/mode verification, cancelled-order repair and reference retirement
+remain open; retain existing references for review until that integration exists.

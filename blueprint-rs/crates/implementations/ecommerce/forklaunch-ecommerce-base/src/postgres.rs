@@ -15,6 +15,8 @@ use std::sync::Arc;
 mod cancellation;
 mod compliance;
 mod payment_review;
+mod provider_bindings;
+pub use provider_bindings::{PaymentProviderBinding, PaymentProviderScope};
 mod reconciliation;
 mod retention;
 mod webhook;
