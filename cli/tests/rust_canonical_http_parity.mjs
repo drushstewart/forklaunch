@@ -195,6 +195,20 @@ try{
   else assert.deepEqual(JSON.parse(wire[1].text),JSON.parse(wire[0].text));
  }
  console.log('PASS 36 live schema-bound query outcomes including repeated/empty/unknown values and zero rejected handler calls');
+ for(const path of ['/response/axum/','/response/local/']){
+  for(const mode of ['wrong','headers','both','empty','valid']){
+   const wire=[];
+   for(const url of [ts,rust]){
+    const response=await fetch(url+path+mode,{headers:{'x-correlation-id':'response-fixture'},signal:AbortSignal.timeout(5000)});
+    wire.push({status:response.status,text:await response.text(),type:response.headers.get('content-type'),result:response.headers.get('x-result')});
+   }
+   assert.equal(wire[0].status,mode==='valid'?200:500);
+   // Successful native text omits the charset; error diagnostics and empty500 are exact.
+   if(mode==='valid')assert.deepEqual({...wire[1],type:wire[0].type},wire[0]);
+   else assert.deepEqual(wire[1],wire[0],`response validation ${path}${mode}`);
+  }
+ }
+ console.log('PASS20live response-validator outcomes: trusted body/header diagnostics, ordering, local/Axum and explicit empty500 preservation');
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);

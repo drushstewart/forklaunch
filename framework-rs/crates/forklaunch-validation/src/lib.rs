@@ -30,6 +30,7 @@ use serde::{Serialize, de::DeserializeOwned};
 mod parse_errors;
 pub use parse_errors::{
     ParseError, pretty_print_parse_errors, typescript_request_validation_error_response,
+    typescript_response_validation_error_response,
 };
 
 /// A type usable as a `ForkLaunch` request/response schema.

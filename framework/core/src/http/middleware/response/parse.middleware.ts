@@ -15,6 +15,11 @@ import {
 } from '../../types/apiDefinition.types';
 import { ParamsDictionary } from '../../types/contractDetails.types';
 
+// Sending the diagnostic response re-enters enriched send. Do not validate
+// that framework-generated diagnostic against the failed application headers.
+// Weak membership is per response and cleared even when the sender throws.
+const sendingValidationError = new WeakSet<object>();
+
 /**
  * Middleware to parse and validate the response according to the provided schema.
  *
@@ -70,6 +75,10 @@ export function parse<
   >,
   next?: ForklaunchNextFunction
 ) {
+  if (sendingValidationError.has(res)) {
+    next?.();
+    return;
+  }
   let headers;
   let responses;
 
@@ -163,13 +172,18 @@ export function parse<
         res.type('text/plain');
         res.status(500);
         if (hasSend(res)) {
-          res.send(
-            `Invalid response:\n${parseErrors.join(
-              '\n\n'
-            )}\n\nCorrelation id: ${
-              req.context.correlationId ?? 'No correlation ID'
-            }`
-          );
+          sendingValidationError.add(res);
+          try {
+            res.send(
+              `Invalid response:\n${parseErrors.join(
+                '\n\n'
+              )}\n\nCorrelation id: ${
+                req.context.correlationId ?? 'No correlation ID'
+              }`
+            );
+          } finally {
+            sendingValidationError.delete(res);
+          }
         } else {
           next?.(new Error('Response is not sendable.'));
         }

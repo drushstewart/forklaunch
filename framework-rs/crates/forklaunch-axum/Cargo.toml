@@ -15,7 +15,7 @@ sse = ["adapter", "dep:futures-util", "dep:forklaunch-validation"]
 websocket = ["adapter", "axum/ws", "dep:forklaunch-ws", "dep:futures-util"]
 mcp = ["adapter", "dep:forklaunch-mcp", "tokio/sync", "tokio/time"]
 remote-jwks = ["adapter", "forklaunch-auth/remote-jwks", "dep:jsonwebtoken"]
-adapter = ["dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes", "dep:form_urlencoded", "dep:http-body", "dep:http-body-util"]
+adapter = ["tokio/time", "dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:bytes", "dep:form_urlencoded", "dep:http-body", "dep:http-body-util"]
 
 [dependencies]
 tower-sessions = { version = "0.15", optional = true }

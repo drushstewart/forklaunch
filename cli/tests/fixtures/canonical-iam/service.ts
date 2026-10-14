@@ -39,6 +39,15 @@ for(const path of ['/parser/axum','/parser/local'])app.post(path,{
  body:{json:{task:string}},responses:{200:{accepted:string}}
 },(_req,res)=>{parserCalls++;res.status(200).json({accepted:'yes'});});
 app.get('/parser/calls',{name:'Calls',summary:'Calls',options:{openapi:false},responses:{200:z.number()}},(_req,res)=>res.status(200).json(parserCalls));
+for(const path of ['/response/axum/:mode','/response/local/:mode']) app.get(path,{
+ name:'Response',summary:'Response',options:{openapi:false},params:{mode:string},
+ responseHeaders:{'x-result':string},responses:{200:string,500:undefined_}
+},(req,res)=>{
+ const mode=req.params.mode;
+ if(mode==='empty'){res.status(500).send();return;}
+ if(!['headers','both'].includes(mode))res.setHeader('x-result','valid');
+ res.status(200).send(['wrong','both'].includes(mode)?42:'ok');
+});
 const server=app.listen(0,'127.0.0.1');
 server.on('listening',()=>console.log(`READY http://127.0.0.1:${server.address().port}`));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));

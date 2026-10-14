@@ -1,6 +1,8 @@
 //! Live counterpart of cli/tests/fixtures/canonical-iam/service.ts.
 #[path = "support/canonical_query.rs"]
 mod canonical_query;
+#[path = "support/canonical_response.rs"]
+mod canonical_response;
 use forklaunch_auth::{
     JwtClaims, issue_jwt_hs256, typescript::jwt::verify_jwt_resource, verify_jwt_hs256,
 };
@@ -209,7 +211,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .with_config(config)
         .nest("/errors", errors)
-        .nest("/parser", parser_router);
+        .nest("/parser", parser_router)
+        .nest("/response", canonical_response::router());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     println!("READY http://{}", listener.local_addr()?);
     axum::serve(listener, assembled.into_router())

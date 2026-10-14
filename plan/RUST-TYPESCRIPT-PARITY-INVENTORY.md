@@ -5130,3 +5130,57 @@ actors, immutable audits, stale revoke, cache-only rejection, restart and migrat
 compatibility from versions1–4. Both failed-run fixture tenants/roles were cleaned.
 Evidence: `/private/tmp/fl-billing-provider-binding-{postgres,regression,clippy}.log`.
 Checklist remains **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Bounded response validation and TypeScript recursion fix
+
+Opt-in ResponseValidators bind application callbacks to unversioned finite JSON/
+text response contracts. Only registered Error-mode routes buffer response bodies,
+with explicit collection byte/time bounds. Native status validation runs first.
+Successful wire responses retain repeated headers and extensions; diagnostic
+replacements retain unrelated metadata while clearing stale representation and
+integrity headers. Collection size, timeout, read and UTF-8 failures return safe
+native JSON 500. Trusted synchronous callbacks must return promptly; collection
+timeouts do not preempt callback execution.
+
+The separate response formatter renders trusted Header/Response ParseErrors into
+the actual TypeScript Invalid response 500 text envelope. Live tests exposed
+TypeScript recursively validating its own missing-header diagnostic, eventually
+returning an HTML stack trace. A per-response WeakSet guard with try/finally fixes
+that path without mutating shared route contracts. Two independent invalid
+responses followed by a valid response prove validation remains active.
+
+HEAD and bodyless 204/205/304 skip both header/body callbacks, preserving normal
+HTTP behavior when Axum has removed the payload. This does not claim exact
+TypeScript HEAD validation equivalence. Callback header inspection uses a
+single-value map, though repeated headers survive the wire. Versioned and declared
+streaming/binary routes are rejected by registration; generic schema translation
+and Warning-mode diagnostics remain outside this slice.
+
+Validation passes **152 live HTTP outcomes**, including 20 local/Axum response
+cases; four OpenAPI differences remain. Sixty Axum library tests, six validation
+tests, strict both-crate all-target Clippy and actual-source comparisons of
+918 formatter, 25 request and 45 response cases pass. Public source inventory
+remains current. Evidence: `/private/tmp/fl-response-validator-{canonical-final,tests-final,clippy-final,formatter}.log`,
+`/private/tmp/fl-response-validator-head-{tests,clippy}.log` and
+`/private/tmp/fl-rust-response-validation-inventory.log`.
+
+### 2026-10-13 — Committed-checkpoint billing generation and cleanup
+
+An isolated checkout at `893962e3d` passes all **1,120 CLI tests**, nine release
+regression checks, CLI rebuild and **990 packaged source/template checks**.
+Packaging initially caught missing template links for the new base IAM/billing
+integration guides; the checkpoint includes their committed fix.
+
+Fresh generated billing `run.13kXCU` passes base/Stripe HTTP/MCP startup, discovery,
+health invocation and Origin rejection; all five service families, both SDKs,
+JWT roles, configured party lookups, signed webhooks/platform events, keyless
+managed calls, configuration failures, encrypted persistence, tenant isolation,
+restart, MCP modes and graceful shutdown pass. Source-preserving rename, sync,
+artifact checks, workspace compilation and deletion also pass. The generated
+database role is removed. The temporary checkpoint checkout and generated apps
+were removed after validation; logs remain at
+`/private/tmp/fl-rust-checkpoint-{cli-tests,cli-build,package-final,release,billing-runtime}.log`.
+This checkpoint validates the committed billing foundation; the newer opt-in
+directory authorization and response-validator integrations have separate checks.
+Checklist remains **660/682 (96.8%), 22 open**.

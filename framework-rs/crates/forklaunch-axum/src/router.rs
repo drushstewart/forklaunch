@@ -47,6 +47,8 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+mod response_validation;
+pub use response_validation::ResponseValidators;
 mod request_validation;
 pub use request_validation::RequestValidators;
 
@@ -80,6 +82,8 @@ pub enum HandlerErrorFormat {
 pub struct RouterConfig {
     /// Application validators bound to declared unversioned request schemas.
     pub request_validators: RequestValidators,
+    /// Opt-in bounded validators for finite response bodies.
+    pub response_validators: ResponseValidators,
     /// Native callbacks run around each version's body schema validation.
     pub version_body_hooks: forklaunch_http::VersionBodyHooksRegistry,
     /// Optional server-side browser sessions and CSRF policy.
@@ -130,6 +134,7 @@ impl Default for RouterConfig {
         Self {
             version_body_hooks: forklaunch_http::VersionBodyHooksRegistry::default(),
             request_validators: RequestValidators::default(),
+            response_validators: ResponseValidators::default(),
             #[cfg(feature = "cookie-session")]
             cookie_sessions: None,
             openapi_enabled: true,
@@ -497,6 +502,9 @@ impl ForkLaunchRouter {
         self.config
             .request_validators
             .extend(config.request_validators);
+        self.config
+            .response_validators
+            .extend(config.response_validators);
 
         for mut mount in internal_mounts {
             mount.prefix = join_base_path(&prefix, &mount.prefix);
@@ -846,6 +854,7 @@ fn docs_handler(html: String) -> MethodRouter {
 
 /// Indexed contracts used by the validation middleware.
 struct ValidationState {
+    response_validators: ResponseValidators,
     request_validators: RequestValidators,
     routes: HashMap<String, RouteContract>,
     versions: HashMap<String, forklaunch_http::VersionedRoutePlan>,
@@ -900,6 +909,10 @@ impl ValidationState {
             .request_validators
             .validate_routes(registry.routes())
             .expect("invalid request validator registration");
+        config
+            .response_validators
+            .validate_routes(registry.routes())
+            .expect("invalid response validator registration");
         let hooks = &config.version_body_hooks;
         hooks
             .validate_routes(registry.routes())
@@ -923,6 +936,7 @@ impl ValidationState {
             .collect();
         Self {
             request_validators: config.request_validators.clone(),
+            response_validators: config.response_validators.clone(),
             routes,
             versions,
             local_validation,
@@ -1041,7 +1055,7 @@ async fn validate_contract(
         Err(error) => return formatted_body_read_error(&error, state.parser_error_format, &parts),
     };
 
-    let mut framework_request = match state.build_request(&contract, &parts, &bytes) {
+    let framework_request = match state.build_request(&contract, &parts, &bytes) {
         Ok(request) => request,
         Err(response) => return framework_response_to_axum(response),
     };
@@ -1089,6 +1103,17 @@ async fn validate_contract(
     {
         return framework_response_to_axum(response);
     }
+    execute_validated(&state, contract, parts, bytes, framework_request, next).await
+}
+
+async fn execute_validated(
+    state: &ValidationState,
+    contract: RouteContract,
+    mut parts: Parts,
+    bytes: bytes::Bytes,
+    mut framework_request: FrameworkRequest,
+    next: Next,
+) -> Response {
     parts.extensions.insert(state.handler_error_format);
     parts.extensions.insert(state.parser_error_format);
     // LocalRouter owns selection and response validation for its handlers.
@@ -1098,8 +1123,12 @@ async fn validate_contract(
         .local_validation
         .contains(&route_key(contract.method, &contract.openapi_path))
     {
-        return next
+        let response = next
             .run(Request::from_parts(parts, AxumBody::from(bytes)))
+            .await;
+        return state
+            .response_validators
+            .validate(&contract, &framework_request, response)
             .await;
     }
     let version_plan = &state.versions[&route_key(contract.method, &contract.openapi_path)];
@@ -1124,7 +1153,11 @@ async fn validate_contract(
     let response = next
         .run(Request::from_parts(parts, AxumBody::from(bytes)))
         .await;
-    validate_response_status(&contract, response, &correlation_id)
+    let response = validate_response_status(&contract, response, &correlation_id);
+    state
+        .response_validators
+        .validate(&contract, &framework_request, response)
+        .await
 }
 
 fn with_body_limit(router: Router, limit: usize, format: ParserErrorFormat) -> Router {
