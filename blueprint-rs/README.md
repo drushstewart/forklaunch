@@ -101,7 +101,7 @@ Billing base services are available in `forklaunch_billing_base::services` with 
 
 BullMQ producers inherit configured job defaults while the wrapper overrides retry attempts/backoff and intentionally leaves job IDs auto-generated, matching TypeScript. Metadata includes log limits, stack-trace limits, timestamps and size limits. Actual cross-language fixtures exercise persisted options, oversized-job rejection, bounded log retention, delayed/priority/LIFO ordering and worker concurrency. Repeat/deduplication and rate limiting have actual cross-language fixtures. The [options audit](../plan/RUST-BULLMQ-OPTIONS-AUDIT.md) maps the checked wrapper surface and records remaining upstream-option gaps.
 
-IAM directory parity now includes typed user/role/permission/organization CRUD interfaces, transactional memory and PostgreSQL stores, nested relationship hydration, encrypted sensitive fields, retained-key uniqueness claims and atomic actor audits. Generated IAM modules expose thirty configured directory operations over HTTP and MCP alongside persistent session endpoints. Opaque tokens remain default; the optional `jwt-sessions` feature adds `RsaJwtSessionIssuer` and `PostgresIamService::with_jwt_session_issuer` for RS256 tokens with explicit issuer/audience/key ID, unique IDs, tenant binding and server-resolved grant snapshots. The full token digest remains authoritative for local session validation and revocation. Generated IAM configures the issuer only when all four `SESSION_JWT_*` variables are present; matching public-key publication is application-owned. Directory users and authentication identities remain separate, matching the configured TypeScript CRUD mapper's omission of passwords. Base cookie/CSRF, verification/reset and OAuth/OIDC integration remain separate gates; the Better Auth module has its own lifecycle implementation. Base discovery returns 204; its system-role compliance routes return 404 under the configured all-`none` entity policy.
+IAM directory parity now includes typed user/role/permission/organization CRUD interfaces, transactional memory and PostgreSQL stores, nested relationship hydration, encrypted sensitive fields, retained-key uniqueness claims and atomic actor audits. Generated IAM modules expose thirty configured directory operations over HTTP and MCP alongside persistent session endpoints. Opaque tokens remain default; the optional `jwt-sessions` feature adds `RsaJwtSessionIssuer` and `PostgresIamService::with_jwt_session_issuer` for RS256 tokens with explicit issuer/audience/key ID, unique IDs, tenant binding and server-resolved grant snapshots. The full token digest remains authoritative for local session validation and revocation. Generated IAM configures the issuer only when all four `SESSION_JWT_*` variables are present; matching public-key publication is application-owned. Directory users and authentication identities remain separate, matching the configured TypeScript CRUD mapper's omission of passwords. Optional base browser cookie/CSRF routes use the shared session layer (see below); generated durable browser storage, verification/reset and OAuth/OIDC integration remain separate gates; the Better Auth module has its own lifecycle implementation. Base discovery returns 204; its system-role compliance routes return 404 under the configured all-`none` entity policy.
 
 See the [Rust/TypeScript compatibility baseline](../docs/adding-projects/rust-compatibility.md) for source package versions, artifact formats and implementation choices.
 
@@ -328,3 +328,36 @@ external public keys and configure JWT verification separately. Popup callback h
 does not configure OpenID discovery metadata. The key URL
 is configuration metadata and is never fetched by this adapter; signing algorithms,
 key rotation and callback deadlines remain the external signer's responsibility.
+
+
+### Base IAM browser sessions
+
+Enable `forklaunch-iam-axum/browser-sessions` and construct
+`BrowserIam::new(service, store, "__Host-iam", "https://your-app.example")` from
+`forklaunch_iam_axum::browser`. Supply a durable shared `tower_sessions::SessionStore`
+with a dedicated namespace for the tenant/application. MemoryStore is suitable
+only for tests/development; generated modules do not silently enable it.
+Use `browser.mount(router)` to reserve `/auth/browser` in a ForkLaunch router;
+HTTP middleware and ordinary HTTP/MCP services remain available, while browser
+login/logout and CSRF endpoints are excluded from contract/SDK/MCP exports.
+
+GET `/auth/browser/csrf` returns `{ "csrfToken": "..." }` and an anonymous secure
+cookie. POST `/auth/browser/login` with ordinary email/password JSON, that cookie,
+`x-csrf-token` and the exact configured HTTPS Origin. Successful login rotates the
+cookie ID and CSRF token; the response contains only the new CSRF token. GET
+`/auth/browser/session` returns current subject, roles, permissions and expiry.
+POST `/auth/browser/logout` requires the current CSRF proof and revokes the
+underlying IAM session before clearing the cookie. All endpoint responses use
+`Cache-Control: no-store`. Cookies are Secure, HttpOnly, SameSite=Strict and path
+`/`; applications own TLS termination and trusted-origin CORS configuration.
+
+The server-side cookie store contains the IAM bearer credential and must be
+protected as secret storage. It never appears in a browser response or cookie.
+Every authentication resolves the persistent IAM ledger and current user/grants,
+so password changes, disabled users, revocation and tenant isolation apply.
+Re-login revokes the prior credential. For application-owned cookie-authenticated
+contract routes, use `browser.cookie_sessions()` in `RouterConfig.cookie_sessions`
+and the matching `AuthConfig::cookie` name. Existing bearer endpoints continue to
+require their bearer header. Cookie records expire after thirty minutes without
+writes; IAM credentials retain their one-hour maximum. Durable-store wiring in
+the generator and OAuth/OIDC flows remain separate work.

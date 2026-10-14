@@ -60,6 +60,35 @@ async function start(tenant, classified = false) {
   return { baseUrl, child, exited };
 }
 
+async function browserSessions(base) {
+  const origin='https://iam.example.test';
+  async function request(path,{method='GET',cookie='',proof='',source=origin,password='first-password'}={}) {
+    const response=await fetch(base+'/auth/browser/'+path,{method,headers:{...(cookie?{cookie}:{}),...(proof?{'x-csrf-token':proof}:{}),origin:source,...(path==='login'&&method==='POST'?{'content-type':'application/json'}:{})},body:path==='login'&&method==='POST'?JSON.stringify({email:'member@example.com',password}):undefined});
+    assert.equal(response.headers.get('cache-control'),'no-store');return response;
+  }
+  function sessionCookie(response) {
+    const value=response.headers.get('set-cookie');
+    for(const attribute of ['Secure','HttpOnly','SameSite=Strict','Path=/'])assert.ok(value.includes(attribute));
+    return value.split(';')[0];
+  }
+  assert.equal((await request('session')).status,401);
+  const bootstrap=await request('csrf');assert.equal(bootstrap.status,200);
+  const anonymous=sessionCookie(bootstrap),proof=(await bootstrap.json()).csrfToken;
+  for(const settings of [{source:'https://evil.test'},{proof:'wrong'}])assert.equal((await request('login',{method:'POST',cookie:anonymous,proof,...settings})).status,403);
+  assert.equal((await request('login',{method:'POST',cookie:anonymous,proof,password:'wrong'})).status,401);
+  const login=await request('login',{method:'POST',cookie:anonymous,proof});assert.equal(login.status,200);
+  const cookie=sessionCookie(login),payload=await login.json();assert.deepEqual(Object.keys(payload),['csrfToken']);
+  assert.notEqual(cookie,anonymous);assert.notEqual(payload.csrfToken,proof);
+  assert.equal((await request('session',{cookie:anonymous})).status,401);
+  const current=await request('session',{cookie});assert.equal(current.status,200);
+  const claims=await current.json();assert.equal(claims.sub,'user-1');assert.deepEqual(claims.permissions,['users:read']);assert.equal(claims.id,undefined);
+  assert.equal((await fetch(base+'/users',{headers:{cookie}})).status,401);
+  assert.equal((await request('logout',{method:'POST',cookie,proof})).status,403);
+  assert.equal((await request('logout',{method:'POST',cookie,proof:payload.csrfToken})).status,204);
+  assert.equal((await request('session',{cookie})).status,401);
+  console.log('PASS mounted browser IAM: CSRF and Origin rejection, secure cookie rotation, current grants, no bearer exposure, separate bearer policy and logout');
+}
+
 try {
   for(const settings of [
     {...environment('a',false,false),SESSION_JWT_KEY_ID:'partial'},
@@ -73,6 +102,7 @@ try {
   const tools=await probeMcp(first.baseUrl,['listUsers','getSessionUser','createUser','getUser','getBatchPermissions','surfaceUserRoles']);
   assert.equal(tools.length,40);
   await probeMcp(second.baseUrl,['listUsers']);
+  await browserSessions(first.baseUrl);
   const publicSdk = createForkLaunchSdk({ baseUrl: first.baseUrl });
   const discovery=await publicSdk.iam.discovery.getauthmethods();assert.equal(discovery.code,204);assert.equal(discovery.response,undefined);
   const mcpDiscovery=await mcpRpc(first.baseUrl,'tools/call',{name:'getauthmethods',arguments:{}});assert.equal(mcpDiscovery.isError,false,JSON.stringify(mcpDiscovery));

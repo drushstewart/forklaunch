@@ -7,7 +7,12 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+browser-sessions = ["forklaunch-axum/cookie-session", "dep:tower-sessions"]
+
 [dependencies]
+tower-sessions = { version = "0.15", optional = true }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
 forklaunch-iam-base = { version = "0.1.0", path = "../forklaunch-iam-base", features = ["postgres"] }
 uuid = { version = "1", features = ["v4"] }

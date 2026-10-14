@@ -164,7 +164,10 @@ mod tests {
                                 assert_eq!(body["correlationId"], "wire-test");
                             }
                             AuthErrorFormat::TypeScriptText => {
-                                assert_eq!(bytes.as_ref(), "Public érror.\nSecond line.".as_bytes());
+                                assert_eq!(
+                                    bytes.as_ref(),
+                                    "Public érror.\nSecond line.".as_bytes()
+                                );
                             }
                         }
                     }

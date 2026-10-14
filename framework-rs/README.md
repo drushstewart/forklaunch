@@ -577,7 +577,10 @@ unsafe requests, browsers must send that token in `x-csrf-token`, the session
 cookie, and the exact configured HTTPS `Origin`. Missing, duplicate and foreign
 origins/tokens fail. Verify credentials before calling `login(subject)`; login
 rotates both the session ID and token and returns the replacement token.
-`logout()` flushes the session. Both reject safe methods. Plain Axum handlers
+`logout()` flushes the session. Both reject safe methods.
+`authenticated()` resolves the current server-side binding through the policy.
+`identity()` exposes that binding only to trusted handler code; it is not an
+authentication result and must never be logged or returned if it is a credential. Plain Axum handlers
 can use `policy.wrap(router)` with the same policy/store as the framework router.
 Configure credentialed CORS only for trusted origins when needed.
 

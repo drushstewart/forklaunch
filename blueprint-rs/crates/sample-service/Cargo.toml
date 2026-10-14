@@ -9,6 +9,7 @@ repository.workspace = true
 
 [features]
 default = []
+browser-sessions = ["postgres", "forklaunch-iam-axum/browser-sessions", "dep:tower-sessions"]
 postgres = ["forklaunch-iam-base/postgres", "dep:sqlx", "dep:tokio"]
 
 [[example]]
@@ -16,6 +17,7 @@ name = "postgres_iam"
 required-features = ["postgres"]
 
 [dependencies]
+tower-sessions = { version = "0.15", optional = true }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../forklaunch-blueprint-core" }
 forklaunch-iam-interface = { version = "0.1.0", path = "../interfaces/forklaunch-iam-interface" }
 forklaunch-iam-base = { version = "0.1.0", path = "../implementations/iam/forklaunch-iam-base" }

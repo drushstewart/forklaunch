@@ -416,3 +416,37 @@ Native signature/claim/error tests and restricted-role PostgreSQL tests cover
 exact expiry, cross-tenant rejection, tampering, restart persistence and revocation.
 The existing opaque-session PostgreSQL suite also passes. Generated fixture tests
 use independently generated Node RSA keys and cryptographic verification.
+
+
+### Base IAM browser cookie/CSRF composition (2026-10-13)
+
+The opt-in `browser-sessions` adapter uses the existing shared CookieSessions
+policy: Secure/HttpOnly/SameSite=Strict cookies, exact HTTPS Origin and constant-time
+synchronizer-token checks for unsafe requests, with session/CSRF rotation on login.
+BrowserIam reserves an internal HTTP namespace, so browser login/logout/CSRF
+operations cannot become MCP tools or SDK contract operations. Shared HTTP limits,
+CORS and telemetry continue to apply. Browser responses are no-store and never
+return the underlying IAM credential. Shared CookieSession identity access is
+trusted-handler-only; it does not itself authenticate a stored binding.
+
+The supplied server-side cookie store contains an IAM bearer token and must be
+protected as secret storage, with a dedicated tenant/application namespace and
+durable shared persistence in production. No default production MemoryStore is
+introduced. Authentication checks the current IAM token ledger, disabled status
+and current grants. A store shared accidentally across IAM tenants still cannot
+validate another tenant's underlying token. Re-login revokes the prior token;
+logout revokes before flushing the cookie. A stale/resurrected cookie record
+cannot bypass token revocation. Password changes invalidate the same ledger.
+Cookie writes and IAM writes are not a distributed transaction: failed login
+attempts try to revoke the newly issued credential; a cleanup/storage failure can
+leave an unreachable credential until normal expiry. Generic cookie stores do
+not provide an atomic global revocation ledger. Generated durable-store wiring
+and OAuth/OIDC remain open.
+
+Restricted-role PostgreSQL browser tests exercise CSRF rejection before credential
+issuance, fixation prevention, current grants, disabled users, replacement/logout
+revocation, password invalidation and shared-store tenant isolation. Existing
+bearer tests pass with the extracted common verifier. The shared cookie suite
+also verifies authenticated HTTP/MCP transport behavior. Tests use MemoryStore
+only as an explicit fixture; reusing it across router instances is not evidence
+of durable storage across process restarts.

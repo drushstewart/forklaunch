@@ -142,6 +142,28 @@ impl<S: Send + Sync> FromRequestParts<S> for CookieSession {
     }
 }
 impl CookieSession {
+    /// Reads the application-owned server-side identity binding. This is not an
+    /// authentication result: use `authenticated` to apply the current resolver.
+    /// Never return a secret credential binding to a browser or log it.
+    ///
+    /// # Errors
+    /// Returns a generic storage error without exposing stored data.
+    pub async fn identity(&self) -> Result<Option<String>, Response> {
+        self.session.get(SUBJECT).await.map_err(store_failure)
+    }
+
+    /// Resolves the stored identity against current application authorization.
+    ///
+    /// # Errors
+    /// Rejects missing, revoked or disabled identities and resolver failures.
+    pub async fn authenticated(&self) -> Result<AuthenticatedSession, Response> {
+        let identity = self
+            .identity()
+            .await?
+            .ok_or_else(|| failure(AuthError::MissingCredentials))?;
+        (self.policy.resolver)(identity).await.map_err(failure)
+    }
+
     /// Bootstrap a synchronizer token. Return only to the trusted browser origin.
     ///
     /// # Errors

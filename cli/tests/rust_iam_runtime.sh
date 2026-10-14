@@ -72,7 +72,10 @@ new='''#[allow(dead_code)]
     if env::var("FORKLAUNCH_FIXTURE_CLASSIFIED_IAM").as_deref() == Ok("1") {
         compliance = compliance.with_entity::<ClassifiedUser>(forklaunch_iam_base::directory::DirectoryKind::User, "id")?;
     }
-    let router = forklaunch_iam_axum::directory::iam_router_with_compliance(store, directory, auth, service_info(), compliance);'''
+    // Fixture-only memory store; production applications supply durable storage.
+    let browser = forklaunch_iam_axum::browser::BrowserIam::new(store.clone(), tower_sessions::MemoryStore::default(), "__Host-iam", "https://iam.example.test")?;
+    let router = forklaunch_iam_axum::directory::iam_router_with_compliance(store, directory, auth, service_info(), compliance);
+    let router = browser.mount(router);'''
 p.write_text(s.replace(old,new,1))
 PYTHON
 printf '\npub const USER_OWNED_MARKER: &str = "preserved";\n' >> crates/iam/src/lib.rs
@@ -83,6 +86,16 @@ printf '\n[package.metadata.user]\nmarker = "preserved"\n' >> crates/iam/Cargo.t
 run_cli init module --path . --language rust -m iam-base -d postgresql
 grep -q USER_OWNED_MARKER crates/iam/src/lib.rs
 grep -q 'marker = "preserved"' crates/iam/Cargo.toml
+python3 - <<'PYTHON'
+from pathlib import Path
+p=Path('crates/iam/Cargo.toml')
+s=p.read_text()
+old='forklaunch-iam-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-axum" }'
+assert old in s
+s=s.replace(old, old[:-2]+', features = ["browser-sessions"] }')
+s=s.replace('[dependencies]', '[dependencies]\ntower-sessions = "0.15"', 1)
+p.write_text(s)
+PYTHON
 cargo build --workspace
 run_cli openapi export --path .
 run_cli sdk generate --path . --target all --from contract

@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 //! Contract-driven HTTP composition for an asynchronous, tenant-bound IAM backend.
+#[cfg(feature = "browser-sessions")]
+pub mod browser;
 pub mod directory;
 use axum::{
     Json,
@@ -123,32 +125,42 @@ fn session_config<S: AsyncIamSessions + 'static>(service: &Arc<S>) -> RouterConf
                 .and_then(|header| parse_bearer(header))
                 .filter(|token| token.len() <= 4096)
                 .ok_or(AuthError::MissingCredentials)?;
-            let session = service
-                .validate_session(token)
-                .await
-                .map_err(|error| auth_backend_error(&error))?
-                .ok_or(AuthError::InvalidCredentials)?;
-            let user = service
-                .get_user(&session.user_id)
-                .await
-                .map_err(|error| auth_backend_error(&error))?
-                .filter(|user| !user.disabled)
-                .ok_or(AuthError::InvalidCredentials)?;
-            let permissions = service
-                .permissions_for_user(&user.id)
-                .await
-                .map_err(|error| auth_backend_error(&error))?;
-            let mut principal = Principal::new(&user.id);
-            principal.roles = user.roles;
-            principal.permissions = permissions
-                .into_iter()
-                .map(|p| format!("{}:{}", p.resource, p.action))
-                .collect();
-            let claims = serde_json::json!({"sub":principal.subject, "roles":principal.roles,
-                "permissions":principal.permissions, "exp":session.expires_at_unix_seconds});
-            Ok(AuthenticatedSession::new(principal, claims))
+            authenticate_stored_session(service.as_ref(), token).await
         }
     })
+}
+
+async fn authenticate_stored_session<S: AsyncIamSessions>(
+    service: &S,
+    token: &str,
+) -> Result<AuthenticatedSession, AuthError> {
+    if token.is_empty() || token.len() > 4096 {
+        return Err(AuthError::InvalidCredentials);
+    }
+    let session = service
+        .validate_session(token)
+        .await
+        .map_err(|error| auth_backend_error(&error))?
+        .ok_or(AuthError::InvalidCredentials)?;
+    let user = service
+        .get_user(&session.user_id)
+        .await
+        .map_err(|error| auth_backend_error(&error))?
+        .filter(|user| !user.disabled)
+        .ok_or(AuthError::InvalidCredentials)?;
+    let permissions = service
+        .permissions_for_user(&user.id)
+        .await
+        .map_err(|error| auth_backend_error(&error))?;
+    let mut principal = Principal::new(&user.id);
+    principal.roles = user.roles;
+    principal.permissions = permissions
+        .into_iter()
+        .map(|p| format!("{}:{}", p.resource, p.action))
+        .collect();
+    let claims = serde_json::json!({"sub":principal.subject, "roles":principal.roles,
+                "permissions":principal.permissions, "exp":session.expires_at_unix_seconds});
+    Ok(AuthenticatedSession::new(principal, claims))
 }
 
 async fn login_handler<S: AsyncIamSessions>(

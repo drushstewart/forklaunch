@@ -13,7 +13,10 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::sync::Arc;
 use tower::ServiceExt;
 
+static FIXTURE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 struct Fixture {
+    _schema_guard: tokio::sync::MutexGuard<'static, ()>,
     owner: PgPool,
     pool: PgPool,
     role: String,
@@ -23,6 +26,8 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        // PostgreSQL ACL updates on shared tables conflict even for distinct roles.
+        let schema_guard = FIXTURE_LOCK.lock().await;
         let url =
             std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").expect("PostgreSQL test URL required");
         let owner = PgPoolOptions::new()
@@ -80,6 +85,7 @@ impl Fixture {
         seed(first.as_ref(), "First", "first-password").await;
         seed(second.as_ref(), "Second", "second-password").await;
         Self {
+            _schema_guard: schema_guard,
             owner,
             pool,
             role,
@@ -89,6 +95,18 @@ impl Fixture {
     }
 
     async fn close(self) {
+        for table in [
+            "fl_iam_sessions",
+            "fl_iam_users",
+            "fl_iam_roles",
+            "fl_iam_organizations",
+        ] {
+            sqlx::query(&format!("DELETE FROM {table} WHERE tenant_id=ANY($1)"))
+                .bind(vec![format!("{}-a", self.role), format!("{}-b", self.role)])
+                .execute(&self.owner)
+                .await
+                .unwrap();
+        }
         self.pool.close().await;
         sqlx::query(&format!("DROP OWNED BY {}", self.role))
             .execute(&self.owner)
@@ -279,3 +297,7 @@ async fn assert_authenticated_reads(first: &Router, token: &str) {
         "bearer"
     );
 }
+
+#[cfg(feature = "browser-sessions")]
+#[path = "support/iam_browser.rs"]
+mod browser;

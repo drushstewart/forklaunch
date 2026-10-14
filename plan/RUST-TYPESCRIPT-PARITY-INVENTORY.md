@@ -4555,3 +4555,32 @@ source packaging checks **953** assets and release-tool tests pass **9** cases.
 No registry upload or external deployment occurred.
 Logs: `/private/tmp/fl-iam-jwt-{unit,postgres,opaque,clippy,cli-tests,package,release-tests,generated-final}.log`.
 Checklist remains **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Base IAM browser cookie/CSRF adapter
+
+Optional `forklaunch-iam-axum/browser-sessions` adds BrowserIam using the existing
+shared CookieSessions implementation. Explicit application-owned storage holds
+the server-side credential; browser responses contain only the CSRF proof or
+current subject/grants/expiry. Login rotates cookie and CSRF IDs and revokes the
+prior credential. Logout revokes the IAM session before clearing the cookie.
+Current persistent sessions, user state and grants govern each authentication.
+The internal `/auth/browser` mount preserves shared HTTP middleware and keeps
+browser endpoints out of OpenAPI/SDK/MCP operations. Existing bearer endpoints
+retain their separate header requirement. All browser responses are no-store.
+
+The restricted-role PostgreSQL suite passes browser fixation/CSRF/Origin checks,
+current-grant changes, disabled users, tenant isolation, cookie replacement,
+logout and password-change revocation, alongside the existing bearer suite.
+Shared cookie tests pass, including authenticated HTTP/MCP requests. Fixture
+schema-permission setup is serialized to avoid PostgreSQL catalog ACL races,
+and successful fixtures remove their tenant rows before dropping owned roles.
+Fresh relocated run `5EzzDH` passes mounted browser HTTP checks, unchanged 40-tool
+MCP startup/discovery, signed/opaque sessions, both SDKs, directory/compliance,
+restart/logout and CLI rename/delete. Packaging includes **955** source/template
+assets; release-tool tests pass **9** cases and the source API inventory is current.
+
+Tests explicitly use MemoryStore. Reusing it across router instances is not a
+process-restart durability claim. Production durable-store generation and OAuth/
+OIDC flows remain open; the broader checklist stays **658/682 (96.5%), 24 open**.
+Logs: `/private/tmp/fl-iam-browser-{postgres-final,clippy-final,shared,generated,package,release-final,inventory}.log`.
