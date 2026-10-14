@@ -6218,3 +6218,31 @@ CI includes the new fixture. Callback code owns the actual schema transformation
 this does not implement a generic Zod interpreter, query/header transforms or
 MCP argument transformation. ParsedJsonBody now has a private marker; downstream
 struct literals must migrate to parser-produced values/trusted transformation.
+
+## Already-satisfied paused-effect acknowledgement receipt (2026-10-14)
+
+An explicit direct-client operator API authenticates account/mode and retrieves
+the exact pending Stripe event plus current subscription. It requires paused
+status, exact customer/sealed subscription binding/local-party relation and an
+already-inactive local row. Only bookkeeping changes: audit+receipt+attempt removal
+commit atomically under event/row/binding locks and exact attempt/xmin/generation
+checks. No provider/local subscription mutation, replay, financial action or
+public route is added. Managed transport is rejected before network I/O.
+
+This is acknowledgement of an already-satisfied effect, not proof of callback
+causality or uninterrupted pause history. Authenticated GET evidence is not the
+original webhook HMAC signature. Event creation must precede attempt/inspection;
+older-than30day/unavailable events remain manual. Fresh five-second context checks
+follow awaited reads/locks and precede COMMIT. Late post-COMMIT expiry returns
+RecordedEvidenceNoLongerCurrent; ambiguous COMMIT errors/cancellation require
+explicit receipt inspection and do not imply rollback. Trusted operator UPDATE
+on binding rows is additionally required for SELECT FOR UPDATE; no runtime
+grant is installed automatically.
+
+Restricted PostgreSQL/authenticated HTTP proof covers evidence denials, tenants,
+row/binding ABA, stale attempts, audit/receipt/delete rollback, actual5.2second
+lock expiry, precommit rollback, postcommit outcome, managed zero-I/O and exact
+ciphertext preservation. Eight Stripe regressions and strict base/Stripe Clippy
+pass: /private/tmp/fl-paused-effect-{pg,clippy,lib}.log. CI runs the ignored fixture.
+Other webhook effects, absent ownership, managed paused inspection, capture/
+financial interruptions and provider/public identity integration remain open.

@@ -773,3 +773,15 @@ Only body presence/media checks are skipped after registered schema success;
 other native request checks still run. Warning logs contain static diagnostics
 and operation/correlation metadata, never callback payload or input. Callbacks
 are trusted server code; anonymous rejection text must remain safe for exposure.
+
+
+Paused-effect acknowledgement review (2026-10-14): same-account authenticated
+event/current-subscription reads plus exact sealed ownership and local inactive
+state can complete delivery bookkeeping only. Row/binding xmin and generation,
+exact attempt identity, locks, atomic audit and finite context checks protect
+completion. There is no causal pause-epoch proof, original-HMAC verification,
+provider mutation or subscription write. Post-COMMIT expiry is explicitly recorded
+and ambiguous commits require receipt inspection. Managed mode rejects before
+network I/O. PostgreSQL/HTTP proofs include ABA, rollback and real lock-delay
+expiry. Extra binding UPDATE permission belongs only to the trusted operator
+for row locks; default runtime grants are unchanged.

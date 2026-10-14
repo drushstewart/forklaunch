@@ -5,6 +5,8 @@ pub mod bound_reads;
 #[cfg(feature = "postgres-reconciliation")]
 pub mod checkout_repair;
 pub mod client;
+#[cfg(feature = "postgres-reconciliation")]
+pub mod paused_effect;
 pub mod services;
 pub mod synchronization;
 

@@ -5,7 +5,8 @@ mod provider_bindings;
 mod webhooks;
 pub use checkout_repair::CheckoutRepairSnapshot;
 pub use provider_bindings::{
-    DurableStripeBinding, StripeBindingScope, StripeSubscriptionOwnership,
+    DurableStripeBinding, PausedEffectAcknowledgement, PausedSubscriptionEffectSnapshot,
+    StripeBindingScope, StripeSubscriptionOwnership,
 };
 pub use webhooks::{PendingWebhook, WebhookResolution};
 

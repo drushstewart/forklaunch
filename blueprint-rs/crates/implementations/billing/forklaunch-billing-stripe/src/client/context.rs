@@ -217,6 +217,35 @@ impl StripeBillingClient {
         }
         Ok(value)
     }
+    #[cfg(feature = "postgres-reconciliation")]
+    pub(crate) fn require_direct_paused_evidence(&self) -> BlueprintResult<()> {
+        if !matches!(&self.transport, BillingTransport::Direct { .. }) {
+            return Err(BlueprintError::new(
+                "billing_paused_effect_unsupported",
+                "Paused effect acknowledgement requires a direct provider client",
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(feature = "postgres-reconciliation")]
+    pub(crate) async fn retrieve_paused_evidence(
+        &self,
+        context: &VerifiedStripeContext,
+        resource: super::StripeResource,
+        id: &str,
+    ) -> BlueprintResult<Value> {
+        self.require_direct_paused_evidence()?;
+        context.ensure_current(self)?;
+        if !matches!(
+            resource,
+            super::StripeResource::Event | super::StripeResource::Subscription
+        ) {
+            return Err(mismatch());
+        }
+        let value = self.retrieve(resource, id, &json!({})).await?;
+        context.ensure_current(self)?;
+        Ok(value)
+    }
     async fn context_get(&self, resource: &str) -> BlueprintResult<Value> {
         let BillingTransport::Direct { http, secret } = &self.transport else {
             return Err(mismatch());
