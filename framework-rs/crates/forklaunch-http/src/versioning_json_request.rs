@@ -14,6 +14,24 @@ use std::{collections::BTreeMap, sync::Arc};
 pub struct ParsedJsonBody {
     pub value: Option<Arc<Value>>,
     pub raw_body: Option<Arc<Vec<u8>>>,
+    transformed: bool,
+}
+
+impl ParsedJsonBody {
+    /// Commit a trusted declared-body schema result while preserving raw bytes.
+    /// Successful root removal is distinct from an unvalidated absent body.
+    #[must_use]
+    pub fn with_transformed_value(mut self, value: Option<Value>) -> Self {
+        self.value = value.map(Arc::new);
+        self.transformed = true;
+        self
+    }
+
+    /// Whether a registered body schema accepted and transformed this value.
+    #[must_use]
+    pub const fn is_transformed(&self) -> bool {
+        self.transformed
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +94,21 @@ impl JsonRequestParsers {
             },
         );
         Ok(())
+    }
+
+    /// Require an exact registered parser for one unversioned route.
+    /// # Errors
+    /// Rejects absent or stale parser registrations.
+    pub fn validate_registration(&self, route: &RouteContract) -> Result<(), String> {
+        if self
+            .entries
+            .get(&key(route))
+            .is_some_and(|entry| matches_registration(route, entry))
+        {
+            Ok(())
+        } else {
+            Err("Missing or stale JSON parser registration".into())
+        }
     }
 
     /// Validate registrations against original declarations before exposing a router.
@@ -144,6 +177,7 @@ impl JsonRequestParsers {
             return Ok(Some(ParsedJsonBody {
                 value: None,
                 raw_body: None,
+                transformed: false,
             }));
         }
         let charset = charset::charset(
@@ -188,6 +222,7 @@ impl JsonRequestParsers {
         Ok(Some(ParsedJsonBody {
             value: value.map(Arc::new),
             raw_body: Some(Arc::new(decoded.into_owned())),
+            transformed: false,
         }))
     }
 }

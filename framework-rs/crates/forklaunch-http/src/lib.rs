@@ -810,6 +810,13 @@ fn validate_request_body(
     request: &FrameworkRequest,
     has_parsed_body: bool,
 ) -> Vec<ContractValidationError> {
+    if request
+        .parsed_json
+        .as_ref()
+        .is_some_and(ParsedJsonBody::is_transformed)
+    {
+        return Vec::new();
+    }
     let mut errors = Vec::new();
     if let Some(body) = &contract.body {
         if request.body.is_empty() && !has_parsed_body {

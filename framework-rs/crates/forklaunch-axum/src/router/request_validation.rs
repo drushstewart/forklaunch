@@ -5,6 +5,15 @@ use forklaunch_contract::{
 use forklaunch_http::{ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse};
 use std::{collections::BTreeMap, sync::Arc};
 
+type JsonTransform =
+    dyn Fn(&FrameworkRequest) -> Result<Option<serde_json::Value>, FrameworkResponse> + Send + Sync;
+
+#[derive(Clone)]
+enum Callback {
+    Reject(Arc<Validator>),
+    JsonTransform(Arc<JsonTransform>),
+}
+
 type Validator = dyn Fn(&FrameworkRequest, Option<&str>) -> Option<FrameworkResponse> + Send + Sync;
 
 /// When a registered request callback executes. Native schema checks retain
@@ -24,15 +33,18 @@ struct Registration {
     schema: RequestContract,
     stage: RequestValidationStage,
     rejection: Option<ResponseContract>,
-    validate: Arc<Validator>,
+    validate: Callback,
 }
 
 /// Validators are bound to a declared request schema and method/operation pair.
-/// Callbacks run after authentication by default and before local or Axum handlers,
+/// Rejection callbacks run after authentication by default and before local or Axum handlers,
 /// only in error-validation mode. They supplement native contract checks.
 /// The optional raw query preserves repeated keys that `FrameworkRequest::query`
 /// flattens. A returned response rejects the request; its diagnostics must be safe
-/// for public consumption. This API does not translate validator semantics.
+/// for public consumption. JSON transform registrations instead run before auth
+/// in every mode. Handlers must consume `ParsedJsonBody` to observe transformed
+/// values; raw Axum JSON/body extractors still consume original wire bytes.
+/// This API does not translate validator semantics.
 #[derive(Clone, Default)]
 pub struct RequestValidators {
     entries: BTreeMap<String, Registration>,
@@ -63,7 +75,7 @@ impl RequestValidators {
                 schema: route.request.clone(),
                 stage: RequestValidationStage::default(),
                 rejection: None,
-                validate: Arc::new(validate),
+                validate: Callback::Reject(Arc::new(validate)),
             },
         );
         Ok(())
@@ -74,7 +86,7 @@ impl RequestValidators {
     /// Parser failures precede both stages. Pre-auth diagnostics must be safe to
     /// expose without credentials; existing rejection metadata remains enforced.
     /// # Errors
-    /// Rejects missing registrations or changed/versioned request declarations.
+    /// Rejects missing/stale registrations or moving a JSON transform after auth.
     pub fn set_stage(
         &mut self,
         route: &RouteContract,
@@ -86,6 +98,11 @@ impl RequestValidators {
             .ok_or("Missing request validator registration")?;
         if !route.versions.is_empty() || entry.schema != route.request {
             return Err("Request validator schema no longer matches its route".into());
+        }
+        if matches!(entry.validate, Callback::JsonTransform(_))
+            && stage != RequestValidationStage::BeforeAuthentication
+        {
+            return Err("JSON transforms must run before authentication".into());
         }
         entry.stage = stage;
         Ok(())
@@ -126,6 +143,85 @@ impl RequestValidators {
             .ok_or("Missing inserted validator")?
             .rejection = Some(rejection);
         Ok(())
+    }
+
+    /// Register a trusted JSON-body schema callback, executed once before auth
+    /// in every validation mode. Input is immutable. Success atomically replaces
+    /// `ParsedJsonBody::value`, including root removal, retaining original bytes.
+    /// Error-mode failures return the declared public 400 response; None/Warning
+    /// keep the entire original parsed value. Warning emits a static diagnostic
+    /// without body data or callback payloads. Callback semantics are caller-owned;
+    /// this does not implement generic Zod transforms or affect MCP invocation.
+    /// # Errors
+    /// Requires an exact JSON parser registration and an explicit 400 declaration.
+    pub fn insert_json_transform(
+        &mut self,
+        route: &RouteContract,
+        parsers: &forklaunch_http::JsonRequestParsers,
+        rejection: ResponseContract,
+        transform: impl Fn(&FrameworkRequest) -> Result<Option<serde_json::Value>, FrameworkResponse>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Result<(), String> {
+        parsers.validate_registration(route)?;
+        if rejection.status_code != 400 {
+            return Err("JSON schema transforms require a 400 rejection declaration".into());
+        }
+        self.insert_with_rejection(route, rejection, |_, _| None)?;
+        let entry = self
+            .entries
+            .get_mut(&key(route))
+            .ok_or("Missing request validator registration")?;
+        entry.stage = RequestValidationStage::BeforeAuthentication;
+        entry.validate = Callback::JsonTransform(Arc::new(transform));
+        Ok(())
+    }
+
+    pub(super) fn validate_json_parsers(
+        &self,
+        routes: &[RouteContract],
+        parsers: &forklaunch_http::JsonRequestParsers,
+    ) -> Result<(), String> {
+        for route in routes {
+            if self
+                .entries
+                .get(&key(route))
+                .is_some_and(|entry| matches!(entry.validate, Callback::JsonTransform(_)))
+            {
+                parsers.validate_registration(route)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn transform_json(
+        &self,
+        route: &RouteContract,
+        request: &mut FrameworkRequest,
+    ) -> Option<FrameworkResponse> {
+        let entry = self.entries.get(&key(route))?;
+        let Callback::JsonTransform(transform) = &entry.validate else {
+            return None;
+        };
+        let Some(parsed) = request.parsed_json.clone() else {
+            return Some(internal_failure(request));
+        };
+        match transform(request) {
+            Ok(value) => {
+                request.parsed_json = Some(parsed.with_transformed_value(value));
+                None
+            }
+            Err(response) if route.options.request_validation == ValidationMode::Error => {
+                Some(check_rejection(entry, request, response))
+            }
+            Err(_) => {
+                if route.options.request_validation == ValidationMode::Warning {
+                    tracing::warn!(operation = %route.operation_name, correlation_id = %request.context.correlation_id, "request JSON schema validation failed; original parsed body retained");
+                }
+                None
+            }
+        }
     }
 
     pub(super) fn project(
@@ -211,20 +307,32 @@ impl RequestValidators {
             return None;
         }
         let entry = self.entries.get(&key(route))?;
-        let response = (entry.validate)(request, raw_query)?;
-        if entry
-            .rejection
-            .as_ref()
-            .is_some_and(|declared| !matches_rejection(declared, &response))
-        {
-            return Some(
-                ErrorResponse::new(ErrorKind::Internal, "internal server error")
-                    .with_correlation_id(request.context.correlation_id.clone())
-                    .to_response(),
-            );
-        }
-        Some(response)
+        let Callback::Reject(validate) = &entry.validate else {
+            return None;
+        };
+        let response = validate(request, raw_query)?;
+        Some(check_rejection(entry, request, response))
     }
+}
+
+fn internal_failure(request: &FrameworkRequest) -> FrameworkResponse {
+    ErrorResponse::new(ErrorKind::Internal, "internal server error")
+        .with_correlation_id(request.context.correlation_id.clone())
+        .to_response()
+}
+fn check_rejection(
+    entry: &Registration,
+    request: &FrameworkRequest,
+    response: FrameworkResponse,
+) -> FrameworkResponse {
+    if entry
+        .rejection
+        .as_ref()
+        .is_some_and(|declared| !matches_rejection(declared, &response))
+    {
+        return internal_failure(request);
+    }
+    response
 }
 
 fn check_conflict(route: &RouteContract, rejection: &ResponseContract) -> Result<(), String> {

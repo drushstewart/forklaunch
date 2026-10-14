@@ -293,6 +293,19 @@ credentials. This controls the explicit callback, not native schema checks or
 request transformations. Authentication and authorization still run after a
 successful callback.
 
+`RequestValidators::insert_json_transform` registers a schema-bound JSON
+transform alongside matching parser registration and declared 400 rejection
+metadata. It runs once before authentication in all validation modes. Successful
+output replaces the parsed value atomically, including absent defaults or root
+removal; None/Warning failures preserve the complete original value, while Error
+rejects before authentication. Warning logs omit callback/input contents.
+Only native body presence/media rechecks are suppressed after schema success;
+other native field checks remain. Handlers consume `ParsedJsonBody` to see the
+result; raw Axum extractors still read original bytes. Obtain parsed bodies from
+the parser rather than struct literals; the transform-success marker is private.
+The callback owns schema semantics; generic Zod, query/header transformation and
+MCP handling remain separate.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

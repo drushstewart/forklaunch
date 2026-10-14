@@ -6198,3 +6198,23 @@ migration6, subject hook and request-order source:
 receipt. The earlier newly-unmapped preview feature finding is addressed by
 this native profile; managed model catalog/streaming APIs and broader public
 symbol/DTO semantic coverage remain in gate849.
+
+## Atomic unversioned JSON schema-transform receipt (2026-10-14)
+
+A distinct RequestValidators JSON-transform registration requires matching
+parser metadata and a declared400 rejection. Immutable parsed input transforms
+once before auth in all modes; successful outputs commit atomically, including
+absent defaults and root removal. None/Warning failures preserve the entire
+original parsed body without partial coercion; Error rejects before auth.
+Warning diagnostics are static and contain no callback/input values. A private
+success marker suppresses only native body presence/media rechecks; unrelated
+required headers and other field checks remain. Auth/local/Axum consumers use
+ParsedJsonBody; original/decompressed bytes and raw Axum extractors remain intact.
+
+100 Axum plus48 HTTP tests,57 actual-source transform pairs(114 observations),
+30 ordering regression pairs and strict HTTP/Axum MCP/cookie-session Clippy pass:
+/private/tmp/fl-request-transform-{tests,parity,order-regression,clippy}.log.
+CI includes the new fixture. Callback code owns the actual schema transformation;
+this does not implement a generic Zod interpreter, query/header transforms or
+MCP argument transformation. ParsedJsonBody now has a private marker; downstream
+struct literals must migrate to parser-produced values/trusted transformation.

@@ -764,3 +764,12 @@ failures retain status/retry metadata without provider response text. Browser
 UTF-8/numeric compatibility is scoped to the new bounded path; existing provider
 transport policy remains unchanged. Chat has no streaming method, preserves
 absent timestamps, and retains the native JSON value representation limits.
+
+
+JSON transformation review (2026-10-14): schema-bound transforms require matching
+parser registration and explicit400 metadata. They run atomically before auth,
+with original bytes retained and no partial output on ignored validation failure.
+Only body presence/media checks are skipped after registered schema success;
+other native request checks still run. Warning logs contain static diagnostics
+and operation/correlation metadata, never callback payload or input. Callbacks
+are trusted server code; anonymous rejection text must remain safe for exposure.

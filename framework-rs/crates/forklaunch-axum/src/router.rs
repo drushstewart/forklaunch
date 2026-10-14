@@ -981,6 +981,10 @@ impl ValidationState {
             .validate_routes(declared_registry.routes())
             .expect("invalid request validator registration");
         config
+            .request_validators
+            .validate_json_parsers(declared_registry.routes(), &config.json_request_parsers)
+            .expect("missing JSON transform parser registration");
+        config
             .response_validators
             .validate_routes(declared_registry.routes())
             .expect("invalid response validator registration");
@@ -1185,6 +1189,15 @@ async fn validate_matched_contract(
                 state.parser_error_format,
             ));
         }
+    }
+    if let Some(response) = state
+        .request_validators
+        .transform_json(&contract, &mut framework_request)
+    {
+        return framework_response_to_axum(response);
+    }
+    if let Some(parsed) = &framework_request.parsed_json {
+        parts.extensions.insert(parsed.clone());
     }
     if let Some(response) = state.request_validators.reject_at(
         RequestValidationStage::BeforeAuthentication,
@@ -2258,3 +2271,6 @@ mod json_request_tests;
 
 #[cfg(test)]
 mod request_order_tests;
+
+#[cfg(test)]
+mod request_transform_tests;
