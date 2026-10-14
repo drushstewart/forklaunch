@@ -1392,7 +1392,7 @@
                 },
                 {
                   "name": "listPaymentLinks",
-                  "signature": "async listPaymentLinks(\n    idsDto?: IdsDto\n  ): Promise<MapperDomains['PaymentLinkMapper'][]>",
+                  "signature": "async listPaymentLinks(\n    idsDto?: IdsDto,\n    maxValidatedRecords?: number\n  ): Promise<MapperDomains['PaymentLinkMapper'][]>",
                   "source": "blueprint/implementations/billing/base/services/paymentLink.service.ts",
                   "line": 226
                 }
@@ -2346,7 +2346,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/paymentLink.mapper.types.ts",
               "line": 6,
-              "type": "{\n  PaymentLinkMapper: {\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
+              "type": "{\n  PaymentLinkMapper: {\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2883,51 +2883,51 @@
                 },
                 {
                   "name": "constructor",
-                  "signature": "constructor(\n    stripeClient: Stripe,\n    em: EntityManager,\n    cache: TtlCache,\n    openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    schemaValidator: SchemaValidator,\n    mappers: StripePaymentLinkMappers<StatusEnum, Entities, Dto>,\n    readonly options?: {\n      enableDatabaseBackup?: boolean;\n      telemetry?: TelemetryOptions;\n    }\n  )",
+                  "signature": "constructor(\n    stripeClient: Stripe,\n    em: EntityManager,\n    cache: TtlCache,\n    openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    schemaValidator: SchemaValidator,\n    mappers: StripePaymentLinkMappers<StatusEnum, Entities, Dto>,\n    readonly options?: {\n      enableDatabaseBackup?: boolean;\n      /** Trusted configured-cache list limit; defaults to 100, maximum 1000. */\n      maxConfiguredListRecords?: number;\n      telemetry?: TelemetryOptions;\n    }\n  )",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 61
+                  "line": 62
                 },
                 {
                   "name": "createPaymentLink",
                   "signature": "async createPaymentLink(\n    paymentLinkDto: StripeCreatePaymentLinkDto<StatusEnum>,\n    ...args: unknown[]\n  ): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 95
+                  "line": 106
                 },
                 {
                   "name": "updatePaymentLink",
                   "signature": "async updatePaymentLink(\n    paymentLinkDto: StripeUpdatePaymentLinkDto<StatusEnum>,\n    ...args: unknown[]\n  ): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 126
+                  "line": 137
                 },
                 {
                   "name": "getPaymentLink",
                   "signature": "async getPaymentLink({ id }: IdDto): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 162
+                  "line": 173
                 },
                 {
                   "name": "expirePaymentLink",
                   "signature": "async expirePaymentLink({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 183
+                  "line": 194
                 },
                 {
                   "name": "handlePaymentSuccess",
                   "signature": "async handlePaymentSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 192
+                  "line": 203
                 },
                 {
                   "name": "handlePaymentFailure",
                   "signature": "async handlePaymentFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 201
+                  "line": 212
                 },
                 {
                   "name": "listPaymentLinks",
                   "signature": "async listPaymentLinks(idsDto?: IdsDto): Promise<Dto['PaymentLinkMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 210
+                  "line": 221
                 }
               ]
             }

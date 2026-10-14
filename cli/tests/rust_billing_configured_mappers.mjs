@@ -80,6 +80,39 @@ for(const variant of ['base','stripe']){
    calls=[];response=fresh;const legacy=new Service(client,{},cache,{},actual.validator,{...mappers,PaymentLinkMapper:{...read,readCachedDto:undefined}});
    assert.equal((await legacy.getPaymentLink({id:dto.id})).id,dto.id);assert.deepEqual(calls,[dto.id]);cases++;
   }
+  if(variant==='stripe'&&family==='paymentLink'){
+   const Service=actual.load(path.join(root,'blueprint/implementations/billing/stripe/services/paymentLink.service.ts')).StripePaymentLinkService;
+   const values=Array.from({length:150},(_,i)=>({...dto,id:randomUUID(),stripeFields:{id:`plink_${i}`,object:'payment_link',livemode:false,active:true}}));
+   const rows=new Map(values.map(v=>['payment_link:'+v.id,JSON.stringify(v)]));
+   let reads=0,gets=[],lists=0,writes=0,inflight=0,peak=0,change=x=>x;
+   const cache={async listKeys(){return [...rows.keys()];},async readRecord(key){reads++;return rows.has(key)?{value:JSON.parse(rows.get(key))}:null;},async putRecord(){writes++;}};
+   const client={paymentLinks:{async retrieve(id){gets.push(id);inflight++;peak=Math.max(peak,inflight);await Promise.resolve();inflight--;return change({id,object:'payment_link',livemode:false,active:true});},async list(){lists++;return {data:values.map(v=>({id:v.id,active:true}))};}}};
+   const telemetry={log(){}};
+   for(const limit of [0,-1,1001,1.5,NaN,Infinity,null]){assert.throws(()=>new Service(client,{},cache,telemetry,actual.validator,mappers,{maxConfiguredListRecords:limit}),/limit/);cases++;}
+   const normal=new Service(client,{},cache,telemetry,actual.validator,mappers);
+   for(const request of [undefined,{ids:[]},{ids:values.slice(0,101).map(v=>v.id)}]){
+    await assert.rejects(normal.listPaymentLinks(request),/limit/);assert.equal(reads,0);assert.equal(gets.length,0);assert.equal(lists,0);cases++;
+   }
+   for(const id of [null,7,'','   ']){await assert.rejects(normal.listPaymentLinks({ids:[id]}),/identity/);assert.equal(reads,0);assert.equal(gets.length,0);cases++;}
+   const configured=new Service(client,{},cache,telemetry,actual.validator,mappers,{maxConfiguredListRecords:150});
+   assert.deepEqual(Array.from(await configured.listPaymentLinks(),v=>v.id),values.map(v=>v.id));assert.equal(gets.length,150);assert.equal(reads,150);assert.equal(peak,1);assert.equal(lists,0);assert.equal(writes,0);cases++;
+   const selected=[values[1].id,values[0].id,values[1].id];gets=[];
+   assert.deepEqual(Array.from(await normal.listPaymentLinks({ids:selected}),v=>v.id),selected);assert.deepEqual(gets,['plink_1','plink_0','plink_1']);cases++;
+   const key='payment_link:'+values[1].id,original=rows.get(key);
+   for(const bad of [null,{...values[1],id:randomUUID()},{...values[1],status:'unknown'},{...values[1],stripeFields:{id:'plink_1',object:'checkout.session',livemode:false}}]){
+    if(bad===null)rows.delete(key);else rows.set(key,JSON.stringify(bad));gets=[];
+    await assert.rejects(normal.listPaymentLinks({ids:[values[0].id,values[1].id]}));assert.deepEqual(gets,[]);assert.equal(writes,0);cases++;
+   }
+   rows.set(key,original);
+   change=x=>({...x,active:x.id!=='plink_0'});
+   assert.deepEqual(Array.from(await normal.listPaymentLinks({ids:selected}),v=>v.id),[values[1].id,values[1].id]);cases++;
+   for(const active of [undefined,null,'true',1]){change=x=>({...x,active});await assert.rejects(normal.listPaymentLinks({ids:[values[0].id]}),/active state/);cases++;}
+   change=x=>({...x,livemode:true});await assert.rejects(normal.listPaymentLinks({ids:[values[0].id]}),/does not match/);cases++;
+   change=()=>{throw Error('provider unavailable');};await assert.rejects(normal.listPaymentLinks({ids:[values[0].id]}),/provider unavailable/);cases++;
+   change=x=>x;const fallback=new Service(client,{},cache,telemetry,actual.validator,{...mappers,PaymentLinkMapper:{...read,readCachedDto:undefined}});
+   gets=[];assert.equal((await fallback.listPaymentLinks({ids:[values[0].id]}))[0].id,values[0].id);assert.equal(lists,1);assert.deepEqual(gets,[]);assert.equal(writes,0);cases++;
+   for(const value of values)assert.equal(rows.get('payment_link:'+value.id),JSON.stringify(value));
+  }
   if(['checkoutSession','billingPortal'].includes(family)){
    const Service=actual.load(path.join(root,`blueprint/implementations/billing/base/services/${family}.service.ts`))[`Base${name}Service`];
    const suffix=family==='billingPortal'?'BillingPortalSession':name;

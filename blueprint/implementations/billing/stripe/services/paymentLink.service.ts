@@ -47,6 +47,7 @@ export class StripePaymentLinkService<
     Entities,
     Dto
   >;
+  private readonly maxConfiguredListRecords: number;
   protected readonly stripeClient: Stripe;
   protected readonly em: EntityManager;
   protected readonly cache: TtlCache;
@@ -67,9 +68,19 @@ export class StripePaymentLinkService<
     mappers: StripePaymentLinkMappers<StatusEnum, Entities, Dto>,
     readonly options?: {
       enableDatabaseBackup?: boolean;
+      /** Trusted configured-cache list limit; defaults to 100, maximum 1000. */
+      maxConfiguredListRecords?: number;
       telemetry?: TelemetryOptions;
     }
   ) {
+    const limit =
+      options?.maxConfiguredListRecords === undefined
+        ? 100
+        : options.maxConfiguredListRecords;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+      throw new Error('Invalid configured payment link list limit');
+    }
+    this.maxConfiguredListRecords = limit;
     this.stripeClient = stripeClient;
     this.em = em;
     this.cache = cache;
@@ -209,6 +220,26 @@ export class StripePaymentLinkService<
 
   async listPaymentLinks(idsDto?: IdsDto): Promise<Dto['PaymentLinkMapper'][]> {
     this.openTelemetryCollector.log('info', idsDto ?? 'idsDto is undefined');
+    const { readCachedDto, validateCachedRead } =
+      this.mappers.PaymentLinkMapper;
+    if (readCachedDto && validateCachedRead) {
+      const cached = await this.basePaymentLinkService.listPaymentLinks(
+        idsDto,
+        this.maxConfiguredListRecords
+      );
+      for (const value of cached) validateCachedRead(value);
+      const active: Dto['PaymentLinkMapper'][] = [];
+      for (const value of cached) {
+        const fresh = await readCachedDto(value, (providerId) =>
+          this.stripeClient.paymentLinks.retrieve(providerId)
+        );
+        if (typeof fresh.stripeFields.active !== 'boolean') {
+          throw new Error('Invalid payment link active state');
+        }
+        if (fresh.stripeFields.active) active.push(fresh);
+      }
+      return active;
+    }
     const stripePaymentLinks = await this.stripeClient.paymentLinks.list({
       active: true
     });

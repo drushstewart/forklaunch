@@ -224,18 +224,50 @@ export class BasePaymentLinkService<
   }
 
   async listPaymentLinks(
-    idsDto?: IdsDto
+    idsDto?: IdsDto,
+    maxValidatedRecords?: number
   ): Promise<MapperDomains['PaymentLinkMapper'][]> {
+    if (
+      maxValidatedRecords !== undefined &&
+      (!Number.isSafeInteger(maxValidatedRecords) ||
+        maxValidatedRecords < 1 ||
+        (idsDto?.ids?.length ?? 0) > maxValidatedRecords)
+    ) {
+      throw new Error('Configured payment link list exceeds its record limit');
+    }
+    if (
+      maxValidatedRecords !== undefined &&
+      idsDto?.ids?.some((id) => typeof id !== 'string' || !id.trim())
+    ) {
+      throw new Error('Invalid configured payment link identity');
+    }
     const keys =
       idsDto?.ids && idsDto.ids.length > 0
         ? idsDto?.ids.map((id) => this.createCacheKey(id))
         : await this.cache.listKeys(this.cacheKeyPrefix);
 
-    // Read cached DTOs directly - no need to convert to entity and back
+    if (
+      maxValidatedRecords !== undefined &&
+      keys.length > maxValidatedRecords
+    ) {
+      throw new Error('Configured payment link list exceeds its record limit');
+    }
+    // The opt-in bound also validates identities before provider reads.
     return Promise.all(
       keys.map(async (key) => {
         const paymentLink =
           await this.cache.readRecord<MapperDomains['PaymentLinkMapper']>(key);
+        if (
+          maxValidatedRecords !== undefined &&
+          (!paymentLink?.value ||
+            typeof paymentLink.value.id !== 'string' ||
+            !paymentLink.value.id.trim() ||
+            this.createCacheKey(paymentLink.value.id) !== key)
+        ) {
+          throw new Error(
+            'Cached payment link is missing or its identity does not match'
+          );
+        }
         return paymentLink.value;
       })
     );

@@ -5804,7 +5804,7 @@ tracks interrupted external effects and recovery.
 
 | Remaining boundary | Concrete acceptance criterion |
 | --- | --- |
-| Payment-link lists | Resolve configured public UUID/cache identity before provider reads; no first-provider-page truncation or UUID/provider-ID comparison. Exercise requested IDs, cache corruption/missing rows, inactive objects, provider failure and bounded reads without writes. |
+| Payment-link lists — completed in the receipt below | Configured cache-key/public identities are validated before bounded sequential provider reads; requested order/duplicates, malformed/missing data, active filtering and a 150-record list pass without account-wide provider listing. |
 | Payment-link updates | Avoid duplicate configured mapper execution and unconditional ORM access in cache-only operation; verify cache identity and intended persistence dispatch before external effects. |
 | Checkout/payment-link reference mutations | Resolve trusted scoped provider ownership before expire/update/success/failure calls; public UUIDs and cached provider references alone must not authorize a provider mutation. |
 | Native create identity | Explicitly define and test application public UUID allocation versus retained provider IDs for checkout, payment-link and portal creates; the existing opt-in durable alias reads do not supply this lifecycle. |
@@ -5857,3 +5857,21 @@ Axum dependency edge. README and CI are updated. Receipts:
 `/private/tmp/fl-correlation-{tests,clippy,parity}.log`.
 The JSON parser comparison uses the existing versioned parser; generic
 unversioned JSON parsing and CORS behavior remain separate parity work.
+
+## Configured payment-link list receipt (2026-10-13)
+
+Configured lists now validate every cached DTO and cache-key/public-ID pair
+before provider reads, then resolve retained references sequentially. They
+preserve requested order/duplicates, reject missing/corrupt data and require an
+explicit boolean provider active state. No provider account-wide list or first-
+page ID comparison remains in this configured path. The trusted constructor
+limit defaults to 100 and accepts 1–1000; overflow fails explicitly before record
+or provider reads. A configured 150-record list passes with peak concurrency 1.
+The existing listKeys enumeration itself is not bounded; explicit ID batches
+avoid it. Custom mapper fallbacks and native default provider IDs remain separate.
+
+Validation passes 353 actual configured cases, 168 base and 144 Stripe wrapper
+comparisons, focused strict real-service TypeScript and source inventory checks.
+The new generated `PAYMENT_LINK_READS.md` explains bounds and ownership limits.
+Cached references support reads, not authorization for financial mutations.
+Receipts: `/private/tmp/fl-payment-link-list-{configured,types,base,legacy,inventory}.log`.

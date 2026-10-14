@@ -84,22 +84,31 @@ function paymentLinkEvidence(value: unknown) {
   return { id: link.id, livemode: link.livemode };
 }
 
+function cachedPaymentLinkEvidence(
+  existing: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>
+) {
+  const parsed = schemaValidator.parse(
+    schemaValidator.schemify(PaymentLinkSchemas.PaymentLinkSchema(StatusEnum)),
+    existing
+  );
+  if (!parsed.ok || !parsed.value.id.trim()) {
+    throw new Error('Invalid cached payment link response');
+  }
+  return paymentLinkEvidence(parsed.value.stripeFields);
+}
+
 export const PaymentLinkMapper = {
   ...PaymentLinkEntityMapper,
+  validateCachedRead: (
+    existing: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>
+  ) => {
+    cachedPaymentLinkEvidence(existing);
+  },
   readCachedDto: async (
     existing: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>,
     retrieve: (providerId: string) => Promise<Stripe.PaymentLink>
   ) => {
-    const parsed = schemaValidator.parse(
-      schemaValidator.schemify(
-        PaymentLinkSchemas.PaymentLinkSchema(StatusEnum)
-      ),
-      existing
-    );
-    if (!parsed.ok || !parsed.value.id.trim()) {
-      throw new Error('Invalid cached payment link response');
-    }
-    const before = paymentLinkEvidence(parsed.value.stripeFields);
+    const before = cachedPaymentLinkEvidence(existing);
     const link = await retrieve(before.id);
     const after = paymentLinkEvidence(link);
     if (before.id !== after.id || before.livemode !== after.livemode) {

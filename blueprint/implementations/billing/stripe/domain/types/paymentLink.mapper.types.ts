@@ -13,6 +13,7 @@ export type StripePaymentLinkMappers<
     toDto: (
       entity: InferEntity<Entities['PaymentLinkMapper']>
     ) => Promise<Dto['PaymentLinkMapper']>;
+    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;
     /** Opt-in cached reference lookup; does not prove provider account ownership. */
     readCachedDto?: (
       existing: Dto['PaymentLinkMapper'],
