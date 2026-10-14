@@ -15,6 +15,63 @@ pub struct BackupVerificationOptions {
 }
 
 impl<S: AuthStore> TwoFactorService<S> {
+    // The upstream route exists without a delivery hook. Resolve authority before
+    // reporting an absent OTP; never treat knowledge of a user ID as authority.
+    #[cfg(feature = "http")]
+    pub(crate) async fn missing_otp(
+        &self,
+        token: &str,
+        challenge: &str,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<FactorResponse> {
+        let mut tx = self.store.begin(true).await?;
+        let has_session = if token.is_empty() {
+            false
+        } else {
+            match authenticated(&mut tx, token, now).await {
+                Ok(_) => true,
+                Err(error) if error.code == "UNAUTHORIZED" => false,
+                Err(error) => return Err(error),
+            }
+        };
+        if !has_session {
+            if !challenge.starts_with("2fa-") {
+                return Err(invalid_challenge());
+            }
+            let row = verification_row(&mut tx, challenge)
+                .await?
+                .ok_or_else(invalid_challenge)?;
+            if time(&row, "expiresAt")? <= now {
+                return Err(invalid_challenge());
+            }
+            let user = tx
+                .get(Model::User, text(&row, "value")?)
+                .await?
+                .ok_or_else(invalid_challenge)?;
+            if !enabled(&user)? {
+                return Err(invalid_challenge());
+            }
+            match factor(&mut tx, &user).await {
+                Ok(mut factor) if !factor["lockedUntil"].is_null() => {
+                    if time(&factor, "lockedUntil")? > now {
+                        return Err(error(
+                            "ACCOUNT_TEMPORARILY_LOCKED",
+                            "Account temporarily locked. Please try again later.",
+                        ));
+                    }
+                    factor["lockedUntil"] = Value::Null;
+                    factor["failedVerificationCount"] = json!(0);
+                    tx.replace(Model::TwoFactor, factor).await?;
+                }
+                Ok(_) => {}
+                Err(error) if error.code == "TOTP_NOT_ENABLED" => {}
+                Err(error) => return Err(error),
+            }
+        }
+        tx.commit().await?;
+        Err(error("OTP_HAS_EXPIRED", "OTP has expired"))
+    }
+
     /// Verifies the default TOTP or one recovery code against an authoritative
     /// session or signed-cookie challenge. Code timesteps are not replay-tracked;
     /// challenges and recovery codes are consumed atomically with session issuance.

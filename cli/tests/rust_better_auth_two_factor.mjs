@@ -91,7 +91,32 @@ const credentials = {
   firstName: 'TOTP',
   lastName: 'Audit'
 };
+const disabledSend = await auth.handler(
+  new Request('http://localhost:3000/api/auth/two-factor/send-otp', {
+    method: 'POST',
+    headers: { origin: 'http://localhost:3000' }
+  })
+);
+assert.equal(disabledSend.status, 400);
+assert.equal((await disabledSend.json()).code, 'OTP_NOT_CONFIGURED');
+assert.equal(
+  status(await request('/two-factor/send-otp', { trustDevice: 'bad' }), 400)
+    .code,
+  'VALIDATION_ERROR'
+);
+assert.equal(
+  status(await request('/two-factor/verify-otp', {}), 400).code,
+  'VALIDATION_ERROR'
+);
+assert.equal(
+  status(await request('/two-factor/verify-otp', { code: '123456' }), 401).code,
+  'INVALID_TWO_FACTOR_COOKIE'
+);
 status(await request('/sign-up/email', credentials), 200);
+assert.equal(
+  status(await request('/two-factor/verify-otp', { code: '123456' }), 400).code,
+  'OTP_HAS_EXPIRED'
+);
 const originalSession = jar.get('better-auth.session_token');
 const originalToken = reference.database.session[0].token;
 status(await request('/two-factor/enable', { password: 'wrong' }), 400);

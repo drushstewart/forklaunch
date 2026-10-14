@@ -8299,3 +8299,20 @@ format oracle. Logs /private/tmp/fl-zod-string-formats-{parity,tests,clippy,rule
 messages}.log; frozen hashes /private/tmp/fl-zod-string-formats-source-sha256.json.
 The separate TS email OpenAPI projection correction awaits canonical366 validation.
 No broad checklist gate is closed by this slice.
+
+
+## Two-factor default OTP route behavior (2026-10-14)
+
+The opt-in two-factor profile now exposes upstream send-otp/verify-otp routes
+without a delivery hook. Send validates its optional body then returns400
+OTP_NOT_CONFIGURED before authentication. Verify validates the code, resolves
+an authoritative persisted session or signed durable challenge, and returns400
+OTP_HAS_EXPIRED; pending-factor lock checks and lazy lock reset are preserved.
+The default-disabled profile still omits two-factor routes. Schema operations
+and status mapping are additive. No delivery hook or OTP enrollment is claimed.
+
+Focused native1, MFA HTTP3, actual-source lifecycle61 status checks plus client,
+rate, elapsed-cookie and backup-option regressions, and strict all-feature/
+all-target Clippy pass. Logs /private/tmp/fl-otp-disabled-{native,http,oracle,
+clippy}.log; exact five hashes /private/tmp/fl-otp-disabled-freeze.json. Full
+OTP delivery remains a separate unreferenced draft and is excluded here.

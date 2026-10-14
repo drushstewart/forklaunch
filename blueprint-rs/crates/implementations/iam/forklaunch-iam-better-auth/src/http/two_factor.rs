@@ -7,7 +7,9 @@ use crate::{
     cookies::{cookie_value, sign_cookie_value, verify_cookie_value},
     two_factor::{BackupVerificationOptions, FactorResponse, TwoFactorService},
 };
-const PATHS: [&str; 6] = [
+const PATHS: [&str; 8] = [
+    "/two-factor/send-otp",
+    "/two-factor/verify-otp",
     "/two-factor/enable",
     "/two-factor/get-totp-uri",
     "/two-factor/verify-totp",
@@ -52,12 +54,30 @@ pub(super) fn routes<S: AuthStore + 'static>(enabled: bool) -> Router<Arc<AuthHt
     router
 }
 pub(super) fn validate(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
+    if path == "/two-factor/send-otp" {
+        if body.is_none() {
+            return Ok(());
+        }
+        let body = body.filter(|value| value.is_object()).ok_or_else(|| {
+            BlueprintError::new("VALIDATION_ERROR", "[body] Invalid input: expected object")
+        })?;
+        if body
+            .get("trustDevice")
+            .is_some_and(|value| !value.is_boolean())
+        {
+            return Err(BlueprintError::new(
+                "VALIDATION_ERROR",
+                "[body.trustDevice] Invalid input: expected boolean",
+            ));
+        }
+        return Ok(());
+    }
     let body = body.filter(|value| value.is_object()).ok_or_else(|| {
         BlueprintError::new("VALIDATION_ERROR", "[body] Invalid input: expected object")
     })?;
     let field = if matches!(
         path,
-        "/two-factor/verify-totp" | "/two-factor/verify-backup-code"
+        "/two-factor/verify-totp" | "/two-factor/verify-backup-code" | "/two-factor/verify-otp"
     ) {
         "code"
     } else {
@@ -70,7 +90,7 @@ pub(super) fn validate(path: &str, body: Option<&Value>) -> BlueprintResult<()> 
         ));
     }
     let boolean_fields: &[&str] = match path {
-        "/two-factor/verify-totp" => &["trustDevice"],
+        "/two-factor/verify-totp" | "/two-factor/verify-otp" => &["trustDevice"],
         "/two-factor/verify-backup-code" => &["trustDevice", "disableSession"],
         _ => &[],
     };
@@ -154,6 +174,20 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     let trust = signed(app, headers, "trust_device");
     let password = || body["password"].as_str().unwrap_or("").to_owned();
     let result = match path {
+        "/two-factor/send-otp" => Err(BlueprintError::new(
+            "OTP_NOT_CONFIGURED",
+            "otp isn't configured",
+        )),
+        "/two-factor/verify-otp" => {
+            service
+                .missing_otp(
+                    &token,
+                    &signed(app, headers, "two_factor").unwrap_or_default(),
+                    now,
+                )
+                .await
+        }
+
         "/two-factor/enable" => {
             service
                 .enable(&token, password(), body["issuer"].as_str(), now)
@@ -256,12 +290,17 @@ pub(super) fn user_default(body: &mut Value) {
 
 pub(super) fn augment_schema(schema: &mut Value) {
     for path in PATHS {
-        let field = if path.ends_with("verify-totp") || path.ends_with("verify-backup-code") {
+        let field = if path.ends_with("verify-totp")
+            || path.ends_with("verify-backup-code")
+            || path.ends_with("verify-otp")
+        {
             "code"
         } else {
             "password"
         };
         let operation = match path {
+            "/two-factor/send-otp" => "sendTwoFactorOTP",
+            "/two-factor/verify-otp" => "verifyTwoFactorOTP",
             "/two-factor/enable" => "enableTwoFactor",
             "/two-factor/get-totp-uri" => "getTOTPURI",
             "/two-factor/verify-totp" => "verifyTOTP",
@@ -291,7 +330,7 @@ pub(super) fn augment_schema(schema: &mut Value) {
             "/two-factor/generate-backup-codes" => {
                 json!({"type":"object","required":["status","backupCodes"],"properties":{"status":{"type":"boolean"},"backupCodes":{"type":"array","items":{"type":"string"}}}})
             }
-            "/two-factor/disable" => {
+            "/two-factor/disable" | "/two-factor/send-otp" => {
                 json!({"type":"object","required":["status"],"properties":{"status":{"type":"boolean"}}})
             }
             _ => {
@@ -299,6 +338,9 @@ pub(super) fn augment_schema(schema: &mut Value) {
             }
         };
         schema["paths"][path] = json!({"post":{"operationId":operation,"tags":["Two Factor"],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":[field],"properties":properties}}}},"responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":response}}}}}});
+        if path == "/two-factor/send-otp" {
+            schema["paths"][path]["post"]["requestBody"] = json!({"required":false,"content":{"application/json":{"schema":{"type":"object","properties":{"trustDevice":{"type":"boolean"}}}}}});
+        }
     }
     if let Some(user) = schema
         .pointer_mut("/components/schemas/User/properties")

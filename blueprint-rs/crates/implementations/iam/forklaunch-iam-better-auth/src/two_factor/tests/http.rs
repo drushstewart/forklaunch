@@ -311,3 +311,77 @@ async fn http_factor_opt_in_routes_rate_rule_and_schema() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn disabled_otp_routes_preserve_validation_and_authority_order() {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    let store = Arc::new(MemoryAuthStore::default());
+    let app = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+        .unwrap()
+        .with_clock(move || now)
+        .with_rate_limiting(false)
+        .with_two_factor()
+        .unwrap();
+    let router = app.router();
+    for (path, body, expected, code) in [
+        ("/two-factor/send-otp", None, 400, "OTP_NOT_CONFIGURED"),
+        (
+            "/two-factor/send-otp",
+            Some(json!({"trustDevice":"bad"})),
+            400,
+            "VALIDATION_ERROR",
+        ),
+        (
+            "/two-factor/verify-otp",
+            Some(json!({})),
+            400,
+            "VALIDATION_ERROR",
+        ),
+        (
+            "/two-factor/verify-otp",
+            Some(json!({"code":"123456"})),
+            401,
+            "INVALID_TWO_FACTOR_COOKIE",
+        ),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .method("POST")
+                    .header("origin", origin)
+                    .header("content-type", "application/json")
+                    .body(body.map_or_else(Body::empty, |v| Body::from(v.to_string())))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), expected);
+        assert!(response.headers().get("set-cookie").is_none());
+        let value: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(value["code"], code);
+    }
+    let session = new_session("otp-user", "", "", now).unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(
+        Model::User,
+        json!({"id":"otp-user","email":"otp@example.test","emailVerified":false}),
+    )
+    .await
+    .unwrap();
+    tx.insert(Model::Session, session.clone()).await.unwrap();
+    tx.commit().await.unwrap();
+    let service = TwoFactorService::new(store, vec![42; 32], "Better Auth".into()).unwrap();
+    assert_eq!(
+        service
+            .missing_otp(text(&session, "token").unwrap(), "", now)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "OTP_HAS_EXPIRED"
+    );
+}

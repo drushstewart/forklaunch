@@ -821,7 +821,8 @@ fn failure_response(error: &BlueprintError) -> Response {
     let status = match error.code.as_str() {
         "TWO_FACTOR_INTERNAL" => StatusCode::INTERNAL_SERVER_ERROR,
         "ACCOUNT_TEMPORARILY_LOCKED" => StatusCode::TOO_MANY_REQUESTS,
-        "TOTP_NOT_ENABLED"
+        "OTP_HAS_EXPIRED"
+        | "TOTP_NOT_ENABLED"
         | "TOTP_ALREADY_ENABLED"
         | "TWO_FACTOR_NOT_ENABLED"
         | "BACKUP_CODES_NOT_ENABLED"
