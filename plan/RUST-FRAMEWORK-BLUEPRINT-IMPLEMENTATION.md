@@ -13,7 +13,16 @@ Build a Rust-native ForkLaunch stack with two new workspaces:
 
 The Rust stack should interoperate with the TypeScript stack through shared contract artifacts. A Rust service should be able to generate TypeScript SDKs for frontend consumers and Rust SDKs for service-to-service consumers.
 
-## Active Task Queue (2026-10-13)
+## Active Task Queue (2026-10-14)
+
+Current parallel work (these are slices of the existing gates, not extra checklist items):
+
+- Completed: immutable95f1b203b packaged runtime, generated five-family billing HTTP/MCP lifecycle, versioned text-wire profile and real shared/generated SDK/auth composition. Dated source/hash/test receipts are in the inventory.
+- Completed: PaymentLink update result identity/totals guards and single configured local mapping; UUID/provider mutation ownership remains open.
+- Active: optional MCP body omission and explicit downstream optional-body matching, referenced shared-SDK special-value conversion, and required Portal provider URL handling.
+- Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.
+
+Historical completed queue and remaining broad gates:
 
 - [x] Merge `origin/main` through `c5a4248d1` into `rohin/rust-framework` (`ac1f18e2a`), preserving the configured auth adapter and main's scoped authorization/encryption policy; all 1,120 combined CLI tests pass.
 - [x] Replace generated services' TCP stub with Axum and graceful shutdown.
