@@ -618,3 +618,137 @@ async fn parser_verification_is_once_only_and_fatal_in_all_validation_modes() {
         }
     }
 }
+
+fn parser_profile_router(
+    format: ParserErrorFormat,
+    mode: ValidationMode,
+    local: bool,
+) -> (Router, Arc<AtomicU64>) {
+    use forklaunch_http::{BodyParserHooks, VersionBodyHooksRegistry};
+    let mut contract = RouteContract::post("Parser Profile", "Parser Profile", "/parser")
+        .with_version(VersionedContract {
+            version: "v1".into(),
+            request: RequestContract::default().with_body(BodyContract::json("Input")),
+            responses: vec![ResponseContract::new(200, None)],
+        });
+    contract.options.request_validation = mode;
+    contract.options.body_parser.json_wire.limit_bytes = 64;
+    let mut hooks = VersionBodyHooksRegistry::default();
+    hooks
+        .insert_parser(
+            &contract,
+            BodyParserHooks::default().with_verify(|request, _, _| {
+                if request.headers.contains_key("x-deny") {
+                    Err("PRIVATE_VERIFIER".into())
+                } else {
+                    Ok(())
+                }
+            }),
+        )
+        .unwrap();
+    let count = Arc::new(AtomicU64::new(0));
+    let calls = Arc::clone(&count);
+    let router = if local {
+        let mut handlers = LocalRouter::new();
+        handlers.register_with_body_hooks(contract.clone(), &hooks, move |_: FrameworkRequest| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok(FrameworkResponse::new(200))
+        });
+        ForkLaunchRouter::from_local_router(ServiceInfo::new("parser", "1"), [contract], handlers)
+    } else {
+        ForkLaunchRouter::new(ServiceInfo::new("parser", "1")).post(contract, move || {
+            let calls = Arc::clone(&calls);
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                StatusCode::OK
+            }
+        })
+    }
+    .with_config(RouterConfig {
+        parser_error_format: format,
+        version_body_hooks: hooks,
+        body_limit: 128,
+        ..RouterConfig::default()
+    })
+    .into_router();
+    (router, count)
+}
+
+#[tokio::test]
+async fn parser_error_profiles_preserve_status_redaction_and_fatal_limits() {
+    for format in [ParserErrorFormat::Json, ParserErrorFormat::TypeScriptText] {
+        for mode in [
+            ValidationMode::Error,
+            ValidationMode::Warning,
+            ValidationMode::None,
+        ] {
+            for local in [false, true] {
+                let (router, count) = parser_profile_router(format, mode, local);
+                for (body, charset, deny, length, status) in [
+                    ("null".to_owned(), false, false, false, 400),
+                    ("{\"PRIVATE_BODY\":".to_owned(), false, false, false, 400),
+                    ("x".repeat(80), false, false, false, 413),
+                    ("x".repeat(160), false, false, false, 413),
+                    ("x".repeat(160), false, false, true, 413),
+                    ("{}".to_owned(), true, false, false, 415),
+                    ("{}".to_owned(), false, true, false, 403),
+                ] {
+                    let mut request = Request::post("/parser")
+                        .header(
+                            "content-type",
+                            if charset {
+                                "application/json; charset=unsupported"
+                            } else {
+                                "application/json"
+                            },
+                        )
+                        .header("x-correlation-id", "parser-correlation");
+                    if deny {
+                        request = request.header("x-deny", "yes");
+                    }
+                    if length {
+                        request = request.header("content-length", body.len().to_string());
+                    }
+                    let response = router
+                        .clone()
+                        .oneshot(request.body(Body::from(body)).unwrap())
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        response.status().as_u16(),
+                        status,
+                        "local={local} format={format:?} mode={mode:?}"
+                    );
+                    let media_type = response
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_owned();
+                    let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+                    let text = std::str::from_utf8(&bytes).unwrap();
+                    assert!(!text.contains("PRIVATE"));
+                    assert_eq!(count.load(Ordering::SeqCst), 0);
+                    if format == ParserErrorFormat::TypeScriptText {
+                        assert_eq!(media_type, "text/plain; charset=utf-8");
+                        assert_eq!(
+                            text,
+                            "Request could not be processed:\n\nCorrelation id: parser-correlation"
+                        );
+                    }
+                }
+                let response = router
+                    .oneshot(
+                        Request::post("/parser")
+                            .header("content-type", "application/json")
+                            .body(Body::from("{}"))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), 200);
+                assert_eq!(count.load(Ordering::SeqCst), 1);
+            }
+        }
+    }
+}

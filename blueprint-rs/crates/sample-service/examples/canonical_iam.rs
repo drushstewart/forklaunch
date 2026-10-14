@@ -3,19 +3,27 @@ use forklaunch_auth::{
     JwtClaims, issue_jwt_hs256, typescript::jwt::verify_jwt_resource, verify_jwt_hs256,
 };
 use forklaunch_axum::{
-    AuthErrorFormat, ForkLaunchRouter, HandlerErrorFormat, RouterConfig,
+    AuthErrorFormat, ForkLaunchRouter, HandlerErrorFormat, ParserErrorFormat, RouterConfig,
     session::AuthenticatedSession,
 };
 use forklaunch_blueprint_core::{
-    contract::{FieldContract, RouteContract},
-    http::{FrameworkRequest, FrameworkResponse, LocalRouter},
+    contract::{
+        BodyContract, FieldContract, RequestContract, ResponseContract, RouteContract,
+        VersionedContract,
+    },
+    http::{
+        BodyParserHooks, FrameworkRequest, FrameworkResponse, LocalRouter, VersionBodyHooksRegistry,
+    },
 };
 use forklaunch_blueprint_sample_service::iam_router;
 use forklaunch_core::{ServiceInfo, common::FrameworkError};
 use forklaunch_iam_base::InMemoryIamService;
 use forklaunch_iam_interface::User;
 use forklaunch_validation::{ParseError, typescript_request_validation_error_response};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,6 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = RouterConfig {
         auth_error_format: AuthErrorFormat::TypeScriptText,
         handler_error_format: HandlerErrorFormat::TypeScriptText,
+        parser_error_format: ParserErrorFormat::TypeScriptText,
+        body_limit: 128,
         ..RouterConfig::default()
     }
     .with_response_authenticator(|request, _| async move {
@@ -101,26 +111,87 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         [failure, validation],
         handlers,
     );
+    let calls = Arc::new(AtomicU64::new(0));
+    let mut parser_hooks = VersionBodyHooksRegistry::default();
+    let mut parser_router = ForkLaunchRouter::new(ServiceInfo::new("parser", "1"));
+    for local in [false, true] {
+        let path = if local { "/local" } else { "/axum" };
+        let mut contract = RouteContract::post(
+            if local { "Local Parser" } else { "Axum Parser" },
+            "Parser",
+            path,
+        )
+        .with_version(VersionedContract {
+            version: "v1".into(),
+            request: RequestContract::default().with_body(BodyContract::json("Input")),
+            responses: vec![ResponseContract::new(200, None)],
+        });
+        contract.options.openapi = false;
+        contract.options.body_parser.json_wire.limit_bytes = 64;
+        let hooks = BodyParserHooks::default().with_verify(|request, _, _| {
+            if request.headers.get("x-deny").map(String::as_str) == Some("yes") {
+                Err("PRIVATE_VERIFIER_DETAIL".into())
+            } else {
+                Ok(())
+            }
+        });
+        parser_hooks.insert_parser(&contract, hooks).unwrap();
+        let count = Arc::clone(&calls);
+        if local {
+            let mut local_handlers = LocalRouter::new();
+            local_handlers.register_with_body_hooks(
+                contract.clone(),
+                &parser_hooks,
+                move |_: FrameworkRequest| {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    Ok(FrameworkResponse::json(200, r#"{"accepted":"yes"}"#))
+                },
+            );
+            parser_router = parser_router.nest(
+                "/",
+                ForkLaunchRouter::from_local_router(
+                    ServiceInfo::new("local", "1"),
+                    [contract],
+                    local_handlers,
+                ),
+            );
+        } else {
+            parser_router = parser_router.post(contract, move || {
+                let count = Arc::clone(&count);
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    axum::Json(serde_json::json!({"accepted":"yes"}))
+                }
+            });
+        }
+    }
+    let mut count_contract =
+        RouteContract::get("Calls", "Calls", "/calls").with_response(200, None);
+    count_contract.options.openapi = false;
+    parser_router = parser_router.get(count_contract, move || {
+        let calls = Arc::clone(&calls);
+        async move { axum::Json(calls.load(Ordering::SeqCst)) }
+    });
+    // Hook identities use operation names and remain stable through nesting.
+    parser_router = parser_router.with_version_body_hooks(parser_hooks);
+    let assembled = iam_router(&service)
+        .with_config(config)
+        .nest("/errors", errors)
+        .nest("/parser", parser_router);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     println!("READY http://{}", listener.local_addr()?);
-    axum::serve(
-        listener,
-        iam_router(&service)
-            .nest("/errors", errors)
-            .with_config(config)
-            .into_router(),
-    )
-    .with_graceful_shutdown(async {
-        #[cfg(unix)]
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("install SIGTERM handler")
-            .recv()
-            .await;
-        #[cfg(not(unix))]
-        tokio::signal::ctrl_c()
-            .await
-            .expect("install shutdown handler");
-    })
-    .await?;
+    axum::serve(listener, assembled.into_router())
+        .with_graceful_shutdown(async {
+            #[cfg(unix)]
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler")
+                .recv()
+                .await;
+            #[cfg(not(unix))]
+            tokio::signal::ctrl_c()
+                .await
+                .expect("install shutdown handler");
+        })
+        .await?;
     Ok(())
 }

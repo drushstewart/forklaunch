@@ -323,6 +323,35 @@ impl From<FrameworkError> for ErrorResponse {
     }
 }
 
+/// Wire profile for typed body-parser failures; native schema diagnostics are unchanged.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ParserErrorFormat {
+    #[default]
+    Json,
+    /// Final Express exception response, with private parser details suppressed.
+    TypeScriptText,
+}
+
+/// Render a parser rejection in the final TypeScript exception-handler format.
+#[must_use]
+pub fn typescript_parser_error_response(status: u16, correlation_id: &str) -> FrameworkResponse {
+    let status = if (400..=599).contains(&status) {
+        status
+    } else {
+        500
+    };
+    let message = if status >= 500 {
+        "Internal server error"
+    } else {
+        "Request could not be processed"
+    };
+    FrameworkResponse::text(
+        status,
+        format!("{message}:\n\nCorrelation id: {correlation_id}"),
+    )
+    .with_header("content-type", "text/plain; charset=utf-8")
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContractValidationLocation {
     PathParameter,
@@ -469,7 +498,19 @@ impl LocalRouter {
     /// # Errors
     ///
     /// Returns an error when the matched local handler fails before producing a response.
-    pub fn execute(&self, mut request: FrameworkRequest) -> FrameworkResult<FrameworkResponse> {
+    pub fn execute(&self, request: FrameworkRequest) -> FrameworkResult<FrameworkResponse> {
+        self.execute_with_parser_error_format(request, ParserErrorFormat::Json)
+    }
+
+    /// Execute with an opt-in parser rejection profile. Schema errors retain
+    /// their native diagnostics and handler failures remain `Err`.
+    /// # Errors
+    /// Returns an error when the matched handler fails before producing a response.
+    pub fn execute_with_parser_error_format(
+        &self,
+        mut request: FrameworkRequest,
+        parser_error_format: ParserErrorFormat,
+    ) -> FrameworkResult<FrameworkResponse> {
         let explicit_head = request.method == HttpMethod::Head
             && self.routes.iter().any(|route| {
                 route.contract.method == HttpMethod::Head
@@ -509,9 +550,10 @@ impl LocalRouter {
                         if route.contract.options.request_validation == ValidationMode::Error
                             || errors.iter().any(ContractValidationError::is_parser_error) =>
                     {
-                        return Ok(validation_error_response(
+                        return Ok(validation_error_response_with_parser_format(
                             &errors,
                             &request.context.correlation_id,
+                            parser_error_format,
                         ));
                     }
                     Ok(None) | Err(_) => route.contract.clone(),
@@ -717,6 +759,16 @@ pub fn validation_error_response(
     errors: &[ContractValidationError],
     correlation_id: &str,
 ) -> FrameworkResponse {
+    validation_error_response_with_parser_format(errors, correlation_id, ParserErrorFormat::Json)
+}
+
+/// Render parser errors using the selected profile; schema diagnostics are unchanged.
+#[must_use]
+pub fn validation_error_response_with_parser_format(
+    errors: &[ContractValidationError],
+    correlation_id: &str,
+    parser_error_format: ParserErrorFormat,
+) -> FrameworkResponse {
     let kind = if errors.iter().any(|error| {
         matches!(
             error.location,
@@ -744,6 +796,11 @@ pub fn validation_error_response(
         ErrorKind::Validation
     };
 
+    if parser_error_format == ParserErrorFormat::TypeScriptText
+        && errors.iter().any(ContractValidationError::is_parser_error)
+    {
+        return typescript_parser_error_response(kind.status_code(), correlation_id);
+    }
     ErrorResponse::new(kind, validation_errors_message(errors))
         .with_correlation_id(correlation_id.to_string())
         .to_response()
@@ -847,6 +904,39 @@ mod tests {
     use forklaunch_contract::{BodyContract, FieldContract, RouteContract};
 
     use super::*;
+
+    #[test]
+    fn parser_text_profile_preserves_schema_errors_and_redacts_configuration_details() {
+        let schema =
+            ContractValidationError::new(ContractValidationLocation::Body, "public schema detail");
+        assert_eq!(
+            validation_error_response_with_parser_format(
+                std::slice::from_ref(&schema),
+                "id",
+                ParserErrorFormat::TypeScriptText
+            ),
+            validation_error_response(&[schema], "id")
+        );
+        let parser = ContractValidationError::new(
+            ContractValidationLocation::BodyParserConfiguration,
+            "PRIVATE_CONFIG_DETAIL",
+        );
+        let native = validation_error_response(std::slice::from_ref(&parser), "id");
+        assert_eq!(
+            native.headers.get("content-type").map(String::as_str),
+            Some("application/json")
+        );
+        let text = validation_error_response_with_parser_format(
+            &[parser],
+            "id",
+            ParserErrorFormat::TypeScriptText,
+        );
+        assert_eq!(text.status_code, 500);
+        assert_eq!(
+            text.body.as_text(),
+            Some("Internal server error:\n\nCorrelation id: id")
+        );
+    }
 
     #[test]
     fn request_context_tracks_trace_and_idempotency() {

@@ -54,7 +54,7 @@ remain open under checklist item 849; this inventory does not close that item.
 | [`@forklaunch/blueprint-core`](../blueprint/core/package.json) (generated/private) | forklaunch-blueprint-core and framework crates | Core DTOs/contracts exist; compliance/service registrations and shared role/provider behavior remain. |
 | [`@forklaunch/blueprint-ecommerce-stripe`](../blueprint/ecommerce-stripe/package.json) (generated/private) | forklaunch-ecommerce-axum; Rust CLI ecommerce-stripe module | Core 27 catalog/cart/order/payment routes plus health start over HTTP/MCP with PostgreSQL, HMAC, provider selection and durable inventory events. Live generated HTTP/MCP, both SDKs, separate inventory worker, restart persistence and init/sync/rename/delete checks pass. Tax/shipping calculators pass 32 actual TS comparisons; bulk catalog import passes actual TS and generated PostgreSQL HTTP/MCP/SDK fixtures. Checkout HTTP/MCP/SDK wiring passes eight actual TS controller comparisons, cross-process payment races and ten parallel-cart checks. Verified Stripe/PayPal callbacks pass actual TS business comparisons and cross-process capture/replay/inventory checks; 31 application routes plus health start over HTTP/MCP. Generated Compose starts the separate inventory worker; Linux HTTP/MCP, paid/cancelled delivery and graceful shutdown pass. Persistence compliance and interrupted capture reconciliation remain. |
 | [`@forklaunch/blueprint-iam-base`](../blueprint/iam-base/package.json) (generated/private) | Rust init module iam-base | Generated sessions plus thirty configured directory CRUD/grant routes, JWKS/HMAC/RBAC, transactional organization scope and HTTP/MCP startup are covered. Configured discovery/compliance also match the actual all-`none` policy; application-specific metadata and provider lifecycle remain. |
-| [`@forklaunch/blueprint-iam-better-auth`](../blueprint/iam-better-auth/package.json) (generated/private) | forklaunch-iam-better-auth and native CLI preset | All 70 configured raw routes, four server-only helpers, five application HTTP/MCP contracts, surfacing/compliance/retention, real encrypted ORM conformance, popup helpers, Scalar sources and default/custom/root namespaces pass actual comparisons. Generated restricted PostgreSQL, SDKs, shared/separate/disabled MCP, self-JWKS, restart and rename/delete pass. Broader custom options/hooks/client plugins, typed JWT/JWKS adapters and indexed storage remain. |
+| [`@forklaunch/blueprint-iam-better-auth`](../blueprint/iam-better-auth/package.json) (generated/private) | forklaunch-iam-better-auth and native CLI preset | All 70 configured raw routes, four server-only helpers, seven application HTTP/MCP contracts, surfacing/compliance/retention, real encrypted ORM conformance, popup helpers, Scalar sources and default/custom/root namespaces pass actual comparisons. Generated restricted PostgreSQL, SDKs, shared/separate/disabled MCP, self-JWKS, restart and rename/delete pass. Broader custom options/hooks/client plugins, typed JWT/JWKS adapters and indexed storage remain. |
 | [`@forklaunch/implementation-billing-base`](../blueprint/implementations/billing/base/package.json) | forklaunch-billing-base | Five asynchronous base services implement plan/subscription CRUD and checkout/payment-link/portal cache lifecycles, with typed DTOs, optional backups and tenant-RLS PostgreSQL persistence. 168 actual TS base-class operations and native concurrency/expiry/encryption/audit/rotation fixtures pass. Generated billing modules and HTTP/MCP startup now pass; 65 actual configured mapper cases now pass; Redis cache interop remains. |
 | [`@forklaunch/implementation-billing-stripe`](../blueprint/implementations/billing/stripe/package.json) | forklaunch-billing-stripe | Version-pinned authenticated Stripe client and five persistent async provider services pass 21 official SDK transport cases and 144 actual TS wrapper operations with backup/cache lifecycle. Raw-body authentication is shared with ecommerce and rejects stale callbacks. Legacy synchronous adapter fails closed. Generated modules/contracts and HTTP/MCP startup now pass. Twenty-six actual TS webhook state/provider-effect comparisons pass, with paginated product updates and subscription reassignment protection. Native tenant-RLS webhook receipts and replica-safe platform nonces pass PostgreSQL gates. Managed outbound transport passes 23 actual TS gateway comparisons and native JSON capability signature checks. Configured mapper audit now covers 65 actual cases; reconciliation remains. |
 | [`@forklaunch/implementation-cac-base`](../blueprint/implementations/cac/base/package.json) | forklaunch-cac-base | Mock codes and provider descriptor/lookup match actual TS fixtures; authenticated generated module, both SDKs and CLI lifecycle now pass. |
@@ -4834,3 +4834,23 @@ It does not close directory credential integration, broader Better Auth social/
 linking/adapter work, deployment or public registry gates. Base login discards
 provider access/refresh tokens; downstream provider APIs need their own token
 lifecycle. Generic provider refresh remains available in the framework.
+
+
+### 2026-10-13 — Final Express parser error profile after main merge
+
+`ParserErrorFormat::TypeScriptText` is opt-in for typed parser failures and
+transport body limits. It matches main's final Express response: safe 4xx/5xx
+text, UTF-8 media type and correlation ID, without raw parser input or private
+verifier details. Native JSON defaults and ordinary schema diagnostics remain
+unchanged. Both LocalRouter and Axum versioned routes are covered; Content-Length
+and streamed body limits remain bounded. Arbitrary adapter errors and untyped
+handler parser policies are outside this profile.
+
+Three Axum matrix tests, seven HTTP tests and strict all-target Clippy pass.
+The actual Express/Rust canonical fixture passes **88 live HTTP outcomes**,
+including 28 new parser comparisons: malformed/strict-null JSON, parser and
+transport limits, unsupported charset, verifier failure, correlation and no
+handler execution after rejection. Checked OpenAPI snapshots remain enabled
+without update mode; the same **five** real document differences remain.
+Evidence: `/private/tmp/fl-parser-errors-{tests-final,clippy-final,canonical}.log`.
+Gate806 stays open; checklist remains **659/682 (96.6%), 23 open**.

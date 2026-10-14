@@ -34,6 +34,8 @@ pub use router::{
     AuthErrorFormat, DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter, HandlerErrorFormat, RouterConfig,
 };
 
+pub use forklaunch_http::ParserErrorFormat;
+
 use forklaunch_http::{
     Body, ContractValidationError, FrameworkRequest, FrameworkResponse, Headers, HttpApplication,
     HttpMethod, RequestContext, validate_framework_request,

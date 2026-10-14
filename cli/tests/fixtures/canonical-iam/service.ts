@@ -10,7 +10,7 @@ const users = [
 ];
 const user = {id:string,email:string,display_name:optional(union([string,null_])),disabled:boolean,roles:array(string)};
 const auth = {jwt:{signatureKey:'test-only-signing-key'}};
-const app = forklaunchExpress(SchemaValidator(), new OpenTelemetryCollector('canonical-iam','silent'), {mcp:false});
+const app = forklaunchExpress(SchemaValidator(), new OpenTelemetryCollector('canonical-iam','silent'), {mcp:false,json:{limit:'64b',verify(req){if(req.headers['x-deny']==='yes')throw new Error('PRIVATE_VERIFIER_DETAIL');}}});
 app.get('/users/:id', {
   name:'Get User',summary:'Get a user by id',access:'authenticated',auth,
   params:{id:string},responses:{200:user,404:undefined_}
@@ -31,6 +31,12 @@ app.get('/errors/validate', {
  query:{display_name:z.string().refine(value=>value.trim().length>0,{message:'A display name is required'})},
  responses:{200:string}
 }, (_req,res)=>res.status(200).send('accepted'));
+let parserCalls=0;
+for(const path of ['/parser/axum','/parser/local'])app.post(path,{
+ name:'Parser',summary:'Parser',options:{openapi:false},
+ body:{json:{task:string}},responses:{200:{accepted:string}}
+},(_req,res)=>{parserCalls++;res.status(200).json({accepted:'yes'});});
+app.get('/parser/calls',{name:'Calls',summary:'Calls',options:{openapi:false},responses:{200:z.number()}},(_req,res)=>res.status(200).json(parserCalls));
 const server=app.listen(0,'127.0.0.1');
 server.on('listening',()=>console.log(`READY http://127.0.0.1:${server.address().port}`));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));

@@ -33,8 +33,9 @@ use forklaunch_contract::{
 use forklaunch_core::{ServiceInfo, telemetry::OpenTelemetryCollector};
 use forklaunch_http::{
     Body as FrameworkBody, ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse,
-    LocalRouter, RequestContext, match_path_checked, validate_framework_request,
-    validation_error_response,
+    LocalRouter, ParserErrorFormat, RequestContext, match_path_checked,
+    typescript_parser_error_response, validate_framework_request, validation_error_response,
+    validation_error_response_with_parser_format,
 };
 use forklaunch_openapi::{OpenApiOptions, OpenApiServer, generate_openapi_json_with_options};
 use opentelemetry::trace::FutureExt;
@@ -113,6 +114,8 @@ pub struct RouterConfig {
     pub auth_error_format: AuthErrorFormat,
     /// Format for errors returned by framework local handlers.
     pub handler_error_format: HandlerErrorFormat,
+    /// Final wire representation for body-parser and transport-limit failures.
+    pub parser_error_format: ParserErrorFormat,
     /// Inject a configured collector to export HTTP traces and metrics.
     pub telemetry: Option<OpenTelemetryCollector>,
 }
@@ -140,6 +143,7 @@ impl Default for RouterConfig {
             authorizer: None,
             auth_error_format: AuthErrorFormat::Json,
             handler_error_format: HandlerErrorFormat::Json,
+            parser_error_format: ParserErrorFormat::Json,
             telemetry: None,
         }
     }
@@ -309,7 +313,12 @@ impl ForkLaunchRouter {
                         .get::<HandlerErrorFormat>()
                         .copied()
                         .unwrap_or_default();
-                    match handlers.execute(request) {
+                    let parser_format = parts
+                        .extensions
+                        .get::<ParserErrorFormat>()
+                        .copied()
+                        .unwrap_or_default();
+                    match handlers.execute_with_parser_error_format(request, parser_format) {
                         Ok(response) => framework_response_to_axum(response),
                         Err(error) => {
                             tracing::error!(error = %error, correlation_id, "local request handler failed");
@@ -631,8 +640,8 @@ impl ForkLaunchRouter {
         router = router.layer(middleware::from_fn_with_state(state, validate_contract));
 
         let cors = config.cors.unwrap_or_else(CorsLayer::permissive);
+        let router = with_body_limit(router, config.body_limit, config.parser_error_format);
         let router = router
-            .layer(RequestBodyLimitLayer::new(config.body_limit))
             .layer(middleware::from_fn_with_state(telemetry, observe_request))
             .layer(PropagateRequestIdLayer::x_request_id())
             .layer(SetRequestIdLayer::x_request_id(
@@ -834,6 +843,7 @@ struct ValidationState {
     authorizer: Option<Authorizer>,
     auth_error_format: AuthErrorFormat,
     handler_error_format: HandlerErrorFormat,
+    parser_error_format: ParserErrorFormat,
     telemetry: OpenTelemetryCollector,
 }
 
@@ -875,6 +885,7 @@ impl ValidationState {
             authorizer: config.authorizer.clone(),
             auth_error_format: config.auth_error_format,
             handler_error_format: config.handler_error_format,
+            parser_error_format: config.parser_error_format,
             telemetry,
         }
     }
@@ -987,7 +998,7 @@ async fn validate_contract(
     let (mut parts, body) = request.into_parts();
     let bytes = match to_bytes(body, state.body_limit).await {
         Ok(bytes) => bytes,
-        Err(error) => return body_read_error_response(&error),
+        Err(error) => return formatted_body_read_error(&error, state.parser_error_format, &parts),
     };
 
     let mut framework_request = match build_framework_request(&contract, &parts, &bytes) {
@@ -1032,6 +1043,7 @@ async fn validate_contract(
         }
     }
     parts.extensions.insert(state.handler_error_format);
+    parts.extensions.insert(state.parser_error_format);
     // LocalRouter owns selection and response validation for its handlers.
     // Authentication and the transport body limit still run above, but runtime
     // callbacks must execute exactly once and may change the selected schema.
@@ -1048,9 +1060,10 @@ async fn validate_contract(
         match select_contract_version(version_plan, contract, &mut parts, &mut framework_request) {
             Ok(contract) => contract,
             Err(errors) => {
-                return framework_response_to_axum(validation_error_response(
+                return framework_response_to_axum(validation_error_response_with_parser_format(
                     &errors,
                     &framework_request.context.correlation_id,
+                    state.parser_error_format,
                 ));
             }
         };
@@ -1065,6 +1078,63 @@ async fn validate_contract(
         .run(Request::from_parts(parts, AxumBody::from(bytes)))
         .await;
     validate_response_status(&contract, response, &correlation_id)
+}
+
+fn with_body_limit(router: Router, limit: usize, format: ParserErrorFormat) -> Router {
+    if format == ParserErrorFormat::TypeScriptText {
+        router.layer(middleware::from_fn_with_state(limit, typescript_body_limit))
+    } else {
+        router.layer(RequestBodyLimitLayer::new(limit))
+    }
+}
+
+fn formatted_body_read_error(
+    error: &axum::Error,
+    format: ParserErrorFormat,
+    parts: &Parts,
+) -> Response {
+    let response = body_read_error_response(error);
+    if format == ParserErrorFormat::TypeScriptText {
+        framework_response_to_axum(typescript_parser_error_response(
+            response.status().as_u16(),
+            &request_correlation_id(parts),
+        ))
+    } else {
+        response
+    }
+}
+
+fn request_correlation_id(parts: &Parts) -> String {
+    parts
+        .headers
+        .get("x-correlation-id")
+        .or_else(|| parts.headers.get("x-request-id"))
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("forklaunch-request")
+        .to_owned()
+}
+
+async fn typescript_body_limit(
+    State(limit): State<usize>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let (parts, body) = request.into_parts();
+    if parts
+        .headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|size| size > limit as u64)
+    {
+        return framework_response_to_axum(typescript_parser_error_response(
+            413,
+            &request_correlation_id(&parts),
+        ));
+    }
+    // Keep streaming bodies bounded even when no Content-Length was supplied.
+    let body = AxumBody::new(http_body_util::Limited::new(body, limit));
+    next.run(Request::from_parts(parts, body)).await
 }
 
 fn body_read_error_response(error: &axum::Error) -> Response {

@@ -137,6 +137,35 @@ try{
   if(!displayName.trim())assert.deepEqual(wire[1],wire[0],'request validation wire parity');
  }
  console.log('PASS eight live actual TypeScript/Rust domain-validation outcomes: rejection body/media/correlation and valid requests');
+ let parserOutcomes=0;
+ for(const path of ['/parser/axum','/parser/local']){
+  for(const [body,contentType,deny,status] of [
+   ['null','application/json',false,400],
+   ['{"task":"PRIVATE_BODY"','application/json',false,400],
+   [JSON.stringify({task:'x'.repeat(80)}),'application/json',false,413],
+   [JSON.stringify({task:'x'.repeat(160)}),'application/json',false,413],
+   ['{"task":"ok"}','application/json; charset=unsupported',false,415],
+   ['{"task":"ok"}','application/json',true,403],
+   ['{"task":"ok"}','application/json',false,200],
+  ]){
+   const wire=[];
+   for(const url of [ts,rust]){
+    const before=await (await fetch(url+'/parser/calls')).json();
+    const response=await fetch(url+path,{method:'POST',headers:{'content-type':contentType,'x-correlation-id':'parser-fixture',...(deny?{'x-deny':'yes'}:{})},body,signal:AbortSignal.timeout(5000)});
+    const text=await response.text();assert.equal(response.status,status,`${path}: ${text}`);
+    const after=await (await fetch(url+'/parser/calls')).json();
+    assert.equal(after-before,status===200?1:0,'rejected parser input must not reach handler');
+    if(status!==200){
+     assert.equal(text,'Request could not be processed:\n\nCorrelation id: parser-fixture');
+     assert.doesNotMatch(text,/PRIVATE|SyntaxError|verification/i);
+     assert.equal(response.headers.get('content-type'),'text/plain; charset=utf-8');
+    }else assert.deepEqual(JSON.parse(text),{accepted:'yes'});
+    wire.push(text);parserOutcomes++;
+   }
+   assert.equal(wire[1],wire[0],'final Express/native parser wire parity');
+  }
+ }
+ console.log(`PASS ${parserOutcomes} live parser outcomes: strict JSON, malformed input, parser/transport limits, charset, verifier, safe messages and handler isolation`);
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);
