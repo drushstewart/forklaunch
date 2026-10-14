@@ -377,7 +377,7 @@ async fn disabled_otp_routes_preserve_validation_and_authority_order() {
     let service = TwoFactorService::new(store, vec![42; 32], "Better Auth".into()).unwrap();
     assert_eq!(
         service
-            .missing_otp(text(&session, "token").unwrap(), "", now)
+            .verify_otp(text(&session, "token").unwrap(), "", "123456", false, now)
             .await
             .err()
             .unwrap()

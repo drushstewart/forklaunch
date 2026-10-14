@@ -799,7 +799,10 @@ fn failure_response(error: &BlueprintError) -> Response {
         )
             .into_response();
     }
-    if error.code == "HTTP_INTERNAL_EMPTY" {
+    if matches!(
+        error.code.as_str(),
+        "HTTP_INTERNAL_EMPTY" | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
+    ) {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     if error.code == "HTTP_BAD_REQUEST_EMPTY" {

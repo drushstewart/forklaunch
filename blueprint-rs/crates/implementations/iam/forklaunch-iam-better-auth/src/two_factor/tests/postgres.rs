@@ -63,6 +63,7 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
     let tenant = tenants[0].clone();
     let proof=tokio::spawn(async move {
         lifecycle(store.clone()).await;
+        otp::lifecycle(store.clone()).await;
         let secret=STANDARD.encode([7u8;32]);
         let backup="ABCDE-FGHIJ";
         let mut tx=store.begin(true).await.unwrap();

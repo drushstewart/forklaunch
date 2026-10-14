@@ -1,0 +1,358 @@
+//! Fixed six-digit delivered OTP profile with trusted default-await delivery.
+use super::{
+    AuthStore, AuthTransaction, BlueprintResult, DateTime, FactorResponse, Model, TwoFactorService,
+    Utc, Value, authenticated, corrupt, crypto, empty_response, enabled, enrollment, error, expiry,
+    invalid_challenge, json, output_user, text, time, verification_row,
+};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use std::{future::Future, pin::Pin};
+use zeroize::Zeroizing;
+
+/// An owned delivery operation. Default dispatch awaits this future after the
+/// encrypted OTP transaction has committed; no storage lock survives dispatch.
+pub type OtpDeliveryFuture = Pin<Box<dyn Future<Output = BlueprintResult<()>> + Send + 'static>>;
+
+/// Trusted delivery input. The code is an authentication secret; neither this
+/// context nor its secret implements Debug or Serialize. No session is included.
+pub struct OtpDeliveryContext {
+    user: Value,
+    code: Zeroizing<String>,
+}
+impl OtpDeliveryContext {
+    /// Public user projection for choosing an administrator-configured channel.
+    #[must_use]
+    pub fn user(&self) -> &Value {
+        &self.user
+    }
+    /// Short-lived authentication secret. Never log or expose it to the caller.
+    #[must_use]
+    pub fn code(&self) -> &str {
+        &self.code
+    }
+}
+
+/// Trusted server delivery implementation, never selected by HTTP input.
+/// Preparation errors model synchronous callback failure. A future that returns
+/// an error models asynchronous delivery failure: the send response stays successful
+/// and the already committed OTP remains valid until its original expiry.
+pub trait OtpDelivery: Send + Sync {
+    /// # Errors
+    /// Return an error if the delivery operation cannot be constructed. Error
+    /// contents are discarded at the public boundary to avoid credential leaks.
+    fn prepare(&self, context: OtpDeliveryContext) -> BlueprintResult<OtpDeliveryFuture>;
+}
+
+struct Authority {
+    user: Value,
+    session: Option<Value>,
+    challenge: Option<Value>,
+    identifier: String,
+}
+async fn authority<T: AuthTransaction>(
+    tx: &mut T,
+    token: &str,
+    challenge: &str,
+    now: DateTime<Utc>,
+) -> BlueprintResult<Authority> {
+    if !token.is_empty() {
+        match authenticated(tx, token, now).await {
+            Ok((user, session)) => {
+                let identifier = session_identifier(text(&user, "id")?, text(&session, "id")?);
+                return Ok(Authority {
+                    user,
+                    session: Some(session),
+                    challenge: None,
+                    identifier,
+                });
+            }
+            Err(error) if error.code == "UNAUTHORIZED" => {}
+            Err(error) => return Err(error),
+        }
+    }
+    if !challenge.starts_with("2fa-") {
+        return Err(invalid_challenge());
+    }
+    let row = verification_row(tx, challenge)
+        .await?
+        .ok_or_else(invalid_challenge)?;
+    if time(&row, "expiresAt")? <= now {
+        return Err(invalid_challenge());
+    }
+    let user = tx
+        .get(Model::User, text(&row, "value")?)
+        .await?
+        .ok_or_else(invalid_challenge)?;
+    if !enabled(&user)? {
+        return Err(invalid_challenge());
+    }
+    Ok(Authority {
+        user,
+        session: None,
+        challenge: Some(row),
+        identifier: identifier(&format!("challenge:{challenge}")),
+    })
+}
+fn session_identifier(user: &str, session: &str) -> String {
+    identifier(&format!("session:{}", json!([user, session])))
+}
+fn identifier(key: &str) -> String {
+    // Fixed-length internal purpose separation prevents opaque application IDs
+    // from overflowing the existing verification identifier lookup budget.
+    let hash = ring::digest::digest(&ring::digest::SHA256, key.as_bytes());
+    format!("2fa-otp-{}", URL_SAFE_NO_PAD.encode(hash.as_ref()))
+}
+fn code() -> BlueprintResult<Zeroizing<String>> {
+    let mut value = Zeroizing::new(String::with_capacity(6));
+    while value.len() < 6 {
+        for byte in crypto::random(16)?
+            .iter()
+            .copied()
+            .filter(|byte| *byte < 250)
+        {
+            value.push(char::from(b'0' + byte % 10));
+            if value.len() == 6 {
+                break;
+            }
+        }
+    }
+    Ok(value)
+}
+impl<S: AuthStore> TwoFactorService<S> {
+    /// Enables fixed-default delivered OTP using a trusted server-owned hook.
+    /// Explicit Result failures are supported; Rust panics are not callback errors.
+    #[must_use]
+    pub fn with_otp_delivery(mut self, delivery: std::sync::Arc<dyn OtpDelivery>) -> Self {
+        self.otp_delivery = Some(delivery);
+        self
+    }
+    #[must_use]
+    pub fn has_otp_delivery(&self) -> bool {
+        self.otp_delivery.is_some()
+    }
+
+    /// Persists a new fixed-profile OTP, replacing an older code for the same
+    /// authenticated session or signed challenge, then awaits trusted delivery.
+    /// Canceling the caller after commit does not roll back the expiring code;
+    /// delivery completion never issues an authenticated session.
+    /// # Errors
+    /// Rejects absent authority, storage failures and synchronous preparation
+    /// failures. Asynchronous delivery errors are deliberately handled.
+    pub async fn send_otp(
+        &self,
+        token: &str,
+        challenge: &str,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<FactorResponse> {
+        let delivery = self
+            .otp_delivery
+            .as_ref()
+            .ok_or_else(|| error("OTP_NOT_CONFIGURED", "otp isn't configured"))?;
+        let expires = expiry(now, 180)?;
+        let mut tx = self.store.begin(true).await?;
+        let bound = authority(&mut tx, token, challenge, now).await?;
+        let code = code()?;
+        let previous = verification_row(&mut tx, &bound.identifier).await?;
+        let id = previous
+            .as_ref()
+            .map(|row| text(row, "id").map(str::to_owned))
+            .transpose()?
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let row = json!({"id":id,"identifier":bound.identifier,"value":code.as_str(),"attempts":0,"expiresAt":expires});
+        if previous.is_some() {
+            tx.replace(Model::Verification, row).await?;
+        } else {
+            tx.insert(Model::Verification, row).await?;
+        }
+        tx.commit().await?;
+        let context = OtpDeliveryContext {
+            user: output_user(&bound.user),
+            code,
+        };
+        let future = delivery.prepare(context).map_err(|_| {
+            error(
+                "TWO_FACTOR_DELIVERY_PREPARATION_FAILED",
+                "Unable to prepare OTP delivery",
+            )
+        })?;
+        if future.await.is_err() {
+            #[cfg(feature = "http")]
+            crate::error_origin::log_handled_failure(
+                "/two-factor/send-otp",
+                &error("TWO_FACTOR_DELIVERY_FAILED", "OTP delivery failed"),
+            );
+        }
+        Ok(empty_response(json!({"status":true})))
+    }
+
+    /// Enables delivered OTP after validating the current credential password,
+    /// rotates the authenticated session, and leaves TOTP/recovery records alone.
+    /// # Errors
+    /// Invalid passwords or concurrent credential changes reject the transition;
+    /// persistence failures roll back user enablement and session rotation.
+    pub async fn enable_otp(
+        &self,
+        token: &str,
+        password: String,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<FactorResponse> {
+        let snapshot = self.password_snapshot(token, password, now).await?;
+        if self.otp_delivery.is_none() {
+            return Err(error("OTP_NOT_CONFIGURED", "OTP is not available"));
+        }
+        let mut tx = self.store.begin(true).await?;
+        let (mut user, session) = authenticated(&mut tx, token, now).await?;
+        snapshot.check(&mut tx, &user).await?;
+        user["twoFactorEnabled"] = json!(true);
+        user["updatedAt"] = json!(super::timestamp(now));
+        tx.replace(Model::User, user.clone()).await?;
+        let replacement = enrollment::rotate(&mut tx, &user, &session, now).await?;
+        tx.commit().await?;
+        let mut response = empty_response(json!({"method":"otp"}));
+        response.session = Some(replacement);
+        Ok(response)
+    }
+}
+
+impl<S: AuthStore> TwoFactorService<S> {
+    /// Consumes a delivered OTP under the tenant transaction lock. Invalid codes
+    /// rearm the original expiry with an incremented counter; the sixth attempt
+    /// exhausts the default five-attempt budget. Success and session issuance are
+    /// atomic. OTP-only users have no TOTP row or account-wide lock counter, as in
+    /// the upstream default; existing TOTP rows share their account-wide counter.
+    /// # Errors
+    /// Invalid codes commit counters before returning. Other persistence failures
+    /// roll back code consumption and session/user/trust changes together.
+    #[allow(clippy::too_many_lines)]
+    pub async fn verify_otp(
+        &self,
+        token: &str,
+        challenge: &str,
+        supplied: &str,
+        trust_device: bool,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<FactorResponse> {
+        if supplied.len() > 128 {
+            return Err(error("INVALID_CODE", "Invalid code"));
+        }
+        let mut tx = self.store.begin(true).await?;
+        let bound = authority(&mut tx, token, challenge, now).await?;
+        let mut factor = if bound.challenge.is_some() {
+            tx.find_unique(Model::TwoFactor, "userId", text(&bound.user, "id")?)
+                .await?
+        } else {
+            None
+        };
+        if let Some(factor) = factor.as_mut()
+            && !factor["lockedUntil"].is_null()
+        {
+            if time(factor, "lockedUntil")? > now {
+                return Err(error(
+                    "ACCOUNT_TEMPORARILY_LOCKED",
+                    "Account temporarily locked. Please try again later.",
+                ));
+            }
+            factor["lockedUntil"] = Value::Null;
+            factor["failedVerificationCount"] = json!(0);
+            tx.replace(Model::TwoFactor, factor.clone()).await?;
+        }
+        let Some(mut otp) = verification_row(&mut tx, &bound.identifier).await? else {
+            tx.commit().await?;
+            return Err(error("OTP_HAS_EXPIRED", "OTP has expired"));
+        };
+        tx.delete(Model::Verification, text(&otp, "id")?).await?;
+        if time(&otp, "expiresAt")? < now {
+            tx.commit().await?;
+            return Err(error("OTP_HAS_EXPIRED", "OTP has expired"));
+        }
+        let attempts = otp["attempts"].as_u64().ok_or_else(corrupt)?;
+        if attempts >= 5 {
+            tx.commit().await?;
+            return Err(error(
+                "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE",
+                "Too many attempts. Please request a new code.",
+            ));
+        }
+        let expected = text(&otp, "value")?;
+        if expected.len() != 6 || !expected.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(corrupt());
+        }
+        let difference = expected
+            .bytes()
+            .zip(supplied.bytes())
+            .fold(0u8, |value, (a, b)| value | (a ^ b));
+        if supplied.len() != expected.len() || difference != 0 {
+            otp["attempts"] = json!(attempts + 1);
+            tx.insert(Model::Verification, otp).await?;
+            if let Some(mut factor) = factor {
+                let failures = factor
+                    .get("failedVerificationCount")
+                    .filter(|value| !value.is_null())
+                    .map_or(Ok(0), |value| value.as_u64().ok_or_else(corrupt))?
+                    .checked_add(1)
+                    .ok_or_else(corrupt)?;
+                factor["failedVerificationCount"] = json!(failures);
+                if failures >= 10 {
+                    factor["lockedUntil"] = json!(expiry(now, 900)?);
+                }
+                tx.replace(Model::TwoFactor, factor).await?;
+            }
+            tx.commit().await?;
+            return Err(error("INVALID_CODE", "Invalid code"));
+        }
+        if let Some(mut factor) = factor {
+            factor["failedVerificationCount"] = json!(0);
+            factor["lockedUntil"] = Value::Null;
+            tx.replace(Model::TwoFactor, factor).await?;
+        }
+        let mut user = bound.user;
+        let mut response = empty_response(
+            json!({"token":bound.session.as_ref().map(|session|session["token"].clone()),"user":output_user(&user)}),
+        );
+        if let Some(session) = bound.session {
+            if !enabled(&user)? {
+                user["twoFactorEnabled"] = json!(true);
+                user["updatedAt"] = json!(super::timestamp(now));
+                tx.replace(Model::User, user.clone()).await?;
+                let replacement = enrollment::rotate(&mut tx, &user, &session, now).await?;
+                response.body = json!({"token":replacement["token"],"user":output_user(&user)});
+                response.session = Some(replacement);
+            }
+        } else {
+            let challenge = bound.challenge.ok_or_else(invalid_challenge)?;
+            tx.delete(Model::Verification, text(&challenge, "id")?)
+                .await?;
+            let session = super::new_session(
+                text(&user, "id")?,
+                challenge["ipAddress"].as_str().unwrap_or(""),
+                challenge["userAgent"].as_str().unwrap_or(""),
+                now,
+            )?;
+            tx.insert(Model::Session, session.clone()).await?;
+            response.body["token"] = session["token"].clone();
+            response.session = Some(session);
+            response.clear_challenge = true;
+            response.persistent = challenge["persistent"].as_bool().unwrap_or(true);
+            if trust_device {
+                response.trust = Some(self.create_trust(&mut tx, &user, now).await?);
+            }
+        }
+        tx.commit().await?;
+        Ok(response)
+    }
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+    #[test]
+    fn opaque_session_components_are_unambiguously_framed() {
+        assert_ne!(
+            session_identifier("a!b", "c"),
+            session_identifier("a", "b!c")
+        );
+        assert_ne!(
+            session_identifier("user", "session"),
+            identifier("challenge:user!session")
+        );
+    }
+}

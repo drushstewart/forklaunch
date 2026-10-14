@@ -18,10 +18,41 @@ const PATHS: [&str; 8] = [
     "/two-factor/verify-backup-code",
 ];
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Enables fixed-default delivered OTP with a trusted server-owned delivery hook.
+    /// This does not configure a network channel or accept delivery targets from HTTP.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted auth configuration.
+    pub fn with_two_factor_otp(
+        mut self,
+        delivery: Arc<dyn crate::two_factor::OtpDelivery>,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            TwoFactorService::new(
+                self.store.clone(),
+                self.secret.to_vec(),
+                "Better Auth".into(),
+            )?
+            .with_otp_delivery(delivery),
+        ));
+        Ok(self)
+    }
+
     pub(super) fn configured_schema(&self) -> Value {
         let mut schema = super::public::openapi_schema(&self.auth_base_url(), self.jwks_path());
         if self.two_factor.is_some() {
             augment_schema(&mut schema);
+            if self
+                .two_factor
+                .as_ref()
+                .is_some_and(|service| service.has_otp_delivery())
+            {
+                schema["paths"]["/two-factor/enable"]["post"]["requestBody"]["content"]["application/json"]
+                    ["schema"]["properties"]["method"]["enum"] = json!(["totp", "otp"]);
+                let previous = schema["paths"]["/two-factor/enable"]["post"]["responses"]["200"]["content"]["application/json"]["schema"].take();
+                schema["paths"]["/two-factor/enable"]["post"]["responses"]["200"]["content"]["application/json"]
+                    ["schema"] = json!({"oneOf":[previous,{"type":"object","required":["method"],"properties":{"method":{"type":"string","enum":["otp"]}}}]});
+            }
         }
         schema
     }
@@ -36,11 +67,13 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 "JWKS path conflicts with two-factor routes",
             ));
         }
-        self.two_factor = Some(Arc::new(TwoFactorService::new(
-            self.store.clone(),
-            self.secret.to_vec(),
-            "Better Auth".into(),
-        )?));
+        if self.two_factor.is_none() {
+            self.two_factor = Some(Arc::new(TwoFactorService::new(
+                self.store.clone(),
+                self.secret.to_vec(),
+                "Better Auth".into(),
+            )?));
+        }
         Ok(self)
     }
 }
@@ -110,19 +143,13 @@ pub(super) fn validate(path: &str, body: Option<&Value>) -> BlueprintResult<()> 
     }
     if path == "/two-factor/enable"
         && let Some(method) = body.get("method")
+        && method != "totp"
+        && method != "otp"
     {
-        if method == "otp" {
-            return Err(BlueprintError::new(
-                "OTP_NOT_CONFIGURED",
-                "OTP is not configured",
-            ));
-        }
-        if method != "totp" {
-            return Err(BlueprintError::new(
-                "VALIDATION_ERROR",
-                "Invalid two-factor method",
-            ));
-        }
+        return Err(BlueprintError::new(
+            "VALIDATION_ERROR",
+            "Invalid two-factor method",
+        ));
     }
     Ok(())
 }
@@ -174,20 +201,29 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     let trust = signed(app, headers, "trust_device");
     let password = || body["password"].as_str().unwrap_or("").to_owned();
     let result = match path {
-        "/two-factor/send-otp" => Err(BlueprintError::new(
-            "OTP_NOT_CONFIGURED",
-            "otp isn't configured",
-        )),
-        "/two-factor/verify-otp" => {
+        "/two-factor/send-otp" => {
             service
-                .missing_otp(
+                .send_otp(
                     &token,
                     &signed(app, headers, "two_factor").unwrap_or_default(),
                     now,
                 )
                 .await
         }
-
+        "/two-factor/verify-otp" => {
+            service
+                .verify_otp(
+                    &token,
+                    &signed(app, headers, "two_factor").unwrap_or_default(),
+                    body["code"].as_str().unwrap_or(""),
+                    body["trustDevice"] == true,
+                    now,
+                )
+                .await
+        }
+        "/two-factor/enable" if body["method"] == "otp" => {
+            service.enable_otp(&token, password(), now).await
+        }
         "/two-factor/enable" => {
             service
                 .enable(&token, password(), body["issuer"].as_str(), now)

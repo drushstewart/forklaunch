@@ -7,10 +7,13 @@
 //! Enabling protection affects subsequent password logins; existing sessions and
 //! social/provider flows retain their independently configured policy. Public
 //! service methods accept trusted server time, not caller-selected HTTP timestamps.
-//! OTP delivery and custom TOTP parameters are not exposed by this typed profile. Recovery values are authorized disclosures and
+//! Optional delivered OTP uses a trusted server hook; custom TOTP parameters
+//! remain unsupported. Recovery values are authorized disclosures and
 //! must not be logged; this module intentionally provides no secret-bearing Debug.
 mod crypto;
 mod enrollment;
+mod otp;
+pub use otp::{OtpDelivery, OtpDeliveryContext, OtpDeliveryFuture};
 pub(crate) mod signin;
 mod verification;
 use crate::{
@@ -32,6 +35,7 @@ pub struct TwoFactorService<S> {
     pub(crate) store: Arc<S>,
     secret: Zeroizing<Vec<u8>>,
     issuer: String,
+    otp_delivery: Option<Arc<dyn OtpDelivery>>,
 }
 /// A successful state transition. Explicit wire projection can contain recovery
 /// credentials and must only be returned to the authorized browser.
@@ -78,8 +82,15 @@ impl FactorResponse {
 pub struct TwoFactorChallenge {
     pub(crate) identifier: String,
     pub(crate) persistent: bool,
+    pub(crate) methods: Vec<&'static str>,
 }
 impl TwoFactorChallenge {
+    /// Available methods captured in the same transaction as this challenge.
+    #[must_use]
+    pub fn methods(&self) -> &[&'static str] {
+        &self.methods
+    }
+
     /// Opaque bearer challenge for an authenticated, signed `HttpOnly` cookie only.
     #[must_use]
     pub fn identifier(&self) -> &str {
@@ -114,6 +125,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             store,
             secret: Zeroizing::new(secret),
             issuer,
+            otp_delivery: None,
         })
     }
     async fn password_snapshot(

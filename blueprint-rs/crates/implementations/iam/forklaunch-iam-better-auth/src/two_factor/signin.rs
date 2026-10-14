@@ -1,7 +1,6 @@
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, Engine, Model, TwoFactorChallenge,
-    TwoFactorService, Utc, Value, crypto, error, expiry, factor, json, text, time,
-    verification_row,
+    TwoFactorService, Utc, Value, crypto, error, expiry, json, text, time, verification_row,
 };
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::hmac;
@@ -39,8 +38,17 @@ impl<S: AuthStore> TwoFactorService<S> {
             tx.delete(Model::Verification, text(&row, "id")?).await?;
             return Ok(SigninGate::Trusted(self.create_trust(tx, user, now).await?));
         }
-        let row = factor(tx, user).await?;
-        if row["verified"] == false {
+        let row = tx
+            .find_unique(Model::TwoFactor, "userId", text(user, "id")?)
+            .await?;
+        let mut methods = Vec::new();
+        if row.as_ref().is_some_and(|row| row["verified"] != false) {
+            methods.push("totp");
+        }
+        if self.otp_delivery.is_some() {
+            methods.push("otp");
+        }
+        if methods.is_empty() {
             return Err(error("TOTP_NOT_ENABLED", "TOTP is not enabled"));
         }
         let identifier = format!("2fa-{}", crypto::opaque(20)?);
@@ -48,6 +56,7 @@ impl<S: AuthStore> TwoFactorService<S> {
         Ok(SigninGate::Challenge(TwoFactorChallenge {
             identifier,
             persistent,
+            methods,
         }))
     }
     pub(super) async fn create_trust<T: AuthTransaction>(

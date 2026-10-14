@@ -9,6 +9,7 @@ use crate::{
 mod fault_store;
 #[cfg(feature = "http")]
 mod http;
+mod otp;
 #[cfg(feature = "postgres")]
 mod postgres;
 const PASSWORD: &str = "owned-totp-password";

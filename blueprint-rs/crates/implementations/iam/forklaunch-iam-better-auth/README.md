@@ -1131,3 +1131,44 @@ to 1024 values, 32 nested levels, 16 KiB of raw text and 64 KiB of encoded JSON.
 It has no Debug/Serialize implementation. This is a bounded JSON subset, not
 JavaScript undefined/prototype parity. Callback errors retain the existing native
 sanitized failure response rather than exposing upstream callback exception text.
+
+## Optional delivered OTP
+
+Two-factor routes remain off until `AuthHttp::with_two_factor()` or
+`AuthHttp::with_two_factor_otp(Arc<dyn OtpDelivery>)` is selected. The latter adds
+server-owned OTP delivery alongside verified TOTP. Domain callers can configure
+`TwoFactorService::with_otp_delivery`. Delivery destinations and implementations
+are never accepted from an authentication request. The hook receives an owned
+`OtpDeliveryContext`: `user()` exposes the public persisted-user projection and
+`code()` exposes the short-lived secret. No session token is supplied; the context
+has no Debug or Serialize implementation. Do not log or return the code.
+
+Implement `OtpDelivery::prepare(context) -> BlueprintResult<OtpDeliveryFuture>`.
+The returned owned, Send future produces `BlueprintResult<()>`. Preparation
+failure yields a sanitized empty HTTP 500. A future returning an error records a
+sanitized internal diagnostic and retains HTTP 200, matching upstream asynchronous
+delivery failure. Default dispatch awaits the future after committing the OTP and
+releasing the storage transaction. Explicit Result failures are supported; Rust
+panics are outside the callback contract. No optional background-task dispatcher
+is implemented. Cancellation after commit can leave the expiring code stored;
+it never issues a session or rolls back a code that may already have been delivered.
+
+The fixed profile uses six uniformly generated decimal digits, 180 seconds of
+validity (the exact expiry instant is still valid), and five failed attempts.
+Resending replaces the code for the same verified session or signed challenge;
+distinct challenges and tenants remain isolated. A successful verification and
+session/trust issuance commit atomically. Invalid attempts commit their counters;
+other persistence failures roll back consumption. Removing the delivery hook
+blocks new sends and OTP enrollment but still permits verification of already
+issued codes while two-factor routes remain enabled. OTP enrollment and direct
+authenticated OTP verification rotate the current session when enabling protection.
+Password sign-in advertises methods captured inside the challenge transaction.
+
+OTP-only users have no TOTP/recovery record and therefore no account-wide factor
+failure counter, matching upstream. Where a TOTP record exists, OTP failures share
+its account lockout. The per-code attempt bound and HTTP rate policy still apply.
+Custom digits/periods/storage callbacks, optional background dispatch, and other
+plugin options remain separate parity work. This profile protects subsequent
+password sign-ins; existing sessions and social/provider flows retain their own
+policy. The actual-client fixture uses an owned JSON-line HTTP-handler bridge;
+it does not claim browser delivery or transport behavior.

@@ -75,7 +75,9 @@ pub(super) async fn login<S: AuthStore + 'static>(
                         Some(&challenge.identifier),
                         600,
                     )?;
-                    return Ok(json!({"twoFactorRedirect":true,"twoFactorMethods":["totp"]}));
+                    return Ok(
+                        json!({"twoFactorRedirect":true,"twoFactorMethods":challenge.methods()}),
+                    );
                 }
             }
         } else {

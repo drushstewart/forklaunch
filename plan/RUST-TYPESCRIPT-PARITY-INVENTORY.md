@@ -8446,3 +8446,42 @@ all-target Clippy and UUID/email81036 regressions pass. CI runs the binary oracl
 Logs /private/tmp/fl-zod-binary-{parity,tests,clippy,formats}.log; four source hashes
 /private/tmp/fl-zod-binary-source-sha256.json. Generic schema composition, remaining
 scalar/emitter behavior and broader media validation gates remain open.
+
+
+## Trusted fixed delivered OTP lifecycle (2026-10-14)
+
+The optional trusted server-owned OtpDelivery hook now wires domain/HTTP send,
+verify and OTP enrollment. Its owned context provides only public user projection
+and Zeroizing code, with no Debug/Serde/session token. Default dispatch commits an
+encrypted tenant/purpose/session-or-challenge-bound code before awaiting delivery,
+without retaining storage locks. Unambiguous session/user framing is hashed.
+Six digits use unbiased rejection sampling, validity180s (expiry equality valid),
+and five invalid attempts; the next attempt consumes the exhausted code. Resend
+replaces the bound code. Success atomically consumes OTP/challenge and rotates or
+creates sessions/trust; failed commits preserve reusable proofs. Invalid attempts
+commit counters, sharing an existing factor's account lockout. OTP-only users have
+no TOTP row/account-wide counter, matching upstream. Sign-in captures advertised
+methods in the same transaction as its challenge. Removing the delivery hook
+prevents new send/enrollment but preserves verification of stored codes.
+
+Explicit fallible preparation failure yields sanitized empty500; asynchronous
+future failure retains200 and the already stored code. Rust panics are outside
+the callback contract. Cancellation after commit may leave an expiring code and
+never grants authentication; this native cancellation policy is stated separately
+from upstream proof. No background dispatcher or automatic delivery channel is
+implemented. Default two-factor remains off; no-hook routes preserve the
+characterized default outcomes. No-hook OTP enrollment now correctly checks
+session then password before reporting unavailable delivery.
+
+Actual upstream5 delivery profiles, actual twoFactorClient/native21 handler-bridge
+calls, full IAM120 tests/3ignored, final focusedOTP2, strict all-feature/all-target
+and minimal-profile Clippy pass. Final copied-binary restricted PG55.84s proves
+atomic consumption, rollback, concurrency, attempts, expiry, hook-off verification,
+shared locks and cancellation/no retained lock. Roles/records/audits all0; copied
+binary removed with provenance receipt retained. The client bridge is not a
+TCP/browser delivery or generated MCP proof; immutable416d generated29 remains a
+separate receipt. Existing restricted PG CI now includes this OTP matrix.
+Logs /private/tmp/fl-otp-{delivery-oracle,client-native,full-iam,clippy,
+final-postgres}.log;16 exact frozen hashes /private/tmp/fl-otp-full-freeze.json;
+final binary provenance /private/tmp/fl-otp-final-pg-zxq1rysi/receipt.json.
+Custom digits/periods/storage, background dispatch and other plugins remain open.

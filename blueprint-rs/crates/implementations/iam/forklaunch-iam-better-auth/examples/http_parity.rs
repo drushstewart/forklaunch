@@ -3,6 +3,8 @@
 mod fault_store;
 #[path = "../src/ecmascript/json.rs"]
 mod literal_json;
+#[path = "http_parity/otp_delivery.rs"]
+mod otp_delivery;
 use axum::{
     body::{Body, to_bytes},
     http::Request,
@@ -30,6 +32,7 @@ use tower::ServiceExt;
 #[allow(clippy::too_many_lines)]
 async fn main() {
     let store = Arc::new(MemoryAuthStore::default());
+    let otp_delivery = Arc::new(otp_delivery::FixtureDelivery::default());
     let clock = Arc::new(AtomicI64::new(0));
     let server_clock = clock.clone();
     let plugin_calls = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
@@ -189,6 +192,11 @@ async fn main() {
     } else {
         router
     };
+    let router = if std::env::var_os("FORKLAUNCH_AUTH_OTP").is_some() {
+        router.with_two_factor_otp(otp_delivery.clone()).unwrap()
+    } else {
+        router
+    };
     #[cfg(feature = "application-http")]
     let router = if std::env::var_os("FORKLAUNCH_AUTH_POPUP_HELPERS").is_some() {
         router.router_with_redirects()
@@ -201,6 +209,15 @@ async fn main() {
         let input: Value = literal_json::parse(&line.unwrap()).unwrap();
         clock.store(input["now"].as_i64().unwrap(), Ordering::SeqCst);
         let result = match input["op"].as_str().unwrap() {
+            "otpDelivery" => {
+                assert!(std::env::var_os("FORKLAUNCH_AUTH_OTP").is_some());
+                if let Some(mode) = input["mode"].as_u64() {
+                    otp_delivery
+                        .mode
+                        .store(u8::try_from(mode).unwrap(), Ordering::SeqCst);
+                }
+                json!({"code":otp_delivery.last()})
+            }
             "ratePluginCalls" => json!(*plugin_calls.lock().unwrap()),
             "rateStorageCalls" => json!(*storage_calls.lock().unwrap()),
             "seed" | "replace-seed" => seed(&store, &input).await,

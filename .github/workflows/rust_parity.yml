@@ -212,6 +212,8 @@ on:
       - 'cli/tests/rust_better_auth_error_observer.mjs'
       - 'cli/tests/rust_better_auth_two_factor.mjs'
       - 'cli/tests/rust_better_auth_two_factor_native.mjs'
+      - 'cli/tests/rust_better_auth_otp.mjs'
+      - 'cli/tests/rust_better_auth_otp_native.mjs'
       - 'cli/tests/rust_better_auth_fault_boundaries.mjs'
       - 'cli/tests/rust_better_auth_jwt_header.mjs'
       - 'cli/tests/rust_better_auth_jwks_grace.mjs'
@@ -532,6 +534,8 @@ on:
       - 'cli/tests/rust_better_auth_error_observer.mjs'
       - 'cli/tests/rust_better_auth_two_factor.mjs'
       - 'cli/tests/rust_better_auth_two_factor_native.mjs'
+      - 'cli/tests/rust_better_auth_otp.mjs'
+      - 'cli/tests/rust_better_auth_otp_native.mjs'
       - 'cli/tests/rust_better_auth_fault_boundaries.mjs'
       - 'cli/tests/rust_better_auth_jwt_header.mjs'
       - 'cli/tests/rust_better_auth_jwks_grace.mjs'
@@ -1404,6 +1408,12 @@ jobs:
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_two_factor_native.mjs
+        env:
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_otp.mjs
+        env:
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_otp_native.mjs
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_error_observer.mjs

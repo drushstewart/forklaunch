@@ -161,7 +161,15 @@ backup codes and rotating trusted devices. Codes use SHA-1, six digits and a
 thirty-second period. Factor state is tenant encrypted. HTTP/MCP discovery
 reports the capability; raw authentication endpoints remain HTTP routes.
 Existing sessions and social callbacks retain their independent policy.
-OTP delivery, custom TOTP parameters and broader plugins remain parity work.
+Library applications can additionally select
+`AuthHttp::with_two_factor_otp(Arc<dyn OtpDelivery>)` for a trusted server-owned
+delivery implementation. This fixed profile uses six digits, 180 seconds and
+five invalid attempts, and awaits delivery after encrypted storage commits.
+The hook receives a public user projection and the short-lived code, without a
+session token. Delivery targets never come from authentication input. See
+[the delivery API and failure semantics](../../blueprint-rs/crates/implementations/iam/forklaunch-iam-better-auth/README.md#optional-delivered-otp).
+Generated presets do not select a delivery channel. Custom OTP/TOTP parameters,
+background dispatch and broader plugins remain parity work.
 
 This preset serves one configured tenant. `AuthTransaction::find_unique` performs
 exact email/subscription and organization-slug lookups using the existing
