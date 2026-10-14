@@ -577,8 +577,8 @@ verify trusted expected account and mode without API-key-prefix inference. The
 non-serializable observation checks immutable client identity and a five-second
 window beginning before verification. It is not proof of local ownership or a
 guarantee that upstream credentials/proxies cannot change after the reads.
-Managed mode rejects before network calls because its current gateway contract
-lacks authenticated context and binding-generation evidence. Malformed responses,
+At this initial direct-only checkpoint, managed mode rejected before network
+calls; the later generation-scoped gateway review below supersedes that limit. Malformed responses,
 account/mode mismatch, 401/403, foreign/reconfigured clients and stale observations
 are covered. Current wrappers do not yet consume this check.
 
@@ -602,5 +602,23 @@ after both network and database work. Joined statement snapshots avoid returning
 a binding already revoked/replaced before that read, while future revocation is
 not locked out. Sensitive decryption requires an audited actor and rolls back on
 audit denial. Cache-only ownership and local customer UUID inference are rejected.
-Provider financial mutations and managed identity context remain unimplemented
-by this opt-in read path. Restricted-role race/failure tests and Clippy pass.
+Provider financial mutations remain outside this opt-in read path; managed
+identity context was added in the subsequent review below. Restricted-role race/failure tests and Clippy pass.
+
+
+Managed Stripe context review (2026-10-13): signed, read-only context endpoints
+bind instance/organization/account/mode/API version to a database-generated
+binding generation. Identity changes, ABA rebinding and row recreation invalidate
+previous generations. Raw scoped MikroORM queries bypass identity-map caches,
+and checks surround provider reads and final durable reads. Tokens expire within
+five seconds measured before verification and cannot authorize financial writes.
+The scoped provider reader bounds time and UTF-8 bytes; errors use no-store.
+Actual controller/HMAC/rate-limit tests, fresh PostgreSQL mapping queries,
+restricted native ownership/audit failures and signed cross-language HTTP pass.
+Full platform bootstrap and live provider/cloud deployment remain unvalidated.
+
+Configured checkout cache references (2026-10-13): optional configured mapper
+reads validate cache identity and provider object/mode/customer evidence while
+preserving application IDs. This repairs public UUID forwarding to Stripe but
+does not establish account ownership from cache data. Managed rebinding requires
+the separate scoped gateway protocol; existing mutation paths remain separate.
