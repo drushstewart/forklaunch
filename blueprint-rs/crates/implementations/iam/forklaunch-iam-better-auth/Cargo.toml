@@ -9,11 +9,12 @@ repository.workspace = true
 
 [features]
 default = []
-http = ["dep:axum", "dep:tower-http", "dep:reqwest"]
+http = ["dep:axum", "dep:tower-http", "dep:reqwest", "dep:tracing"]
 postgres = ["dep:sqlx", "dep:forklaunch-core", "forklaunch-core/postgres", "forklaunch-core/encryption"]
 application-http = ["http", "dep:forklaunch-axum", "dep:forklaunch-auth", "dep:forklaunch-core", "dep:tower"]
 
 [dependencies]
+tracing = { version = "0.1", optional = true }
 forklaunch-axum = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-axum", features = ["mcp", "remote-jwks"], optional = true }
 forklaunch-auth = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-auth", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }

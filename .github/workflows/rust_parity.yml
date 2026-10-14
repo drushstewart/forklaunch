@@ -159,6 +159,7 @@ on:
       - 'cli/tests/rust_better_auth_jwt.mjs'
       - 'cli/tests/rust_better_auth_crypto.mjs'
       - 'cli/tests/rust_better_auth_parity.mjs'
+      - 'cli/tests/rust_better_auth_error_observer.mjs'
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
@@ -375,6 +376,7 @@ on:
       - 'cli/tests/rust_better_auth_jwt.mjs'
       - 'cli/tests/rust_better_auth_crypto.mjs'
       - 'cli/tests/rust_better_auth_parity.mjs'
+      - 'cli/tests/rust_better_auth_error_observer.mjs'
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
@@ -959,6 +961,10 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_error_observer.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_iam_directory_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -1022,6 +1028,7 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_jwt_sessions -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features provider_ -- --include-ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features postgres_auth_encryption -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features api_error_observer_preserves_only_structural_postgres_fields -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features encrypted_directory -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-blueprint-sample-service --all-features postgres_iam_http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-database --all-features postgres_worker -- --ignored

@@ -4990,3 +4990,29 @@ and `/private/tmp/fl-rust-billing-fixes-inventory.log`.
 Gate855 remains open for provider/local UUID identity handling, cache-only
 configured mappers and remaining validator differences. No additional checklist
 item closes: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Better Auth server-error diagnostics
+
+Raw authentication HTTP failures now emit default tracing diagnostics and support
+a trusted `AuthHttp::with_api_error_observer` callback. The outer router observes
+each 5xx once, including empty failures and rate-policy failures, and strips
+internal response metadata. Events use matched route templates instead of token
+paths; database fields are limited to bounded structural code/constraint/table/
+column identifiers. Request data, messages, stacks and SQL row details are absent.
+The PostgreSQL adapter preserves structural driver fields for these diagnostics.
+Observer panics do not alter HTTP responses; application panic-hook policy remains.
+
+The actual configured TypeScript fixture confirms ordinary success/4xx outcomes
+and handled APIError500 do not invoke its unexpected-error hook. Native diagnostics
+cover all raw 5xx responses, an explicit difference while error provenance is not
+modeled. This does not close gate918 or claim exact hook dispatch equivalence.
+
+Validation: three native observer tests, one real PostgreSQL metadata/redaction
+check, 23 native HTTP tests, strict all-feature/all-target Clippy, minimal HTTP
+feature build and the actual TypeScript hook/helper fixture pass. CI now includes
+the new TypeScript and PostgreSQL fixtures. Release regression checks and embedded
+source packaging pass. Evidence: `/private/tmp/fl-better-auth-observer-{native,pg,http,clippy,minimal}.log`,
+`/private/tmp/fl-better-auth-error-observer-ts.log` and
+`/private/tmp/fl-rust-observer-{release,package}.log`.
+Checklist remains **660/682 (96.8%), 22 open**.

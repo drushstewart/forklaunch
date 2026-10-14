@@ -29,7 +29,9 @@ mod credential;
 mod email;
 mod external_jwt;
 pub use external_jwt::ExternalJwtSigner;
+mod observer;
 mod organization;
+pub use observer::AuthApiError;
 mod public;
 mod rate;
 pub use rate::{
@@ -51,6 +53,7 @@ pub struct AuthHttp<S> {
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
+    error_observer: Option<observer::Observer>,
     secret: Zeroizing<Vec<u8>>,
     base_url: String,
     base_path: String,
@@ -82,6 +85,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             store,
             google: None,
             external_jwt: None,
+            error_observer: None,
             secret,
             base_url,
             base_path: "/api/auth".into(),
@@ -189,6 +193,18 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self.limiter.options = options;
         self
     }
+    /// Installs a trusted diagnostic callback for raw-auth server failures.
+    /// All raw HTTP 5xx responses are observed, including handled server errors.
+    /// Only sanitized route templates and structural metadata are supplied.
+    /// Panics in this callback are isolated from the HTTP response.
+    #[must_use]
+    pub fn with_api_error_observer(
+        mut self,
+        observer: impl Fn(&AuthApiError) + Send + Sync + 'static,
+    ) -> Self {
+        self.error_observer = Some(Arc::new(observer));
+        self
+    }
     /// Credentialed browser policy for the outer `ForkLaunchRouter`. Install this
     /// as `RouterConfig.cors` so global middleware preserves explicit JWT header
     /// exposure; a wildcard expose policy does not work with browser cookies.
@@ -282,6 +298,10 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .layer(axum::middleware::from_fn_with_state(
                 app.clone(),
                 rate::guard::<S>,
+            ))
+            .layer(axum::middleware::from_fn_with_state(
+                app.clone(),
+                observer::observe::<S>,
             ))
             .with_state(app)
     }
@@ -601,6 +621,15 @@ fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
     failure(error)
 }
 fn failure(error: &BlueprintError) -> Response {
+    let mut response = failure_response(error);
+    if response.status().is_server_error() {
+        response
+            .extensions_mut()
+            .insert(observer::ErrorMetadata::from_error(error));
+    }
+    response
+}
+fn failure_response(error: &BlueprintError) -> Response {
     if error.code == "HTTP_FORBIDDEN_MESSAGE_ONLY" {
         return (
             StatusCode::FORBIDDEN,

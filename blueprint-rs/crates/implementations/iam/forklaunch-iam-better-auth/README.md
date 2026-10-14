@@ -20,6 +20,16 @@ Session primary keys and user foreign keys use SQL UUID equality; organization
 and member text fields retain case-sensitive comparisons. Retired low-level
 JWT helpers without a session ID cannot confer scoped application privileges.
 
+Raw authentication HTTP 5xx responses emit a tracing error with the matched
+route template, status and allowlisted structural database metadata. Applications
+can install `AuthHttp::with_api_error_observer` for a trusted synchronous callback.
+It receives no concrete token paths, query strings, cookies, freeform error
+messages or stacks. Callback panics are caught; the application's global panic
+hook still runs. Callbacks should return promptly. Successful responses and 4xx
+failures do not invoke the observer. Native observation covers all raw 5xx
+responses, whereas Better Auth's `onAPIError` excludes handled `APIError` 500s;
+this diagnostic hook does not claim identical callback dispatch semantics.
+
 Generate a native application with this preset:
 
 ```sh

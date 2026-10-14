@@ -531,3 +531,15 @@ The flow discards provider tokens and requires explicitly provisioned local
 issuer/subject bindings. It does not infer account ownership from email or add
 self-service account linking. Storage and IAM writes remain separate transactions;
 unreachable credentials can remain until expiry after failed cleanup.
+
+
+Better Auth diagnostic observer review (2026-10-13): native raw HTTP 5xx events
+carry router templates, status and bounded allowlisted database identifiers.
+Concrete token paths, query/cookie/body values, freeform error messages/stacks
+and driver row details are excluded. Real PostgreSQL NOT NULL failure verifies
+structural SQLSTATE/table/column preservation without private row data. Internal
+response extensions are removed before returning the response. Trusted observer
+callbacks are synchronous and should not block; panics are caught to preserve
+HTTP behavior, but existing application panic hooks still execute. Default tracing
+uses the same sanitized event. This observes handled 5xx responses as well as
+unexpected failures, unlike the upstream unexpected-error-only hook.

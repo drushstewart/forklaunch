@@ -465,6 +465,58 @@ fn db_error(error: sqlx::Error) -> BlueprintError {
     {
         conflict()
     } else {
-        storage_error()
+        let mut result = storage_error();
+        if let Some(database) = error.as_database_error() {
+            for (field, value) in [
+                ("code", database.code().map(std::borrow::Cow::into_owned)),
+                ("constraint", database.constraint().map(str::to_owned)),
+                ("table", database.table().map(str::to_owned)),
+                (
+                    "column",
+                    database
+                        .try_downcast_ref::<sqlx::postgres::PgDatabaseError>()
+                        .and_then(sqlx::postgres::PgDatabaseError::column)
+                        .map(str::to_owned),
+                ),
+            ] {
+                if let Some(value) = value {
+                    result = result.with_detail(field, serde_json::Value::String(value));
+                }
+            }
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod diagnostics_tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires FORKLAUNCH_TEST_POSTGRES_URL"]
+    async fn api_error_observer_preserves_only_structural_postgres_fields() {
+        let pool = PgPool::connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
+            .await
+            .unwrap();
+        let mut transaction = pool.begin().await.unwrap();
+        sqlx::query("CREATE TEMP TABLE fl_auth_error_fixture (required_value TEXT NOT NULL, private_value TEXT) ON COMMIT DROP")
+            .execute(&mut *transaction).await.unwrap();
+        let error = sqlx::query("INSERT INTO fl_auth_error_fixture VALUES (NULL, $1)")
+            .bind("PRIVATE_ROW_SENTINEL")
+            .execute(&mut *transaction)
+            .await
+            .unwrap_err();
+        let error = db_error(error);
+        assert_eq!(error.code, "better_auth_storage_error");
+        assert_eq!(error.details.get("code"), Some(&json!("23502")));
+        assert_eq!(
+            error.details.get("table"),
+            Some(&json!("fl_auth_error_fixture"))
+        );
+        assert_eq!(error.details.get("column"), Some(&json!("required_value")));
+        assert_eq!(error.details.len(), 3);
+        assert!(!format!("{error:?}").contains("PRIVATE_ROW"));
+        transaction.rollback().await.unwrap();
+        pool.close().await;
     }
 }

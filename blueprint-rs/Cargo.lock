@@ -1617,6 +1617,7 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
+ "tracing",
  "unicode-normalization",
  "url",
  "uuid",
