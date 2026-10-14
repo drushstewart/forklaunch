@@ -197,6 +197,17 @@ Express error handler. Internal error codes and details stay out of the response
 The default retains the native JSON envelope. This option does not catch panics,
 rewrite ordinary Axum handler responses, or change request validation errors.
 
+When an application validator supplies public `ParseError` diagnostics,
+`forklaunch_validation::typescript_request_validation_error_response` emits the
+TypeScript request validation 400 response, formatted paths/messages and
+correlation suffix as `text/plain; charset=utf-8`. Although upstream request
+middleware initially selects JSON media, its enriched send applies the default
+400 string contract and produces plain text. Explicit response media contracts
+can override that default; apply the corresponding header override when needed.
+This helper preserves the native validation envelope. Callers own their schema
+messages; it does not make native JSON Schema diagnostics equivalent to Zod or
+TypeBox.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

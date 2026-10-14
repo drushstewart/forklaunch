@@ -44,3 +44,27 @@ pub fn pretty_print_parse_errors(errors: Option<&[ParseError]>, prefix: Option<&
     }
     output
 }
+
+/// Render supplied schema errors using TypeScript request middleware's wire format.
+///
+/// The body is plain text, matching the final Express response after the
+/// enriched send middleware applies the default 400 string contract. Explicit
+/// response media declarations can be applied with `with_header`. This opt-in
+/// helper does not translate native validator messages into Zod messages.
+/// Only pass public validation diagnostics. Missing correlation IDs use the
+/// upstream fallback, while an explicitly empty ID remains empty.
+#[must_use]
+pub fn typescript_request_validation_error_response(
+    errors: Option<&[ParseError]>,
+    correlation_id: Option<&str>,
+) -> forklaunch_http::FrameworkResponse {
+    forklaunch_http::FrameworkResponse::text(
+        400,
+        format!(
+            "{}\n\nCorrelation id: {}",
+            pretty_print_parse_errors(errors, Some("Request")),
+            correlation_id.unwrap_or("No correlation ID")
+        ),
+    )
+    .with_header("content-type", "text/plain; charset=utf-8")
+}

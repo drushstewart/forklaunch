@@ -118,6 +118,25 @@ try{
   assert.equal(wire[0].type,'text/plain; charset=utf-8');
  }
  console.log('PASS six live actual TypeScript/Rust handler exception outcomes: safe text, media type and correlation ID');
+ for(const displayName of ['', ' ', '\t', 'Ada']){
+  const wire=[];
+  for(const url of [ts,rust]){
+   const response=await fetch(`${url}/errors/validate?display_name=${encodeURIComponent(displayName)}`,{
+    headers:{'x-correlation-id':'validation-fixture'},signal:AbortSignal.timeout(5000)});
+   const body=await response.text();
+   assert.equal(response.status,displayName.trim()?200:400);
+   if(!displayName.trim()){
+    assert.equal(body,'Request validation failed with the following errors:\n1. Path: query > display_name\n   Message: A display name is required\n\nCorrelation id: validation-fixture');
+    assert.equal(response.headers.get('content-type'),'text/plain; charset=utf-8');
+    assert.throws(()=>JSON.parse(body),'upstream request error is plain text');
+   }else assert.equal(body,'accepted');
+   wire.push({body,type:response.headers.get('content-type')});
+  }
+  // Only compare the validation rejection media type: native success text
+  // defaults to text/plain without the Express UTF-8 suffix.
+  if(!displayName.trim())assert.deepEqual(wire[1],wire[0],'request validation wire parity');
+ }
+ console.log('PASS eight live actual TypeScript/Rust domain-validation outcomes: rejection body/media/correlation and valid requests');
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);

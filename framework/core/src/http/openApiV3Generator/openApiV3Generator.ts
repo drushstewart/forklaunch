@@ -199,11 +199,24 @@ function generateOperationObject<SV extends AnySchemaValidator>(
   for (const key in discriminatedResponseBodiesResult) {
     coercedResponses[key] = {
       description: HTTPStatuses[key],
-      content: contentResolver(
-        schemaValidator,
-        discriminatedResponseBodiesResult[key].schema,
-        discriminatedResponseBodiesResult[key].contentType
-      ),
+      // Undefined/void represent no response body, not a JSON null payload.
+      // Check the schema kind rather than its OpenAPI projection: null and
+      // nullish also project to null but still admit an actual JSON body.
+      content:
+        typedSchemaValidator.isInstanceOf(
+          discriminatedResponseBodiesResult[key].schema,
+          schemaValidator.undefined
+        ) ||
+        typedSchemaValidator.isInstanceOf(
+          discriminatedResponseBodiesResult[key].schema,
+          schemaValidator.void
+        )
+          ? undefined
+          : contentResolver(
+              schemaValidator,
+              discriminatedResponseBodiesResult[key].schema,
+              discriminatedResponseBodiesResult[key].contentType
+            ),
       headers: responseHeaders
         ? Object.fromEntries(
             Object.entries(responseHeaders).map(([key, value]) => [

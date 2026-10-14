@@ -4741,3 +4741,29 @@ actual migration 7→8 while retaining existing Stripe values. Fixtures follow t
 these are local provider fixtures, not PayPal sandbox observations. Evidence:
 `/private/tmp/fl-paypal-void-{tests,postgres,clippy}.log`. Broad recovery remains
 open: **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Request error envelopes and explicit empty-response documentation
+
+`typescript_request_validation_error_response` formats caller-provided public
+ParseErrors with TypeScript's Request prefix, paths/messages and correlation ID.
+The final default Express 400 response uses plain text: although its parse
+middleware initially selects JSON media, the enriched send applies the default
+string response contract. Live testing caught this distinction before completion.
+Explicit response declarations can override media. Native validator diagnostics
+and default structured errors remain separate; Zod message equivalence is not
+claimed by this formatter.
+
+The TypeScript OpenAPI emitter now omits content for explicit undefined/void
+responses. Null/nullish retain JSON body documentation and no-body responses
+retain declared headers. Thirty actual Zod/TypeBox emitter cases pass, and the
+existing live empty-404 case confirms the corrected document matches the wire.
+The canonical document comparison now retains **five** real differences.
+
+Validation passes **918** formatting cases, **25** actual request middleware
+body/status comparisons, six native tests, strict validation Clippy, and **60**
+live HTTP outcomes including eight request-validation outcomes. Snapshot checking
+passes with update mode disabled. Evidence:
+`/private/tmp/fl-request-errors-{parity-final,clippy-final,tests,canonical-check}.log`
+and `/private/tmp/fl-openapi-no-body.log`. Checklist remains
+**658/682 (96.5%), 24 open**.

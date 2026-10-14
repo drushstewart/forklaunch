@@ -49,18 +49,6 @@
   },
   {
     "operation": "GET /users/{id}",
-    "status": "404",
-    "typescript": {
-      "application/json": {
-        "type": [
-          "null"
-        ]
-      }
-    },
-    "rust": {}
-  },
-  {
-    "operation": "GET /users/{id}",
     "status": "500",
     "typescript": {
       "text/plain": {

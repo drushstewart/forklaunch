@@ -7,13 +7,14 @@ use forklaunch_axum::{
     session::AuthenticatedSession,
 };
 use forklaunch_blueprint_core::{
-    contract::RouteContract,
-    http::{FrameworkRequest, LocalRouter},
+    contract::{FieldContract, RouteContract},
+    http::{FrameworkRequest, FrameworkResponse, LocalRouter},
 };
 use forklaunch_blueprint_sample_service::iam_router;
 use forklaunch_core::{ServiceInfo, common::FrameworkError};
 use forklaunch_iam_base::InMemoryIamService;
 use forklaunch_iam_interface::User;
+use forklaunch_validation::{ParseError, typescript_request_validation_error_response};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -71,8 +72,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "secret fixture detail",
         ))
     });
-    let errors =
-        ForkLaunchRouter::from_local_router(ServiceInfo::new("errors", "1"), [failure], handlers);
+    let mut validation = RouteContract::get("Validate", "Validate", "/validate")
+        .with_query(FieldContract::required("display_name", "String"))
+        .with_response(200, None)
+        .with_response(400, None);
+    validation.options.openapi = false;
+    handlers.register(validation.clone(), |request: FrameworkRequest| {
+        let display_name = request
+            .query
+            .get("display_name")
+            .expect("required query validated");
+        if display_name.trim().is_empty() {
+            // A caller-owned domain rule supplies public ParseErrors. This does
+            // not claim the native schema validator emits Zod diagnostics.
+            Ok(typescript_request_validation_error_response(
+                Some(&[ParseError {
+                    path: vec!["query".to_owned(), "display_name".to_owned()],
+                    message: "A display name is required".to_owned(),
+                }]),
+                Some(&request.context.correlation_id),
+            ))
+        } else {
+            Ok(FrameworkResponse::text(200, "accepted"))
+        }
+    });
+    let errors = ForkLaunchRouter::from_local_router(
+        ServiceInfo::new("errors", "1"),
+        [failure, validation],
+        handlers,
+    );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     println!("READY http://{}", listener.local_addr()?);
     axum::serve(

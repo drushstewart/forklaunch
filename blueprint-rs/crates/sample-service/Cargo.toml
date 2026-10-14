@@ -32,6 +32,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
 
 [dev-dependencies]
+forklaunch-validation = { version = "0.1.0", path = "../../../framework-rs/crates/forklaunch-validation" }
 jsonwebtoken = "9"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 tower = { version = "0.5", features = ["util"] }

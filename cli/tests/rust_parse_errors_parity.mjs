@@ -6,6 +6,7 @@ import {actualValidator} from './rust_actual_validator_fixture.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const {load} = actualValidator(root);
+const {parse: parseRequest} = load(path.join(root, 'framework/core/src/http/middleware/request/parse.middleware.ts'));
 const {prettyPrintParseErrors} = load(path.join(root, 'framework/validator/src/shared/utils/prettyPrintParseErrors.ts'));
 const cases = [];
 const prefixes = [undefined, null, '', 'Request', 'Session', 'Header', 'Response', ' 用户\n', '😀'];
@@ -19,6 +20,13 @@ for (const prefix of prefixes) {
   }
   cases.push({prefix, errors: Array.from({length: 105}, (_, i) => ({path: ['rows', String(i)], message: String(i)}))});
 }
+const formatCaseCount = cases.length;
+for (const correlation_id of [undefined, null, '', 'fixture-id', '用户 😀']) {
+  for (const errors of [undefined, null, [], [{path:['body','email'], message:'Required'}],
+    [{path:['query','name'], message:'Public diagnostic'}, {path:[], message:'second\nline'}]]) {
+    cases.push({request_response: true, correlation_id, errors});
+  }
+}
 const native = spawnSync('cargo', ['run', '--quiet', '--manifest-path', path.join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-validation', '--example', 'parse_errors_parity'], {
   input: cases.map(value => JSON.stringify(value)).join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 300000,
   env: {...process.env, CARGO_INCREMENTAL: '0'},
@@ -26,6 +34,26 @@ const native = spawnSync('cargo', ['run', '--quiet', '--manifest-path', path.joi
 assert.equal(native.status, 0, native.stderr);
 const results = native.stdout.trim().split('\n').map(value => JSON.parse(value));
 assert.equal(results.length, cases.length);
-for (const [index, value] of cases.entries())
-  assert.equal(results[index], prettyPrintParseErrors(value.errors, value.prefix), JSON.stringify(value));
-console.log(`PASS ${cases.length} actual TypeScript parse-error formatting comparisons`);
+for (const [index, value] of cases.entries()) {
+  if (!value.request_response) {
+    assert.equal(results[index], prettyPrintParseErrors(value.errors, value.prefix), JSON.stringify(value));
+    continue;
+  }
+  const observed = {};
+  const req = {
+    contractDetails:{}, context:{correlationId:value.correlation_id},
+    schemaValidator:{parse:()=>({ok:false, errors:value.errors})},
+    body:{}, params:{}, query:{}, headers:{}, requestSchema:{},
+  };
+  const res = {
+    type(type){observed.type=type;return this;},
+    status(status){observed.status=status;return this;},
+    send(body){observed.body=body;return this;},
+  };
+  parseRequest(req,res,()=>assert.fail('invalid request reached handler'));
+  // Request parse sets this transient type; enriched send applies the injected
+  // default400:string contract. The live canonical fixture verifies final media.
+  assert.equal(observed.type,'application/json');
+  assert.deepEqual(results[index], {...observed, type:'text/plain; charset=utf-8'});
+}
+console.log(`PASS ${formatCaseCount} actual TypeScript parse-error formatting comparisons and ${cases.length-formatCaseCount} actual request middleware error bodies/statuses (final media covered live)`);

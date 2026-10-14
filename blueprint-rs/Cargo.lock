@@ -1309,6 +1309,7 @@ dependencies = [
  "forklaunch-iam-axum",
  "forklaunch-iam-base",
  "forklaunch-iam-interface",
+ "forklaunch-validation",
  "jsonwebtoken",
  "serde_json",
  "sqlx",

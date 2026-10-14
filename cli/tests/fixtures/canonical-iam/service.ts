@@ -26,6 +26,11 @@ app.get('/users', {
 app.get('/errors/throw', {
  name:'Failure',summary:'Failure',options:{openapi:false},responses:{500:string}
 }, ()=>{throw new Error('secret fixture detail');});
+app.get('/errors/validate', {
+ name:'Validate',summary:'Validate',options:{openapi:false},
+ query:{display_name:z.string().refine(value=>value.trim().length>0,{message:'A display name is required'})},
+ responses:{200:string}
+}, (_req,res)=>res.status(200).send('accepted'));
 const server=app.listen(0,'127.0.0.1');
 server.on('listening',()=>console.log(`READY http://127.0.0.1:${server.address().port}`));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
