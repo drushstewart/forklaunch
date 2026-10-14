@@ -145,7 +145,9 @@ fn input_schema(route: &RouteContract) -> String {
             "body",
             input_schema_at(&body.schema, &["properties", "body"]),
         ));
-        required.push(json_string("body"));
+        if !route.request.body_optional {
+            required.push(json_string("body"));
+        }
     }
 
     let mut fields = vec![

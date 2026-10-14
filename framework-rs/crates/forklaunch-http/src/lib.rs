@@ -964,8 +964,11 @@ fn validate_request_body(
         return Vec::new();
     }
     let mut errors = Vec::new();
+    if contract.body_optional && request.body.is_empty() && !has_parsed_body {
+        return errors;
+    }
     if let Some(body) = &contract.body {
-        if request.body.is_empty() && !has_parsed_body {
+        if request.body.is_empty() && !has_parsed_body && !contract.body_optional {
             errors.push(ContractValidationError::new(
                 ContractValidationLocation::Body,
                 "missing required request body",

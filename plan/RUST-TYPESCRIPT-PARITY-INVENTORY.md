@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 612 resolved declaration entry points and 1,674 declaration/re-export
+It records 613 resolved declaration entry points and 1,675 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -7889,3 +7889,45 @@ roundtrip is made. Existing signing-protocol interoperability was not repeated.
 Logs: /private/tmp/fl-resolved-key-{ts,native,custom,external,pin,clippy}.log.
 Record bounds remain ID512 bytes/PKCS8 6144 bytes; existing claim validation is
 reused without inventing a new claim-size guarantee. CI runs the actual oracle.
+
+
+## Explicit optional request-body contract and safe root documentation (2026-10-14)
+
+RequestContract.with_optional_body explicitly admits absent parsed values while
+supplied null still validates normally. Required builders reset the flag; false
+is omitted from serialized artifacts and version projection preserves it. Native
+version selection/defaults/transforms, OpenAPI requiredness, SDK plans and typed
+TS optional bodies read the same declaration. Parameter/query-free TS operations
+permit omitted input; supplied-body types remain checked. Rust's historically
+permissive Option request representation is retained. Implicit MCP omission uses
+bounded inline JSON/text schemas; explicit admission policies remain overrides,
+including stricter Reject and independent default/Omit behavior. Exact wire
+profiles preserve framed empty versus skipped/absent parser results.
+
+The TS OpenAPI hardcoded requestBody.required defect is fixed with an additive
+optional adapter.openapiRequestBody projection. Root Zod Optional/Default/input
+Effects/Nullable wrappers are inspected without running root user callbacks;
+TypeBox uses optional markers, without inferring presence from default annotations.
+Unknown preprocess/refinement optionality remains conservative. Dynamic root
+default annotations are omitted; nested/general exporter behavior is unchanged.
+Custom validators without the capability preserve previous required/export rules.
+16 throwing-root callback cases keep counters at zero, alongside6 presence/null
+cases,2 default-annotation distinctions and custom fallback checks.
+
+240 actual TS inputs produce480 native/local pairs (416 exact,64 existing schema-
+diagnostic differences), with16 MCP checks, artifact/version/OpenAPI/SDK metadata,
+strict TS positive/negative consumers and live omitted/supplied SDK calls. Native
+Axum142/HTTP72/MCP26/contract25/OpenAPI10/codegen43/RustSDK5/TSsdk8 and strict
+eight-crate all-feature/all-target Clippy pass after required-builder reset and
+stale/null tests. Canonical IAM366/zero OpenAPI differences, MCP omission120 plus
+140 Express outcomes and permanent strict types pass. CLI sdk::generate32 tests
+include the final artifact/body-type/optional-input regression; the earlier build
+passed with four existing warnings. Parent moved only adapter documentation
+comments after source freeze, preserving semantics.
+
+Logs: /private/tmp/fl-version-optional-{native,final-tests,clippy,parity,openapi,
+canonical,admission,types,sdk}.log and /private/tmp/fl-optional-body-cli-final32-tests.log.
+CI runs the oracle. Source inventory613 entrypoints/1675 declarations remains
+syntactic; arbitrary schemas/callbacks, other wire profiles and complete artifact
+equivalence stay open. This source proof is separate from the next immutable
+packaged checkpoint.

@@ -327,3 +327,35 @@ fn direct_selection_overwrites_forged_projection_and_native_default_clears_it() 
     );
     assert!(request.version_parsed_body.is_none());
 }
+
+#[test]
+fn optional_presence_does_not_admit_null_and_stale_optional_metadata_rejects() {
+    let mut route = route();
+    route.options.body_parser.json_strict = false;
+    for version in route.versions.values_mut() {
+        version.request.body_optional = true;
+    }
+    let mut hooks = VersionBodyHooksRegistry::default();
+    hooks.enable_typescript_json_wire(&route).unwrap();
+    let plan = hooks.compile(&route).unwrap();
+    let absent = request("application/json", "", false);
+    let selected = plan.select(&absent).unwrap().unwrap().1;
+    assert_eq!(selected.version, "last");
+    assert!(selected.parsed_body.is_none());
+    assert!(
+        plan.select(&request("application/json", "null", true))
+            .is_err()
+    );
+    assert!(
+        plan.select(&request("application/json", "{}", true))
+            .is_err()
+    );
+    let mut changed = route.clone();
+    changed
+        .versions
+        .get_mut("last")
+        .unwrap()
+        .request
+        .body_optional = false;
+    assert!(hooks.compile(&changed).is_err());
+}

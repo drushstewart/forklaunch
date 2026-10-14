@@ -3,11 +3,11 @@ export type ForkLaunchPathValue = string | number | boolean;
 export type ForkLaunchHeaders = Record<string, string>;
 export type ForkLaunchSdkFetchInit = Omit<RequestInit, 'method' | 'body' | 'headers'>;
 
-export type ForkLaunchSdkRequest<Params = never, Query = never, Body = never, Headers = ForkLaunchHeaders> =
+export type ForkLaunchSdkRequest<Params = never, Query = never, Body = never, Headers = ForkLaunchHeaders, BodyOptional extends boolean = false> =
   ForkLaunchSdkFetchInit &
   ([Params] extends [never] ? {} : { params: Params }) &
   ([Query] extends [never] ? {} : { query: Query }) &
-  ([Body] extends [never] ? {} : { body: Body }) &
+  ([Body] extends [never] ? {} : BodyOptional extends true ? { body?: Body } : { body: Body }) &
   ([Headers] extends [never] ? {} : { headers?: Headers });
 
 export type ForkLaunchSdkResponse<Responses extends Record<number, unknown>, Headers = never, ContentTypes extends Partial<Record<number, string>> = {}> = {

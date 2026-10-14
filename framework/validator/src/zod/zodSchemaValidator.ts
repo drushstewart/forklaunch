@@ -21,6 +21,7 @@ import {
   ZodType,
   ZodUnion
 } from 'zod/v3';
+import { requestBodyOpenApi } from './requestBodyOpenApi';
 import { extendZodWithOpenApi } from '../../shims/zod-v3-openapi/zod-extensions';
 import { generateSchema } from '../../shims/zod-v3-openapi/zod-openapi';
 import {
@@ -521,6 +522,16 @@ export class ZodSchemaValidator implements SV<
             }
           })
         };
+  }
+
+  /** Root default factories are not evaluated or exported as default annotations.
+   * Nested schema export retains the existing general exporter behavior.
+   */
+  openapiRequestBody(schema: unknown): { required: boolean; schema: SchemaObject } {
+    return requestBodyOpenApi(
+      this.schemify(schema as ZodIdiomaticSchema),
+      (value) => this.openapi(value)
+    );
   }
 
   /**

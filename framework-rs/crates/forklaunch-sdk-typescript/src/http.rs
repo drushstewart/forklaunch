@@ -99,13 +99,15 @@ pub fn generate_typescript_http_sdk_source(
         )?;
         let (kind, mime, body) = request_body(op, &prefix, &mut definitions)?;
         let responses = response_types(op, &prefix, &mut definitions, &mut type_names)?;
-        let optional_input = params == "never" && query == "never" && body == "never";
+        let optional_input =
+            params == "never" && query == "never" && (body == "never" || op.request_body_optional);
         operation_types.push(TypeScriptOperationTypeTemplate {
             request_type: request_type.clone(),
             responses_type: responses_type.clone(),
             request_params_type: params,
             request_query_type: query,
             request_body_type: body,
+            request_body_optional: op.request_body_optional,
             request_headers_type: headers,
             responses: responses.clone(),
         });

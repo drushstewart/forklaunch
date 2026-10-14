@@ -261,18 +261,30 @@ function generateOperationObject<SV extends AnySchemaValidator>(
     }
   }
 
+  const adapter = schemaValidator as SchemaValidator;
+  const bareProjection =
+    body && adapter.isSchema(body)
+      ? adapter.openapiRequestBody?.(body)
+      : undefined;
   const discriminatedBodyResult = body
-    ? discriminateBody(schemaValidator, body)
+    ? discriminateBody(schemaValidator, body, bareProjection?.schema)
     : null;
 
   if (discriminatedBodyResult) {
+    const projection =
+      bareProjection ??
+      adapter.openapiRequestBody?.(discriminatedBodyResult.schema);
     operationObject.requestBody = {
-      required: true,
-      content: contentResolver(
-        schemaValidator,
-        discriminatedBodyResult.schema,
-        discriminatedBodyResult.contentType
-      )
+      required: projection?.required ?? true,
+      content: projection
+        ? {
+            [discriminatedBodyResult.contentType]: { schema: projection.schema }
+          }
+        : contentResolver(
+            schemaValidator,
+            discriminatedBodyResult.schema,
+            discriminatedBodyResult.contentType
+          )
     };
   }
 

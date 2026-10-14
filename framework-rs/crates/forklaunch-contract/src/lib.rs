@@ -319,6 +319,8 @@ impl FieldContract {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RequestContract {
+    /// Explicitly accept an absent parsed body; JSON null remains a supplied value.
+    pub body_optional: bool,
     pub params: Vec<FieldContract>,
     pub query: Vec<FieldContract>,
     pub headers: Vec<FieldContract>,
@@ -326,8 +328,16 @@ pub struct RequestContract {
 }
 
 impl RequestContract {
+    /// Declare optional body presence without changing the supplied-value schema.
+    #[must_use]
+    pub fn with_optional_body(mut self, body: BodyContract) -> Self {
+        self.body = Some(body);
+        self.body_optional = true;
+        self
+    }
     #[must_use]
     pub fn with_body(mut self, body: BodyContract) -> Self {
+        self.body_optional = false;
         self.body = Some(body);
         self
     }
@@ -348,6 +358,9 @@ impl RequestContract {
                 json_array(self.headers.iter().map(FieldContract::to_json))
             ),
         ];
+        if self.body_optional && self.body.is_some() {
+            fields.push("\"bodyOptional\":true".into());
+        }
         if let Some(body) = &self.body {
             fields.push(format!("\"body\":{}", body.to_json()));
         }
@@ -942,6 +955,7 @@ impl RouteContract {
 
     #[must_use]
     pub fn with_request_body(mut self, body: BodyContract) -> Self {
+        self.request.body_optional = false;
         self.request.body = Some(body);
         self
     }
@@ -1028,6 +1042,7 @@ impl RouteContract {
                 query: selected.request.query.clone(),
                 headers: selected.request.headers.clone(),
                 body: selected.request.body.clone(),
+                body_optional: selected.request.body_optional,
             },
             responses: selected.responses.clone(),
             versions: indexmap::IndexMap::new(),
@@ -1327,6 +1342,20 @@ mod tests {
     use super::*;
 
     #[cfg(feature = "json-schema")]
+    #[test]
+    fn optional_body_is_explicit_and_required_builders_reset_it() {
+        let optional = RequestContract::default().with_optional_body(BodyContract::json("Input"));
+        assert!(optional.body_optional);
+        assert!(optional.to_json().contains("\"bodyOptional\":true"));
+        let required = optional.clone().with_body(BodyContract::json("Other"));
+        assert!(!required.body_optional);
+        assert!(!required.to_json().contains("bodyOptional"));
+        let mut route = RouteContract::post("Optional", "Optional", "/optional");
+        route.request = optional;
+        let route = route.with_request_body(BodyContract::json("Other"));
+        assert!(!route.request.body_optional);
+    }
+
     #[test]
     fn socket_registration_exports_raw_metadata_and_rejects_duplicates_without_replacement() {
         let socket = serde_json::json!({"path":"/chat","clientMessages":{"request":{"shape":{"type":"string","const":"water 水"}}}});

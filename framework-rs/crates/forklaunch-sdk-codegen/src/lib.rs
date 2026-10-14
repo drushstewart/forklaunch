@@ -134,6 +134,7 @@ pub struct SdkOperation {
     pub request_query: Vec<SdkField>,
     pub request_headers: Vec<SdkField>,
     pub request_body: Option<String>,
+    pub request_body_optional: bool,
     pub request_body_json_schema: Option<String>,
     pub request_body_kind: Option<BodyKind>,
     pub request_body_content_type: Option<String>,
@@ -189,6 +190,7 @@ impl SdkGenerationPlan {
                     request_params: route.request.params.iter().map(SdkField::from).collect(),
                     request_query: route.request.query.iter().map(SdkField::from).collect(),
                     request_headers: route.request.headers.iter().map(SdkField::from).collect(),
+                    request_body_optional: route.request.body_optional,
                     request_body: route
                         .request
                         .body

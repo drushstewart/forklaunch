@@ -377,7 +377,10 @@ fn operation_json(
     }
 
     if let Some(body) = &route.request.body {
-        fields.push(JsonField::new("requestBody", request_body_json(body)));
+        fields.push(JsonField::new(
+            "requestBody",
+            request_body_json(body, !route.request.body_optional),
+        ));
     }
 
     if let Some(auth) = &route.auth {
@@ -455,10 +458,10 @@ fn parameter_json(location: &str, field: &FieldContract, required: bool) -> Stri
     ])
 }
 
-fn request_body_json(body: &BodyContract) -> String {
+fn request_body_json(body: &BodyContract, required: bool) -> String {
     json_object([
         JsonField::new("content", content_json(body)),
-        JsonField::new("required", "true"),
+        JsonField::new("required", required.to_string()),
     ])
 }
 

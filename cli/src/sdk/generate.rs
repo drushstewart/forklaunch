@@ -292,6 +292,7 @@ struct SdkOperation {
     request_params_type: String,
     request_query_type: String,
     request_body_type: String,
+    request_body_optional: bool,
     request_headers_type: String,
     request_kind: String,
     request_content_type: String,
@@ -674,6 +675,7 @@ struct RequestTypeShapes {
     params: String,
     query: String,
     body: String,
+    body_optional: bool,
     headers: String,
 }
 
@@ -685,6 +687,7 @@ impl Default for RequestTypeShapes {
             params: "never".to_string(),
             query: "never".to_string(),
             body: "never".to_string(),
+            body_optional: false,
             headers: "ForkLaunchHeaders".to_string(),
         }
     }
@@ -769,6 +772,7 @@ fn build_sdk_operation(
         request_params_type: request_shapes.params,
         request_query_type: request_shapes.query,
         request_body_type: request_shapes.body,
+        request_body_optional: request_shapes.body_optional,
         request_headers_type: request_shapes.headers,
         request_kind: request_shapes.kind,
         request_content_type: request_shapes.content_type,
@@ -914,6 +918,10 @@ fn request_type_shapes_from_contract(route: &JsonValue) -> Result<RequestTypeSha
         }
     };
     Ok(RequestTypeShapes {
+        body_optional: route
+            .pointer("/request/bodyOptional")
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false),
         params,
         query,
         body,
@@ -1215,6 +1223,7 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
                     request_params_type: operation.request_params_type.clone(),
                     request_query_type: operation.request_query_type.clone(),
                     request_body_type: operation.request_body_type.clone(),
+                    request_body_optional: operation.request_body_optional,
                     request_headers_type: operation.request_headers_type.clone(),
                     responses: operation.responses.clone(),
                 });
@@ -1224,7 +1233,8 @@ fn typescript_sdk(services: &[SdkService]) -> Result<String> {
                     responses_type: operation.responses_type.clone(),
                     optional_input: operation.request_params_type == "never"
                         && operation.request_query_type == "never"
-                        && operation.request_body_type == "never",
+                        && (operation.request_body_type == "never"
+                            || operation.request_body_optional),
                     service_name: escape_ts_string(&service.name),
                     router_name: escape_ts_string(&router.name),
                     operation_name: escape_ts_string(&operation.name),
@@ -2061,6 +2071,21 @@ mod request_media_tests {
                 .contains("requestKind: 'binary'")
         );
     }
+    #[test]
+    fn optional_body_artifact_preserves_supplied_type_and_optional_input() {
+        for optional in [false, true] {
+            let artifact = json!({"routes":[{"path":"/optional","operationName":"optional","method":"POST","request":{"bodyOptional":optional,"body":{"kind":"json","schema":{"jsonSchema":{"type":"string"}}}},"responses":[{"statusCode":204}]}]});
+            let shapes = request_type_shapes_from_contract(&artifact["routes"][0]).unwrap();
+            assert_eq!(shapes.body_optional, optional);
+            assert_eq!(shapes.body, "string");
+            let service = sdk_service_from_contract("example", &artifact).unwrap();
+            assert!(rust_sdk(&service).unwrap().contains("pub body: Option<String>"));
+            let source = typescript_sdk(&[service]).unwrap();
+            assert_eq!(source.contains("ForkLaunchHeaders, true>"), optional);
+            assert_eq!(source.contains("Request = {})"), optional);
+        }
+    }
+
     #[test]
     fn multipart_requests_use_native_forms_and_encoder_owned_boundaries() {
         let service = sdk_service_from_contract("uploads", &json!({"routes":[{"path":"/upload","operationName":"upload","method":"POST","request":{"body":{"kind":"multipart"}},"responses":[{"statusCode":204}]}]})).unwrap();

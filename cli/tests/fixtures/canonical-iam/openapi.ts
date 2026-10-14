@@ -1,3 +1,4 @@
+import {z} from 'zod/v3';
 import assert from 'node:assert/strict';
 import {generateOpenApiSpecs,OPENAPI_DEFAULT_VERSION} from '@fixture/openapi';
 import {SchemaValidator,string} from '@forklaunch/validator/zod';
@@ -45,3 +46,56 @@ for(const validator of [SchemaValidator(),TypeBoxValidator()]) {
  }
 }
 console.log('PASS30actual Zod/TypeBox emitter no-body, null/nullish and typed-response cases');
+
+// Optionality comes from each real validator's wrapper projection, including
+// TypeBox defaults which are annotations rather than Zod runtime defaults.
+for(const validator of [SchemaValidator(),TypeBoxValidator()]) {
+ for(const [schema,required] of [[validator.string,true],[validator.optional(validator.string),false],[validator.null,true]] as const) {
+  const spec=generateOpenApiSpecs(validator,['http://localhost'],['Fixture'],{
+   basePath:'/',routes:[{basePath:'/',path:'/optional',method:'post',contractDetails:{
+    name:'Optional',summary:'Optional body',body:{json:schema},responses:{200:validator.string}
+   }}],routers:[],_fetchMap:{},sdk:{},sdkPaths:{}
+  })[OPENAPI_DEFAULT_VERSION];
+  assert.equal(Object.values(spec.paths)[0].post.requestBody.required,required);
+ }
+}
+console.log('PASS6actual Zod/TypeBox required, optional and explicit-null request body metadata cases');
+
+let rootCallbacks=0;
+const forbidden=()=>{rootCallbacks++;throw new Error('Document generation must not execute root callbacks');};
+for(const [schema,required] of [
+ [z.string().optional(),false],
+ [z.string().nullable(),true],
+ [z.string().nullish(),false],
+ [z.string().default(forbidden),false],
+ [z.string().optional().transform(forbidden),false],
+ [z.preprocess(forbidden,z.string().optional()),true],
+ [z.string().optional().refine(forbidden),true],
+ [z.string().default(forbidden).nullable(),false]
+] as const)for(const body of [schema,{json:schema}]) {
+ const spec=generateOpenApiSpecs(SchemaValidator(),['http://localhost'],['Fixture'],{
+  basePath:'/',routes:[{basePath:'/',path:'/root',method:'post',contractDetails:{name:'Root',summary:'Root',body,responses:{200:z.string()}}}],routers:[],_fetchMap:{},sdk:{},sdkPaths:{}
+ })[OPENAPI_DEFAULT_VERSION];
+ const input=Object.values(spec.paths)[0].post.requestBody;
+ assert.equal(input.required,required);
+ const projected=Object.values(input.content)[0].schema;
+ assert.equal(projected.default,undefined);
+}
+assert.equal(rootCallbacks,0);
+console.log('PASS16 actual Zod bare/typed root optional/default/nullish/effects projections with zero throwing root callback execution');
+
+const typebox=TypeBoxValidator();
+const typeboxDefault=typebox.openapiRequestBody({...typebox.string,default:'annotated'});
+assert.equal(typeboxDefault.required,true);
+assert.equal(typeboxDefault.schema.default,'annotated');
+const zodDefault=SchemaValidator().openapiRequestBody(z.string().default('runtime'));
+assert.equal(zodDefault.required,false);
+assert.equal(zodDefault.schema.default,undefined);
+console.log('PASS TypeBox static default annotation and Zod unevaluated runtime default remain distinct');
+const custom=SchemaValidator();
+Object.defineProperty(custom,'openapiRequestBody',{value:undefined});
+const fallback=generateOpenApiSpecs(custom,['http://localhost'],['Fixture'],{
+ basePath:'/',routes:[{basePath:'/',path:'/custom',method:'post',contractDetails:{name:'Custom',summary:'Custom',body:{json:z.string().optional()},responses:{200:z.string()}}}],routers:[],_fetchMap:{},sdk:{},sdkPaths:{}
+})[OPENAPI_DEFAULT_VERSION];
+assert.equal(Object.values(fallback.paths)[0].post.requestBody.required,true);
+console.log('PASS custom validators without the additive projection retain required-body export');

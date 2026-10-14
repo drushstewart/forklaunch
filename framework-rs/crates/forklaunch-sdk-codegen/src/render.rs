@@ -68,6 +68,7 @@ pub struct TypeScriptOperationTypeTemplate {
     pub request_params_type: String,
     pub request_query_type: String,
     pub request_body_type: String,
+    pub request_body_optional: bool,
     pub request_headers_type: String,
     pub responses: Vec<SdkResponseVariant>,
 }

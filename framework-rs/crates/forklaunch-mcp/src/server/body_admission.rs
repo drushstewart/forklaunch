@@ -148,7 +148,27 @@ impl McpBodyAdmissions {
         route: &RouteContract,
         tool: &mut rmcp::model::Tool,
     ) -> Result<Option<Arc<Admission>>, String> {
-        let admission = self.get(route);
+        let admission = if let Some(admission) = self.get(route) {
+            Some(admission)
+        } else if route.request.body_optional && route.request.body.is_some() {
+            let schema = route
+                .request
+                .body
+                .as_ref()
+                .and_then(|body| body.schema.json_schema.as_ref())
+                .ok_or("Optional MCP body requires an explicit schema")?;
+            let schema: Value =
+                serde_json::from_str(schema).map_err(|_| "Invalid optional MCP body schema")?;
+            let nullable = schema_validation::compile(&schema)?(&Value::Null).is_ok();
+            let mut implicit = Self::default();
+            implicit.insert(
+                route,
+                McpBodyAdmission::new(MissingToolBody::Omit, nullable, 2 * 1024 * 1024, 64),
+            )?;
+            implicit.get(route)
+        } else {
+            None
+        };
         if let Some(admission) = &admission {
             admission.project(Arc::make_mut(&mut tool.input_schema))?;
         }
@@ -256,6 +276,16 @@ impl Admission {
             && let Some(required) = input.get_mut("required").and_then(Value::as_array_mut)
         {
             required.retain(|value| value.as_str() != Some("body"));
+        }
+        if matches!(self.policy.missing, MissingToolBody::Reject) {
+            let required = input
+                .entry("required")
+                .or_insert_with(|| json!([]))
+                .as_array_mut()
+                .ok_or("Invalid tool required fields")?;
+            if !required.iter().any(|value| value.as_str() == Some("body")) {
+                required.push(json!("body"));
+            }
         }
         let relocated =
             forklaunch_contract::relocate_schema_json(&schema.to_string(), &["properties", "body"]);
@@ -377,6 +407,49 @@ mod tests {
             args.insert("body".into(), json!({"id":"ok"}));
             assert!(!admission.apply(&mut args).unwrap());
         }
+    }
+    #[test]
+    fn optional_contract_admits_absence_and_explicit_reject_overrides_metadata() {
+        let mut route = route();
+        route.request.body_optional = true;
+        let input: Value = serde_json::from_str(&crate::input_schema(&route)).unwrap();
+        let mut tool: rmcp::model::Tool =
+            serde_json::from_value(json!({"name":"Optional","inputSchema":input})).unwrap();
+        let admission = McpBodyAdmissions::default()
+            .project(&route, &mut tool)
+            .unwrap()
+            .unwrap();
+        assert!(admission.apply(&mut Map::new()).unwrap());
+        assert!(
+            admission
+                .apply(json!({"body":null}).as_object_mut().unwrap())
+                .is_err()
+        );
+        assert!(
+            admission
+                .apply(json!({"body":{"id":1}}).as_object_mut().unwrap())
+                .is_err()
+        );
+        assert!(
+            !admission
+                .apply(json!({"body":{"id":"ok"}}).as_object_mut().unwrap())
+                .unwrap()
+        );
+        let mut registry = McpBodyAdmissions::default();
+        registry
+            .insert(
+                &route,
+                McpBodyAdmission::new(MissingToolBody::Reject, false, 64, 4),
+            )
+            .unwrap();
+        let admission = registry.project(&route, &mut tool).unwrap().unwrap();
+        assert!(admission.apply(&mut Map::new()).is_err());
+        assert!(
+            tool.input_schema["required"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("body"))
+        );
     }
     #[test]
     fn invalid_defaults_nullable_policies_and_bounds_reject_before_mount() {

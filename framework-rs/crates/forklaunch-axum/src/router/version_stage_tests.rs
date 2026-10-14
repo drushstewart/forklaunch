@@ -474,3 +474,95 @@ async fn text_wire_pre_auth_preserves_denial_and_once_only_callbacks_in_all_mode
         }
     }
 }
+
+#[tokio::test]
+async fn optional_absence_keeps_required_fields_and_authentication() {
+    for local in [false, true] {
+        for (query, credentials, status) in
+            [(false, false, 400), (true, false, 401), (true, true, 200)]
+        {
+            let body = BodyContract::json("Input");
+            let mut request = RequestContract::default().with_optional_body(body);
+            request.query.push(FieldContract::required("tag", "String"));
+            let route = RouteContract::post("OptionalSecurity", "Optional security", "/optional")
+                .with_access(AccessLevel::Protected)
+                .with_version(VersionedContract {
+                    version: "one".into(),
+                    request,
+                    responses: vec![ResponseContract::new(200, None)],
+                });
+            let mut hooks = VersionBodyHooksRegistry::default();
+            hooks.enable_typescript_json_wire(&route).unwrap();
+            hooks
+                .enable_selection_before_authentication(&route)
+                .unwrap();
+            let calls = Arc::new(AtomicUsize::new(0));
+            let counted = calls.clone();
+            let child = if local {
+                let mut router = LocalRouter::new();
+                router.register_with_body_hooks(
+                    route.clone(),
+                    &hooks,
+                    move |request: FrameworkRequest| {
+                        assert!(request.version.as_ref().unwrap().parsed_body.is_none());
+                        assert!(request.session.is_some());
+                        counted.fetch_add(1, Ordering::SeqCst);
+                        Ok(FrameworkResponse::text(200, "ok"))
+                    },
+                );
+                ForkLaunchRouter::from_local_router(
+                    ServiceInfo::new("optional", "1"),
+                    [route],
+                    router,
+                )
+            } else {
+                ForkLaunchRouter::anonymous().route(route, move || {
+                    counted.fetch_add(1, Ordering::SeqCst);
+                    async { "ok" }
+                })
+            };
+            let auth_calls = Arc::new(AtomicUsize::new(0));
+            let counted = auth_calls.clone();
+            let config = RouterConfig {
+                version_body_hooks: hooks,
+                ..RouterConfig::default()
+            }
+            .with_authenticator(move |request, _| {
+                assert!(request.version.as_ref().unwrap().parsed_body.is_none());
+                counted.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if credentials {
+                        Ok(AuthenticatedSession::new(
+                            forklaunch_auth::Principal::new("actor"),
+                            json!({"sub":"actor"}),
+                        ))
+                    } else {
+                        Err(AuthError::MissingCredentials)
+                    }
+                }
+            });
+            let response = child
+                .with_config(config)
+                .into_router()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(if query {
+                            "/optional?tag=ok"
+                        } else {
+                            "/optional"
+                        })
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), status);
+            assert_eq!(auth_calls.load(Ordering::SeqCst), usize::from(query));
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                usize::from(query && credentials)
+            );
+        }
+    }
+}

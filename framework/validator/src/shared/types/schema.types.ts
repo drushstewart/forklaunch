@@ -286,6 +286,14 @@ export interface SchemaValidator<
    * @returns {SchemaObject} - The OpenAPI schema object.
    */
   openapi: OpenAPIFunction;
+
+  /** Optional root-input projection without evaluating root user callbacks.
+   * General/nested schema export semantics remain adapter-defined.
+   */
+  openapiRequestBody?: (schema: unknown) => {
+    required: boolean;
+    schema: SchemaObject;
+  };
 }
 
 /**

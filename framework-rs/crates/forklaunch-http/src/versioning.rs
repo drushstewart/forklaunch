@@ -622,6 +622,9 @@ impl Variant {
         {
             return false;
         }
+        if body_value.is_none() && self.route.request.body_optional {
+            return true;
+        }
         match &self.body {
             None | Some(BodyValidator::Opaque) => true,
             Some(BodyValidator::Value(validate) | BodyValidator::Bytes(validate)) => {
