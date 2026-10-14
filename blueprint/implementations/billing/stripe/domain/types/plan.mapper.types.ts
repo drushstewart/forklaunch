@@ -14,6 +14,8 @@ export type StripePlanMappers<
     ) => Promise<Dto['PlanMapper']>;
   };
   CreatePlanMapper: {
+    /** Pure configured validation before any provider creation effects. */
+    validateCreate?: (dto: Dto['CreatePlanMapper']) => Promise<void>;
     entity: Entities['CreatePlanMapper'];
     toEntity: (
       dto: Dto['CreatePlanMapper'],

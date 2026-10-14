@@ -2358,7 +2358,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/plan.mapper.types.ts",
               "line": 6,
-              "type": "{\n  PlanMapper: {\n    entity: Entities['PlanMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PlanMapper']>\n    ) => Promise<Dto['PlanMapper']>;\n  };\n  CreatePlanMapper: {\n    entity: Entities['CreatePlanMapper'];\n    toEntity: (\n      dto: Dto['CreatePlanMapper'],\n      em: EntityManager,\n      stripePlan: Stripe.Product,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePlanMapper']>>;\n  };\n  UpdatePlanMapper: {\n    /** Pure configured validation before any provider replacement effects. */\n    validateUpdate?: (dto: Dto['UpdatePlanMapper']) => Promise<void>;\n    entity: Entities['UpdatePlanMapper'];\n    toEntity: (\n      dto: Dto['UpdatePlanMapper'],\n      em: EntityManager,\n      stripePlan: Stripe.Product,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePlanMapper']>>;\n  };\n}"
+              "type": "{\n  PlanMapper: {\n    entity: Entities['PlanMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PlanMapper']>\n    ) => Promise<Dto['PlanMapper']>;\n  };\n  CreatePlanMapper: {\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePlanMapper']) => Promise<void>;\n    entity: Entities['CreatePlanMapper'];\n    toEntity: (\n      dto: Dto['CreatePlanMapper'],\n      em: EntityManager,\n      stripePlan: Stripe.Product,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePlanMapper']>>;\n  };\n  UpdatePlanMapper: {\n    /** Pure configured validation before any provider replacement effects. */\n    validateUpdate?: (dto: Dto['UpdatePlanMapper']) => Promise<void>;\n    entity: Entities['UpdatePlanMapper'];\n    toEntity: (\n      dto: Dto['UpdatePlanMapper'],\n      em: EntityManager,\n      stripePlan: Stripe.Product,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePlanMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2964,25 +2964,25 @@
                   "name": "getPlan",
                   "signature": "async getPlan(idDto: IdDto, em?: EntityManager): Promise<Dto['PlanMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 116
+                  "line": 118
                 },
                 {
                   "name": "updatePlan",
                   "signature": "async updatePlan(\n    planDto: StripeUpdatePlanDto,\n    em?: EntityManager\n  ): Promise<Dto['PlanMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 128
+                  "line": 130
                 },
                 {
                   "name": "deletePlan",
                   "signature": "async deletePlan(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 185
+                  "line": 187
                 },
                 {
                   "name": "listPlans",
                   "signature": "async listPlans(\n    idsDto?: IdsDto,\n    em?: EntityManager\n  ): Promise<Dto['PlanMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 194
+                  "line": 196
                 }
               ]
             }

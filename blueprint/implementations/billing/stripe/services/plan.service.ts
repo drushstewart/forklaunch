@@ -87,6 +87,8 @@ export class StripePlanService<
     planDto: StripeCreatePlanDto,
     em?: EntityManager
   ): Promise<Dto['PlanMapper']> {
+    await this.mappers.CreatePlanMapper.validateCreate?.(planDto);
+
     let stripePlan = await this.stripeClient.plans.create({
       ...planDto.stripeFields,
       amount: planDto.price,

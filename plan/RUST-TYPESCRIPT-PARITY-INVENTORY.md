@@ -7153,3 +7153,26 @@ Canonical366/zero OpenAPI differences,108 versioned responses/20 known origins,
 ordering pairs and144 whole-request field transforms pass again:
 /private/tmp/fl-version-stage-*.log. CI runs both default and enabled matrices.
 Broader versioned diagnostics and default-error artifact support remain open.
+
+
+## Configured Plan creation preflight before external effects (2026-10-14)
+
+StripePlanService now invokes an optional pure configured CreatePlanMapper
+validateCreate hook before provider creation. The configured hook validates the
+actual creation schema except externalId/billingProvider, which the service replaces
+with provider-derived values. Invalid configured fields fail before Stripe or ORM
+I/O. Valid POST→expanded-product retrieval→mapper/persistence order, caller input
+immutability and custom mapper fallback remain unchanged. This does not resolve
+public IDs/name to provider products, prove provider ownership or make provider/
+local creation atomic.
+
+14 actual creation cases,13 existing update cases,353 configured mapper cases,
+all eight permanent TypeScript7.0.2 service/mapper roots with zero diagnostics,
+and170 actual TS/native official Stripe SDK service regressions pass:
+/private/tmp/fl-plan-create-preflight.log,
+/private/tmp/fl-plan-create-update-regression.log,
+/private/tmp/fl-plan-create-configured-regression.log,
+/private/tmp/fl-plan-create-preflight-types.log,
+/private/tmp/fl-plan-create-legacy170.log. The public inventory is regenerated and
+checked; CI runs the new fixture. Interrupted creation and trusted provider/local
+identity mapping remain separate open work.

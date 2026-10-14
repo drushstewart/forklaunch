@@ -5,7 +5,7 @@ import Stripe from 'stripe';
 import { Plan } from '../../persistence/entities/plan.entity';
 import { PlanSchemas } from '../schemas';
 
-export const CreatePlanMapper = requestMapper({
+const CreatePlanEntityMapper = requestMapper({
   schemaValidator,
   schema: PlanSchemas.CreatePlanSchema,
   entity: Plan,
@@ -82,6 +82,25 @@ export const UpdatePlanMapper = {
     );
     if (!patch.ok) {
       throw new Error('Invalid plan update');
+    }
+  }
+};
+
+export const CreatePlanMapper = {
+  ...CreatePlanEntityMapper,
+  validateCreate: async (
+    dto: Parameters<typeof CreatePlanEntityMapper.toEntity>[0]
+  ) => {
+    // These fields are replaced with authenticated provider results by the service.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { externalId, billingProvider, ...inputSchema } =
+      PlanSchemas.CreatePlanSchema;
+    const input = schemaValidator.parse(
+      schemaValidator.schemify(inputSchema),
+      dto
+    );
+    if (!input.ok) {
+      throw new Error('Invalid plan creation');
     }
   }
 };
