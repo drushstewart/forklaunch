@@ -7176,3 +7176,25 @@ and170 actual TS/native official Stripe SDK service regressions pass:
 /private/tmp/fl-plan-create-legacy170.log. The public inventory is regenerated and
 checked; CI runs the new fixture. Interrupted creation and trusted provider/local
 identity mapping remain separate open work.
+
+
+## Public-only custom JWKS read records (2026-10-14)
+
+An additive with_get_jwks_records callback accepts mixed private/public read
+snapshots while preserving the existing private reader/material accessor/create
+callback. JwksPublicKeyRecord validates the exact native public-JWK shape, matching
+ID/algorithm, millisecond timestamps and field/string bounds before serialization;
+private/unknown fields reject. Public records publish and verify signatures, but
+selection for signing fails without fallback minting or silent alternate selection.
+The default encrypted backend is unchanged. Public-only create returns remain
+unrepresentable by the typed private create API; actual upstream structurally
+accepts them but fails later while signing. Arbitrary/legacy JWK wire import stays
+outside this explicit profile.
+
+Actual Better Auth publication and server verification succeed with public-only
+records; actual selected/create-returned public-only signing fails. All nine native
+adapter tests and strict IAM all-feature/all-target Clippy pass, including real HTTP
+JWKS, signature verification, sign failure with UnavailableStore proving no fallback,
+empty default table and malformed/private/oversized field rejection:
+/private/tmp/fl-jwks-public-only-{ts,native,clippy}.log. No broad custom-adapter or
+Better Auth gate is closed by this bounded additive source receipt.

@@ -65,3 +65,19 @@ const fallbackOptions={jwks:{disablePrivateKeyEncryption:true},adapter:{getJwks:
 const fallbackToken=await signJWT(context,{options:fallbackOptions,payload:{sub:'fallback'}});
 assert.equal(fallbackReads,2);assert.equal((await jwtVerify(fallbackToken,pair.publicKey)).payload.sub,'fallback');
 console.log('PASS actual custom reader is invoked again for latest-any fallback and its second snapshot is authoritative');
+
+const {privateKey: omittedPrivate, ...publicOnly}=replacement;
+assert.ok(omittedPrivate);
+const publicReference=await betterAuthReference(root,{jwt:{jwks:{disablePrivateKeyEncryption:true},adapter:{getJwks:async()=>[publicOnly]}}});
+const publicAuth=betterAuth({...publicReference.config,logger:{disabled:true}});
+const published=await publicAuth.handler(new Request('http://localhost:3000/api/auth/jwks'));
+assert.equal(published.status,200);
+const publishedBody=await published.json();
+assert.equal(publishedBody.keys[0].kid,replacement.id);
+assert.equal(publishedBody.keys[0].d,undefined);
+const {SignJWT}=await import(moduleUrl('jose/dist/webapi/index.js'));
+const publicToken=await new SignJWT({sub:'public-owner'}).setProtectedHeader({alg:'EdDSA',kid:replacement.id}).setIssuer('http://localhost:3000').setAudience('http://localhost:3000').sign(pair.privateKey);
+assert.equal((await publicAuth.api.verifyJWT({body:{token:publicToken}})).payload.sub,'public-owner');
+await assert.rejects(signJWT(context,{options:{jwks:{disablePrivateKeyEncryption:true},adapter:{getJwks:async()=>[publicOnly]}},payload:{sub:'owner'}}));
+await assert.rejects(signJWT(context,{options:{jwks:{disablePrivateKeyEncryption:true},adapter:{getJwks:async()=>[],createJwk:async()=>publicOnly}},payload:{sub:'owner'}}));
+console.log('PASS actual public-only key: publication and verification work; signing fails for both read-selected and create-returned public-only records');

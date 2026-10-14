@@ -323,3 +323,88 @@ async fn custom_latest_fallback_reads_again_and_uses_second_snapshot() {
         "fallback"
     );
 }
+
+#[tokio::test]
+async fn public_only_snapshot_publishes_verifies_and_never_falls_back_when_signing() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    use tower::ServiceExt;
+    let key = SigningKey::generate_config("public-only", "EdDSA", 2048).unwrap();
+    let private = JwksKeyRecord::new(
+        "public-only",
+        JwksKeyMaterial::new("EdDSA", time(), None, key.private_pkcs8().to_vec()).unwrap(),
+    )
+    .unwrap();
+    let signer = KeyRing::new(Arc::new(UnavailableStore), "https://owned.test").with_jwks_adapter(
+        JwksAdapter::new("tenant").unwrap().with_get_jwks(move |_| {
+            let private = private.clone();
+            async move { Ok(Some(vec![private])) }
+        }),
+    );
+    let token = signer
+        .sign_jwt(Some(&json!({"payload":{"sub":"owner"}})), time())
+        .await
+        .unwrap();
+    let public =
+        JwksPublicKeyRecord::new("public-only", "EdDSA", time(), None, &key.public_jwk()).unwrap();
+    let adapter = JwksAdapter::new("tenant")
+        .unwrap()
+        .with_get_jwks_records(move |_| {
+            let public = public.clone();
+            async move { Ok(Some(vec![JwksReadRecord::Public(public)])) }
+        });
+    let ring = KeyRing::new(Arc::new(UnavailableStore), "https://owned.test")
+        .with_jwks_adapter(adapter.clone());
+    let store = Arc::new(MemoryAuthStore::default());
+    let app = crate::http::AuthHttp::new(
+        store.clone(),
+        "http://localhost:3000".into(),
+        vec![42; 32],
+        vec![],
+    )
+    .unwrap()
+    .with_clock(time)
+    .with_jwks_adapter(adapter);
+    let response = app
+        .router()
+        .oneshot(Request::builder().uri("/jwks").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let published: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    assert_eq!(published["keys"][0], key.public_jwk());
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(tx.list(Model::Jwks).await.unwrap().is_empty());
+    tx.commit().await.unwrap();
+    assert_eq!(
+        ring.jwks(time()).await.unwrap()["keys"][0],
+        key.public_jwk()
+    );
+    assert_eq!(
+        ring.verify_jwt(Some(&token), time()).await.unwrap()["payload"]["sub"],
+        "owner"
+    );
+    assert!(
+        ring.sign_jwt(Some(&json!({"payload":{"sub":"owner"}})), time())
+            .await
+            .is_err()
+    );
+}
+
+#[test]
+fn public_only_rejects_private_unknown_mismatched_and_unbounded_jwk_fields() {
+    let key = SigningKey::generate_config("public-only", "EdDSA", 2048).unwrap();
+    for (field, value) in [
+        ("d", json!("secret")),
+        ("extra", json!(true)),
+        ("kid", json!("other")),
+        ("x", json!("a".repeat(2049))),
+    ] {
+        let mut public = key.public_jwk();
+        public[field] = value;
+        assert!(JwksPublicKeyRecord::new("public-only", "EdDSA", time(), None, &public).is_err());
+    }
+}

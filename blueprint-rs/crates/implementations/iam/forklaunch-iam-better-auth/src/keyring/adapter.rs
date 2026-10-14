@@ -122,9 +122,71 @@ impl JwksKeyRecord {
         Ok(row)
     }
 }
+/// A bounded native public JWK; it contains no private signing material.
+#[derive(Clone)]
+pub struct JwksPublicKeyRecord(Value);
+impl JwksPublicKeyRecord {
+    /// Imports the native public-JWK shape for publication and verification only.
+    /// Signing with this record fails; it never generates a replacement key.
+    /// # Errors
+    /// Rejects private/unknown fields, unsupported shapes, oversized coordinates,
+    /// mismatched ID/algorithm, and submillisecond dates.
+    pub fn new(
+        id: impl Into<String>,
+        algorithm: &str,
+        created_at: DateTime<Utc>,
+        expires_at: Option<DateTime<Utc>>,
+        public_jwk: &Value,
+    ) -> BlueprintResult<Self> {
+        let id = id.into();
+        let object = public_jwk.as_object().ok_or_else(key_error)?;
+        if id.is_empty()
+            || id.len() > 512
+            || algorithm.len() > 16
+            || object.len() > 6
+            || object.iter().any(|(key, value)| {
+                !matches!(
+                    key.as_str(),
+                    "kid" | "alg" | "kty" | "crv" | "x" | "y" | "n" | "e"
+                ) || value.as_str().is_none_or(|value| value.len() > 2048)
+            })
+            || !created_at
+                .timestamp_subsec_nanos()
+                .is_multiple_of(1_000_000)
+            || expires_at
+                .is_some_and(|value| !value.timestamp_subsec_nanos().is_multiple_of(1_000_000))
+        {
+            return Err(key_error());
+        }
+        let mut row = serde_json::json!({"id":id,"alg":algorithm,"createdAt":timestamp(created_at),
+            "publicKey":serde_json::to_string(public_jwk).map_err(|_|key_error())?});
+        if let Some(curve) = public_jwk.get("crv") {
+            row["crv"] = curve.clone();
+        }
+        if let Some(expiry) = expires_at {
+            row["expiresAt"] = serde_json::json!(timestamp(expiry));
+        }
+        super::public_key(&row)?;
+        Ok(Self(row))
+    }
+}
+/// A custom read snapshot may contain private signing keys and public-only keys.
+#[derive(Clone)]
+pub enum JwksReadRecord {
+    Private(JwksKeyRecord),
+    Public(JwksPublicKeyRecord),
+}
+impl JwksReadRecord {
+    pub(super) fn row(&self) -> BlueprintResult<Value> {
+        match self {
+            Self::Private(record) => record.row(),
+            Self::Public(record) => Ok(record.0.clone()),
+        }
+    }
+}
 type CallbackFuture<T> = Pin<Box<dyn Future<Output = BlueprintResult<T>> + Send>>;
 type Read =
-    Arc<dyn Fn(JwksAdapterContext) -> CallbackFuture<Option<Vec<JwksKeyRecord>>> + Send + Sync>;
+    Arc<dyn Fn(JwksAdapterContext) -> CallbackFuture<Option<Vec<JwksReadRecord>>> + Send + Sync>;
 type Create =
     Arc<dyn Fn(JwksKeyMaterial, JwksAdapterContext) -> CallbackFuture<JwksKeyRecord> + Send + Sync>;
 /// Independent trusted read/create hooks. Bind this adapter to the same tenant as
@@ -154,6 +216,24 @@ impl JwksAdapter {
     where
         F: Fn(JwksAdapterContext) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = BlueprintResult<Option<Vec<JwksKeyRecord>>>> + Send + 'static,
+    {
+        self.read = Some(Arc::new(move |context| {
+            let future = callback(context);
+            Box::pin(async move {
+                Ok(future
+                    .await?
+                    .map(|records| records.into_iter().map(JwksReadRecord::Private).collect()))
+            })
+        }));
+        self
+    }
+    /// Installs a mixed private/public-only read source. Selected public-only
+    /// records cannot sign; no fallback minting hides that configuration failure.
+    #[must_use]
+    pub fn with_get_jwks_records<F, Fut>(mut self, callback: F) -> Self
+    where
+        F: Fn(JwksAdapterContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = BlueprintResult<Option<Vec<JwksReadRecord>>>> + Send + 'static,
     {
         self.read = Some(Arc::new(move |context| Box::pin(callback(context))));
         self

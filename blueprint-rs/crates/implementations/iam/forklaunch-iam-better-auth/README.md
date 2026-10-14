@@ -1028,9 +1028,20 @@ strings or replace their encryption format. The default PostgreSQL backend still
 encrypts records; custom callbacks must provide their own encryption at rest.
 Private byte buffers zeroize on drop, including explicit clones; secret-bearing
 material/record types have neither `Debug` nor serde implementations. Trusted
-persistence code can read private bytes and must not log them. Public-only,
-malformed, legacy missing-algorithm records and arbitrary JavaScript adapter
+persistence code can read private bytes and must not log them. Malformed, legacy missing-algorithm records and arbitrary JavaScript adapter
 objects are outside this typed interface. Custom read sets above 4096 records
 fail explicitly; they are not truncated to the default store's 100-record window.
 No generic request context, arbitrary plugin schema, or per-call signing-key
 pinning API is introduced by these callbacks.
+
+`JwksAdapter::with_get_jwks_records` additionally accepts mixed
+`JwksReadRecord::Private` and `::Public` snapshots. `JwksPublicKeyRecord::new`
+accepts the exact native public-JWK shape (including matching `kid` and `alg`),
+with at most six fields and 2048 bytes per string. Unknown/private fields are
+rejected before serialization. Public-only records support publication and
+signature verification. Selecting one for signing fails without minting or
+silently selecting another key. The existing private-only reader, material
+accessor and create callback are unchanged. A public-only create return remains
+unrepresentable by the typed create callback; upstream accepts it structurally
+but signing subsequently fails. This does not add arbitrary JWK import or change
+the encrypted default backend.
