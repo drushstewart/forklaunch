@@ -38,6 +38,8 @@ if "$FORKLAUNCH_CLI" init application auth-conflict --path "$RUN_ROOT/conflict" 
 fi
 test ! -e "$RUN_ROOT/conflict"
 "$FORKLAUNCH_CLI" init application auth-app --path "$RUN_ROOT/app" --language rust --modules iam-better-auth -D Auth -A ForkLaunch -L MIT
+rg -Fq 'BETTER_AUTH_TWO_FACTOR_ENABLED=false' "$RUN_ROOT/app/crates/iam/.env.example"
+rg -Fq '${IAM_BETTER_AUTH_TWO_FACTOR_ENABLED:-false}' "$RUN_ROOT/app/docker-compose.yaml"
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated"
 cd "$RUN_ROOT/relocated"
 printf '\npub const USER_OWNED_MARKER: &str = "preserved";\n' >> crates/iam/src/lib.rs
@@ -46,6 +48,8 @@ rg -q USER_OWNED_MARKER crates/iam/src/lib.rs
 "$FORKLAUNCH_CLI" init module --path . --language rust -m iam-better-auth -d postgresql
 rg -q USER_OWNED_MARKER crates/iam/src/lib.rs
 rg -q BETTER_AUTH_SECRET docker-compose.yaml
+rg -Fq '${IAM_BETTER_AUTH_TWO_FACTOR_ENABLED:-false}' docker-compose.yaml
+rg -Fq 'BETTER_AUTH_TWO_FACTOR_ENABLED=false' crates/iam/.env.example
 cargo build -p iam
 "$FORKLAUNCH_CLI" openapi export --path .
 "$FORKLAUNCH_CLI" sdk generate --path . --target all --from contract

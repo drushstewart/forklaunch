@@ -43,6 +43,17 @@ HTTP and MCP share the listener by default. Set `MCP_ENABLED=false` to disable
 MCP, or use `MCP_LISTENER=separate` and `MCP_PORT` for another listener. Set
 `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.
 
+Set `BETTER_AUTH_TWO_FACTOR_ENABLED=true` to enable the fixed TOTP profile for
+password sign-in. For Compose, set `IAM_BETTER_AUTH_TWO_FACTOR_ENABLED=true` in
+the application environment. After password enrollment and initial TOTP
+verification, subsequent password logins require a code or a single-use backup
+code unless a rotating trusted-device cookie applies. The profile uses six-digit
+SHA-1 TOTP with a thirty-second period. Factor records remain tenant encrypted.
+Existing sessions and social callbacks retain their own policy. Application
+HTTP/MCP discovery reports `twoFactor`; raw two-factor routes remain HTTP only.
+Clients enable the actual Better Auth `twoFactorClient` plugin. OTP delivery,
+custom TOTP parameters and broader plugins remain separate capabilities.
+
 The internal `<auth-base-path>/test-callback` exchanges a signed session cookie for
 JWT/session/email fragment values and clears only the configured session cookie.
 `<auth-base-path>/oauth-redirect` emits the script-safe OAuth/SSO popup page. Both validate
@@ -68,5 +79,6 @@ retain memory-adapter semantics unless they explicitly select this profile.
 The scaffold selects `AuthApiErrorObserverMode::UnexpectedOnly` for diagnostic
 callbacks installed with `with_api_error_observer`. Explicitly handled API500s
 skip that callback; unexpected failures invoke it. No callback is installed by
-default. Built-in sanitized tracing still records every raw5xx, independently of
-callback mode, so default TypeScript logger event counts are not identical.
+default. Built-in `Configured` tracing independently records unexpected failures and
+characterized internal catches while suppressing silent handled failures. Exact
+logger payloads and uncharacterized plugin event counts remain parity work.

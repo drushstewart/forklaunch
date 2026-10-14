@@ -2572,6 +2572,7 @@ fn is_platform_managed_var(var_name: &str) -> bool {
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "OTEL_EXPORTER_OTLP_PROTOCOL",
         "BETTER_AUTH_BASE_PATH",
+        "BETTER_AUTH_TWO_FACTOR_ENABLED",
         // CLI-generated: random secrets produced during `forklaunch init`
         "HMAC_SECRET_KEY",
         "BETTER_AUTH_SECRET",

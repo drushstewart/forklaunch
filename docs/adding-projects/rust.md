@@ -152,6 +152,17 @@ option. Live tests execute both factories with the actual Better Auth client
 against native PostgreSQL services, including additional fields, sessions,
 profile updates, JWT/JWKS, signout and signin.
 
+Enable the fixed password-login TOTP profile with
+`BETTER_AUTH_TWO_FACTOR_ENABLED=true`. Generated Compose accepts
+`IAM_BETTER_AUTH_TWO_FACTOR_ENABLED=true` from the application environment;
+both default to false. Enroll with the current password, verify the initial
+code, and use the actual Better Auth `twoFactorClient` for subsequent challenges,
+backup codes and rotating trusted devices. Codes use SHA-1, six digits and a
+thirty-second period. Factor state is tenant encrypted. HTTP/MCP discovery
+reports the capability; raw authentication endpoints remain HTTP routes.
+Existing sessions and social callbacks retain their independent policy.
+OTP delivery, custom TOTP parameters and broader plugins remain parity work.
+
 This preset serves one configured tenant. `AuthTransaction::find_unique` performs
 exact email/subscription and organization-slug lookups using the existing
 PostgreSQL blind indexes across current and previous encryption keys. It checks

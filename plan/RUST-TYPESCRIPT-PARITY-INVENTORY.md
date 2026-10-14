@@ -8184,3 +8184,20 @@ an automatically executed cross-repository CI test. Normal all-target checks sti
 compile it. Full production bootstrap, generated default UUID ownership across all
 families, managed mutations and unresolved-provider administrative recovery remain
 open. No live Stripe/cloud operation was performed.
+
+
+## Generated TOTP configuration propagation (2026-10-14)
+
+Native IAM scaffolds now document BETTER_AUTH_TWO_FACTOR_ENABLED=false and pass
+${IAM_BETTER_AUTH_TWO_FACTOR_ENABLED:-false} through generated Compose. CLI
+default/release metadata recognizes the optional false default; user configuration
+can enable it explicitly. Generated README/user guide explains password-login
+scope, actual twoFactorClient, discovery and independent social/existing sessions.
+README configured tracing description now matches the tested generated preset.
+31 CLI env-default tests and locked CLI build pass (four existing warnings).
+A fresh generated app retains the setting through sync/reinit; actual docker
+compose config resolves bothfalse/true under explicit fixture settings without
+starting services. Metadata /private/tmp/fl-totp-cli-config-checkpoint.json;
+logs /private/tmp/fl-totp-cli-config-{tests,build}.log. Runtime shell assertions
+retain default/Compose propagation in the existing e2e flow. This local Compose
+proof does not verify AWS deployment or a production secret/configuration setup.

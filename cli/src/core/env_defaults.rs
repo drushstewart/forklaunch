@@ -290,6 +290,7 @@ pub(crate) fn resolve_env_var_default(
         }
         "CORS_ORIGINS" => Some("http://localhost:3001".to_string()),
         "BETTER_AUTH_BASE_PATH" => Some("/api/auth".to_string()),
+        "BETTER_AUTH_TWO_FACTOR_ENABLED" => Some("false".to_string()),
         "BETTER_AUTH_SECRET" => Some(generate_random_b64_secret(32)),
         "DB_HOST" => match context {
             EnvContext::EnvLocal { .. } => Some("localhost".to_string()),
