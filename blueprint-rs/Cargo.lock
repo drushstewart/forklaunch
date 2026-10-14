@@ -1186,6 +1186,7 @@ dependencies = [
  "tower-sessions",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]

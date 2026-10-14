@@ -241,6 +241,17 @@ Native defaults, application handler responses and internal-router fallbacks are
 preserved. A root internal mount retains ownership of its root fallback. CORS,
 explicit OPTIONS routes and correlation propagation remain separate policies.
 
+Set `RouterConfig.correlation_id_format` to `CorrelationIdFormat::TypeScript`
+to select supplied correlation values with Node-compatible repeated-header and
+Latin-1 handling, or generate a UUIDv4 when absent/empty. Request contexts,
+framework errors and telemetry share that selection. The response propagates it
+unless an application explicitly sets its own correlation header. Native
+`x-request-id` remains independent, and generated values do not satisfy a
+required incoming-header contract. Combined with the HTML fallback profile,
+non-HEAD fallbacks reproduce Express's UTF-8 serialization of Latin-1 values;
+HEAD and normal responses preserve the original wire bytes. Native defaults
+remain available. This profile does not change CORS or JSON parser selection.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

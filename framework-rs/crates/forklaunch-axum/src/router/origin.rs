@@ -79,6 +79,10 @@ pub(super) fn wrap(router: Router, format: RouterOriginFormat) -> Router {
 #[derive(Clone)]
 struct OriginResponse;
 
+/// Express finalhandler serializes headers with its non-HEAD UTF-8 HTML chunk.
+#[derive(Clone)]
+pub(super) struct HtmlUtf8Headers;
+
 pub(super) async fn remove_allow(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     if response
@@ -130,6 +134,9 @@ pub(super) fn fallback(request: &Request, parser_format: ParserErrorFormat) -> R
     )
         .into_response();
     response.extensions_mut().insert(OriginResponse);
+    if request.method() != Method::HEAD {
+        response.extensions_mut().insert(HtmlUtf8Headers);
+    }
     response
 }
 

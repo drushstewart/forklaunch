@@ -44,6 +44,7 @@ on:
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
       - 'cli/tests/rust_router_origin_parity.mjs'
+      - 'cli/tests/rust_correlation_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -279,6 +280,7 @@ on:
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
       - 'cli/tests/rust_router_origin_parity.mjs'
+      - 'cli/tests/rust_correlation_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -598,6 +600,9 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_router_origin_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_correlation_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/typescript_response_status_validation.mjs

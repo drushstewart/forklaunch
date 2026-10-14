@@ -47,8 +47,10 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+mod correlation;
 mod default_errors;
 mod origin;
+pub use correlation::CorrelationIdFormat;
 pub use origin::RouterOriginFormat;
 mod response_validation;
 pub use response_validation::ResponseValidators;
@@ -132,6 +134,8 @@ pub struct RouterConfig {
     pub parser_error_format: ParserErrorFormat,
     /// Opt-in formatting for framework-owned router fallbacks only.
     pub router_origin_format: RouterOriginFormat,
+    /// Optional TypeScript correlation selection and response propagation.
+    pub correlation_id_format: CorrelationIdFormat,
     /// Wire format for framework-detected undocumented response statuses.
     pub response_status_error_format: ResponseStatusErrorFormat,
     /// Inject a configured collector to export HTTP traces and metrics.
@@ -166,6 +170,7 @@ impl Default for RouterConfig {
             handler_error_format: HandlerErrorFormat::Json,
             parser_error_format: ParserErrorFormat::Json,
             router_origin_format: RouterOriginFormat::Native,
+            correlation_id_format: CorrelationIdFormat::Native,
             response_status_error_format: ResponseStatusErrorFormat::Json,
             telemetry: None,
         }
@@ -756,9 +761,9 @@ impl ForkLaunchRouter {
         let router = origin::wrap(router, config.router_origin_format);
         #[cfg(feature = "cookie-session")]
         if let Some(sessions) = config.cookie_sessions {
-            return sessions.wrap(router);
+            return correlation::wrap(sessions.wrap(router), config.correlation_id_format);
         }
-        router
+        correlation::wrap(router, config.correlation_id_format)
     }
 
     /// Mounts an MCP transport whose tools dispatch through this HTTP router.
@@ -1048,13 +1053,8 @@ async fn observe_request(
         .get::<MatchedPath>()
         .map_or("unmatched", MatchedPath::as_str);
     let method = method_to_contract(request.method()).map_or("OTHER", HttpMethod::as_str);
-    let correlation_id = request
-        .headers()
-        .get("x-correlation-id")
-        .or_else(|| request.headers().get("x-request-id"))
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("")
-        .to_owned();
+    let correlation_id =
+        correlation::resolve(request.extensions(), request.headers(), "").to_owned();
     let parent = opentelemetry::global::get_text_map_propagator(|propagator| {
         propagator.extract(&HeaderExtractor(request.headers()))
     });
@@ -1134,12 +1134,11 @@ async fn validate_contract(
     if !selected {
         return validate_matched_contract(&state, contract, request, next).await;
     }
-    let correlation_id = request
-        .headers()
-        .get("x-correlation-id")
-        .or_else(|| request.headers().get("x-request-id"))
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("forklaunch-request");
+    let correlation_id = correlation::resolve(
+        request.extensions(),
+        request.headers(),
+        "forklaunch-request",
+    );
     let context_request = FrameworkRequest::new(
         method,
         request.uri().path(),
@@ -1328,13 +1327,7 @@ fn formatted_body_read_error(
 }
 
 fn request_correlation_id(parts: &Parts) -> String {
-    parts
-        .headers
-        .get("x-correlation-id")
-        .or_else(|| parts.headers.get("x-request-id"))
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("forklaunch-request")
-        .to_owned()
+    correlation::resolve(&parts.extensions, &parts.headers, "forklaunch-request").to_owned()
 }
 
 async fn typescript_body_limit(
@@ -1447,13 +1440,7 @@ fn build_framework_request(
     bytes: &[u8],
 ) -> Result<FrameworkRequest, FrameworkResponse> {
     let path = parts.uri.path();
-    let correlation_id = parts
-        .headers
-        .get("x-correlation-id")
-        .or_else(|| parts.headers.get("x-request-id"))
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("forklaunch-request")
-        .to_owned();
+    let correlation_id = request_correlation_id(parts);
 
     let mut request = FrameworkRequest::new(
         method_to_contract(&parts.method).unwrap_or(contract.method),
@@ -1472,6 +1459,9 @@ fn build_framework_request(
         if let Ok(value) = value.to_str() {
             request = request.with_header(name.as_str(), value);
         }
+    }
+    if let Some(value) = correlation::supplied_header(&parts.extensions, &parts.headers) {
+        request = request.with_header("x-correlation-id", value);
     }
 
     if contract.parsing_body().is_some_and(|body| {

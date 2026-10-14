@@ -31,8 +31,8 @@ pub mod websocket;
 
 #[cfg(feature = "adapter")]
 pub use router::{
-    AuthErrorFormat, DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter, HandlerErrorFormat,
-    RequestValidators, ResponseValidators, RouterConfig, RouterOriginFormat,
+    AuthErrorFormat, CorrelationIdFormat, DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter,
+    HandlerErrorFormat, RequestValidators, ResponseValidators, RouterConfig, RouterOriginFormat,
 };
 
 pub use forklaunch_http::{

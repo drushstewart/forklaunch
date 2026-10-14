@@ -5838,3 +5838,22 @@ semantics. Its README documents the source compatibility change for external
 struct literals/exhaustive patterns and migration to constructors. Signup failure
 status and signout failure suppression are separately identified remaining fault
 paths; gate 918 stays open.
+
+## Request correlation receipt (2026-10-13)
+
+`CorrelationIdFormat::TypeScript` selects a supplied Node-compatible correlation
+value or UUIDv4 and shares it across request context, framework errors and
+telemetry. Original request-header absence remains observable to validators;
+repeated/Latin-1 supplied values survive framework header conversion. Response
+propagation respects application overrides and leaves native request IDs
+independent. Raw HTTP probes establish Express's unusual non-HEAD finalhandler
+UTF-8 serialization; the profile reproduces it only for marked HTML fallbacks.
+HEAD and ordinary responses preserve original Latin-1 bytes.
+
+Validation passes 108 actual-source TS/native request comparisons (216 HTTP
+observations), all 84 Axum tests and strict all-target Clippy with MCP and cookie
+sessions. The UUID dependency was already pinned; lockfiles add only the direct
+Axum dependency edge. README and CI are updated. Receipts:
+`/private/tmp/fl-correlation-{tests,clippy,parity}.log`.
+The JSON parser comparison uses the existing versioned parser; generic
+unversioned JSON parsing and CORS behavior remain separate parity work.
