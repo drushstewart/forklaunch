@@ -91,6 +91,15 @@ pub struct AuthPage {
     pub next: Option<AuthCursor>,
 }
 
+/// Selects member filtering/sorting semantics explicitly. Memory compatibility
+/// remains the direct-library default; generated `PostgreSQL` services opt in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MemberQueryProfile {
+    #[default]
+    MemoryAdapter,
+    Postgres,
+}
+
 /// An indexed offset window and total count from the same locked transaction.
 /// Only returned records are decoded; counts do not validate off-page ciphertext.
 pub struct AuthWindow {
@@ -174,6 +183,16 @@ pub trait AuthTransaction: Send {
         offset: usize,
         limit: usize,
     ) -> impl Future<Output = BlueprintResult<AuthWindow>> + Send;
+    /// Executes configured database member-query semantics, or returns `None`
+    /// when the store retains memory-adapter compatibility. Implementations must
+    /// preserve the mandatory organization and tenant boundaries.
+    fn query_members(
+        &mut self,
+        _organization: &str,
+        _query: &Value,
+    ) -> impl Future<Output = BlueprintResult<Option<AuthWindow>>> + Send {
+        async { Ok(None) }
+    }
     /// Returns insertion order, bounded to 4096 records per model. Oversized
     /// scans fail explicitly instead of silently truncating authorization data.
     fn list(&mut self, model: Model) -> impl Future<Output = BlueprintResult<Vec<Value>>> + Send;

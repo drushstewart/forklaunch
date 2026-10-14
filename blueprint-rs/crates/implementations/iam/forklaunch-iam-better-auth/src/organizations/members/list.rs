@@ -4,6 +4,8 @@ use super::{
     OrganizationService, Utc, Value, find_member, find_slug, joined, json, missing, no_active,
     nonmember, text,
 };
+#[cfg(feature = "postgres")]
+pub(crate) use values::number as query_number;
 mod filter;
 mod sorting;
 mod values;
@@ -44,11 +46,15 @@ impl<S: AuthStore> OrganizationService<S> {
         if joined(&mut tx, actor).await?.is_none() {
             return Err(nonmember());
         }
-        let filter = filter::Filter::new(query)?;
-        if let Some((offset, limit)) = indexed_window(query) {
-            let window = tx
-                .find_window(Model::Member, "organizationId", &id, offset, limit)
-                .await?;
+        let window = if let Some((offset, limit)) = indexed_window(query) {
+            Some(
+                tx.find_window(Model::Member, "organizationId", &id, offset, limit)
+                    .await?,
+            )
+        } else {
+            tx.query_members(&id, query).await?
+        };
+        if let Some(window) = window {
             let ids = window
                 .records
                 .iter()
@@ -69,6 +75,7 @@ impl<S: AuthStore> OrganizationService<S> {
             tx.commit().await?;
             return Ok(json!({"members":members,"total":window.total}));
         }
+        let filter = filter::Filter::new(query)?;
         let mut members = Vec::new();
         for member in crate::store::find_all(&mut tx, Model::Member, "organizationId", &id).await? {
             if member["organizationId"] == id && filter.matches(&member)? {

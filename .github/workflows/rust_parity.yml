@@ -146,6 +146,7 @@ on:
       - 'cli/tests/rust_better_auth_public.mjs'
       - 'cli/tests/rust_better_auth_surfacing.mjs'
       - 'cli/tests/rust_better_auth_orm.mjs'
+      - 'cli/tests/rust_better_auth_member_orm.mjs'
       - 'cli/tests/rust_better_auth_compliance.mjs'
       - 'cli/tests/rust_ecommerce_compliance.mjs'
       - 'cli/tests/rust_ecommerce_retention.mjs'
@@ -377,6 +378,7 @@ on:
       - 'cli/tests/rust_better_auth_public.mjs'
       - 'cli/tests/rust_better_auth_surfacing.mjs'
       - 'cli/tests/rust_better_auth_orm.mjs'
+      - 'cli/tests/rust_better_auth_member_orm.mjs'
       - 'cli/tests/rust_better_auth_compliance.mjs'
       - 'cli/tests/rust_ecommerce_compliance.mjs'
       - 'cli/tests/rust_ecommerce_retention.mjs'
@@ -925,6 +927,10 @@ jobs:
       - run: node cli/tests/rust_better_auth_public.mjs
       - run: node cli/tests/rust_better_auth_surfacing.mjs
       - run: node cli/tests/rust_better_auth_orm.mjs
+      - run: node cli/tests/rust_better_auth_member_orm.mjs
+      - run: node cli/tests/rust_better_auth_member_orm.mjs
+        env:
+          FORKLAUNCH_TEST_MEMBER_TIMEZONE: America/Los_Angeles
       - run: node cli/tests/rust_iam_filter_orm.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

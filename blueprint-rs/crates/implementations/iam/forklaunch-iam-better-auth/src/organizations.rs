@@ -6,6 +6,8 @@ use crate::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, SecondsFormat, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
+#[cfg(feature = "postgres")]
+pub(crate) use members::query_number;
 use serde_json::{Value, json};
 use std::sync::Arc;
 

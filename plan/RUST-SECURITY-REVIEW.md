@@ -651,3 +651,18 @@ reads leave local ciphertext and financial state unchanged. Restricted PostgreSQ
 tests cover foreign aliases, revocation/ABA, denied audits, provider evidence,
 and expiry while waiting for a database connection. Managed transport currently
 fails before network access; the default provider-ID service remains separate.
+
+
+PostgreSQL member-query review (2026-10-13): generated services explicitly
+select database-compatible UUID/timestamp/filter/sort semantics. Allowlisted SQL
+identifiers/operators and bound operands evaluate only transient public member
+projections, with mandatory organization scope inside the tenant transaction.
+Queries are shape/size bounded before cloning; projections reject more than
+4,096 candidates or 1 MiB rather than silently truncating. Ordinary indexed pages
+retain bounded page hydration beyond that candidate count. These are projection
+bounds, not whole-process memory bounds: a storage page can decrypt up to 256
+existing rows before projection checks. No new plaintext storage/indexes are
+introduced; database parameter logging remains an operator policy. Restricted
+PostgreSQL tests cover organization isolation, UUID hydration, budget rejection
+and rollback cleanup; 434 actual ORM/native comparisons pass. Direct library
+stores retain the previous memory-adapter profile unless explicitly opted in.

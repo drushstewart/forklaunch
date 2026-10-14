@@ -5,6 +5,8 @@ use super::{
     OrganizationService, Utc, Value, find_slug, json, load, missing, text, unauthorized,
     update_active,
 };
+#[cfg(feature = "postgres")]
+pub(crate) use list::query_number;
 mod add;
 mod leave;
 mod list;

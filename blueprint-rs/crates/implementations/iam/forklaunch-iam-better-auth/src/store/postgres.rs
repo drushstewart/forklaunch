@@ -1,4 +1,6 @@
 //! Encrypted, audited `PostgreSQL` auth storage with forced tenant RLS.
+mod member_query;
+
 use super::{
     AuthStore, AuthTransaction, Model, conflict, invalid, not_found, record_id, storage_error,
     validate_record,
@@ -17,6 +19,7 @@ pub struct PostgresAuthStore {
     tenant: TenantContext,
     encryptor: Arc<FieldEncryptor>,
     audit: AuditContext,
+    member_query_profile: super::MemberQueryProfile,
 }
 impl PostgresAuthStore {
     /// Runs versioned auth migrations with a schema-owner connection.
@@ -72,6 +75,7 @@ impl PostgresAuthStore {
             tenant,
             encryptor,
             audit,
+            member_query_profile: super::MemberQueryProfile::default(),
         };
         // Existing encrypted sessions predate token indexes. Rebuild under the
         // same tenant write lock before exposing the store to authentication.
@@ -79,6 +83,14 @@ impl PostgresAuthStore {
         store.reindex_session_tokens().await?;
         store.reindex_relationships().await?;
         Ok(store)
+    }
+    /// Selects actual `PostgreSQL` filtering/sorting of transient public member
+    /// projections. No plaintext projection is persisted. Configure database
+    /// parameter logging according to the application's data policy.
+    #[must_use]
+    pub fn with_member_query_profile(mut self, profile: super::MemberQueryProfile) -> Self {
+        self.member_query_profile = profile;
+        self
     }
     /// Rebuild token indexes for this trusted tenant in bounded pages. Call on
     /// startup (also done by `new`) and when rotating retained encryption keys.
@@ -431,6 +443,18 @@ impl AuthTransaction for PostgresAuthTransaction<'_> {
             records,
             total: usize::try_from(total).map_err(|_| storage_error())?,
         })
+    }
+    async fn query_members(
+        &mut self,
+        organization: &str,
+        query: &Value,
+    ) -> BlueprintResult<Option<super::AuthWindow>> {
+        if self.store.member_query_profile == super::MemberQueryProfile::MemoryAdapter {
+            return Ok(None);
+        }
+        self.query_member_window(organization, query)
+            .await
+            .map(Some)
     }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let rows: Vec<(String,String)> = sqlx::query_as("SELECT id,ciphertext FROM fl_better_auth.records WHERE tenant_id=$1 AND model=$2 ORDER BY sequence LIMIT 4097")

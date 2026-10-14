@@ -1,6 +1,6 @@
 use std::{env, sync::Arc};
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
-use forklaunch_iam_better_auth::{http::AuthHttp, store::postgres::PostgresAuthStore, oauth::google_client::GoogleClient};
+use forklaunch_iam_better_auth::{http::AuthHttp, store::{postgres::PostgresAuthStore, MemberQueryProfile}, oauth::google_client::GoogleClient};
 use forklaunch_auth::jwt::{Algorithm, RemoteJwks, RemoteJwksConfig, Validation};
 use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_blueprint_core::AuditContext;
@@ -41,7 +41,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
     let store = Arc::new(PostgresAuthStore::new(pool.clone(), tenant,
-        Arc::new(FieldEncryptor::from_env()?), AuditContext::system("better-auth-startup")).await?);
+        Arc::new(FieldEncryptor::from_env()?), AuditContext::system("better-auth-startup")).await?
+        .with_member_query_profile(MemberQueryProfile::Postgres));
     let base_url = env::var("BETTER_AUTH_URL").map_err(|_| "BETTER_AUTH_URL is required")?;
     let auth_secret = env::var("BETTER_AUTH_SECRET").map_err(|_| "BETTER_AUTH_SECRET is required")?;
     let trusted = env::var("CORS_ORIGINS").unwrap_or_default().split(',')

@@ -54,3 +54,12 @@ docs, SDKs and MCP available.
 This scaffold serves one trusted configured tenant. Parameterized and
 percent-encoded auth namespaces, complete ORM/hooks and broader custom
 Better Auth options remain parity work.
+
+This PostgreSQL preset explicitly selects `MemberQueryProfile::Postgres` for
+organization member filtering/sorting. It uses the runtime database's collation,
+UUID/timestamp and LIKE semantics. Ordinary default pages remain indexed;
+filtered/sorted queries are limited to 4096 candidate members and a 1 MiB public
+projection, with explicit failure on overflow. Public member fields are bound as
+transient SQL parameters, never newly persisted in plaintext. Configure database
+and proxy parameter logging for that data policy. Direct library integrations
+retain memory-adapter semantics unless they explicitly select this profile.

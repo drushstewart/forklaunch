@@ -829,3 +829,36 @@ route-scoped keys with `http::relay::configure_auth`, and use
 `AuthHttp::application_router_with_relay`. Include `http::relay::contracts()` in
 any separately exported contract registry. Custom hook business logic remains
 application-owned and must be tested with the application's provider policy.
+
+`PostgresAuthStore::with_member_query_profile(MemberQueryProfile::Postgres)`
+selects the configured MikroORM/PostgreSQL semantics for organization member
+filtering and sorting. Direct library callers retain the memory-adapter profile
+unless they opt in; the generated PostgreSQL preset opts in explicitly. The five
+supported fields are `id`, `organizationId`, `userId`, `role`, and `createdAt`.
+UUID comparisons apply only to `id`; organization/user IDs remain opaque text.
+This profile assumes UUID member IDs, matching the configured ORM schema.
+Custom native records with opaque non-UUID member IDs are rejected by filtered
+queries after opting in; valid uppercase UUID spellings retain their original
+stored keys during hydration.
+Database collation, timestamp parsing/time zone, SQL LIKE wildcard/escape rules,
+and numeric pagination casts are evaluated by the actual runtime database.
+
+Ordinary unfiltered/unsorted integer pagination continues using blind-index
+counts/windows without scanning the organization. Configured filter/sort queries
+and other pagination forms collect at most 4096 candidate members, with a 1 MiB
+serialized public-projection budget. Input queries are bounded before cloning or
+reads to 64 KiB serialized JSON, 1024 entries per array, 4096 nodes and depth16.
+The projection bound is not a bound on total decrypted memory: the existing
+store reads/decrypts up to256 complete records per page, including custom fields,
+before projected fields are checked. Exceeding either budget fails explicitly;
+there is no truncation or memory-semantics fallback. Reads are audited and count
+and page selection share the tenant transaction lock. Only returned page users
+are hydrated. Stable ties retain native insertion order.
+
+Public member fields are passed transiently as SQL parameters to a bounded
+recordset; credentials and private user fields are excluded. This adds no
+plaintext database persistence or application logging. Database/proxy parameter
+logging can still record those public fields: deployments must configure that
+logging according to their data policy. SQL identifiers/operators are fixed
+allowlisted fragments, tenant/organization selection remains mandatory, and
+invalid input/database failures produce the existing sanitized wire response.

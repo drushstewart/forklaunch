@@ -22,7 +22,7 @@ pub(super) fn string(value: Option<&Value>) -> String {
         Some(value) => value.to_string(),
     }
 }
-pub(super) fn number(value: Option<&Value>) -> f64 {
+pub(crate) fn number(value: Option<&Value>) -> f64 {
     if let Some(Value::Number(value)) = value {
         return value.as_f64().unwrap_or(f64::NAN);
     }

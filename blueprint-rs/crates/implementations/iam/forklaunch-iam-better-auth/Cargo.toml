@@ -66,3 +66,7 @@ required-features = ["http"]
 [[example]]
 name = "application_contract"
 required-features = ["application-http"]
+
+[[example]]
+name = "member_orm_parity"
+required-features = ["http", "postgres"]
