@@ -24414,7 +24414,7 @@
               "name": "coerceReferenced",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/coerceReferenced.ts",
-              "line": 15
+              "line": 22
             }
           ]
         },
@@ -24486,25 +24486,25 @@
               "name": "ResponseSchemas",
               "kind": "ClassDeclaration",
               "source": "framework/universal-sdk/src/core/responseSchema.ts",
-              "line": 10,
+              "line": 16,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    private readonly source: Ajv,\n    private readonly factory?: () => Ajv\n  )",
                   "source": "framework/universal-sdk/src/core/responseSchema.ts",
-                  "line": 12
+                  "line": 18
                 },
                 {
                   "name": "coerce",
-                  "signature": "coerce(document: OpenAPIObject, pointer: string, schema: AnySchema, input: Record<string, unknown>): unknown",
+                  "signature": "coerce(\n    document: OpenAPIObject,\n    pointer: string,\n    schema: AnySchema,\n    input: Record<string, unknown>\n  ): unknown",
                   "source": "framework/universal-sdk/src/core/responseSchema.ts",
-                  "line": 17
+                  "line": 23
                 },
                 {
                   "name": "validator",
                   "signature": "validator(\n    document: OpenAPIObject,\n    pointer: string,\n    schema: AnySchema\n  ): ValidateFunction",
                   "source": "framework/universal-sdk/src/core/responseSchema.ts",
-                  "line": 49
+                  "line": 77
                 }
               ]
             },
@@ -24512,7 +24512,7 @@
               "name": "schemaPointer",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/responseSchema.ts",
-              "line": 93
+              "line": 125
             }
           ]
         },

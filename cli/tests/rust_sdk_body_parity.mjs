@@ -42,7 +42,9 @@ try {
   const { safeStringify } = await load('framework/common/src/safeStringify.ts');
   const { openApiCompliantPath } = await load('framework/common/src/openApiCompliantPath.ts');
   const { getSdkPath } = await load('framework/universal-sdk/src/core/resolvePath.ts', { './regex': { generateStringFromRegex() { throw Error('unexpected regex'); } } });
-  const responseSchemas = await load('framework/universal-sdk/src/core/responseSchema.ts');
+  const specialTypes = await load('framework/universal-sdk/src/core/coerceSpecialTypes.ts');
+  const referenced = await load('framework/universal-sdk/src/core/coerceReferenced.ts', { './coerceSpecialTypes': specialTypes });
+  const responseSchemas = await load('framework/universal-sdk/src/core/responseSchema.ts', { './coerceSpecialTypes': specialTypes, './coerceReferenced': referenced });
   const { UniversalSdk } = await load('framework/universal-sdk/src/universalSdk.ts', { './core/responseSchema': responseSchemas, '@forklaunch/common': { safeStringify, openApiCompliantPath, safeParse: JSON.parse }, ajv: { default: class {} }, 'ajv-formats': { default() {} }, './core/coerceSpecialTypes': { coerceSpecialTypes: value => value }, './core/mapContentType': { mapContentType: value => value }, './core/openApi': { refreshOpenApi() { throw Error('unexpected refresh'); } }, './core/resolvePath': { getSdkPath } });
   const universal = new UniversalSdk('http://127.0.0.1:9000', { validate: () => true }, {}, undefined);
   universal.registryOpenApiJson = {

@@ -6,7 +6,6 @@ import {
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { OpenAPIObject } from 'openapi3-ts/oas31';
-import { coerceSpecialTypes } from './core/coerceSpecialTypes';
 import { mapContentType } from './core/mapContentType';
 import { refreshOpenApi } from './core/openApi';
 import { ResponseSchemas, schemaPointer } from './core/responseSchema';
@@ -259,13 +258,12 @@ export class UniversalSdk {
       body: parsedBody
     });
 
+    const responseDocument = this.registryOpenApiJson?.[version];
     const responseOpenApi =
       path != null && method != null
-        ? this.registryOpenApiJson?.[version]?.paths?.[
-            openApiCompliantPath(path)
-          ]?.[method?.toLowerCase() as typeof method]?.responses?.[
-            response.status
-          ]
+        ? responseDocument?.paths?.[openApiCompliantPath(path)]?.[
+            method?.toLowerCase() as typeof method
+          ]?.responses?.[response.status]
         : null;
 
     if (responseOpenApi == null) {
@@ -288,6 +286,12 @@ export class UniversalSdk {
         : 'application/json'
     ).split(';')[0];
 
+    const responsePointer = schemaPointer(
+      openApiCompliantPath(path),
+      method,
+      response.status,
+      contentType || mappedContentType
+    );
     let responseBody;
 
     switch (mappedContentType) {
@@ -312,15 +316,17 @@ export class UniversalSdk {
       }
       case 'text/event-stream': {
         const validate = this.responseSchemas.validator(
-          this.registryOpenApiJson![version],
-          schemaPointer(
-            openApiCompliantPath(path),
-            method,
-            response.status,
-            contentType || mappedContentType
-          ),
+          responseDocument!,
+          responsePointer,
           responseOpenApi.content?.[contentType || mappedContentType].schema
         );
+        const coerce = (value: Record<string, unknown>) =>
+          this.responseSchemas.coerce(
+            responseDocument!,
+            responsePointer,
+            responseOpenApi.content?.[contentType || mappedContentType].schema,
+            value
+          );
         async function* streamEvents(
           reader: ReadableStreamDefaultReader<Uint8Array>
         ) {
@@ -347,11 +353,7 @@ export class UniversalSdk {
                 if (!isValidJson) {
                   throw new Error('Response does not match OpenAPI spec');
                 }
-                yield coerceSpecialTypes(
-                  json,
-                  responseOpenApi.content?.[contentType || mappedContentType]
-                    .schema
-                );
+                yield coerce(json);
               }
             }
           }
@@ -376,11 +378,7 @@ export class UniversalSdk {
               if (!isValidJson) {
                 throw new Error('Response does not match OpenAPI spec');
               }
-              yield coerceSpecialTypes(
-                json,
-                responseOpenApi.content?.[contentType || mappedContentType]
-                  .schema
-              );
+              yield coerce(json);
             }
           }
         }
@@ -397,13 +395,8 @@ export class UniversalSdk {
       default: {
         const json: Record<string, unknown> = await response.json();
         const validate = this.responseSchemas.validator(
-          this.registryOpenApiJson![version],
-          schemaPointer(
-            openApiCompliantPath(path),
-            method,
-            response.status,
-            contentType || mappedContentType
-          ),
+          responseDocument!,
+          responsePointer,
           responseOpenApi.content?.[contentType || mappedContentType].schema
         );
         const isValidJson = validate(json);
@@ -412,9 +405,11 @@ export class UniversalSdk {
             `Response does not match OpenAPI spec: ${JSON.stringify(validate.errors)}`
           );
         }
-        responseBody = coerceSpecialTypes(
-          json,
-          responseOpenApi.content?.[contentType || mappedContentType].schema
+        responseBody = this.responseSchemas.coerce(
+          responseDocument!,
+          responsePointer,
+          responseOpenApi.content?.[contentType || mappedContentType].schema,
+          json
         );
         break;
       }

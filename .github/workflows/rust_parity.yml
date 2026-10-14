@@ -210,6 +210,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
       - 'cli/tests/rust_better_auth_frontend_composition.mjs'
+      - 'cli/tests/rust_sdk_reference_coercion.mjs'
       - 'cli/tests/rust_better_auth_callbacks.mjs'
       - 'cli/tests/fixtures/rust_better_auth_reference.mjs'
       - 'cli/tests/fixtures/rust_better_auth_routes.json'
@@ -506,6 +507,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
       - 'cli/tests/rust_better_auth_frontend_composition.mjs'
+      - 'cli/tests/rust_sdk_reference_coercion.mjs'
       - 'cli/tests/rust_better_auth_callbacks.mjs'
       - 'cli/tests/fixtures/rust_better_auth_reference.mjs'
       - 'cli/tests/fixtures/rust_better_auth_routes.json'
@@ -1356,6 +1358,7 @@ jobs:
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_frontend_composition.mjs
+      - run: node cli/tests/rust_sdk_reference_coercion.mjs
       - run: node cli/tests/rust_better_auth_external_signing_context.mjs
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

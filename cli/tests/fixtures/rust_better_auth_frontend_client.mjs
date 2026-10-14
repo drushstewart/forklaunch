@@ -25,7 +25,7 @@ export async function actualUniversalSdk() {
   );
   const result = await build({
     stdin: {
-      contents: `export * from ${JSON.stringify(path.join(root, 'framework/universal-sdk/index.ts'))}; export { UniversalSdk } from ${JSON.stringify(path.join(root, 'framework/universal-sdk/src/universalSdk.ts'))};`,
+      contents: `export * from ${JSON.stringify(path.join(root, 'framework/universal-sdk/index.ts'))}; export { UniversalSdk } from ${JSON.stringify(path.join(root, 'framework/universal-sdk/src/universalSdk.ts'))}; export { coerceReferenced } from ${JSON.stringify(path.join(root, 'framework/universal-sdk/src/core/coerceReferenced.ts'))}; export { ResponseSchemas, schemaPointer } from ${JSON.stringify(path.join(root, 'framework/universal-sdk/src/core/responseSchema.ts'))};`,
       resolveDir: root,
       loader: 'ts'
     },

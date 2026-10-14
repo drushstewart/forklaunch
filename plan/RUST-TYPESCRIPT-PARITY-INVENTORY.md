@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 611 resolved declaration entry points and 1,671 declaration/re-export
+It records 612 resolved declaration entry points and 1,674 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -7812,3 +7812,34 @@ receipt records the later successful native proof; the configured TS hook and
 dedicated tests are integrated here. No earlier immutable/runtime checkpoint is
 claimed to include this slice. Provider effects are already applied on rejection;
 no compensation is promised.
+
+
+## Referenced shared-SDK date and binary conversion (2026-10-14)
+
+Actual UniversalSdk previously returned Date/ArrayBuffer for inline properties
+but strings for identical validated component references. It now resolves the
+supported conversion subset in the original AJV document/resource scope without
+remote fetch, schema expansion or shared-registry mutation. Finite response-value
+traversal supports nested properties/items and referenced root objects/scalars/
+arrays, with escaped pointers, nested relative IDs and per-version isolation.
+The response document/pointer is captured for an entire stream, so a concurrent
+registry refresh cannot change conversion after the first event. Ambiguous new
+string unions convert only when branches agree; arbitrary structural/conditional
+compositions and anchors remain explicit unsupported boundaries. The old public
+two-argument coercion helper retains its behavior.
+
+New schema inspection is deliberately bounded to10000 visited nodes/depth64,
+including inline schemas. Referenced conversion bounds reference chains256, total
+references10000 and traversal depth64/nodes10000. Budget failures return no
+partially converted value; cycle/direct immutable-failure checks pass.18 actual
+HTTP cases,21 composition and13 body/form regressions,35 SSE comparisons and
+permanent TypeScript7 strict SDK checks pass. Logs: /private/tmp/fl-sdk-reference-
+coercion.log, /private/tmp/fl-sdk-coercion-sse.log and the focused SDK type receipts.
+CI runs the real-source coercion fixture.
+
+This is shared UniversalSdk behavior, also used by mixed generated client
+factories; the independent generated contract SDK still uses JSON.parse. Native
+IAM client112-action proof was not unnecessarily repeated for this conversion-
+only slice; focused response/SSE/validator tests cover the changed paths. The
+source inventory now records612 entrypoints/1674 declarations across44 packages,
+with zero unresolved entries; syntax coverage does not close semantic gate849.

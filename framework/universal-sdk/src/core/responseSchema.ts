@@ -1,10 +1,18 @@
 import type Ajv from 'ajv';
 import type { AnySchema, ValidateFunction } from 'ajv';
 import { OpenAPIObject } from 'openapi3-ts/oas31';
+import { coerceSpecialTypes } from './coerceSpecialTypes';
+import { coerceReferenced, SchemaCursor } from './coerceReferenced';
 
 let nextDocumentId = 0;
 
-/** Resolves response references against their document, without remote loading. */
+/**
+ * Resolves response references against their document, without remote loading.
+ * SDK schema inspection (including inline schemas) is bounded to 10,000 nodes
+ * and depth 64. Referenced conversion supports JSON Pointers and registered
+ * schema-ID resources, not anchor fragments or remote loading. The separate
+ * legacy two-argument coerceSpecialTypes helper retains its existing behavior.
+ */
 export class ResponseSchemas {
   private documents = new WeakMap<OpenAPIObject, { ajv: Ajv; base: string }>();
   constructor(
@@ -12,18 +20,66 @@ export class ResponseSchemas {
     private readonly factory?: () => Ajv
   ) {}
 
+  coerce(
+    document: OpenAPIObject,
+    pointer: string,
+    schema: AnySchema,
+    input: Record<string, unknown>
+  ): unknown {
+    if (!hasReferences(schema))
+      return coerceSpecialTypes(input, schema as Record<string, unknown>);
+    const entry = this.register(document);
+    const locate = (uri: string): SchemaCursor => {
+      const url = new URL(uri);
+      const fragment = decodeURIComponent(url.hash.slice(1));
+      url.hash = '';
+      const resource = url.href;
+      let current: unknown = entry.ajv.getSchema(resource)?.schema;
+      if (current === undefined)
+        throw new Error('Unresolved response coercion resource');
+      let base = resource;
+      if (fragment && !fragment.startsWith('/'))
+        throw new Error('Response coercion supports JSON Pointer references');
+      for (const escaped of fragment ? fragment.slice(1).split('/') : []) {
+        const key = escaped.replace(/~1/g, '/').replace(/~0/g, '~');
+        if (
+          typeof current !== 'object' ||
+          current === null ||
+          !Object.hasOwn(current, key)
+        )
+          throw new Error('Unresolved response coercion pointer');
+        current = (current as Record<string, unknown>)[key];
+        if (
+          typeof current === 'object' &&
+          current !== null &&
+          '$id' in current &&
+          typeof current.$id === 'string'
+        )
+          base = new URL(current.$id, base).href;
+      }
+      return { schema: current, base };
+    };
+    return coerceReferenced(input, locate(`${entry.base}#${pointer}`), {
+      reference: (cursor, ref) => locate(new URL(ref, cursor.base).href),
+      child: (cursor, child) => ({
+        schema: child,
+        base:
+          typeof child === 'object' &&
+          child !== null &&
+          '$id' in child &&
+          typeof child.$id === 'string'
+            ? new URL(child.$id, cursor.base).href
+            : cursor.base
+      })
+    });
+  }
+
   validator(
     document: OpenAPIObject,
     pointer: string,
     schema: AnySchema
   ): ValidateFunction {
-    const references = (value: unknown): boolean =>
-      typeof value === 'object' &&
-      value !== null &&
-      ('$ref' in value ||
-        '$id' in value ||
-        Object.values(value).some(references));
-    if (!references(schema)) {
+    if (!hasReferences(schema)) {
       const validate = ((data: unknown) => {
         const valid = this.source.validate(schema, data);
         validate.errors = this.source.errors;
@@ -31,6 +87,13 @@ export class ResponseSchemas {
       }) as ValidateFunction;
       return validate;
     }
+    const entry = this.register(document);
+    const validator = entry.ajv.getSchema(`${entry.base}#${pointer}`);
+    if (!validator)
+      throw new Error('Response schema not found in OpenAPI document');
+    return validator;
+  }
+  private register(document: OpenAPIObject): { ajv: Ajv; base: string } {
     let entry = this.documents.get(document);
     if (!entry) {
       // Separate registries may reuse the same absolute schema identifiers.
@@ -55,10 +118,7 @@ export class ResponseSchemas {
       entry = { ajv, base };
       this.documents.set(document, entry);
     }
-    const validator = entry.ajv.getSchema(`${entry.base}#${pointer}`);
-    if (!validator)
-      throw new Error('Response schema not found in OpenAPI document');
-    return validator;
+    return entry;
   }
 }
 
@@ -80,4 +140,26 @@ export function schemaPointer(
   ]
     .map((part) => `/${part.replace(/~/g, '~0').replace(/\//g, '~1')}`)
     .join('');
+}
+
+function hasReferences(value: unknown): boolean {
+  const pending: Array<[unknown, number]> = [[value, 0]];
+  const seen = new Set<object>();
+  let nodes = 0;
+  while (pending.length) {
+    const [current, depth] = pending.pop()!;
+    if (++nodes > 10000 || depth > 64)
+      throw new Error('Response schema traversal budget exceeded');
+    if (typeof current !== 'object' || current === null || seen.has(current))
+      continue;
+    if ('$ref' in current || '$id' in current) return true;
+    seen.add(current);
+    const children = Object.values(current);
+    if (children.length + pending.length > 10000)
+      throw new Error('Response schema traversal budget exceeded');
+    pending.push(
+      ...children.map((child) => [child, depth + 1] as [unknown, number])
+    );
+  }
+  return false;
 }
