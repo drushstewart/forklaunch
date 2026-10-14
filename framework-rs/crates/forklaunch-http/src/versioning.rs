@@ -69,6 +69,7 @@ enum BodyValidator {
 #[derive(Default, Clone)]
 pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
+    typescript_simple_query: bool,
     response_plan: crate::versioned_response::VersionResponsePlan,
     parsers: forklaunch_contract::BodyParserOptions,
     parser_hooks: BodyParserHooks,
@@ -145,6 +146,7 @@ impl VersionedRoutePlan {
         Ok(Self {
             response_plan: crate::versioned_response::VersionResponsePlan::compile(route),
             variants,
+            typescript_simple_query: false,
             parsers,
             parser_hooks: BodyParserHooks::default(),
         })
@@ -253,13 +255,16 @@ impl VersionedRoutePlan {
         let body_value = self
             .body_value(request, limits)
             .map_err(|error| vec![error])?;
+        let query = self
+            .typescript_simple_query
+            .then(|| crate::parse_typescript_simple_query(request.raw_query.as_deref()));
         let mut matched = Vec::new();
         let mut selected = None;
         for variant in &self.variants {
             let Ok(candidate) = variant.hooks.preprocess(body_value.as_ref()) else {
                 continue;
             };
-            let Some(fields) = variant.parse_fields(request) else {
+            let Some(fields) = variant.parse_fields(request, query.as_ref()) else {
                 continue;
             };
             if variant.matches_body(request, candidate.as_deref()) {
@@ -858,3 +863,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "versioning_simple_query_tests.rs"]
+mod simple_query_tests;

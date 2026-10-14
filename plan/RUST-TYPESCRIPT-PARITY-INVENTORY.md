@@ -6901,3 +6901,28 @@ context authorizes capture/refund/cancellation/reference clearing or cancelled-
 order repair. Existing reconciliation APIs keep their prior evidence requirements
 and do not automatically use it. Connect, managed gateway and PayPal integration
 remain separate work; remote provider changes can race after the final check.
+
+
+## Version selection from repeated HTTP query values (2026-10-14)
+
+VersionBodyHooksRegistry.enable_typescript_simple_query now explicitly parses the
+retained raw HTTP query once per version selection using the proven Node/Express
+simple parser. Per-version field schemas/hooks receive duplicate-value arrays or
+scalar strings before selection, preserving the last-matched version rule and
+typed projection. Raw input and the default collapsed native map remain unchanged.
+Registration rejects invalid/unversioned, duplicate or stale request contracts.
+Missing raw_query means empty input, even if a caller populated the native map;
+this does not invent HTTP wire input from MCP JSON arguments. Extended/custom
+query parsers and generic no-match error diagnostics remain outside the profile.
+
+Live actual Express comparisons pass56 exact success/projection pairs plus16
+rejection-status pairs with known diagnostic differences retained. Cases include
+repeated empty/malformed values, literal bracket/prototype names, unknown-key
+stripping, overlapping versions and the1000-segment limit counting empty segments.
+HTTP57 and Axum136 all-feature tests, strict all-feature/all-target Clippy and the
+existing108versioned-response/20early-error-origin regression pass:
+/private/tmp/fl-version-query-{tests,parity,clippy,response-regression}.log.
+Focused tests also prove absent-input defaults receive None once, no-match invokes
+no handler, each field callback runs once, and raw/default maps stay intact. The
+actual-source differential is wired into CI; versioned error/body diagnostics
+remain a separate gate.

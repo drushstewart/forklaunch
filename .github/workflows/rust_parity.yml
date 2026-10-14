@@ -57,6 +57,7 @@ on:
       - 'cli/tests/rust_zod_string_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
       - 'cli/tests/rust_zod_array_parity.mjs'
+      - 'cli/tests/rust_version_query_parity.mjs'
       - 'cli/tests/rust_configured_mappers_types.mjs'
       - 'cli/tests/fixtures/configured-mappers-types/**'
       - 'cli/tests/typescript_response_status_validation.mjs'
@@ -331,6 +332,7 @@ on:
       - 'cli/tests/rust_zod_string_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
       - 'cli/tests/rust_zod_array_parity.mjs'
+      - 'cli/tests/rust_version_query_parity.mjs'
       - 'cli/tests/rust_configured_mappers_types.mjs'
       - 'cli/tests/fixtures/configured-mappers-types/**'
       - 'cli/tests/typescript_response_status_validation.mjs'
@@ -706,6 +708,9 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_simple_query_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_version_query_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_zod_string_parity.mjs

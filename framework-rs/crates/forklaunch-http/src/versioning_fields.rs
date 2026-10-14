@@ -40,7 +40,11 @@ impl VersionFieldValues {
 }
 
 impl Variant {
-    pub(super) fn parse_fields(&self, request: &FrameworkRequest) -> Option<VersionFieldValues> {
+    pub(super) fn parse_fields(
+        &self,
+        request: &FrameworkRequest,
+        parsed_query: Option<&BTreeMap<String, Value>>,
+    ) -> Option<VersionFieldValues> {
         let mut output = VersionFieldValues {
             headers: request
                 .headers
@@ -64,7 +68,12 @@ impl Variant {
                 _ => unreachable!("only request fields are compiled"),
             };
             let raw = raw.map(|value| Value::String(value.to_owned()));
-            let Ok(value) = field.parse(raw.as_ref()) else {
+            let value = if field.location == ContractValidationLocation::Query {
+                parsed_query.map_or(raw.as_ref(), |query| query.get(&field.name))
+            } else {
+                raw.as_ref()
+            };
+            let Ok(value) = field.parse(value) else {
                 valid = false;
                 continue;
             };

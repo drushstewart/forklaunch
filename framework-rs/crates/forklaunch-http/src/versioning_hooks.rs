@@ -98,8 +98,31 @@ pub struct VersionBodyHooksRegistry {
     routes: BTreeMap<String, BTreeMap<String, VersionBodyHooks>>,
     parsers: BTreeMap<String, BodyParserHooks>,
     fields: BTreeMap<String, Vec<FieldHooks>>,
+    simple_queries: BTreeMap<String, RouteContract>,
 }
 impl VersionBodyHooksRegistry {
+    /// Parse raw HTTP query strings with the default Express/Node simple parser
+    /// before version field schemas and hooks. Parsing runs once per selection,
+    /// preserving duplicate arrays and the 1000-segment admission limit.
+    /// Native query maps and original raw strings remain unchanged. Local callers
+    /// must supply `FrameworkRequest::raw_query`; absence means an empty query.
+    /// This is not a projection of MCP JSON arguments or extended/custom query
+    /// parsers. MCP adapters do not automatically populate this HTTP-only input.
+    /// # Errors
+    /// Rejects unversioned/invalid contracts and duplicate registrations. Compile
+    /// rejects changed request/version schemas; mount prefixes may still change.
+    pub fn enable_typescript_simple_query(&mut self, route: &RouteContract) -> Result<(), String> {
+        if route.versions.is_empty() {
+            return Err("Simple query version projection requires a versioned route".into());
+        }
+        VersionedRoutePlan::compile(route)?;
+        let key = route_key(route);
+        if self.simple_queries.contains_key(&key) {
+            return Err("Duplicate simple query version projection".into());
+        }
+        self.simple_queries.insert(key, route.clone());
+        Ok(())
+    }
     /// # Errors
     /// Rejects unknown versions and versions with no declared body.
     pub fn insert(
@@ -176,6 +199,7 @@ impl VersionBodyHooksRegistry {
             .keys()
             .chain(self.parsers.keys())
             .chain(self.fields.keys())
+            .chain(self.simple_queries.keys())
         {
             if counts.get(key) != Some(&1) {
                 return Err(format!(
@@ -189,6 +213,12 @@ impl VersionBodyHooksRegistry {
     /// # Panics
     /// Panics if both registries define hooks for the same method and operation.
     pub fn extend(&mut self, other: Self) {
+        for (key, route) in other.simple_queries {
+            assert!(
+                self.simple_queries.insert(key, route).is_none(),
+                "duplicate simple query operation"
+            );
+        }
         for (key, hooks) in other.fields {
             assert!(
                 self.fields.insert(key, hooks).is_none(),
@@ -212,6 +242,12 @@ impl VersionBodyHooksRegistry {
     /// Rejects invalid schemas or hooks referring to removed versions.
     pub fn compile(&self, route: &RouteContract) -> Result<VersionedRoutePlan, String> {
         let mut plan = VersionedRoutePlan::compile(route)?;
+        if let Some(snapshot) = self.simple_queries.get(&route_key(route)) {
+            if snapshot.versions != route.versions || snapshot.request != route.request {
+                return Err("Stale simple query version projection".into());
+            }
+            plan.typescript_simple_query = true;
+        }
         if let Some(versions) = self.routes.get(&route_key(route)) {
             for (version, hooks) in versions {
                 plan = plan.with_body_hooks(version, hooks.clone())?;
