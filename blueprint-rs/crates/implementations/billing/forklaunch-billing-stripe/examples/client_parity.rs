@@ -41,6 +41,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 async fn run(client: &StripeBillingClient, action: &Value) -> BlueprintResult<Value> {
+    if action["resource"] == "context" {
+        let context = client
+            .verify_context(
+                action["account"].as_str().ok_or_else(invalid)?,
+                action["livemode"].as_bool().ok_or_else(invalid)?,
+            )
+            .await?;
+        context.ensure_current(client)?;
+        return Ok(json!({"account":context.account_id(),"livemode":context.livemode()}));
+    }
     let resource = match action["resource"].as_str().unwrap_or("") {
         "customers" => StripeResource::Customer,
         "plans" => StripeResource::Plan,

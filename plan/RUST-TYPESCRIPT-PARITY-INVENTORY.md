@@ -5184,3 +5184,20 @@ were removed after validation; logs remain at
 This checkpoint validates the committed billing foundation; the newer opt-in
 directory authorization and response-validator integrations have separate checks.
 Checklist remains **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Verified direct Stripe account context
+
+The direct Stripe transport now verifies the configured account and live/test mode
+using authenticated account and balance GETs. A sealed observation expires five
+seconds after verification starts and is tied to the exact immutable client
+generation; key prefixes and public request fields do not establish identity.
+Managed verification fails before network access until the gateway supplies an
+authenticated account/mode/generation contract. Existing wrappers are not yet
+automatically gated, and this API neither provisions ownership nor performs
+provider mutations. Eleven Stripe tests, 27 official-SDK/native transport cases
+and strict all-target Clippy pass. Logs:
+`/private/tmp/fl-billing-direct-context-{tests,sdk,clippy,regression}.log`.
+The new guide is included through an explicit generated-workspace template link.
+Checklist remains **660/682 (96.8%), 22 open**; scoped wrapper integration and
+managed protocol support remain part of the billing identity gate.

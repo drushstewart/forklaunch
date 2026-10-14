@@ -12,6 +12,7 @@ const repository=JSON.parse(await readFile(path.join(root,'blueprint/implementat
 execFileSync('cargo',['build','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-billing-stripe','--example','client_parity'],{cwd:root,stdio:'inherit',timeout:120000});
 const metadata=JSON.parse(execFileSync('cargo',['metadata','--no-deps','--format-version','1','--manifest-path','blueprint-rs/Cargo.toml'],{cwd:root,encoding:'utf8'}));
 const actions=[
+ {resource:'context',method:'verify',account:'acct_fixture',livemode:false},
  {resource:'customers',method:'create',fields:{email:'customer@example.test',name:'Customer 💬',address:{line1:'1 Test Street',country:'US'},metadata:{account:'local-account'}}},
  {resource:'customers',method:'retrieve',id:'cus_fixture',fields:{expand:['invoice_settings.default_payment_method']}},
  {resource:'customers',method:'update',id:'cus_fixture',fields:{name:null,metadata:{account:'updated-account'}}},
@@ -52,6 +53,10 @@ const server=http.createServer(async(request,response)=>{
  if(url.pathname.endsWith('/invalid-json')){response.end('invalid-json');return;}
  if(url.pathname.endsWith('/redirect')){response.writeHead(302,{location:'/must-not-follow'});response.end('{}');return;}
  response.setHeader('content-type','application/json');
+ if(url.pathname==='/v1/account'||url.pathname==='/v1/balance'){
+  assert.equal(request.method,'GET');assert.equal(request.headers['stripe-account'],undefined);assert.equal(raw,'');
+  response.end(JSON.stringify(url.pathname==='/v1/account'?{id:'acct_fixture',object:'account'}:{object:'balance',livemode:false}));return;
+ }
  response.end(JSON.stringify(request.method==='GET'&&['/v1/customers','/v1/payment_links','/v1/plans','/v1/subscriptions'].includes(url.pathname)?{object:'list',data:[{id:'fixture'}],has_more:false}:{id:'fixture',object:'owned-fixture'}));
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port,base=`http://127.0.0.1:${port}`;
@@ -59,7 +64,13 @@ const stripe=new Stripe('sk_fixture',{host:'127.0.0.1',port,protocol:'http',maxN
 const resources={customers:stripe.customers,plans:stripe.plans,subscriptions:stripe.subscriptions,checkout:stripe.checkout.sessions,links:stripe.paymentLinks,portal:stripe.billingPortal.sessions};
 try{
  const expected=[];
- for(const action of actions){try{const api=resources[action.resource],method=action.resource==='subscriptions'&&action.method==='delete'?'cancel':['plans','customers'].includes(action.resource)&&action.method==='delete'?'del':action.method;
+ for(const action of actions){try{
+  if(action.resource==='context'){
+   const account=await stripe.accounts.retrieve(),balance=await stripe.balance.retrieve();
+   assert.equal(account.id,action.account);assert.equal(balance.livemode,action.livemode);
+   expected.push({ok:{account:account.id,livemode:balance.livemode}});continue;
+  }
+  const api=resources[action.resource],method=action.resource==='subscriptions'&&action.method==='delete'?'cancel':['plans','customers'].includes(action.resource)&&action.method==='delete'?'del':action.method;
   const result=await api[method](...(['create','list'].includes(action.method)?[action.fields??{}]:action.method==='delete'||['expire','resume'].includes(action.method)?[action.id]:[action.id,action.fields??{}]));expected.push({ok:JSON.parse(JSON.stringify(result))});
  }catch{expected.push({error:true});}}
  const officialRequests=captured.splice(0);

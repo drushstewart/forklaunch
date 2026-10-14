@@ -570,3 +570,14 @@ atomic; audit RLS allows only SELECT/INSERT to non-bypass roles. Binding handles
 are lookup snapshots, not financial-operation capabilities. Existing wrappers
 and webhooks do not use this foundation yet. Restricted PostgreSQL isolation,
 race, immutable-audit and rollback checks pass.
+
+
+Direct Stripe context review (2026-10-13): authenticated account/balance reads
+verify trusted expected account and mode without API-key-prefix inference. The
+non-serializable observation checks immutable client identity and a five-second
+window beginning before verification. It is not proof of local ownership or a
+guarantee that upstream credentials/proxies cannot change after the reads.
+Managed mode rejects before network calls because its current gateway contract
+lacks authenticated context and binding-generation evidence. Malformed responses,
+account/mode mismatch, 401/403, foreign/reconfigured clients and stale observations
+are covered. Current wrappers do not yet consume this check.

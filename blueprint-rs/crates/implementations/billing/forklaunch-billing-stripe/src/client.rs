@@ -1,5 +1,7 @@
 //! Bounded Stripe billing transport. API version matches the repository's Stripe
 //! SDK 22.6.2; mutation retries are disabled to avoid duplicate provider effects.
+mod context;
+pub use context::VerifiedStripeContext;
 use forklaunch_blueprint_core::{
     BlueprintError, BlueprintResult,
     instance_gateway::InstanceGatewayClient,
@@ -41,6 +43,7 @@ impl StripeResource {
 pub struct StripeBillingClient {
     transport: BillingTransport,
     api_version: Arc<String>,
+    config_generation: Arc<()>,
 }
 #[derive(Clone)]
 enum BillingTransport {
@@ -92,6 +95,7 @@ impl StripeBillingClient {
                 secret: Arc::new(Zeroizing::new(secret)),
             },
             api_version: Arc::new(STRIPE_API_VERSION.to_owned()),
+            config_generation: Arc::new(()),
         })
     }
     /// Uses an instance-signed platform gateway without a vendor secret key.
@@ -115,6 +119,7 @@ impl StripeBillingClient {
         Self {
             transport: BillingTransport::Managed(gateway),
             api_version: Arc::new(STRIPE_API_VERSION.to_owned()),
+            config_generation: Arc::new(()),
         }
     }
     /// # Errors
@@ -129,6 +134,7 @@ impl StripeBillingClient {
             return Err(invalid_config());
         }
         self.api_version = Arc::new(version);
+        self.config_generation = Arc::new(());
         Ok(self)
     }
     /// # Errors
