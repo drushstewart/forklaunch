@@ -5545,3 +5545,21 @@ Verified: 305 configured mapper cases, 144 legacy TypeScript/Rust service
 comparisons and focused strict source typechecking. Receipts:
 `/private/tmp/fl-portal-preflight-{mappers,types,legacy}.log`.
 Checklist remains **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: packaged source checkpoint after HTTP/IAM context changes
+
+The CLI archive containing 2359 files was installed from its extracted source
+and used to generate relocated services, billing/IAM/messaging/ecommerce
+modules and durable workers. Packaged framework tests, optional infrastructure
+feature compilation, generated workspace checks, OpenAPI/AsyncAPI exports,
+Rust/TypeScript SDK generation and HTTP/MCP surfaces pass. The native source
+checkpoint includes commit `3bf5bfcbe`; subsequently prepared URI/filter/status
+slices have their own validation receipts. This checks local source installation,
+not public registry publication or AWS deployment.
+
+Receipt: `/private/tmp/fl-rust-current-packaged-install.log`. The owned extracted
+archive workspace was removed by the passing harness. Committed generated
+billing `run.Jr7VIh` and IAM `run.dTQtrb`/`run.7W1Dep` workspaces were also removed
+after process/database-role checks; logs were retained. Checklist remains
+**660/682 (96.8%), 22 open**.
