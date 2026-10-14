@@ -7300,3 +7300,10 @@ native tests cover stale mode changes and rejection before handler execution.
 and strict HTTP/Axum Clippy pass:
 /private/tmp/fl-version-default-guard-{tests,clippy,rust_version_default_errors_parity,rust_canonical_http_parity}.log.
 Unversioned profiles retain their existing behavior.
+
+
+Owned failed15e archive/checkpoint roots were removed after process and open-file
+checks, reclaiming209 MiB. The exact source archive, failed runtime log and source
+SHA metadata remain, with cleanup receipt:
+/private/tmp/fl-oct14-failed-archive-cleanup.json. Corrected174594c48 archive
+validation is running independently; no failed receipt is relabeled successful.
