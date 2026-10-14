@@ -50,8 +50,8 @@ instance-signed transport. It loads trusted managed settings through `from_env`
 or accepts an explicitly configured transport. Both methods retain opaque JSON,
 including extra fields and omitted `created`, matching the TypeScript unchecked
 response casts. Monthly budget, usage and BAA fields are platform claims rather
-than locally verified guarantees. Streaming and typed chat DTOs remain separate
-work; the preview client's stricter catalog continues to use its own API.
+than locally verified guarantees. Typed chat DTOs remain separate work; the
+preview client's stricter catalog continues to use its own API.
 
 Successful bodies have a one-MiB raw bound, including chunked responses. Browser
 UTF-8 replacement/BOM handling and finite large-integer rounding match the preview
@@ -60,3 +60,29 @@ Refusals preserve status and positive finite retry hints while excluding remote
 response text. Every request uses a fresh HMAC nonce; redirects and automatic
 retries stay disabled. TLS/loopback policy and trusted credentials are inherited
 from `InstanceGatewayClient`.
+
+`ModelGatewayClient::chat_completion_stream` sends the fixed signed
+`POST /models/chat/completions/stream` request. Call `next().await` for each JSON
+item. The native profile incrementally decodes SSE LF/CRLF/mixed boundaries,
+multiline data, primitive JSON, malformed-frame skipping, exact `[DONE]`, initial
+UTF-8 BOM/replacement handling, JavaScript whitespace and the upstream EOF tail
+quirk. Incomplete trailing UTF-8 is discarded because the actual decoder is not
+flushed. Finite unsafe integers use browser numeric rounding. Overflow numbers
+and lone UTF-16 surrogates cannot be represented as native JSON and those frames
+are skipped; this is not a claim of arbitrary JavaScript-value support.
+
+`ModelStreamLimits` defaults to 16 MiB total raw response bytes, 256 KiB per frame,
+4,096 frames (including ignored/comment/empty frames), and 120 seconds for the
+whole request. Its validated constructor permits smaller positive bounds; frame
+bytes cannot exceed the total. Limits apply incrementally, with only one network
+chunk plus one bounded frame retained. A network chunk containing many small
+frames does not violate the individual frame cap. Raw bytes include bytes read
+in the same network chunk after `[DONE]`. Existing JSON requests retain their
+one-MiB/15-second instance-transport defaults. Stream refusals preserve sanitized
+HTTP status and positive finite retry hints; transport/time/limit failures are
+terminal and never trigger an automatic retry.
+
+Explicit `cancel()` or dropping the stream releases the response body and ends
+native reading; later `next()` after cancellation returns `None`. This is stronger
+than the upstream generator's reader-release-only behavior. Dropping a pending
+`next()` future alone is not a substitute for dropping/cancelling its stream.

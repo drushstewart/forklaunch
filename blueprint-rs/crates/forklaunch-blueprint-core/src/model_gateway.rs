@@ -1,10 +1,12 @@
-//! Managed model catalog and nonstreaming chat over the instance-signed gateway.
+//! Managed model catalog and chat over the instance-signed gateway.
+mod stream;
 use crate::{
     BlueprintResult,
     instance_gateway::{InstanceGatewayClient, InstanceGatewayRequestError},
 };
 use reqwest::Method;
 use serde_json::Value;
+pub use stream::{ModelGatewayStream, ModelStreamLimits};
 
 /// Sanitized gateway refusal or transport failure, with status/retry metadata.
 pub type ModelGatewayError = InstanceGatewayRequestError;
@@ -52,6 +54,37 @@ impl ModelGatewayClient {
             Some(request),
         )
         .await
+    }
+
+    /// Opens the fixed signed chat stream using bounded default limits.
+    /// Drop or explicitly cancel the stream to close its native response body.
+    /// # Errors
+    /// Returns sanitized status/retry metadata or transport errors without retries.
+    pub async fn chat_completion_stream(
+        &self,
+        request: &Value,
+    ) -> Result<ModelGatewayStream, ModelGatewayError> {
+        self.chat_completion_stream_with_limits(request, ModelStreamLimits::default())
+            .await
+    }
+    /// Opens a chat stream with explicit validated byte/frame/time limits.
+    /// # Errors
+    /// Returns sanitized gateway refusals or transport errors without retries.
+    pub async fn chat_completion_stream_with_limits(
+        &self,
+        request: &Value,
+        limits: ModelStreamLimits,
+    ) -> Result<ModelGatewayStream, ModelGatewayError> {
+        let response = self
+            .transport
+            .request_stream(
+                &["models", "chat", "completions", "stream"],
+                request,
+                limits.total_bytes(),
+                limits.timeout(),
+            )
+            .await?;
+        ModelGatewayStream::new(response, limits)
     }
 
     async fn send(

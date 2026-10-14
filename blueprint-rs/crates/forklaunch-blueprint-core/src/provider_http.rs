@@ -91,6 +91,52 @@ impl ProviderHttpClient {
             max_bytes: max_response_bytes,
         })
     }
+    #[cfg(feature = "instance-gateway")]
+    pub(crate) async fn execute_stream(
+        &self,
+        request: RequestBuilder,
+        max_bytes: usize,
+        timeout: Duration,
+    ) -> BlueprintResult<ProviderByteStream> {
+        if max_bytes == 0
+            || max_bytes > 16 * 1024 * 1024
+            || timeout.is_zero()
+            || timeout > Duration::from_secs(120)
+        {
+            return Err(config_error());
+        }
+        let deadline = std::time::Instant::now() + timeout;
+        let response = request
+            .timeout(timeout)
+            .send()
+            .await
+            .map_err(|_| transport_error())?;
+        let status = response.status().as_u16();
+        let retry_after_seconds = response
+            .headers()
+            .get("retry-after")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value > 0.0);
+        if response.status().is_success()
+            && response
+                .content_length()
+                .is_some_and(|length| length > max_bytes as u64)
+        {
+            return Err(stream_limit());
+        }
+        Ok(ProviderByteStream {
+            response: if response.status().is_success() {
+                Some(response)
+            } else {
+                None
+            },
+            status,
+            retry_after_seconds,
+            remaining: max_bytes,
+            deadline,
+        })
+    }
     /// Each segment is percent-encoded independently, preventing provider IDs
     /// from changing the trusted endpoint's path, query, origin or credentials.
     /// # Errors
@@ -248,7 +294,7 @@ impl ProviderHttpClient {
 }
 // JSON.parse represents every number as IEEE-754. Preserve safe integer storage,
 // but round larger integral source values before callers observe the decoded tree.
-fn normalize_browser_numbers(value: &mut Value) {
+pub(crate) fn normalize_browser_numbers(value: &mut Value) {
     match value {
         Value::Number(number) if number.is_i64() || number.is_u64() => {
             let outside_safe_range = number
@@ -267,6 +313,48 @@ fn normalize_browser_numbers(value: &mut Value) {
         Value::Object(fields) => fields.values_mut().for_each(normalize_browser_numbers),
         _ => {}
     }
+}
+#[cfg(feature = "instance-gateway")]
+pub(crate) struct ProviderByteStream {
+    response: Option<reqwest::Response>,
+    pub(crate) status: u16,
+    pub(crate) retry_after_seconds: Option<f64>,
+    remaining: usize,
+    deadline: std::time::Instant,
+}
+#[cfg(feature = "instance-gateway")]
+impl ProviderByteStream {
+    pub(crate) fn check_time(&self) -> BlueprintResult<()> {
+        if std::time::Instant::now() >= self.deadline {
+            Err(transport_error())
+        } else {
+            Ok(())
+        }
+    }
+    pub(crate) async fn next_chunk(&mut self) -> BlueprintResult<Option<Vec<u8>>> {
+        self.check_time()?;
+        let Some(response) = &mut self.response else {
+            return Ok(None);
+        };
+        let chunk = response.chunk().await.map_err(|_| transport_error())?;
+        if let Some(chunk) = chunk {
+            if chunk.len() > self.remaining {
+                return Err(stream_limit());
+            }
+            self.remaining -= chunk.len();
+            Ok(Some(chunk.to_vec()))
+        } else {
+            self.response = None;
+            Ok(None)
+        }
+    }
+}
+#[cfg(feature = "instance-gateway")]
+fn stream_limit() -> BlueprintError {
+    BlueprintError::new(
+        "provider_stream_limit",
+        "Provider stream exceeded configured limit",
+    )
 }
 fn config_error() -> BlueprintError {
     BlueprintError::new(

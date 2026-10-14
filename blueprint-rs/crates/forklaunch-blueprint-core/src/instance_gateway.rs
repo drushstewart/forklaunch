@@ -186,13 +186,22 @@ impl InstanceGatewayClient {
         segments.extend_from_slice(route);
         self.http.request_uri_components(method, &segments)
     }
-    async fn execute(
+    pub(crate) async fn request_stream(
+        &self,
+        route: &[&str],
+        body: &Value,
+        max_bytes: usize,
+        timeout: Duration,
+    ) -> BlueprintResult<crate::provider_http::ProviderByteStream> {
+        let request = self.request(Method::POST, route)?.json(body);
+        let request = self.signed_request(request, false)?;
+        self.http.execute_stream(request, max_bytes, timeout).await
+    }
+    fn signed_request(
         &self,
         request: RequestBuilder,
         bind_query: bool,
-        allow_empty: bool,
-        max_response_bytes: Option<usize>,
-    ) -> BlueprintResult<ProviderResponse> {
+    ) -> BlueprintResult<RequestBuilder> {
         let wire = request
             .try_clone()
             .ok_or_else(invalid)?
@@ -232,7 +241,16 @@ impl InstanceGatewayClient {
             &uuid::Uuid::new_v4().to_string(),
         )
         .map_err(|_| invalid())?;
-        let request = request.header("authorization", authorization);
+        Ok(request.header("authorization", authorization))
+    }
+    async fn execute(
+        &self,
+        request: RequestBuilder,
+        bind_query: bool,
+        allow_empty: bool,
+        max_response_bytes: Option<usize>,
+    ) -> BlueprintResult<ProviderResponse> {
+        let request = self.signed_request(request, bind_query)?;
         if let Some(limit) = max_response_bytes {
             self.http
                 .execute_json_with_response_limit(request, limit)

@@ -6626,3 +6626,34 @@ outcomes/zero OpenAPI differences and Warning24 regression pairs pass:
 /private/tmp/fl-version-response-{tests,final-focused,parity,canonical,warning-regression,clippy,registration}.log.
 Generic versioned schema interpretation/error text and None/Warning request-mode
 no-match handler outcomes remain outside this finite profile's evidence.
+
+
+## Managed model streaming receipt (2026-10-14)
+
+ModelGatewayClient now sends the fixed signed POST
+/models/chat/completions/stream and returns an incremental ModelGatewayStream.
+Its async next emits opaque JSON items, skips malformed/non-data frames and stops
+on exact [DONE]. Framing matches actual TypeScript LF/CRLF/mixed delimiters,
+multiline data, tail quirks, initial BOM, Unicode trim and incomplete final UTF-8
+(the upstream decoder does not flush at EOF). Unsafe finite integers are actual
+rounded f64 values with bit checks rather than serialization-only comparisons.
+Overflowing numbers and lone UTF-16 surrogates remain outside native JSON.
+
+The explicit native profile defaults to16MiB total raw bytes,256KiB per frame,
+4,096 frames and120 seconds; smaller positive bounds are validated. Frame limits
+apply per frame, including when a transport chunk contains many small frames.
+Only one transport chunk and a bounded frame are retained, without a background
+reader or complete-response buffer. Drop/cancel/[DONE] close the native response,
+stronger than upstream releaseLock-only cleanup; cancel/drop semantics are
+therefore documented separately. Stream request timeout overrides the existing
+15-second JSON timeout without changing other methods. No redirect/retry or
+provider credential fallback is introduced. Remote error text remains excluded.
+
+41 actual TypeScript/native signed SSE comparisons plus12 native byte/frame/count/
+time/cancel/drop/redirect checks pass, including15.2-second stream success and
+unchanged15-second JSON timeout. Eleven core tests, strict all-feature/all-target
+Clippy, preview64, managed nonstream46 and managed Stripe28 signed form/query
+regressions pass: /private/tmp/fl-model-stream-{core,wire,clippy,preview-regression,nonstream-regression,billing-regression}.log.
+The signing helper refactor moves existing exact body/path/query HMAC construction
+without changing serialization. Typed chat DTOs and live hosted model deployment
+remain separate work. The installed archive8f628 predates this streaming API.

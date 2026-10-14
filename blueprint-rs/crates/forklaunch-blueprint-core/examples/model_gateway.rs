@@ -1,6 +1,7 @@
 //! Owned model gateway wire fixture; no provider credentials or external calls.
 use forklaunch_blueprint_core::{
-    instance_gateway::InstanceGatewayClient, model_gateway::ModelGatewayClient,
+    instance_gateway::InstanceGatewayClient,
+    model_gateway::{ModelGatewayClient, ModelStreamLimits},
 };
 use serde_json::{Value, json};
 use std::io::{self, Read};
@@ -19,6 +20,10 @@ async fn main() {
     let client = ModelGatewayClient::new(transport);
     let mut results = Vec::new();
     for action in input["actions"].as_array().unwrap() {
+        if action["kind"] == "stream" {
+            results.push(stream(&client, action).await);
+            continue;
+        }
         let result = match action["kind"].as_str().unwrap() {
             "models" => client.models().await,
             "chat" => client.chat_completion(&action["body"]).await,
@@ -32,4 +37,47 @@ async fn main() {
         });
     }
     println!("{}", json!(results));
+}
+
+async fn stream(client: &ModelGatewayClient, action: &Value) -> Value {
+    let mut items = Vec::new();
+    let limits = if let Some(limits) = action.get("limits") {
+        ModelStreamLimits::new(
+            usize::try_from(limits["total"].as_u64().unwrap()).unwrap(),
+            usize::try_from(limits["frame"].as_u64().unwrap()).unwrap(),
+            usize::try_from(limits["frames"].as_u64().unwrap()).unwrap(),
+            std::time::Duration::from_millis(limits["millis"].as_u64().unwrap()),
+        )
+    } else {
+        Ok(ModelStreamLimits::default())
+    };
+    let result = async {
+        let limits = limits.map_err(
+            forklaunch_blueprint_core::instance_gateway::InstanceGatewayRequestError::from,
+        )?;
+        let mut stream = client
+            .chat_completion_stream_with_limits(&action["body"], limits)
+            .await?;
+        while let Some(item) = stream.next().await? {
+            items.push(item);
+            if action["cancel_after"]
+                .as_u64()
+                .is_some_and(|count| u64::try_from(items.len()).unwrap() >= count)
+            {
+                if action["drop_only"] != true {
+                    stream.cancel();
+                    assert!(stream.next().await?.is_none());
+                }
+                break;
+            }
+        }
+        Ok::<(), forklaunch_blueprint_core::instance_gateway::InstanceGatewayRequestError>(())
+    }
+    .await;
+    match result {
+        Ok(()) => json!({"ok":items}),
+        Err(error) => {
+            json!({"error":true,"status":error.status,"retryAfterSeconds":error.retry_after_seconds,"code":error.code,"description":error.to_string(),"items":items})
+        }
+    }
 }
