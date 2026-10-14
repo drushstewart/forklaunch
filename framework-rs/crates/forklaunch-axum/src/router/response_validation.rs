@@ -10,6 +10,9 @@ use forklaunch_http::{
 };
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
+#[path = "response_warning.rs"]
+mod warning;
+
 type Validator =
     dyn Fn(&FrameworkRequest, &FrameworkResponse) -> Option<FrameworkResponse> + Send + Sync;
 
@@ -19,6 +22,7 @@ struct Registration {
     max_bytes: usize,
     timeout: Duration,
     validate: Arc<Validator>,
+    warning: bool,
 }
 
 /// Validators for explicitly declared, finite JSON/text responses.
@@ -28,7 +32,8 @@ struct Registration {
 /// No validator semantics or error format are inferred from schema metadata.
 /// Byte/time bounds apply to body collection; trusted synchronous callbacks
 /// must return promptly and are not preempted by the collection timeout.
-/// Warning/none modes leave responses untouched and do not invoke callbacks.
+/// Warning/none modes leave responses untouched and do not invoke callbacks
+/// unless Warning observation is explicitly enabled with `enable_warning`.
 /// HEAD and bodyless HTTP statuses (204/205/304) also bypass these callbacks:
 /// the transport may already have removed the body before this layer runs.
 /// Both header and body checks are skipped in those cases; this is not an
@@ -82,8 +87,28 @@ impl ResponseValidators {
                 max_bytes,
                 timeout,
                 validate: Arc::new(validate),
+                warning: false,
             },
         );
+        Ok(())
+    }
+
+    /// Opt into bounded observation in Warning mode for an existing registration.
+    /// None still bypasses validation. Warnings preserve original frames/headers;
+    /// collection bounds, stream errors and invalid UTF-8 skip the callback and
+    /// emit a sanitized event. Callback replacement diagnostics are never sent
+    /// or logged in Warning mode. HEAD/bodyless exclusions still apply.
+    /// # Errors
+    /// Rejects absent registrations or changed response schemas.
+    pub fn enable_warning(&mut self, route: &RouteContract) -> Result<(), String> {
+        let entry = self
+            .entries
+            .get_mut(&key(route))
+            .ok_or("Warning observation requires a registered response validator")?;
+        if !route.versions.is_empty() || route.responses != entry.schemas {
+            return Err("Response validator schemas no longer match their route".into());
+        }
+        entry.warning = true;
         Ok(())
     }
 
@@ -123,13 +148,15 @@ impl ResponseValidators {
         {
             return response;
         }
-        let Some(entry) = self
-            .entries
-            .get(&key(route))
-            .filter(|_| route.options.response_validation == ValidationMode::Error)
-        else {
+        let Some(entry) = self.entries.get(&key(route)) else {
             return response;
         };
+        if route.options.response_validation == ValidationMode::Warning && entry.warning {
+            return warning::validate(entry, route, request, response).await;
+        }
+        if route.options.response_validation != ValidationMode::Error {
+            return response;
+        }
         let (mut parts, body) = response.into_parts();
         let Ok(Ok(bytes)) =
             tokio::time::timeout(entry.timeout, to_bytes(body, entry.max_bytes)).await

@@ -6383,3 +6383,24 @@ Clippy passes: /private/tmp/fl-model-gateway-{wire,clippy}.log. Requests are not
 retried; remote error text is excluded. Existing TLS/loopback settings apply.
 Overflowing numbers/lone UTF-16 surrogates and JS serializer spelling stay outside
 the finite native JSON profile. No live platform model deployment was exercised.
+
+
+## Warning response observation receipt (2026-10-14)
+
+An explicit ResponseValidators::enable_warning opt-in now invokes an existing
+finite response callback in Warning mode while retaining the original response.
+Successful parsed/coerced outputs are discarded, matching actual TypeScript;
+None still skips. Sanitized static reasons report schema rejection, invalid UTF-8,
+stream errors or collection bounds without sending/logging callback diagnostics.
+Existing registrations still skip Warning unless enabled. HEAD/bodyless statuses
+and versioned/multivalue inspection remain outside this finite callback profile.
+
+Collection uses byte/time/1,024-frame bounds with replay of consumed frames and
+the untouched remaining body. Original headers, extensions, trailers and stream
+errors survive, including a once-polled error. Collection timeout does not preempt
+trusted synchronous callbacks, which must return promptly.
+
+130 all-feature Axum tests,24 actual TypeScript/native pairs(48 observations),
+strict all-feature/all-target Clippy and canonical366 HTTP outcomes with zero
+normalized OpenAPI differences pass:
+/private/tmp/fl-response-warning-{tests,parity,clippy,canonical}.log.
