@@ -2,6 +2,7 @@ use super::*;
 mod additions;
 mod invitations;
 mod listing;
+mod window;
 mod members;
 mod permissions;
 mod roles;

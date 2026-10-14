@@ -57,6 +57,18 @@ pub(super) async fn exercise_listing<S: AuthStore>(store: Arc<S>) {
         .list_members(token, false, &json!({"limit":"-1"}), now)
         .await
         .unwrap();
+    let first = service
+        .list_members(token, false, &json!({"limit":"1"}), now)
+        .await
+        .unwrap();
+    assert_eq!(first["total"], 5);
+    assert_eq!(first["members"].as_array().unwrap().len(), 1);
+    let past = service
+        .list_members(token, false, &json!({"offset":"5","limit":"1"}), now)
+        .await
+        .unwrap();
+    assert_eq!(past["total"], 5);
+    assert!(past["members"].as_array().unwrap().is_empty());
     assert_eq!(page["total"], 5);
     assert_eq!(page["members"].as_array().unwrap().len(), 4);
 }

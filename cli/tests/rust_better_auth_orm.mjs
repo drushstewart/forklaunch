@@ -294,6 +294,27 @@ try {
     slug: `orm-${crypto.randomUUID()}`,
     domain: 'orm.example.test'
   });
+  // Populate beyond the configured default page, through the real adapter.
+  // This bypasses member-creation policy solely to exercise listing storage.
+  await context(async () => {
+    for (let index = 0; index < 120; index++) {
+      const now = new Date();
+      const memberUser = await authContext.adapter.create({model:'user',data:{name:`Page ${index}`,firstName:'Page',lastName:String(index),email:`page-${index}@orm-fixture.test`,emailVerified:false,createdAt:now,updatedAt:now}});
+      await authContext.adapter.create({model:'member',data:{userId:memberUser.id,organizationId:organization.body.id,role:'member',createdAt:now}});
+    }
+  });
+  const membershipQueries=['','?limit=2','?offset=2&limit=2','?offset=120&limit=2','?offset=121&limit=2','?limit=0'];
+  const membershipPages=[];
+  for (const query of membershipQueries) {
+    const result=await call(`/organization/list-members${query}`);
+    assert.equal(result.body.total,121);
+    membershipPages.push(result.body);
+    checks++;
+  }
+  assert.equal(membershipPages[0].members.length,100);
+  assert.equal(membershipPages[3].members.length,1);
+  assert.equal(membershipPages[4].members.length,0);
+  assert.equal(membershipPages[5].members.length,100);
   const scopedSession = await call('/get-session');
   const scope = {
     userId,
@@ -337,7 +358,7 @@ try {
       ['organizationRole', 'organizationRoles']
     ]) {
       seed[field] = await context(() =>
-        authContext.adapter.findMany({ model })
+        authContext.adapter.findMany({ model, limit:1000 })
       );
     }
     await bridge.native(seed);
@@ -368,6 +389,12 @@ try {
         },
         body: body ? JSON.stringify(body) : ''
       });
+    for (const [index,query] of membershipQueries.entries()) {
+      const result=await nativeRequest(`/organization/list-members${query}`);
+      assert.equal(result.status,200);
+      assert.deepEqual(result.body,membershipPages[index]);
+      checks++;
+    }
     const actualSession = await call('/get-session');
     const nativeSession = await nativeRequest('/get-session');
     assert.equal(nativeSession.status, 200);

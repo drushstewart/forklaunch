@@ -1,3 +1,5 @@
+#[cfg(feature = "postgres")]
+mod window;
 use super::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::json;
@@ -155,6 +157,50 @@ async fn exercise_transactions<S: AuthStore>(store: &S) {
     tx.commit().await.unwrap();
 }
 
+async fn exercise_relationship_window<T: AuthTransaction>(tx: &mut T) {
+    let window = tx
+        .find_window(Model::Account, "userId", "Quoted ' ☃", 4, 3)
+        .await
+        .unwrap();
+    assert_eq!(window.total, 13);
+    assert_eq!(
+        window
+            .records
+            .iter()
+            .map(|row| row["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["relation-4", "relation-5", "relation-6"]
+    );
+    let past = tx
+        .find_window(Model::Account, "userId", "Quoted ' ☃", 99, 3)
+        .await
+        .unwrap();
+    assert_eq!(past.total, 13);
+    assert!(past.records.is_empty());
+    assert_eq!(
+        tx.find_window(Model::Account, "userId", "missing", 0, 3)
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert!(
+        tx.find_window(Model::Account, "password", "ignored", 0, 3)
+            .await
+            .is_err()
+    );
+    assert!(
+        tx.find_window(Model::Account, "userId", "Quoted ' ☃", 0, 0)
+            .await
+            .is_err()
+    );
+    assert!(
+        tx.find_window(Model::Account, "userId", "Quoted ' ☃", 0, 4097)
+            .await
+            .is_err()
+    );
+}
+
 async fn exercise_relationship_queries<S: AuthStore>(store: &S) {
     let mut tx = store.begin(true).await.unwrap();
     for index in 0..13 {
@@ -171,6 +217,7 @@ async fn exercise_relationship_queries<S: AuthStore>(store: &S) {
         .unwrap();
     assert_eq!(first.records.len(), 5);
     assert_eq!(first.records[4]["id"], "relation-4");
+    exercise_relationship_window(&mut tx).await;
     tx.delete(Model::Account, "relation-4").await.unwrap();
     let second = tx
         .find_page(Model::Account, "userId", "Quoted ' ☃", first.next, 5)
@@ -972,6 +1019,15 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
     )
     .await
     .unwrap();
+    window::exercise_window(
+        &owner,
+        tenant.id(),
+        &store
+            .with_audit_context(AuditContext::actor("window-operator", "window-fixture"))
+            .unwrap(),
+        &other_store,
+    )
+    .await;
     let mut tx = other_store.begin(true).await.unwrap();
     assert!(tx.get(Model::User, "user-1").await.unwrap().is_none());
     assert!(
@@ -1127,6 +1183,13 @@ async fn postgres_auth_encryption_rls_rotation_audits_and_atomicity() {
         "retained-key claims must not duplicate rows"
     );
     assert_eq!(page.records[0]["id"], "account-1");
+    let window = indexed
+        .find_window(Model::Account, "userId", "user-1", 0, 1)
+        .await
+        .unwrap();
+    assert_eq!(window.total, 1);
+    assert_eq!(window.records.len(), 1);
+
     assert_eq!(
         indexed
             .find_unique(Model::User, "email", "private@fixture.test")

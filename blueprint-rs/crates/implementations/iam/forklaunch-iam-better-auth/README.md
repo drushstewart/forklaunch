@@ -80,6 +80,18 @@ stores keyed blind indexes, including retained encryption keys; queries deduplic
 rotated-key matches and recheck decrypted fields before returning rows. Memory
 maintains equivalent ordered indexes inside the transaction snapshot.
 
+Unfiltered, unsorted `/organization/list-members` requests with ordinary integer
+pagination use `find_window`: an indexed total count plus only the requested
+insertion-ordered member window, followed by one bounded user batch lookup.
+The default page is 100; integer limits through 4096 use this path. The same
+tenant transaction lock keeps count and page consistent. Negative, fractional,
+nonfinite, larger, filtered or sorted pagination retains the existing adapter
+compatibility path. Counts trust maintained relationship indexes and do not
+decrypt off-page ciphertext; corrupt off-page records therefore do not fail a
+normal page, while returned records still authenticate and missing page users
+still fail. Existing mutation audits and tenant/organization checks are unchanged.
+
+
 Migration `0003_relation_indexes.sql` adds the forced-RLS `lookup_claims` table;
 grant the restricted runtime role its SELECT/INSERT/UPDATE/DELETE privileges.
 Migration `0004_unique_claim_record_index.sql` indexes unique claims by record

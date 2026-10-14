@@ -11,7 +11,10 @@ use chrono::{DateTime, Utc};
 use forklaunch_iam_better_auth::{
     accounts::CredentialService,
     http::AuthHttp,
-    store::{AuthCursor, AuthPage, AuthStore, AuthTransaction, Model, memory::MemoryAuthStore},
+    store::{
+        AuthCursor, AuthPage, AuthStore, AuthTransaction, AuthWindow, Model,
+        memory::MemoryAuthStore,
+    },
 };
 use serde_json::{Value, json};
 use std::{
@@ -258,9 +261,14 @@ async fn main() {
                     forklaunch_iam_better_auth::surfacing::SurfacingService::new(store.clone());
                 let now =
                     DateTime::<Utc>::from_timestamp_millis(input["now"].as_i64().unwrap()).unwrap();
-                if let Ok(scope) = serde_json::from_value::<forklaunch_iam_better_auth::surfacing::AuthorizationScope>(input["scope"].clone()) {
+                if let Ok(scope) = serde_json::from_value::<
+                    forklaunch_iam_better_auth::surfacing::AuthorizationScope,
+                >(input["scope"].clone())
+                {
                     json!({"role": service.surface_role_scoped(&scope, now).await.unwrap(), "permissions": service.surface_permissions_scoped(&scope, now).await.unwrap()})
-                } else { json!({"role":null,"permissions":[]}) }
+                } else {
+                    json!({"role":null,"permissions":[]})
+                }
             }
             "set" => set_password(store.clone(), &input).await,
             "addMember" => add_member(store.clone(), &input).await,

@@ -386,6 +386,52 @@ impl AuthTransaction for PostgresAuthTransaction<'_> {
             .collect::<BlueprintResult<Vec<_>>>()?;
         Ok(super::page(model, rows, limit))
     }
+    async fn find_window(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+        offset: usize,
+        limit: usize,
+    ) -> BlueprintResult<super::AuthWindow> {
+        super::page_start(model, None, limit)?;
+        let offset = i64::try_from(offset).map_err(|_| invalid())?;
+        if !model.indexed_fields().contains(&field) {
+            return Err(invalid());
+        }
+        let indexes = self
+            .store
+            .encryptor
+            .blind_indexes(
+                &json!(["relationship", model.as_str(), field, value]).to_string(),
+                self.store.tenant.id(),
+            )
+            .map_err(|_| storage_error())?;
+        // Deduplicate retained-key claims before pagination. Counts read only
+        // indexed claims; the materialized window bounds ciphertext retrieval.
+        let total: i64 = sqlx::query_scalar("SELECT count(DISTINCT id) FROM fl_better_auth.lookup_claims WHERE tenant_id=$1 AND model=$2 AND field=$3 AND blind_index=ANY($4)")
+            .bind(self.store.tenant.id()).bind(model.as_str()).bind(field).bind(&indexes)
+            .fetch_one(&mut *self.tx).await.map_err(db_error)?;
+        let rows: Vec<(i64, i64, String, String)> = sqlx::query_as("WITH matched AS MATERIALIZED (SELECT DISTINCT sequence,id FROM fl_better_auth.lookup_claims WHERE tenant_id=$1 AND model=$2 AND field=$3 AND blind_index=ANY($4) ORDER BY sequence,id OFFSET $5 LIMIT $6) SELECT m.sequence,r.sequence,r.id,r.ciphertext FROM matched m JOIN fl_better_auth.records r ON r.tenant_id=$1 AND r.model=$2 AND r.id=m.id ORDER BY m.sequence")
+            .bind(self.store.tenant.id()).bind(model.as_str()).bind(field).bind(indexes).bind(offset).bind(i64::try_from(limit).map_err(|_| invalid())?)
+            .fetch_all(&mut *self.tx).await.map_err(db_error)?;
+        let records = rows
+            .into_iter()
+            .map(|(claimed_sequence, sequence, id, ciphertext)| {
+                let row = self.store.decode(model, &id, &ciphertext)?;
+                if claimed_sequence != sequence
+                    || row.get(field).and_then(Value::as_str) != Some(value)
+                {
+                    return Err(storage_error());
+                }
+                Ok(row)
+            })
+            .collect::<BlueprintResult<Vec<_>>>()?;
+        Ok(super::AuthWindow {
+            records,
+            total: usize::try_from(total).map_err(|_| storage_error())?,
+        })
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let rows: Vec<(String,String)> = sqlx::query_as("SELECT id,ciphertext FROM fl_better_auth.records WHERE tenant_id=$1 AND model=$2 ORDER BY sequence LIMIT 4097")
             .bind(self.store.tenant.id()).bind(model.as_str()).fetch_all(&mut *self.tx).await.map_err(db_error)?;

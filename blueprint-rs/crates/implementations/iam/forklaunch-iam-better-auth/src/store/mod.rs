@@ -91,6 +91,22 @@ pub struct AuthPage {
     pub next: Option<AuthCursor>,
 }
 
+/// An indexed offset window and total count from the same locked transaction.
+/// Only returned records are decoded; counts do not validate off-page ciphertext.
+pub struct AuthWindow {
+    pub records: Vec<Value>,
+    pub total: usize,
+}
+
+impl std::fmt::Debug for AuthWindow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthWindow")
+            .field("record_count", &self.records.len())
+            .field("total", &self.total)
+            .finish()
+    }
+}
+
 impl std::fmt::Debug for AuthPage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AuthPage")
@@ -147,6 +163,17 @@ pub trait AuthTransaction: Send {
         after: Option<AuthCursor>,
         limit: usize,
     ) -> impl Future<Output = BlueprintResult<AuthPage>> + Send;
+    /// Exact indexed matches with insertion-order offset pagination. Limits are
+    /// 1..=4096; the total and records share the transaction's writer lock.
+    /// Off-page records are counted without decryption or user hydration.
+    fn find_window(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+        offset: usize,
+        limit: usize,
+    ) -> impl Future<Output = BlueprintResult<AuthWindow>> + Send;
     /// Returns insertion order, bounded to 4096 records per model. Oversized
     /// scans fail explicitly instead of silently truncating authorization data.
     fn list(&mut self, model: Model) -> impl Future<Output = BlueprintResult<Vec<Value>>> + Send;

@@ -1,5 +1,5 @@
 //! Owned fixture failures; never used by production HTTP handlers.
-use super::{AuthCursor, AuthPage, AuthStore, AuthTransaction, Model};
+use super::{AuthCursor, AuthPage, AuthStore, AuthTransaction, AuthWindow, Model};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::sync::Arc;
@@ -79,6 +79,21 @@ impl<T: AuthTransaction> AuthTransaction for FaultTransaction<T> {
         }
         self.inner
             .find_page(model, field, value, after, limit)
+            .await
+    }
+    async fn find_window(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+        offset: usize,
+        limit: usize,
+    ) -> BlueprintResult<AuthWindow> {
+        if self.read == Some(model) {
+            return Err(read_failure());
+        }
+        self.inner
+            .find_window(model, field, value, offset, limit)
             .await
     }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {

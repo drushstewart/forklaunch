@@ -212,6 +212,41 @@ impl AuthTransaction for MemoryAuthTransaction {
             .collect::<BlueprintResult<Vec<_>>>()?;
         Ok(super::page(model, rows, limit))
     }
+    async fn find_window(
+        &mut self,
+        model: Model,
+        field: &str,
+        value: &str,
+        offset: usize,
+        limit: usize,
+    ) -> BlueprintResult<super::AuthWindow> {
+        use std::ops::Bound::{Excluded, Included};
+        super::page_start(model, None, limit)?;
+        i64::try_from(offset).map_err(|_| invalid())?;
+        let field = model
+            .indexed_fields()
+            .iter()
+            .copied()
+            .find(|candidate| *candidate == field)
+            .ok_or_else(invalid)?;
+        let entries = self.pending.lookups.range((
+            Excluded((model, field, value.to_owned(), 0)),
+            Included((model, field, value.to_owned(), u64::MAX)),
+        ));
+        let total = entries.clone().count();
+        let records = entries
+            .skip(offset)
+            .take(limit)
+            .map(|(_, id)| {
+                self.pending
+                    .rows
+                    .get(&(model, id.clone()))
+                    .map(|(_, row)| row.clone())
+                    .ok_or_else(storage_error)
+            })
+            .collect::<BlueprintResult<Vec<_>>>()?;
+        Ok(super::AuthWindow { records, total })
+    }
     async fn list(&mut self, model: Model) -> BlueprintResult<Vec<Value>> {
         let mut rows: Vec<_> = self
             .pending

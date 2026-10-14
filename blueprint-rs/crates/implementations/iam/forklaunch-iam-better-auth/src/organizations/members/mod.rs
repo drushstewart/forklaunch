@@ -41,13 +41,13 @@ fn trim(value: &str) -> &str {
         character == '\u{feff}' || character.is_whitespace() && character != '\u{85}'
     })
 }
-async fn joined<T: AuthTransaction>(
-    tx: &mut T,
-    mut member: Value,
-) -> BlueprintResult<Option<Value>> {
+async fn joined<T: AuthTransaction>(tx: &mut T, member: Value) -> BlueprintResult<Option<Value>> {
     let Some(user) = tx.get(Model::User, text(&member, "userId")?).await? else {
         return Ok(None);
     };
+    Ok(Some(joined_user(member, &user)))
+}
+fn joined_user(mut member: Value, user: &Value) -> Value {
     let mut public = json!({});
     for field in ["id", "name", "email", "image"] {
         if let Some(value) = user.get(field) {
@@ -55,7 +55,7 @@ async fn joined<T: AuthTransaction>(
         }
     }
     member["user"] = public;
-    Ok(Some(member))
+    member
 }
 async fn owner_count<T: AuthTransaction>(tx: &mut T, organization: &str) -> BlueprintResult<usize> {
     Ok(

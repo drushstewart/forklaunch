@@ -44,8 +44,32 @@ impl<S: AuthStore> OrganizationService<S> {
         if joined(&mut tx, actor).await?.is_none() {
             return Err(nonmember());
         }
-        let mut members = Vec::new();
         let filter = filter::Filter::new(query)?;
+        if let Some((offset, limit)) = indexed_window(query) {
+            let window = tx
+                .find_window(Model::Member, "organizationId", &id, offset, limit)
+                .await?;
+            let ids = window
+                .records
+                .iter()
+                .map(|member| text(member, "userId").map(str::to_owned))
+                .collect::<BlueprintResult<Vec<_>>>()?;
+            let users = tx.get_many(Model::User, &ids, ids.len()).await?;
+            let users = users
+                .iter()
+                .map(|user| text(user, "id").map(|id| (id, user)))
+                .collect::<BlueprintResult<std::collections::BTreeMap<_, _>>>()?;
+            let mut members = Vec::with_capacity(window.records.len());
+            for member in window.records {
+                let user = users
+                    .get(text(&member, "userId")?)
+                    .ok_or_else(adapter_error)?;
+                members.push(super::joined_user(member, user));
+            }
+            tx.commit().await?;
+            return Ok(json!({"members":members,"total":window.total}));
+        }
+        let mut members = Vec::new();
         for member in crate::store::find_all(&mut tx, Model::Member, "organizationId", &id).await? {
             if member["organizationId"] == id && filter.matches(&member)? {
                 members.push(member);
@@ -85,4 +109,35 @@ fn adapter_error() -> BlueprintError {
         "HTTP_INTERNAL_EMPTY",
         "Unable to query organization members",
     )
+}
+
+// Preserve the established JS coercion/slicing path for negative, fractional,
+// nonfinite, oversized or configured filtering/sorting inputs.
+fn indexed_window(query: &Value) -> Option<(usize, usize)> {
+    if ["filterField", "sortBy"].iter().any(|field| {
+        query[*field]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    }) {
+        return None;
+    }
+    let offset = query
+        .get("offset")
+        .map_or(0.0, |value| values::number(Some(value)));
+    let limit = query
+        .get("limit")
+        .map_or(100.0, |value| values::number(Some(value)));
+    let limit = if limit == 0.0 { 100.0 } else { limit };
+    if !offset.is_finite()
+        || offset < 0.0
+        || offset.fract() != 0.0
+        || !limit.is_finite()
+        || !(1.0..=4096.0).contains(&limit)
+        || limit.fract() != 0.0
+    {
+        return None;
+    }
+    let offset: usize = offset.to_string().parse().ok()?;
+    i64::try_from(offset).ok()?;
+    Some((offset, limit.to_string().parse().ok()?))
 }
