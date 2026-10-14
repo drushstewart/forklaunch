@@ -48,6 +48,8 @@ use tower_http::{
 };
 
 mod default_errors;
+mod origin;
+pub use origin::RouterOriginFormat;
 mod response_validation;
 pub use response_validation::ResponseValidators;
 mod request_validation;
@@ -128,6 +130,8 @@ pub struct RouterConfig {
     pub handler_error_format: HandlerErrorFormat,
     /// Final wire representation for request-parser and transport-limit failures.
     pub parser_error_format: ParserErrorFormat,
+    /// Opt-in formatting for framework-owned router fallbacks only.
+    pub router_origin_format: RouterOriginFormat,
     /// Wire format for framework-detected undocumented response statuses.
     pub response_status_error_format: ResponseStatusErrorFormat,
     /// Inject a configured collector to export HTTP traces and metrics.
@@ -161,6 +165,7 @@ impl Default for RouterConfig {
             auth_error_format: AuthErrorFormat::Json,
             handler_error_format: HandlerErrorFormat::Json,
             parser_error_format: ParserErrorFormat::Json,
+            router_origin_format: RouterOriginFormat::Native,
             response_status_error_format: ResponseStatusErrorFormat::Json,
             telemetry: None,
         }
@@ -684,23 +689,16 @@ impl ForkLaunchRouter {
                 allowed.sort_unstable();
                 allowed.dedup();
                 let allow = allowed.join(", ");
-                method_router = method_router.fallback(move |request: Request| {
-                    let handler = methods.get(request.method().as_str()).cloned();
-                    let allow = allow.clone();
-                    async move {
-                        match handler {
-                            Some(handler) => match handler.oneshot(request).await {
-                                Ok(response) => response,
-                                Err(never) => match never {},
-                            },
-                            None => (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, allow)])
-                                .into_response(),
-                        }
-                    }
-                });
+                method_router = origin::extended(method_router, methods, allow, &config);
             }
             router = router.route(&path, method_router);
         }
+
+        router = origin::install(
+            router,
+            &config,
+            internal_mounts.iter().any(|mount| mount.prefix == "/"),
+        );
 
         for mount in internal_mounts {
             router = if mount.prefix == "/" {
@@ -755,6 +753,7 @@ impl ForkLaunchRouter {
                     }
                 }
             }));
+        let router = origin::wrap(router, config.router_origin_format);
         #[cfg(feature = "cookie-session")]
         if let Some(sessions) = config.cookie_sessions {
             return sessions.wrap(router);

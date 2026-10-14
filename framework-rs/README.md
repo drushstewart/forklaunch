@@ -232,6 +232,15 @@ empty byte buffer or an absent value. That boundary differs from TypeScript's
 original-value validation. Versioned and streaming default-error responses
 remain outside this finite profile.
 
+Set `RouterConfig.router_origin_format` to `RouterOriginFormat::TypeScriptHtml`
+for Express-compatible framework fallbacks: unknown paths and unsupported methods
+return escaped HTML 404 responses, with security headers and HEAD representation
+length. Pair it with `ParserErrorFormat::TypeScriptText` for malformed matched
+parameters to return the TypeScript 400 text response before method dispatch.
+Native defaults, application handler responses and internal-router fallbacks are
+preserved. A root internal mount retains ownership of its root fallback. CORS,
+explicit OPTIONS routes and correlation propagation remain separate policies.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

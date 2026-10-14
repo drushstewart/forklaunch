@@ -63,3 +63,7 @@ workspace = true
 [[example]]
 name = "docs_parity"
 required-features = ["adapter"]
+
+[[example]]
+name = "router_origin_parity"
+required-features = ["adapter"]
