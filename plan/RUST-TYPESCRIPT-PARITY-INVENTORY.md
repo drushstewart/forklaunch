@@ -4691,3 +4691,27 @@ all-feature/all-target Clippy and the minimal postgres-feature build pass. CI
 explicitly executes the ignored PostgreSQL provider fixtures. Evidence:
 `/private/tmp/fl-iam-provider-{tests,clippy}.log`. Broader provider/browser and
 directory integration remain open; checklist stays **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Auth error schemas and safe handler-error wire compatibility
+
+Opt-in TypeScript auth-error formatting now projects missing 401/403 plain-text
+OpenAPI schemas on authenticated routes. Inline primitive schemas avoid application
+component-name collisions; explicit contracts retain precedence and the runtime
+registry is unchanged. Native default documents remain unchanged. Actual-source
+canonical OpenAPI differences shrink from ten to six. The six remaining 400/404/
+500/null-schema differences remain checked rather than being normalized away.
+
+`HandlerErrorFormat::TypeScriptText` separately formats errors returned by
+LocalRouter handlers as the actual TypeScript generic exception text with the
+request correlation ID, without returning internal error details. It preserves
+the default native JSON format and does not catch panics or rewrite arbitrary
+Axum handler responses. The actual Express/native fixture now compares **52 live
+HTTP outcomes**, including six thrown-handler outcomes with exact status, media,
+text, correlation and secret-redaction checks.
+
+Nine OpenAPI tests, four focused Axum tests, strict all-target OpenAPI/Axum Clippy,
+and the live canonical comparison pass. Snapshot verification was repeated
+without update mode. Evidence: `/private/tmp/fl-auth-openapi-{tests,clippy,canonical-check}.log`
+and `/private/tmp/fl-handler-errors-{tests,clippy,canonical}.log`. Broad validator/
+error/document parity remains open: **658/682 (96.5%), 24 open**.

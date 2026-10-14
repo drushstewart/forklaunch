@@ -103,6 +103,21 @@ try{
   if(status!==200)assert.deepEqual(wire[1],wire[0],'exact auth header/error wire profile');
   else assert.deepEqual(JSON.parse(wire[1].text),JSON.parse(wire[0].text));
  }
+ // Exercise the real Express final error handler, not a fixture formatter.
+ for(const correlation of ['fixture-error-123','with spaces','punctuation:._-']){
+  const wire=[];
+  for(const url of [ts,rust]){
+   const response=await fetch(`${url}/errors/throw`,{headers:{'x-correlation-id':correlation},signal:AbortSignal.timeout(5000)});
+   assert.equal(response.status,500);
+   const text=await response.text();
+   assert.equal(text,`Internal server error:\n\nCorrelation id: ${correlation}`);
+   assert.ok(!text.includes('secret fixture detail'));
+   wire.push({text,type:response.headers.get('content-type')});
+  }
+  assert.deepEqual(wire[1],wire[0],'generic handler exception wire parity');
+  assert.equal(wire[0].type,'text/plain; charset=utf-8');
+ }
+ console.log('PASS six live actual TypeScript/Rust handler exception outcomes: safe text, media type and correlation ID');
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);
@@ -128,6 +143,7 @@ try{
  for(const operation of Object.keys(normalized[0])){
   for(const field of ['parameters','security'])assert.deepEqual(normalized[0][operation][field],normalized[1][operation][field],`${operation} ${field}`);
   assert.deepEqual(normalized[0][operation].responses['200'],normalized[1][operation].responses['200'],`${operation} success schema`);
+  for(const status of ['401','403'])assert.deepEqual(normalized[0][operation].responses[status],normalized[1][operation].responses[status],`${operation} documented auth error schema`);
   const left=normalized[0][operation].responses,right=normalized[1][operation].responses;
   for(const status of [...new Set([...Object.keys(left),...Object.keys(right)])].sort()){
    if(JSON.stringify(left[status])!==JSON.stringify(right[status]))differences.push({operation,status,typescript:left[status]??null,rust:right[status]??null});

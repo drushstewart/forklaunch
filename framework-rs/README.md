@@ -181,10 +181,21 @@ including when forwarded through MCP. Set `RouterConfig::auth_error_format` to
 `text/plain; charset=utf-8`, matching the TypeScript middleware. Combine it with
 the TypeScript credential/session policy for matching status and message rules.
 The option applies to both credential and authorization failures; request parsing,
-validation, handler errors and OpenAPI error declarations retain their own behavior.
+validation and handler errors retain their own behavior. The served OpenAPI document
+also supplies missing 401/403 plain-text schemas on routes with declared auth. Explicit
+response contracts take precedence (the TypeScript generator instead overwrites
+explicit auth-error declarations). Standalone exporters can select the same projection
+with `OpenApiOptions::with_typescript_auth_errors`; native exports remain unchanged.
 MCP forwards the same HTTP rejection text; successful responses are unaffected.
 Actual middleware comparisons and live
 HTTP/MCP tests cover parsing, rejection, verified subjects and subsequent RBAC.
+
+Set `RouterConfig::handler_error_format` to `HandlerErrorFormat::TypeScriptText`
+for `LocalRouter` handlers that return `Err`: the HTTP adapter emits the same
+500 plain-text exception message and request correlation ID as the TypeScript
+Express error handler. Internal error codes and details stay out of the response.
+The default retains the native JSON envelope. This option does not catch panics,
+rewrite ordinary Axum handler responses, or change request validation errors.
 
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still

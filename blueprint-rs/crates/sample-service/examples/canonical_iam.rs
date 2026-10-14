@@ -2,8 +2,16 @@
 use forklaunch_auth::{
     JwtClaims, issue_jwt_hs256, typescript::jwt::verify_jwt_resource, verify_jwt_hs256,
 };
-use forklaunch_axum::{AuthErrorFormat, RouterConfig, session::AuthenticatedSession};
+use forklaunch_axum::{
+    AuthErrorFormat, ForkLaunchRouter, HandlerErrorFormat, RouterConfig,
+    session::AuthenticatedSession,
+};
+use forklaunch_blueprint_core::{
+    contract::RouteContract,
+    http::{FrameworkRequest, LocalRouter},
+};
 use forklaunch_blueprint_sample_service::iam_router;
+use forklaunch_core::{ServiceInfo, common::FrameworkError};
 use forklaunch_iam_base::InMemoryIamService;
 use forklaunch_iam_interface::User;
 use std::sync::Arc;
@@ -16,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ]));
     let config = RouterConfig {
         auth_error_format: AuthErrorFormat::TypeScriptText,
+        handler_error_format: HandlerErrorFormat::TypeScriptText,
         ..RouterConfig::default()
     }
     .with_response_authenticator(|request, _| async move {
@@ -53,11 +62,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             serde_json::to_vec(&serde_json::json!({"token":token,"claims":claims}))?,
         )?;
     }
+    let mut failure = RouteContract::get("Failure", "Failure", "/throw");
+    failure.options.openapi = false;
+    let mut handlers = LocalRouter::new();
+    handlers.register(failure.clone(), |_: FrameworkRequest| {
+        Err(FrameworkError::new(
+            "fixture_internal",
+            "secret fixture detail",
+        ))
+    });
+    let errors =
+        ForkLaunchRouter::from_local_router(ServiceInfo::new("errors", "1"), [failure], handlers);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     println!("READY http://{}", listener.local_addr()?);
     axum::serve(
         listener,
-        iam_router(&service).with_config(config).into_router(),
+        iam_router(&service)
+            .nest("/errors", errors)
+            .with_config(config)
+            .into_router(),
     )
     .with_graceful_shutdown(async {
         #[cfg(unix)]

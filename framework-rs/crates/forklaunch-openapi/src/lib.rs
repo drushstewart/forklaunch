@@ -72,6 +72,9 @@ pub struct OpenApiOptions {
     pub version: String,
     pub description: Option<String>,
     pub servers: Vec<OpenApiServer>,
+    /// Document missing 401/403 responses as TypeScript plain-text auth errors.
+    /// Enable only when the HTTP adapter uses the corresponding wire format.
+    pub typescript_auth_errors: bool,
 }
 
 impl OpenApiOptions {
@@ -83,12 +86,14 @@ impl OpenApiOptions {
                 version: "0.1.0".to_owned(),
                 description: None,
                 servers: Vec::new(),
+                typescript_auth_errors: false,
             },
             |service| Self {
                 title: service.name.clone(),
                 version: service.version.clone(),
                 description: None,
                 servers: Vec::new(),
+                typescript_auth_errors: false,
             },
         )
     }
@@ -96,6 +101,14 @@ impl OpenApiOptions {
     #[must_use]
     pub fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
+        self
+    }
+
+    /// Include the TypeScript middleware's implicit 401/403 text responses on
+    /// authenticated routes. Explicit response contracts always take precedence.
+    #[must_use]
+    pub fn with_typescript_auth_errors(mut self) -> Self {
+        self.typescript_auth_errors = true;
         self
     }
 
@@ -170,7 +183,11 @@ pub fn generate_openapi_json_with_options(
         JsonField::new("info", info_json(options)),
         JsonField::new(
             "paths",
-            paths_json(&routes, registry.service().map(|service| &service.name)),
+            paths_json(
+                &routes,
+                registry.service().map(|service| &service.name),
+                options.typescript_auth_errors,
+            ),
         ),
     ];
 
@@ -270,7 +287,11 @@ fn info_json(options: &OpenApiOptions) -> String {
     json_object(fields)
 }
 
-fn paths_json(routes: &[&RouteContract], service_name: Option<&String>) -> String {
+fn paths_json(
+    routes: &[&RouteContract],
+    service_name: Option<&String>,
+    typescript_auth_errors: bool,
+) -> String {
     let mut routes_by_path = BTreeMap::<String, Vec<&RouteContract>>::new();
     for route in routes {
         routes_by_path
@@ -283,7 +304,7 @@ fn paths_json(routes: &[&RouteContract], service_name: Option<&String>) -> Strin
         let mut standard = Vec::new();
         let mut extended = Vec::new();
         for route in routes {
-            let operation = operation_json(route, service_name);
+            let operation = operation_json(route, service_name, typescript_auth_errors);
             if route.method.is_openapi_standard() {
                 standard.push(JsonField::new(
                     route.method.as_str().to_ascii_lowercase(),
@@ -303,10 +324,20 @@ fn paths_json(routes: &[&RouteContract], service_name: Option<&String>) -> Strin
     }))
 }
 
-fn operation_json(route: &RouteContract, service_name: Option<&String>) -> String {
+fn operation_json(
+    route: &RouteContract,
+    service_name: Option<&String>,
+    typescript_auth_errors: bool,
+) -> String {
     let mut fields = vec![
         JsonField::new("operationId", json_string(&route.operation_name)),
-        JsonField::new("responses", responses_json(&route.responses)),
+        JsonField::new(
+            "responses",
+            responses_json(
+                &route.responses,
+                typescript_auth_errors && route.auth.is_some(),
+            ),
+        ),
         JsonField::new("summary", json_string(&route.summary)),
     ];
 
@@ -385,17 +416,39 @@ fn request_body_json(body: &BodyContract) -> String {
     ])
 }
 
-fn responses_json(responses: &[ResponseContract]) -> String {
-    if responses.is_empty() {
-        return json_object([JsonField::new("204", response_json(None, &[]))]);
+fn responses_json(responses: &[ResponseContract], typescript_auth_errors: bool) -> String {
+    let mut fields = if responses.is_empty() {
+        vec![JsonField::new("204", response_json(None, &[]))]
+    } else {
+        responses
+            .iter()
+            .map(|response| {
+                JsonField::new(
+                    response.status_code.to_string(),
+                    response_json(response.body.as_ref(), &response.headers),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    if typescript_auth_errors {
+        // Inline primitives avoid collisions with application schema names.
+        // Keep this projection out of the registry and runtime validation.
+        for (status, description) in [(401, "Unauthorized"), (403, "Forbidden")] {
+            if !responses
+                .iter()
+                .any(|response| response.status_code == status)
+            {
+                fields.push(JsonField::new(
+                    status.to_string(),
+                    json_object([
+                        JsonField::new("description", json_string(description)),
+                        JsonField::new("content", r#"{"text/plain":{"schema":{"type":"string"}}}"#),
+                    ]),
+                ));
+            }
+        }
     }
-
-    json_object(responses.iter().map(|response| {
-        JsonField::new(
-            response.status_code.to_string(),
-            response_json(response.body.as_ref(), &response.headers),
-        )
-    }))
+    json_object(fields)
 }
 
 fn response_json(body: Option<&BodyContract>, headers: &[FieldContract]) -> String {
@@ -684,6 +737,60 @@ mod tests {
             assert!(operation["responses"].get(status).is_some());
             assert_eq!(document["components"]["schemas"]["Input"]["type"], kind);
         }
+    }
+
+    #[test]
+    fn typescript_auth_error_docs_are_opt_in_and_preserve_explicit_responses() {
+        let mut registry = ContractRegistry::new();
+        registry.register(RouteContract::get("Public", "Public", "/public"));
+        registry.register(
+            RouteContract::get("Private", "Private", "/private")
+                .with_auth(AuthConfig::cookie("session")),
+        );
+        registry.register(
+            RouteContract::get("Explicit", "Explicit", "/explicit")
+                .with_auth(AuthConfig::cookie("session"))
+                .with_response(401, Some(BodyContract::json("CustomError"))),
+        );
+        let native: serde_json::Value =
+            serde_json::from_str(&generate_openapi_json(&registry)).unwrap();
+        assert!(
+            native["paths"]["/private"]["get"]["responses"]
+                .get("401")
+                .is_none()
+        );
+        let options = OpenApiOptions::from_registry(&registry).with_typescript_auth_errors();
+        let document: serde_json::Value =
+            serde_json::from_str(&generate_openapi_json_with_options(&registry, &options)).unwrap();
+        let private = &document["paths"]["/private"]["get"]["responses"];
+        assert!(
+            private.get("204").is_some(),
+            "retain implicit no-content success"
+        );
+        for status in ["401", "403"] {
+            assert_eq!(
+                private[status]["content"]["text/plain"]["schema"]["type"],
+                "string"
+            );
+            assert!(
+                document["paths"]["/public"]["get"]["responses"]
+                    .get(status)
+                    .is_none()
+            );
+        }
+        assert!(
+            document["paths"]["/explicit"]["get"]["responses"]["401"]["content"]
+                .get("application/json")
+                .is_some()
+        );
+        assert_eq!(
+            registry.routes()[1].responses.len(),
+            0,
+            "projection must not change runtime validation"
+        );
+        let versioned: serde_json::Value =
+            serde_json::from_str(&generate_versioned_openapi_json(&registry, &options)).unwrap();
+        assert_eq!(versioned[""]["paths"], document["paths"]);
     }
 
     #[test]

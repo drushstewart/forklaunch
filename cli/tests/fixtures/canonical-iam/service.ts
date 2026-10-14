@@ -23,6 +23,9 @@ app.get('/users', {
   query:{limit:optional(z.coerce.number().int()),cursor:optional(string)},
   responses:{200:{items:array(user),next_cursor:optional(union([string,null_]))}}
 }, (_req,res)=>res.status(200).json({items:users,next_cursor:null}));
+app.get('/errors/throw', {
+ name:'Failure',summary:'Failure',options:{openapi:false},responses:{500:string}
+}, ()=>{throw new Error('secret fixture detail');});
 const server=app.listen(0,'127.0.0.1');
 server.on('listening',()=>console.log(`READY http://127.0.0.1:${server.address().port}`));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));

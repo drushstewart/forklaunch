@@ -60,6 +60,17 @@ pub enum AuthErrorFormat {
     TypeScriptText,
 }
 
+/// Wire representation for failures returned by a `LocalRouter` handler.
+/// This does not catch panics or rewrite responses returned by Axum handlers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum HandlerErrorFormat {
+    /// Native structured, redacted internal error (the default).
+    #[default]
+    Json,
+    /// TypeScript's generic exception message with the request correlation ID.
+    TypeScriptText,
+}
+
 /// Configuration for cross-cutting router behavior (docs, limits, CORS).
 #[derive(Clone)]
 pub struct RouterConfig {
@@ -100,6 +111,8 @@ pub struct RouterConfig {
     pub authorizer: Option<Authorizer>,
     /// Format only credential/policy errors; validation/handler errors are separate.
     pub auth_error_format: AuthErrorFormat,
+    /// Format for errors returned by framework local handlers.
+    pub handler_error_format: HandlerErrorFormat,
     /// Inject a configured collector to export HTTP traces and metrics.
     pub telemetry: Option<OpenTelemetryCollector>,
 }
@@ -126,6 +139,7 @@ impl Default for RouterConfig {
             response_authenticator: None,
             authorizer: None,
             auth_error_format: AuthErrorFormat::Json,
+            handler_error_format: HandlerErrorFormat::Json,
             telemetry: None,
         }
     }
@@ -187,6 +201,9 @@ impl RouterConfig {
 
     fn openapi_options(&self, registry: &ContractRegistry) -> OpenApiOptions {
         let mut options = OpenApiOptions::from_registry(registry);
+        if self.auth_error_format == AuthErrorFormat::TypeScriptText {
+            options = options.with_typescript_auth_errors();
+        }
         if let Some(description) = &self.description {
             options = options.with_description(description.clone());
         }
@@ -286,14 +303,30 @@ impl ForkLaunchRouter {
                     {
                         request.path.drain(..prefix.len());
                     }
+                    let correlation_id = request.context.correlation_id.clone();
+                    let error_format = parts
+                        .extensions
+                        .get::<HandlerErrorFormat>()
+                        .copied()
+                        .unwrap_or_default();
                     match handlers.execute(request) {
                         Ok(response) => framework_response_to_axum(response),
                         Err(error) => {
-                            tracing::error!(error = %error, "local request handler failed");
-                            framework_response_to_axum(
-                                ErrorResponse::new(ErrorKind::Internal, "internal server error")
-                                    .to_response(),
-                            )
+                            tracing::error!(error = %error, correlation_id, "local request handler failed");
+                            let response = match error_format {
+                                HandlerErrorFormat::Json => {
+                                    ErrorResponse::new(ErrorKind::Internal, "internal server error")
+                                        .to_response()
+                                }
+                                HandlerErrorFormat::TypeScriptText => FrameworkResponse::text(
+                                    500,
+                                    format!(
+                                        "Internal server error:\n\nCorrelation id: {correlation_id}"
+                                    ),
+                                )
+                                .with_header("content-type", "text/plain; charset=utf-8"),
+                            };
+                            framework_response_to_axum(response)
                         }
                     }
                 }
@@ -800,6 +833,7 @@ struct ValidationState {
     response_authenticator: Option<ResponseAuthenticator>,
     authorizer: Option<Authorizer>,
     auth_error_format: AuthErrorFormat,
+    handler_error_format: HandlerErrorFormat,
     telemetry: OpenTelemetryCollector,
 }
 
@@ -840,6 +874,7 @@ impl ValidationState {
             response_authenticator: config.response_authenticator.clone(),
             authorizer: config.authorizer.clone(),
             auth_error_format: config.auth_error_format,
+            handler_error_format: config.handler_error_format,
             telemetry,
         }
     }
@@ -996,6 +1031,7 @@ async fn validate_contract(
             }
         }
     }
+    parts.extensions.insert(state.handler_error_format);
     // LocalRouter owns selection and response validation for its handlers.
     // Authentication and the transport body limit still run above, but runtime
     // callbacks must execute exactly once and may change the selected schema.
@@ -1248,6 +1284,64 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+
+    #[tokio::test]
+    async fn local_handler_failures_use_opt_in_safe_typescript_text() {
+        for format in [HandlerErrorFormat::Json, HandlerErrorFormat::TypeScriptText] {
+            let contract = RouteContract::get("Failure", "Failure", "/failure");
+            let mut handlers = LocalRouter::new();
+            handlers.register(contract.clone(), |_: FrameworkRequest| {
+                Err(forklaunch_common::FrameworkError::new(
+                    "secret_code",
+                    "secret detail",
+                ))
+            });
+            let app = ForkLaunchRouter::from_local_router(
+                ServiceInfo::new("failure", "1"),
+                [contract],
+                handlers,
+            )
+            .with_config(RouterConfig {
+                handler_error_format: format,
+                ..RouterConfig::default()
+            })
+            .into_router();
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .uri("/failure")
+                        .header("x-correlation-id", "failure-correlation")
+                        .body(AxumBody::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+            let media_type = response.headers()["content-type"]
+                .to_str()
+                .unwrap()
+                .to_owned();
+            let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
+            let text = std::str::from_utf8(&bytes).unwrap();
+            assert!(!text.contains("secret"));
+            match format {
+                HandlerErrorFormat::Json => {
+                    assert_eq!(media_type, "application/json");
+                    assert_eq!(
+                        text,
+                        r#"{"code":"internal_error","message":"internal server error"}"#
+                    );
+                }
+                HandlerErrorFormat::TypeScriptText => {
+                    assert_eq!(media_type, "text/plain; charset=utf-8");
+                    assert_eq!(
+                        text,
+                        "Internal server error:\n\nCorrelation id: failure-correlation"
+                    );
+                }
+            }
+        }
+    }
 
     #[tokio::test]
     async fn local_handlers_preserve_wire_input_and_binary_output() {
