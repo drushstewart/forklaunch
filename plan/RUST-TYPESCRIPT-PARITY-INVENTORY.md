@@ -4617,3 +4617,23 @@ the source inventory remains current. Public-key hosting, identity/provider
 integration and OAuth/OIDC still have their documented boundaries. No registry
 upload or deployment occurred. Checklist remains **658/682 (96.5%), 24 open**.
 Logs: `/private/tmp/fl-iam-cookie-store-{postgres,clippy-final,format,generated,package,release,inventory,cli-tests}.log`.
+
+
+### 2026-10-13 — Stripe canceled intents with verified failed charges
+
+Cancellation reconciliation now accepts an expanded failed charge only when its
+intent reference, amount and currency match, paid/captured/refunded/disputed are
+explicitly false, and captured/refunded amounts are zero. The parent intent must
+still be terminal canceled with a positive cancellation timestamp, zero received/
+capturable funds and matching merchant-scoped order identity. Null latest charges
+remain supported; unexpanded references, missing evidence, pending/successful,
+authorized or refunded charges remain rejected. Repair remains read-only at the
+provider and atomically audited locally.
+
+Two provider fixtures pass, including 28 new insufficient-evidence cases, successful
+repair, delayed claim release and blocked later confirmation. The restricted-role
+PostgreSQL audit/rollback/tenant/restart fixture and strict all-feature Clippy pass.
+Evidence: `/private/tmp/fl-stripe-failed-charge-{tests,postgres,clippy}.log`.
+Pending/ambiguous claims, paid/authorized prior charges, PayPal cancellation and
+canceled-order reference reconciliation remain open. Checklist stays
+**658/682 (96.5%), 24 open**.

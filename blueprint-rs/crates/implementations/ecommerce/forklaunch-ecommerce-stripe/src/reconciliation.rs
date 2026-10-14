@@ -71,11 +71,12 @@ impl<S: PaymentReconciliationStore> StripePaymentService<S> {
     }
 }
 impl<S: PaymentCancellationStore> StripePaymentService<S> {
-    /// Read a terminal canceled intent with no charge and atomically mark the local
+    /// Read a terminal canceled intent with no charge or a verified failed, unpaid
+    /// charge and atomically mark the local
     /// payment failed with an operator audit. Preserves the provider reference and
     /// never cancels/refunds a provider payment or transitions the associated order.
     /// # Errors
-    /// Rejects nonterminal, charged, mismatched or contradictory provider evidence,
+    /// Rejects nonterminal, paid, authorized, mismatched or contradictory provider evidence,
     /// stale snapshots and audit/storage failures. Pending/ambiguous states require review.
     pub async fn reconcile_canceled_payment(
         &self,
@@ -120,7 +121,7 @@ fn verify_cancellation(
         || intent["amount"].as_i64() != Some(payment.amount_cents)
         || intent["amount_received"].as_i64() != Some(0)
         || intent["amount_capturable"].as_i64() != Some(0)
-        || intent.get("latest_charge") != Some(&Value::Null)
+        || !unpaid_latest_charge(payment, intent.get("latest_charge"), reference)
         || intent["metadata"]["orderId"].as_str() != Some(payment.order_id.as_str())
         || !intent["currency"]
             .as_str()
@@ -135,6 +136,33 @@ fn verify_cancellation(
         amount_cents: payment.amount_cents,
         currency: payment.currency.to_ascii_uppercase(),
     })
+}
+// A failed attempt is not evidence of cancellation by itself: the caller also
+// requires the parent intent's terminal canceled status and zero received and
+// capturable amounts. String references, absent fields, authorized charges and
+// refunds remain manual review. Stripe's expanded charge is read in the same
+// merchant/Connect scope as its parent intent.
+fn unpaid_latest_charge(payment: &PaymentDto, charge: Option<&Value>, reference: &str) -> bool {
+    let Some(charge) = charge else {
+        return false;
+    };
+    if charge.is_null() {
+        return true;
+    }
+    charge["id"].as_str().is_some_and(valid_id)
+        && charge["object"] == "charge"
+        && charge["payment_intent"] == reference
+        && charge["status"] == "failed"
+        && charge["paid"] == false
+        && charge["captured"] == false
+        && charge["refunded"] == false
+        && charge["disputed"] == false
+        && charge["amount"].as_i64() == Some(payment.amount_cents)
+        && charge["amount_captured"].as_i64() == Some(0)
+        && charge["amount_refunded"].as_i64() == Some(0)
+        && charge["currency"]
+            .as_str()
+            .is_some_and(|currency| currency.eq_ignore_ascii_case(&payment.currency))
 }
 fn verify_capture(payment: &PaymentDto, intent: &Value) -> BlueprintResult<VerifiedCapture> {
     let reference = payment

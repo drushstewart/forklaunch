@@ -252,7 +252,7 @@ async fn live_stripe_connect_resume_secrets_failures_bounds_and_persistence() {
         PaymentStatus::Succeeded
     );
     assert!(store.payment_cancellation_audits().unwrap().is_empty());
-    *state.details.lock().unwrap() = Some(canceled);
+    *state.details.lock().unwrap() = Some(canceled.clone());
     let repaired = service
         .reconcile_canceled_payment("canceled", actor.clone())
         .await
@@ -271,6 +271,118 @@ async fn live_stripe_connect_resume_secrets_failures_bounds_and_persistence() {
     assert_eq!(cancellations.len(), 1);
     assert_eq!(cancellations[0].evidence.canceled_at, 1_700_000_000);
     assert!(!format!("{cancellations:?}").contains("must-not-persist"));
+    // A terminal canceled intent may retain its last failed attempt. Verify
+    // every money/status/identity field before recording the same durable repair.
+    base.create_payment_with_reference(
+        request("failed-charge", "canceled-order", 5350),
+        Some("pi_failed_charge".into()),
+    )
+    .await
+    .unwrap();
+    assert!(
+        base.claim_for_confirmation("pi_failed_charge")
+            .await
+            .unwrap()
+    );
+    let mut with_failed_charge = canceled;
+    with_failed_charge["id"] = json!("pi_failed_charge");
+    with_failed_charge["latest_charge"] = json!({
+        "id":"ch_failed", "object":"charge", "payment_intent":"pi_failed_charge",
+        "status":"failed", "paid":false, "captured":false, "refunded":false,
+        "disputed":false, "amount":5350, "amount_captured":0, "amount_refunded":0,
+        "currency":"usd"
+    });
+    for (field, replacement) in [
+        ("id", json!("")),
+        ("object", json!("payment_intent")),
+        ("payment_intent", json!("pi_other")),
+        ("status", json!("pending")),
+        ("status", json!("succeeded")),
+        ("paid", json!(true)),
+        ("captured", json!(true)),
+        ("refunded", json!(true)),
+        ("disputed", json!(true)),
+        ("amount", json!(5351)),
+        ("amount_captured", json!(1)),
+        ("amount_refunded", json!(1)),
+        ("currency", json!("eur")),
+        ("amount_captured", json!("0")),
+    ] {
+        let mut invalid = with_failed_charge.clone();
+        invalid["latest_charge"][field] = replacement;
+        *state.details.lock().unwrap() = Some(invalid);
+        assert!(
+            service
+                .reconcile_canceled_payment("failed-charge", actor.clone())
+                .await
+                .is_err()
+        );
+    }
+    for field in with_failed_charge["latest_charge"]
+        .as_object()
+        .unwrap()
+        .keys()
+    {
+        let mut invalid = with_failed_charge.clone();
+        invalid["latest_charge"]
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+        *state.details.lock().unwrap() = Some(invalid);
+        assert!(
+            service
+                .reconcile_canceled_payment("failed-charge", actor.clone())
+                .await
+                .is_err()
+        );
+    }
+    // Failed/unpaid charge evidence cannot turn a still-retryable intent terminal.
+    let mut pending = with_failed_charge.clone();
+    pending["status"] = json!("requires_payment_method");
+    *state.details.lock().unwrap() = Some(pending);
+    assert!(
+        service
+            .reconcile_canceled_payment("failed-charge", actor.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        base.get_payment("failed-charge").await.unwrap().status,
+        PaymentStatus::Succeeded
+    );
+    assert_eq!(store.payment_cancellation_audits().unwrap().len(), 1);
+    *state.details.lock().unwrap() = Some(with_failed_charge);
+    let repaired = service
+        .reconcile_canceled_payment("failed-charge", actor.clone())
+        .await
+        .unwrap();
+    assert_eq!(repaired.status, PaymentStatus::Failed);
+    assert_eq!(repaired.provider_ref.as_deref(), Some("pi_failed_charge"));
+    assert!(
+        base.claim_for_confirmation("pi_failed_charge")
+            .await
+            .is_err()
+    );
+    base.release_confirmation_claim("pi_failed_charge")
+        .await
+        .unwrap();
+    assert_eq!(
+        base.get_payment("failed-charge").await.unwrap().status,
+        PaymentStatus::Failed
+    );
+    assert!(
+        service
+            .confirm_payment(ConfirmPaymentDto {
+                provider_ref: "pi_failed_charge".into()
+            })
+            .await
+            .is_err()
+    );
+    let audit = store.payment_cancellation_audits().unwrap();
+    assert_eq!(audit.len(), 2);
+    assert_eq!(audit[1].previous_status, PaymentStatus::Succeeded);
+    assert_eq!(audit[1].evidence.provider_ref, "pi_failed_charge");
+    assert_eq!(audit[1].actor, actor);
     assert!(
         state.calls.lock().unwrap()[2..]
             .iter()
