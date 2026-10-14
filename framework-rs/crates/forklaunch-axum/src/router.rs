@@ -114,7 +114,7 @@ pub struct RouterConfig {
     pub auth_error_format: AuthErrorFormat,
     /// Format for errors returned by framework local handlers.
     pub handler_error_format: HandlerErrorFormat,
-    /// Final wire representation for body-parser and transport-limit failures.
+    /// Final wire representation for request-parser and transport-limit failures.
     pub parser_error_format: ParserErrorFormat,
     /// Inject a configured collector to export HTTP traces and metrics.
     pub telemetry: Option<OpenTelemetryCollector>,
@@ -207,6 +207,9 @@ impl RouterConfig {
         let mut options = OpenApiOptions::from_registry(registry);
         if self.auth_error_format == AuthErrorFormat::TypeScriptText {
             options = options.with_typescript_auth_errors();
+        }
+        if self.parser_error_format == ParserErrorFormat::TypeScriptText {
+            options = options.with_typescript_path_errors();
         }
         if let Some(description) = &self.description {
             options = options.with_description(description.clone());
@@ -848,6 +851,23 @@ struct ValidationState {
 }
 
 impl ValidationState {
+    fn build_request(
+        &self,
+        contract: &RouteContract,
+        parts: &Parts,
+        bytes: &[u8],
+    ) -> Result<FrameworkRequest, FrameworkResponse> {
+        // The only fallible construction step is path parameter decoding. Express
+        // rejects malformed URI components before establishing a request context.
+        build_framework_request(contract, parts, bytes).map_err(|response| {
+            if self.parser_error_format == ParserErrorFormat::TypeScriptText {
+                typescript_parser_error_response(400, "No correlation ID")
+            } else {
+                response
+            }
+        })
+    }
+
     fn from_registry(
         registry: &ContractRegistry,
         config: &RouterConfig,
@@ -1001,7 +1021,7 @@ async fn validate_contract(
         Err(error) => return formatted_body_read_error(&error, state.parser_error_format, &parts),
     };
 
-    let mut framework_request = match build_framework_request(&contract, &parts, &bytes) {
+    let mut framework_request = match state.build_request(&contract, &parts, &bytes) {
         Ok(request) => request,
         Err(response) => return framework_response_to_axum(response),
     };

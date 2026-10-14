@@ -752,3 +752,80 @@ async fn parser_error_profiles_preserve_status_redaction_and_fatal_limits() {
         }
     }
 }
+
+#[tokio::test]
+async fn uri_error_profile_matches_pre_context_failures_without_rewriting_native_errors() {
+    for format in [ParserErrorFormat::Json, ParserErrorFormat::TypeScriptText] {
+        for local in [false, true] {
+            let contract = RouteContract::get("URI", "URI", "/items/:id")
+                .with_param(forklaunch_contract::FieldContract::required("id", "String"))
+                .with_response(200, None);
+            let count = Arc::new(AtomicU64::new(0));
+            let calls = Arc::clone(&count);
+            let router = if local {
+                let mut handlers = LocalRouter::new();
+                handlers.register(contract.clone(), move |_: FrameworkRequest| {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(FrameworkResponse::new(200))
+                });
+                ForkLaunchRouter::from_local_router(
+                    ServiceInfo::new("uri", "1"),
+                    [contract],
+                    handlers,
+                )
+            } else {
+                ForkLaunchRouter::new(ServiceInfo::new("uri", "1")).get(contract, move || {
+                    let calls = Arc::clone(&calls);
+                    async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        StatusCode::OK
+                    }
+                })
+            }
+            .with_config(RouterConfig {
+                parser_error_format: format,
+                ..RouterConfig::default()
+            })
+            .into_router();
+            for suffix in ["%FF", "%ZZ", "%C0%AF", "%E0%A4%A"] {
+                let response = router
+                    .clone()
+                    .oneshot(
+                        Request::get(format!("/items/{suffix}"))
+                            .header("x-correlation-id", "native-correlation")
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), 400);
+                let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+                let text = std::str::from_utf8(&bytes).unwrap();
+                if format == ParserErrorFormat::TypeScriptText {
+                    assert_eq!(
+                        text,
+                        "Request could not be processed:\n\nCorrelation id: No correlation ID"
+                    );
+                } else {
+                    let value: serde_json::Value = serde_json::from_str(text).unwrap();
+                    assert_eq!(value["code"], "validation_error");
+                    assert_eq!(value["correlationId"], "native-correlation");
+                }
+                assert_eq!(count.load(Ordering::SeqCst), 0);
+            }
+            for suffix in ["user_1", "%75ser_1", "%E6%B0%B4"] {
+                let response = router
+                    .clone()
+                    .oneshot(
+                        Request::get(format!("/items/{suffix}"))
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), 200);
+            }
+            assert_eq!(count.load(Ordering::SeqCst), 3);
+        }
+    }
+}

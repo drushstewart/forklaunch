@@ -75,6 +75,8 @@ pub struct OpenApiOptions {
     /// Document missing 401/403 responses as TypeScript plain-text auth errors.
     /// Enable only when the HTTP adapter uses the corresponding wire format.
     pub typescript_auth_errors: bool,
+    /// Infer URI-decoding 400 text responses only for simple unversioned path contracts.
+    pub typescript_path_errors: bool,
 }
 
 impl OpenApiOptions {
@@ -87,6 +89,7 @@ impl OpenApiOptions {
                 description: None,
                 servers: Vec::new(),
                 typescript_auth_errors: false,
+                typescript_path_errors: false,
             },
             |service| Self {
                 title: service.name.clone(),
@@ -94,6 +97,7 @@ impl OpenApiOptions {
                 description: None,
                 servers: Vec::new(),
                 typescript_auth_errors: false,
+                typescript_path_errors: false,
             },
         )
     }
@@ -109,6 +113,15 @@ impl OpenApiOptions {
     #[must_use]
     pub fn with_typescript_auth_errors(mut self) -> Self {
         self.typescript_auth_errors = true;
+        self
+    }
+
+    /// Document missing URI-decoding 400 responses where no other native
+    /// body/query/header or constrained parameter validation can emit JSON 400.
+    /// Explicit responses and versioned routes are never overwritten.
+    #[must_use]
+    pub fn with_typescript_path_errors(mut self) -> Self {
+        self.typescript_path_errors = true;
         self
     }
 
@@ -187,6 +200,7 @@ pub fn generate_openapi_json_with_options(
                 &routes,
                 registry.service().map(|service| &service.name),
                 options.typescript_auth_errors,
+                options.typescript_path_errors,
             ),
         ),
     ];
@@ -241,6 +255,7 @@ pub fn generate_versioned_openapi_json(
         let mut options = options.clone();
         if !version.is_empty() {
             options.version.clone_from(&version);
+            options.typescript_path_errors = false;
         }
         JsonField::new(
             version,
@@ -291,6 +306,7 @@ fn paths_json(
     routes: &[&RouteContract],
     service_name: Option<&String>,
     typescript_auth_errors: bool,
+    typescript_path_errors: bool,
 ) -> String {
     let mut routes_by_path = BTreeMap::<String, Vec<&RouteContract>>::new();
     for route in routes {
@@ -304,7 +320,12 @@ fn paths_json(
         let mut standard = Vec::new();
         let mut extended = Vec::new();
         for route in routes {
-            let operation = operation_json(route, service_name, typescript_auth_errors);
+            let operation = operation_json(
+                route,
+                service_name,
+                typescript_auth_errors,
+                typescript_path_errors,
+            );
             if route.method.is_openapi_standard() {
                 standard.push(JsonField::new(
                     route.method.as_str().to_ascii_lowercase(),
@@ -328,6 +349,7 @@ fn operation_json(
     route: &RouteContract,
     service_name: Option<&String>,
     typescript_auth_errors: bool,
+    typescript_path_errors: bool,
 ) -> String {
     let mut fields = vec![
         JsonField::new("operationId", json_string(&route.operation_name)),
@@ -336,6 +358,7 @@ fn operation_json(
             responses_json(
                 &route.responses,
                 typescript_auth_errors && route.auth.is_some(),
+                typescript_path_errors && simple_path_validation_only(route),
             ),
         ),
         JsonField::new("summary", json_string(&route.summary)),
@@ -380,6 +403,29 @@ fn operation_json(
     json_object(fields)
 }
 
+fn simple_path_validation_only(route: &RouteContract) -> bool {
+    route.versions.is_empty()
+        && route.request.body.is_none()
+        && route.request.query.is_empty()
+        && route.request.headers.is_empty()
+        && !route.request.params.is_empty()
+        && route.request.params.iter().all(|field| {
+            field.schema.json_schema.is_none()
+                && matches!(field.schema.name.as_str(), "String" | "string" | "str")
+                && [route.path.as_str(), route.openapi_path.as_str()]
+                    .iter()
+                    .all(|path| {
+                        path.split('/').any(|segment| {
+                            segment.strip_prefix(':') == Some(field.name.as_str())
+                                || segment
+                                    .strip_prefix('{')
+                                    .and_then(|name| name.strip_suffix('}'))
+                                    == Some(field.name.as_str())
+                        })
+                    })
+        })
+}
+
 fn parameters_json(route: &RouteContract) -> String {
     let params = route
         .request
@@ -416,7 +462,11 @@ fn request_body_json(body: &BodyContract) -> String {
     ])
 }
 
-fn responses_json(responses: &[ResponseContract], typescript_auth_errors: bool) -> String {
+fn responses_json(
+    responses: &[ResponseContract],
+    typescript_auth_errors: bool,
+    typescript_path_errors: bool,
+) -> String {
     let mut fields = if responses.is_empty() {
         vec![JsonField::new("204", response_json(None, &[]))]
     } else {
@@ -430,22 +480,26 @@ fn responses_json(responses: &[ResponseContract], typescript_auth_errors: bool) 
             })
             .collect::<Vec<_>>()
     };
-    if typescript_auth_errors {
-        // Inline primitives avoid collisions with application schema names.
-        // Keep this projection out of the registry and runtime validation.
-        for (status, description) in [(401, "Unauthorized"), (403, "Forbidden")] {
-            if !responses
+    // Inline primitives avoid collisions with application schema names.
+    // Keep this projection out of the registry and runtime validation.
+    let defaults = [
+        (400, "Bad Request", typescript_path_errors),
+        (401, "Unauthorized", typescript_auth_errors),
+        (403, "Forbidden", typescript_auth_errors),
+    ];
+    for (status, description, enabled) in defaults {
+        if enabled
+            && !responses
                 .iter()
                 .any(|response| response.status_code == status)
-            {
-                fields.push(JsonField::new(
-                    status.to_string(),
-                    json_object([
-                        JsonField::new("description", json_string(description)),
-                        JsonField::new("content", r#"{"text/plain":{"schema":{"type":"string"}}}"#),
-                    ]),
-                ));
-            }
+        {
+            fields.push(JsonField::new(
+                status.to_string(),
+                json_object([
+                    JsonField::new("description", json_string(description)),
+                    JsonField::new("content", r#"{"text/plain":{"schema":{"type":"string"}}}"#),
+                ]),
+            ));
         }
     }
     json_object(fields)

@@ -166,6 +166,19 @@ try{
   }
  }
  console.log(`PASS ${parserOutcomes} live parser outcomes: strict JSON, malformed input, parser/transport limits, charset, verifier, safe messages and handler isolation`);
+ for(const path of ['/users/%FF','/users/%ZZ','/users/%C0%AF','/users/%E0%A4%A']){
+  const wire=[];
+  for(const url of [ts,rust]){
+   const response=await fetch(url+path,{headers:{authorization:`Bearer ${token}`,'x-correlation-id':'uri-fixture'},signal:AbortSignal.timeout(5000)});
+   assert.equal(response.status,400);
+   const body=await response.text();
+   assert.equal(body,'Request could not be processed:\n\nCorrelation id: No correlation ID');
+   assert.equal(response.headers.get('content-type'),'text/plain; charset=utf-8');
+   wire.push(body);
+  }
+  assert.equal(wire[1],wire[0],'malformed URI fails before TypeScript context creation');
+ }
+ console.log('PASS eight live malformed percent/UTF8 URI outcomes with exact pre-context error envelope');
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);

@@ -323,7 +323,7 @@ impl From<FrameworkError> for ErrorResponse {
     }
 }
 
-/// Wire profile for typed body-parser failures; native schema diagnostics are unchanged.
+/// Wire profile for typed request parser failures; native schema diagnostics are unchanged.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ParserErrorFormat {
     #[default]

@@ -37,18 +37,6 @@
   },
   {
     "operation": "GET /users/{id}",
-    "status": "400",
-    "typescript": {
-      "text/plain": {
-        "type": [
-          "string"
-        ]
-      }
-    },
-    "rust": null
-  },
-  {
-    "operation": "GET /users/{id}",
     "status": "500",
     "typescript": {
       "text/plain": {

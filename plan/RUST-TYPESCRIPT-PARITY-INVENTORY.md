@@ -4941,3 +4941,29 @@ locked dependency review and the generated session/OIDC evidence above. Broader
 framework adoption was deliberately deferred by the evaluation; passkeys/custom
 provider options remain in broader IAM parity work. No extra framework is adopted
 merely to close a checkbox. Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Malformed URI errors and conservative OpenAPI projection
+
+The opt-in TypeScript parser error profile now handles malformed percent escapes
+and invalid UTF-8 path parameters. Actual Express routing rejects these before
+request-context creation, so the native compatibility response uses the same
+safe 400 text and `No correlation ID` suffix. Default native JSON diagnostics
+and valid escaped/Unicode paths are preserved.
+
+OpenAPI infers a text 400 only for unversioned, unconstrained string path
+parameters with no body/query/header validators. Every declared parameter must
+match a complete placeholder in both runtime and OpenAPI paths. Explicit 400
+responses are preserved; constrained, mixed and versioned validation cannot
+be mislabeled as text-only errors. Registry/runtime contracts remain unchanged.
+
+The native URI matrix, ten OpenAPI tests, strict Clippy and checked canonical
+snapshots pass. **96 live HTTP outcomes** now include eight malformed URI
+comparisons. Real OpenAPI differences fall from five to **four**: `/users`
+400/404/500 and `/users/{id}` 500. Remaining schema-validator diagnostics and
+adapter errors still keep gate806 open. Evidence:
+`/private/tmp/fl-uri-errors-{openapi-tests-final,runtime-tests-final,clippy-final,canonical-final}.log`.
+Checklist remains **660/682 (96.8%), 22 open**.
+
+The completed generated auth workspace `AO2PeS` has been removed after its
+committed validation receipt; logs and reproducible fixtures are retained.
