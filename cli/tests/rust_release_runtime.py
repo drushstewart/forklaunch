@@ -43,7 +43,7 @@ try:
         root = Path(temporary).resolve()
         tools = root/'tools'
         tools.mkdir()
-        tool_source = '''import json,os,sys
+        tool_source = '''import json,os,sys,tomllib
 from pathlib import Path
 name=Path(sys.argv[0]).name
 args=sys.argv[1:]
@@ -52,13 +52,19 @@ with open(os.environ['RELEASE_TEST_LOG'],'a') as log:
 stage='cargo' if name=='cargo' and args[0]=='build' else 'install' if args[0]=='install' else 'javascript'
 if os.getenv('RELEASE_TEST_FAIL')==stage: sys.exit(91)
 if os.getenv('FORKLAUNCH_MODE') in ['contract','openapi']:
+    if name == 'cargo':
+        assert args[0] == 'run' and '--manifest-path' in args
+        manifest=Path(args[args.index('--manifest-path')+1])
+        service=tomllib.loads(manifest.read_text())['package']['name']
+    else:
+        service=Path.cwd().name
     output=Path(os.environ['FORKLAUNCH_OPENAPI_OUTPUT'])
     output.parent.mkdir(parents=True,exist_ok=True)
-    output.write_text(json.dumps({'openapi':'3.1.0','info':{'title':Path.cwd().name if name!='cargo' else args[2],'version':'1'},'paths':{}}))
+    output.write_text(json.dumps({'openapi':'3.1.0','info':{'title':service,'version':'1'},'paths':{}}))
     if 'FORKLAUNCH_CONTRACT_OUTPUT' in os.environ:
         contract=Path(os.environ['FORKLAUNCH_CONTRACT_OUTPUT'])
         contract.parent.mkdir(parents=True,exist_ok=True)
-        contract.write_text(json.dumps({'generator':'framework-rs','service':args[2],'routes':[]}))
+        contract.write_text(json.dumps({'generator':'framework-rs','service':service,'routes':[]}))
 '''
         for name in ['cargo','pnpm','bun','node']:
             path = tools/name
