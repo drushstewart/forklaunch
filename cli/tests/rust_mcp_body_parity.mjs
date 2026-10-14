@@ -61,7 +61,7 @@ try{
  for(const kind of ['text','json'])for(const args of [{},{body:null},{body:''}]) {
  const app={basePath:'/',routers:[],routes:[{method:'delete',path:'/body',contractDetails:{name:'Optional',summary:'Optional',body:{[typed[kind]]:{}},responses:{200:{json:{}}},options:{mcp:true}}}]};
  const server=generateMcpServer(new ZodSchemaValidator(),'http','127.0.0.1',9000,'1.0.0',app);captured=undefined;await server.tools[0].execute(args);assert.ok(captured);
- if(kind==='text'&&args.body==null){assert.equal(captured.contentLength,null);assert.equal(captured.body.length,0);}else{
+ if(args.body===undefined||(kind==='text'&&args.body===null)){assert.equal(captured.contentLength,null);assert.equal(captured.body.length,0);}else{
  const expected=kind==='json'?safeStringify(args.body):args.body;assert.equal(captured.body.toString(),expected);assert.equal(captured.contentLength,expected===''?null:String(Buffer.byteLength(expected)));}
  optionalBoundaries++;
  }

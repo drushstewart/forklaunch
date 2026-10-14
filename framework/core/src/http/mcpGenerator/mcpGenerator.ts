@@ -213,7 +213,7 @@ export function generateMcpServer<
             if (discriminatedBody) {
               switch (discriminatedBody.parserType) {
                 case 'json': {
-                  parsedBody = safeStringify(body);
+                  parsedBody = body === undefined ? undefined : safeStringify(body);
                   break;
                 }
                 case 'text': {

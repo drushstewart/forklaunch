@@ -251,14 +251,15 @@ impl ServerHandler for ContractServer {
             .extensions
             .get::<axum::http::request::Parts>()
             .map(|parts| &parts.headers);
-        let route = match binding {
+        let (route, omit_body) = match binding {
             ToolBinding::Http(route, admission) => {
-                if let Some(admission) = admission {
-                    admission
-                        .apply(&mut args)
-                        .map_err(|message| ErrorData::invalid_params(message, None))?;
-                }
-                route
+                let omit = admission
+                    .as_ref()
+                    .map(|admission| admission.apply(&mut args))
+                    .transpose()
+                    .map_err(|message| ErrorData::invalid_params(message, None))?
+                    .unwrap_or(false);
+                (route, omit)
             }
             ToolBinding::Manual(handler) => {
                 return manual::execute(
@@ -271,7 +272,7 @@ impl ServerHandler for ContractServer {
                 .await;
             }
         };
-        let http_request = build_request(route, &args, headers)
+        let http_request = build_request_with_body_omission(route, &args, headers, omit_body)
             .map_err(|message| ErrorData::invalid_params(message, None))?;
         let response = tokio::time::timeout(self.timeout, async {
             let response: Response = self
@@ -336,10 +337,20 @@ fn scalar(value: &Value) -> Result<String, String> {
         _ => Err("Expected a string, number or boolean".into()),
     }
 }
+#[cfg(test)]
 fn build_request(
     route: &RouteContract,
     args: &Map<String, Value>,
     transport_headers: Option<&HeaderMap>,
+) -> Result<Request<Body>, String> {
+    build_request_with_body_omission(route, args, transport_headers, false)
+}
+
+fn build_request_with_body_omission(
+    route: &RouteContract,
+    args: &Map<String, Value>,
+    transport_headers: Option<&HeaderMap>,
+    omit_body: bool,
 ) -> Result<Request<Body>, String> {
     let mut path = String::new();
     for part in route.path.split('/') {
@@ -424,7 +435,7 @@ fn build_request(
             }
         }
     }
-    let body = encode_body(route, args, &mut headers)?;
+    let body = encode_body(route, args, &mut headers, omit_body)?;
     // Actual fetch frames nonempty encoded bodies, and sends zero length for
     // POST/PUT/PATCH. Empty DELETE/OPTIONS bodies remain unframed. Derive it only from encoded
     // bytes; tool-supplied transport headers remain forbidden above.
@@ -455,9 +466,15 @@ fn encode_body(
     route: &RouteContract,
     args: &Map<String, Value>,
     headers: &mut HeaderMap,
+    omit_body: bool,
 ) -> Result<Vec<u8>, String> {
     let body = if let Some(contract) = &route.request.body {
-        let body = args.get("body").ok_or("Missing body")?;
+        let body = args.get("body");
+        if body.is_none()
+            && (!omit_body || !matches!(contract.kind, BodyKind::Json | BodyKind::Text))
+        {
+            return Err("Missing body".into());
+        }
         let default_mime = match contract.kind {
             BodyKind::Text => "text/plain",
             BodyKind::Binary | BodyKind::File => "application/octet-stream",
@@ -477,6 +494,9 @@ fn encode_body(
             "content-type",
             HeaderValue::try_from(mime).map_err(|_| "Invalid content type")?,
         );
+        let Some(body) = body else {
+            return Ok(Vec::new());
+        };
         match contract.kind {
             BodyKind::Json | BodyKind::Unknown => match body.as_str() {
                 // TypeScript MCP uses safeStringify: strings are already wire text.
@@ -576,15 +596,15 @@ mod tests {
         let args = serde_json::json!({"body":raw});
         let mut headers = HeaderMap::new();
         assert_eq!(
-            encode_body(&route, args.as_object().unwrap(), &mut headers).unwrap(),
+            encode_body(&route, args.as_object().unwrap(), &mut headers, false).unwrap(),
             raw.as_bytes()
         );
         assert_eq!(headers["content-type"], "application/json");
         let invalid = serde_json::json!({"body":{"id":"evt"}});
-        assert!(encode_body(&route, invalid.as_object().unwrap(), &mut headers).is_err());
+        assert!(encode_body(&route, invalid.as_object().unwrap(), &mut headers, false).is_err());
         route.request.body.as_mut().unwrap().kind = BodyKind::Json;
         assert_eq!(
-            encode_body(&route, invalid.as_object().unwrap(), &mut headers).unwrap(),
+            encode_body(&route, invalid.as_object().unwrap(), &mut headers, false).unwrap(),
             br#"{"id":"evt"}"#
         );
     }

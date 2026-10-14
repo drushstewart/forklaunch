@@ -7761,3 +7761,28 @@ Clippy pass. Logs: /private/tmp/fl-payment-link-update-result{,-preflight,
 Formatting changed no semantics. Provider effects already exist at rejection;
 no retry/compensation is promised. Original dispatch IDs remain unchanged, so
 UUID/provider mutation resolution and account ownership still keep gate855 open.
+
+
+## Trusted optional MCP body omission (2026-10-14)
+
+The TypeScript MCP JSON encoder now leaves admitted undefined bodies absent
+instead of emitting literal invalid JSON undefined. Native MissingToolBody::Omit
+explicitly authorizes absence for an exact schema-bound route and removes body
+requiredness from tools/list without injecting null/default values. Supplied
+bodies still validate; legacy unregistered missing bodies still reject. Only
+trusted admission produces the private encoder omission outcome. Caller framing
+headers stay forbidden. POST omits wire bytes with length0; empty DELETE remains
+unframed, preserving downstream parser differences. Explicit body:null remains
+distinct. Route-owned media and explicit incompatible contentType guards remain.
+
+120 registered FastMCP/native comparisons pass (74 exact admitted wire,46 rejected
+admission), with20 metadata declarations and140 actual registered FastMCP/Express
+omission/framing/downstream assertions. Native MCP25, strict all-target Clippy,
+permanent12-root strict types, legacy MCP51+6, JSON240 comparisons/24 MCP, text528
+comparisons/48 MCP and canonical IAM366 outcomes/zero OpenAPI differences pass.
+Logs: /private/tmp/fl-mcp-omission-{native,clippy,parity,body,json,text,canonical,types}.log.
+Two initial new test expectations were corrected: route media owns Content-Type,
+and unframed empty text permits the downstream default. Production guards were
+not relaxed.20 observed TS whole-arguments-null protocol rejections remain outside
+the native body policy; explicit optional absence during native version-schema
+selection is separate work. No generic Zod/default-transform equivalence is claimed.

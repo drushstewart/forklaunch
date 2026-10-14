@@ -11,7 +11,7 @@ async fn main() {
     let mut registry = ContractRegistry::default();
     let mut options = McpServerOptions::new("admission", "1");
     for kind in ["json", "text"] {
-        for form in ["required", "nullable", "default"] {
+        for form in ["required", "optional", "nullable", "nullish", "default"] {
             for method in [HttpMethod::Post, HttpMethod::Delete] {
                 let name = format!("{kind}_{form}_{}", method.as_str().to_lowercase());
                 let mut route = RouteContract::post(&name, &name, "/wire");
@@ -22,7 +22,7 @@ async fn main() {
                 } else {
                     json!({"type":"string"})
                 };
-                let schema = if form == "nullable" {
+                let schema = if matches!(form, "nullable" | "nullish") {
                     json!({"anyOf":[base,{"type":"null"}]})
                 } else {
                     base
@@ -49,6 +49,8 @@ async fn main() {
                     } else {
                         json!("default")
                     })
+                } else if matches!(form, "optional" | "nullish") {
+                    MissingToolBody::Omit
                 } else {
                     MissingToolBody::Reject
                 };
@@ -56,7 +58,12 @@ async fn main() {
                     .body_admissions
                     .insert(
                         &route,
-                        McpBodyAdmission::new(missing, form == "nullable", 1024, 8),
+                        McpBodyAdmission::new(
+                            missing,
+                            matches!(form, "nullable" | "nullish"),
+                            1024,
+                            8,
+                        ),
                     )
                     .unwrap();
                 registry.register(route);

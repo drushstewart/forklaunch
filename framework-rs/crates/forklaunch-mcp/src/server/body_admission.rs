@@ -6,10 +6,12 @@ use forklaunch_contract::{
 use serde_json::{Map, Value, json};
 use std::{collections::BTreeMap, sync::Arc};
 
-/// Only explicit root defaults are applied. Optional omission is not supported.
+/// Only explicit root defaults or omission are applied; null remains a supplied value.
 #[derive(Clone, Debug)]
 pub enum MissingToolBody {
     Reject,
+    /// Admit absence without inventing a JSON value or wire body.
+    Omit,
     Default(Value),
 }
 /// Schema-bound admission policy. JSON Schema annotations never inject defaults.
@@ -213,11 +215,12 @@ impl Admission {
         }
         (self.validate)(value).map_err(|_| "Invalid tool body")
     }
-    pub(super) fn apply(&self, args: &mut Map<String, Value>) -> Result<(), &'static str> {
+    pub(super) fn apply(&self, args: &mut Map<String, Value>) -> Result<bool, &'static str> {
         let value = match args.get("body") {
             Some(value) => value,
             None => match &self.policy.missing {
                 MissingToolBody::Reject => return Err("Missing tool body"),
+                MissingToolBody::Omit => return Ok(true),
                 MissingToolBody::Default(value) => value,
             },
         };
@@ -236,7 +239,7 @@ impl Admission {
             value.clone()
         };
         args.insert("body".into(), encoded);
-        Ok(())
+        Ok(false)
     }
     pub(super) fn project(&self, input: &mut Map<String, Value>) -> Result<(), String> {
         let mut schema = self.schema.clone();
@@ -248,9 +251,11 @@ impl Admission {
                 .as_object_mut()
                 .ok_or("Invalid body schema")?
                 .insert("default".into(), value.clone());
-            if let Some(required) = input.get_mut("required").and_then(Value::as_array_mut) {
-                required.retain(|value| value.as_str() != Some("body"));
-            }
+        }
+        if !matches!(self.policy.missing, MissingToolBody::Reject)
+            && let Some(required) = input.get_mut("required").and_then(Value::as_array_mut)
+        {
+            required.retain(|value| value.as_str() != Some("body"));
         }
         let relocated =
             forklaunch_contract::relocate_schema_json(&schema.to_string(), &["properties", "body"]);
@@ -325,6 +330,55 @@ mod tests {
         );
     }
     #[test]
+    fn omission_is_trusted_absence_and_keeps_transport_headers_private() {
+        use forklaunch_contract::HttpMethod;
+        for method in [HttpMethod::Post, HttpMethod::Delete] {
+            let mut route = route();
+            route.method = method;
+            let mut registry = McpBodyAdmissions::default();
+            registry
+                .insert(
+                    &route,
+                    McpBodyAdmission::new(MissingToolBody::Omit, false, 64, 4),
+                )
+                .unwrap();
+            let admission = registry.get(&route).unwrap();
+            let mut args = Map::new();
+            assert!(admission.apply(&mut args).unwrap());
+            assert!(args.is_empty());
+            assert!(super::super::build_request(&route, &args, None).is_err());
+            let request =
+                super::super::build_request_with_body_omission(&route, &args, None, true).unwrap();
+            assert_eq!(
+                request
+                    .headers()
+                    .get("content-length")
+                    .map(|v| v.to_str().unwrap()),
+                (method == HttpMethod::Post).then_some("0")
+            );
+            assert_eq!(request.headers()["content-type"], "application/json");
+            for header in ["Content-Length", "Transfer-Encoding"] {
+                let args = json!({"headers":{header:"invalid"}})
+                    .as_object()
+                    .unwrap()
+                    .clone();
+                assert!(
+                    super::super::build_request_with_body_omission(&route, &args, None, true)
+                        .is_err()
+                );
+            }
+            args.insert("contentType".into(), json!("invalid"));
+            assert!(
+                super::super::build_request_with_body_omission(&route, &args, None, true).is_err()
+            );
+            args.remove("contentType");
+            args.insert("body".into(), Value::Null);
+            assert!(admission.apply(&mut args).is_err());
+            args.insert("body".into(), json!({"id":"ok"}));
+            assert!(!admission.apply(&mut args).unwrap());
+        }
+    }
+    #[test]
     fn invalid_defaults_nullable_policies_and_bounds_reject_before_mount() {
         for policy in [
             McpBodyAdmission::new(MissingToolBody::Reject, true, 64, 4),
@@ -353,9 +407,11 @@ mod projection_tests {
             route.request.body.as_mut().unwrap().schema=SchemaRef::named("Input").with_json_schema(r##"{"definitions":{"Input":{"type":["string","null"]}},"$ref":"#/definitions/Input","default":"ignored"}"##);
             for missing in [
                 MissingToolBody::Reject,
+                MissingToolBody::Omit,
                 MissingToolBody::Default(json!("trusted")),
             ] {
                 let required = matches!(missing, MissingToolBody::Reject);
+                let has_default = matches!(missing, MissingToolBody::Default(_));
                 let mut registry = McpBodyAdmissions::default();
                 registry
                     .insert(&route, McpBodyAdmission::new(missing, nullable, 64, 4))
@@ -371,7 +427,7 @@ mod projection_tests {
                 assert!(validate(&json!({"body":1})).is_err());
                 assert_eq!(
                     input["properties"]["body"].get("default"),
-                    (!required).then_some(&json!("trusted"))
+                    has_default.then_some(&json!("trusted"))
                 );
             }
         }
