@@ -20,6 +20,8 @@ export type StripeCheckoutSessionMappers<
     ) => Promise<Dto['CheckoutSessionMapper']>;
   };
   CreateCheckoutSessionMapper: {
+    /** Provider effects already occurred; validate shape before local persistence. */
+    validateProviderCreate?: (provider: Stripe.Checkout.Session) => Promise<void>;
     /** Pure configured validation before any provider creation effects. */
     validateCreate?: (dto: Dto['CreateCheckoutSessionMapper']) => Promise<void>;
     entity: Entities['CreateCheckoutSessionMapper'];

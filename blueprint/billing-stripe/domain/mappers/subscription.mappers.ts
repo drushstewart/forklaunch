@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { Subscription } from '../../persistence/entities/subscription.entity';
 import { PartyEnum } from '../enum/party.enum';
 import { SubscriptionSchemas } from '../schemas';
+import { validateProviderCreation } from './providerCreation';
 
 const CreateSubscriptionEntityMapper = requestMapper({
   schemaValidator,
@@ -109,6 +110,9 @@ export const UpdateSubscriptionMapper = {
 
 export const CreateSubscriptionMapper = {
   ...CreateSubscriptionEntityMapper,
+  validateProviderCreate: async (provider: Stripe.Subscription) => {
+    validateProviderCreation(provider, 'subscription');
+  },
   validateCreate: async (
     dto: Parameters<typeof CreateSubscriptionEntityMapper.toEntity>[0]
   ) => {

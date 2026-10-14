@@ -14,6 +14,8 @@ export type StripeBillingPortalMappers<
     ) => Promise<Dto['BillingPortalMapper']>;
   };
   CreateBillingPortalMapper: {
+    /** Provider effects already occurred; validate shape before local persistence. */
+    validateProviderCreate?: (provider: Stripe.BillingPortal.Session) => Promise<void>;
     /** Pure configured validation before any provider creation effects. */
     validateCreate?: (dto: Dto['CreateBillingPortalMapper']) => Promise<void>;
     entity: Entities['CreateBillingPortalMapper'];

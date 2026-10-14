@@ -4,6 +4,7 @@ import { EntityManager, wrap } from '@mikro-orm/core';
 import Stripe from 'stripe';
 import { BillingPortal } from '../../persistence/entities/billingPortal.entity';
 import { BillingPortalSchemas } from '../schemas';
+import { validateProviderCreation } from './providerCreation';
 
 const CreateBillingPortalEntityMapper = requestMapper({
   schemaValidator,
@@ -130,6 +131,9 @@ export const UpdateBillingPortalMapper = {
 
 export const CreateBillingPortalMapper = {
   ...CreateBillingPortalEntityMapper,
+  validateProviderCreate: async (provider: Stripe.BillingPortal.Session) => {
+    validateProviderCreation(provider, 'billing_portal.session');
+  },
   validateCreate: async (
     dto: Parameters<typeof CreateBillingPortalEntityMapper.toEntity>[0]
   ) => {

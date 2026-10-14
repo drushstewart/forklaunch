@@ -104,6 +104,8 @@ export class StripeCheckoutSessionService<
       cancel_url: checkoutSessionDto.cancelRedirectUri
     });
 
+    await this.mappers.CreateCheckoutSessionMapper.validateProviderCreate?.(session);
+
     return await this.baseCheckoutSessionService.createCheckoutSession(
       {
         ...checkoutSessionDto,

@@ -22,6 +22,8 @@ export type StripeSubscriptionMappers<
     ) => Promise<Dto['SubscriptionMapper']>;
   };
   CreateSubscriptionMapper: {
+    /** Provider effects already occurred; validate shape before local persistence. */
+    validateProviderCreate?: (provider: Stripe.Subscription) => Promise<void>;
     /** Pure configured validation before any provider creation effects. */
     validateCreate?: (dto: Dto['CreateSubscriptionMapper']) => Promise<void>;
     entity: Entities['CreateSubscriptionMapper'];

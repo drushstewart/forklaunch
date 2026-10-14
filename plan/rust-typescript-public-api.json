@@ -109,6 +109,7 @@
         "blueprint/billing-stripe/domain/mappers/checkoutSession.mappers.ts",
         "blueprint/billing-stripe/domain/mappers/paymentLink.mappers.ts",
         "blueprint/billing-stripe/domain/mappers/plan.mappers.ts",
+        "blueprint/billing-stripe/domain/mappers/providerCreation.ts",
         "blueprint/billing-stripe/domain/mappers/subscription.mappers.ts",
         "blueprint/billing-stripe/domain/schemas/index.ts",
         "blueprint/billing-stripe/domain/types/billingMappers.types.ts",
@@ -2261,7 +2262,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/billingPortal.mapper.types.ts",
               "line": 6,
-              "type": "{\n  BillingPortalMapper: {\n    entity: Entities['BillingPortalMapper'];\n    toDto: (\n      entity: InferEntity<Entities['BillingPortalMapper']>\n    ) => Promise<Dto['BillingPortalMapper']>;\n  };\n  CreateBillingPortalMapper: {\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreateBillingPortalMapper']) => Promise<void>;\n    entity: Entities['CreateBillingPortalMapper'];\n    toEntity: (\n      dto: Dto['CreateBillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateBillingPortalMapper']>>;\n  };\n  UpdateBillingPortalMapper: {\n    entity: Entities['UpdateBillingPortalMapper'];\n    /** Optional configured preflight before creating a replacement provider session. */\n    validateCachedUpdate?: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      existing: Dto['BillingPortalMapper']\n    ) => Promise<void>;\n    /** Cache-only DTO update; preserve session/customer identities. */\n    toCachedDto?: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      existing: Dto['BillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<Dto['BillingPortalMapper']>;\n    toEntity: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateBillingPortalMapper']>>;\n  };\n}"
+              "type": "{\n  BillingPortalMapper: {\n    entity: Entities['BillingPortalMapper'];\n    toDto: (\n      entity: InferEntity<Entities['BillingPortalMapper']>\n    ) => Promise<Dto['BillingPortalMapper']>;\n  };\n  CreateBillingPortalMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.BillingPortal.Session) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreateBillingPortalMapper']) => Promise<void>;\n    entity: Entities['CreateBillingPortalMapper'];\n    toEntity: (\n      dto: Dto['CreateBillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateBillingPortalMapper']>>;\n  };\n  UpdateBillingPortalMapper: {\n    entity: Entities['UpdateBillingPortalMapper'];\n    /** Optional configured preflight before creating a replacement provider session. */\n    validateCachedUpdate?: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      existing: Dto['BillingPortalMapper']\n    ) => Promise<void>;\n    /** Cache-only DTO update; preserve session/customer identities. */\n    toCachedDto?: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      existing: Dto['BillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<Dto['BillingPortalMapper']>;\n    toEntity: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateBillingPortalMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2273,7 +2274,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/checkoutSession.mapper.types.ts",
               "line": 6,
-              "type": "{\n  CheckoutSessionMapper: {\n    entity: Entities['CheckoutSessionMapper'];\n    toDto: (\n      entity: InferEntity<Entities['CheckoutSessionMapper']>\n    ) => Promise<Dto['CheckoutSessionMapper']>;\n    /** Opt-in configured UUID/cache profile; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['CheckoutSessionMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.Checkout.Session>\n    ) => Promise<Dto['CheckoutSessionMapper']>;\n  };\n  CreateCheckoutSessionMapper: {\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreateCheckoutSessionMapper']) => Promise<void>;\n    entity: Entities['CreateCheckoutSessionMapper'];\n    toEntity: (\n      dto: Dto['CreateCheckoutSessionMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.Checkout.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateCheckoutSessionMapper']>>;\n  };\n  UpdateCheckoutSessionMapper: {\n    entity: Entities['UpdateCheckoutSessionMapper'];\n    toEntity: (\n      dto: Dto['UpdateCheckoutSessionMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.Checkout.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateCheckoutSessionMapper']>>;\n  };\n}"
+              "type": "{\n  CheckoutSessionMapper: {\n    entity: Entities['CheckoutSessionMapper'];\n    toDto: (\n      entity: InferEntity<Entities['CheckoutSessionMapper']>\n    ) => Promise<Dto['CheckoutSessionMapper']>;\n    /** Opt-in configured UUID/cache profile; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['CheckoutSessionMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.Checkout.Session>\n    ) => Promise<Dto['CheckoutSessionMapper']>;\n  };\n  CreateCheckoutSessionMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.Checkout.Session) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreateCheckoutSessionMapper']) => Promise<void>;\n    entity: Entities['CreateCheckoutSessionMapper'];\n    toEntity: (\n      dto: Dto['CreateCheckoutSessionMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.Checkout.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateCheckoutSessionMapper']>>;\n  };\n  UpdateCheckoutSessionMapper: {\n    entity: Entities['UpdateCheckoutSessionMapper'];\n    toEntity: (\n      dto: Dto['UpdateCheckoutSessionMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.Checkout.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateCheckoutSessionMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2346,7 +2347,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/paymentLink.mapper.types.ts",
               "line": 6,
-              "type": "{\n  PaymentLinkMapper: {\n    /** Validate and restore declared DTO fields after a JSON cache read. */\n    normalizeCachedDto?: (\n      value: Dto['PaymentLinkMapper']\n    ) => Dto['PaymentLinkMapper'];\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePaymentLinkMapper']) => Promise<void>;\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    /** Validate a patch against the normalized cached DTO before provider I/O.\n     * This hook does not resolve provider IDs or authorize provider mutations.\n     */\n    validateCachedUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper']\n    ) => Promise<void>;\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
+              "type": "{\n  PaymentLinkMapper: {\n    /** Validate and restore declared DTO fields after a JSON cache read. */\n    normalizeCachedDto?: (\n      value: Dto['PaymentLinkMapper']\n    ) => Dto['PaymentLinkMapper'];\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.PaymentLink) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePaymentLinkMapper']) => Promise<void>;\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    /** Validate a patch against the normalized cached DTO before provider I/O.\n     * This hook does not resolve provider IDs or authorize provider mutations.\n     */\n    validateCachedUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper']\n    ) => Promise<void>;\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2358,7 +2359,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/plan.mapper.types.ts",
               "line": 6,
-              "type": "{\n  PlanMapper: {\n    /** Read-result identity check; does not establish provider account ownership. */\n    validateProviderRead?: (\n      expectedExternalId: string,\n      provider: Stripe.Plan\n    ) => Promise<void>;\n    entity: Entities['PlanMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PlanMapper']>\n    ) => Promise<Dto['PlanMapper']>;\n  };\n  CreatePlanMapper: {\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePlanMapper']) => Promise<void>;\n    entity: Entities['CreatePlanMapper'];\n    toEntity: (\n      dto: Dto['CreatePlanMapper'],\n      em: EntityManager,\n      stripePlan: Stripe.Product,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePlanMapper']>>;\n  };\n  UpdatePlanMapper: {\n    /** Pure configured validation before any provider replacement effects. */\n    validateUpdate?: (dto: Dto['UpdatePlanMapper']) => Promise<void>;\n    entity: Entities['UpdatePlanMapper'];\n    toEntity: (\n      dto: Dto['UpdatePlanMapper'],\n      em: EntityManager,\n      stripePlan: Stripe.Product,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePlanMapper']>>;\n  };\n}"
+              "type": "{\n  PlanMapper: {\n    /** Read-result identity check; does not establish provider account ownership. */\n    validateProviderRead?: (\n      expectedExternalId: string,\n      provider: Stripe.Plan\n    ) => Promise<void>;\n    entity: Entities['PlanMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PlanMapper']>\n    ) => Promise<Dto['PlanMapper']>;\n  };\n  CreatePlanMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.Plan) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePlanMapper']) => Promise<void>;\n    entity: Entities['CreatePlanMapper'];\n    toEntity: (\n      dto: Dto['CreatePlanMapper'],\n      em: EntityManager,\n      stripePlan: Stripe.Product,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePlanMapper']>>;\n  };\n  UpdatePlanMapper: {\n    /** Pure configured validation before any provider replacement effects. */\n    validateUpdate?: (dto: Dto['UpdatePlanMapper']) => Promise<void>;\n    entity: Entities['UpdatePlanMapper'];\n    toEntity: (\n      dto: Dto['UpdatePlanMapper'],\n      em: EntityManager,\n      stripePlan: Stripe.Product,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePlanMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2646,7 +2647,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/subscription.mapper.types.ts",
               "line": 6,
-              "type": "{\n  SubscriptionMapper: {\n    /** Read-result identity check; does not establish provider account ownership. */\n    validateProviderRead?: (\n      expectedExternalId: string,\n      provider: Stripe.Subscription\n    ) => Promise<void>;\n    /** Trusted persisted party discriminators for local subscription lookups. */\n    partyTypes?: Readonly<{ user: string; organization: string }>;\n    entity: Entities['SubscriptionMapper'];\n    toDto: (\n      entity: InferEntity<Entities['SubscriptionMapper']>\n    ) => Promise<Dto['SubscriptionMapper']>;\n  };\n  CreateSubscriptionMapper: {\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreateSubscriptionMapper']) => Promise<void>;\n    entity: Entities['CreateSubscriptionMapper'];\n    toEntity: (\n      dto: Dto['CreateSubscriptionMapper'],\n      em: EntityManager,\n      stripeSubscription: Stripe.Subscription,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateSubscriptionMapper']>>;\n  };\n  UpdateSubscriptionMapper: {\n    /** Configured preflight; changing customer ownership needs a separate workflow. */\n    validateUpdate?: (\n      dto: Dto['UpdateSubscriptionMapper'],\n      existing: Dto['SubscriptionMapper']\n    ) => Promise<void>;\n    entity: Entities['UpdateSubscriptionMapper'];\n    toEntity: (\n      dto: Dto['UpdateSubscriptionMapper'],\n      em: EntityManager,\n      stripeSubscription: Stripe.Subscription,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateSubscriptionMapper']>>;\n  };\n}"
+              "type": "{\n  SubscriptionMapper: {\n    /** Read-result identity check; does not establish provider account ownership. */\n    validateProviderRead?: (\n      expectedExternalId: string,\n      provider: Stripe.Subscription\n    ) => Promise<void>;\n    /** Trusted persisted party discriminators for local subscription lookups. */\n    partyTypes?: Readonly<{ user: string; organization: string }>;\n    entity: Entities['SubscriptionMapper'];\n    toDto: (\n      entity: InferEntity<Entities['SubscriptionMapper']>\n    ) => Promise<Dto['SubscriptionMapper']>;\n  };\n  CreateSubscriptionMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.Subscription) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreateSubscriptionMapper']) => Promise<void>;\n    entity: Entities['CreateSubscriptionMapper'];\n    toEntity: (\n      dto: Dto['CreateSubscriptionMapper'],\n      em: EntityManager,\n      stripeSubscription: Stripe.Subscription,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateSubscriptionMapper']>>;\n  };\n  UpdateSubscriptionMapper: {\n    /** Configured preflight; changing customer ownership needs a separate workflow. */\n    validateUpdate?: (\n      dto: Dto['UpdateSubscriptionMapper'],\n      existing: Dto['SubscriptionMapper']\n    ) => Promise<void>;\n    entity: Entities['UpdateSubscriptionMapper'];\n    toEntity: (\n      dto: Dto['UpdateSubscriptionMapper'],\n      em: EntityManager,\n      stripeSubscription: Stripe.Subscription,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateSubscriptionMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2722,19 +2723,19 @@
                   "name": "getBillingPortalSession",
                   "signature": "async getBillingPortalSession(\n    idDto: IdDto\n  ): Promise<Dto['BillingPortalMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/billingPortal.service.ts",
-                  "line": 103
+                  "line": 105
                 },
                 {
                   "name": "expireBillingPortalSession",
                   "signature": "async expireBillingPortalSession(idDto: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/billingPortal.service.ts",
-                  "line": 109
+                  "line": 111
                 },
                 {
                   "name": "updateBillingPortalSession",
                   "signature": "async updateBillingPortalSession(\n    billingPortalDto: StripeUpdateBillingPortalDto,\n    ...args: unknown[]\n  ): Promise<Dto['BillingPortalMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/billingPortal.service.ts",
-                  "line": 113
+                  "line": 115
                 }
               ]
             }
@@ -2771,25 +2772,25 @@
                   "name": "getCheckoutSession",
                   "signature": "async getCheckoutSession(\n    idDto: IdDto\n  ): Promise<Dto['CheckoutSessionMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 121
+                  "line": 123
                 },
                 {
                   "name": "expireCheckoutSession",
                   "signature": "async expireCheckoutSession({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 146
+                  "line": 148
                 },
                 {
                   "name": "handleCheckoutSuccess",
                   "signature": "async handleCheckoutSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 151
+                  "line": 153
                 },
                 {
                   "name": "handleCheckoutFailure",
                   "signature": "async handleCheckoutFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 160
+                  "line": 162
                 }
               ]
             }
@@ -2897,37 +2898,37 @@
                   "name": "updatePaymentLink",
                   "signature": "async updatePaymentLink(\n    paymentLinkDto: StripeUpdatePaymentLinkDto<StatusEnum>,\n    ...args: unknown[]\n  ): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 158
+                  "line": 160
                 },
                 {
                   "name": "getPaymentLink",
                   "signature": "async getPaymentLink({ id }: IdDto): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 203
+                  "line": 205
                 },
                 {
                   "name": "expirePaymentLink",
                   "signature": "async expirePaymentLink({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 224
+                  "line": 226
                 },
                 {
                   "name": "handlePaymentSuccess",
                   "signature": "async handlePaymentSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 233
+                  "line": 235
                 },
                 {
                   "name": "handlePaymentFailure",
                   "signature": "async handlePaymentFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 242
+                  "line": 244
                 },
                 {
                   "name": "listPaymentLinks",
                   "signature": "async listPaymentLinks(idsDto?: IdsDto): Promise<Dto['PaymentLinkMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 251
+                  "line": 253
                 }
               ]
             }
@@ -2964,25 +2965,25 @@
                   "name": "getPlan",
                   "signature": "async getPlan(idDto: IdDto, em?: EntityManager): Promise<Dto['PlanMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 121
+                  "line": 123
                 },
                 {
                   "name": "updatePlan",
                   "signature": "async updatePlan(\n    planDto: StripeUpdatePlanDto,\n    em?: EntityManager\n  ): Promise<Dto['PlanMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 137
+                  "line": 139
                 },
                 {
                   "name": "deletePlan",
                   "signature": "async deletePlan(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 202
+                  "line": 206
                 },
                 {
                   "name": "listPlans",
                   "signature": "async listPlans(\n    idsDto?: IdsDto,\n    em?: EntityManager\n  ): Promise<Dto['PlanMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 211
+                  "line": 215
                 }
               ]
             }
@@ -3019,49 +3020,49 @@
                   "name": "getSubscription",
                   "signature": "async getSubscription(\n    idDto: IdDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 114
+                  "line": 116
                 },
                 {
                   "name": "getUserSubscription",
                   "signature": "async getUserSubscription(\n    idDto: IdDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 134
+                  "line": 136
                 },
                 {
                   "name": "getOrganizationSubscription",
                   "signature": "async getOrganizationSubscription(\n    idDto: IdDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 154
+                  "line": 156
                 },
                 {
                   "name": "updateSubscription",
                   "signature": "async updateSubscription(\n    subscriptionDto: StripeUpdateSubscriptionDto<PartyType> & IdDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 174
+                  "line": 176
                 },
                 {
                   "name": "deleteSubscription",
                   "signature": "async deleteSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 235
+                  "line": 237
                 },
                 {
                   "name": "listSubscriptions",
                   "signature": "async listSubscriptions(\n    idsDto?: IdsDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 247
+                  "line": 249
                 },
                 {
                   "name": "cancelSubscription",
                   "signature": "async cancelSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 285
+                  "line": 287
                 },
                 {
                   "name": "resumeSubscription",
                   "signature": "async resumeSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 297
+                  "line": 299
                 }
               ]
             }

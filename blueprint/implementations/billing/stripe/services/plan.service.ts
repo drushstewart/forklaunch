@@ -97,6 +97,8 @@ export class StripePlanService<
       currency: planDto.currency as string
     });
 
+    await this.mappers.CreatePlanMapper.validateProviderCreate?.(stripePlan);
+
     // Retain the returned identity across the subsequent expanded read.
     const createdId = stripePlan.id;
     stripePlan = await this.stripeClient.plans.retrieve(createdId, {
@@ -176,6 +178,8 @@ export class StripePlanService<
       amount: planDto.price ?? existingPlan.amount ?? undefined,
       product: productId
     });
+
+    await this.mappers.CreatePlanMapper.validateProviderCreate?.(updatedPlan);
 
     const createdId = updatedPlan.id;
     updatedPlan = await this.stripeClient.plans.retrieve(createdId, {

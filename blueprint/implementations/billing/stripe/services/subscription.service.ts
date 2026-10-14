@@ -100,6 +100,8 @@ export class StripeSubscriptionService<
       ]
     });
 
+    await this.mappers.CreateSubscriptionMapper.validateProviderCreate?.(subscription);
+
     return await this.baseSubscriptionService.createSubscription(
       {
         ...subscriptionDto,

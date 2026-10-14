@@ -85,6 +85,8 @@ export class StripeBillingPortalService<
       customer: billingPortalDto.customerId
     });
 
+    await this.mappers.CreateBillingPortalMapper.validateProviderCreate?.(session);
+
     return await this.baseBillingPortalService.createBillingPortalSession(
       {
         ...billingPortalDto,
@@ -140,6 +142,8 @@ export class StripeBillingPortalService<
       ...billingPortalDto.stripeFields,
       customer: billingPortalDto.customerId || existingSession.customerId
     });
+
+    await this.mappers.CreateBillingPortalMapper.validateProviderCreate?.(session);
 
     return await this.baseBillingPortalService.updateBillingPortalSession(
       {

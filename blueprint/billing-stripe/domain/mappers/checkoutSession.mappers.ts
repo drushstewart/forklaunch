@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { CheckoutSession } from '../../persistence/entities/checkoutSession.entity';
 import { StatusEnum } from '../enum/status.enum';
 import { CheckoutSessionSchemas } from '../schemas';
+import { validateProviderCreation } from './providerCreation';
 
 const CreateCheckoutSessionEntityMapper = requestMapper({
   schemaValidator,
@@ -145,6 +146,9 @@ export const CheckoutSessionMapper = {
 
 export const CreateCheckoutSessionMapper = {
   ...CreateCheckoutSessionEntityMapper,
+  validateProviderCreate: async (provider: Stripe.Checkout.Session) => {
+    validateProviderCreation(provider, 'checkout.session');
+  },
   validateCreate: async (
     dto: Parameters<typeof CreateCheckoutSessionEntityMapper.toEntity>[0]
   ) => {

@@ -37,7 +37,7 @@ let cases=0;
  const product={id:'prod_owned',object:'product',name:'Owned'};
  const em={create(_entity,fields){calls.push('orm:create');return {id,...fields};},async transactional(fn){calls.push('orm:transaction');return fn(em);},async persist(){calls.push('orm:persist');}};
  let sent;
- const client={plans:{async create(options){calls.push('stripe:create');sent=structuredClone(options);return {id:'plan_owned'};},async retrieve(target,options){calls.push('stripe:retrieve');assert.equal(target,'plan_owned');assert.deepEqual(structuredClone(options),{expand:['product']});return {id:target,object:'plan',product};}}};
+ const client={plans:{async create(options){calls.push('stripe:create');sent=structuredClone(options);return {id:'plan_owned',object:'plan'};},async retrieve(target,options){calls.push('stripe:retrieve');assert.equal(target,'plan_owned');assert.deepEqual(structuredClone(options),{expand:['product']});return {id:target,object:'plan',product};}}};
  const service=new Service(client,em,{},actual.validator,configured);
  const valid={name:'Owned',price:12,cadence:'month',currency:'USD',active:true,stripeFields:{metadata:{note:'kept',nested:'unchanged'}}};
  for(const patch of [{price:'invalid'},{cadence:'INVALID'},{currency:'INVALID'},{active:{}},{features:[1]},{name:{}},{description:null},{id:{}},{name:undefined},{active:undefined}]) {

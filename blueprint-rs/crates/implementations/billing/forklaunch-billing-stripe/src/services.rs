@@ -91,6 +91,7 @@ impl<S: BillingStore> PlanService for StripeBillingService<S> {
             json!({"amount":request.price,"interval":request.cadence,"product":request.name,"currency":request.currency}),
         )?;
         let created = self.client.create(StripeResource::Plan, &fields).await?;
+        validate_creation_shape(&created, "plan")?;
         let created_id = provider_id(&created)?;
         let plan = self.expanded_plan(created_id).await?;
         validate_read_identity(&plan, created_id, "plan")?;
@@ -139,6 +140,7 @@ impl<S: BillingStore> PlanService for StripeBillingService<S> {
             .delete(StripeResource::Plan, &original.external_id)
             .await?;
         let created = self.client.create(StripeResource::Plan, &fields).await?;
+        validate_creation_shape(&created, "plan")?;
         let created_id = provider_id(&created)?;
         let plan = self.expanded_plan(created_id).await?;
         validate_read_identity(&plan, created_id, "plan")?;
@@ -182,6 +184,7 @@ impl<S: BillingStore> SubscriptionService for StripeBillingService<S> {
             .client
             .create(StripeResource::Subscription, &fields)
             .await?;
+        validate_creation_shape(&provider, "subscription")?;
         provider_id(&provider)?.clone_into(&mut request.external_id);
         request.billing_provider = "stripe".into();
         request.provider_fields = Some(provider);
@@ -321,6 +324,7 @@ impl<S: BillingStore> CheckoutSessionService for StripeBillingService<S> {
             .client
             .create(StripeResource::CheckoutSession, &fields)
             .await?;
+        validate_creation_shape(&provider, "checkout.session")?;
         request.id = Some(provider_id(&provider)?.into());
         request.uri = provider_uri(&provider)?;
         request.expires_at = Utc::now() + Duration::minutes(5);
@@ -377,6 +381,7 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
             .client
             .create(StripeResource::PaymentLink, &fields)
             .await?;
+        validate_creation_shape(&provider, "payment_link")?;
         request.id = Some(provider_id(&provider)?.into());
         request.provider_fields = Some(provider);
         self.base.create_payment_link(request).await
@@ -458,6 +463,7 @@ impl<S: BillingStore> BillingPortalService for StripeBillingService<S> {
             .client
             .create(StripeResource::BillingPortal, &fields)
             .await?;
+        validate_creation_shape(&provider, "billing_portal.session")?;
         request.id = Some(provider_id(&provider)?.into());
         request.uri = provider_uri(&provider)?;
         request.expires_at = Utc::now() + Duration::minutes(5);
@@ -482,6 +488,7 @@ impl<S: BillingStore> BillingPortalService for StripeBillingService<S> {
             .client
             .create(StripeResource::BillingPortal, &fields)
             .await?;
+        validate_creation_shape(&provider, "billing_portal.session")?;
         request.uri = provider_uri(&provider)?;
         request.expires_at = Some(Utc::now() + Duration::minutes(5));
         request.provider_fields = Some(provider);
@@ -564,6 +571,18 @@ fn invalid_response() -> BlueprintError {
 
 fn validate_read_identity(provider: &Value, expected: &str, kind: &str) -> BlueprintResult<()> {
     if provider["id"].as_str() != Some(expected) || provider["object"].as_str() != Some(kind) {
+        return Err(invalid_response());
+    }
+    Ok(())
+}
+
+fn validate_creation_shape(provider: &Value, kind: &str) -> BlueprintResult<()> {
+    let id = provider_id(provider)?;
+    if id
+        .trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
+        .is_empty()
+        || provider["object"].as_str() != Some(kind)
+    {
         return Err(invalid_response());
     }
     Ok(())

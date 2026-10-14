@@ -7555,3 +7555,30 @@ two explicit ignored PG tests, and strict all-target Clippy pass:
 52288e9ca plus the six-path IAM delta, distinct from immutable archive proof.
 CI runs the actual oracle. Resolved-key/external-signer metadata and malformed
 legacy formats beyond the typed profile remain separately unclaimed.
+
+
+## Provider creation response shape before local billing writes (2026-10-14)
+
+All five configured billing CreateMappers now expose an optional typed provider-
+creation validator, called after POST and before consuming data or local mapping/
+cache/persistence. Plan/Portal replacement creation uses the same check. Shared
+private blueprint validation checks nonblank ID,1024 UTF-8 byte bound, Unicode
+control exclusion and exact Stripe discriminator, with native default checks at
+the same boundary. JS whitespace/BOM-only IDs reject in both implementations.
+No prefix, account/customer ownership or prior-ID equality is inferred. Generic
+custom mappers retain fallback. Provider effects can already exist on failure;
+no compensation, retry or rollback promise is added.
+
+An actual-source probe reproduced the original Checkout/PaymentLink/Portal defect:
+missing provider IDs still persisted/cached local UUID records.186 focused cases
+now reject malformed responses across the five families/replacements, preserving
+valid options/sequences and local snapshots.353 configured regressions, permanent
+12-root types/610 exports with zero diagnostics and related creation/update/read
+fixtures pass. A native seven-operation matrix,170 legacy operations and strict
+all-feature/all-target billing Clippy pass:
+/private/tmp/fl-billing-creation-response-shape{,-native,-legacy170,-clippy,-types}.log.
+Two final TS replacement BOM cases extended184 to186 after the native proof;
+native BOM handling/tests were already present and unchanged. The shared helper
+is internal to the private configured blueprint, not an implementation API export.
+CI runs the new fixture. Public UUID/provider alias integration and remaining
+consumed-field/update/cache semantics keep gate855 open.

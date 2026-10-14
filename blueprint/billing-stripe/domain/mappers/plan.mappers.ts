@@ -4,6 +4,7 @@ import { EntityManager } from '@mikro-orm/core';
 import Stripe from 'stripe';
 import { Plan } from '../../persistence/entities/plan.entity';
 import { PlanSchemas } from '../schemas';
+import { validateProviderCreation } from './providerCreation';
 
 const CreatePlanEntityMapper = requestMapper({
   schemaValidator,
@@ -88,6 +89,9 @@ export const UpdatePlanMapper = {
 
 export const CreatePlanMapper = {
   ...CreatePlanEntityMapper,
+  validateProviderCreate: async (provider: Stripe.Plan) => {
+    validateProviderCreation(provider, 'plan');
+  },
   validateCreate: async (
     dto: Parameters<typeof CreatePlanEntityMapper.toEntity>[0]
   ) => {

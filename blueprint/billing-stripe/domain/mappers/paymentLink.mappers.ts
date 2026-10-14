@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { PaymentLink } from '../../persistence/entities/paymentLink.entity';
 import { StatusEnum } from '../enum/status.enum';
 import { PaymentLinkSchemas } from '../schemas';
+import { validateProviderCreation } from './providerCreation';
 
 const CreatePaymentLinkEntityMapper = requestMapper({
   schemaValidator,
@@ -162,6 +163,9 @@ export const UpdatePaymentLinkMapper = {
 
 export const CreatePaymentLinkMapper = {
   ...CreatePaymentLinkEntityMapper,
+  validateProviderCreate: async (provider: Stripe.PaymentLink) => {
+    validateProviderCreation(provider, 'payment_link');
+  },
   validateCreate: async (
     dto: Parameters<typeof CreatePaymentLinkEntityMapper.toEntity>[0]
   ) => {

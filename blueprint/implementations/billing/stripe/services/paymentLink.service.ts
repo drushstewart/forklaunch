@@ -134,6 +134,8 @@ export class StripePaymentLinkService<
       currency: paymentLinkDto.currency as string
     });
 
+    await this.mappers.CreatePaymentLinkMapper.validateProviderCreate?.(session);
+
     const paymentLink = await this.basePaymentLinkService.createPaymentLink(
       {
         ...paymentLinkDto,

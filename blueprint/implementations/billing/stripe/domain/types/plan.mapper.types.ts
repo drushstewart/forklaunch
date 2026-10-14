@@ -19,6 +19,8 @@ export type StripePlanMappers<
     ) => Promise<Dto['PlanMapper']>;
   };
   CreatePlanMapper: {
+    /** Provider effects already occurred; validate shape before local persistence. */
+    validateProviderCreate?: (provider: Stripe.Plan) => Promise<void>;
     /** Pure configured validation before any provider creation effects. */
     validateCreate?: (dto: Dto['CreatePlanMapper']) => Promise<void>;
     entity: Entities['CreatePlanMapper'];

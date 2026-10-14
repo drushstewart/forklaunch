@@ -188,7 +188,7 @@ for(const variant of ['base','stripe']){
      if(variant==='stripe'){
       let providerCalls=0;
       const StripeService=actual.load(path.join(root,'blueprint/implementations/billing/stripe/services/billingPortal.service.ts')).StripeBillingPortalService;
-      const providerSession={id:'bps_replaced',customer:created.customerId,url:'https://fixture.test/replaced'};
+      const providerSession={id:'bps_replaced',object:'billing_portal.session',customer:created.customerId,url:'https://fixture.test/replaced'};
       const stripeService=new StripeService({billingPortal:{sessions:{async create(input){providerCalls++;assert.equal(input.customer,created.customerId);return providerSession;}}}},readOnlyEm,cache,{},actual.validator,mappers);
       await assert.rejects(stripeService.updateBillingPortalSession({id:created.id,customerId:'foreign-customer'}),/identity cannot change/);assert.equal(providerCalls,0);cases++;
       const validCache=cacheRows.get(key),preflightWrites=writes;
