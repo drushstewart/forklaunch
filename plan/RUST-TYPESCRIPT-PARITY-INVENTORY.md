@@ -6707,3 +6707,26 @@ core tests,19 actual TypeScript/native JSON roundtrips and strict core all-featu
 all-target Clippy pass: /private/tmp/fl-model-dto-{ts,native,wire,clippy}.log.
 The typed decoder is intentionally stricter than unchecked casts; arbitrary JS
 values and byte-identical JS serializer spelling remain outside this layer.
+
+
+## Bun fetch capability and complete focused typecheck receipt (2026-10-14)
+
+The eight-root configured service/mapper check now passes with zero diagnostics
+using the repository's actual TypeScript7.0.2 and Node/Bun/Vitest declarations.
+Restoring real missing declarations and correct send/swagger resolution removed
+13 environment errors without stubs or source-error suppression. It then exposed
+one genuine Bun-aware fetch adapter issue: typeof fetch requires preconnect.
+
+stripeGatewayFetch now conditionally forwards an actual underlying preconnect
+capability to the configured gateway origin, preserving options, receiver and
+return. It never warms a caller-supplied vendor origin or invents a no-op helper
+when the underlying fetch lacks one. Normal signed requests are unchanged. Actual
+source plus official Stripe22.6.2 SDK tests cover four signed requests, fresh
+nonces, Node absence and gateway-only capability forwarding:
+/private/tmp/fl-payments-fetch-capability.log.
+
+The restored strict/skipLibCheck configuration retains exactly four changed
+services and four configured mappers, with real pinned dependencies and no fake
+ambient declarations: /private/tmp/fl-full-roots-types-deps/tsconfig.json and
+/private/tmp/fl-full-roots-types-check.log. This supersedes the earlier focused
+mapper environment blockage, not a claim of whole-repository TypeScript success.

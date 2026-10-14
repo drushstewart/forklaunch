@@ -228,6 +228,7 @@ on:
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
       - 'cli/tests/rust_payments_client_parity.mjs'
+      - 'cli/tests/rust_payments_fetch_capability.mjs'
       - 'cli/tests/rust_sms_client_parity.mjs'
       - 'cli/tests/rust_whatsapp_client_parity.mjs'
       - 'cli/tests/rust_voice_client_parity.mjs'
@@ -494,6 +495,7 @@ on:
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
       - 'cli/tests/rust_payments_client_parity.mjs'
+      - 'cli/tests/rust_payments_fetch_capability.mjs'
       - 'cli/tests/rust_sms_client_parity.mjs'
       - 'cli/tests/rust_whatsapp_client_parity.mjs'
       - 'cli/tests/rust_voice_client_parity.mjs'
@@ -946,6 +948,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_payments_client_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_payments_fetch_capability.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_managed_stripe_parity.mjs
