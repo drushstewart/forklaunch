@@ -7954,3 +7954,47 @@ No full IAM/PG rerun was needed for the new diagnostic mode and bounded catch;
 storage semantics are unchanged. Uncharacterized endpoints/plugins, native typed
 error-representation boundaries and logger payload bytes remain explicit gaps.
 CI runs the actual matrix; this is not blanket logging parity.
+
+
+## Immutable optional-body/configured-diagnostics release checkpoint (2026-10-14)
+
+Committed source 5a8eba9a8751a40764db62b3994245b6308790e8 passes Git-free
+packaging, offline locked installation, full portable service/worker generation,
+WebSocket/AsyncAPI, recursive SDK checks and live HTTP/MCP surfaces. All 2555
+regular archive files match extracted bytes. Retained artifact:
+cli/target/parity-artifacts/forklaunch-5a8eba9a8-70f69f3d.crate;
+SHA256 70f69f3d0567ce8f399fcb03a7074e3aa59755ef4b0b1ad69b8b701c2c7bfe09.
+Metadata /private/tmp/fl-oct14-optional-checkpoint.json; logs
+/private/tmp/fl-oct14-optional-{package,install,runtime}.log. This immutable
+checkpoint excludes later bound creation, two-factor and multipleOf changes.
+Public publication and cloud deployment remain separate unverified gates.
+
+## Direct bound PaymentLink creation journal (2026-10-14)
+
+An opt-in trusted server profile creates a fresh native UUID and encrypted,
+immutable intent before one direct Stripe POST. Finite approved price references,
+strict line items and provider scope/version form the authorized profile. The
+local declared amount is not proof of the provider price total or price ownership.
+Managed accounts, fees/delegation and unsupported options reject before dispatch.
+Duplicate operations inspect pending/historical completed evidence; they never
+regain dispatch capability. Changed actor/profile/payload/version are denied.
+
+A single local transaction binds the UUID record, provider alias generation,
+audit and encrypted completion receipt, with scope checks after lock waits and
+writes. Historical completion does not assert current provider authority. Lost
+reservation COMMIT acknowledgement yields unresolved with zero POSTs; lost final
+COMMIT acknowledgement yields unresolved but inspection finds completed evidence,
+and replay sends no additional POST. Pending recovery is deliberately not an
+automatic retry. Existing routes and legacy local/provider identity stay unchanged.
+
+Real restricted PostgreSQL journal matrix passes (17.81s), including concurrency,
+RLS, immutable journals, rollback faults, stale contexts, timeouts/malformed
+responses and real wire-proxy lost acknowledgements. Bound-read twins pass2/2,
+legacy billing170 and strict base/Stripe all-feature/all-target Clippy pass.
+Official Stripe22.6.2 wire oracle independently verifies pinned version/auth,
+idempotency, form values and no Connect header/retry. Logs:
+/private/tmp/fl-billing-bound-creation-{pg-final,read-regression,legacy170,clippy,sdk}.log.
+CI runs both the SDK oracle and ignored PostgreSQL matrix. Source hashes are
+retained at /private/tmp/fl-billing-bound-creation-source-sha256.json; validation's
+subsequent ryu-js lock edge is excluded from this billing receipt. Managed creation,
+full mapper semantics and interruption recovery remain open broad gates.

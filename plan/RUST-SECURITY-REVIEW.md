@@ -973,3 +973,18 @@ trace/callback counts and authenticated fault tests pass; neither raw stack/mess
 parity nor all plugin diagnostics are claimed. A forthcoming two-factor profile
 has actual-source characterization only at this checkpoint, not implementation
 or release certification.
+
+
+## Direct PaymentLink creation capability (2026-10-14)
+
+The explicit server-owned approved-price profile is separate from default HTTP
+routes. An opaque non-cloneable reservation ticket exists only after confirmed
+intent commit; inspection cannot mint dispatch authority. Tenant-encrypted intent
+and receipt bind operation, actor, UUID, payload and provider scope. RLS, immutable
+journal/audit policies and atomic publication are exercised under restricted PG
+roles. Real lost-COMMIT-ack tests establish fail-closed reservation and inspectable
+completion without an automatic repeat provider POST. Historical receipts are
+not current account authority. Trusted cross-crate store completion primitives
+are not caller-controlled provider evidence ingestion. Provider-price ownership,
+actual charged totals, managed dispatch and operator recovery are outside this
+narrow profile and remain explicit work.

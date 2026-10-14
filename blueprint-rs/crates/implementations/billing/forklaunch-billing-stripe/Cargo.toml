@@ -32,7 +32,7 @@ uuid = { version = "1", features = ["v4"] }
 [dev-dependencies]
 forklaunch-auth = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-auth" }
 axum = "0.8"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "time", "io-util"] }
 forklaunch-core = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
 
