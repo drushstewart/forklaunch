@@ -1,10 +1,10 @@
 //! Explicit server-owned external signing for authenticated session tokens.
 use super::{AuthHttp, AuthStore, BlueprintError, BlueprintResult, Value};
-use crate::keyring::custom::JwtSigner;
+use crate::keyring::custom::{JwtSigner, JwtSigningContext};
 use std::{future::Future, pin::Pin, sync::Arc};
 
 type SigningFuture = Pin<Box<dyn Future<Output = BlueprintResult<String>> + Send>>;
-type SignCallback = dyn Fn(Value) -> SigningFuture + Send + Sync;
+type SignCallback = dyn Fn(Value, JwtSigningContext) -> SigningFuture + Send + Sync;
 
 /// External signing configuration. The application publishes the advertised keys;
 /// this adapter neither fetches the URL nor exposes locally managed keys.
@@ -57,9 +57,9 @@ impl ExternalJwtSigner {
         Ok(Self {
             remote_jwks_url,
             algorithm,
-            sign: Arc::new(move |payload| {
+            sign: Arc::new(move |payload, context| {
                 let signer = signer.clone();
-                Box::pin(async move { signer.sign(payload).await })
+                Box::pin(async move { signer.sign_with_context(payload, context).await })
             }),
         })
     }
@@ -74,7 +74,14 @@ impl ExternalJwtSigner {
 }
 impl JwtSigner for ExternalJwtSigner {
     fn sign(&self, payload: Value) -> impl Future<Output = BlueprintResult<String>> + Send {
-        (self.sign)(payload)
+        (self.sign)(payload, JwtSigningContext::default())
+    }
+    fn sign_with_context(
+        &self,
+        payload: Value,
+        context: JwtSigningContext,
+    ) -> impl Future<Output = BlueprintResult<String>> + Send {
+        (self.sign)(payload, context)
     }
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {

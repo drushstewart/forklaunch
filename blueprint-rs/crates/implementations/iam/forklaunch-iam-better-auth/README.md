@@ -1113,3 +1113,21 @@ its algorithm: actual Better Auth uses that return even if it differs from the
 requested generation profile. No extra callback call or default-store write is
 invented to enforce a different contract. Applications requiring stricter remote
 key provisioning must enforce that constraint inside their trusted callback.
+
+External signers can opt into `JwtSigner::sign_with_context` and the trusted
+`KeyRing::sign_jwt_with_signer_context` entrypoint. `JwtSigningContext` preserves
+an absent versus empty header object, explicit JSON nulls, and optional key-ID
+and algorithm hints. These hints are forwarded without local lookup or algorithm
+validation; the external callback owns enforcement. Unlike local JOSE signing,
+which replaces header `alg`/`kid` with the selected key, the external callback
+receives caller headers unchanged. Existing implementations of `sign` remain
+compatible: the provided context method deliberately ignores metadata unless
+an implementation overrides it. `ExternalJwtSigner` forwards the context-aware
+method; ordinary HTTP session/token issuance supplies an empty context and does
+not accept key-selection authority from request parameters.
+
+The typed context bounds ID/algorithm strings to 512/128 bytes and header objects
+to 1024 values, 32 nested levels, 16 KiB of raw text and 64 KiB of encoded JSON.
+It has no Debug/Serialize implementation. This is a bounded JSON subset, not
+JavaScript undefined/prototype parity. Callback errors retain the existing native
+sanitized failure response rather than exposing upstream callback exception text.

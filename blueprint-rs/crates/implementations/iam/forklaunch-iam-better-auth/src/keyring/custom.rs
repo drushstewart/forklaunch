@@ -1,6 +1,8 @@
 //! Trusted external JWT signing without local key selection or persistence.
 use super::{AuthStore, BlueprintError, BlueprintResult, DateTime, KeyRing, Utc, Value, json};
 use std::future::Future;
+mod context;
+pub use context::JwtSigningContext;
 
 /// Server-owned signer integration (for example, an external key-management service).
 /// The implementation owns claim policy, signing algorithm and key publication.
@@ -8,6 +10,17 @@ pub trait JwtSigner: Send + Sync {
     /// # Errors
     /// Returns a signing failure. Public callers receive a sanitized error.
     fn sign(&self, payload: Value) -> impl Future<Output = BlueprintResult<String>> + Send;
+    /// Optional trusted metadata. Legacy implementations intentionally ignore it.
+    /// Override this method to enforce requested headers or key-selection hints.
+    /// # Errors
+    /// Returns a signing failure, sanitized by the caller.
+    fn sign_with_context(
+        &self,
+        payload: Value,
+        _context: JwtSigningContext,
+    ) -> impl Future<Output = BlueprintResult<String>> + Send {
+        self.sign(payload)
+    }
 }
 impl<S: AuthStore> KeyRing<S> {
     /// Delegates a trusted payload to an explicitly supplied custom signer.
@@ -24,13 +37,31 @@ impl<S: AuthStore> KeyRing<S> {
         now: DateTime<Utc>,
         signer: &T,
     ) -> BlueprintResult<Value> {
+        self.sign_jwt_with_signer_context(body, now, signer, JwtSigningContext::default())
+            .await
+    }
+    /// Forwards trusted metadata verbatim to a context-aware external signer.
+    /// Hints do not cause local key lookup, minting or algorithm enforcement.
+    /// Legacy signers ignore metadata; applications own enforcement and publication.
+    /// # Errors
+    /// Rejects invalid claims and sanitizes callback failures without persistence.
+    pub async fn sign_jwt_with_signer_context<T: JwtSigner>(
+        &self,
+        body: Option<&Value>,
+        now: DateTime<Utc>,
+        signer: &T,
+        context: JwtSigningContext,
+    ) -> BlueprintResult<Value> {
         let payload = super::sign::custom_payload(body, now, &self.base_url)?;
-        let token = signer.sign(payload).await.map_err(|_| {
-            BlueprintError::new(
-                "better_auth_custom_signer_failed",
-                "Custom JWT signing failed",
-            )
-        })?;
+        let token = signer
+            .sign_with_context(payload, context)
+            .await
+            .map_err(|_| {
+                BlueprintError::new(
+                    "better_auth_custom_signer_failed",
+                    "Custom JWT signing failed",
+                )
+            })?;
         Ok(json!({"token":token}))
     }
 }
@@ -112,3 +143,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod context_tests;

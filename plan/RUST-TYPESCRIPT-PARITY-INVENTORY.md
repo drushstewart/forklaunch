@@ -7607,3 +7607,33 @@ All28 option references use constructors/mutation; no caller struct-literal upda
 were necessary. CI runs the oracle after installing its canonical dependencies.
 Diagnostic text, optional omission, recursive defaults, arbitrary Zod transforms/
 unknown-key stripping and downstream text projection remain explicit boundaries.
+
+
+## External signer metadata and default key window audit (2026-10-14)
+
+Additive JwtSigningContext forwards bounded trusted JSON-object headers and key/
+algorithm hints verbatim to context-aware external signers. Absent/empty headers
+and explicit nulls retain their distinctions. Existing JwtSigner implementations
+delegate through the provided method and intentionally ignore metadata; wrappers
+explicitly forward it when supported. The new KeyRing entrypoint bypasses local
+key lookup/minting/algorithm checks, matching actual external-signing behavior.
+The trusted callback owns enforcement and publication. Authenticated HTTP calls
+supply empty context; no client-controlled key authority is added. Context has no
+Debug/Serialize and bounds header depth/nodes/raw/encoded size and hint bytes.
+
+Six actual Better Auth/JOSE cases, three focused context tests within five native
+custom-signer tests, four HTTP external-signer regressions and strict all-target/
+all-feature Clippy pass: /private/tmp/fl-external-signing-context-{ts,native,
+regression,clippy}.log. Callback errors remain sanitized; arbitrary JavaScript
+undefined/prototypes and caller-resolved keys remain outside this typed contract.
+The105-test IAM suite/PG were not unnecessarily repeated: storage/default signing
+were unchanged and the modified custom/external dispatch paths had focused proof.
+The95f1b203b immutable runtime snapshot excludes this later additive slice.
+
+A separate actual default-adapter audit proves algorithm lookup reads100 rows
+without sortBy, then selects newest createdAt from that page; row101 is invisible
+unless advanced.database.defaultFindManyLimit is raised. A custom reader sees its
+full list in one call: /private/tmp/fl-jwks-window-audit.{mjs,log}. Native keeps the
+default window; an unlimited indexed query would incorrectly change behavior.
+Cross-database membership of an unordered page and optional global-limit settings
+remain explicit boundaries rather than claimed deterministic equivalence.
