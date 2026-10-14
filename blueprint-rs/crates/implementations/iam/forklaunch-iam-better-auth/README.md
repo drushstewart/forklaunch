@@ -1028,8 +1028,9 @@ strings or replace their encryption format. The default PostgreSQL backend still
 encrypts records; custom callbacks must provide their own encryption at rest.
 Private byte buffers zeroize on drop, including explicit clones; secret-bearing
 material/record types have neither `Debug` nor serde implementations. Trusted
-persistence code can read private bytes and must not log them. Malformed, legacy missing-algorithm records and arbitrary JavaScript adapter
-objects are outside this typed interface. Custom read sets above 4096 records
+persistence code can read private bytes and must not log them. Malformed records and arbitrary JavaScript adapter objects are outside this
+typed interface. Typed callback records carry explicit algorithms; legacy native
+store records use the bounded normalization described below. Custom read sets above 4096 records
 fail explicitly; they are not truncated to the default store's 100-record window.
 No generic request context, arbitrary plugin schema, or per-call signing-key
 pinning API is introduced by these callbacks.
@@ -1054,6 +1055,27 @@ a custom source is read exactly once. Missing, expired, algorithm-mismatched,
 public-only or invalid keys fail without minting or selecting an alternative.
 Expiry equal to the current millisecond is accepted, matching upstream's strict
 less-than check for an explicitly pinned ID. IDs are limited to 512 bytes.
-This native subset requires explicit algorithm metadata. Legacy missing-algorithm
-inheritance, algorithm-only lazy provisioning, caller-supplied resolved signing
+Missing/null algorithm metadata inherits the trusted configured key profile.
+Algorithm-only lazy provisioning, caller-supplied resolved signing
 keys and forwarding pinning metadata to an external signer remain separate APIs.
+
+`KeyPairConfig` configures the supported local algorithm and RSA generation size
+through `KeyRing::with_key_pair_config` or `AuthHttp::with_key_pair_config`.
+The default remains EdDSA; RSA sizes remain bounded to 2048–4096 bits. Trusted
+per-call signing `overrideOptions.jwks.keyPairConfig.alg` overrides the configured
+algorithm for that signing operation. Providing a `jwks` override replaces the
+configured object, so an empty override resets the algorithm to EdDSA and RSA
+size to 2048, matching the upstream shallow merge. Issuance, empty-store initialization,
+rotation, legacy verification and publication share the configured profile.
+
+For native persisted records whose algorithm is missing or null, normalization
+fills missing public `alg`/`kid` and missing row curve metadata in memory only.
+Cryptographic coordinates and public curve remain required. No stored row is
+rewritten and no update audit is emitted. Public JSON is bounded to 16 KiB before
+parsing. Conflicting metadata, private/unknown fields and unsupported shapes fail
+rather than overriding configured defaults. Explicit-algorithm records retain
+the existing strict restoration/publication and verification behavior. This is
+native PKCS#8 compatibility, not import of Better Auth encrypted private JWK
+strings. Upstream's arbitrary public-JWK metadata spread remains outside this
+strict normalization profile; typed custom adapters already supply explicit
+validated algorithm metadata.

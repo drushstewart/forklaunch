@@ -14,7 +14,9 @@ use std::sync::Arc;
 use zeroize::Zeroizing;
 
 pub mod adapter;
+mod config;
 pub mod custom;
+pub use config::KeyPairConfig;
 mod repository;
 mod sign;
 #[cfg(test)]
@@ -30,6 +32,7 @@ pub struct KeyRing<S> {
     store: Arc<S>,
     base_url: String,
     grace_millis: i64,
+    key_config: KeyPairConfig,
     adapter: Option<adapter::JwksAdapter>,
 }
 impl<S: AuthStore> KeyRing<S> {
@@ -40,9 +43,16 @@ impl<S: AuthStore> KeyRing<S> {
             base_url: base_url.into(),
             grace_millis: 2_592_000_000,
             adapter: None,
+            key_config: KeyPairConfig::default(),
         }
     }
 
+    /// Configures local issuance, rotation and legacy missing-algorithm inheritance.
+    #[must_use]
+    pub fn with_key_pair_config(mut self, config: KeyPairConfig) -> Self {
+        self.key_config = config;
+        self
+    }
     /// Uses trusted tenant-bound repository callbacks for all local key operations.
     /// Custom callbacks own persistence; default/custom stores are not one transaction.
     #[must_use]
@@ -95,11 +105,18 @@ impl<S: AuthStore> KeyRing<S> {
     ) -> BlueprintResult<String> {
         let issued_at = u64::try_from(now.timestamp()).map_err(|_| key_error())?;
         let mut tx = self.repository(true, now);
-        let selected = tx.select("EdDSA").await?;
+        let selected = tx.select(self.key_config.algorithm()).await?;
         let key = if let Some(row) = selected {
-            row.signing_key()?
+            row.signing_key_with_algorithm(self.key_config.algorithm())?
         } else {
-            mint_session(&mut tx, now, "EdDSA", 2048, None).await?
+            mint_session(
+                &mut tx,
+                now,
+                self.key_config.algorithm(),
+                self.key_config.rsa_bits(),
+                None,
+            )
+            .await?
         };
         let token = key.issue_session(
             &self.base_url,
@@ -124,7 +141,14 @@ impl<S: AuthStore> KeyRing<S> {
         let mut tx = self.repository(true, now);
         let mut rows = tx.read().await?;
         if rows.is_empty() {
-            mint_session(&mut tx, now, "EdDSA", 2048, None).await?;
+            mint_session(
+                &mut tx,
+                now,
+                self.key_config.algorithm(),
+                self.key_config.rsa_bits(),
+                None,
+            )
+            .await?;
             rows = tx.read().await?;
         }
         if rows.is_empty() {
@@ -143,7 +167,7 @@ impl<S: AuthStore> KeyRing<S> {
                 }
             };
             if visible {
-                keys.push(row.public_key()?);
+                keys.push(row.public_key_with_algorithm(self.key_config.algorithm())?);
             }
         }
         tx.commit().await?;
@@ -160,7 +184,14 @@ impl<S: AuthStore> KeyRing<S> {
     pub async fn rotate(&self, now: DateTime<Utc>) -> BlueprintResult<Value> {
         let mut tx = self.repository(true, now);
         tx.retire().await?;
-        let key = mint_session(&mut tx, now, "EdDSA", 2048, None).await?;
+        let key = mint_session(
+            &mut tx,
+            now,
+            self.key_config.algorithm(),
+            self.key_config.rsa_bits(),
+            None,
+        )
+        .await?;
         tx.commit().await?;
         Ok(key.public_jwk())
     }
@@ -230,6 +261,9 @@ async fn generate_key_record(
     Ok(NewKeyRecord(row))
 }
 fn restore(row: &Value) -> BlueprintResult<SigningKey> {
+    restore_with_algorithm(row, "EdDSA")
+}
+fn restore_with_algorithm(row: &Value, fallback: &str) -> BlueprintResult<SigningKey> {
     let encoded = row["privateKey"].as_str().ok_or_else(key_error)?;
     if encoded.len() > 8192 {
         return Err(key_error());
@@ -238,9 +272,9 @@ fn restore(row: &Value) -> BlueprintResult<SigningKey> {
     let key = SigningKey::from_pkcs8_profile(
         row["id"].as_str().ok_or_else(key_error)?,
         &encoded,
-        row["alg"].as_str().unwrap_or("EdDSA"),
+        config::algorithm(row, fallback)?,
     )?;
-    if key.public_jwk() != public_key(row)? {
+    if key.public_jwk() != config::public(row, fallback)? {
         return Err(key_error());
     }
     Ok(key)

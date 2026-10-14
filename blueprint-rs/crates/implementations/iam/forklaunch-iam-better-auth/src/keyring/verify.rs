@@ -50,18 +50,22 @@ impl<S: AuthStore> KeyRing<S> {
         let Some(row) = row else {
             return Ok(None);
         };
-        let algorithm = if row["alg"].is_null() {
-            "EdDSA"
-        } else if let Some(algorithm) = row["alg"].as_str() {
-            algorithm
-        } else {
+        let Ok(algorithm) = super::config::algorithm(&row, self.key_config.algorithm()) else {
             return Ok(None);
         };
-        let Some(jwk) = row["publicKey"]
-            .as_str()
-            .and_then(|text| crate::ecmascript::parse(text).ok())
-        else {
-            return Ok(None);
+        let jwk = if row.get("alg").is_none_or(Value::is_null) {
+            let Ok(jwk) = super::config::public(&row, self.key_config.algorithm()) else {
+                return Ok(None);
+            };
+            jwk
+        } else {
+            let Some(jwk) = row["publicKey"]
+                .as_str()
+                .and_then(|text| crate::ecmascript::parse(text).ok())
+            else {
+                return Ok(None);
+            };
+            jwk
         };
         if !verify_signature(&jwk, algorithm, &header, content.as_bytes(), &signature) {
             return Ok(None);

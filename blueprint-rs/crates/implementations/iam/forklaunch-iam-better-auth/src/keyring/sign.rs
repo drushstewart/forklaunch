@@ -52,20 +52,32 @@ impl<S: AuthStore> KeyRing<S> {
             .ok_or_else(|| error("Invalid signing time"))?;
         let expiry = claims::expiry(payload, options, clock)?;
         let mut tx = self.repository(true, now);
+        // The upstream server helper shallow-merges overrideOptions: providing
+        // jwks replaces the configured object rather than deep-merging it.
+        let overrides_jwks = options.get("jwks").is_some();
+        let default_algorithm = if overrides_jwks {
+            "EdDSA"
+        } else {
+            self.key_config.algorithm()
+        };
+        let default_bits = if overrides_jwks {
+            2048
+        } else {
+            self.key_config.rsa_bits()
+        };
         let primary = options["jwks"]["keyPairConfig"]["alg"]
             .as_str()
-            .unwrap_or("EdDSA");
+            .unwrap_or(default_algorithm);
         let selected = if let Some((id, expected_algorithm)) = pin {
             let row = tx
                 .by_id(id)
                 .await?
                 .ok_or_else(|| error("Requested signing key unavailable"))?;
-            if row.explicit_algorithm().is_none()
-                || row
-                    .expires_at()?
-                    .is_some_and(|expiry| expiry.timestamp_millis() < now.timestamp_millis())
-                || expected_algorithm
-                    .is_some_and(|algorithm| row.explicit_algorithm() != Some(algorithm))
+            let effective_algorithm = row.effective_algorithm(primary)?;
+            if row
+                .expires_at()?
+                .is_some_and(|expiry| expiry.timestamp_millis() < now.timestamp_millis())
+                || expected_algorithm.is_some_and(|algorithm| effective_algorithm != algorithm)
             {
                 return Err(error("Requested signing key unavailable"));
             }
@@ -74,7 +86,7 @@ impl<S: AuthStore> KeyRing<S> {
             tx.select(primary).await?
         };
         let key = if let Some(row) = selected {
-            row.signing_key()?
+            row.signing_key_with_algorithm(primary)?
         } else {
             let curve = match primary {
                 "EdDSA" | "Ed25519" => "Ed25519",
@@ -95,7 +107,7 @@ impl<S: AuthStore> KeyRing<S> {
             }
             let bits = if curve.is_empty() {
                 match options["jwks"]["keyPairConfig"].get("modulusLength").filter(|value| !value.is_null()) {
-                    None => 2048,
+                    None => default_bits,
                     Some(value) => value.as_u64().filter(|bits| (2048..=4096).contains(bits)).and_then(|bits| usize::try_from(bits).ok()).ok_or_else(|| error("Invalid or unsupported modulusLength option provided, 2048 bits or larger keys must be used"))?,
                 }
             } else {

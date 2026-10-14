@@ -60,6 +60,7 @@ pub struct AuthHttp<S> {
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
     jwks_adapter: Option<crate::keyring::adapter::JwksAdapter>,
+    key_config: crate::keyring::KeyPairConfig,
     jwt_header_disabled: bool,
     jwt_expiration: Option<jwt_expiration::JwtExpiration>,
     subject_resolver: Option<jwt_subject::SubjectResolver>,
@@ -85,11 +86,19 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self.jwks_adapter = Some(adapter);
         self
     }
+    /// Sets the trusted local key profile and legacy algorithm fallback.
+    #[must_use]
+    pub fn with_key_pair_config(mut self, config: crate::keyring::KeyPairConfig) -> Self {
+        self.key_config = config;
+        self
+    }
     fn configured_keyring(&self) -> KeyRing<S> {
-        let ring = KeyRing::new(self.store.clone(), self.auth_origin());
-        self.jwks_adapter.as_ref().map_or(ring, |adapter| {
-            KeyRing::new(self.store.clone(), self.auth_origin()).with_jwks_adapter(adapter.clone())
-        })
+        let mut ring = KeyRing::new(self.store.clone(), self.auth_origin())
+            .with_key_pair_config(self.key_config.clone());
+        if let Some(adapter) = &self.jwks_adapter {
+            ring = ring.with_jwks_adapter(adapter.clone());
+        }
+        ring
     }
 
     /// # Errors
@@ -114,6 +123,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             google: None,
             external_jwt: None,
             jwks_adapter: None,
+            key_config: crate::keyring::KeyPairConfig::default(),
             jwt_header_disabled: false,
             jwt_expiration: None,
             subject_resolver: None,

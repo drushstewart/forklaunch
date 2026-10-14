@@ -7372,3 +7372,30 @@ Native proof uses current working dependency sources, including frozen draft
 versioned-JSON/MCP changes; the earlier immutable archive excludes this slice.
 Provider update preflight and post-effect response validation remain separate.
 CI now runs the focused configured read fixture.
+
+
+## Shared local key configuration and legacy metadata inheritance (2026-10-14)
+
+Validated KeyPairConfig on KeyRing/AuthHttp configures supported algorithms and
+2048–4096-bit RSA generation, retaining EdDSA by default. Missing/null native
+stored algorithm metadata inherits that trusted profile consistently during
+signing, explicit ID pinning, publication and verification. Missing public alg/kid
+and row curve normalize in memory only; coordinates and public curve are required,
+public JSON is bounded before parsing, conflicts/private/unknown fields reject.
+Explicit records preserve existing restoration/publication/verification semantics;
+malformed verification remains null rather than changing internal failure class.
+Issuance, empty-store initialization and rotation use the same configuration.
+Per-call jwks overrides preserve upstream's shallow merge: empty jwks resets to
+EdDSA/2048 rather than inheriting the server profile. No row rewrite/audit or HTTP
+pinning endpoint is introduced. Arbitrary JWK override spreads and encrypted
+Better Auth private-JWK import remain outside the typed native profile.
+
+16 actual Better Auth/JOSE cases,5 focused native config tests,96 all-feature IAM
+tests/2 ignored PG tests, existing hooks/public-only/pinning oracle regressions
+and strict all-target Clippy pass:
+/private/tmp/fl-jwks-legacy-{ts,focused,native,adapter-regression,clippy}.log.
+Clippy initially caught a new doc backtick warning; only that comment changed
+after the full suite, and the final strict run passed. This working-tree receipt
+includes frozen draft HTTP/MCP/validation dependencies recorded in
+/private/tmp/fl-iam-legacy-framework-dependency-hashes.json; it is not the earlier
+immutable archive checkpoint. CI runs the new actual legacy oracle.

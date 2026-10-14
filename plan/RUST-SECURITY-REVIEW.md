@@ -929,3 +929,15 @@ administrative rotate; external signers bypass them. Seven adapter cases, all87 
 tests and strict Clippy pass. Upstream encrypted JWK wire/public-only/legacy records
 remain outside this explicit profile. Copied-binary PG checks and provenance are
 tracked in the dated inventory receipt.
+
+
+### Trusted local key profile and bounded legacy normalization (2026-10-14)
+
+Server-owned validated algorithm/RSA configuration now governs local issuance,
+rotation and missing/null native key metadata. Normalization is read-only, bounded
+to16 KiB public JSON and strict public coordinates/metadata; conflicting/private
+fields cannot override the configured profile. Exact key-ID constraints reject
+unusable selections without replacement minting. Explicit records preserve prior
+verification behavior.96 native IAM tests and16 actual JOSE observations pass,
+with strict Clippy and unchanged stored-document checks. Typed native PKCS#8
+compatibility does not import upstream encrypted JWK strings or arbitrary metadata.

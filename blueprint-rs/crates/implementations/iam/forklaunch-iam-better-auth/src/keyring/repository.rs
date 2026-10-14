@@ -2,7 +2,7 @@
 pub(super) mod session;
 use super::{
     AuthTransaction, BlueprintResult, DateTime, Model, SigningKey, Utc, Value, key_error,
-    optional_time, public_key, required_time, restore,
+    optional_time, required_time, restore,
 };
 
 /// Secret-bearing persisted material, intentionally without Debug/Serialize.
@@ -20,17 +20,24 @@ impl KeyRecord {
     pub(super) fn expires_at(&self) -> BlueprintResult<Option<DateTime<Utc>>> {
         optional_time(&self.0, "expiresAt")
     }
-    pub(super) fn explicit_algorithm(&self) -> Option<&str> {
-        self.0["alg"].as_str()
-    }
     pub(super) fn matches_algorithm(&self, algorithm: &str) -> bool {
         self.0["alg"] == algorithm || self.0["alg"].is_null()
+    }
+    pub(super) fn effective_algorithm<'a>(&'a self, fallback: &'a str) -> BlueprintResult<&'a str> {
+        super::config::algorithm(&self.0, fallback)
+    }
+    pub(super) fn signing_key_with_algorithm(&self, fallback: &str) -> BlueprintResult<SigningKey> {
+        super::restore_with_algorithm(&self.0, fallback)
+    }
+    pub(super) fn public_key_with_algorithm(&self, fallback: &str) -> BlueprintResult<Value> {
+        super::config::public(&self.0, fallback)
     }
     pub(super) fn signing_key(&self) -> BlueprintResult<SigningKey> {
         restore(&self.0)
     }
+    #[cfg(test)]
     pub(super) fn public_key(&self) -> BlueprintResult<Value> {
-        public_key(&self.0)
+        super::public_key(&self.0)
     }
 }
 /// A creation record carries expiry before persistence, as upstream createJwk does.

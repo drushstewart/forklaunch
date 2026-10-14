@@ -513,7 +513,7 @@ async fn default_key_id_lookup_exceeds_default_window_without_minting() {
             time()
         )
         .await
-        .is_err()
+        .is_ok()
     );
     let mut tx = store.begin(false).await.unwrap();
     assert_eq!(tx.list(Model::Jwks).await.unwrap().len(), 101);
