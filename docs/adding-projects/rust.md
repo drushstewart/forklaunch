@@ -789,9 +789,11 @@ quoted strings and null, and canonical binary messages with
 declarations. Server receive/send operations become client outgoing/incoming
 messages. Inputs need explicit message selections, fixed channel paths and ws/wss
 servers. Bounded message/operation traits and bundled payload resource references
-are supported, along with fixed same-channel operation replies. Reply messages
-populate the opposite send/receive direction; applications own correlation and
-reply deadlines. Dynamic/cross-channel replies, upgrade authentication/parameters,
+are supported, along with fixed operation replies on the same or another declared
+channel. Reply messages populate the opposite send/receive direction of their
+reply channel. Different paths generate independent socket clients; applications
+open both connections and own routing, correlation and reply deadlines.
+Dynamic reply addresses, upgrade authentication/parameters,
 missing external resources and other protocols remain unsupported. See the
 [import profile and wire encoding details](../../framework-rs/README.md#typed-websocket-connections).
 

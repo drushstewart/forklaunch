@@ -8403,3 +8403,29 @@ TypeScript checks and public inventory tests pass with614 entry points,
 1678 declarations and zero unresolved entries (the existing package wildcard
 exposes the three helper declarations). Logs /private/tmp/fl-zod-email-{canonical,
 inventory,inventory-tests,types-final}.log. CI runs the export oracle.
+
+
+## Fixed cross-channel AsyncAPI WebSocket replies (2026-10-14)
+
+The checked server-view importer now assigns fixed reply messages to the declared
+root reply channel, including a separate absolute WebSocket path. Direction
+reverses relative to the initiating operation; missing directions remain forbidden
+schemas. Explicit message membership, disjointness, JSON/binary restrictions,
+local-reference budgets and fixed-path requirements are preserved. Each path
+produces an independent client. Applications open both connections and own routing,
+correlation and deadlines; no implicit request/reply connection manager is claimed.
+This follows the fixed-channel reply model in the AsyncAPI3.0 specification:
+https://www.asyncapi.com/docs/reference/specification/v3.0.0#operationReplyObject
+Dynamic reply addresses, upgrade auth/parameters and broader event imports remain open.
+
+All32 AsyncAPI tests pass, including send/receive, inline/referenced, JSON/binary
+separate-path cases and foreign-message rejection. Strict all-feature/all-target
+Clippy passes after fixing eight existing missing-semicolon test warnings.
+Fresh relocated CLI generation/check/watch-once, strict TypeScript/Rust SDK
+consumers, official parser, live two-path clients and generated HTTP/MCP shared/
+separate/disabled/custom listener lifecycle pass. The first live fixture's cleanup
+attempted to close an already-closed client; after fixing cleanup, the affected
+live-peer and surface checks pass independently. No product behavior changed for
+that harness correction. CI includes the new runtime fixture.
+Logs /private/tmp/fl-cross-reply-{cli-build,runtime,live-final,surfaces,unit,
+clippy-final}.log; three source hashes /private/tmp/fl-cross-reply-source-sha256.json.

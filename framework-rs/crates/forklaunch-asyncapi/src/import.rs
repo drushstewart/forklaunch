@@ -24,12 +24,14 @@ struct Channel {
 /// Server receive/send operations become client outgoing/incoming contracts.
 /// JSON payloads use explicit JSON encoding and provably disjoint message
 /// schemas. Binary directions require one canonical string/binary payload with
-/// application/octet-stream media. Fixed same-channel replies populate the
-/// opposite direction. Missing directions are forbidden.
+/// application/octet-stream media. Fixed replies populate the opposite direction
+/// of their declared channel, including separate WebSocket paths. Each path is
+/// an independent socket; connection management and request correlation remain
+/// application-owned. Missing directions are forbidden.
 ///
 /// # Errors
 /// Rejects unsupported protocols, media, upgrade parameters/authentication,
-/// dynamic/cross-channel replies, application headers, overlapping messages, invalid local
+/// dynamic reply addresses, application headers, overlapping messages, invalid local
 /// references, unsupported resource scopes, mixed runtime dialects and bounded
 /// schema/output limits.
 pub fn import_server_websocket_asyncapi(
@@ -273,7 +275,7 @@ fn read_operations(
             for field in reply.keys() {
                 if !field.starts_with("x-") && !matches!(field.as_str(), "channel" | "messages") {
                     return Err(invalid(
-                        "Only fixed same-channel WebSocket replies without dynamic addresses are supported",
+                        "Only fixed WebSocket replies without dynamic addresses are supported",
                     ));
                 }
             }
@@ -282,11 +284,9 @@ fn read_operations(
                     .get("channel")
                     .ok_or_else(|| invalid("Explicit reply channel reference is required"))?,
             )?;
-            if reply_channel != channel_pointer {
-                return Err(invalid(
-                    "WebSocket replies must use the operation's own channel",
-                ));
-            }
+            let channel = channels
+                .get_mut(&reply_channel)
+                .ok_or_else(|| invalid("Reply channel must reference a root channel"))?;
             assign_messages(channel, reply.get("messages"), !receive)?;
         }
     }
@@ -823,6 +823,94 @@ mod tests {
     }
 
     #[test]
+    fn fixed_cross_channel_replies_keep_independent_paths_and_directions() {
+        for receive in [false, true] {
+            for referenced in [false, true] {
+                for binary in [false, true] {
+                    let mut input = reply_document(receive, referenced);
+                    let (operation, reply_message, request_message) = if receive {
+                        ("accept", "reply", "request")
+                    } else {
+                        ("reply", "request", "reply")
+                    };
+                    let reply = input["channels"]["chat"]["messages"][reply_message].take();
+                    input["channels"]["chat"]["messages"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove(reply_message);
+                    input["channels"]["responses"] = json!({
+                        "address":"/responses",
+                        "messages":{reply_message:reply}
+                    });
+                    let reply = json!({
+                        "channel":{"$ref":"#/channels/responses"},
+                        "messages":[{"$ref":format!("#/channels/responses/messages/{reply_message}")}]
+                    });
+                    if referenced {
+                        input["components"]["replies"]["response"] = reply;
+                    } else {
+                        input["operations"][operation]["reply"] = reply;
+                    }
+                    if binary {
+                        input["defaultContentType"] = json!("application/octet-stream");
+                        for name in ["Request", "Reply"] {
+                            input["components"]["schemas"][name] =
+                                json!({"type":"string","format":"binary"});
+                        }
+                    }
+                    let original = input.clone();
+                    let artifact = import_server_websocket_asyncapi(&input).unwrap();
+                    assert_eq!(input, original);
+                    assert_eq!(artifact.sockets.len(), 2);
+                    for (name, allowed_outgoing, message) in [
+                        ("chat", receive, request_message),
+                        ("responses", !receive, reply_message),
+                    ] {
+                        let socket = &artifact.sockets[name];
+                        let path = if name == "chat" {
+                            "/chat"
+                        } else {
+                            "/responses"
+                        };
+                        assert_eq!(socket.path, path);
+                        let outgoing = &socket.client_messages[&format!("{name}_receive")];
+                        let incoming = &socket.server_messages[&format!("{name}_send")];
+                        let (allowed, forbidden) = if allowed_outgoing {
+                            (outgoing, incoming)
+                        } else {
+                            (incoming, outgoing)
+                        };
+                        assert_eq!(forbidden.shape, json!(false));
+                        if binary {
+                            assert_eq!(allowed.shape, SocketSchemaEntry::binary().shape);
+                        } else {
+                            let body = if message == "request" {
+                                json!({"kind":"request","message":"hello"})
+                            } else {
+                                json!({"kind":"reply","accepted":true})
+                            };
+                            let codec = PayloadCodec::<Value>::json_schema(&allowed.shape).unwrap();
+                            assert!(codec.encode(&body).is_ok());
+                            assert!(codec.encode(&json!({"kind":"wrong"})).is_err());
+                        }
+                        assert!(
+                            PayloadCodec::<Value>::json_schema(&forbidden.shape)
+                                .unwrap()
+                                .encode(&json!(null))
+                                .is_err()
+                        );
+                    }
+                    input["operations"][operation]["reply"] = json!({
+                        "channel":{"$ref":"#/channels/responses"},
+                        "messages":[{"$ref":format!("#/channels/chat/messages/{request_message}")}]
+                    });
+                    assert!(import_server_websocket_asyncapi(&input).is_err());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn replies_reject_dynamic_foreign_ambiguous_and_unbounded_definitions() {
         for mutation in [
             "dynamic",
@@ -842,7 +930,7 @@ mod tests {
             match mutation {
                 "dynamic" => {
                     input["operations"]["accept"]["reply"]["address"] =
-                        json!({"location":"$message.header#/replyTo"})
+                        json!({"location":"$message.header#/replyTo"});
                 }
                 "other-channel" => {
                     input["channels"]["other"] = input["channels"]["chat"].clone();
@@ -865,31 +953,31 @@ mod tests {
                 "empty" => input["operations"]["accept"]["reply"]["messages"] = json!([]),
                 "too-many" => {
                     input["operations"]["accept"]["reply"]["messages"] =
-                        json!(vec![json!({"$ref":"#/channels/chat/messages/reply"}); 65])
+                        json!(vec![json!({"$ref":"#/channels/chat/messages/reply"}); 65]);
                 }
                 "foreign-message" => {
                     input["operations"]["accept"]["reply"]["messages"] =
-                        json!([{"$ref":"#/components/messages/Reply"}])
+                        json!([{"$ref":"#/components/messages/Reply"}]);
                 }
                 "external" => {
                     input["operations"]["accept"]["reply"] =
-                        json!({"$ref":"https://example.invalid/reply"})
+                        json!({"$ref":"https://example.invalid/reply"});
                 }
                 "cycle" => {
                     input["operations"]["accept"]["reply"] =
-                        json!({"$ref":"#/operations/accept/reply"})
+                        json!({"$ref":"#/operations/accept/reply"});
                 }
                 "sibling" => {
                     input["operations"]["accept"]["reply"]["$ref"] =
-                        json!("#/components/replies/response")
+                        json!("#/components/replies/response");
                 }
                 "overlap" => {
                     input["components"]["schemas"]["Reply"] =
-                        input["components"]["schemas"]["Request"].clone()
+                        input["components"]["schemas"]["Request"].clone();
                 }
                 "wrong-target" => {
                     input["operations"]["accept"]["reply"] =
-                        json!({"$ref":"#/components/messages/Reply"})
+                        json!({"$ref":"#/components/messages/Reply"});
                 }
                 _ => unreachable!(),
             }
