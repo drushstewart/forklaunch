@@ -5638,7 +5638,9 @@ customer and metadata options are preserved.
 Verified: 44 actual Zod/TypeBox URI/options/schema/mapper/cache cases, 305
 configured regressions, 66 actual TS/native route contracts and 28 DTO schemas
 with unchanged contract snapshots, plus focused actual-service TypeScript
-compilation and a compile-only DTO optionality fixture. The public source
+compilation and a compile-only DTO optionality fixture. The standalone
+`rust_billing_dto_types.mjs` runs the latter against actual DTO/common source and
+Stripe SDK types in CI, without declaration stubs. The public source
 inventory remains 44 packages, 608 entry points and 1,662 records. Contract
 receipt: `/private/tmp/fl-checkout-options-contracts.log`. This does not tighten
 the existing arbitrary-value `type<T>()` runtime validator or complete provider

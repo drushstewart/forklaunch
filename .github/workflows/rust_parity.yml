@@ -190,6 +190,8 @@ on:
       - 'cli/tests/rust_ws_resources_runtime.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
+      - 'cli/tests/rust_billing_dto_types.mjs'
+      - 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
       - 'cli/tests/rust_payments_client_parity.mjs'
@@ -417,6 +419,8 @@ on:
       - 'cli/tests/rust_ws_resources_runtime.mjs'
       - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
+      - 'cli/tests/rust_billing_dto_types.mjs'
+      - 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
       - 'cli/tests/rust_payments_client_parity.mjs'
@@ -766,7 +770,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@26.6.5 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25
       - name: Install isolated Chromium relay fixture
         run: |
           npm install --prefix "$RUNNER_TEMP/fl-rust-browser" --no-save --package-lock=false --ignore-scripts playwright-core@1.62.1
@@ -829,6 +833,7 @@ jobs:
       - run: node cli/tests/rust_billing_configured_mappers.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_dto_types.mjs
       - run: node cli/tests/rust_billing_checkout_uri.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
