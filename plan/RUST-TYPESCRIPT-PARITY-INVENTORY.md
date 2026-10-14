@@ -5722,3 +5722,59 @@ diagnostics, router/extractor origins and versioned default-error behavior.
 Zero-byte transport bodies cannot preserve TypeScript's original distinction
 between absent values and empty buffers; direct LocalRouter handler errors
 remain its separate `Err` result channel. Checklist: **660/682 (96.8%), 22 open**.
+
+## PostgreSQL member-query and generated auth receipt (2026-10-13)
+
+Generated Better Auth services now opt into PostgreSQL member-query semantics;
+direct library stores retain the memory-adapter default. The actual configured
+MikroORM/native matrix passes 434 cases covering UUIDs, timestamps, SQL LIKE,
+collation, filters, sort errors and fractional pagination. It passes in UTC and
+in explicitly asserted America/Los_Angeles sessions, including date-only
+predicates whose result counts change with the timezone. Query operands and
+transient projections are bounded; projection overflow fails explicitly.
+Ordinary indexed pages still work above the 4,096-candidate projection limit.
+Restricted PostgreSQL tests verify mandatory organization scope, UUID spelling
+preservation, size/count rejection and fixture rollback. Strict Clippy passes.
+Receipts: `/private/tmp/fl-iam-member-pg-{matrix,timezone,unit,regression,clippy,build}.log`.
+
+A freshly rebuilt CLI generated and relocated the updated preset. Actual
+blueprint and generated frontend clients pass default/custom/root mount flows;
+HTTP/MCP shared, separate and disabled listeners, both SDKs, encrypted sessions,
+JWT/JWKS, HMAC/role enforcement, restart, sync and rename/delete all pass.
+Receipt: `/private/tmp/fl-latest-member-profile-generated.log`.
+The owned generated workspace was removed after confirming its processes and
+database roles were gone. Broader auth hook/adapter/options coverage remains
+open under gate 918; this receipt does not close that gate.
+
+## Framework router fallback receipt (2026-10-13)
+
+`RouterOriginFormat::TypeScriptHtml` is an opt-in profile for framework-owned
+unknown-path and unsupported-method responses. One hundred actual TypeScript/
+Rust request comparisons (200 HTTP observations) match status, HTML/text bytes,
+media, HEAD representation length, CSP/nosniff and Allow handling. The encoder
+matches the installed Express finalhandler's encodeurl and HTML escaping,
+including malformed percent runs. With TypeScript parser formatting, malformed
+matched parameters produce the reference 400 before method rejection.
+
+All 80 Axum tests and strict MCP-enabled all-target Clippy pass. Tests preserve
+native defaults, application responses, custom method and nested/root internal
+fallbacks, exported methods and explicit OPTIONS. CORS and correlation are
+separate policies; no arbitrary application response is rewritten. Framework
+README usage and CI are updated. Receipts:
+`/private/tmp/fl-router-origin-{tests,clippy,parity}.log`.
+Gate 806 remains open for its other origins/profiles and schema diagnostics.
+
+## Plan/subscription create-option receipt (2026-10-13)
+
+Plan and subscription create DTOs now explicitly allow omitted Stripe options,
+matching the existing service payload construction and native contracts. Zod
+and TypeBox schemas agree; the services still derive required provider fields
+from their application DTOs. Twelve actual dual-validator cases cover omitted,
+empty and explicit metadata options through configured mappers and both service
+layers, with exact provider payload and persisted-response checks. Actual public
+DTO compilation verifies optional create/update fields and required response
+evidence; payment-link create options remain required. Focused strict compilation
+of the real billing services passes, as do 325 configured mapper cases and the
+unchanged 66-route/28-schema contract snapshot. CI and the 44-package, 608-entry,
+1,662-declaration source inventory are updated.
+Receipts: `/private/tmp/fl-recurring-options{,-configured,-types,-contracts,-inventory}.log`.

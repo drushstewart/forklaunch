@@ -43,6 +43,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
+      - 'cli/tests/rust_router_origin_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -193,6 +194,8 @@ on:
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
+      - 'cli/tests/rust_billing_recurring_options.mjs'
+      - 'cli/tests/fixtures/rust_billing_recurring_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
@@ -275,6 +278,7 @@ on:
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
+      - 'cli/tests/rust_router_origin_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -425,6 +429,8 @@ on:
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
+      - 'cli/tests/rust_billing_recurring_options.mjs'
+      - 'cli/tests/fixtures/rust_billing_recurring_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
@@ -589,6 +595,9 @@ jobs:
           cp cli/tests/fixtures/canonical-iam/package.json "$RUNNER_TEMP/fl-canonical-http/package.json"
           npm install --prefix "$RUNNER_TEMP/fl-canonical-http" --ignore-scripts
       - run: node cli/tests/rust_canonical_http_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_router_origin_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/typescript_response_status_validation.mjs
@@ -841,6 +850,7 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_dto_types.mjs
       - run: node cli/tests/rust_billing_portal_options.mjs
+      - run: node cli/tests/rust_billing_recurring_options.mjs
       - run: node cli/tests/rust_billing_checkout_uri.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
