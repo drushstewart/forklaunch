@@ -7,6 +7,13 @@ description = "Launch faster with forklaunch"
 authors = ["Forklift Technologies, Inc. <engineering@forklaunch.com>"]
 keywords = ["cli", "scaffolding", "microservices", "typescript", "rust"]
 repository = "https://github.com/forklaunch/forklaunch-js"
+# Source archives have no Git index; explicitly retain embedded dotfile templates.
+include = [
+    "src/**", "assets/**", "docs/**", "scripts/**", "build.rs", "Cargo.toml", "Cargo.lock", "LICENSE", "README.md",
+    "package.json", "bun.lock", "pnpm-lock.yaml", ".rustfmt.toml", ".gitignore", ".npmignore",
+    "tests/*.mjs", "tests/*.cjs", "tests/*.ts", "tests/*.sh", "tests/*.py", "tests/*.json", "tests/fixtures/**",
+    "!**/node_modules/**", "!tests/output/**",
+]
 
 [dependencies]
 url = "2"

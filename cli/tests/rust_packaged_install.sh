@@ -31,6 +31,14 @@ test -f "$SOURCE_ROOT/src/templates/sdk/typescript/safeStringify.ts"
 test -f "$SOURCE_ROOT/src/templates/sdk/typescript/sse.ts"
 test -f "$SOURCE_ROOT/src/templates/sdk/rust/sse_client.rs"
 test -f "$SOURCE_ROOT/src/templates/sdk/rust/sse_decoder.rs"
+# Repackaging portable sources must retain dotfiles without a Git index.
+cargo package --manifest-path "$SOURCE_ROOT/Cargo.toml" --list --allow-dirty > "$RUN_ROOT/repackaged-files.txt"
+rg -qx 'src/templates/application/\.gitignore' "$RUN_ROOT/repackaged-files.txt"
+rg -qx 'src/templates/application/\.prettierrc' "$RUN_ROOT/repackaged-files.txt"
+if rg -q '(^|/)(node_modules|target|output)/' "$RUN_ROOT/repackaged-files.txt"; then
+    echo 'Generated output or dependencies leaked into portable CLI sources' >&2
+    exit 1
+fi
 cargo install --path "$SOURCE_ROOT" --locked "${INSTALL_FLAGS[@]}" --root "$RUN_ROOT/installed" --target-dir "$INSTALL_TARGET"
 CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$CLI" dev --help > "$RUN_ROOT/dev-help.txt"

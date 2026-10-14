@@ -7307,3 +7307,19 @@ checks, reclaiming209 MiB. The exact source archive, failed runtime log and sour
 SHA metadata remain, with cleanup receipt:
 /private/tmp/fl-oct14-failed-archive-cleanup.json. Corrected174594c48 archive
 validation is running independently; no failed receipt is relabeled successful.
+
+
+## Portable CLI repackaging without Git metadata (2026-10-14)
+
+A Git-free source snapshot exposed Cargo's default omission of embedded dotfiles,
+causing include_str(application/.gitignore) compilation failure. Explicit package
+paths now retain source, assets, docs, scripts and fixtures, including hidden
+templates, while excluding generated output/dependencies. A Git-free repack of
+174594c48 plus only this manifest overlay retains all2510 original package paths
+except Git provenance metadata; offline locked installation and Rust application
+initialization pass with the generated .gitignore and embedded framework sources.
+The permanent archive fixture checks Git-free package listing and leakage. Logs:
+/private/tmp/fl-cli-untracked-{package,install,init}.log; metadata:
+/private/tmp/fl-cli-untracked-package.json. Retained archive SHA256:
+94bae1cd1647620859a129ade92896033d2c2bc58a14b8ca3f9c2055c76e37f4. This is a focused repack/install/init proof; the separate
+full all-module runtime archive is unchanged and still running.
