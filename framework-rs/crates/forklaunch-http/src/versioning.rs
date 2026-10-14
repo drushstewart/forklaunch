@@ -75,6 +75,7 @@ pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
     identity: Arc<()>,
     typescript_simple_query: bool,
+    typescript_json_parser: Option<JsonRequestParsers>,
     response_plan: crate::versioned_response::VersionResponsePlan,
     parsers: forklaunch_contract::BodyParserOptions,
     parser_hooks: BodyParserHooks,
@@ -153,6 +154,7 @@ impl VersionedRoutePlan {
             variants,
             identity: Arc::new(()),
             typescript_simple_query: false,
+            typescript_json_parser: None,
             parsers,
             parser_hooks: BodyParserHooks::default(),
         })
@@ -183,6 +185,10 @@ impl VersionedRoutePlan {
             return Err("JSON reviver requires a JSON body parser".into());
         }
         self.parser_hooks = hooks;
+        self.identity = Arc::new(());
+        if self.typescript_json_parser.is_some() {
+            return self.with_typescript_json_wire();
+        }
         Ok(self)
     }
 
@@ -202,6 +208,7 @@ impl VersionedRoutePlan {
             return Err("Body hooks require a declared body".into());
         }
         variant.hooks = hooks;
+        self.identity = Arc::new(());
         Ok(self)
     }
 
@@ -233,6 +240,7 @@ impl VersionedRoutePlan {
             })
             .ok_or("Field hooks require a declared parameter, query or header field")?;
         field.hooks = hooks;
+        self.identity = Arc::new(());
         Ok(self)
     }
 
@@ -245,6 +253,21 @@ impl VersionedRoutePlan {
         request: &FrameworkRequest,
     ) -> Result<Option<(RouteContract, SelectedVersion)>, Vec<ContractValidationError>> {
         self.select_with_multipart_limits(request, MultipartLimits::default())
+    }
+
+    fn with_typescript_json_wire(mut self) -> Result<Self, String> {
+        let first = self
+            .variants
+            .first()
+            .ok_or("JSON wire profile requires versions")?;
+        if first.route.options.request_validation != forklaunch_contract::ValidationMode::Error {
+            return Err("Versioned JSON wire parsing requires request Error validation".into());
+        }
+        let mut parser = JsonRequestParsers::default();
+        parser.insert(&first.route, self.parser_hooks.clone())?;
+        self.typescript_json_parser = Some(parser);
+        self.identity = Arc::new(());
+        Ok(self)
     }
 
     /// Select a version with the same limits as a configured multipart extractor.
@@ -273,7 +296,11 @@ impl VersionedRoutePlan {
             let Some(fields) = variant.parse_fields(request, query.as_ref()) else {
                 continue;
             };
-            if variant.matches_body(request, candidate.as_deref()) {
+            if variant.matches_body(
+                request,
+                candidate.as_deref(),
+                self.typescript_json_parser.is_some(),
+            ) {
                 let Ok(candidate) = variant.hooks.transform(candidate) else {
                     continue;
                 };
@@ -308,6 +335,15 @@ impl VersionedRoutePlan {
         request: &FrameworkRequest,
         limits: MultipartLimits,
     ) -> Result<Option<Value>, ContractValidationError> {
+        if let Some(parser) = &self.typescript_json_parser {
+            let first = self
+                .variants
+                .first()
+                .ok_or_else(|| invalid_body("missing JSON parser version"))?;
+            return parser
+                .parse(&first.route, request)
+                .map(|parsed| parsed.and_then(|parsed| parsed.value.map(Arc::unwrap_or_clone)));
+        }
         let Some(body) = self
             .variants
             .first()
@@ -523,8 +559,15 @@ fn compile_body(
 }
 
 impl Variant {
-    fn matches_body(&self, request: &FrameworkRequest, body_value: Option<&Value>) -> bool {
-        if !validate_request_body(&self.route.request, request, body_value.is_some()).is_empty() {
+    fn matches_body(
+        &self,
+        request: &FrameworkRequest,
+        body_value: Option<&Value>,
+        parsed_wire: bool,
+    ) -> bool {
+        if !parsed_wire
+            && !validate_request_body(&self.route.request, request, body_value.is_some()).is_empty()
+        {
             return false;
         }
         match &self.body {
@@ -873,3 +916,7 @@ mod tests {
 #[cfg(test)]
 #[path = "versioning_simple_query_tests.rs"]
 mod simple_query_tests;
+
+#[cfg(test)]
+#[path = "versioning_json_wire_tests.rs"]
+mod json_wire_tests;

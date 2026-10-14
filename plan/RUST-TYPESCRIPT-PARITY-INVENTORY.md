@@ -7412,3 +7412,37 @@ edges. All 17 validation tests and strict all-feature/all-target Clippy pass:
 /private/tmp/fl-zod-exclusive-{ts,native,parity,clippy}.log. Existing native/default
 schemas remain unchanged. Fractional/nonfinite bounds, multiple-of and custom
 messages remain outside this helper.
+
+
+## Guarded versioned JSON wire parsing and MCP bytes (2026-10-14)
+
+An explicit versioned JSON wire profile reuses JsonRequestParsers once before
+version callbacks, retaining original bytes and selected parsed values. Framing,
+media skips, empty input, strict null, charset, gzip/limits and verifier failures
+are characterized against actual TS. The first version owns parser rules. The
+profile requires request Error mode, including stale-mode rejection: unmatched
+None/Warning parsed-value projection requires broader outcome state, so those
+modes are explicitly rejected. Consuming parser/body/field hook builders reset
+private plan identity, preventing reuse of prepared outcomes with changed hooks.
+
+MCP now derives trusted framing from encoded bytes, with zero length for bodyless
+POST/PUT/PATCH and unframed empty DELETE/OPTIONS. Caller framing remains forbidden.
+JSON strings preserve TS safeStringify wire text instead of adding quotes. TS MCP
+also omits undefined media headers on bodyless routes while retaining supplied
+headers. Real fetch/body tests cover bytes, Unicode, strings/null/arrays, forms,
+files, multipart, empty methods and unchanged caller headers. Omitted declared
+MCP bodies retain existing Missing body admission; six actual TS boundary cases
+are recorded separately rather than claimed equivalent.
+
+All-feature HTTP66/Axum140/MCP21 tests and strict all-target Clippy pass.120 actual
+TS wire observations support80 Error-mode native/local comparisons:56 exact and
+24 retained generic schema-diagnostic differences, with all statuses and callback
+counts matching. Eight real MCP invocations preserve supplied bodies with one
+verifier/handler;51 actual body/framing comparisons pass. Canonical366 retains
+zero OpenAPI differences; version responses retain108 exact pairs/20 diagnostic
+differences; pre-auth54 actual cases/90 native requests retain52 exact/38 known
+diagnostic differences and zero ordering differences. Permanent12-root types
+have zero diagnostics. Logs:
+/private/tmp/fl-version-json-wire-{allfeatures,clippy,parity,mcp-body,canonical,response,diagnostics,types}.log.
+CI runs the new live wire oracle. Finite Unicode/nonfinite JSON and broader
+None/Warning/omitted-body semantics remain open; no broad gate is closed.

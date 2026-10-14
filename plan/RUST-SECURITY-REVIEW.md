@@ -941,3 +941,13 @@ unusable selections without replacement minting. Explicit records preserve prior
 verification behavior.96 native IAM tests and16 actual JOSE observations pass,
 with strict Clippy and unchanged stored-document checks. Typed native PKCS#8
 compatibility does not import upstream encrypted JWK strings or arbitrary metadata.
+
+
+### Versioned parser preparation and MCP framing (2026-10-14)
+
+Prepared version outcomes now bind to changed parser/body/field hooks through a
+fresh private identity; untouched clones retain sharing. The opt-in JSON wire
+profile rejects stale declarations and unsupported request modes before handlers.
+MCP framing derives only from encoded bytes, retaining rejection of caller-supplied
+transport headers. Exact-body, mutation/reuse and real HTTP/MCP tests pass alongside
+HTTP66/Axum140/MCP21 and strict Clippy; dated inventory records retained boundaries.

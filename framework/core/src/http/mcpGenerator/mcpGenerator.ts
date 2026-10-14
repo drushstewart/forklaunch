@@ -287,7 +287,8 @@ export function generateMcpServer<
               method: route.method.toUpperCase(),
               headers: {
                 ...headers,
-                ...(discriminatedBody?.contentType != 'multipart/form-data'
+                ...(discriminatedBody?.contentType != 'multipart/form-data' &&
+                  (contentType ?? discriminatedBody?.contentType) !== undefined
                   ? {
                       'Content-Type':
                         contentType ?? discriminatedBody?.contentType

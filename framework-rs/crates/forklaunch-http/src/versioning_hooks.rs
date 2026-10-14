@@ -99,9 +99,37 @@ pub struct VersionBodyHooksRegistry {
     parsers: BTreeMap<String, BodyParserHooks>,
     fields: BTreeMap<String, Vec<FieldHooks>>,
     simple_queries: BTreeMap<String, RouteContract>,
+    json_wire: BTreeMap<String, RouteContract>,
     pre_authentication: BTreeMap<String, RouteContract>,
 }
 impl VersionBodyHooksRegistry {
+    /// Use the bounded TypeScript JSON wire parser before version schema selection.
+    /// The first declared version determines the exact JSON media type. Framing or
+    /// media skips produce absence for body preprocessors/defaults. Requires
+    /// request Error validation: unmatched None/Warning parsed-value projection
+    /// is not supported, so those modes are rejected rather than losing data. Existing
+    /// verifier/reviver hooks run once, before per-version body callbacks. Original
+    /// bytes are retained; handlers consume `SelectedVersion::parsed_body`.
+    /// Direct callers must supply actual HTTP framing headers; absent headers
+    /// skip parsing. The MCP HTTP adapter supplies trusted framing for its own
+    /// encoded bytes, without accepting transport headers from tool arguments.
+    /// Finite JSON numeric/Unicode limits match `JsonRequestParsers`.
+    /// Combine with `enable_selection_before_authentication` for TypeScript auth
+    /// ordering. Native defaults and credential/authorization checks are unchanged.
+    /// # Errors
+    /// Rejects non-JSON/unversioned/invalid routes, non-Error request modes and
+    /// duplicate registrations.
+    /// Compilation rejects changed request/version/parser declarations.
+    pub fn enable_typescript_json_wire(&mut self, route: &RouteContract) -> Result<(), String> {
+        VersionedRoutePlan::compile(route)?.with_typescript_json_wire()?;
+        let key = route_key(route);
+        if self.json_wire.contains_key(&key) {
+            return Err("Duplicate versioned JSON wire profile".into());
+        }
+        self.json_wire.insert(key, route.clone());
+        Ok(())
+    }
+
     /// Opt into version parsing/schema selection before authentication in Axum.
     /// Error-mode schema failures and fatal parser failures precede credentials;
     /// None/Warning still authenticate and authorize before invoking handlers.
@@ -229,6 +257,7 @@ impl VersionBodyHooksRegistry {
             .chain(self.parsers.keys())
             .chain(self.fields.keys())
             .chain(self.simple_queries.keys())
+            .chain(self.json_wire.keys())
             .chain(self.pre_authentication.keys())
         {
             if counts.get(key) != Some(&1) {
@@ -243,6 +272,12 @@ impl VersionBodyHooksRegistry {
     /// # Panics
     /// Panics if both registries define hooks for the same method and operation.
     pub fn extend(&mut self, other: Self) {
+        for (key, route) in other.json_wire {
+            assert!(
+                self.json_wire.insert(key, route).is_none(),
+                "duplicate JSON wire operation"
+            );
+        }
         for (key, route) in other.pre_authentication {
             assert!(
                 self.pre_authentication.insert(key, route).is_none(),
@@ -310,6 +345,15 @@ impl VersionBodyHooksRegistry {
         }
         if let Some(hooks) = self.parsers.get(&route_key(route)) {
             plan = plan.with_parser_hooks(hooks.clone())?;
+        }
+        if let Some(snapshot) = self.json_wire.get(&route_key(route)) {
+            if snapshot.versions != route.versions
+                || snapshot.request != route.request
+                || snapshot.options.body_parser != route.options.body_parser
+            {
+                return Err("Stale versioned JSON wire profile".into());
+            }
+            plan = plan.with_typescript_json_wire()?;
         }
         Ok(plan)
     }

@@ -406,6 +406,23 @@ fn build_request(
         }
     }
     let body = encode_body(route, args, &mut headers)?;
+    // Actual fetch frames nonempty encoded bodies, and sends zero length for
+    // POST/PUT/PATCH. Empty DELETE/OPTIONS bodies remain unframed. Derive it only from encoded
+    // bytes; tool-supplied transport headers remain forbidden above.
+    if !body.is_empty()
+        || matches!(
+            route.method,
+            forklaunch_contract::HttpMethod::Post
+                | forklaunch_contract::HttpMethod::Put
+                | forklaunch_contract::HttpMethod::Patch
+        )
+    {
+        headers.insert(
+            "content-length",
+            HeaderValue::from_str(&body.len().to_string())
+                .map_err(|_| "Invalid encoded body length")?,
+        );
+    }
     let mut request = Request::builder()
         .method(route.method.as_str())
         .uri(path)
@@ -442,9 +459,11 @@ fn encode_body(
             HeaderValue::try_from(mime).map_err(|_| "Invalid content type")?,
         );
         match contract.kind {
-            BodyKind::Json | BodyKind::Unknown => {
-                serde_json::to_vec(body).map_err(|_| "Invalid JSON body")?
-            }
+            BodyKind::Json | BodyKind::Unknown => match body.as_str() {
+                // TypeScript MCP uses safeStringify: strings are already wire text.
+                Some(value) => value.as_bytes().to_vec(),
+                None => serde_json::to_vec(body).map_err(|_| "Invalid JSON body")?,
+            },
             BodyKind::UrlEncoded => {
                 let mut encoded = form_urlencoded::Serializer::new(String::new());
                 for (name, value) in body.as_object().ok_or("Form body must be an object")? {

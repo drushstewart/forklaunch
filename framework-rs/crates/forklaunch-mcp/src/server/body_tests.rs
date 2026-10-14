@@ -3,28 +3,55 @@ use forklaunch_contract::{BodyContract, SchemaRef};
 use serde_json::json;
 
 fn encoded(case: &Value) -> Value {
-    let kind = match case["kind"].as_str().unwrap() {
-        "json" => BodyKind::Json,
-        "multipart" => BodyKind::Multipart,
-        "file" => BodyKind::File,
-        "binary" => BodyKind::Binary,
-        "text" => BodyKind::Text,
-        "form" => BodyKind::UrlEncoded,
-        _ => panic!("Unknown fixture body kind"),
+    let method = match case["method"].as_str().unwrap_or("post") {
+        "get" => forklaunch_contract::HttpMethod::Get,
+        "post" => forklaunch_contract::HttpMethod::Post,
+        "put" => forklaunch_contract::HttpMethod::Put,
+        "patch" => forklaunch_contract::HttpMethod::Patch,
+        "delete" => forklaunch_contract::HttpMethod::Delete,
+        "options" => forklaunch_contract::HttpMethod::Options,
+        _ => panic!("Unknown fixture method"),
     };
-    let route = RouteContract::post("Body", "Body", "/body").with_request_body(BodyContract {
-        kind,
-        schema: SchemaRef::named("Body"),
-        content_type: case["contentType"].as_str().map(str::to_owned),
-    });
-    let mut headers = HeaderMap::new();
-    match encode_body(&route, case["arguments"].as_object().unwrap(), &mut headers) {
-        Ok(body) => {
-            json!({"body":base64::engine::general_purpose::STANDARD.encode(body),"contentType":headers["content-type"].to_str().unwrap()})
+    let mut route = RouteContract::new("Body", "Body", method, "/body");
+    if case["kind"] != "none" {
+        let kind = match case["kind"].as_str().unwrap() {
+            "json" => BodyKind::Json,
+            "multipart" => BodyKind::Multipart,
+            "file" => BodyKind::File,
+            "binary" => BodyKind::Binary,
+            "text" => BodyKind::Text,
+            "form" => BodyKind::UrlEncoded,
+            _ => panic!("Unknown fixture kind"),
+        };
+        route = route.with_request_body(BodyContract {
+            kind,
+            schema: SchemaRef::named("Body"),
+            content_type: case["contentType"].as_str().map(str::to_owned),
+        });
+    }
+    let args = case["arguments"].as_object().unwrap();
+    // One encoding supplies both framed bytes and length, including multipart boundaries.
+    match build_request(&route, args, None) {
+        Ok(request) => {
+            let content_type = request
+                .headers()
+                .get("content-type")
+                .map(|value| value.to_str().unwrap().to_owned());
+            let content_length = request
+                .headers()
+                .get("content-length")
+                .map(|value| value.to_str().unwrap().to_owned());
+            let bytes = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap()
+                .block_on(to_bytes(request.into_body(), 1024 * 1024))
+                .unwrap();
+            json!({"body":base64::engine::general_purpose::STANDARD.encode(bytes),"contentType":content_type,"contentLength":content_length})
         }
         Err(error) => json!({"error":error}),
     }
 }
+
 #[test]
 fn native_mcp_body_transport_conformance() {
     assert_eq!(
@@ -238,6 +265,69 @@ async fn literal_marker_keys_survive_http_and_mcp_request_and_response_parsing()
                 .unwrap(),
                 literal
             );
+        }
+    }
+}
+
+#[tokio::test]
+async fn internal_body_framing_is_exact_and_cannot_be_supplied_by_tool_arguments() {
+    for (method, expected) in [
+        (forklaunch_contract::HttpMethod::Get, None),
+        (forklaunch_contract::HttpMethod::Delete, None),
+        (forklaunch_contract::HttpMethod::Post, Some("0")),
+        (forklaunch_contract::HttpMethod::Put, Some("0")),
+        (forklaunch_contract::HttpMethod::Patch, Some("0")),
+    ] {
+        let route = RouteContract::new("Empty", "Empty", method, "/empty");
+        let request = build_request(&route, &Map::new(), None).unwrap();
+        assert_eq!(
+            request
+                .headers()
+                .get("content-length")
+                .map(|value| value.to_str().unwrap()),
+            expected
+        );
+        assert!(!request.headers().contains_key("content-type"));
+        assert!(
+            to_bytes(request.into_body(), 1024)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+    for (kind, value) in [
+        (BodyKind::Json, json!(null)),
+        (BodyKind::Json, json!([1, "水"])),
+        (BodyKind::Json, json!("")),
+        (BodyKind::Text, json!("")),
+        (BodyKind::Text, json!("水💬")),
+        (BodyKind::Binary, json!([0, 255])),
+        (BodyKind::File, json!("水")),
+        (BodyKind::UrlEncoded, json!({"value":"水"})),
+        (BodyKind::Multipart, json!({"field":"水"})),
+    ] {
+        let route = RouteContract::post("Body", "Body", "/body").with_request_body(BodyContract {
+            kind,
+            schema: SchemaRef::named("Input"),
+            content_type: None,
+        });
+        let args = json!({"body":value});
+        let request = build_request(&route, args.as_object().unwrap(), None).unwrap();
+        let length = request.headers()["content-length"]
+            .to_str()
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
+        assert!(!request.headers().contains_key("transfer-encoding"));
+        assert_eq!(
+            to_bytes(request.into_body(), 4096).await.unwrap().len(),
+            length
+        );
+        assert!(build_request(&route, &Map::new(), None).is_err());
+        for name in ["content-length", "Content-Length", "transfer-encoding"] {
+            let mut args = args.clone();
+            args["headers"] = json!({name:"0"});
+            assert!(build_request(&route, args.as_object().unwrap(), None).is_err());
         }
     }
 }
