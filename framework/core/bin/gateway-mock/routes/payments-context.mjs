@@ -143,10 +143,16 @@ export class PaymentsContextProtocol {
             contextToken: `${payload}.${this.mac(payload).toString('base64url')}`
         };
     }
-    async checkout(owner, request, read) {
+    checkout(owner, request, read) {
+        return this.scopedRead('checkout', owner, request, read);
+    }
+    paymentLink(owner, request, read) {
+        return this.scopedRead('payment-link', owner, request, read);
+    }
+    async scopedRead(kind, owner, request, read) {
         if (typeof request.contextToken !== 'string' ||
             request.contextToken.length > 4096 ||
-            !id(request.id, 'cs_'))
+            !id(request.id, kind === 'checkout' ? 'cs_' : 'plink_'))
             return deny();
         const parts = request.contextToken.split('.');
         if (parts.length !== 2 || !parts.every((p) => /^[A-Za-z0-9_-]+$/.test(p)))
@@ -177,9 +183,12 @@ export class PaymentsContextProtocol {
             return deny();
         await this.same(scope, read);
         await this.mode(scope);
-        const object = await this.get(scope, `/v1/checkout/sessions/${request.id}`);
+        const object = await this.get(scope, kind === 'checkout'
+            ? `/v1/checkout/sessions/${request.id}`
+            : `/v1/payment_links/${request.id}`);
         if (object.id !== request.id ||
-            object.object !== 'checkout.session' ||
+            object.object !==
+                (kind === 'checkout' ? 'checkout.session' : 'payment_link') ||
             object.livemode !== scope.livemode)
             deny();
         await this.same(scope, read);

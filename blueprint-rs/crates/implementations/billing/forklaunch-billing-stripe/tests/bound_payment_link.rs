@@ -1,5 +1,10 @@
 #![cfg(feature = "postgres-identity")]
-use axum::{Json, Router, extract::State, http::HeaderMap, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::HeaderMap,
+    routing::{get, post},
+};
 use forklaunch_billing_base::services::{
     BaseBillingService, BillingKind, BillingStore, Scope,
     postgres::{PostgresBillingStore, StripeBindingScope},
@@ -32,7 +37,10 @@ fn auth(headers: &HeaderMap) {
     assert_eq!(headers["authorization"], "Bearer opaque-owned-credential");
     assert!(!headers.contains_key("stripe-account"));
 }
-async fn provider() -> (
+#[allow(clippy::too_many_lines)]
+async fn provider(
+    managed: bool,
+) -> (
     StripeBillingClient,
     Provider,
     String,
@@ -48,6 +56,7 @@ async fn provider() -> (
         entered: Arc::new(Notify::new()),
         resume: Arc::new(Notify::new()),
     };
+    let scope = json!({"version":1,"instanceId":"instance-owned","organizationId":"org-owned","accountId":"acct_owned","livemode":false,"bindingGeneration":"00000000-0000-4000-8000-000000000001","apiVersion":forklaunch_billing_stripe::client::STRIPE_API_VERSION,"issuedAt":10000,"expiresAt":15000});
     let app = Router::new()
         .route(
             "/v1/account",
@@ -75,13 +84,63 @@ async fn provider() -> (
                 Json(s.object.lock().unwrap().clone())
             }),
         )
+        .route(
+            "/instance-gateway/payments/context",
+            post({
+                let scope = scope.clone();
+                move |h: HeaderMap| {
+                    let scope = scope.clone();
+                    async move {
+                        assert!(
+                            h["authorization"]
+                                .to_str()
+                                .unwrap()
+                                .starts_with("HMAC keyId=instance-owned ")
+                        );
+                        Json(json!({"scope":scope,"contextToken":"owned-fixture-token"}))
+                    }
+                }
+            }),
+        )
+        .route(
+            "/instance-gateway/payments/context/payment-link-read",
+            post(
+                move |State(s): State<Provider>, h: HeaderMap, Json(body): Json<Value>| {
+                    let scope = scope.clone();
+                    async move {
+                        assert!(
+                            h["authorization"]
+                                .to_str()
+                                .unwrap()
+                                .starts_with("HMAC keyId=instance-owned ")
+                        );
+                        assert_eq!(body["contextToken"], "owned-fixture-token");
+                        assert_eq!(body["id"], "plink_remote");
+                        s.reads.fetch_add(1, Ordering::SeqCst);
+                        if s.pause.load(Ordering::SeqCst) {
+                            s.entered.notify_one();
+                            s.resume.notified().await;
+                        }
+                        Json(json!({"scope":scope,"object":s.object.lock().unwrap().clone()}))
+                    }
+                },
+            ),
+        )
         .layer(axum::middleware::from_fn({
             let requests = state.requests.clone();
             move |request: axum::extract::Request, next: axum::middleware::Next| {
                 let requests = requests.clone();
                 async move {
                     requests.fetch_add(1, Ordering::SeqCst);
-                    assert_eq!(request.method(), axum::http::Method::GET);
+                    assert!(
+                        request.method() == axum::http::Method::GET
+                            || (request.method() == axum::http::Method::POST
+                                && matches!(
+                                    request.uri().path(),
+                                    "/instance-gateway/payments/context"
+                                        | "/instance-gateway/payments/context/payment-link-read"
+                                ))
+                    );
                     next.run(request).await
                 }
             }
@@ -97,6 +156,12 @@ async fn provider() -> (
         ProviderHttpClient::new(&base, Duration::from_secs(2), 1024 * 1024).unwrap(),
     )
     .unwrap();
+    let client = if managed {
+        StripeBillingClient::managed(&base, "instance-owned".into(), "owned-instance-key".into())
+            .unwrap()
+    } else {
+        client
+    };
     (client, state, base, server)
 }
 
@@ -104,6 +169,18 @@ async fn provider() -> (
 #[ignore = "requires an isolated FORKLAUNCH_TEST_POSTGRES_URL owner database"]
 #[allow(clippy::too_many_lines)]
 async fn direct_bound_payment_link_requires_live_context_and_durable_generation() {
+    exercise(false).await;
+}
+#[tokio::test]
+#[ignore = "requires an isolated FORKLAUNCH_TEST_POSTGRES_URL owner database"]
+async fn managed_bound_payment_link_requires_live_context_and_durable_generation() {
+    exercise(true).await;
+}
+#[allow(clippy::too_many_lines)]
+async fn exercise(managed: bool) {
+    // GRANT/REVOKE update a shared PostgreSQL catalog row even for isolated roles.
+    static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _guard = TEST_LOCK.lock().await;
     let owner = PgPoolOptions::new()
         .max_connections(2)
         .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
@@ -140,7 +217,7 @@ async fn direct_bound_payment_link_requires_live_context_and_durable_generation(
         .await
         .unwrap(),
     );
-    let (client, fixture, provider_base, server) = provider().await;
+    let (client, fixture, _provider_base, server) = provider(managed).await;
     let service = Arc::new(StripeBillingService::new(
         BaseBillingService::new(store.clone()),
         client.clone(),
@@ -150,24 +227,6 @@ async fn direct_bound_payment_link_requires_live_context_and_durable_generation(
         StripeBindingScope::administrative("owned-deployment".into(), "acct_owned".into(), false)
             .unwrap();
     let public_id = Uuid::new_v4();
-    let managed = StripeBillingService::new(
-        BaseBillingService::new(store.clone()),
-        StripeBillingClient::managed(
-            &provider_base,
-            "instance-owned".into(),
-            "owned-instance-key".into(),
-        )
-        .unwrap(),
-    );
-    let requests = fixture.requests.load(Ordering::SeqCst);
-    assert!(
-        managed
-            .get_bound_payment_link(&scope, public_id)
-            .await
-            .is_err()
-    );
-    assert_eq!(fixture.requests.load(Ordering::SeqCst), requests);
-    drop(managed);
 
     store.insert(Scope::Durable,BillingKind::PaymentLink,json!({"id":"legacy-storage-key","amount":1200,"paymentMethods":["card"],"currency":"USD","status":"PENDING","expiresAt":"2030-01-01T00:00:00Z","uri":"https://local.test/private-token","providerFields":{"id":"plink_remote","private":"must-stay-encrypted"}}),Duration::from_secs(600)).await.unwrap();
     let original: sqlx::types::Json<Value> = sqlx::query_scalar(

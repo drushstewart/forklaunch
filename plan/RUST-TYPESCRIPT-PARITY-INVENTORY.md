@@ -5778,3 +5778,21 @@ of the real billing services passes, as do 325 configured mapper cases and the
 unchanged 66-route/28-schema contract snapshot. CI and the 44-package, 608-entry,
 1,662-declaration source inventory are updated.
 Receipts: `/private/tmp/fl-recurring-options{,-configured,-types,-contracts,-inventory}.log`.
+
+## Managed payment-link read receipt (2026-10-13)
+
+Companion commit `5e2e9bfcb` adds the dedicated signed payment-link read to the
+existing immutable account/mode/generation context protocol. Fixed internal kinds
+select provider paths, ID prefixes and object evidence; caller paths are never
+accepted. The native durable public-UUID read now supports direct and managed
+clients, with exact scope-envelope, generation, expiry and audited encrypted-row
+checks. Local financial fields/ciphertext remain unchanged; alias provisioning,
+mutation integration and HTTP route wiring remain explicit separate work.
+
+Validation passes 32 actual companion protocol/controller/database tests plus
+focused strict TypeScript, signed native HTTP and exact mock-source conformance,
+2 direct/managed restricted PostgreSQL fixtures, 8 native unit tests and strict
+all-feature/all-target Clippy. The new PostgreSQL fixtures are in CI. The
+cross-repository fixture still requires an explicit companion source checkout;
+this is not a full platform bootstrap, live Stripe or cloud deployment receipt.
+Logs: `/private/tmp/fl-managed-payment-link-{platform,http,pg,lib,clippy}.log`.

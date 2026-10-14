@@ -666,3 +666,16 @@ introduced; database parameter logging remains an operator policy. Restricted
 PostgreSQL tests cover organization isolation, UUID hydration, budget rejection
 and rollback cleanup; 434 actual ORM/native comparisons pass. Direct library
 stores retain the previous memory-adapter profile unless explicitly opted in.
+
+
+Managed payment-link extension (2026-10-13): a dedicated signed endpoint now
+performs fixed-kind payment-link reads using the existing generation/account/mode
+context protocol. Exact-path HMAC, unknown-field/query rejection, no-store,
+expiry across provider/database waits and final binding checks are preserved.
+Checkout and payment-link IDs/objects cannot cross kinds; no caller-supplied
+provider path is accepted and the raw proxy allowlist is unchanged. Thirty-two
+actual companion tests, cross-language signed HTTP/mock checks, both restricted
+PostgreSQL native read fixtures and strict Clippy pass. The PostgreSQL fixtures
+serialize GRANT/REVOKE to avoid shared catalog races. No financial mutation or
+automatic alias provisioning is added. Full platform bootstrap and live provider/
+cloud behavior remain outside this receipt.

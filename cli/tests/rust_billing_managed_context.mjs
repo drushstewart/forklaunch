@@ -30,8 +30,8 @@ let generation='00000000-0000-4000-8000-000000000001',scenario='ok';const calls=
 const owner={id:'instance_fixture',organizationId:'org_fixture'};
 const protocol=new PaymentsContextProtocol('opaque-owned-key','https://owned.stripe.test',async request=>{
   calls.push(request);assert.equal(request.method,'GET');assert.equal(request.stripeAccount,'acct_fixture');
-  if(scenario==='rebind'&&request.path.includes('/checkout/'))generation='00000000-0000-4000-8000-000000000002';
-  return {status:200,body:JSON.stringify(request.path.includes('/accounts/')?{object:'account',id:'acct_fixture'}:request.path==='/v1/balance'?{object:'balance',livemode:false}:{object:'checkout.session',id:'cs_fixture',livemode:false,customer:'cus_fixture',mode:'subscription'})};
+  if(scenario==='rebind'&&(request.path.includes('/checkout/')||request.path.includes('/payment_links/')))generation=crypto.randomUUID();
+  return {status:200,body:JSON.stringify(request.path.includes('/accounts/')?{object:'account',id:'acct_fixture'}:request.path==='/v1/balance'?{object:'balance',livemode:false}:request.path.includes('/payment_links/')?{object:'payment_link',id:'plink_fixture',livemode:false}:{object:'checkout.session',id:'cs_fixture',livemode:false,customer:'cus_fixture',mode:'subscription'})};
 });
 const read=async()=>({instanceId:owner.id,organizationId:owner.organizationId,stripeAccountId:'acct_fixture',bindingGeneration:generation});
 const server=http.createServer(async(req,res)=>{try{
@@ -40,7 +40,7 @@ const server=http.createServer(async(req,res)=>{try{
   assert(verifyInstanceHmac({secretKey:'instance-secret-fixture',method:req.method,path:req.url.replace('/instance-gateway',''),body:raw,auth}));
   const request=JSON.parse(raw);let answer;
   if(req.url==='/instance-gateway/payments/context')answer=await protocol.issue(owner,request,read);
-  else {assert.equal(req.url,'/instance-gateway/payments/context/checkout-read');answer=await protocol.checkout(owner,request,read);if(scenario==='bad-envelope')answer.scope={...answer.scope,organizationId:'other'};}
+  else {assert(['/instance-gateway/payments/context/checkout-read','/instance-gateway/payments/context/payment-link-read'].includes(req.url));answer=await protocol[req.url.endsWith('/payment-link-read')?'paymentLink':'checkout'](owner,request,read);if(scenario==='bad-envelope')answer.scope={...answer.scope,organizationId:'other'};}
   res.setHeader('content-type','application/json');res.end(JSON.stringify(answer));
 }catch{res.statusCode=409;res.end('{}');}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -50,6 +50,10 @@ try {
   const action={resource:'context',method:'verify',account:'acct_fixture',livemode:false,checkoutId:'cs_fixture'};
   assert.equal((await native(base,[action]))[0].ok.id,'cs_fixture');
   for(const kind of ['rebind','bad-envelope']){scenario=kind;assert.equal((await native(base,[action]))[0].error,'billing_provider_context_mismatch');}
+  const linkAction={resource:'context',method:'verify',account:'acct_fixture',livemode:false,paymentLinkId:'plink_fixture'};
+  scenario='ok';assert.equal((await native(base,[linkAction]))[0].ok.id,'plink_fixture');
+  for(const kind of ['rebind','bad-envelope']){scenario=kind;assert.equal((await native(base,[linkAction]))[0].error,'billing_provider_context_mismatch');}
+  scenario='ok';assert.equal((await native(base,[{...linkAction,paymentLinkId:'cs_fixture'}]))[0].error,'billing_provider_context_mismatch');
   assert(calls.every(c=>c.method==='GET'));
   const {startGatewayMock}=await import(pathToFileURL(path.join(root,'framework/core/bin/gateway-mock/server.mjs')));
   mock=await startGatewayMock({PORT:'0',MOCK_INSTANCE_HMAC_KEY:'instance-secret-fixture'});
@@ -58,5 +62,7 @@ try {
   assert.equal((await signed('/payments/onboarding-link',{returnUrl:'https://owned.test/return',refreshUrl:'https://owned.test/refresh'})).status,200);
   const created=(await native(mockBase,[{resource:'checkout',method:'create',fields:{customer:'cus_fixture',mode:'subscription'}}]))[0].ok;
   assert.equal((await native(mockBase,[{...action,account:'acct_mock_0001',checkoutId:created.id}]))[0].ok.id,created.id);
-  console.log('PASS platform protocol/native signed HTTP: valid, rebind, changed envelope; gateway mock onboarding/create/context/read; exact source conformance');
+  const createdLink=(await native(mockBase,[{resource:'links',method:'create',fields:{line_items:[{price:'price_fixture',quantity:1}]}}]))[0].ok;
+  assert.equal((await native(mockBase,[{...linkAction,account:'acct_mock_0001',paymentLinkId:createdLink.id}]))[0].ok.id,createdLink.id);
+  console.log('PASS platform protocol/native signed HTTP: checkout/payment-link valid, rebind, changed envelope, cross-kind denial; gateway mock onboarding/create/context/read; exact source conformance');
 } finally {await new Promise(resolve=>server.close(resolve));if(mock)await new Promise(resolve=>mock.close(resolve));await rm(work,{recursive:true,force:true});}

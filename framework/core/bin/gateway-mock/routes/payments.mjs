@@ -576,6 +576,7 @@ export default {
     { method: 'GET', path: '/payments/status', handler: status },
     { method: 'POST', path: '/payments/context', handler: ctx => scopedRead(ctx,'issue') },
     { method: 'POST', path: '/payments/context/checkout-read', handler: ctx => scopedRead(ctx,'checkout') },
+    { method: 'POST', path: '/payments/context/payment-link-read', handler: ctx => scopedRead(ctx,'paymentLink') },
     ...['GET', 'POST', 'DELETE'].map((method) => ({ method, path: PROXY, handler: stripeProxy }))
   ],
   vendorRoutes: [

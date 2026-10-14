@@ -11,10 +11,10 @@ use uuid::Uuid;
 
 impl StripeBillingService<PostgresBillingStore> {
     /// Reads an explicitly provisioned durable payment-link alias under a fresh
-    /// direct account/mode observation. Public UUID and storage key remain distinct.
+    /// direct or managed account/mode observation. Public UUID and storage key remain distinct.
     /// Only the sensitive-read audit is written; amount/status and encrypted local
     /// data remain unchanged. This does not change the default provider-ID service.
-    /// Managed transport is rejected before any gateway request.
+    /// Managed reads require the dedicated generation-scoped payment-link endpoint.
     /// # Errors
     /// Rejects unbound/foreign aliases, changed generations, stale context, invalid
     /// provider evidence, and denied durable read audits. Scope is trusted config.
@@ -25,7 +25,7 @@ impl StripeBillingService<PostgresBillingStore> {
     ) -> BlueprintResult<PaymentLinkDto> {
         let context = self
             .client()
-            .verify_direct_context(scope.account_id(), scope.livemode())
+            .verify_context(scope.account_id(), scope.livemode())
             .await?;
         let binding = self
             .base()

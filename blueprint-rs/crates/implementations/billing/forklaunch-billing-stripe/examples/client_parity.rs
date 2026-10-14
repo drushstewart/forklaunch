@@ -49,6 +49,9 @@ async fn run(client: &StripeBillingClient, action: &Value) -> BlueprintResult<Va
             )
             .await?;
         context.ensure_current(client)?;
+        if let Some(id) = action["paymentLinkId"].as_str() {
+            return client.retrieve_payment_link_in_context(&context, id).await;
+        }
         if let Some(id) = action["checkoutId"].as_str() {
             return client.retrieve_checkout_in_context(&context, id).await;
         }
