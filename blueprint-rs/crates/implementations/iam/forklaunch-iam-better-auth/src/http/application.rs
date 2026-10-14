@@ -191,6 +191,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     /// # Panics
     /// Only missing package-owned metadata can panic.
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn application_router(self, auth: HmacJwksAuth, info: ServiceInfo) -> ForkLaunchRouter {
         let config = self.application_config(auth);
         let store = self.store.clone();
@@ -203,7 +204,14 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         let exporter = store.clone();
         let eraser = store;
         let router = ForkLaunchRouter::new(info)
-            .get(contract("GetAuthMethods"), || async { Json(discovery()) })
+            .get(contract("GetAuthMethods"), {
+                let enabled = self.two_factor.is_some();
+                move || async move {
+                    let mut result = discovery();
+                    result["twoFactor"] = json!(enabled);
+                    Json(result)
+                }
+            })
             .get(contract("Surface User Roles"), || async { Json(json!([])) })
             .get(contract("Surface User Permissions"), || async {
                 Json(json!([]))
@@ -296,7 +304,10 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     fn mount_raw_auth(self, router: ForkLaunchRouter) -> ForkLaunchRouter {
         let base_path = self.auth_base_path();
         if base_path.is_empty() {
-            let namespaces = root_namespaces(self.jwks_path());
+            let mut namespaces = root_namespaces(self.jwks_path());
+            if self.two_factor.is_some() {
+                namespaces.push("/two-factor".into());
+            }
             router.merge_internal(self.router_with_redirects(), namespaces)
         } else if self.jwks_path() == "/" {
             let outer =
@@ -337,7 +348,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .docs_sources
             .push(forklaunch_axum::ScalarSource::inline(
                 "BetterAuth",
-                super::public::openapi_schema(&self.auth_base_url(), self.jwks_path()),
+                self.configured_schema(),
             ));
         config
     }

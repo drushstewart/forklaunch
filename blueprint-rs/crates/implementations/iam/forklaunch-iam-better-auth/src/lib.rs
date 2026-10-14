@@ -15,6 +15,7 @@ pub mod retention;
 pub mod sessions;
 pub mod store;
 pub mod surfacing;
+pub mod two_factor;
 
 pub mod oauth;
 pub mod organizations;

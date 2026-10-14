@@ -1,0 +1,301 @@
+//! Optional fixed TOTP profile. All mutation routes share the existing origin guard.
+use super::{
+    Arc, AuthHttp, AuthStore, BlueprintError, BlueprintResult, DateTime, HeaderMap, Router, Utc,
+    Value, dispatch, internal, json, post, request, set_cookie, value,
+};
+use crate::{
+    cookies::{cookie_value, sign_cookie_value, verify_cookie_value},
+    two_factor::{FactorResponse, TwoFactorService},
+};
+const PATHS: [&str; 6] = [
+    "/two-factor/enable",
+    "/two-factor/get-totp-uri",
+    "/two-factor/verify-totp",
+    "/two-factor/disable",
+    "/two-factor/generate-backup-codes",
+    "/two-factor/verify-backup-code",
+];
+impl<S: AuthStore + 'static> AuthHttp<S> {
+    pub(super) fn configured_schema(&self) -> Value {
+        let mut schema = super::public::openapi_schema(&self.auth_base_url(), self.jwks_path());
+        if self.two_factor.is_some() {
+            augment_schema(&mut schema);
+        }
+        schema
+    }
+    /// Enables the fixed default TOTP/backup/trusted-device profile for password
+    /// sign-in. Social callbacks remain independently governed, as upstream.
+    /// # Errors
+    /// Rejects a conflicting JWKS namespace or invalid trusted signing configuration.
+    pub fn with_two_factor(mut self) -> BlueprintResult<Self> {
+        if self.jwks_path.starts_with("/two-factor/") || self.jwks_path == "/two-factor" {
+            return Err(BlueprintError::new(
+                "better_auth_invalid_config",
+                "JWKS path conflicts with two-factor routes",
+            ));
+        }
+        self.two_factor = Some(Arc::new(TwoFactorService::new(
+            self.store.clone(),
+            self.secret.to_vec(),
+            "Better Auth".into(),
+        )?));
+        Ok(self)
+    }
+}
+pub(super) fn routes<S: AuthStore + 'static>(enabled: bool) -> Router<Arc<AuthHttp<S>>> {
+    let mut router = Router::new();
+    if enabled {
+        for path in PATHS {
+            router = router.route(path, post(dispatch::<S>));
+        }
+    }
+    router
+}
+pub(super) fn validate(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
+    let body = body.filter(|value| value.is_object()).ok_or_else(|| {
+        BlueprintError::new("VALIDATION_ERROR", "[body] Invalid input: expected object")
+    })?;
+    let field = if matches!(
+        path,
+        "/two-factor/verify-totp" | "/two-factor/verify-backup-code"
+    ) {
+        "code"
+    } else {
+        "password"
+    };
+    if !body[field].is_string() {
+        return Err(BlueprintError::new(
+            "VALIDATION_ERROR",
+            format!("[body.{field}] Invalid input: expected string"),
+        ));
+    }
+    let boolean_fields: &[&str] = match path {
+        "/two-factor/verify-totp" => &["trustDevice"],
+        "/two-factor/verify-backup-code" => &["trustDevice", "disableSession"],
+        _ => &[],
+    };
+    for &field in boolean_fields {
+        if body.get(field).is_some_and(|value| !value.is_boolean()) {
+            return Err(BlueprintError::new(
+                "VALIDATION_ERROR",
+                format!("[body.{field}] Invalid input: expected boolean"),
+            ));
+        }
+    }
+    if path == "/two-factor/verify-backup-code" && body["disableSession"] == true {
+        return Err(BlueprintError::new(
+            "VALIDATION_ERROR",
+            "disableSession is not supported by the default TOTP profile",
+        ));
+    }
+    if path == "/two-factor/enable" && body.get("issuer").is_some_and(|value| !value.is_string()) {
+        return Err(BlueprintError::new(
+            "VALIDATION_ERROR",
+            "[body.issuer] Invalid input: expected string",
+        ));
+    }
+    if path == "/two-factor/enable"
+        && let Some(method) = body.get("method")
+    {
+        if method == "otp" {
+            return Err(BlueprintError::new(
+                "OTP_NOT_CONFIGURED",
+                "OTP is not configured",
+            ));
+        }
+        if method != "totp" {
+            return Err(BlueprintError::new(
+                "VALIDATION_ERROR",
+                "Invalid two-factor method",
+            ));
+        }
+    }
+    Ok(())
+}
+pub(super) fn signed<S: AuthStore>(
+    app: &AuthHttp<S>,
+    headers: &HeaderMap,
+    name: &str,
+) -> Option<String> {
+    let name = format!(
+        "{}better-auth.{name}",
+        if app.cookie.secure { "__Secure-" } else { "" }
+    );
+    cookie_value(value(headers, "cookie").unwrap_or(""), &name)
+        .and_then(|value| verify_cookie_value(&value, &app.secret).map(str::to_owned))
+}
+pub(super) fn cookie<S: AuthStore>(
+    app: &AuthHttp<S>,
+    pending: &mut HeaderMap,
+    name: &str,
+    value: Option<&str>,
+    max_age: u64,
+) -> BlueprintResult<()> {
+    let encoded = value
+        .map(|value| sign_cookie_value(value, &app.secret))
+        .unwrap_or_default();
+    set_cookie(
+        pending,
+        &format!(
+            "{}better-auth.{name}={encoded}; Max-Age={}; Path=/; HttpOnly{}; SameSite=Lax",
+            if app.cookie.secure { "__Secure-" } else { "" },
+            if value.is_some() { max_age } else { 0 },
+            if app.cookie.secure { "; Secure" } else { "" }
+        ),
+    )
+}
+pub(super) async fn handle<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    path: &str,
+    body: &Value,
+    headers: &HeaderMap,
+    pending: &mut HeaderMap,
+    now: DateTime<Utc>,
+) -> BlueprintResult<Value> {
+    let service = app
+        .two_factor
+        .as_ref()
+        .ok_or_else(|| BlueprintError::new("HTTP_NOT_FOUND", "Not Found"))?;
+    let (token, transient) = request::session_credentials(app, headers);
+    let trust = signed(app, headers, "trust_device");
+    let password = || body["password"].as_str().unwrap_or("").to_owned();
+    let result = match path {
+        "/two-factor/enable" => {
+            service
+                .enable(&token, password(), body["issuer"].as_str(), now)
+                .await
+        }
+        "/two-factor/get-totp-uri" => service.get_uri(&token, password(), now).await,
+        "/two-factor/generate-backup-codes" => {
+            service
+                .regenerate_backup_codes(&token, password(), now)
+                .await
+        }
+        "/two-factor/disable" => {
+            service
+                .disable(&token, password(), trust.as_deref(), now)
+                .await
+        }
+        "/two-factor/verify-totp" | "/two-factor/verify-backup-code" => {
+            service
+                .verify(
+                    &token,
+                    &signed(app, headers, "two_factor").unwrap_or_default(),
+                    body["code"].as_str().unwrap_or(""),
+                    path.ends_with("verify-backup-code"),
+                    body["trustDevice"] == true,
+                    now,
+                )
+                .await
+        }
+        _ => Err(BlueprintError::new("HTTP_NOT_FOUND", "Not Found")),
+    };
+    match result {
+        Ok(response) => apply(app, pending, response, transient),
+        Err(error) => {
+            if error.code == "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE" {
+                cookie(app, pending, "two_factor", None, 0)?;
+            }
+            Err(error)
+        }
+    }
+}
+fn apply<S: AuthStore>(
+    app: &AuthHttp<S>,
+    pending: &mut HeaderMap,
+    response: FactorResponse,
+    transient: bool,
+) -> BlueprintResult<Value> {
+    let persistent = response.persistent && !transient;
+    let replaced_session = response.session.is_some();
+    if let Some(session) = response.session {
+        set_cookie(
+            pending,
+            &app.cookie.serialize(
+                session["token"].as_str().ok_or_else(internal)?,
+                &app.secret,
+                persistent,
+            ),
+        )?;
+    }
+    if replaced_session && !persistent && response.trust.is_none() {
+        set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;
+    }
+    if response.clear_challenge {
+        cookie(app, pending, "two_factor", None, 0)?;
+    }
+    if response.clear_trust {
+        cookie(app, pending, "trust_device", None, 0)?;
+    }
+    if let Some(trust) = response.trust {
+        cookie(app, pending, "trust_device", Some(&trust), 2_592_000)?;
+        set_cookie(
+            pending,
+            &format!(
+                "{}=; Max-Age=0; Path=/; HttpOnly{}; SameSite=Lax",
+                app.cookie.dont_remember_name(),
+                if app.cookie.secure { "; Secure" } else { "" }
+            ),
+        )?;
+    }
+    Ok(response.body)
+}
+pub(super) fn user_default(body: &mut Value) {
+    if let Some(user) = body.get_mut("user").and_then(Value::as_object_mut) {
+        user.entry("twoFactorEnabled").or_insert(json!(false));
+    }
+}
+
+pub(super) fn augment_schema(schema: &mut Value) {
+    for path in PATHS {
+        let field = if path.ends_with("verify-totp") || path.ends_with("verify-backup-code") {
+            "code"
+        } else {
+            "password"
+        };
+        let operation = match path {
+            "/two-factor/enable" => "enableTwoFactor",
+            "/two-factor/get-totp-uri" => "getTOTPURI",
+            "/two-factor/verify-totp" => "verifyTOTP",
+            "/two-factor/disable" => "disableTwoFactor",
+            "/two-factor/generate-backup-codes" => "generateBackupCodes",
+            _ => "verifyBackupCode",
+        };
+        let mut properties = serde_json::Map::new();
+        properties.insert(field.into(), json!({"type":"string"}));
+        if field == "code" {
+            properties.insert("trustDevice".into(), json!({"type":"boolean"}));
+        }
+        if path == "/two-factor/enable" {
+            properties.insert(
+                "issuer".into(),
+                json!({"type":"string","minLength":1,"maxLength":256}),
+            );
+            properties.insert("method".into(), json!({"type":"string","enum":["totp"]}));
+        }
+        let response = match path {
+            "/two-factor/enable" => {
+                json!({"type":"object","required":["method","totpURI","backupCodes"],"properties":{"method":{"type":"string","enum":["totp"]},"totpURI":{"type":"string"},"backupCodes":{"type":"array","items":{"type":"string"}}}})
+            }
+            "/two-factor/get-totp-uri" => {
+                json!({"type":"object","required":["totpURI"],"properties":{"totpURI":{"type":"string"}}})
+            }
+            "/two-factor/generate-backup-codes" => {
+                json!({"type":"object","required":["status","backupCodes"],"properties":{"status":{"type":"boolean"},"backupCodes":{"type":"array","items":{"type":"string"}}}})
+            }
+            "/two-factor/disable" => {
+                json!({"type":"object","required":["status"],"properties":{"status":{"type":"boolean"}}})
+            }
+            _ => {
+                json!({"type":"object","required":["token","user"],"properties":{"token":{"type":"string"},"user":{"type":"object"}}})
+            }
+        };
+        schema["paths"][path] = json!({"post":{"operationId":operation,"tags":["Two Factor"],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":[field],"properties":properties}}}},"responses":{"200":{"description":"Successful response","content":{"application/json":{"schema":response}}}}}});
+    }
+    if let Some(user) = schema
+        .pointer_mut("/components/schemas/User/properties")
+        .and_then(Value::as_object_mut)
+    {
+        user.insert("twoFactorEnabled".into(), json!({"type":"boolean"}));
+    }
+}

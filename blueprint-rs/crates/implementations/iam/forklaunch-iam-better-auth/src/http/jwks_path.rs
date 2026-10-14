@@ -9,6 +9,10 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     /// Root JWKS requires a nonroot authentication namespace.
     pub fn with_jwks_path(mut self, path: impl Into<String>) -> BlueprintResult<Self> {
         let path = path.into();
+        if self.two_factor.is_some() && (path == "/two-factor" || path.starts_with("/two-factor/"))
+        {
+            return Err(invalid());
+        }
         if (path == "/" && self.auth_base_path().is_empty())
             || !path.starts_with('/')
             || path.contains("..")

@@ -52,6 +52,7 @@ mod social_callback;
 mod social_link;
 #[cfg(test)]
 pub(crate) mod tests;
+mod two_factor;
 
 /// Trusted, tenant-bound dependencies. Requests cannot select storage tenants,
 /// signing secrets, clocks or JWT issuer/audience through headers/body fields.
@@ -59,6 +60,7 @@ pub struct AuthHttp<S> {
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
+    two_factor: Option<Arc<crate::two_factor::TwoFactorService<S>>>,
     jwks_adapter: Option<crate::keyring::adapter::JwksAdapter>,
     key_config: crate::keyring::KeyPairConfig,
     jwt_header_disabled: bool,
@@ -123,6 +125,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             store,
             google: None,
             external_jwt: None,
+            two_factor: None,
             jwks_adapter: None,
             key_config: crate::keyring::KeyPairConfig::default(),
             jwt_header_disabled: false,
@@ -318,7 +321,16 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     }
     /// Credential/session/JWT routes. Remaining user/account/provider/organization
     /// endpoints are added incrementally without permissive placeholders.
-    pub fn router(self) -> Router {
+    pub fn router(mut self) -> Router {
+        if self.two_factor.is_some() {
+            self.limiter.options = self
+                .limiter
+                .options
+                .clone()
+                .with_plugin_rule(rate::two_factor_rule(), |path| {
+                    path.starts_with("/two-factor/")
+                });
+        }
         let app = Arc::new(self);
         Router::new()
             .route("/sign-up/email", post(dispatch::<S>))
@@ -376,6 +388,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/revoke-other-sessions", post(dispatch::<S>))
             .route("/sign-out", post(dispatch::<S>))
             .merge(organization::routes::<S>())
+            .merge(two_factor::routes::<S>(app.two_factor.is_some()))
             .method_not_allowed_fallback(not_found)
             .fallback(not_found)
             .layer(axum::middleware::from_fn_with_state(
@@ -407,7 +420,11 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 HeaderValue::from_static("set-auth-jwt"),
             );
         }
-        Ok(view.map_or(Value::Null, |view| view.body()))
+        let mut body = view.map_or(Value::Null, |view| view.body());
+        if self.two_factor.is_some() {
+            two_factor::user_default(&mut body);
+        }
+        Ok(body)
     }
     async fn jwt(&self, view: &SessionView, now: DateTime<Utc>) -> BlueprintResult<String> {
         if self.payload_resolver.is_some() || self.jwt_expiration.is_some() {
@@ -508,6 +525,9 @@ async fn handle<S: AuthStore + 'static>(
     organization::strip_record_keys(path, &mut payload);
     session_headers(path, mutation, pending)?;
     let now = (app.clock)();
+    if path.starts_with("/two-factor/") {
+        return two_factor::handle(app, path, &payload, &parts.headers, pending, now).await;
+    }
     if path == "/sign-in/social" {
         return social::sign_in(app, &payload, &parts.headers, pending, now).await;
     }
@@ -770,6 +790,7 @@ fn failure(error: &BlueprintError) -> Response {
     }
     response
 }
+#[allow(clippy::too_many_lines)]
 fn failure_response(error: &BlueprintError) -> Response {
     if error.code == "HTTP_FORBIDDEN_MESSAGE_ONLY" {
         return (
@@ -798,9 +819,21 @@ fn failure_response(error: &BlueprintError) -> Response {
         return StatusCode::NOT_FOUND.into_response();
     }
     let status = match error.code.as_str() {
+        "TWO_FACTOR_INTERNAL" => StatusCode::INTERNAL_SERVER_ERROR,
+        "ACCOUNT_TEMPORARILY_LOCKED" => StatusCode::TOO_MANY_REQUESTS,
+        "TOTP_NOT_ENABLED"
+        | "TOTP_ALREADY_ENABLED"
+        | "TWO_FACTOR_NOT_ENABLED"
+        | "BACKUP_CODES_NOT_ENABLED"
+        | "OTP_NOT_CONFIGURED"
+        | "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE" => StatusCode::BAD_REQUEST,
         "PROVIDER_NOT_FOUND" => StatusCode::NOT_FOUND,
         "SOCIAL_ACCOUNT_ALREADY_LINKED" => StatusCode::CONFLICT,
-        "UNAUTHORIZED"
+        "INVALID_CODE"
+        | "INVALID_BACKUP_CODE"
+        | "INVALID_TWO_FACTOR_COOKIE"
+        | "TWO_FACTOR_REQUIRED"
+        | "UNAUTHORIZED"
         | "INVALID_TOKEN"
         | "USER_EMAIL_NOT_FOUND"
         | "FAILED_TO_GET_USER_INFO"

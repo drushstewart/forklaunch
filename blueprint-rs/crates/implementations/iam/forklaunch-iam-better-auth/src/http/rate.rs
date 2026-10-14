@@ -576,6 +576,13 @@ fn internal() -> BlueprintError {
     )
 }
 
+pub(super) const fn two_factor_rule() -> AuthRateLimitRule {
+    AuthRateLimitRule {
+        window_seconds: 10,
+        max: 3,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

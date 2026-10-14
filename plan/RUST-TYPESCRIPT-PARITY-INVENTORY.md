@@ -8041,3 +8041,60 @@ number-regression,clippy}.log; frozen hashes
 /private/tmp/fl-zod-float-bound-source-sha256.json. CI runs the oracle. Arbitrary
 schema/emitter coverage and custom messages/refinements remain open; this source
 slice is later than the immutable5a8 packaged runtime checkpoint.
+
+
+## Opt-in fixed TOTP, recovery and trusted-device lifecycle (2026-10-14)
+
+The isolated Better Auth implementation now exposes TwoFactorService and an
+explicit authenticated-versus-challenge credential outcome. Generated services
+can opt in with BETTER_AUTH_TWO_FACTOR_ENABLED=true; default behavior remains
+disabled. The fixed profile protects password sign-in with SHA1/6digits/30seconds,
+plus-or-minus one step, ten single-use backup codes and rotating thirty-day
+trusted browser cookies. Existing sessions and social callbacks retain upstream
+independent behavior; this is not all-signin MFA or complete plugin parity.
+
+An encrypted IAM-only factor model/migration holds secrets, recovery codes and
+failure state. Tenant transactions atomically consume challenges/recovery/trust
+and issue replacement sessions, rechecking password/session authority after
+crypto work. Pending password login never creates an authenticated grant or JWT.
+Challenge lifetime600s/5 attempts and aggregate10 failures/900s lockout match the
+characterized defaults; route rate3/10s is independent. Timestep reuse across
+distinct challenges follows upstream. Enable/get-URI/initial verify/disable and
+recovery regeneration are present. The initial enrollment body retains the
+actual upstream old-token/user snapshot while only the rotated cookie session
+is persisted; get-session subsequently signs the authoritative replacement.
+Session rotations preserve signed dont_remember behavior. Secret projections
+have no Debug/Serde; authorized recovery disclosure must not be logged.
+
+Actual Better Auth reference68 HTTP calls characterize lifecycle/client/rate
+behavior. Real twoFactorClient/native handler bridge20 calls passes, with JOSE-
+verified authoritative session JWT, rotation/challenge/trust/recovery/disable.
+This bridge is owned JSON-line HTTP/cookie transport, not browser/TCP evidence.
+Focused native5 tests plus finalHTTP2, restricted PostgreSQL1 (44.51s; owned roles
+and tenant rows cleaned), full all-feature IAM117 passed/3 ignored (66.18s), and
+strict all-feature/all-target plus minimal-library Clippy pass. Logs:
+/private/tmp/fl-two-factor-{oracle,native,http-final,client-native,postgres,
+full-iam,clippy}.log. Frozen25-path hashes/aggregate:
+/private/tmp/fl-two-factor-source-freeze.json. The final cookie fix affects HTTP;
+the earlier restricted PG domain proof remains unchanged. CI runs both actual
+fixtures and the ignored PG lifecycle test. Fresh CLI build passes with four
+existing warnings; generated opt-in liveTCP HTTP/MCP proof is the next checkpoint.
+OTP delivery, custom parameters/storage hooks, backup disableSession, passkeys,
+admin/SSO/provider plugins and broader client/options coverage remain open.
+
+## Managed creation platform journal checkpoint (2026-10-14)
+
+Companion forklaunch-platform-rust-parity commit
+ a34ec3b7ceff8d3c029bc7222ab2b2700e90b138 adds explicit signed create/inspect,
+strict canonical form bytes, copied adapter/profile fingerprint and encrypted
+immutable claim/completion journal. Default bootstrap is disabled. Real restricted
+PostgreSQL tests cover account/generation/delete/ABA barriers, races, RLS,
+non-superuser/non-BYPASSRLS function ownership, same-org receipt swaps and both
+lost COMMIT acknowledgements. An explicit SELECT-only function-owner policy
+requires distinct restricted runtime roles without inheritance. Receipt AAD
+binds org/kind/envelope hash; claims never automatically expire or retry.
+56 tests and focused strict types pass through the checked-in reproducible
+harness. Logs /private/tmp/fl-managed-creation-reproducible.log; hashes
+/private/tmp/fl-managed-creation-source-sha256.json. Native UUID publication,
+current creation-configuration pinning, managed recovery and full production
+bootstrap are subsequent work, not claimed complete by this platform proof.

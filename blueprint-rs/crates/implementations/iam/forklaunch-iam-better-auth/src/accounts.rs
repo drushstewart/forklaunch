@@ -183,6 +183,44 @@ impl<S: AuthStore> CredentialService<S> {
         agent: &str,
         now: DateTime<Utc>,
     ) -> BlueprintResult<AuthGrant> {
+        match self.sign_in_outcome(input, None, ip, agent, now).await? {
+            crate::two_factor::CredentialSigninOutcome::Authenticated { grant, .. } => Ok(grant),
+            crate::two_factor::CredentialSigninOutcome::Challenge(_) => Err(BlueprintError::new(
+                "TWO_FACTOR_REQUIRED",
+                "Two-factor verification required",
+            )),
+        }
+    }
+    /// Opt-in credential authentication with a mandatory distinct challenge outcome.
+    /// No authenticated session is committed while a factor challenge is pending.
+    /// # Errors
+    /// Rejects invalid credentials, mismatched trusted stores and factor/store failures.
+    pub async fn sign_in_with_two_factor(
+        &self,
+        input: SigninInput,
+        factor: &crate::two_factor::TwoFactorService<S>,
+        trust: Option<&str>,
+        ip: &str,
+        agent: &str,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<crate::two_factor::CredentialSigninOutcome> {
+        if !Arc::ptr_eq(&self.store, &factor.store) {
+            return Err(BlueprintError::new(
+                "TWO_FACTOR_INVALID_CONFIG",
+                "Two-factor service must use the same trusted store",
+            ));
+        }
+        self.sign_in_outcome(input, Some((factor, trust)), ip, agent, now)
+            .await
+    }
+    async fn sign_in_outcome(
+        &self,
+        input: SigninInput,
+        factor: Option<(&crate::two_factor::TwoFactorService<S>, Option<&str>)>,
+        ip: &str,
+        agent: &str,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<crate::two_factor::CredentialSigninOutcome> {
         validate_email(&input.email)?;
         validate_length(&input.password, false)?;
         let mut tx = self.store.begin(false).await?;
@@ -229,18 +267,39 @@ impl<S: AuthStore> CredentialService<S> {
             .get(Model::User, text(&user, "id")?)
             .await?
             .ok_or_else(invalid_credentials)?;
+        let mut trust = None;
+        if crate::two_factor::enabled(&user)? {
+            let (factor, supplied) = factor.ok_or_else(|| {
+                BlueprintError::new("TWO_FACTOR_REQUIRED", "Two-factor verification required")
+            })?;
+            match factor
+                .gate(&mut tx, &user, supplied, input.remember_me, ip, agent, now)
+                .await?
+            {
+                crate::two_factor::signin::SigninGate::Challenge(challenge) => {
+                    tx.commit().await?;
+                    return Ok(crate::two_factor::CredentialSigninOutcome::Challenge(
+                        challenge,
+                    ));
+                }
+                crate::two_factor::signin::SigninGate::Trusted(value) => trust = Some(value),
+            }
+        }
         let session = new_session(text(&user, "id")?, ip, agent, now)?;
         tx.insert(Model::Session, session.clone()).await?;
         tx.commit().await?;
-        Ok(AuthGrant {
-            user: public_user(&user),
-            session,
-            persistent: input.remember_me,
-            callback_url: input.callback_url,
+        Ok(crate::two_factor::CredentialSigninOutcome::Authenticated {
+            grant: AuthGrant {
+                user: public_user(&user),
+                session,
+                persistent: input.remember_me,
+                callback_url: input.callback_url,
+            },
+            trust,
         })
     }
 
-    async fn run_crypto<T: Send + 'static>(
+    pub(crate) async fn run_crypto<T: Send + 'static>(
         &self,
         job: impl FnOnce() -> BlueprintResult<T> + Send + 'static,
     ) -> BlueprintResult<T> {
@@ -261,7 +320,7 @@ impl<S: AuthStore> CredentialService<S> {
 async fn find_email<T: AuthTransaction>(tx: &mut T, email: &str) -> BlueprintResult<Option<Value>> {
     tx.find_unique(Model::User, "email", email).await
 }
-async fn find_credential<T: AuthTransaction>(
+pub(crate) async fn find_credential<T: AuthTransaction>(
     tx: &mut T,
     user_id: &str,
 ) -> BlueprintResult<Option<Value>> {

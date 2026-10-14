@@ -16,6 +16,7 @@ pub enum Model {
     Session,
     Account,
     Verification,
+    TwoFactor,
     Jwks,
     Organization,
     Member,
@@ -33,6 +34,7 @@ impl Model {
             Self::Session => "session",
             Self::Account => "account",
             Self::Verification => "verification",
+            Self::TwoFactor => "twoFactor",
             Self::Jwks => "jwks",
             Self::Organization => "organization",
             Self::Member => "member",
@@ -53,12 +55,14 @@ impl Model {
             Self::TeamMember => &["userId", "teamId", "membershipKey"],
             Self::Invitation => &["organizationId", "email"],
             Self::Verification => &["identifier"],
+            Self::TwoFactor => &["userId"],
             _ => &[],
         }
     }
     const fn unique_fields(self) -> &'static [&'static str] {
         match self {
             Self::User => &["email", "subscription"],
+            Self::TwoFactor => &["userId"],
             Self::Organization => &["slug"],
             Self::Session => &["token"],
             Self::RelaySessionHandoff => &["nonce"],

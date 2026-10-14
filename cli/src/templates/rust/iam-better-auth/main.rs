@@ -51,6 +51,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .with_base_path(env::var("BETTER_AUTH_BASE_PATH").unwrap_or_else(|_| "/api/auth".into()))?
         .with_api_error_observer_mode(AuthApiErrorObserverMode::UnexpectedOnly)
         .with_api_error_trace_mode(AuthApiErrorTraceMode::Configured);
+    if env::var("BETTER_AUTH_TWO_FACTOR_ENABLED").is_ok_and(|value| value == "true") {
+        application = application.with_two_factor()?;
+    }
     let google_id = env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
     let google_secret = env::var("GOOGLE_CLIENT_SECRET").unwrap_or_default();
     if !google_id.is_empty() || !google_secret.is_empty() {

@@ -147,7 +147,7 @@ pub(super) async fn reference() -> Response {
 pub(super) async fn schema<S: AuthStore + 'static>(
     State(app): State<Arc<AuthHttp<S>>>,
 ) -> Response {
-    let schema = openapi_schema(&app.auth_base_url(), app.jwks_path());
+    let schema = app.configured_schema();
     (
         [(header::CONTENT_TYPE, "application/json")],
         crate::ecmascript::stringify(&schema),

@@ -184,6 +184,11 @@ async fn main() {
     } else {
         router
     };
+    let router = if std::env::var_os("FORKLAUNCH_AUTH_TWO_FACTOR").is_some() {
+        router.with_two_factor().unwrap()
+    } else {
+        router
+    };
     #[cfg(feature = "application-http")]
     let router = if std::env::var_os("FORKLAUNCH_AUTH_POPUP_HELPERS").is_some() {
         router.router_with_redirects()

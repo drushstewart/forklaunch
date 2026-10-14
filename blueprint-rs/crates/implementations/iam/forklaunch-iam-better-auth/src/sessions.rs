@@ -374,6 +374,7 @@ pub(crate) fn public_user(row: &Value) -> Value {
             "firstName",
             "lastName",
             "phoneNumber",
+            "twoFactorEnabled",
         ],
     )
 }

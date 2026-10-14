@@ -988,3 +988,19 @@ not current account authority. Trusted cross-crate store completion primitives
 are not caller-controlled provider evidence ingestion. Provider-price ownership,
 actual charged totals, managed dispatch and operator recovery are outside this
 narrow profile and remain explicit work.
+
+
+## Opt-in fixed two-factor security boundary (2026-10-14)
+
+Factor secrets/recovery/state use the IAM encrypted tenant store, not plaintext
+core columns. Password snapshots are rechecked in the authoritative transaction;
+challenge login grants no temporary authenticated session. Challenge/recovery/
+trust consumption is atomic. Signed browser cookies, origin guards, route rate
+limits and committed failure counters bound attempts; current passwords are
+required for enrollment/disable/regeneration. Default code-step reuse follows
+upstream and does not imply replay-proof TOTP. Existing sessions/social callbacks
+are independent. Authorized recovery-code/URI responses must not be logged.
+Restricted PostgreSQL, concurrent recovery, RFC vectors, actual client/JWT and
+full IAM regression proofs are recorded in the inventory. This fixed password-
+login profile does not implement OTP delivery, passkeys or universal MFA. The
+immutable5a8 packaged checkpoint predates it; generated opt-inTCP proof is pending.

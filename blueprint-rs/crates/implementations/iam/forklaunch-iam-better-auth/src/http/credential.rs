@@ -40,7 +40,47 @@ pub(super) async fn login<S: AuthStore + 'static>(
             .await?
     } else {
         let input: SigninInput = serde_json::from_value(payload).map_err(|_| internal())?;
-        service.sign_in(input, &ip, &agent, now).await?
+        if let Some(factor) = &app.two_factor {
+            let trust = super::two_factor::signed(app, headers, "trust_device");
+            match service
+                .sign_in_with_two_factor(input, factor, trust.as_deref(), &ip, &agent, now)
+                .await?
+            {
+                crate::two_factor::CredentialSigninOutcome::Authenticated { grant, trust } => {
+                    if let Some(trust) = trust {
+                        super::two_factor::cookie(
+                            app,
+                            pending,
+                            "trust_device",
+                            Some(&trust),
+                            2_592_000,
+                        )?;
+                    }
+                    grant
+                }
+                crate::two_factor::CredentialSigninOutcome::Challenge(challenge) => {
+                    for cookie in app.cookie.clear_session().into_iter().take(2) {
+                        set_cookie(pending, &cookie)?;
+                    }
+                    if !challenge.persistent {
+                        set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;
+                    }
+                    if trust.is_some() {
+                        super::two_factor::cookie(app, pending, "trust_device", None, 0)?;
+                    }
+                    super::two_factor::cookie(
+                        app,
+                        pending,
+                        "two_factor",
+                        Some(&challenge.identifier),
+                        600,
+                    )?;
+                    return Ok(json!({"twoFactorRedirect":true,"twoFactorMethods":["totp"]}));
+                }
+            }
+        } else {
+            service.sign_in(input, &ip, &agent, now).await?
+        }
     };
     set_cookie(
         pending,
@@ -61,11 +101,15 @@ pub(super) async fn login<S: AuthStore + 'static>(
             HeaderValue::from_str(url).map_err(|_| internal())?,
         );
     }
-    Ok(if path == "/sign-up/email" {
+    let mut body = if path == "/sign-up/email" {
         grant.signup_body()
     } else {
         grant.signin_body()
-    })
+    };
+    if app.two_factor.is_some() {
+        super::two_factor::user_default(&mut body);
+    }
+    Ok(body)
 }
 
 pub(super) async fn authenticated<S: AuthStore + 'static>(
