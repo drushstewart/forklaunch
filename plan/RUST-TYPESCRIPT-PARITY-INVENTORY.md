@@ -5325,3 +5325,22 @@ fixture. CI runs the new oracle and ignored PG test. Logs:
 The committed generated IAM workspace was cleaned after process/role checks.
 Safe filter extensions and broader custom persistence semantics remain open;
 checklist **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Explicit TypeScript date-coercion profile
+
+`typescript_coerce::date_epoch_millis` supports numeric JavaScript epochs and
+a deterministic ISO string profile: UTC date-only/partial dates, signed six-digit
+years and explicit-offset datetimes. Integer milliseconds span the full JavaScript
+Date range, including TimeClip limits, Gregorian rollover, fractional truncation
+and valid zero-only 24:00. Non-date JSON types preserve actual Zod diagnostics.
+Native date parsing remains unchanged. Legacy/local-time strings and ambiguous
+V8 fallbacks return a distinct `UnsupportedStringFormat`, not a fabricated Zod
+rejection; this is deliberately not full `Date.parse` compatibility.
+
+**7,633 actual-source outcomes** across UTC, Los Angeles and Kathmandu, **602
+explicit unsupported cases**, 11 validation unit tests and strict all-target
+Clippy pass. CI runs the new oracle. Logs:
+`/private/tmp/fl-date-coercion-{parity,tests-final,clippy-final}.log`.
+Broader runtime/schema validation remains open; checklist **660/682 (96.8%),
+22 open**.
