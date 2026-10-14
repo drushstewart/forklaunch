@@ -7446,3 +7446,21 @@ have zero diagnostics. Logs:
 /private/tmp/fl-version-json-wire-{allfeatures,clippy,parity,mcp-body,canonical,response,diagnostics,types}.log.
 CI runs the new live wire oracle. Finite Unicode/nonfinite JSON and broader
 None/Warning/omitted-body semantics remain open; no broad gate is closed.
+
+
+## Billing identity validation before provider mutations (2026-10-14)
+
+Plan replacement and Subscription updates now validate the initial provider GET
+identity/kind before deriving product/item fields or issuing DELETE/POST. Optional
+configured mapper hooks preserve custom fallback; native default services enforce
+the same read identity. Malformed/wrong provider results cause exactly one GET,
+zero provider mutations and unchanged local records. Valid mutation sequences
+remain intact. Existing preflight fixtures now use official provider object tags.
+
+22 focused configured TS cases, Plan13/Subscription28 regressions,353 configured
+mapper cases, permanent12-root strict types with zero diagnostics,4 native read/
+update loopback tests,170 legacy operations and strict all-target/all-feature
+billing Clippy pass: /private/tmp/fl-billing-update-identity{,-plan,-subscription,
+-configured,-types,-native,-legacy170,-clippy}.log. CI runs the new focused fixture.
+This prevents unchecked reads from selecting mutation inputs; validation of
+post-effect responses and interrupted provider/local atomicity remain separate.

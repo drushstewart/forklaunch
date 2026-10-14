@@ -2976,13 +2976,13 @@
                   "name": "deletePlan",
                   "signature": "async deletePlan(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 191
+                  "line": 196
                 },
                 {
                   "name": "listPlans",
                   "signature": "async listPlans(\n    idsDto?: IdsDto,\n    em?: EntityManager\n  ): Promise<Dto['PlanMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 200
+                  "line": 205
                 }
               ]
             }
@@ -3043,25 +3043,25 @@
                   "name": "deleteSubscription",
                   "signature": "async deleteSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 225
+                  "line": 230
                 },
                 {
                   "name": "listSubscriptions",
                   "signature": "async listSubscriptions(\n    idsDto?: IdsDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 237
+                  "line": 242
                 },
                 {
                   "name": "cancelSubscription",
                   "signature": "async cancelSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 275
+                  "line": 280
                 },
                 {
                   "name": "resumeSubscription",
                   "signature": "async resumeSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 287
+                  "line": 292
                 }
               ]
             }

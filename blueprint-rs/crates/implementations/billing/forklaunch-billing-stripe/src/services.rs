@@ -112,6 +112,7 @@ impl<S: BillingStore> PlanService for StripeBillingService<S> {
                 &json!({}),
             )
             .await?;
+        validate_read_identity(&existing, &original.external_id, "plan")?;
         let existing_product = product(&existing)?;
         let product_id = existing_product
             .as_str()
@@ -213,6 +214,7 @@ impl<S: BillingStore> SubscriptionService for StripeBillingService<S> {
                 &json!({}),
             )
             .await?;
+        validate_read_identity(&existing, &original.external_id, "subscription")?;
         let items = existing["items"]["data"]
             .as_array()
             .ok_or_else(invalid_response)?

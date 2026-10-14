@@ -147,6 +147,11 @@ export class StripePlanService<
       planEntity.externalId
     );
 
+    await this.mappers.PlanMapper.validateProviderRead?.(
+      planEntity.externalId,
+      existingPlan
+    );
+
     const existingProduct = existingPlan.product;
     if (!existingProduct) {
       throw new Error('Plan product not found');
