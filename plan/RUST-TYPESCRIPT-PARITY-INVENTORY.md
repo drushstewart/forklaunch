@@ -6506,3 +6506,38 @@ checks, native JWT/Date/payload/subject regressions and strict all-feature/all-t
 IAM Clippy pass: /private/tmp/fl-iam-jwt-lifetime-{ts,native,rounding,clippy}.log.
 The immutable archive8f628 predates this optional lifetime slice; its service
 verification must not be presented as a lifetime-feature archive receipt.
+
+
+## Corrected installed-archive all-module receipt (2026-10-14)
+
+Committed checkpoint8f62825bd958c6e81a096618ddfcea6014c6b779 was packaged and
+installed offline/debug/locked from its extracted source archive. The archive's
+VCS metadata matches that revision:2,451 files,19.6MiB unpacked/4.1MiB compressed;
+crate SHA2568b6584706bd123381a7310b579297dce36e931b0b9ca55853f842454bb04d95d.
+The unchanged post-install portion of rust_packaged_install.sh then passed in an
+owned relocated generated application. Packaging and installation were separate
+steps to reuse the verified installed binary; no tests were skipped in that
+post-install suite.
+
+All four generated worker families and auth/coding/messaging/Twilio/ecommerce/
+billing/Stripe module sources compile portably. Native and TypeScript WebSocket
+consumers, AsyncAPI import/export, CLI/native recursive SDK generation and
+warning-denied empty-worker SDK builds pass. The archive's all-feature IAM suite
+passes72 tests with its two PostgreSQL tests explicitly ignored. AWS S3 feature
+and all requested module feature checks pass. Generated service HTTP/MCP checks
+cover initialization/discovery/health/Origin rejection, enabled/disabled/custom
+endpoints, shared/separate listeners, explicit/ephemeral ports, fallback ports,
+atomic startup rejection and graceful shutdown. All five signed capability
+callbacks pass forgery/freshness/replay/redelivery checks.
+
+Logs: /private/tmp/fl-oct14-complete-checkpoint-{package,install}.log and
+/private/tmp/fl-oct14-complete-archive-all-modules.log. The suite exited0 and
+supersedes the earlier a416 stale-cookie failure. This is local generated service
+and portable archive proof, not live AWS/provider deployment or public registry
+publication. Checkpoint8f628 predates optional relative JWT lifetime and later
+versioned-response/ecommerce-scope/managed-stream slices. CLI installation retains
+four existing CLI warnings; this is not a zero-warning CLI-build claim. Framework
+format check passed; two historical IAM formatting issues were separately fixed
+in5f8ccab0e after this immutable checkpoint. Finished owned extraction/install
+and detached verification workspaces are removed after process/cwd checks; the
+crate artifact and logs are retained.
