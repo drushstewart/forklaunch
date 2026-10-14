@@ -179,6 +179,22 @@ try{
   assert.equal(wire[1],wire[0],'malformed URI fails before TypeScript context creation');
  }
  console.log('PASS eight live malformed percent/UTF8 URI outcomes with exact pre-context error envelope');
+ const queryCases=[['limit=oops',400],['limit=1.5',400],['limit=Infinity',400],['limit=1&limit=2',400],['cursor=a&cursor=b',400],['limit=bad&cursor=a&cursor=b',400],['limit=',200],['limit=%20',200],['limit=0x10',200],['limit=1e2',200],['limit=-1',200],['cursor=',200],['unknown=ignored',200],['unknown=a&unknown=b',200],['limit=%C2%851',400],['limit=1%C2%85',400],['limit=%EF%BB%BF1',200],['limit=1%EF%BB%BF',200]];
+ for(const [query,status] of queryCases){
+  const wire=[];
+  for(const [name,url] of [['TypeScript',ts],['Rust',rust]]){
+   const before=await (await fetch(`${url}/query/calls`)).json();
+   const response=await fetch(`${url}/users?${query}`,{headers:{authorization:`Bearer ${token}`,'x-correlation-id':'query-fixture'},signal:AbortSignal.timeout(5000)});
+   const text=await response.text();
+   assert.equal(response.status,status,`${name} query ${query}: ${text}`);
+   wire.push({text,type:response.headers.get('content-type')});
+   const after=await (await fetch(`${url}/query/calls`)).json();
+   assert.equal(after-before,status===200?1:0,`${name} query rejected before handler`);
+  }
+  if(status===400)assert.deepEqual(wire[1],wire[0],`query error wire parity: ${query}`);
+  else assert.deepEqual(JSON.parse(wire[1].text),JSON.parse(wire[0].text));
+ }
+ console.log('PASS 36 live schema-bound query outcomes including repeated/empty/unknown values and zero rejected handler calls');
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);

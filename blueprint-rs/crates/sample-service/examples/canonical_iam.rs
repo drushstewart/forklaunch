@@ -1,4 +1,6 @@
 //! Live counterpart of cli/tests/fixtures/canonical-iam/service.ts.
+#[path = "support/canonical_query.rs"]
+mod canonical_query;
 use forklaunch_auth::{
     JwtClaims, issue_jwt_hs256, typescript::jwt::verify_jwt_resource, verify_jwt_hs256,
 };
@@ -31,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         User::new("user_1", "ada@example.com"),
         User::new("user_2", "grace@example.com"),
     ]));
-    let config = RouterConfig {
+    let mut config = RouterConfig {
         auth_error_format: AuthErrorFormat::TypeScriptText,
         handler_error_format: HandlerErrorFormat::TypeScriptText,
         parser_error_format: ParserErrorFormat::TypeScriptText,
@@ -174,7 +176,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     // Hook identities use operation names and remain stable through nesting.
     parser_router = parser_router.with_version_body_hooks(parser_hooks);
-    let assembled = iam_router(&service)
+    let query_calls = Arc::new(AtomicU64::new(0));
+    let iam = iam_router(&service);
+    let list = iam
+        .registry()
+        .routes()
+        .iter()
+        .find(|route| route.path == "/users")
+        .unwrap();
+    config
+        .request_validators
+        .insert(list, canonical_query::reject)?;
+    let count = Arc::clone(&query_calls);
+    let iam = iam.map_route("/users", move |route| {
+        let count = Arc::clone(&count);
+        route.layer(axum::middleware::from_fn(
+            move |request: axum::extract::Request, next: axum::middleware::Next| {
+                let count = Arc::clone(&count);
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    next.run(request).await
+                }
+            },
+        ))
+    })?;
+    let mut query_count = RouteContract::get("Query Calls", "Calls", "/query/calls");
+    query_count.options.openapi = false;
+    let assembled = iam
+        .get(query_count, move || {
+            let calls = Arc::clone(&query_calls);
+            async move { axum::Json(calls.load(Ordering::SeqCst)) }
+        })
         .with_config(config)
         .nest("/errors", errors)
         .nest("/parser", parser_router);

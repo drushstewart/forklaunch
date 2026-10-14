@@ -47,6 +47,9 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+mod request_validation;
+pub use request_validation::RequestValidators;
+
 /// Default maximum request body size accepted before a `400` is returned (2 MiB).
 pub const DEFAULT_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 
@@ -75,6 +78,8 @@ pub enum HandlerErrorFormat {
 /// Configuration for cross-cutting router behavior (docs, limits, CORS).
 #[derive(Clone)]
 pub struct RouterConfig {
+    /// Application validators bound to declared unversioned request schemas.
+    pub request_validators: RequestValidators,
     /// Native callbacks run around each version's body schema validation.
     pub version_body_hooks: forklaunch_http::VersionBodyHooksRegistry,
     /// Optional server-side browser sessions and CSRF policy.
@@ -124,6 +129,7 @@ impl Default for RouterConfig {
     fn default() -> Self {
         Self {
             version_body_hooks: forklaunch_http::VersionBodyHooksRegistry::default(),
+            request_validators: RequestValidators::default(),
             #[cfg(feature = "cookie-session")]
             cookie_sessions: None,
             openapi_enabled: true,
@@ -488,6 +494,9 @@ impl ForkLaunchRouter {
         self.config
             .version_body_hooks
             .extend(config.version_body_hooks);
+        self.config
+            .request_validators
+            .extend(config.request_validators);
 
         for mut mount in internal_mounts {
             mount.prefix = join_base_path(&prefix, &mount.prefix);
@@ -837,6 +846,7 @@ fn docs_handler(html: String) -> MethodRouter {
 
 /// Indexed contracts used by the validation middleware.
 struct ValidationState {
+    request_validators: RequestValidators,
     routes: HashMap<String, RouteContract>,
     versions: HashMap<String, forklaunch_http::VersionedRoutePlan>,
     local_validation: HashSet<String>,
@@ -851,6 +861,18 @@ struct ValidationState {
 }
 
 impl ValidationState {
+    fn contract(&self, method: HttpMethod, path: &str) -> Option<RouteContract> {
+        // Axum serves HEAD with GET handlers unless an explicit HEAD contract exists.
+        self.routes
+            .get(&route_key(method, path))
+            .or_else(|| {
+                (method == HttpMethod::Head)
+                    .then(|| self.routes.get(&route_key(HttpMethod::Get, path)))
+                    .flatten()
+            })
+            .cloned()
+    }
+
     fn build_request(
         &self,
         contract: &RouteContract,
@@ -874,6 +896,10 @@ impl ValidationState {
         telemetry: OpenTelemetryCollector,
         local_validation: HashSet<String>,
     ) -> Self {
+        config
+            .request_validators
+            .validate_routes(registry.routes())
+            .expect("invalid request validator registration");
         let hooks = &config.version_body_hooks;
         hooks
             .validate_routes(registry.routes())
@@ -896,6 +922,7 @@ impl ValidationState {
             })
             .collect();
         Self {
+            request_validators: config.request_validators.clone(),
             routes,
             versions,
             local_validation,
@@ -1004,14 +1031,7 @@ async fn validate_contract(
         return next.run(request).await;
     };
 
-    // Axum automatically serves HEAD with GET handlers; apply the GET contract
-    // unless an explicit HEAD contract was registered, including its auth policy.
-    let contract = state.routes.get(&route_key(method, &matched)).or_else(|| {
-        (method == HttpMethod::Head)
-            .then(|| state.routes.get(&route_key(HttpMethod::Get, &matched)))
-            .flatten()
-    });
-    let Some(contract) = contract.cloned() else {
+    let Some(contract) = state.contract(method, &matched) else {
         return next.run(request).await;
     };
 
@@ -1061,6 +1081,13 @@ async fn validate_contract(
                 return framework_response_to_axum(response);
             }
         }
+    }
+    if let Some(response) =
+        state
+            .request_validators
+            .reject(&contract, &framework_request, parts.uri.query())
+    {
+        return framework_response_to_axum(response);
     }
     parts.extensions.insert(state.handler_error_format);
     parts.extensions.insert(state.parser_error_format);

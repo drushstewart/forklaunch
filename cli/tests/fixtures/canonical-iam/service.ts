@@ -18,11 +18,13 @@ app.get('/users/:id', {
   const found=users.find(user=>user.id===req.params.id);
   if(found) res.status(200).json(found); else res.status(404).send();
 });
+let queryCalls=0;
 app.get('/users', {
   name:'List Users',summary:'List users',access:'authenticated',auth,
   query:{limit:optional(z.coerce.number().int()),cursor:optional(string)},
   responses:{200:{items:array(user),next_cursor:optional(union([string,null_]))}}
-}, (_req,res)=>res.status(200).json({items:users,next_cursor:null}));
+}, (_req,res)=>{queryCalls++;res.status(200).json({items:users,next_cursor:null});});
+app.get('/query/calls',{name:'Query Calls',summary:'Calls',options:{openapi:false},responses:{200:z.number()}},(_req,res)=>res.status(200).json(queryCalls));
 app.get('/errors/throw', {
  name:'Failure',summary:'Failure',options:{openapi:false},responses:{500:string}
 }, ()=>{throw new Error('secret fixture detail');});

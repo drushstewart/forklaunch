@@ -5070,3 +5070,30 @@ compliance operations pass. CI includes the new ignored database fixture. Eviden
 `/private/tmp/fl-iam-directory-identity-{pg,existing-pg,auth-pg,clippy,ts}.log`.
 Higher-level directory authorization and generic mapper/filter extensions keep
 gate603 open. Checklist remains **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Declared unversioned request validation boundary
+
+An opt-in RequestValidators registry binds application callbacks to declared
+unversioned request contracts and method/operation identities. Registration
+rejects duplicates, missing/ambiguous routes and stale request schemas; validators
+survive nesting and run after authentication, before local or Axum handlers, in
+Error validation mode. Default/native checks are preserved. Raw query access keeps
+repeated values available rather than silently using the flattened query map.
+Callbacks own safe diagnostics; this is not a generic Zod translator or automatic
+parsed-value transformation layer.
+
+The canonical fixture supplies its actual integer/string query rules and compares
+invalid, fractional, infinite, repeated, empty and unknown inputs against the real
+TypeScript service. Handler counters prove rejected requests invoke no handler.
+Explicit ECMAScript whitespace handling rejects leading/trailing U0085 while
+accepting FEFF. The checked comparison now passes **132 live HTTP outcomes**,
+including 36 query outcomes; four OpenAPI differences remain unchanged.
+
+All 53 Axum library tests and strict all-target Clippy pass. Registration checks
+and eight native local/Axum runtime scenarios cover nesting, Error/Warning/None
+mode and auth-before-callback ordering. Evidence:
+`/private/tmp/fl-query-validator-{axum-suite,clippy-final,canonical-final}.log`
+and `/private/tmp/fl-query-validator-whitespace-final.log`. Generic validator
+diagnostics/coercion/transformation and response validation remain open.
+Checklist remains **660/682 (96.8%), 22 open**.
