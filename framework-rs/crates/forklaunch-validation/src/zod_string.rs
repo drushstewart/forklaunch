@@ -27,6 +27,14 @@ pub enum ZodStringRule<'a> {
     },
 }
 
+/// One ordered string rule with an optional literal diagnostic override.
+/// Type errors are unaffected; empty messages are retained exactly.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ZodStringCheck<'a> {
+    pub rule: ZodStringRule<'a>,
+    pub message: Option<&'a str>,
+}
+
 /// Apply strict Zod v3 string checks/transforms in declaration order.
 /// `None` represents undefined; all non-string JSON values are rejected without
 /// coercion. Trim uses ECMAScript whitespace and returns a borrowed substring.
@@ -34,7 +42,7 @@ pub enum ZodStringRule<'a> {
 /// On failure no transformed value is returned, allowing atomic caller rollback.
 ///
 /// Only default Zod v3 diagnostics and these four operations are implemented.
-/// Custom messages, refinements, regexes, case conversion, coercive string
+/// Use [`zod_string_checks`] for literal messages. Refinements, regexes, case conversion, coercive string
 /// schemas, TypeBox/AJV length rules and lone UTF-16 surrogates are out of scope.
 /// # Errors
 /// Returns ordered public root-level parse errors; callers may prepend field paths.
@@ -42,14 +50,20 @@ pub fn zod_string<'a>(
     value: Option<&'a Value>,
     steps: &[ZodStringStep],
 ) -> Result<&'a str, Vec<ParseError>> {
-    evaluate(value, steps.iter().copied().map(ZodStringRule::Step))
+    evaluate(
+        value,
+        steps.iter().copied().map(|step| ZodStringCheck {
+            rule: ZodStringRule::Step(step),
+            message: None,
+        }),
+    )
 }
 
 /// Apply literal checks and existing string operations in declaration order.
 /// Includes positions use JavaScript's UTF-16 indexing and numeric clamping;
 /// default diagnostics retain the original supplied position. This preserves
 /// borrowed output and atomic failure semantics of [`zod_string`]. UTF-8 strings
-/// cannot represent lone UTF-16 surrogates; regexes and custom messages remain
+/// cannot represent lone UTF-16 surrogates; regexes remain
 /// outside this explicitly Zod v3 helper.
 /// # Errors
 /// Returns all ordered default Zod v3 diagnostics at the root path.
@@ -57,12 +71,31 @@ pub fn zod_string_rules<'a>(
     value: Option<&'a Value>,
     rules: &[ZodStringRule<'_>],
 ) -> Result<&'a str, Vec<ParseError>> {
-    evaluate(value, rules.iter().copied())
+    evaluate(
+        value,
+        rules.iter().copied().map(|rule| ZodStringCheck {
+            rule,
+            message: None,
+        }),
+    )
+}
+
+/// Apply ordered checks with exact literal messages, including empty strings.
+/// Successful transforms remain borrowed; failed checks return no partial
+/// transformed output. Strict type errors and arbitrary error maps are outside
+/// the per-constraint override mechanism.
+/// # Errors
+/// Returns ordered root-level default or explicitly supplied diagnostics.
+pub fn zod_string_checks<'a>(
+    value: Option<&'a Value>,
+    checks: &[ZodStringCheck<'_>],
+) -> Result<&'a str, Vec<ParseError>> {
+    evaluate(value, checks.iter().copied())
 }
 
 fn evaluate<'a, 'r>(
     value: Option<&'a Value>,
-    rules: impl IntoIterator<Item = ZodStringRule<'r>>,
+    checks: impl IntoIterator<Item = ZodStringCheck<'r>>,
 ) -> Result<&'a str, Vec<ParseError>> {
     let mut value = match value {
         Some(Value::String(value)) => value.as_str(),
@@ -90,14 +123,14 @@ fn evaluate<'a, 'r>(
     };
     let mut length = value.encode_utf16().count() as u64;
     let mut errors = Vec::new();
-    for rule in rules {
-        let step = match rule {
+    for check in checks {
+        let step = match check.rule {
             ZodStringRule::Step(step) => step,
             literal => {
                 if let Some(message) = literal_error(value, literal) {
                     errors.push(ParseError {
                         path: Vec::new(),
-                        message,
+                        message: check.message.map_or(message, str::to_owned),
                     });
                 }
                 continue;
@@ -117,7 +150,10 @@ fn evaluate<'a, 'r>(
         if let Some((comparison, limit)) = failed {
             errors.push(ParseError {
                 path: Vec::new(),
-                message: format!("String must contain {comparison} {limit} character(s)"),
+                message: check.message.map_or_else(
+                    || format!("String must contain {comparison} {limit} character(s)"),
+                    str::to_owned,
+                ),
             });
         }
     }
@@ -174,6 +210,30 @@ fn includes(value: &str, needle: &str, position: Option<f64>) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn literal_messages_preserve_type_errors_and_atomic_transforms() {
+        let checks = [
+            ZodStringCheck {
+                rule: ZodStringRule::Step(ZodStringStep::Trim),
+                message: Some("unused"),
+            },
+            ZodStringCheck {
+                rule: ZodStringRule::StartsWith("z"),
+                message: Some(""),
+            },
+        ];
+        assert_eq!(
+            zod_string_checks(None, &checks).unwrap_err()[0].message,
+            "Required"
+        );
+        let value = json!(" a ");
+        assert_eq!(
+            zod_string_checks(Some(&value), &checks).unwrap_err()[0].message,
+            ""
+        );
+        assert_eq!(value, json!(" a "));
+    }
+
     #[test]
     fn literal_positions_and_order_preserve_atomic_output() {
         let value = json!("💡a");

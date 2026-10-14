@@ -8226,3 +8226,19 @@ not repeated for this branch; no backend/schema/migration changed. GeneratedTCP
 proof above covers the earlier20-call profile; expanded29-call generated proof
 is pending the next fresh CLI checkpoint. OTP/custom parameters/other plugins
 remain open, and the immutable5a8 archive predates this change.
+
+
+## Per-constraint Zod custom diagnostics (2026-10-14)
+
+Borrowed ZodNumberCheck/ZodStringCheck and zod_number_checks/zod_string_checks
+add optional per-check messages without changing existing enums/functions.
+Only diagnostics appended by that constraint are overridden, including Safe's
+underlying bounds. Empty messages and quotes/newlines/Unicode/NUL remain exact;
+coercion/strict type failures retain defaults. Ordered transformations and atomic
+failure behavior are shared with existing evaluators. Arbitrary errorMap callbacks
+and schema-level type messages are not implied.
+2352 actual-source/native comparisons, validation23 tests, number47090, string31510,
+literal rules7140 and strict all-feature/all-target Clippy pass. No dependency or
+lock changes. Logs /private/tmp/fl-zod-check-messages-{parity,tests,clippy,number,
+string,rules}.log; hashes /private/tmp/fl-zod-check-messages-source-sha256.json.
+CI runs the oracle. Full schema/emitter and arbitrary callback parity remain open.

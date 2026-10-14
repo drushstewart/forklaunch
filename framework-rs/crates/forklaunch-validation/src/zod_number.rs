@@ -40,6 +40,15 @@ pub enum ZodNumberStep {
     LtFloat(ZodFloatBound),
 }
 
+/// One ordered runtime constraint with an optional literal diagnostic override.
+/// `Some("")` preserves an empty message. Overrides never replace preprocessing
+/// or type errors, and do not execute arbitrary error-map callbacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZodNumberCheck<'a> {
+    pub step: ZodNumberStep,
+    pub message: Option<&'a str>,
+}
+
 /// Apply ordered constraints after the existing JavaScript number coercion.
 /// This matches `number.pipe(number.innerType().checks...)` using the actual
 /// `ForkLaunch` Zod v3 factory. Coercion failures stop checks; check failures
@@ -47,17 +56,43 @@ pub enum ZodNumberStep {
 /// negative zero and infinities unless a constraint excludes them.
 ///
 /// This is a bounded helper, not a general Zod or JSON Schema interpreter.
-/// Custom messages,
+/// Use [`zod_number_checks`] for literal per-check messages. General error maps,
 /// refinements and arbitrary JavaScript objects are not implemented. Successful
 /// nonfinite results cannot be represented as a JSON number; callers must not
 /// silently serialize them as null. Existing native validation stays unchanged.
 /// # Errors
 /// Returns default Zod v3 public diagnostics at the root path.
 pub fn zod_number(input: Option<&Value>, steps: &[ZodNumberStep]) -> Result<f64, Vec<ParseError>> {
+    evaluate(
+        input,
+        steps.iter().copied().map(|step| ZodNumberCheck {
+            step,
+            message: None,
+        }),
+    )
+}
+
+/// Apply ordered checks with literal per-constraint diagnostic messages.
+/// Success retains the original coerced number; failure collects all check
+/// messages in declaration order. Preprocessing errors are never overridden.
+/// # Errors
+/// Returns ordered root-level parse errors, including exact empty messages.
+pub fn zod_number_checks(
+    input: Option<&Value>,
+    checks: &[ZodNumberCheck<'_>],
+) -> Result<f64, Vec<ParseError>> {
+    evaluate(input, checks.iter().copied())
+}
+
+fn evaluate<'a>(
+    input: Option<&Value>,
+    checks: impl IntoIterator<Item = ZodNumberCheck<'a>>,
+) -> Result<f64, Vec<ParseError>> {
     let value = super::number(input).map_err(|error| vec![error])?;
     let mut errors = Vec::new();
-    for step in steps {
-        match *step {
+    for check in checks {
+        let start = errors.len();
+        match check.step {
             ZodNumberStep::MultipleOf(limit) if !limit.accepts(value) => {
                 errors.push(diagnostic(limit.diagnostic()));
             }
@@ -80,6 +115,11 @@ pub fn zod_number(input: Option<&Value>, steps: &[ZodNumberStep]) -> Result<f64,
             ZodNumberStep::Gt(limit) => bound(value, limit.0, true, false, &mut errors),
             ZodNumberStep::Lt(limit) => bound(value, limit.0, false, false, &mut errors),
             _ => {}
+        }
+        if let Some(message) = check.message {
+            for error in &mut errors[start..] {
+                message.clone_into(&mut error.message);
+            }
         }
     }
     if errors.is_empty() {
@@ -125,6 +165,27 @@ fn bound(value: f64, limit: i64, minimum: bool, inclusive: bool, errors: &mut Ve
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn literal_messages_do_not_override_preprocessing_or_adjacent_checks() {
+        let checks = [
+            ZodNumberCheck {
+                step: ZodNumberStep::Int,
+                message: Some(""),
+            },
+            ZodNumberCheck {
+                step: ZodNumberStep::Finite,
+                message: Some("finite\n💡\0"),
+            },
+        ];
+        let errors = zod_number_checks(Some(&json!("Infinity")), &checks).unwrap_err();
+        assert_eq!(errors[0].message, "");
+        assert_eq!(errors[1].message, "finite\n💡\0");
+        assert_eq!(
+            zod_number_checks(Some(&json!("NaN")), &checks),
+            zod_number(Some(&json!("NaN")), &[])
+        );
+    }
+
     #[test]
     fn constraints_preserve_order_and_safe_does_not_mean_integer() {
         assert_eq!(
