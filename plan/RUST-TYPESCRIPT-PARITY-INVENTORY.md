@@ -7066,3 +7066,13 @@ evidence denials, rollback, receipts and unchanged references. Existing CI fixtu
 and ignored tests now exercise both profiles. All owned PG cases cleaned up their
 exact roles/rows. This is scoped local failure repair, not provider cancellation,
 refund/capture authority, broader charge-history reconciliation or live Stripe proof.
+
+
+Owned stale compiled-artifact cleanup removed102 hashed debug/deps groups (1.14GiB)
+whose dep-info referenced only known deleted temporary checkpoints/archive runs.
+No Cargo/rustc process was active; source roots remained absent, file metadata was
+unchanged and no candidate was open according to lsof. Current source artifacts,
+registry caches, fingerprints, example binaries and unrelated workspaces were
+preserved. Exact dry-run/removal metadata:
+/private/tmp/fl-oct14-owned-stale-artifacts.json. This follows the earlier105MiB
+workspace cleanup and does not use blanket cargo clean.
