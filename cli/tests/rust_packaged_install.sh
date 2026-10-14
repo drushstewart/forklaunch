@@ -115,11 +115,19 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
         for source in ['forklaunch-http/src/simple_query.rs', 'forklaunch-http/src/versioning_prepared.rs', 'forklaunch-http/src/versioned_response.rs', 'forklaunch-validation/src/zod_string.rs', 'forklaunch-validation/src/zod_number.rs', 'forklaunch-validation/src/zod_array.rs']:
             assert root.joinpath('crates', source).is_file(), f'Packaged query/version/validation runtime source missing: {source}'
+        for source in ['src/zod_binary.rs', 'src/zod_string_format.rs', 'examples/zod_binary_parity.rs', 'examples/zod_string_formats_parity.rs']:
+            assert root.joinpath('crates/forklaunch-validation', source).is_file(), f'Packaged scalar validation source missing: {source}'
     else:
         for source in ['src/model_gateway.rs', 'src/model_gateway/stream.rs', 'src/model_gateway/dto.rs', 'examples/model_gateway.rs', 'src/preview_model_gateway.rs', 'examples/preview_model_gateway.rs']:
             assert root.joinpath('crates/forklaunch-blueprint-core', source).is_file(), f'Packaged model gateway source missing: {source}'
         for source in ['Cargo.toml', 'src/credentials.rs', 'src/cookies.rs', 'src/jwt.rs', 'src/keyring.rs', 'src/sessions.rs', 'src/accounts.rs', 'src/accounts/password.rs', 'src/origins.rs', 'src/origins/policy.rs', 'src/http.rs', 'src/http/application.rs', 'src/http/application/tests.rs', 'src/http/request.rs', 'src/http/tests.rs', 'examples/http_parity.rs', 'src/store/postgres.rs', 'migrations/0001_auth.sql']:
             assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged Better Auth foundation missing: {source}'
+        for source in ['src/two_factor/mod.rs', 'src/two_factor/otp.rs', 'src/two_factor/tests/otp.rs', 'examples/http_parity/otp_delivery.rs']:
+            assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged delivered OTP source missing: {source}'
+        for source in ['migrations/9_customer_bindings.sql', 'migrations/10_subscription_creation.sql', 'src/services/postgres/provider_bindings/customer_registration.rs', 'src/services/postgres/provider_bindings/subscription_creation.rs', 'tests/subscription_creation.rs']:
+            assert root.joinpath('crates/implementations/billing/forklaunch-billing-base', source).is_file(), f'Packaged billing dependency source missing: {source}'
+        for source in ['src/customer_registration.rs', 'src/client/customer_registration.rs', 'tests/customer_registration.rs']:
+            assert root.joinpath('crates/implementations/billing/forklaunch-billing-stripe', source).is_file(), f'Packaged verified Customer source missing: {source}'
         assert root.joinpath('crates/implementations/worker/forklaunch-worker-redis/src/bullmq.rs').is_file(), 'Packaged BullMQ adapter missing'
         assert root.joinpath('crates/vendor/bullmq-official/src/worker.rs').is_file(), 'Packaged BullMQ outcome hook missing'
         assert root.joinpath('crates/vendor/bullmq-official/LICENSE').is_file(), 'Packaged BullMQ license missing'
