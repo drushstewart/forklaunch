@@ -203,14 +203,16 @@ function generateOperationObject<SV extends AnySchemaValidator>(
       // Check the schema kind rather than its OpenAPI projection: null and
       // nullish also project to null but still admit an actual JSON body.
       content:
-        typedSchemaValidator.isInstanceOf(
-          discriminatedResponseBodiesResult[key].schema,
-          schemaValidator.undefined
-        ) ||
-        typedSchemaValidator.isInstanceOf(
-          discriminatedResponseBodiesResult[key].schema,
-          schemaValidator.void
-        )
+        (schemaValidator.undefined !== undefined &&
+          typedSchemaValidator.isInstanceOf(
+            discriminatedResponseBodiesResult[key].schema,
+            schemaValidator.undefined
+          )) ||
+        (schemaValidator.void !== undefined &&
+          typedSchemaValidator.isInstanceOf(
+            discriminatedResponseBodiesResult[key].schema,
+            schemaValidator.void
+          ))
           ? undefined
           : contentResolver(
               schemaValidator,

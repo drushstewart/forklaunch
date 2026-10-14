@@ -128,6 +128,10 @@ export interface SchemaValidator<
    */
   nullish: unknown;
 
+  /** Optional schema markers for validators that distinguish an absent body. */
+  undefined?: unknown;
+  void?: unknown;
+
   /**
    * Validator for any type.
    */
