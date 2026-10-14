@@ -7114,8 +7114,8 @@ assertion. Production logging is unchanged, and the failed run is not claimed gr
 The full parallel final run passes. Existing CI oracle inherits real TSC,validator
 and Better Auth fixture dependencies.
 
-A fresh copy of that validated binary is now running both ignored PostgreSQL cases
-independently, pending final result. Hash
+A fresh copy of that validated binary passed both ignored PostgreSQL cases
+independently in315.94seconds. Hash
 5238e25eea0deab77edebf6fe46cbe9090a2b9fe96f2920df691e71744ad99f0;
 /private/tmp/fl-jwks-hooks-pg-binary.json records exact provenance. Source-ready
 uncommitted opt-in version-preauth framework dependencies were present at compile;
@@ -7198,3 +7198,13 @@ JWKS, signature verification, sign failure with UnavailableStore proving no fall
 empty default table and malformed/private/oversized field rejection:
 /private/tmp/fl-jwks-public-only-{ts,native,clippy}.log. No broad custom-adapter or
 Better Auth gate is closed by this bounded additive source receipt.
+
+
+The current custom-hook default-backend PG recheck passes encryption/RLS/rotation/
+audit atomicity,32k indexed lookups and live HTTP/MCP sessions:
+/private/tmp/fl-jwks-hooks-pg-run.log. Restricted fixture roles and matching records,
+audits, unique and lookup claims are all zero after cleanup:
+/private/tmp/fl-jwks-hooks-pg-cleanup.log. The copied binary was hash-verified again
+and removed; its metadata and source-ready preauth dependency patch remain for
+precise provenance. The subsequent additive public-only slice has separate focused
+proof and is not claimed inside that earlier binary.
