@@ -2,7 +2,7 @@
 use super::{
     BodyParserHooks, charset, invalid_body, parse_json_body, validate_parser_options, wire,
 };
-use crate::{Body, ContractValidationError, FrameworkRequest};
+use crate::{ContractValidationError, FrameworkRequest};
 use forklaunch_contract::{BodyKind, BodyParserOptions, RequestContract, RouteContract};
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
@@ -18,6 +18,13 @@ pub struct ParsedJsonBody {
 }
 
 impl ParsedJsonBody {
+    pub(super) fn from_wire(value: Option<Arc<Value>>, raw_body: Option<Arc<Vec<u8>>>) -> Self {
+        Self {
+            value,
+            raw_body,
+            transformed: false,
+        }
+    }
     /// Commit a trusted declared-body schema result while preserving raw bytes.
     /// Successful root removal is distinct from an unvalidated absent body.
     #[must_use]
@@ -155,25 +162,13 @@ impl JsonRequestParsers {
         if !matches_registration(route, entry) {
             return Err(invalid_body("stale JSON parser registration"));
         }
-        let framed = crate::header_value(&request.headers, "transfer-encoding").is_some()
-            || crate::header_value(&request.headers, "content-length")
-                .is_some_and(|value| value.parse::<u64>().is_ok());
         let expected = entry
             .request
             .body
             .as_ref()
             .and_then(|body| body.content_type.as_deref())
             .unwrap_or("application/json");
-        let media_matches =
-            crate::header_value(&request.headers, "content-type").is_some_and(|value| {
-                value
-                    .split(';')
-                    .next()
-                    .unwrap_or_default()
-                    .trim()
-                    .eq_ignore_ascii_case(expected)
-            });
-        if !framed || !media_matches {
+        if !wire::has_body_and_media(request, expected) {
             return Ok(Some(ParsedJsonBody {
                 value: None,
                 raw_body: None,
@@ -188,11 +183,7 @@ impl JsonRequestParsers {
             return Err(charset::unsupported());
         }
         charset::decode(&[], &charset)?;
-        let bytes = match &request.body {
-            Body::Empty => &[][..],
-            Body::Text(value) => value.as_bytes(),
-            Body::Binary(value) => value,
-        };
+        let bytes = wire::request_bytes(request);
         let decoded = wire::decode(
             bytes,
             crate::header_value(&request.headers, "content-encoding"),
@@ -253,6 +244,7 @@ fn key(route: &RouteContract) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Body;
     use crate::{HttpMethod, RequestContext};
     use forklaunch_contract::BodyContract;
     fn route() -> RouteContract {

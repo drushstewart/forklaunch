@@ -7657,8 +7657,8 @@ retained archive cli/target/parity-artifacts/forklaunch-95f1b203b-4067ee2d.crate
 has SHA2564067ee2dcc155ba9476a4790f177748ea8e9353691b5ef58a2799f256f4e2848.
 After runtime, the hash and every extracted file were compared with the archive
 and pass. Logs: /private/tmp/fl-oct14-latest-{package,install,runtime}.log;
-metadata: /private/tmp/fl-oct14-latest-checkpoint.json. Temporary roots remain
-only while the billing fixture uses this immutable installed CLI. Broad release,
+metadata: /private/tmp/fl-oct14-latest-checkpoint.json. After the billing fixture completed, both owned temporary roots were removed
+with no process/openfile references; about211MiB was reclaimed. Broad release,
 publication, cloud and conformance gates remain open; checklist660/682 (96.8%).
 
 
@@ -7681,3 +7681,24 @@ link/portal public provider IDs therefore still differ from configured TS UUIDs.
 No UUID-required native route failure appeared, but mock success proves neither
 provider ownership nor safe mutation aliases. Trusted ownership-bound reference
 resolution and remaining mutation/consumed-field semantics keep gate855 open.
+
+
+## First-parser versioned text wire semantics (2026-10-14)
+
+An additive enable_typescript_text_wire profile parses framed, exact-media text
+once before ordered version selection, preserving absence versus framed empty
+text and unmatched parsed values in Error/Warning/None modes. It reuses charset,
+inflation, byte limits and trusted verifiers, keeps original compressed request
+bytes separate from decompressed raw bytes, and shares cached pre-authentication
+outcomes. Registration rejects stale/duplicate/conflicting parser profiles and
+JSON revivers for text. Existing JSON wire behavior remains covered.
+
+The real TypeScript oracle observes264 inputs;528 native/local comparisons pass
+with456 exact results and72 explicit existing schema-diagnostic differences. All
+status, verifier and handler counts and unmatched projections agree.48 supplied-
+text MCP calls and48 protected text/auth cases pass, alongsideHTTP72, Axum141
+and strict all-target/all-feature Clippy. JSON regression240 comparisons/24 MCP
+calls and canonical IAM366 outcomes/zero normalized OpenAPI differences pass.
+Logs: /private/tmp/fl-version-text-wire-{allfeatures,clippy,parity,json,canonical}.log.
+CI runs the oracle after canonical dependencies. Unversioned text transforms,
+optional MCP omission and generic validation diagnostics remain open.

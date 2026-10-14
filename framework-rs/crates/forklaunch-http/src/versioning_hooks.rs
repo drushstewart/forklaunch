@@ -100,6 +100,7 @@ pub struct VersionBodyHooksRegistry {
     fields: BTreeMap<String, Vec<FieldHooks>>,
     simple_queries: BTreeMap<String, RouteContract>,
     json_wire: BTreeMap<String, RouteContract>,
+    text_wire: BTreeMap<String, RouteContract>,
     pre_authentication: BTreeMap<String, RouteContract>,
 }
 impl VersionBodyHooksRegistry {
@@ -122,10 +123,29 @@ impl VersionBodyHooksRegistry {
     pub fn enable_typescript_json_wire(&mut self, route: &RouteContract) -> Result<(), String> {
         VersionedRoutePlan::compile(route)?.with_typescript_json_wire()?;
         let key = route_key(route);
-        if self.json_wire.contains_key(&key) {
+        if self.json_wire.contains_key(&key) || self.text_wire.contains_key(&key) {
             return Err("Duplicate versioned JSON wire profile".into());
         }
         self.json_wire.insert(key, route.clone());
+        Ok(())
+    }
+
+    /// Parse framed, exact-media text before version schema selection. Skips
+    /// produce absence; framed empty input produces an empty string. Original
+    /// bytes remain unchanged and `VersionParsedBody` retains decompressed bytes
+    /// and the decoded string even when None/Warning modes match no version.
+    /// Reuses configured charset, inflation, limits and verifier callbacks once.
+    /// Combine with pre-authentication selection for TypeScript ordering.
+    /// # Errors
+    /// Rejects non-text/unversioned routes, JSON revivers, duplicate/conflicting
+    /// profiles and stale request/version/parser metadata at compilation.
+    pub fn enable_typescript_text_wire(&mut self, route: &RouteContract) -> Result<(), String> {
+        VersionedRoutePlan::compile(route)?.with_typescript_text_wire()?;
+        let key = route_key(route);
+        if self.text_wire.contains_key(&key) || self.json_wire.contains_key(&key) {
+            return Err("Duplicate or conflicting versioned text wire profile".into());
+        }
+        self.text_wire.insert(key, route.clone());
         Ok(())
     }
 
@@ -257,6 +277,7 @@ impl VersionBodyHooksRegistry {
             .chain(self.fields.keys())
             .chain(self.simple_queries.keys())
             .chain(self.json_wire.keys())
+            .chain(self.text_wire.keys())
             .chain(self.pre_authentication.keys())
         {
             if counts.get(key) != Some(&1) {
@@ -271,7 +292,21 @@ impl VersionBodyHooksRegistry {
     /// # Panics
     /// Panics if both registries define hooks for the same method and operation.
     pub fn extend(&mut self, other: Self) {
+        for (key, route) in other.text_wire {
+            assert!(
+                !self.json_wire.contains_key(&key),
+                "conflicting wire profile"
+            );
+            assert!(
+                self.text_wire.insert(key, route).is_none(),
+                "duplicate text wire operation"
+            );
+        }
         for (key, route) in other.json_wire {
+            assert!(
+                !self.text_wire.contains_key(&key),
+                "conflicting wire profile"
+            );
             assert!(
                 self.json_wire.insert(key, route).is_none(),
                 "duplicate JSON wire operation"
@@ -353,6 +388,15 @@ impl VersionBodyHooksRegistry {
                 return Err("Stale versioned JSON wire profile".into());
             }
             plan = plan.with_typescript_json_wire()?;
+        }
+        if let Some(snapshot) = self.text_wire.get(&route_key(route)) {
+            if snapshot.versions != route.versions
+                || snapshot.request != route.request
+                || snapshot.options.body_parser != route.options.body_parser
+            {
+                return Err("Stale versioned text wire profile".into());
+            }
+            plan = plan.with_typescript_text_wire()?;
         }
         Ok(plan)
     }

@@ -40,3 +40,26 @@ pub(super) fn decode<'a>(
     }
     Ok(Cow::Owned(output))
 }
+
+/// Framing and exact media selection precede decoding and verifier callbacks.
+pub(super) fn has_body_and_media(request: &crate::FrameworkRequest, expected: &str) -> bool {
+    let framed = crate::header_value(&request.headers, "transfer-encoding").is_some()
+        || crate::header_value(&request.headers, "content-length")
+            .is_some_and(|value| value.parse::<u64>().is_ok());
+    framed
+        && crate::header_value(&request.headers, "content-type").is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .eq_ignore_ascii_case(expected)
+        })
+}
+pub(super) fn request_bytes(request: &crate::FrameworkRequest) -> &[u8] {
+    match &request.body {
+        crate::Body::Empty => &[],
+        crate::Body::Text(value) => value.as_bytes(),
+        crate::Body::Binary(value) => value,
+    }
+}

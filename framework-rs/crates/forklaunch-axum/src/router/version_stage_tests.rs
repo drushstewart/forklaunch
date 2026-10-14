@@ -315,3 +315,162 @@ fn pre_auth_registry_rejects_missing_stale_duplicate_and_unversioned_contracts()
     changed.versions.clear();
     assert!(hooks.compile(&changed).is_err());
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn text_wire_pre_auth_preserves_denial_and_once_only_callbacks_in_all_modes() {
+    for local in [false, true] {
+        for mode in [
+            ValidationMode::None,
+            ValidationMode::Warning,
+            ValidationMode::Error,
+        ] {
+            for (media, body, bad_encoding) in [
+                ("text/plain", "ok", false),
+                ("text/plain", "bad", false),
+                ("application/json", "ok", false),
+                ("text/plain", "ok", true),
+            ] {
+                for credentials in [false, true] {
+                    let mut declared = BodyContract::json("Text");
+                    declared.kind = BodyKind::Text;
+                    declared.content_type = Some("text/plain".into());
+                    declared.schema = declared
+                        .schema
+                        .with_json_schema(r#"{"type":"string","const":"ok"}"#);
+                    let mut route = RouteContract::post("TextStage", "TextStage", "/text")
+                        .with_access(AccessLevel::Protected)
+                        .with_version(VersionedContract {
+                            version: "one".into(),
+                            request: RequestContract::default().with_body(declared),
+                            responses: vec![ResponseContract::new(200, None)],
+                        });
+                    route.options.request_validation = mode;
+                    route.options.response_validation = ValidationMode::None;
+                    let parser_calls = Arc::new(AtomicUsize::new(0));
+                    let auth_calls = Arc::new(AtomicUsize::new(0));
+                    let handler_calls = Arc::new(AtomicUsize::new(0));
+                    let mut hooks = VersionBodyHooksRegistry::default();
+                    hooks.enable_typescript_text_wire(&route).unwrap();
+                    hooks
+                        .enable_selection_before_authentication(&route)
+                        .unwrap();
+                    let counted = parser_calls.clone();
+                    hooks
+                        .insert_parser(
+                            &route,
+                            BodyParserHooks::default().with_verify(move |_, _, _| {
+                                counted.fetch_add(1, Ordering::SeqCst);
+                                Ok(())
+                            }),
+                        )
+                        .unwrap();
+                    let counted = handler_calls.clone();
+                    let child = if local {
+                        let mut handlers = LocalRouter::new();
+                        handlers.register_with_body_hooks(
+                            route.clone(),
+                            &hooks,
+                            move |request: FrameworkRequest| {
+                                counted.fetch_add(1, Ordering::SeqCst);
+                                assert!(request.session.is_some());
+                                assert_eq!(
+                                    request
+                                        .version_parsed_body
+                                        .as_ref()
+                                        .and_then(forklaunch_http::VersionParsedBody::value),
+                                    (media == "text/plain").then(|| json!(body)).as_ref()
+                                );
+                                Ok(FrameworkResponse::text(200, "ok"))
+                            },
+                        );
+                        ForkLaunchRouter::from_local_router(
+                            ServiceInfo::new("text", "1"),
+                            [route],
+                            handlers,
+                        )
+                    } else {
+                        ForkLaunchRouter::anonymous().post(
+                            route,
+                            move |parsed: Option<
+                                axum::Extension<forklaunch_http::VersionParsedBody>,
+                            >| {
+                                counted.fetch_add(1, Ordering::SeqCst);
+                                assert_eq!(
+                                    parsed.as_ref().and_then(|parsed| parsed.0.value()),
+                                    (media == "text/plain").then(|| json!(body)).as_ref()
+                                );
+                                async { "ok" }
+                            },
+                        )
+                    };
+                    let counted = auth_calls.clone();
+                    let config = RouterConfig {
+                        version_body_hooks: hooks,
+                        ..RouterConfig::default()
+                    }
+                    .with_authenticator(move |request, _| {
+                        counted.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(
+                            request
+                                .version_parsed_body
+                                .as_ref()
+                                .and_then(forklaunch_http::VersionParsedBody::value),
+                            (media == "text/plain").then(|| json!(body)).as_ref()
+                        );
+                        async move {
+                            if credentials {
+                                Ok(AuthenticatedSession::new(
+                                    forklaunch_auth::Principal::new("actor"),
+                                    json!({"sub":"actor"}),
+                                ))
+                            } else {
+                                Err(AuthError::MissingCredentials)
+                            }
+                        }
+                    });
+                    let app = child.with_config(config).into_router();
+                    let mut request = Request::builder()
+                        .method("POST")
+                        .uri("/text")
+                        .header("content-type", media)
+                        .header("content-length", body.len());
+                    if credentials {
+                        request = request.header("authorization", "Bearer raw");
+                    }
+                    if bad_encoding {
+                        request = request.header("content-encoding", "bogus");
+                    }
+                    let response = app
+                        .oneshot(request.body(Body::from(body)).unwrap())
+                        .await
+                        .unwrap();
+                    let rejected = bad_encoding
+                        || (mode == ValidationMode::Error
+                            && (media != "text/plain" || body != "ok"));
+                    assert_eq!(
+                        response.status(),
+                        if bad_encoding {
+                            415
+                        } else if rejected {
+                            400
+                        } else if credentials {
+                            200
+                        } else {
+                            401
+                        }
+                    );
+                    assert_eq!(
+                        parser_calls.load(Ordering::SeqCst),
+                        usize::from(media == "text/plain" && !bad_encoding)
+                    );
+                    assert_eq!(auth_calls.load(Ordering::SeqCst), usize::from(!rejected));
+                    assert_eq!(
+                        handler_calls.load(Ordering::SeqCst),
+                        usize::from(!rejected && credentials)
+                    );
+                }
+            }
+        }
+    }
+}

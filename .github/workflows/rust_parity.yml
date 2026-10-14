@@ -60,6 +60,7 @@ on:
       - 'cli/tests/rust_version_query_parity.mjs'
       - 'cli/tests/rust_version_default_errors_parity.mjs'
       - 'cli/tests/rust_version_json_wire_parity.mjs'
+      - 'cli/tests/rust_version_text_wire_parity.mjs'
       - 'cli/tests/ts_version_request_diagnostics.mjs'
       - 'cli/tests/rust_configured_mappers_types.mjs'
       - 'cli/tests/fixtures/configured-mappers-types/**'
@@ -351,6 +352,7 @@ on:
       - 'cli/tests/rust_version_query_parity.mjs'
       - 'cli/tests/rust_version_default_errors_parity.mjs'
       - 'cli/tests/rust_version_json_wire_parity.mjs'
+      - 'cli/tests/rust_version_text_wire_parity.mjs'
       - 'cli/tests/ts_version_request_diagnostics.mjs'
       - 'cli/tests/rust_configured_mappers_types.mjs'
       - 'cli/tests/fixtures/configured-mappers-types/**'
@@ -741,6 +743,9 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_version_json_wire_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_version_text_wire_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_mcp_body_admission_parity.mjs

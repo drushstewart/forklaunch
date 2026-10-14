@@ -30,12 +30,15 @@ pub use multipart::MultipartLimits;
 #[path = "versioning_json_request.rs"]
 mod json_request;
 pub use json_request::{JsonRequestParsers, ParsedJsonBody};
+#[path = "versioning_wire_profile.rs"]
+mod wire_profile;
+use wire_profile::VersionWireParser;
 
 #[path = "versioning_prepared.rs"]
 mod prepared;
 pub use prepared::PreparedVersionSelection;
 
-/// First JSON parser/reviver output, independent of version schema matching.
+/// First JSON/text parser output, independent of version schema matching.
 /// Original wire bytes remain on the request; this projection is read-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionParsedBody(ParsedJsonBody);
@@ -98,7 +101,7 @@ pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
     identity: Arc<()>,
     typescript_simple_query: bool,
-    typescript_json_parser: Option<JsonRequestParsers>,
+    typescript_wire_parser: Option<VersionWireParser>,
     response_plan: crate::versioned_response::VersionResponsePlan,
     parsers: forklaunch_contract::BodyParserOptions,
     parser_hooks: BodyParserHooks,
@@ -177,7 +180,7 @@ impl VersionedRoutePlan {
             variants,
             identity: Arc::new(()),
             typescript_simple_query: false,
-            typescript_json_parser: None,
+            typescript_wire_parser: None,
             parsers,
             parser_hooks: BodyParserHooks::default(),
         })
@@ -209,8 +212,10 @@ impl VersionedRoutePlan {
         }
         self.parser_hooks = hooks;
         self.identity = Arc::new(());
-        if self.typescript_json_parser.is_some() {
-            return self.with_typescript_json_wire();
+        match &self.typescript_wire_parser {
+            Some(VersionWireParser::Json(_)) => return self.with_typescript_json_wire(),
+            Some(VersionWireParser::Text { .. }) => return self.with_typescript_text_wire(),
+            None => {}
         }
         Ok(self)
     }
@@ -285,7 +290,20 @@ impl VersionedRoutePlan {
             .ok_or("JSON wire profile requires versions")?;
         let mut parser = JsonRequestParsers::default();
         parser.insert(&first.route, self.parser_hooks.clone())?;
-        self.typescript_json_parser = Some(parser);
+        self.typescript_wire_parser = Some(VersionWireParser::Json(parser));
+        self.identity = Arc::new(());
+        Ok(self)
+    }
+
+    fn with_typescript_text_wire(mut self) -> Result<Self, String> {
+        let first = self
+            .variants
+            .first()
+            .ok_or("Text wire profile requires versions")?;
+        self.typescript_wire_parser = Some(VersionWireParser::text(
+            &first.route,
+            self.parser_hooks.clone(),
+        )?);
         self.identity = Arc::new(());
         Ok(self)
     }
@@ -307,7 +325,7 @@ impl VersionedRoutePlan {
         limits: MultipartLimits,
     ) -> SelectionOutcome {
         let mut parsed = None;
-        let body = if let Some(parser) = &self.typescript_json_parser {
+        let body = if let Some(parser) = &self.typescript_wire_parser {
             parser.parse(&self.variants[0].route, request).map(|value| {
                 parsed = value.map(VersionParsedBody);
                 parsed
@@ -342,7 +360,7 @@ impl VersionedRoutePlan {
             if variant.matches_body(
                 request,
                 candidate.as_deref(),
-                self.typescript_json_parser.is_some(),
+                self.typescript_wire_parser.is_some(),
             ) {
                 let Ok(candidate) = variant.hooks.transform(candidate) else {
                     continue;
@@ -954,3 +972,7 @@ mod simple_query_tests;
 #[cfg(test)]
 #[path = "versioning_json_wire_tests.rs"]
 mod json_wire_tests;
+
+#[cfg(test)]
+#[path = "versioning_text_wire_tests.rs"]
+mod text_wire_tests;
