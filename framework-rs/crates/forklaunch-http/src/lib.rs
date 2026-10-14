@@ -13,9 +13,9 @@ pub use default_errors::DefaultErrorResponses;
 pub mod sse;
 pub mod versioning;
 pub use versioning::{
-    BodyParserHooks, JsonRequestParsers, MultipartLimits, ParsedJsonBody, SelectedVersion,
-    VersionBodyHooks, VersionBodyHooksRegistry, VersionFieldHooks, VersionFieldValues,
-    VersionedRoutePlan,
+    BodyParserHooks, JsonRequestParsers, MultipartLimits, ParsedJsonBody, PreparedVersionSelection,
+    SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry, VersionFieldHooks,
+    VersionFieldValues, VersionedRoutePlan,
 };
 
 use std::{
@@ -633,6 +633,7 @@ impl LocalRouter {
             default_error_responses,
             json_parsers,
             None,
+            None,
         )
     }
 
@@ -658,10 +659,49 @@ impl LocalRouter {
             default_error_responses,
             &JsonRequestParsers::default(),
             Some(&mut matched),
+            None,
         )?;
         Ok((response, matched))
     }
 
+    /// Return this local router's actual compiled plan, including its hooks.
+    /// An exact contract match avoids borrowing another operation's validator.
+    #[must_use]
+    pub fn version_plan_for(&self, contract: &RouteContract) -> Option<VersionedRoutePlan> {
+        self.routes
+            .iter()
+            .find(|route| route.contract == *contract)
+            .map(|route| route.versions.clone())
+    }
+
+    /// Dispatch an authenticated request using its trusted pre-auth selection.
+    /// No version parser or schema hook runs twice. Request inputs are checked
+    /// against the snapshot; session claims and normalized mount paths may differ.
+    /// # Errors
+    /// Rejects mismatched preparation, invalid profiles and handler failures.
+    pub fn execute_with_prepared_version(
+        &self,
+        request: FrameworkRequest,
+        prepared: &PreparedVersionSelection,
+        parser_format: ParserErrorFormat,
+        response_format: ResponseStatusErrorFormat,
+        default_errors: &DefaultErrorResponses,
+        all_matched_responses: bool,
+    ) -> FrameworkResult<(FrameworkResponse, VersionedResponseOutcome)> {
+        let mut outcome = VersionedResponseOutcome::default();
+        let response = self.execute_configured(
+            request,
+            parser_format,
+            response_format,
+            default_errors,
+            &JsonRequestParsers::default(),
+            all_matched_responses.then_some(&mut outcome),
+            Some(prepared),
+        )?;
+        Ok((response, outcome))
+    }
+
+    #[allow(clippy::too_many_arguments)] // Internal options plus optional trusted preparation.
     fn execute_configured(
         &self,
         mut request: FrameworkRequest,
@@ -670,6 +710,7 @@ impl LocalRouter {
         default_error_responses: &DefaultErrorResponses,
         json_parsers: &JsonRequestParsers,
         mut matched_output: Option<&mut VersionedResponseOutcome>,
+        prepared: Option<&PreparedVersionSelection>,
     ) -> FrameworkResult<FrameworkResponse> {
         self.validate_json_parsers(json_parsers)?;
         let explicit_head = self.has_explicit_head(&request);
@@ -712,7 +753,7 @@ impl LocalRouter {
                         &request.context.correlation_id,
                     ));
                 }
-                let selected = route.versions.select(&request);
+                let selected = route.versions.select_reusing(&mut request, prepared)?;
                 let contract = match selected {
                     Ok(Some((contract, version))) => {
                         request.version = Some(version);

@@ -31,6 +31,10 @@ pub use multipart::MultipartLimits;
 mod json_request;
 pub use json_request::{JsonRequestParsers, ParsedJsonBody};
 
+#[path = "versioning_prepared.rs"]
+mod prepared;
+pub use prepared::PreparedVersionSelection;
+
 /// Available to local handlers and as an Axum request extension.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectedVersion {
@@ -69,6 +73,7 @@ enum BodyValidator {
 #[derive(Default, Clone)]
 pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
+    identity: Arc<()>,
     typescript_simple_query: bool,
     response_plan: crate::versioned_response::VersionResponsePlan,
     parsers: forklaunch_contract::BodyParserOptions,
@@ -146,6 +151,7 @@ impl VersionedRoutePlan {
         Ok(Self {
             response_plan: crate::versioned_response::VersionResponsePlan::compile(route),
             variants,
+            identity: Arc::new(()),
             typescript_simple_query: false,
             parsers,
             parser_hooks: BodyParserHooks::default(),

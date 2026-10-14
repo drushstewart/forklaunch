@@ -99,8 +99,37 @@ pub struct VersionBodyHooksRegistry {
     parsers: BTreeMap<String, BodyParserHooks>,
     fields: BTreeMap<String, Vec<FieldHooks>>,
     simple_queries: BTreeMap<String, RouteContract>,
+    pre_authentication: BTreeMap<String, RouteContract>,
 }
 impl VersionBodyHooksRegistry {
+    /// Opt into version parsing/schema selection before authentication in Axum.
+    /// Error-mode schema failures and fatal parser failures precede credentials;
+    /// None/Warning still authenticate and authorize before invoking handlers.
+    /// The local adapter uses its actual `LocalRouter` plan and caches selection.
+    /// Native defaults remain post-authentication. Raw credentials are unchanged.
+    /// # Errors
+    /// Rejects unversioned/invalid/duplicate registrations. Changed schemas are
+    /// rejected at router construction; mounted path prefixes are allowed.
+    pub fn enable_selection_before_authentication(
+        &mut self,
+        route: &RouteContract,
+    ) -> Result<(), String> {
+        if route.versions.is_empty() {
+            return Err("Pre-auth selection requires a versioned route".into());
+        }
+        VersionedRoutePlan::compile(route)?;
+        let key = route_key(route);
+        if self.pre_authentication.contains_key(&key) {
+            return Err("Duplicate pre-auth version selection".into());
+        }
+        self.pre_authentication.insert(key, route.clone());
+        Ok(())
+    }
+    /// Whether this registered operation opts into pre-authentication selection.
+    #[must_use]
+    pub fn selection_before_authentication(&self, route: &RouteContract) -> bool {
+        self.pre_authentication.contains_key(&route_key(route))
+    }
     /// Parse raw HTTP query strings with the default Express/Node simple parser
     /// before version field schemas and hooks. Parsing runs once per selection,
     /// preserving duplicate arrays and the 1000-segment admission limit.
@@ -200,6 +229,7 @@ impl VersionBodyHooksRegistry {
             .chain(self.parsers.keys())
             .chain(self.fields.keys())
             .chain(self.simple_queries.keys())
+            .chain(self.pre_authentication.keys())
         {
             if counts.get(key) != Some(&1) {
                 return Err(format!(
@@ -213,6 +243,12 @@ impl VersionBodyHooksRegistry {
     /// # Panics
     /// Panics if both registries define hooks for the same method and operation.
     pub fn extend(&mut self, other: Self) {
+        for (key, route) in other.pre_authentication {
+            assert!(
+                self.pre_authentication.insert(key, route).is_none(),
+                "duplicate pre-auth selection operation"
+            );
+        }
         for (key, route) in other.simple_queries {
             assert!(
                 self.simple_queries.insert(key, route).is_none(),
@@ -242,6 +278,15 @@ impl VersionBodyHooksRegistry {
     /// Rejects invalid schemas or hooks referring to removed versions.
     pub fn compile(&self, route: &RouteContract) -> Result<VersionedRoutePlan, String> {
         let mut plan = VersionedRoutePlan::compile(route)?;
+        if let Some(snapshot) = self.pre_authentication.get(&route_key(route))
+            && (snapshot.versions != route.versions
+                || snapshot.request != route.request
+                || snapshot.auth != route.auth
+                || snapshot.rbac != route.rbac
+                || snapshot.access != route.access)
+        {
+            return Err("Stale pre-auth version selection registration".into());
+        }
         if let Some(snapshot) = self.simple_queries.get(&route_key(route)) {
             if snapshot.versions != route.versions || snapshot.request != route.request {
                 return Err("Stale simple query version projection".into());

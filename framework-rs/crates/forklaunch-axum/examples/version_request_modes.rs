@@ -8,7 +8,9 @@ use forklaunch_contract::{
     SchemaRef, ValidationMode, VersionedContract,
 };
 use forklaunch_core::ServiceInfo;
-use forklaunch_http::{FrameworkRequest, FrameworkResponse, LocalRouter, SelectedVersion};
+use forklaunch_http::{
+    FrameworkRequest, FrameworkResponse, LocalRouter, SelectedVersion, VersionBodyHooksRegistry,
+};
 use serde_json::{Value, json};
 use std::{
     sync::{
@@ -67,10 +69,17 @@ async fn main() {
     let mut local = LocalRouter::new();
     let mut contracts = vec![];
     let mut validators = ResponseValidators::default();
+    let mut version_hooks = VersionBodyHooksRegistry::default();
+    let pre_auth = std::env::var("FORKLAUNCH_VERSION_PREAUTH").as_deref() == Ok("1");
     for (req_name, req_mode) in modes {
         for (res_name, res_mode) in modes {
             for auth in [false, true] {
                 let route = contract("native", req_mode, res_mode, req_name, res_name, auth);
+                if pre_auth {
+                    version_hooks
+                        .enable_selection_before_authentication(&route)
+                        .unwrap();
+                }
                 validators
                     .insert_versioned(&route, 4096, Duration::from_secs(1), |_, _, _| None)
                     .unwrap();
@@ -81,6 +90,11 @@ async fn main() {
                     async move { Json(output(version.as_ref().map(|v| &v.0))) }
                 });
                 let route = contract("local", req_mode, res_mode, req_name, res_name, auth);
+                if pre_auth {
+                    version_hooks
+                        .enable_selection_before_authentication(&route)
+                        .unwrap();
+                }
                 validators
                     .insert_versioned(&route, 4096, Duration::from_secs(1), |_, _, _| None)
                     .unwrap();
@@ -104,6 +118,7 @@ async fn main() {
         .nest("/local", local)
         .with_config(RouterConfig {
             response_validators: validators,
+            version_body_hooks: version_hooks,
             response_status_error_format: ResponseStatusErrorFormat::TypeScriptText,
             ..RouterConfig::default()
         })

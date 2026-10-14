@@ -722,6 +722,11 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
           FORKLAUNCH_VERSION_DIAGNOSTICS_NATIVE: '1'
+      - run: node cli/tests/ts_version_request_diagnostics.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_VERSION_DIAGNOSTICS_NATIVE: '1'
+          FORKLAUNCH_VERSION_PREAUTH: '1'
       - run: node cli/tests/rust_zod_string_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

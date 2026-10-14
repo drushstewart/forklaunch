@@ -7121,3 +7121,35 @@ independently, pending final result. Hash
 uncommitted opt-in version-preauth framework dependencies were present at compile;
 the profile is disabled in this suite, and their snapshot patch/hash is retained
 explicitly. This is not claimed as a pure committed whole-worktree artifact.
+
+
+## Opt-in version selection before authentication (2026-10-14)
+
+VersionBodyHooksRegistry.enable_selection_before_authentication now explicitly
+selects/rejects request versions before authentication, matching actual TypeScript
+ordering. Default post-auth behavior is unchanged. Authenticated handlers/verifiers
+observe the selected projection while credentials remain raw. Local adapters use
+the actual LocalRouter compiled plan, not a potentially different RouterConfig
+callback registry. A private, request-bound prepared outcome carries success or
+no-match through dispatch without running parser/schema/field callbacks twice.
+Plan identity and context/method/params/query/rawquery/headers/body/parsed inputs
+must match; only trusted mount-prefix normalization and added authenticated session
+are allowed. Caller-supplied derived versions are cleared before cached reuse.
+Preparation holds one bounded request snapshot and does not clone full registries.
+The opt-in callbacks deliberately run on unauthenticated input; authorization/RBAC
+still follows and is not bypassed.
+
+HTTP59 and Axum140 all-feature tests, strict all-feature/all-target Clippy and30
+native/local security/mode cases pass. The actual90-request matrix still retains
+six known ordering differences under the default profile; enabling this profile
+removes all six. Each matrix has52 exact successes and38 explicit diagnostic-body
+differences (the six default status differences are included in those38). This
+fixes ordering, not generic schema-diagnostic wording. Wrong-plan/input and forged
+version tests, malformed body before auth, valid authentication, RBAC403, callback
+once-only, stale registration and preserved default ordering all pass.
+
+Canonical366/zero OpenAPI differences,108 versioned responses/20 known origins,
+56 exact version-query projections/16 rejection statuses,30 unversioned request
+ordering pairs and144 whole-request field transforms pass again:
+/private/tmp/fl-version-stage-*.log. CI runs both default and enabled matrices.
+Broader versioned diagnostics and default-error artifact support remain open.

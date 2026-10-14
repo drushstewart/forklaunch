@@ -274,6 +274,7 @@ pub struct ForkLaunchRouter {
     config: RouterConfig,
     internal_mounts: Vec<internal::InternalMount>,
     local_validation: HashSet<String>,
+    local_version_plans: HashMap<String, forklaunch_http::VersionedRoutePlan>,
 }
 
 macro_rules! typed_route_methods {
@@ -310,6 +311,7 @@ impl ForkLaunchRouter {
             config: RouterConfig::default(),
             internal_mounts: Vec::new(),
             local_validation: HashSet::new(),
+            local_version_plans: HashMap::new(),
         }
     }
 
@@ -324,6 +326,11 @@ impl ForkLaunchRouter {
         let handlers = Arc::new(handlers);
         let mut router = Self::new(service);
         for contract in contracts {
+            if let Some(plan) = handlers.version_plan_for(&contract) {
+                router
+                    .local_version_plans
+                    .insert(route_key(contract.method, &contract.openapi_path), plan);
+            }
             router
                 .local_validation
                 .insert(route_key(contract.method, &contract.openapi_path));
@@ -357,44 +364,11 @@ impl ForkLaunchRouter {
                         .get::<HandlerErrorFormat>()
                         .copied()
                         .unwrap_or_default();
-                    let parser_format = parts
-                        .extensions
-                        .get::<ParserErrorFormat>()
-                        .copied()
-                        .unwrap_or_default();
-                    let response_status_format = parts
-                        .extensions
-                        .get::<ResponseStatusErrorFormat>()
-                        .copied()
-                        .unwrap_or_default();
-                    let default_errors = parts
-                        .extensions
-                        .get::<Arc<DefaultErrorResponses>>()
-                        .cloned()
-                        .unwrap_or_default();
                     let versioned = parts
                         .extensions
                         .get::<response_validation::VersionedResponseValidation>()
                         .is_some();
-                    let result = if versioned {
-                        handlers
-                            .execute_with_matched_response_versions(
-                                request,
-                                parser_format,
-                                response_status_format,
-                                &default_errors,
-                            )
-                            .map(|(response, outcome)| (response, Some(outcome)))
-                    } else {
-                        handlers
-                            .execute_with_response_profiles(
-                                request,
-                                parser_format,
-                                response_status_format,
-                                &default_errors,
-                            )
-                            .map(|response| (response, None))
-                    };
+                    let result = version_stage::dispatch_local(&handlers, request, &parts);
                     match result {
                         Ok((response, matched)) => {
                             response_validation::attach_local_metadata(response, matched)
@@ -428,6 +402,7 @@ impl ForkLaunchRouter {
             config: RouterConfig::default(),
             internal_mounts: Vec::new(),
             local_validation: HashSet::new(),
+            local_version_plans: HashMap::new(),
         }
     }
 
@@ -569,6 +544,7 @@ impl ForkLaunchRouter {
             extended_routes,
             internal_mounts,
             local_validation,
+            local_version_plans,
             config,
             ..
         } = child;
@@ -599,6 +575,14 @@ impl ForkLaunchRouter {
         }
 
         for mut route in registry.into_artifact().routes {
+            if let Some(plan) =
+                local_version_plans.get(&route_key(route.method, &route.openapi_path))
+            {
+                self.local_version_plans.insert(
+                    route_key(route.method, &join_base_path(&prefix, &route.openapi_path)),
+                    plan.clone(),
+                );
+            }
             if local_validation.contains(&route_key(route.method, &route.openapi_path)) {
                 self.local_validation.insert(route_key(
                     route.method,
@@ -697,6 +681,7 @@ impl ForkLaunchRouter {
             config,
             internal_mounts,
             local_validation,
+            local_version_plans,
             ..
         } = self;
 
@@ -751,6 +736,7 @@ impl ForkLaunchRouter {
             &config,
             telemetry.clone(),
             local_validation,
+            &local_version_plans,
         ));
         router = router.layer(middleware::from_fn_with_state(state, validate_contract));
 
@@ -936,6 +922,7 @@ struct ValidationState {
     routes: HashMap<String, RouteContract>,
     versions: HashMap<String, forklaunch_http::VersionedRoutePlan>,
     local_validation: HashSet<String>,
+    pre_auth_versions: HashSet<String>,
     body_limit: usize,
     authenticator: Option<Authenticator>,
     response_authenticator: Option<ResponseAuthenticator>,
@@ -983,6 +970,7 @@ impl ValidationState {
         config: &RouterConfig,
         telemetry: OpenTelemetryCollector,
         local_validation: HashSet<String>,
+        local_version_plans: &HashMap<String, forklaunch_http::VersionedRoutePlan>,
     ) -> Self {
         config
             .json_request_parsers
@@ -1021,9 +1009,13 @@ impl ValidationState {
             .map(|route| {
                 (
                     route_key(route.method, &route.openapi_path),
-                    hooks
-                        .compile(route)
-                        .expect("invalid versioned route schema or hooks"),
+                    {
+                        let configured=hooks.compile(route).expect("invalid versioned route schema or hooks");
+                        let key=route_key(route.method,&route.openapi_path);
+                        if hooks.selection_before_authentication(route) && local_validation.contains(&key) {
+                            local_version_plans.get(&key).expect("Pre-auth local version selection requires an exact registered local contract").clone()
+                        } else { configured }
+                    },
                 )
             })
             .collect();
@@ -1034,6 +1026,12 @@ impl ValidationState {
             default_error_responses: Arc::new(config.default_error_responses.clone()),
             routes,
             versions,
+            pre_auth_versions: registry
+                .routes()
+                .iter()
+                .filter(|route| hooks.selection_before_authentication(route))
+                .map(|route| route_key(route.method, &route.openapi_path))
+                .collect(),
             local_validation,
             body_limit: config.body_limit,
             authenticator: config.authenticator.clone(),
@@ -1169,6 +1167,15 @@ async fn validate_contract(
     .await
 }
 
+fn attach_parsed_request(parts: &mut Parts, framework_request: &FrameworkRequest) {
+    if let Some(parsed) = &framework_request.parsed_json {
+        parts.extensions.insert(parsed.clone());
+    }
+    if let Some(fields) = &framework_request.parsed_fields {
+        parts.extensions.insert(fields.clone());
+    }
+}
+
 async fn validate_matched_contract(
     state: &Arc<ValidationState>,
     contract: RouteContract,
@@ -1209,12 +1216,7 @@ async fn validate_matched_contract(
     ) {
         return framework_response_to_axum(response);
     }
-    if let Some(parsed) = &framework_request.parsed_json {
-        parts.extensions.insert(parsed.clone());
-    }
-    if let Some(fields) = &framework_request.parsed_fields {
-        parts.extensions.insert(fields.clone());
-    }
+    attach_parsed_request(&mut parts, &framework_request);
     if let Some(response) = state.request_validators.reject_at(
         RequestValidationStage::BeforeAuthentication,
         &contract,
@@ -1222,6 +1224,14 @@ async fn validate_matched_contract(
         parts.uri.query(),
     ) {
         return framework_response_to_axum(response);
+    }
+    if let Some(response) = version_stage::prepare_before_authentication(
+        state,
+        &contract,
+        &mut parts,
+        &mut framework_request,
+    ) {
+        return response;
     }
     let requires_auth = contract.auth.is_some()
         || contract.rbac.is_some()
@@ -1464,7 +1474,30 @@ fn select_contract_version(
         .get::<forklaunch_http::MultipartLimits>()
         .copied()
         .unwrap_or_default();
-    match plan.select_with_multipart_limits(request, limits) {
+    let selected = if let Some(prepared) = parts
+        .extensions
+        .get::<forklaunch_http::PreparedVersionSelection>()
+    {
+        plan.resolve_prepared(prepared, request).map_err(|_| {
+            vec![forklaunch_http::ContractValidationError::new(
+                forklaunch_http::ContractValidationLocation::Body,
+                "invalid prepared request selection",
+            )]
+        })?
+    } else {
+        plan.select_with_multipart_limits(request, limits)
+    };
+    if parts
+        .extensions
+        .get::<forklaunch_http::PreparedVersionSelection>()
+        .is_some()
+    {
+        request.version = None;
+        parts
+            .extensions
+            .remove::<forklaunch_http::SelectedVersion>();
+    }
+    match selected {
         Ok(Some((selected, version))) => {
             request.version = Some(version.clone());
             parts.extensions.insert(version);
@@ -2344,3 +2377,8 @@ mod request_transform_tests;
 
 #[cfg(test)]
 mod request_fields_tests;
+
+#[cfg(test)]
+mod version_stage_tests;
+
+mod version_stage;

@@ -104,7 +104,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
   for(const observation of observations)for(const surface of ['native','local']) {
    const response=await fetch(rust+'/'+surface+observation.pathname,{headers:{'x-correlation-id':'diagnostic-audit'}});
    const body=await response.text();
-   const authBeforeSchema=observation.protectedRequest&&observation.requestMode==='error';
+   const authBeforeSchema=process.env.FORKLAUNCH_VERSION_PREAUTH!=='1'&&observation.protectedRequest&&observation.requestMode==='error';
    assert.equal(response.status,authBeforeSchema?401:observation.result.status,JSON.stringify({surface,observation,body}));
    if(authBeforeSchema)precedence++;
    if(response.status===200){assert.deepEqual(JSON.parse(body),JSON.parse(observation.result.body));exact++;}
@@ -112,7 +112,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
    if(observation.handler)handlerCalls++;
    assert.equal((await (await fetch(rust+'/counts')).json()).handlerCalls,handlerCalls);
   }
-  assert.equal(precedence,6);
+  assert.equal(precedence,process.env.FORKLAUNCH_VERSION_PREAUTH==='1'?0:6);
   console.log(`PASS native mode characterization: ${exact} exact successes, ${precedence} explicit auth-before-version status differences, ${diagnostics} existing diagnostic differences (including the ${precedence} ordering cases); handler counts checked for all90 requests`);
  }
  console.log(`PASS ${count} actual Express version diagnostic cases: repeated failures/successes, all validation modes, preserved authentication and handler-response validation; scoped marker cleanup passed`);
