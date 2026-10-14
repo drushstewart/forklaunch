@@ -133,6 +133,9 @@ export const CreateBillingPortalMapper = {
   ...CreateBillingPortalEntityMapper,
   validateProviderCreate: async (provider: Stripe.BillingPortal.Session) => {
     validateProviderCreation(provider, 'billing_portal.session');
+    if (typeof provider.url !== 'string' || !provider.url.trim()) {
+      throw new Error('Invalid Stripe billing response');
+    }
   },
   validateCreate: async (
     dto: Parameters<typeof CreateBillingPortalEntityMapper.toEntity>[0]

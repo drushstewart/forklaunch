@@ -7786,3 +7786,29 @@ and unframed empty text permits the downstream default. Production guards were
 not relaxed.20 observed TS whole-arguments-null protocol rejections remain outside
 the native body policy; explicit optional absence during native version-schema
 selection is separate work. No generic Zod/default-transform equivalence is claimed.
+
+
+## Required Portal provider URL before local writes (2026-10-14)
+
+Configured Portal create/replacement validation now requires the provider's
+nonblank string URL before consuming it or writing local/cache state. Native
+uses a dedicated portal_uri helper; missing/null/nonstring/blank/BOM-only URLs
+reject. This prevents replacing provider references while silently retaining an
+old session URL. Valid strings remain byte-for-byte unchanged; generic custom
+hook fallback, optional DTO input and Checkout nullable URL handling are retained.
+This is shape validation, without a new host/scheme authorization policy.
+
+56 actual-source cases,353 configured regressions,186 creation-shape cases and
+12-root strict types pass. Native create/replacement covers20 invalid and6 valid
+operations; the seven-operation creation matrix,170 legacy operations and strict
+all-target/all-feature billing Clippy also pass. Invalid responses follow exactly
+one POST with no local/cache writes and retain the previous URL/reference. Logs:
+/private/tmp/fl-billing-portal-url-{shape,native,configured,creation,types,legacy170,clippy}.log.
+The focused TS log is /private/tmp/fl-billing-portal-url-shape.log. CI runs it.
+
+Provenance correction: concurrent staging included the native helper/call sites
+in2ba036a87 alongside PaymentLink before this dedicated proof completed. This
+receipt records the later successful native proof; the configured TS hook and
+dedicated tests are integrated here. No earlier immutable/runtime checkpoint is
+claimed to include this slice. Provider effects are already applied on rejection;
+no compensation is promised.
