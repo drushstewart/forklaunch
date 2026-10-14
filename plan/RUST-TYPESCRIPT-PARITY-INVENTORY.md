@@ -6468,3 +6468,19 @@ This is consistency preflight, not concurrency control, authorization or verifie
 provider-account binding. No cached reference becomes mutation authority. Product/
 plan identity mapping, provider/local atomicity and broader mutation semantics
 remain open. Public API line/signature changes are regenerated and checked.
+
+
+## Response header array reference correction (2026-10-14)
+
+The TypeScript response wrapper now passes safe-stringified header arrays to Node
+as arrays instead of joining them with forbidden newline characters. Set-Cookie
+retains separate fields; Accept/custom arrays use Node's normal wire behavior.
+Scalar/object serialization is unchanged, empty arrays omit fields, and scalar/
+array CRLF values still fail Node's ERR_INVALID_CHAR check. This corrects a real
+TypeScript500 defect exposed by the Warning oracle; native HeaderMap behavior
+already supports repeated fields.
+
+54 actual ForkLaunch/raw-Node HTTP comparison pairs pass across three validation
+modes, nine cases and repeat requests, plus focused source TypeScript checks:
+/private/tmp/fl-response-header-arrays.log. No response schema acceptance or Node
+header-injection checks are relaxed.
