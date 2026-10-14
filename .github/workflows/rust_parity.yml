@@ -103,6 +103,8 @@ on:
       - 'cli/src/templates/sdk/typescript/safeStringify.ts'
       - 'cli/tests/rust_query_transport_parity.mjs'
       - 'cli/tests/rust_mcp_body_parity.mjs'
+      - 'cli/tests/rust_mcp_body_admission_parity.mjs'
+      - 'cli/tests/fixtures/mcp-body-admission.ts'
       - 'cli/tests/rust_mcp_transport_parity.mjs'
       - 'cli/tests/fixtures/mcp_transport.ts'
       - 'framework/core/src/http/router/discriminateBody.ts'
@@ -391,6 +393,8 @@ on:
       - 'cli/src/templates/sdk/typescript/safeStringify.ts'
       - 'cli/tests/rust_query_transport_parity.mjs'
       - 'cli/tests/rust_mcp_body_parity.mjs'
+      - 'cli/tests/rust_mcp_body_admission_parity.mjs'
+      - 'cli/tests/fixtures/mcp-body-admission.ts'
       - 'cli/tests/rust_mcp_transport_parity.mjs'
       - 'cli/tests/fixtures/mcp_transport.ts'
       - 'framework/core/src/http/router/discriminateBody.ts'
@@ -735,6 +739,9 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_version_json_wire_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_mcp_body_admission_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/ts_response_header_arrays.mjs

@@ -27,6 +27,8 @@ use serde_json::{Map, Value};
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tower::ServiceExt;
 
+mod body_admission;
+pub use body_admission::{McpBodyAdmission, McpBodyAdmissions, MissingToolBody};
 mod manual;
 mod multipart;
 use manual::ManualHandler;
@@ -34,7 +36,7 @@ pub use manual::{ManualTool, ManualToolError};
 
 #[derive(Clone)]
 enum ToolBinding {
-    Http(Box<RouteContract>),
+    Http(Box<RouteContract>, Option<Arc<body_admission::Admission>>),
     Manual(ManualHandler),
 }
 
@@ -62,6 +64,8 @@ pub struct McpServerOptions {
     /// Additional typed tools. Their handlers apply application authorization;
     /// the transport authorization callback still gates every request.
     pub manual_tools: Vec<ManualTool>,
+    /// Explicit finite admission/default policies for HTTP tool bodies.
+    pub body_admissions: McpBodyAdmissions,
 }
 impl McpServerOptions {
     #[must_use]
@@ -79,6 +83,7 @@ impl McpServerOptions {
             call_timeout: Duration::from_secs(30),
             max_response_bytes: 2 * 1024 * 1024,
             manual_tools: Vec::new(),
+            body_admissions: McpBodyAdmissions::default(),
         }
     }
 }
@@ -134,10 +139,14 @@ pub fn http_transport(
     {
         return Err("MCP endpoint conflicts with an HTTP route".into());
     }
+    options
+        .body_admissions
+        .validate_routes(&mcp_routes(registry))?;
     let mut tools = BTreeMap::new();
     for (definition, route) in mcp_tools(registry).into_iter().zip(mcp_routes(registry)) {
         let mut tool: Tool =
             serde_json::from_str(&definition.to_json()).map_err(|_| "Invalid MCP tool schema")?;
+        let admission = options.body_admissions.project(&route, &mut tool)?;
         // MCP structured outputs must be objects. Array/scalar HTTP bodies are
         // represented as text rather than claiming an invalid output schema.
         if tool
@@ -156,7 +165,10 @@ pub fn http_transport(
             tool.output_schema = None;
         }
         if tools
-            .insert(definition.name, (tool, ToolBinding::Http(Box::new(route))))
+            .insert(
+                definition.name,
+                (tool, ToolBinding::Http(Box::new(route), admission)),
+            )
             .is_some()
         {
             return Err("Duplicate MCP tool name".into());
@@ -234,13 +246,20 @@ impl ServerHandler for ContractServer {
             .tools
             .get(request.name.as_ref())
             .ok_or_else(|| ErrorData::invalid_params("Unknown tool", None))?;
-        let args = request.arguments.unwrap_or_default();
+        let mut args = request.arguments.unwrap_or_default();
         let headers = context
             .extensions
             .get::<axum::http::request::Parts>()
             .map(|parts| &parts.headers);
         let route = match binding {
-            ToolBinding::Http(route) => route,
+            ToolBinding::Http(route, admission) => {
+                if let Some(admission) = admission {
+                    admission
+                        .apply(&mut args)
+                        .map_err(|message| ErrorData::invalid_params(message, None))?;
+                }
+                route
+            }
             ToolBinding::Manual(handler) => {
                 return manual::execute(
                     handler,

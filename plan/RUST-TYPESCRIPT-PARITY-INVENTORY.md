@@ -7582,3 +7582,28 @@ native BOM handling/tests were already present and unchanged. The shared helper
 is internal to the private configured blueprint, not an implementation API export.
 CI runs the new fixture. Public UUID/provider alias integration and remaining
 consumed-field/update/cache semantics keep gate855 open.
+
+
+## Explicit MCP body admission and root defaults (2026-10-14)
+
+Opt-in McpBodyAdmissions binds finite required/root-default/null policies to exact
+projected HTTP tool contracts. It validates inline body schema and bounded input
+before transport, injects only explicit trusted root defaults, and projects the
+same required/default/null policy into tools/list. Missing/stale/duplicate routes
+and invalid defaults/bounds reject at registration. Local references preserve
+their scope in emitted schemas; annotations alone never inject defaults. Nullable
+text is admitted as null before encoding zero bytes, matching fetch. Existing
+unregistered tools retain native behavior and forbidden caller transport headers.
+
+A real registered FastMCP audit first characterized80 direct and80 Express-backed
+calls, separating admission from downstream parsing. Final native proof passes48
+comparisons (26 admitted exact-wire,22 rejected admission),12 metadata cases,24 MCP
+tests and strict all-feature/all-target Clippy. Axum140 and legacy51 MCP body
+comparisons/6 boundary observations passed before the isolated final nullable-
+export correction. That correction removed invalid empty allOf and was rechecked
+by the full MCP suite, Clippy and registered oracle. Logs:
+/private/tmp/fl-mcp-admission-{focused,allfeatures,clippy,parity,legacy-body}.log.
+All28 option references use constructors/mutation; no caller struct-literal updates
+were necessary. CI runs the oracle after installing its canonical dependencies.
+Diagnostic text, optional omission, recursive defaults, arbitrary Zod transforms/
+unknown-key stripping and downstream text projection remain explicit boundaries.
