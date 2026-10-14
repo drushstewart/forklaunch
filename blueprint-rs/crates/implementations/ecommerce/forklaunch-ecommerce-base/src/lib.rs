@@ -7,6 +7,7 @@ pub mod checkout;
 pub mod compliance;
 pub mod events;
 pub mod import;
+pub mod payment_resume;
 pub mod payment_review;
 #[cfg(feature = "postgres")]
 pub mod postgres;

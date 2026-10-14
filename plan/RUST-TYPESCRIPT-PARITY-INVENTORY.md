@@ -6730,3 +6730,33 @@ services and four configured mappers, with real pinned dependencies and no fake
 ambient declarations: /private/tmp/fl-full-roots-types-deps/tsconfig.json and
 /private/tmp/fl-full-roots-types-check.log. This supersedes the earlier focused
 mapper environment blockage, not a claim of whole-repository TypeScript success.
+
+
+## Configured cancelled-order resume guard receipt (2026-10-14)
+
+Configured TypeScript payment mappers and the native concrete checkout preset now
+check the durable payment identity/reference/order relation and linked order state
+before and after retrieving an existing Stripe client secret. Missing, mismatched
+or cancelled orders deny resume without provider mutation or reference clearing.
+Native memory checks use one lock; PostgreSQL uses one tenant-scoped MVCC query
+selecting relation/status only, without address decryption or PII-read audit.
+The generic legacy resume method and custom mapper fallback remain available;
+no generic HTTP-router trait bound or route is changed.
+
+Configured ORM checks explicitly refresh selected fields and reject an active
+outer transaction so repeatable-read snapshots cannot span provider I/O. They are
+sequential consistency checks rather than one atomic transaction. Both profiles
+retain a race after the final check and do not revoke previously issued secrets,
+prove provider ownership, or cancel/refund a payment. Provider references remain
+for audit. Noncancelled typed states retain existing eligibility.
+
+20 actual source/real MikroORM cases, memory/provider and restricted PostgreSQL
+checks, full native checkout HTTP/MCP plus inventory tests,15 legacy provider cases
+and strict base/Stripe/Axum Clippy pass:
+/private/tmp/fl-ecommerce-resume-{ts,native,pg,http,clippy,legacy}.log. The fixture
+also passes with the consistent dependency-root convention used by CI:
+/private/tmp/fl-ecommerce-resume-root-env.log. Four-service TypeScript checking
+passed; after restoring real declarations and fixing the Bun fetch capability,
+all eight changed service/configured-mapper roots now typecheck cleanly. Public
+inventory line/signature changes are regenerated and checked. Fresh committed CLI
+preset/archive validation remains a separate follow-up to this source receipt.

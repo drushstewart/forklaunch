@@ -32,7 +32,7 @@ impl EcommerceBackend {
             if let Some(connect) = &self.connect {
                 provider = provider.with_connect(connect.clone());
             }
-            let resumed = provider.resume_payment(&payment.id).await?;
+            let resumed = provider.resume_payment_for_order(&payment.id).await?;
             Ok(CreatedPayment {
                 payment: resumed.payment,
                 client_secret: resumed.client_secret,

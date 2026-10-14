@@ -1,4 +1,9 @@
-use axum::{Json, Router, extract::Form, http::HeaderMap, routing::post};
+use axum::{
+    Json, Router,
+    extract::Form,
+    http::HeaderMap,
+    routing::{get, post},
+};
 use forklaunch_auth::{
     jwt::{RemoteJwks, RemoteJwksConfig},
     request_hmac::{SignedBody, generate_hmac_auth_header},
@@ -146,6 +151,12 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
     let queue = PostgresWorkerQueue::new(runtime.clone(), tenant.clone(), RetryPolicy::new(3, 0))
         .await
         .unwrap();
+    let cancel_resume = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let resume_reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let cancel_during_get = cancel_resume.clone();
+    let observed_reads = resume_reads.clone();
+    let resume_owner = owner.clone();
+    let resume_tenant = tenant.id().to_owned();
     let provider = Router::new()
         .route(
             "/v1/payment_intents",
@@ -158,6 +169,19 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
                 },
             ),
         )
+        .route("/v1/payment_intents/pi_resume", get(move || {
+            let cancel = cancel_during_get.clone();
+            let calls = observed_reads.clone();
+            let pool = resume_owner.clone();
+            let tenant = resume_tenant.clone();
+            async move {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                    sqlx::query("UPDATE fl_ecommerce.records SET data=jsonb_set(data,'{status}','\"cancelled\"') WHERE tenant_id=$1 AND kind='order' AND id='resume-order'").bind(tenant).execute(&pool).await.unwrap();
+                }
+                Json(json!({"id":"pi_resume","client_secret":"guarded-resume-secret"}))
+            }
+        }))
         .route(
             "/v1/oauth2/token",
             post(
@@ -565,6 +589,61 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
     .await;
     assert!(stored.get("clientSecret").is_none());
     assert_eq!(stored["providerRef"], "pi_owned");
+    // Actual generated-preset checkout dispatch uses the guarded resume path.
+    value(
+        call(
+            &client,
+            &base,
+            Method::POST,
+            "/cart",
+            Some(json!({"id":"resume-cart"})),
+        )
+        .await,
+    )
+    .await;
+    let resume_address = json!({"name":"Buyer","line1":"Private Street","city":"Oakland","state":"CA","postalCode":"94601","country":"US"});
+    value(call(&client, &base, Method::POST, "/order", Some(json!({"id":"resume-order","cartId":"resume-cart","items":[],"shippingAddress":resume_address,"subtotalCents":200,"discountCents":0,"taxCents":0,"taxBreakdown":[],"shippingCents":0,"giftCardCents":0,"totalCents":200}))).await).await;
+    // cartId is checkout-owned metadata, not a generic create-order input.
+    sqlx::query("UPDATE fl_ecommerce.records SET data=jsonb_set(data,'{cartId}','\"resume-cart\"') WHERE tenant_id=$1 AND kind='order' AND id='resume-order'").bind(tenant.id()).execute(&owner).await.unwrap();
+    service
+        .create_payment_with_reference(
+            forklaunch_ecommerce_interface::CreatePaymentDto {
+                id: Some("resume-payment".into()),
+                order_id: "resume-order".into(),
+                amount_cents: 200,
+                currency: "usd".into(),
+            },
+            Some("pi_resume".into()),
+        )
+        .await
+        .unwrap();
+    let checkout = json!({"cartId":"resume-cart","shippingAddress":resume_address});
+    let resumed = value(
+        call(
+            &client,
+            &base,
+            Method::POST,
+            "/checkout",
+            Some(checkout.clone()),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(resumed["clientSecret"], "guarded-resume-secret");
+    cancel_resume.store(true, std::sync::atomic::Ordering::SeqCst);
+    let denied = call(&client, &base, Method::POST, "/checkout", Some(checkout)).await;
+    assert!(!denied.status().is_success());
+    assert!(
+        !denied
+            .text()
+            .await
+            .unwrap()
+            .contains("guarded-resume-secret")
+    );
+    assert_eq!(resume_reads.load(std::sync::atomic::Ordering::SeqCst), 2);
+    let reference:String=sqlx::query_scalar("SELECT data->>'providerRef' FROM fl_ecommerce.records WHERE tenant_id=$1 AND kind='payment' AND id='resume-payment'").bind(tenant.id()).fetch_one(&owner).await.unwrap();
+    assert_eq!(reference, "pi_resume");
+
     let paypal = value(
         call(
             &client,

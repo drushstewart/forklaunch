@@ -4853,7 +4853,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/ecommerce/stripe/domain/types/payment.mapper.types.ts",
               "line": 14,
-              "type": "{\n  PaymentMapper: {\n    entity: Entities['PaymentMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentMapper']>\n    ) => Promise<Dto['PaymentMapper']>;\n  };\n  CreatePaymentMapper: {\n    entity: Entities['CreatePaymentMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentMapper'],\n      em: EntityManager,\n      paymentIntent: Stripe.PaymentIntent,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentMapper']>>;\n  };\n}"
+              "type": "{\n  PaymentMapper: {\n    /** Optional authoritative local relation guard before/after secret retrieval. */\n    validateResume?: (payment: Dto['PaymentMapper'], em: EntityManager) => Promise<void>;\n\n    entity: Entities['PaymentMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentMapper']>\n    ) => Promise<Dto['PaymentMapper']>;\n  };\n  CreatePaymentMapper: {\n    entity: Entities['CreatePaymentMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentMapper'],\n      em: EntityManager,\n      paymentIntent: Stripe.PaymentIntent,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -4889,37 +4889,37 @@
                   "name": "constructor",
                   "signature": "constructor(\n    stripeClient: Stripe,\n    em: EntityManager,\n    openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    schemaValidator: SchemaValidator,\n    mappers: StripePaymentMappers<Entities, Dto>,\n    options?: {\n      telemetry?: TelemetryOptions;\n      /**\n       * Stripe Connect (platform) mode. When set, PaymentIntents are created\n       * as DIRECT charges on the merchant's connected account — the merchant\n       * is the merchant of record and settles the funds — with\n       * `application_fee_amount` computed from platformFeeBps. The launch\n       * business model is NO markup (fee 0, see the Guild deck: \"payments\n       * flat at launch\"), so platformFeeBps defaults to 0 and the fee is\n       * omitted entirely; it exists as a dial, not a revenue assumption.\n       * When absent, behavior is unchanged: the deploy's own STRIPE_API_KEY\n       * account is the merchant (bring-your-own-key mode).\n       */\n      connect?: {\n        connectedAccountId: string;\n        platformFeeBps?: number;\n      };\n    }\n  )",
                   "source": "blueprint/implementations/ecommerce/stripe/services/payment.service.ts",
-                  "line": 43
+                  "line": 44
                 },
                 {
                   "name": "createPayment",
                   "signature": "async createPayment(\n    paymentDto: CreatePaymentDto,\n    em?: EntityManager\n  ): Promise<Dto['PaymentMapper'] & { clientSecret?: string }>",
                   "source": "blueprint/implementations/ecommerce/stripe/services/payment.service.ts",
-                  "line": 125
+                  "line": 127
                 },
                 {
                   "name": "resumePayment",
                   "signature": "async resumePayment(\n    idDto: { id: string },\n    em?: EntityManager\n  ): Promise<Dto['PaymentMapper'] & { clientSecret?: string }>",
                   "source": "blueprint/implementations/ecommerce/stripe/services/payment.service.ts",
-                  "line": 199
+                  "line": 201
                 },
                 {
                   "name": "getPayment",
                   "signature": "async getPayment(\n    idDto: { id: string },\n    em?: EntityManager\n  ): Promise<Dto['PaymentMapper']>",
                   "source": "blueprint/implementations/ecommerce/stripe/services/payment.service.ts",
-                  "line": 220
+                  "line": 224
                 },
                 {
                   "name": "confirmPayment",
                   "signature": "async confirmPayment(\n    confirmDto: ConfirmPaymentDto,\n    em?: EntityManager\n  ): Promise<Dto['PaymentMapper']>",
                   "source": "blueprint/implementations/ecommerce/stripe/services/payment.service.ts",
-                  "line": 228
+                  "line": 232
                 },
                 {
                   "name": "failPayment",
                   "signature": "async failPayment(\n    failDto: FailPaymentDto,\n    em?: EntityManager\n  ): Promise<Dto['PaymentMapper']>",
                   "source": "blueprint/implementations/ecommerce/stripe/services/payment.service.ts",
-                  "line": 236
+                  "line": 240
                 }
               ]
             }
@@ -14345,7 +14345,7 @@
               "name": "createStripeClient",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/paymentsClient.ts",
-              "line": 251
+              "line": 266
             }
           ]
         },

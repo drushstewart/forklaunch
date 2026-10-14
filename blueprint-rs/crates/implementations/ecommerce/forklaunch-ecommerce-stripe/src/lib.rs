@@ -241,6 +241,31 @@ impl<S: EcommerceStore> StripePaymentService<S> {
         })
     }
 }
+impl<S: forklaunch_ecommerce_base::payment_resume::PaymentResumeStore> StripePaymentService<S> {
+    /// Checks the current local payment/order relation before and after retrieving
+    /// a secret. Rejects cancelled/missing orders without provider mutation.
+    /// Previously issued secrets and cancellation after the final check remain
+    /// outside this local guard; the generic legacy resume method is unchanged.
+    /// # Errors
+    /// Rejects changed relations, missing/cancelled orders and provider failures.
+    pub async fn resume_payment_for_order(&self, id: &str) -> BlueprintResult<StripePaymentDto> {
+        let payment = self.base.get_payment(id).await?;
+        self.base.store().validate_payment_resume(&payment).await?;
+        let client_secret = if let Some(reference) = &payment.provider_ref {
+            self.client
+                .retrieve_intent(reference, self.connect.as_ref())
+                .await?
+                .client_secret
+        } else {
+            None
+        };
+        self.base.store().validate_payment_resume(&payment).await?;
+        Ok(StripePaymentDto {
+            payment,
+            client_secret,
+        })
+    }
+}
 impl<S: EcommerceStore> PaymentService for StripePaymentService<S> {
     type CreatedPayment = StripePaymentDto;
     async fn create_payment(&self, request: CreatePaymentDto) -> BlueprintResult<StripePaymentDto> {
