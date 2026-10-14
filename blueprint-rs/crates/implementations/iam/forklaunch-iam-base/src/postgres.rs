@@ -4,6 +4,7 @@
 //! role without SUPERUSER/BYPASSRLS privileges. Bind a store to the authenticated
 //! tenant for each request. `Argon2` work runs outside the async executor.
 mod async_service;
+mod provider_identities;
 
 use super::credentials::{hash_password, verify_password};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult, Page, PageRequest};
@@ -538,7 +539,7 @@ mod tests {
     use super::*;
     use sqlx::postgres::PgPoolOptions;
 
-    async fn test_pools() -> (PgPool, PgPool, String) {
+    pub(super) async fn test_pools() -> (PgPool, PgPool, String) {
         let url =
             std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").expect("`PostgreSQL` test URL required");
         let owner = PgPoolOptions::new()
@@ -559,7 +560,7 @@ mod tests {
             .execute(&owner)
             .await
             .unwrap();
-        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions TO {role}")).execute(&owner).await.unwrap();
+        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_provider_identities TO {role}")).execute(&owner).await.unwrap();
         let set_role = format!("SET ROLE {role}");
         let app = PgPoolOptions::new()
             .max_connections(1)

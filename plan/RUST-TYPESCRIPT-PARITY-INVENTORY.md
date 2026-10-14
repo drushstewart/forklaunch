@@ -4665,3 +4665,29 @@ cluster was left untouched. A dedicated test target is still awaiting the user's
 selection. No image push or AWS mutation occurred. Actual ECS/load balancer,
 provisioning, migration and scaling gates remain open; checklist stays
 **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Explicit OIDC identities and local session issuance
+
+Base IAM migration 4 adds tenant-scoped, case-sensitive issuer/subject bindings
+to local users, forced RLS and cascading user deletion. Administrative bind/unbind
+APIs require caller authorization, preserve existing ownership and never infer
+identity from email. Unbinding prevents new issuance; existing sessions require
+separate revocation. OIDC-enabled runtime roles need CRUD on the new identity table.
+
+Optional `oidc-sessions` performs the actual framework provider exchange before
+resolving the binding and issuing a persistent opaque or RS256 local credential.
+Provider roles/emails grant no local privileges and provider tokens are discarded.
+The identity/user lock serializes issuance with unlink, disable and deletion.
+Returned sessions reuse the existing local expiry, tenant, current-grant and
+revocation policy. The callback caller must consume pending state bound to the
+initiating browser; HTTP callback and durable pending-state integration remain open.
+
+Three provider tests pass, including a loopback provider's real discovery/JWKS/
+nonce-bound RS256 ID-token exchange, a locally issued RS256 session, wrong-nonce
+rejection, absent/same-email bindings, issuer/case/tenant isolation, restart,
+revocation, disabled/deleted users, ownership conflicts and RLS. Strict IAM
+all-feature/all-target Clippy and the minimal postgres-feature build pass. CI
+explicitly executes the ignored PostgreSQL provider fixtures. Evidence:
+`/private/tmp/fl-iam-provider-{tests,clippy}.log`. Broader provider/browser and
+directory integration remain open; checklist stays **658/682 (96.5%), 24 open**.

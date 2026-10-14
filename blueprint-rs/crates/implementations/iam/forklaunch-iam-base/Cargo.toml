@@ -10,10 +10,12 @@ repository.workspace = true
 [features]
 default = []
 postgres = ["dep:sqlx", "forklaunch-core/postgres", "forklaunch-core/encryption", "dep:sha2", "tokio/rt-multi-thread", "tokio/macros"]
+oidc-sessions = ["postgres", "dep:forklaunch-auth"]
 jwt-sessions = ["postgres", "dep:jsonwebtoken"]
 browser-sessions = ["postgres", "dep:tower-sessions", "dep:async-trait"]
 
 [dependencies]
+forklaunch-auth = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-auth", features = ["oidc"], optional = true }
 tower-sessions = { version = "0.15", optional = true }
 async-trait = { version = "0.1", optional = true }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
@@ -37,4 +39,4 @@ jsonwebtoken = { version = "9", optional = true }
 workspace = true
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
