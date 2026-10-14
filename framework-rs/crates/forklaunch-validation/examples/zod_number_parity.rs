@@ -16,6 +16,8 @@ fn main() {
                     "safe" => ZodNumberStep::Safe,
                     "min" => ZodNumberStep::Min(bound()),
                     "max" => ZodNumberStep::Max(bound()),
+                    "gt" => ZodNumberStep::Gt(bound()),
+                    "lt" => ZodNumberStep::Lt(bound()),
                     _ => panic!("unknown fixture constraint"),
                 }
             })

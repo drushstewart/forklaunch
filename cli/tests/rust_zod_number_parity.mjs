@@ -7,7 +7,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const {validator,statics}=actualValidator(root);
 const values=[undefined,null,false,true,0,1,-1,0.5,-0.5,12.99,[],[null],['2'],[true],{}, {toString:'blocked'},'', 'NaN', 'Infinity','-Infinity','-0','0.1','12.99','9007199254740991','9007199254740992','9007199254740993','-9007199254740991','-9007199254740992','1e300','1e309','1e-324','5e-324','0x20000000000001',' 2 ','\u00852\u0085','\ufeff2\ufeff'];
 for(const bound of [-9007199254740991,-2147483648,-2,0,2,2147483647,9007199254740991])for(const delta of [-2,-1,-.5,0,.5,1,2])values.push(String(bound+delta));
-const operations=[['int'],['finite'],['safe'],...['min','max'].flatMap(kind=>[-9007199254740991,-2,0,2,9007199254740991].map(limit=>[kind,limit]))];
+const operations=[['int'],['finite'],['safe'],...['min','max','gt','lt'].flatMap(kind=>[-9007199254740991,-2,0,2,9007199254740991].map(limit=>[kind,limit]))];
 const chains=[[],...operations.map(step=>[step]),...operations.flatMap(first=>operations.map(second=>[first,second])),[['int'],['finite'],['safe']]];
 const cases=[],expected=[];
 for(const steps of chains){

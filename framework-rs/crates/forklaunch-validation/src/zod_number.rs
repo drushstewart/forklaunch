@@ -20,7 +20,7 @@ impl ZodIntegerBound {
 }
 
 /// Ordered constraints for the repository's Zod v3 number preprocessing.
-/// Min/max bounds are inclusive and restricted to exact safe integers; input
+/// Inclusive and exclusive bounds are restricted to exact safe integers; input
 /// numbers may be fractional, infinite or outside the safe integer range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZodNumberStep {
@@ -30,6 +30,8 @@ pub enum ZodNumberStep {
     Safe,
     Min(ZodIntegerBound),
     Max(ZodIntegerBound),
+    Gt(ZodIntegerBound),
+    Lt(ZodIntegerBound),
 }
 
 /// Apply ordered constraints after the existing JavaScript number coercion.
@@ -39,7 +41,7 @@ pub enum ZodNumberStep {
 /// negative zero and infinities unless a constraint excludes them.
 ///
 /// This is a bounded helper, not a general Zod or JSON Schema interpreter.
-/// Fractional/nonfinite bounds, exclusive bounds, multiple-of, custom messages,
+/// Fractional/nonfinite bounds, multiple-of, custom messages,
 /// refinements and arbitrary JavaScript objects are not implemented. Successful
 /// nonfinite results cannot be represented as a JSON number; callers must not
 /// silently serialize them as null. Existing native validation stays unchanged.
@@ -57,11 +59,13 @@ pub fn zod_number(input: Option<&Value>, steps: &[ZodNumberStep]) -> Result<f64,
                 errors.push(diagnostic("Number must be finite"));
             }
             ZodNumberStep::Safe => {
-                bound(value, -MAX_SAFE_INTEGER, true, &mut errors);
-                bound(value, MAX_SAFE_INTEGER, false, &mut errors);
+                bound(value, -MAX_SAFE_INTEGER, true, true, &mut errors);
+                bound(value, MAX_SAFE_INTEGER, false, true, &mut errors);
             }
-            ZodNumberStep::Min(limit) => bound(value, limit.0, true, &mut errors),
-            ZodNumberStep::Max(limit) => bound(value, limit.0, false, &mut errors),
+            ZodNumberStep::Min(limit) => bound(value, limit.0, true, true, &mut errors),
+            ZodNumberStep::Max(limit) => bound(value, limit.0, false, true, &mut errors),
+            ZodNumberStep::Gt(limit) => bound(value, limit.0, true, false, &mut errors),
+            ZodNumberStep::Lt(limit) => bound(value, limit.0, false, false, &mut errors),
             _ => {}
         }
     }
@@ -77,16 +81,18 @@ fn diagnostic(message: impl Into<String>) -> ParseError {
         message: message.into(),
     }
 }
-#[allow(clippy::cast_precision_loss)] // Constructor guarantees an exact safe integer.
-fn bound(value: f64, limit: i64, minimum: bool, errors: &mut Vec<ParseError>) {
+// Bounds are exact safe integers; exclusive checks intentionally reject equality.
+#[allow(clippy::cast_precision_loss, clippy::float_cmp)]
+fn bound(value: f64, limit: i64, minimum: bool, inclusive: bool, errors: &mut Vec<ParseError>) {
     if if minimum {
-        value < limit as f64
+        value < limit as f64 || !inclusive && value == limit as f64
     } else {
-        value > limit as f64
+        value > limit as f64 || !inclusive && value == limit as f64
     } {
         let comparison = if minimum { "greater" } else { "less" };
+        let equality = if inclusive { " or equal to" } else { "" };
         errors.push(diagnostic(format!(
-            "Number must be {comparison} than or equal to {limit}"
+            "Number must be {comparison} than{equality} {limit}"
         )));
     }
 }

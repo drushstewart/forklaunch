@@ -7399,3 +7399,16 @@ after the full suite, and the final strict run passed. This working-tree receipt
 includes frozen draft HTTP/MCP/validation dependencies recorded in
 /private/tmp/fl-iam-legacy-framework-dependency-hashes.json; it is not the earlier
 immutable archive checkpoint. CI runs the new actual legacy oracle.
+
+
+## Exclusive ordered Zod number bounds (2026-10-14)
+
+The bounded opt-in number helper now supports ordered gt/lt alongside inclusive
+min/max, using exact JavaScript-safe integer bounds. Equality rejects with the
+actual default exclusive diagnostic; successful IEEE-754 values, signed zero and
+infinities retain their bits.47,090 actual ForkLaunch Zod v3/native comparisons
+pass across single and chained constraints, boundary fractions and safe-integer
+edges. All 17 validation tests and strict all-feature/all-target Clippy pass:
+/private/tmp/fl-zod-exclusive-{ts,native,parity,clippy}.log. Existing native/default
+schemas remain unchanged. Fractional/nonfinite bounds, multiple-of and custom
+messages remain outside this helper.
