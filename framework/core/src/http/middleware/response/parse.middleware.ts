@@ -135,18 +135,31 @@ export function parse<
 
   const statusCode = Number(res.statusCode);
 
-  const parsedResponse = schemaValidator.parse(
-    [400, 401, 404, 403, 500].includes(statusCode)
-      ? schemaValidator.union([schemaValidator.string, responses?.[statusCode]])
-      : responses?.[statusCode],
-    res.bodyData
-  );
+  const defaultErrorStatus = [400, 401, 404, 403, 500].includes(statusCode);
+  const missingResponseSchema =
+    !defaultErrorStatus &&
+    !Object.prototype.hasOwnProperty.call(responses, statusCode);
+  // A missing declaration is a contract diagnostic, not a schema to compile.
+  // Preserve final-error redaction in error mode; warning mode must still send.
+  if (missingResponseSchema && collapsedOptions !== 'warning') {
+    throw new Error(`Undocumented response status ${statusCode}`);
+  }
+  const parsedResponse = missingResponseSchema
+    ? { ok: true as const }
+    : schemaValidator.parse(
+        defaultErrorStatus
+          ? schemaValidator.union([schemaValidator.string, responses?.[statusCode]])
+          : responses?.[statusCode],
+        res.bodyData
+      );
 
   const parsedHeaders = schemaValidator.parse(
     headers ?? schemaValidator.unknown,
     res.getHeaders()
   );
-  const parseErrors: string[] = [];
+  const parseErrors: string[] = missingResponseSchema
+    ? [`Response: Undocumented response status ${statusCode}`]
+    : [];
   if (!parsedHeaders.ok) {
     const headerErrors = prettyPrintParseErrors(parsedHeaders.errors, 'Header');
     if (headerErrors) {
@@ -165,7 +178,7 @@ export function parse<
   }
 
   if (parseErrors.length > 0) {
-    switch (req.contractDetails.options?.responseValidation) {
+    switch (collapsedOptions) {
       default:
       case undefined:
       case 'error':
@@ -192,8 +205,6 @@ export function parse<
         req.openTelemetryCollector?.warn(
           `Invalid response:\n${parseErrors.join('\n\n')}`
         );
-        break;
-      case 'none':
         break;
     }
   }

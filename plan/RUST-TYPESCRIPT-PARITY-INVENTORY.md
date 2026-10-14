@@ -5517,3 +5517,19 @@ encrypted storage, restart, managed configuration and complete CLI lifecycle:
 `/private/tmp/fl-rust-current-billing-runtime.log`. Package verification includes
 1011 embedded Rust source/template assets. Checklist remains **660/682 (96.8%),
 22 open**.
+
+
+### 2026-10-13: TypeScript response warning mode
+
+Undocumented nondefault response statuses now produce an explicit contract
+diagnostic before attempting schema compilation. Error mode retains final
+redaction; Warning logs and sends the response; None bypasses validation.
+Declared-schema failures also respect the resolved global Warning setting,
+which the previous switch ignored. Arbitrary validator exceptions are not
+swallowed.
+
+Verified: 48 actual-source repeated HTTP outcomes and 20 warning emissions,
+covering local and global settings and declared-schema failures. The independent
+JavaScript oracle is wired into CI with the pinned canonical dependencies.
+Receipt: `/private/tmp/fl-status-warning-oracle.log`. Broader default error
+unions and empty-send semantics stay open. Checklist: **660/682 (96.8%), 22 open**.
