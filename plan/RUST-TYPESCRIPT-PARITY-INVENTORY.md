@@ -5250,3 +5250,29 @@ with four explicitly tracked OpenAPI differences. The differential fixture is
 wired into CI. Logs: `/private/tmp/fl-scalar-coercion-{parity,tests,clippy,canonical}.log`.
 Checklist remains **660/682 (96.8%), 22 open**; broader validator/schema and
 diagnostic parity remains open.
+
+
+### 2026-10-13 — Single-pass billing portal update mapping
+
+The TypeScript base portal service now maps an update once and returns the DTO
+written to cache. Previously it invoked the update mapper again after the cache
+write without forwarding provider arguments, allowing a second database read or
+mutation and loss of Stripe fields in the returned response. Cached declared
+dates are restored before mapping; invalid cached dates reject before mutation.
+The cache read uses the DTO type rather than the entity type.
+
+All **237 configured-mapper cases**, **168 TypeScript/Rust base operations** and
+**144 official-SDK TypeScript/Rust Stripe service operations** pass. New cases
+check both configured variants and backup modes, exactly one request/response
+mapping pass, provider payload preservation, returned/cache consistency and
+invalid-cache rejection before writes. Logs:
+`/private/tmp/fl-billing-single-update-{mappers,base,stripe}.log`.
+These tests supply the entity expected by configured update mappers; reconstructing
+entities for cache-only updates remains open. Public API inventory is refreshed
+and checked (44 packages, 608 entry points, 1,662 declarations).
+
+The current CLI's Rust/mixed release regression also passes after fixing its
+owned command fixture to read identity from the explicit Cargo manifest instead
+of treating the manifest pathname as a package name. No product release behavior
+changed. Receipt: `/private/tmp/fl-rust-current-release.log`.
+Checklist remains **660/682 (96.8%), 22 open**.

@@ -86,6 +86,34 @@ for(const variant of ['base','stripe']){
     await assert.rejects(service[`get${suffix}`]({id:randomUUID()}));cases++;
    }
   }
+  if(family==='billingPortal'){
+   const Service=actual.load(path.join(root,'blueprint/implementations/billing/base/services/billingPortal.service.ts')).BaseBillingPortalService;
+   const {safeStringify}=actual.load(path.join(root,'framework/common/src/safeStringify.ts'));
+   const {safeParse}=actual.load(path.join(root,'framework/common/src/safeParse.ts'));
+   // Exercise configured mappers over an existing entity. This checks one update
+   // pass and returned/cache consistency; cache-only entity reconstruction stays
+   // a separate extension point.
+   for(const enableDatabaseBackup of [false,true]){
+    let writes=0,persisted=0,updates=0,responses=0;
+    const rows=new Map(),cache={getTtlMilliseconds:()=>60000,async putRecord({key,value}){writes++;rows.set(key,safeStringify(value));},async readRecord(key){return rows.has(key)?{value:safeParse(rows.get(key))}:null;}};
+    const manager={...em,persist(){persisted++;return {async flush(){}};}};
+    const mapped={...mappers,UpdateBillingPortalMapper:{...update,async toEntity(...args){updates++;assert.equal(updates,1,'update mapper must run once');return update.toEntity(...args);}},BillingPortalMapper:{...read,async toDto(...args){responses++;return read.toDto(...args);}}};
+    const service=new Service(manager,cache,{},actual.validator,mapped,{enableDatabaseBackup});
+    const created=await service.createBillingPortalSession(samples.billingPortal,{id:'old_provider'});
+    updates=0;responses=0;persisted=0;writes=0;
+    const provider={id:'new_provider',opaqueTimestamp:'2026-01-01T00:00:00Z'};
+    const changed=await service.updateBillingPortalSession({id:created.id,uri:'https://fixture.test/updated'},provider);
+    assert.equal(updates,1);assert.equal(responses,1);assert.equal(writes,1);assert.equal(persisted,Number(enableDatabaseBackup));
+    assert.equal(changed.uri,'https://fixture.test/updated');assert.ok(changed.expiresAt instanceof Date);
+    if(variant==='stripe')assert.deepEqual(changed.stripeFields,provider);
+    assert.deepEqual(JSON.parse(JSON.stringify(changed)),JSON.parse(JSON.stringify(await service.getBillingPortalSession({id:created.id}))));cases++;
+    const key=[...rows.keys()][0],valid=rows.get(key);
+    rows.set(key,JSON.stringify({...JSON.parse(valid),expiresAt:'invalid'}));
+    updates=0;responses=0;persisted=0;writes=0;
+    await assert.rejects(service.updateBillingPortalSession({id:created.id,uri:'https://fixture.test/rejected'},provider));
+    assert.equal(updates,0);assert.equal(responses,0);assert.equal(persisted,0);assert.equal(writes,0);cases++;
+   }
+  }
   if(['checkoutSession','paymentLink'].includes(family)){
    // Exercise actual configured schemas and mapper calls for every retained and
    // emitted status, rather than substituting a permissive fixture enum.

@@ -128,7 +128,7 @@ export class BaseBillingPortalService<
     }
 
     const existingBillingPortal = (
-      await this.cache.readRecord<MapperEntities['BillingPortalMapper']>(
+      await this.cache.readRecord<MapperDomains['BillingPortalMapper']>(
         this.createCacheKey(billingPortalDto.id)
       )
     )?.value;
@@ -136,6 +136,7 @@ export class BaseBillingPortalService<
     if (!existingBillingPortal) {
       throw new Error('Session not found');
     }
+    const existingBillingPortalDto = cachedSessionDto(existingBillingPortal);
 
     const billingPortal = await this.mappers.UpdateBillingPortalMapper.toEntity(
       billingPortalDto,
@@ -148,7 +149,7 @@ export class BaseBillingPortalService<
     }
 
     const updatedBillingPortalDto = {
-      ...existingBillingPortal,
+      ...existingBillingPortalDto,
       ...(await this.mappers.BillingPortalMapper.toDto(billingPortal))
     };
 
@@ -158,12 +159,7 @@ export class BaseBillingPortalService<
       ttlMilliseconds: this.cache.getTtlMilliseconds()
     });
 
-    return this.mappers.BillingPortalMapper.toDto(
-      await this.mappers.UpdateBillingPortalMapper.toEntity(
-        billingPortal,
-        this.em
-      )
-    );
+    return updatedBillingPortalDto;
   }
 
   async expireBillingPortalSession(idDto: IdDto): Promise<void> {
