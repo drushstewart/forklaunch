@@ -101,12 +101,15 @@ impl<T> ApiResult<T> {
 
 pub type BlueprintResult<T> = Result<T, BlueprintError>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Operation error with explicitly public wire details and opaque typed diagnostics.
+/// Construct with [`Self::new`]; private diagnostics prohibit struct literals.
+#[derive(Clone)]
 pub struct BlueprintError {
     pub code: String,
     pub message: String,
     /// Structured operation details; transports explicitly select public fields.
     pub details: BTreeMap<String, serde_json::Value>,
+    diagnostic_context: Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 impl BlueprintError {
@@ -116,7 +119,24 @@ impl BlueprintError {
             code: code.into(),
             message: message.into(),
             details: BTreeMap::new(),
+            diagnostic_context: None,
         }
+    }
+
+    /// Attaches a typed diagnostic value, replacing any previous context.
+    /// Context is excluded from details, formatting, equality and wire rendering.
+    /// Private marker types let modules preserve provenance across error layers
+    /// without trusting application-provided JSON metadata.
+    #[must_use]
+    pub fn with_diagnostic_context<T: std::any::Any + Send + Sync>(mut self, context: T) -> Self {
+        self.diagnostic_context = Some(std::sync::Arc::new(context));
+        self
+    }
+
+    /// Reads the context only when its exact concrete type matches.
+    #[must_use]
+    pub fn diagnostic_context<T: std::any::Any>(&self) -> Option<&T> {
+        self.diagnostic_context.as_ref()?.downcast_ref()
     }
 
     #[must_use]
@@ -125,6 +145,27 @@ impl BlueprintError {
         self
     }
 }
+
+// Diagnostic context is deliberately not part of the public value semantics.
+// Preserve the established public Debug representation; opaque diagnostics may
+// contain private data and must never be formatted.
+#[allow(clippy::missing_fields_in_debug)]
+impl fmt::Debug for BlueprintError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BlueprintError")
+            .field("code", &self.code)
+            .field("message", &self.message)
+            .field("details", &self.details)
+            .finish()
+    }
+}
+impl PartialEq for BlueprintError {
+    fn eq(&self, other: &Self) -> bool {
+        self.code == other.code && self.message == other.message && self.details == other.details
+    }
+}
+impl Eq for BlueprintError {}
 
 impl fmt::Display for BlueprintError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -349,6 +390,30 @@ pub mod testing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_diagnostics_are_typed_cloneable_and_excluded_from_public_semantics() {
+        struct PrivateMarker(&'static str);
+        let plain = BlueprintError::new("OWNED", "public message")
+            .with_detail("table", serde_json::json!("owned_table"));
+        let marked = plain
+            .clone()
+            .with_diagnostic_context(PrivateMarker("PRIVATE_CONTEXT_SECRET"));
+        let copied = marked.clone();
+        assert_eq!(
+            copied.diagnostic_context::<PrivateMarker>().unwrap().0,
+            "PRIVATE_CONTEXT_SECRET"
+        );
+        assert!(copied.diagnostic_context::<String>().is_none());
+        assert_eq!(plain, marked);
+        assert_eq!(format!("{plain:?}"), format!("{marked:?}"));
+        assert_eq!(plain.to_string(), marked.to_string());
+        assert_eq!(plain.details, marked.details);
+        assert!(!format!("{copied:?}").contains("PRIVATE_CONTEXT_SECRET"));
+        let replaced = copied.with_diagnostic_context(123u32);
+        assert!(replaced.diagnostic_context::<PrivateMarker>().is_none());
+        assert_eq!(replaced.diagnostic_context::<u32>(), Some(&123));
+    }
 
     #[test]
     fn module_tracks_version_and_tags() {

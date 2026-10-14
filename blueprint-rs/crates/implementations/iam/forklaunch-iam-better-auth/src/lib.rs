@@ -24,3 +24,4 @@ pub mod origins;
 pub mod http;
 
 mod ecmascript;
+mod error_origin;

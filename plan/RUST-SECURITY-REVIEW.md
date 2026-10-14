@@ -679,3 +679,16 @@ PostgreSQL native read fixtures and strict Clippy pass. The PostgreSQL fixtures
 serialize GRANT/REVOKE to avoid shared catalog races. No financial mutation or
 automatic alias provisioning is added. Full platform bootstrap and live provider/
 cloud behavior remain outside this receipt.
+
+
+Auth observer provenance review (2026-10-13): private typed markers distinguish
+handled API failures from unexpected failures without trusting HTTP status, error
+codes or caller-provided JSON details. Opaque BlueprintError context is excluded
+from Debug/Display/equality/public details and preserved on clone. The generated
+preset explicitly selects unexpected-only callback dispatch; legacy callbacks
+remain all-5xx unless changed. Safe structural tracing still covers every 5xx.
+Native tests verify spoof resistance, unchanged response bytes, bounded diagnostic
+metadata, callback panic isolation and trace/callback counts. Actual-source
+oracles cover get-session, individual/all/other session revocation and invalid
+permission schema versus invalid JSON. External struct literal callers must
+migrate to error constructors; no storage migration is required.

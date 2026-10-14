@@ -63,3 +63,10 @@ projection, with explicit failure on overflow. Public member fields are bound as
 transient SQL parameters, never newly persisted in plaintext. Configure database
 and proxy parameter logging for that data policy. Direct library integrations
 retain memory-adapter semantics unless they explicitly select this profile.
+
+
+The scaffold selects `AuthApiErrorObserverMode::UnexpectedOnly` for diagnostic
+callbacks installed with `with_api_error_observer`. Explicitly handled API500s
+skip that callback; unexpected failures invoke it. No callback is installed by
+default. Built-in sanitized tracing still records every raw5xx, independently of
+callback mode, so default TypeScript logger event counts are not identical.

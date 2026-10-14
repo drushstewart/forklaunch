@@ -67,9 +67,13 @@ impl<S: AuthStore> SessionService<S> {
         disable_refresh: bool,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Option<SessionView>> {
-        let mut tx = self.store.begin(true).await?;
+        let mut tx = self
+            .store
+            .begin(true)
+            .await
+            .map_err(crate::error_origin::handled)?;
         let result = load(&mut tx, token, transient || disable_refresh, now).await?;
-        tx.commit().await?;
+        tx.commit().await.map_err(crate::error_origin::handled)?;
         Ok(result)
     }
 
@@ -178,7 +182,8 @@ impl<S: AuthStore> SessionService<S> {
                 && session["userId"] == current.user["id"]
             {
                 tx.delete(Model::Session, field_text(&session, "id")?)
-                    .await?;
+                    .await
+                    .map_err(crate::error_origin::handled)?;
             }
         } else {
             let mut after = None;
@@ -191,7 +196,8 @@ impl<S: AuthStore> SessionService<S> {
                         after,
                         256,
                     )
-                    .await?;
+                    .await
+                    .map_err(|error| revoke_failure(mode, error))?;
                 for session in page.records {
                     if session["userId"] != current.user["id"] {
                         continue;
@@ -206,7 +212,8 @@ impl<S: AuthStore> SessionService<S> {
                     };
                     if remove {
                         tx.delete(Model::Session, field_text(&session, "id")?)
-                            .await?;
+                            .await
+                            .map_err(|error| revoke_failure(mode, error))?;
                     }
                 }
                 after = page.next;
@@ -215,7 +222,9 @@ impl<S: AuthStore> SessionService<S> {
                 }
             }
         }
-        tx.commit().await?;
+        tx.commit()
+            .await
+            .map_err(|error| revoke_failure(mode, error))?;
         Ok(json!({"status":true}))
     }
 
@@ -231,10 +240,18 @@ impl<S: AuthStore> SessionService<S> {
         tx.commit().await
     }
 }
+#[derive(Clone, Copy)]
 enum Revoke<'a> {
     One(&'a str),
     All,
     Others,
+}
+
+fn revoke_failure(mode: Revoke<'_>, error: BlueprintError) -> BlueprintError {
+    match mode {
+        Revoke::One(_) | Revoke::All => crate::error_origin::handled(error),
+        Revoke::Others => error,
+    }
 }
 
 pub(crate) fn new_session(
@@ -274,7 +291,20 @@ async fn find_token<T: AuthTransaction>(tx: &mut T, token: &str) -> BlueprintRes
     }
     tx.find_unique(Model::Session, "token", token).await
 }
+// The configured Better Auth getSession boundary converts internal failures
+// into handled API errors. Preserve that origin separately from wire formatting.
 pub(crate) async fn load<T: AuthTransaction>(
+    tx: &mut T,
+    token: &str,
+    skip_refresh: bool,
+    now: DateTime<Utc>,
+) -> BlueprintResult<Option<SessionView>> {
+    load_inner(tx, token, skip_refresh, now)
+        .await
+        .map_err(crate::error_origin::handled)
+}
+
+async fn load_inner<T: AuthTransaction>(
     tx: &mut T,
     token: &str,
     skip_refresh: bool,

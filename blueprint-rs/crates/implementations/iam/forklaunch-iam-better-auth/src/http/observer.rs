@@ -22,6 +22,20 @@ pub struct AuthApiError {
     /// Allowlisted structural database metadata, when available.
     pub database: BTreeMap<String, String>,
 }
+/// Dispatch mode for a configured diagnostic callback. Wire responses are unchanged.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AuthApiErrorObserverMode {
+    /// Compatibility behavior: every raw authentication 5xx invokes the callback.
+    #[default]
+    AllServerErrors,
+    /// Matches the configured Better Auth hook: explicitly handled API errors
+    /// skip the callback; unexpected server failures invoke it.
+    UnexpectedOnly,
+}
+
+#[derive(Clone)]
+pub(super) struct HandledResponse;
+
 pub(super) type Observer = Arc<dyn Fn(&AuthApiError) + Send + Sync>;
 
 #[derive(Clone, Default)]
@@ -56,6 +70,10 @@ pub(super) async fn observe<S: AuthStore + 'static>(
         .map_or_else(|| "<unmatched>".to_owned(), |path| path.as_str().to_owned());
     let mut response = next.run(request).await;
     let metadata = response.extensions_mut().remove::<ErrorMetadata>();
+    let handled = response
+        .extensions_mut()
+        .remove::<HandledResponse>()
+        .is_some();
     if response.status().is_server_error() {
         let event = AuthApiError {
             route,
@@ -63,7 +81,8 @@ pub(super) async fn observe<S: AuthStore + 'static>(
             database: metadata.unwrap_or_default().0,
         };
         tracing::error!(target: "forklaunch_iam_better_auth", route = %event.route, status = event.status, database = ?event.database, "Better Auth API error");
-        if let Some(observer) = &app.error_observer
+        if (app.error_observer_mode == AuthApiErrorObserverMode::AllServerErrors || !handled)
+            && let Some(observer) = &app.error_observer
             && catch_unwind(AssertUnwindSafe(|| observer(&event))).is_err()
         {
             tracing::error!(target: "forklaunch_iam_better_auth", "Better Auth API error observer panicked");

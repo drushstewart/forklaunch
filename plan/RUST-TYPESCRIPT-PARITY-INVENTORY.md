@@ -5796,3 +5796,45 @@ all-feature/all-target Clippy. The new PostgreSQL fixtures are in CI. The
 cross-repository fixture still requires an explicit companion source checkout;
 this is not a full platform bootstrap, live Stripe or cloud deployment receipt.
 Logs: `/private/tmp/fl-managed-payment-link-{platform,http,pg,lib,clippy}.log`.
+
+## Remaining configured billing acceptance criteria (2026-10-13)
+
+Gate 855 remains open for these actual-source differences. Gate 858 separately
+tracks interrupted external effects and recovery.
+
+| Remaining boundary | Concrete acceptance criterion |
+| --- | --- |
+| Payment-link lists | Resolve configured public UUID/cache identity before provider reads; no first-provider-page truncation or UUID/provider-ID comparison. Exercise requested IDs, cache corruption/missing rows, inactive objects, provider failure and bounded reads without writes. |
+| Payment-link updates | Avoid duplicate configured mapper execution and unconditional ORM access in cache-only operation; verify cache identity and intended persistence dispatch before external effects. |
+| Checkout/payment-link reference mutations | Resolve trusted scoped provider ownership before expire/update/success/failure calls; public UUIDs and cached provider references alone must not authorize a provider mutation. |
+| Native create identity | Explicitly define and test application public UUID allocation versus retained provider IDs for checkout, payment-link and portal creates; the existing opt-in durable alias reads do not supply this lifecycle. |
+| Plan/subscription provider inputs | Define trusted provider references/resolvers for plan product, subscription customer and plan inputs. Never infer Stripe ownership or identity from a local UUID or display name. |
+| Provider payload validation | Align deliberate required-field/object presence across public types, Zod, TypeBox and native contracts, including payment-link required create options/line items. Opaque SDK nested types are not a runtime validation guarantee. |
+
+The 325 configured mapper comparisons and 144 custom-mapper wrapper operations
+cover distinct scopes; neither receipt establishes all six lifecycle criteria.
+
+## Better Auth API-error observer receipt (2026-10-13)
+
+`AuthApiErrorObserverMode::UnexpectedOnly` uses private typed failure provenance
+to match the configured Better Auth callback boundary. Handled API errors skip
+callbacks even at status 500; unexpected failures invoke them. Existing callers
+retain `AllServerErrors` by default, while generated presets explicitly select
+the new mode for installed callbacks. Built-in sanitized tracing still emits for
+all 5xx: this receipt establishes callback-dispatch parity, not exact default
+TypeScript logger event counts.
+
+Actual-source tests distinguish get-session failures, individual/all/other
+session revocation, invalid permission schemas and malformed permission JSON.
+Six native observer tests cover corresponding boundaries, identical wire bytes,
+trace/callback counts, forged code/JSON/unrelated typed metadata, and panic
+isolation. The opaque core context test, existing session lifecycle regression
+and strict core/IAM all-feature/all-target Clippy pass. The existing CI oracle
+asserts the template mode. Logs:
+`/private/tmp/fl-iam-error-origin-{core,native,sessions,ts,clippy}.log`.
+
+BlueprintError's new private diagnostic context is excluded from public value
+semantics. Its README documents the source compatibility change for external
+struct literals/exhaustive patterns and migration to constructors. Signup failure
+status and signout failure suppression are separately identified remaining fault
+paths; gate 918 stays open.

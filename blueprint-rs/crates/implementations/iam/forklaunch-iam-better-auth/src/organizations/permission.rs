@@ -98,8 +98,8 @@ fn empty_error() -> BlueprintError {
     BlueprintError::new("HTTP_INTERNAL_EMPTY", "Invalid stored permissions")
 }
 fn invalid(role: &str) -> BlueprintError {
-    BlueprintError::new(
+    crate::error_origin::handled(BlueprintError::new(
         "HTTP_INTERNAL_MESSAGE_ONLY",
         format!("Invalid permissions for role {role}"),
-    )
+    ))
 }

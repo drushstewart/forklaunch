@@ -31,7 +31,7 @@ mod external_jwt;
 pub use external_jwt::ExternalJwtSigner;
 mod observer;
 mod organization;
-pub use observer::AuthApiError;
+pub use observer::{AuthApiError, AuthApiErrorObserverMode};
 mod public;
 mod rate;
 pub use rate::{
@@ -54,6 +54,7 @@ pub struct AuthHttp<S> {
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
     error_observer: Option<observer::Observer>,
+    error_observer_mode: AuthApiErrorObserverMode,
     secret: Zeroizing<Vec<u8>>,
     base_url: String,
     base_path: String,
@@ -86,6 +87,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             google: None,
             external_jwt: None,
             error_observer: None,
+            error_observer_mode: AuthApiErrorObserverMode::default(),
             secret,
             base_url,
             base_path: "/api/auth".into(),
@@ -193,8 +195,16 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self.limiter.options = options;
         self
     }
+    /// Selects callback dispatch without changing responses or safe server-error
+    /// tracing. The default retains the historical all-5xx callback behavior.
+    #[must_use]
+    pub fn with_api_error_observer_mode(mut self, mode: AuthApiErrorObserverMode) -> Self {
+        self.error_observer_mode = mode;
+        self
+    }
+
     /// Installs a trusted diagnostic callback for raw-auth server failures.
-    /// All raw HTTP 5xx responses are observed, including handled server errors.
+    /// The default observes all5xx; unexpected-only mode excludes handled errors.
     /// Only sanitized route templates and structural metadata are supplied.
     /// Panics in this callback are isolated from the HTTP response.
     #[must_use]
@@ -623,6 +633,9 @@ fn failure_for_path(error: &BlueprintError, path: &str) -> Response {
 fn failure(error: &BlueprintError) -> Response {
     let mut response = failure_response(error);
     if response.status().is_server_error() {
+        if crate::error_origin::is_handled(error) {
+            response.extensions_mut().insert(observer::HandledResponse);
+        }
         response
             .extensions_mut()
             .insert(observer::ErrorMetadata::from_error(error));

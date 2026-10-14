@@ -26,9 +26,21 @@ can install `AuthHttp::with_api_error_observer` for a trusted synchronous callba
 It receives no concrete token paths, query strings, cookies, freeform error
 messages or stacks. Callback panics are caught; the application's global panic
 hook still runs. Callbacks should return promptly. Successful responses and 4xx
-failures do not invoke the observer. Native observation covers all raw 5xx
-responses, whereas Better Auth's `onAPIError` excludes handled `APIError` 500s;
-this diagnostic hook does not claim identical callback dispatch semantics.
+failures do not invoke the observer. The historical callback mode covers all raw 5xx
+responses. Opt in with `with_api_error_observer_mode(
+AuthApiErrorObserverMode::UnexpectedOnly)` to exclude explicitly handled API
+failures, matching the configured Better Auth callback dispatch. Provenance is a
+private typed marker retained through service errors and removed from response
+extensions; error codes, JSON details and application diagnostic metadata cannot
+impersonate it. Session lookup and the two caught revocation branches preserve
+the actual handler's handled-error boundary; malformed permission JSON remains
+unexpected while a parsed-invalid permission schema is handled.
+
+The generated preset selects unexpected-only mode for callbacks an application
+installs. It does not install a callback itself. Built-in sanitized tracing still
+records every raw5xx in either mode, so this does not claim identical default
+TypeScript logger event counts or freeform log payloads. Responses, cookies and
+headers do not change when selecting callback mode.
 
 Generate a native application with this preset:
 

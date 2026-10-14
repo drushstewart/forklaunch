@@ -1,6 +1,6 @@
 use std::{env, sync::Arc};
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
-use forklaunch_iam_better_auth::{http::AuthHttp, store::{postgres::PostgresAuthStore, MemberQueryProfile}, oauth::google_client::GoogleClient};
+use forklaunch_iam_better_auth::{http::{AuthHttp, AuthApiErrorObserverMode}, store::{postgres::PostgresAuthStore, MemberQueryProfile}, oauth::google_client::GoogleClient};
 use forklaunch_auth::jwt::{Algorithm, RemoteJwks, RemoteJwksConfig, Validation};
 use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_blueprint_core::AuditContext;
@@ -48,7 +48,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let trusted = env::var("CORS_ORIGINS").unwrap_or_default().split(',')
         .map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned).collect();
     let mut application = AuthHttp::new(store, base_url.clone(), auth_secret.into_bytes(), trusted)?
-        .with_base_path(env::var("BETTER_AUTH_BASE_PATH").unwrap_or_else(|_| "/api/auth".into()))?;
+        .with_base_path(env::var("BETTER_AUTH_BASE_PATH").unwrap_or_else(|_| "/api/auth".into()))?
+        .with_api_error_observer_mode(AuthApiErrorObserverMode::UnexpectedOnly);
     let google_id = env::var("GOOGLE_CLIENT_ID").unwrap_or_default();
     let google_secret = env::var("GOOGLE_CLIENT_SECRET").unwrap_or_default();
     if !google_id.is_empty() || !google_secret.is_empty() {
