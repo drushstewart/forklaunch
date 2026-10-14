@@ -7243,3 +7243,19 @@ pass again: /private/tmp/fl-version-defaults-*.log. A first oracle caught projec
 snapshot leakage and was corrected before final proof. CI runs the live fixture.
 This supports bounded missing404/500 and guarded401/403 declarations; it does not
 claim arbitrary explicit-schema unions, versioned400 or generic diagnostic parity.
+
+
+## Parallel tracing fixture isolation (2026-10-14)
+
+Fresh immutable CLI archive15e420bed passed generation, relocation, source-presence,
+SDK and initial module checks, but its IAM suite failed the exact observer trace
+assertion (88 pass,1 fail,2 ignored): /private/tmp/fl-oct14-full-archive-runtime.log.
+That archive is not a successful full-runtime receipt. The fixture now runs its
+exact-count assertion in a child of the same test binary, explicitly checking
+that one test ran and passed. Process-global tracing callsite state is isolated;
+production logging and the exact two-event/filter/provenance assertions remain
+unchanged.100 parallel observer-suite repetitions pass, followed by the full IAM
+suite91 pass/2 ignored and strict all-feature/all-target Clippy:
+/private/tmp/fl-observer-isolated-{stress,full}.log and
+/private/tmp/fl-observer-pin-clippy.log. This full suite also includes the pending
+key-ID signing constraint slice. A corrected immutable archive rerun is required.

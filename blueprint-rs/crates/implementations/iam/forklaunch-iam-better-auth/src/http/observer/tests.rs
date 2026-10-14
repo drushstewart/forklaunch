@@ -171,6 +171,29 @@ impl tracing::Subscriber for TraceCounter {
 #[tokio::test]
 async fn unexpected_mode_uses_private_origin_not_status_code_or_details() {
     use tracing::instrument::WithSubscriber;
+    // Tracing callsite interest is process-global. Other parallel HTTP tests use
+    // this same event with no subscriber, so isolate this exact-count assertion
+    // in a fresh test process while keeping the surrounding suite parallel.
+    const CHILD: &str = "FORKLAUNCH_OBSERVER_TRACE_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "http::observer::tests::unexpected_mode_uses_private_origin_not_status_code_or_details", "--test-threads=1"])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("running 1 test") && stdout.contains("1 passed; 0 failed"),
+            "child must execute exactly this assertion: {stdout}"
+        );
+        assert!(
+            output.status.success(),
+            "isolated observer assertion failed: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
     let trace_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let dispatcher = tracing::Dispatch::new(TraceCounter(trace_count.clone()));
     for mode in [
