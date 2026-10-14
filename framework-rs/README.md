@@ -281,6 +281,15 @@ with the same framing rules; MCP argument handling remains separate. Construct
 framework requests through `FrameworkRequest::new` when migrating callers that
 previously enumerated every public struct field.
 
+Explicit `RequestValidators` callbacks normally run after authentication.
+Use `set_stage(route, RequestValidationStage::BeforeAuthentication)` to move
+a registered callback after parsing and before authentication. Only Error-mode
+callbacks run, once per request; None/Warning behavior is unchanged. Rejection
+metadata remains enforced, and diagnostics must be safe to expose without
+credentials. This controls the explicit callback, not native schema checks or
+request transformations. Authentication and authorization still run after a
+successful callback.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

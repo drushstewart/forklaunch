@@ -6113,3 +6113,18 @@ CI includes the actual-source fixture; configured preset defaults are unchanged.
 This optional hook postdates the latest generated preset receipt. Other payload
 hooks, independent key adapters, unsupported root/encoded namespaces and broad
 Better Auth coverage remain in gate918.
+
+## Registered request callback ordering receipt (2026-10-14)
+
+RequestValidators::set_stage can opt an existing schema-bound callback into
+BeforeAuthentication. Parsed JSON is available first; Error-mode callbacks run
+once before async auth, while None/Warning and the default AfterAuthentication
+order remain unchanged. Rejection metadata mismatches remain redacted500 before
+auth. This moves only explicit callbacks, not native schema checks, generic Zod
+semantics, request transformations or unregistered validation. Pre-auth diagnostic
+text is trusted application policy and must be safe for anonymous callers.
+96 Axum library tests, 30 actual TypeScript/native comparisons (60 observations)
+and strict MCP/cookie-session all-target Clippy pass:
+/private/tmp/fl-request-order-{tests,parity,clippy}.log. CI includes the oracle.
+The latest generated-service proof predates this optional registration extension.
+Broad validation/auth/error gates remain open.

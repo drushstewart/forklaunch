@@ -58,7 +58,7 @@ pub use origin::RouterOriginFormat;
 mod response_validation;
 pub use response_validation::ResponseValidators;
 mod request_validation;
-pub use request_validation::RequestValidators;
+pub use request_validation::{RequestValidationStage, RequestValidators};
 
 /// Default maximum request body size accepted before a `400` is returned (2 MiB).
 pub const DEFAULT_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
@@ -1186,6 +1186,14 @@ async fn validate_matched_contract(
             ));
         }
     }
+    if let Some(response) = state.request_validators.reject_at(
+        RequestValidationStage::BeforeAuthentication,
+        &contract,
+        &framework_request,
+        parts.uri.query(),
+    ) {
+        return framework_response_to_axum(response);
+    }
     let requires_auth = contract.auth.is_some()
         || contract.rbac.is_some()
         || contract.access != AccessLevel::Public;
@@ -1223,11 +1231,12 @@ async fn validate_matched_contract(
             }
         }
     }
-    if let Some(response) =
-        state
-            .request_validators
-            .reject(&contract, &framework_request, parts.uri.query())
-    {
+    if let Some(response) = state.request_validators.reject_at(
+        RequestValidationStage::AfterAuthentication,
+        &contract,
+        &framework_request,
+        parts.uri.query(),
+    ) {
         return framework_response_to_axum(response);
     }
     execute_validated(state, contract, parts, bytes, framework_request, next).await
@@ -2246,3 +2255,6 @@ mod request_context_tests;
 
 #[cfg(test)]
 mod json_request_tests;
+
+#[cfg(test)]
+mod request_order_tests;

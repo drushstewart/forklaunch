@@ -7,15 +7,28 @@ use std::{collections::BTreeMap, sync::Arc};
 
 type Validator = dyn Fn(&FrameworkRequest, Option<&str>) -> Option<FrameworkResponse> + Send + Sync;
 
+/// When a registered request callback executes. Native schema checks retain
+/// their existing order; this controls only the explicitly registered callback.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RequestValidationStage {
+    /// Preserve the native default: authenticate before callback validation.
+    #[default]
+    AfterAuthentication,
+    /// Match TypeScript request-schema middleware ordering for this callback.
+    /// Parsing runs first; contract authentication/authorization has not run yet.
+    BeforeAuthentication,
+}
+
 #[derive(Clone)]
 struct Registration {
     schema: RequestContract,
+    stage: RequestValidationStage,
     rejection: Option<ResponseContract>,
     validate: Arc<Validator>,
 }
 
 /// Validators are bound to a declared request schema and method/operation pair.
-/// Callbacks run after authentication and before either local or Axum handlers,
+/// Callbacks run after authentication by default and before local or Axum handlers,
 /// only in error-validation mode. They supplement native contract checks.
 /// The optional raw query preserves repeated keys that `FrameworkRequest::query`
 /// flattens. A returned response rejects the request; its diagnostics must be safe
@@ -48,10 +61,33 @@ impl RequestValidators {
             key,
             Registration {
                 schema: route.request.clone(),
+                stage: RequestValidationStage::default(),
                 rejection: None,
                 validate: Arc::new(validate),
             },
         );
+        Ok(())
+    }
+
+    /// Select execution order for an already registered callback. Only Error-mode
+    /// callbacks run; None/Warning modes do not acquire new callback behavior.
+    /// Parser failures precede both stages. Pre-auth diagnostics must be safe to
+    /// expose without credentials; existing rejection metadata remains enforced.
+    /// # Errors
+    /// Rejects missing registrations or changed/versioned request declarations.
+    pub fn set_stage(
+        &mut self,
+        route: &RouteContract,
+        stage: RequestValidationStage,
+    ) -> Result<(), String> {
+        let entry = self
+            .entries
+            .get_mut(&key(route))
+            .ok_or("Missing request validator registration")?;
+        if !route.versions.is_empty() || entry.schema != route.request {
+            return Err("Request validator schema no longer matches its route".into());
+        }
+        entry.stage = stage;
         Ok(())
     }
 
@@ -150,6 +186,19 @@ impl RequestValidators {
                 "duplicate request validator operation"
             );
         }
+    }
+
+    pub(super) fn reject_at(
+        &self,
+        stage: RequestValidationStage,
+        route: &RouteContract,
+        request: &FrameworkRequest,
+        raw_query: Option<&str>,
+    ) -> Option<FrameworkResponse> {
+        if self.entries.get(&key(route))?.stage != stage {
+            return None;
+        }
+        self.reject(route, request, raw_query)
     }
 
     pub(super) fn reject(
