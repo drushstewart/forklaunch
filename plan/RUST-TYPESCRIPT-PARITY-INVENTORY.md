@@ -8242,3 +8242,43 @@ literal rules7140 and strict all-feature/all-target Clippy pass. No dependency o
 lock changes. Logs /private/tmp/fl-zod-check-messages-{parity,tests,clippy,number,
 string,rules}.log; hashes /private/tmp/fl-zod-check-messages-source-sha256.json.
 CI runs the oracle. Full schema/emitter and arbitrary callback parity remain open.
+
+
+## Verified direct Plan creation and exposed Subscription target gap (2026-10-14)
+
+Plan/Subscription already use local UUIDs with separate externalId; their remaining
+ownership/reference gaps differ from Checkout/PaymentLink/Portal provider IDs.
+A dedicated opt-in BoundPlanCreateRequest/Profile now verifies an allowlisted
+Product under authenticated account/mode, reserves an encrypted intent, issues
+one idempotent Plan POST, and verifies exact Plan plus expanded Product readback.
+The finite profile supports integer per-unit licensed pricing, one cadence,
+uppercase local currency, safe custom alphanumeric/hyphen/underscore IDs and no
+caller-generated provider/local IDs or nested creation. Unit amount is a declared
+price, not an invoice/charged total. Journal canonical payloads are bounded64KiB.
+
+Separate additive migration8 adds Plan binding kind and Plan intent/audit journal;
+migration7 is unchanged. Confirmed commit alone issues dispatch capability. Local
+UUID/externalId/Product fields, immutable Plan alias/audit and encrypted historical
+receipt publish together with post-lock/write deadline checks. Failed or ambiguous
+operations inspect historical state and never automatically repeat POST. Trusted
+store primitives are not caller-controlled evidence ingestion. Legacy Plan CRUD
+is not newly binding-aware, administrative Plan bindings remain assertions, and
+no default generated route silently mints an operation UUID.
+
+Restricted PG matrix12.68s passes Product/Plan/mode/amount/cadence evidence, custom
+IDs, wrong scopes, actor/RLS, ciphertext/immutability, concurrency/cancellation,
+timeout, rollback, late waits and real lost reservation/final COMMIT acknowledgments.
+Official Stripe22.6.2 wire, finite unit, old journal17.79s, legacy170 and strict
+base/Stripe all-feature/all-target Clippy pass. Zero fixture roles remain. Logs:
+/private/tmp/fl-bound-plan-{pg-final,clippy,unit,sdk,native-target-gap,
+legacy-journal,legacy170}.log.13 frozen hashes:
+/private/tmp/fl-bound-plan-source-sha256.json. CI runs SDK and restricted PG cases.
+
+A separate actual configured TS/native strict provider-target fixture confirms
+both legacy Subscription services send local partyId/productId UUIDs directly as
+provider customer/plan, then fail without a local write when a strict provider
+rejects them (/private/tmp/fl-billing-subscription-target-gap.log). The older
+generated fake accepted these UUIDs; that fixture proves lifecycle/transport,
+not usable Stripe references. Trusted customer registration, scoped customer/Plan
+resolution and an explicit generated operation/outcome adapter remain work.
+The immutable416d checkpoint excludes this subsequently validated Plan source.

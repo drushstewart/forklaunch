@@ -1034,3 +1034,16 @@ challenge cookie, but subsequent use fails. Authenticated verification retains i
 existing token. Atomic memory rollback/single-use, actual-client29 and full IAM118
 pass; no new storage/cryptographic primitive or schema was introduced. Restricted
 PG and generatedTCP receipts above remain explicitly scoped to earlier branches.
+
+
+## Verified Plan creation boundary (2026-10-14)
+
+The new explicit profile verifies authenticated Product identity/mode before a
+single Plan POST and exact Plan/Product evidence before atomic UUID/alias/audit/
+receipt publication. A separate encrypted immutable journal grants dispatch only
+after confirmed commit; ambiguity never reconstructs that grant. Restricted PG
+and real lost-ack tests pass. Plan administrative bindings remain assertions;
+legacy mutable DTOs and Plan CRUD are not secured merely by the new binding kind.
+Future Subscription dispatch must resolve independent current Customer/Plan
+business associations and verify provider evidence, not copy public UUIDs or
+mutable externalId/providerFields. No provider mutation was sent outside fixtures.

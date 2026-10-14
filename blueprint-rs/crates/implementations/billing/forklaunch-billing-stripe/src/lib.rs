@@ -198,3 +198,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(feature = "postgres-identity")]
+pub mod bound_plan_creation;

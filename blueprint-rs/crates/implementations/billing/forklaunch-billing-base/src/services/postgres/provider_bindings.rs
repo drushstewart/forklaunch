@@ -8,11 +8,13 @@ use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 mod paused_effect;
 mod payment_link_creation;
+mod plan_creation;
 pub use paused_effect::{PausedEffectAcknowledgement, PausedSubscriptionEffectSnapshot};
 pub use payment_link_creation::{
     ManagedPaymentLinkPublication, PaymentLinkCreationClaim, PaymentLinkCreationReservation,
     PaymentLinkCreationStatus,
 };
+pub use plan_creation::{PlanCreationClaim, PlanCreationReservation, PlanCreationStatus};
 
 type BindingRow = (
     String,
@@ -162,7 +164,8 @@ impl DurableStripeBinding {
 fn binding_kind(kind: BillingKind) -> BlueprintResult<()> {
     if !matches!(
         kind,
-        BillingKind::CheckoutSession
+        BillingKind::Plan
+            | BillingKind::CheckoutSession
             | BillingKind::PaymentLink
             | BillingKind::BillingPortal
             | BillingKind::Subscription

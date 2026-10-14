@@ -9,6 +9,7 @@ pub use provider_bindings::{
     PausedSubscriptionEffectSnapshot, PaymentLinkCreationClaim, PaymentLinkCreationReservation,
     PaymentLinkCreationStatus, StripeBindingScope, StripeSubscriptionOwnership,
 };
+pub use provider_bindings::{PlanCreationClaim, PlanCreationReservation, PlanCreationStatus};
 pub use webhooks::{PendingWebhook, WebhookResolution};
 
 use super::{
