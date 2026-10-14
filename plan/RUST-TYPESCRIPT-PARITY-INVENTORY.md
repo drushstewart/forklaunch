@@ -4920,3 +4920,24 @@ rerun is in progress and will have its own receipt. Evidence:
 `/private/tmp/fl-rust-scoped-orm.log`, `/private/tmp/fl-rust-main-cli-tests.log`,
 `/private/tmp/fl-rust-main-package.log`. Broader Better Auth options/hooks and
 other parity gates remain open: **659/682 (96.6%), 23 open**.
+
+
+### 2026-10-13 — Generated scoped auth validation and adapter gate reconciliation
+
+Generated Better Auth run `AO2PeS` passes scoped HMAC roles/permissions through
+HTTP, the typed SDK and MCP; changed scope invalidates the signature, wrong
+sessions return no grants and legacy routes remain empty with active ownership.
+Persisted session IDs appear in signed JWTs. All eight actual frontend-client
+profiles, shared/separate/disabled MCP, custom/root/URL-overridden auth namespaces,
+self-JWKS, encrypted tenant isolation, restart and shutdown pass. Both SDKs build;
+source-preserving rename, artifact checking, workspace compilation and deletion
+pass. A stale six-tool assertion was corrected to eight; runtime/lifecycle checks
+were rerun in the same isolated generated workspace with a fresh database role.
+Evidence: `/private/tmp/fl-rust-scoped-generated{,-resume}.log`.
+
+Review of the auth evaluation's selected adapter scope also closes its stale
+integration recommendation. Both reviewed adapters now have optional features,
+locked dependency review and the generated session/OIDC evidence above. Broader
+framework adoption was deliberately deferred by the evaluation; passkeys/custom
+provider options remain in broader IAM parity work. No extra framework is adopted
+merely to close a checkbox. Checklist: **660/682 (96.8%), 22 open**.

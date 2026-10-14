@@ -449,7 +449,7 @@ try {
     authBasePath: '/',
     label: 'root auth path'
   });
-  assert.equal((await probeMcp(ownJwks.base, ['getauthmethods'])).length, 6);
+  assert.equal((await probeMcp(ownJwks.base, ['getauthmethods'])).length, 8);
   const ownSession = await call(
     ownJwks.base,
     `${ownJwks.authPath}/get-session`,

@@ -229,3 +229,25 @@ Defer rs-auth, auth-framework, webgates and authkestra adoption, and avoid layer
 axum-login/axum_session_auth over an already-owned IAM session model by default.
 Revisit a candidate only for a concrete missing capability, with a pinned feature
 graph and evidence that it preserves the ten criteria above.
+
+
+## Selected adapter integration receipt — 2026-10-13
+
+The selected narrow adapters are now implemented behind explicit optional
+features: `forklaunch-axum/cookie-session` uses tower-sessions 0.15, and
+`forklaunch-auth/oidc` uses openidconnect 4.0.1/oauth2. Their locked dependency
+graphs passed the source-specific advisory review with no unreviewed findings.
+The RSA exception is limited to public OIDC verification; it does not authorize
+private-key operations.
+
+Encrypted PostgreSQL cookie state and browser-bound, atomically consumed OIDC
+pending state pass real provider, rotation/revocation, process-restart, CSRF and
+HTTP/MCP fixtures. Chromium proves Strict-cookie cross-site exclusion and the
+same-origin callback relay. Generated base IAM run `5zxkME` passes end-to-end
+provider code/PKCE exchange and local grants. Detailed receipts and limitations
+are in the parity inventory and security review.
+
+This completes the recommendation to integrate selected optional adapters only
+after review. It does not approve deferred whole-framework dependencies, implement
+passkeys, or close broader provider/linking/client options. Those remain distinct
+IAM parity work.

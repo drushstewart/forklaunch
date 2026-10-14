@@ -1,6 +1,6 @@
 # Rust Framework And Blueprint Implementation Plan
 
-Current verified progress (2026-10-13): **659/682 checklist items (96.6%), 23 open**.
+Current verified progress (2026-10-13): **660/682 checklist items (96.8%), 22 open**.
 The unchecked boxes below are the remaining gates; detailed validation receipts
 are in [the parity inventory](RUST-TYPESCRIPT-PARITY-INVENTORY.md).
 
@@ -179,7 +179,7 @@ There does not appear to be a direct Rust equivalent to Better Auth that should 
 - [x] Use `openidconnect` and `oauth2` for OAuth/OIDC provider integrations. Optional `forklaunch-auth/oidc` provides bounded discovery, authorization code + S256 PKCE, browser-bound single-use state, public/HTTP Basic clients and RS256 ID-token/nonce/access-token-hash verification. Local provider and generated-feature HTTP/MCP checks pass; refresh grants validate original identity and token rotation. Fresh keys are fetched from the pinned JWKS endpoint for each ID-token verification, including refresh grants, with actual key-rotation/revocation tests. Account/session provisioning remains in the broader provider lifecycle gate.
 - [x] Use `jsonwebtoken` for JWT validation/issuance where JWTs are enough. (`forklaunch-auth` verifies HS256 and explicit JWK/JWKS policies and issues typed HS256 claims; actual JOSE verifies native-issued tokens and both canonical servers accept them. Better Auth provider-specific formats remain in their adapter.)
 - [x] Keep Better Auth parity at the behavior/API level, not as a crate dependency. `forklaunch-iam-better-auth` owns the native implementation, while actual TypeScript/Better Auth fixtures define comparison behavior. Remaining ORM/client/options/provider gaps stay explicitly open in phase 16.
-- [ ] Add optional adapters for promising frameworks only after security review.
+- [x] Add the optional adapters selected by the security review: `forklaunch-axum/cookie-session` over tower-sessions and `forklaunch-auth/oidc` over openidconnect/oauth2. Locked dependency review, encrypted PostgreSQL/browser state, adversarial protocol checks and generated HTTP/MCP startup pass. The evaluation deliberately defers competing whole-framework adoption; later passkey/custom-provider work remains in the broader IAM options gate.
 
 ### Auth Evaluation Checklist
 
