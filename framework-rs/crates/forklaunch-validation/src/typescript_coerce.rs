@@ -20,6 +20,9 @@ pub use strict_string::{ZodStringStep, zod_string};
 #[path = "zod_multiple_of.rs"]
 mod multiple_of;
 pub use multiple_of::ZodMultipleOf;
+#[path = "zod_float_bound.rs"]
+mod float_bound;
+pub use float_bound::ZodFloatBound;
 
 #[path = "zod_number.rs"]
 mod constrained_number;

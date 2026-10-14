@@ -8024,3 +8024,20 @@ frozen hashes /private/tmp/fl-zod-multiple-source-sha256.json. CI runs the oracl
 Fractional/nonfinite comparison bounds, arbitrary callbacks/custom messages and
 complete schema/emitter parity remain separate work. The 5a8 packaged checkpoint
 predates this source change.
+
+
+## Fractional and nonfinite Zod runtime bounds (2026-10-14)
+
+Opaque bit-preserving ZodFloatBound adds MinFloat/MaxFloat/GtFloat/LtFloat to the
+ordered runtime number helper, preserving existing exact integer constructors.
+Fractional, subnormal, huge, signed-zero and infinite values use actual IEEE
+comparisons and ECMAScript diagnostic spelling; NaN bounds never reject.
+These are runtime checks, not JSON Schema declarations of nonfinite numbers.
+63240 actual ForkLaunch Zod v3/native comparisons pass, including adjacent
+values and ordered diagnostics/output bits. Full validation20 tests, previous
+47090 integer-bound comparisons and strict all-feature/all-target Clippy pass.
+No dependency/lock changes. Logs /private/tmp/fl-zod-float-bound-{parity,tests,
+number-regression,clippy}.log; frozen hashes
+/private/tmp/fl-zod-float-bound-source-sha256.json. CI runs the oracle. Arbitrary
+schema/emitter coverage and custom messages/refinements remain open; this source
+slice is later than the immutable5a8 packaged runtime checkpoint.
