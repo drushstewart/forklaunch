@@ -21,7 +21,7 @@
     "id": "RUSTSEC-2023-0071",
     "package": "rsa",
     "version": "0.9.10",
-    "review": "rsa_key.rs uses RSA only for generation, PKCS#8 decoding/encoding and public n/e extraction. Private-key signing uses ring; no RSA decryption is exposed. Re-review before adding private-key operations through rsa."
+    "review": "rsa_key.rs uses RSA only for generation, PKCS#8 decoding/encoding and public n/e extraction. Private-key signing uses ring; no RSA decryption is exposed. Optional IAM oidc-sessions additionally reuses the reviewed framework openidconnect 4.0.1 public RS256 verification path, with no RSA private-key operations. Re-review before adding private-key operations through rsa."
   },
   {
     "scope": "cli",

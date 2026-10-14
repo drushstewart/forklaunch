@@ -481,3 +481,19 @@ application responsibilities. OAuth/OIDC flows are not implied by durable cookie
 storage. Restricted-role tests cover ID collisions, encryption/redaction, RLS,
 record/namespace/expiry swapping, retained-key rotation, expiry, oversize rejection
 and deletion/expiry resurrection prevention, alongside the browser lifecycle.
+
+
+Base IAM OIDC identity review (2026-10-13): optional `oidc-sessions` reuses the
+framework provider's verified code exchange; the public service does not accept
+a caller-constructed `OidcLogin` as proof. Exact tenant/issuer/subject bindings
+require administrative provisioning and never auto-link by email. Identity/user
+row locks serialize local issuance with unlink/disable/delete. Provider tokens
+are dropped and provider grants do not override local grants. Existing local
+session hashing, current-user checks and revocation remain authoritative.
+Caller-owned browser-bound single-use pending state remains required. The new
+blueprint dependency path uses the same reviewed openidconnect public RS256
+verification path as the framework; the exact RSA advisory exception now records
+both blueprint usages. No new private-key operation through rsa is introduced.
+All three lockfiles pass the current advisory gate with reviewed findings visible;
+the offline scanner regression suite passes. Evidence:
+`/private/tmp/fl-iam-provider-security{,-tests}.log`.
