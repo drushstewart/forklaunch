@@ -375,6 +375,133 @@ async fn live_paypal_wire_capture_claims_retries_and_signature_verification() {
         3,
         "Recovery never initiates capture"
     );
+    service.create_payment(request("void")).await.unwrap();
+    assert!(
+        service
+            .base()
+            .claim_for_confirmation("ORDER_void")
+            .await
+            .unwrap()
+    );
+    // Schema-valid explicit zero-entry payment history, based on PayPal Orders
+    // v2 payment_collection (minItems=0). This is an owned fixture, not a live
+    // merchant capture; omitted histories deliberately remain manual review.
+    let voided = json!({"id":"ORDER_void", "status":"VOIDED", "intent":"CAPTURE",
+        "update_time":"2026-10-10T00:00:00Z",
+        "purchase_units":[{"reference_id":"ORDER_void", "amount":{"currency_code":"USD", "value":"1.05"},
+        "payments":{"captures":[], "authorizations":[], "refunds":[]}}]});
+    for (pointer, replacement) in [
+        ("/id", json!("OTHER")),
+        ("/status", json!("APPROVED")),
+        ("/status", json!("CREATED")),
+        ("/status", json!("COMPLETED")),
+        ("/intent", json!("AUTHORIZE")),
+        ("/purchase_units", json!([])),
+        ("/purchase_units/0/reference_id", json!("other")),
+        ("/purchase_units/0/amount/value", json!("1.051")),
+        ("/purchase_units/0/amount/value", json!("2.05")),
+        ("/purchase_units/0/amount/currency_code", json!("EUR")),
+        ("/purchase_units/0/payments", json!(null)),
+    ] {
+        let mut invalid = voided.clone();
+        *invalid.pointer_mut(pointer).unwrap() = replacement;
+        *state.details.lock().unwrap() = Some(invalid);
+        assert!(
+            service
+                .reconcile_voided_payment("void", actor.clone())
+                .await
+                .is_err()
+        );
+    }
+    for field in ["captures", "authorizations", "refunds"] {
+        for value in [
+            json!(null),
+            json!({}),
+            json!([{"status":"VOIDED"}]),
+            json!([{"status":"COMPLETED"}]),
+        ] {
+            let mut invalid = voided.clone();
+            invalid["purchase_units"][0]["payments"][field] = value;
+            *state.details.lock().unwrap() = Some(invalid);
+            assert!(
+                service
+                    .reconcile_voided_payment("void", actor.clone())
+                    .await
+                    .is_err()
+            );
+        }
+        let mut missing = voided.clone();
+        missing["purchase_units"][0]["payments"]
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+        *state.details.lock().unwrap() = Some(missing);
+        assert!(
+            service
+                .reconcile_voided_payment("void", actor.clone())
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(
+        service.base().get_payment("void").await.unwrap().status,
+        PaymentStatus::Succeeded
+    );
+    assert!(store.payment_cancellation_audits().unwrap().is_empty());
+    *state.details.lock().unwrap() = Some(voided);
+    assert!(
+        service
+            .reconcile_voided_payment(
+                "void",
+                forklaunch_blueprint_core::AuditContext::system("no-actor")
+            )
+            .await
+            .is_err()
+    );
+    let repaired = service
+        .reconcile_voided_payment("void", actor.clone())
+        .await
+        .unwrap();
+    assert_eq!(repaired.status, PaymentStatus::Failed);
+    assert_eq!(repaired.provider_ref.as_deref(), Some("ORDER_void"));
+    let audits = store.payment_cancellation_audits().unwrap();
+    assert_eq!(audits.len(), 1);
+    assert_eq!(
+        audits[0].evidence.canceled_at, None,
+        "update_time is not a cancellation timestamp"
+    );
+    assert_eq!(audits[0].evidence.provider, "paypal");
+    assert_eq!(audits[0].actor, actor);
+    assert!(
+        service
+            .confirm_payment(ConfirmPaymentDto {
+                provider_ref: "ORDER_void".into()
+            })
+            .await
+            .is_err()
+    );
+    service
+        .base()
+        .release_confirmation_claim("ORDER_void")
+        .await
+        .unwrap();
+    assert_eq!(
+        service.base().get_payment("void").await.unwrap().status,
+        PaymentStatus::Failed
+    );
+    *state.details.lock().unwrap() = None;
+    assert!(
+        service
+            .reconcile_captured_payment("void", actor.clone())
+            .await
+            .is_err(),
+        "cancellation blocks contradictory capture repair"
+    );
+    assert_eq!(
+        state.captures.load(Ordering::SeqCst),
+        3,
+        "void recovery never captures"
+    );
     for (mode, expected) in [
         ("success", true),
         ("failure", false),

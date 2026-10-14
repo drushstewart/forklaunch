@@ -1,6 +1,7 @@
 //! Reconcile completed captures by reading the provider; never initiate capture.
 use crate::{PaypalClient, PaypalPaymentService, PaypalProvider, shape_error};
 use forklaunch_blueprint_core::{AuditContext, BlueprintError, BlueprintResult};
+use forklaunch_ecommerce_base::cancellation::{PaymentCancellationStore, VerifiedCancellation};
 use forklaunch_ecommerce_base::reconciliation::{PaymentReconciliationStore, VerifiedCapture};
 use forklaunch_ecommerce_interface::{PaymentDto, PaymentService};
 use reqwest::Method;
@@ -78,6 +79,75 @@ impl<S: PaymentReconciliationStore, P: PaypalOrderReader> PaypalPaymentService<S
             .record_verified_capture(expected, evidence, actor)
             .await
     }
+}
+impl<S: PaymentCancellationStore, P: PaypalOrderReader> PaypalPaymentService<S, P> {
+    /// Reads terminal VOIDED evidence and atomically records local failure with an
+    /// actor audit. Requires a single CAPTURE purchase unit with explicitly empty
+    /// captures, authorizations and refunds. Missing history remains manual review,
+    /// even if a provider omits empty arrays. Never voids/refunds provider funds or
+    /// transitions the local order. `PayPal` supplies no cancellation timestamp.
+    /// # Errors
+    /// Rejects incomplete/nonterminal/charged evidence, mismatched ownership or
+    /// amount, stale snapshots, contradictory capture audits and storage failures.
+    pub async fn reconcile_voided_payment(
+        &self,
+        payment_id: &str,
+        actor: AuditContext,
+    ) -> BlueprintResult<PaymentDto> {
+        let expected = self.base.get_payment(payment_id).await?;
+        let reference = expected
+            .provider_ref
+            .as_deref()
+            .filter(|id| valid_id(id))
+            .ok_or_else(review_required)?;
+        let order = self.client.retrieve_order_details(reference).await?;
+        let evidence = verify_void(&expected, &order)?;
+        self.base
+            .record_verified_cancellation(expected, evidence, actor)
+            .await
+    }
+}
+fn verify_void(payment: &PaymentDto, order: &Value) -> BlueprintResult<VerifiedCancellation> {
+    // PayPal Orders v2 order_status defines VOIDED as all purchase units voided;
+    // purchase_unit.payments is the comprehensive history, whose three arrays
+    // allow zero entries. Require explicit emptiness rather than interpreting
+    // missing projections as evidence of no previous monetary effects.
+    // https://developer.paypal.com/api/orders/v2/schema.json
+    if order["id"].as_str() != payment.provider_ref.as_deref()
+        || order["status"] != "VOIDED"
+        || order["intent"] != "CAPTURE"
+        || payment.amount_cents <= 0
+        || payment.currency.len() != 3
+        || !payment
+            .currency
+            .bytes()
+            .all(|byte| byte.is_ascii_alphabetic())
+    {
+        return Err(review_required());
+    }
+    let units = order["purchase_units"]
+        .as_array()
+        .filter(|units| units.len() == 1)
+        .ok_or_else(review_required)?;
+    let unit = &units[0];
+    if unit["reference_id"].as_str() != Some(payment.order_id.as_str())
+        || !matching_amount(&unit["amount"], payment)
+        || ["captures", "authorizations", "refunds"].iter().any(|key| {
+            unit["payments"]
+                .get(key)
+                .and_then(Value::as_array)
+                .is_none_or(|items| !items.is_empty())
+        })
+    {
+        return Err(review_required());
+    }
+    Ok(VerifiedCancellation {
+        provider: "paypal".into(),
+        provider_ref: payment.provider_ref.clone().ok_or_else(review_required)?,
+        canceled_at: None,
+        amount_cents: payment.amount_cents,
+        currency: payment.currency.to_ascii_uppercase(),
+    })
 }
 fn verify_capture(payment: &PaymentDto, order: &Value) -> BlueprintResult<VerifiedCapture> {
     if order["id"].as_str() != payment.provider_ref.as_deref()
@@ -164,6 +234,6 @@ fn valid_id(value: &str) -> bool {
 fn review_required() -> BlueprintError {
     BlueprintError::new(
         "paypal_reconciliation_required",
-        "PayPal capture evidence requires manual review",
+        "PayPal payment evidence requires manual review",
     )
 }

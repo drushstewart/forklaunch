@@ -15,7 +15,9 @@ use std::future::Future;
 pub struct VerifiedCancellation {
     pub provider: String,
     pub provider_ref: String,
-    pub canceled_at: i64,
+    /// Provider cancellation time, when explicitly supplied. Never substitute an
+    /// order update time or the local observation time for a missing provider time.
+    pub canceled_at: Option<i64>,
     pub amount_cents: i64,
     pub currency: String,
 }
@@ -73,7 +75,7 @@ pub(crate) fn validate(
         &evidence.currency,
         actor,
     )?;
-    if evidence.canceled_at <= 0 {
+    if evidence.canceled_at.is_some_and(|timestamp| timestamp <= 0) {
         return Err(conflict());
     }
     Ok(())

@@ -4715,3 +4715,29 @@ and the live canonical comparison pass. Snapshot verification was repeated
 without update mode. Evidence: `/private/tmp/fl-auth-openapi-{tests,clippy,canonical-check}.log`
 and `/private/tmp/fl-handler-errors-{tests,clippy,canonical}.log`. Broad validator/
 error/document parity remains open: **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Narrow PayPal terminal-void repair
+
+`PaypalPaymentService::reconcile_voided_payment` reads authenticated order details
+and requires VOIDED/CAPTURE, exactly one matching purchase unit, exact order
+reference/amount/currency and explicitly empty captures/authorizations/refunds.
+Missing histories, nonterminal states and previous monetary effects still require
+review. The method records local failure through existing atomic actor audit,
+stale-snapshot and tenant safeguards; it neither mutates provider funds nor
+transitions the local order.
+
+`VerifiedCancellation.canceled_at` is now optional because PayPal supplies no
+verified cancellation timestamp. Stripe keeps its real timestamp; PayPal records
+None. Migration 8 removes only NOT NULL, preserving existing timestamps and the
+positive-value check. The separate reconciled_at column records observation time.
+Callers using this public DTO must handle optional cancellation time.
+
+Ten nonignored PayPal/base/Stripe tests, two restricted PostgreSQL repair/migration
+tests and strict all-feature/all-target Clippy pass. Provider denial fixtures cover
+missing/mismatched/ambiguous evidence, and the migration fixture exercises the
+actual migration 7→8 while retaining existing Stripe values. Fixtures follow the
+[PayPal Orders schema](https://developer.paypal.com/api/orders/v2/schema.json);
+these are local provider fixtures, not PayPal sandbox observations. Evidence:
+`/private/tmp/fl-paypal-void-{tests,postgres,clippy}.log`. Broad recovery remains
+open: **658/682 (96.5%), 24 open**.

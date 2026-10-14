@@ -269,7 +269,7 @@ async fn live_stripe_connect_resume_secrets_failures_bounds_and_persistence() {
     );
     let cancellations = store.payment_cancellation_audits().unwrap();
     assert_eq!(cancellations.len(), 1);
-    assert_eq!(cancellations[0].evidence.canceled_at, 1_700_000_000);
+    assert_eq!(cancellations[0].evidence.canceled_at, Some(1_700_000_000));
     assert!(!format!("{cancellations:?}").contains("must-not-persist"));
     // A terminal canceled intent may retain its last failed attempt. Verify
     // every money/status/identity field before recording the same durable repair.

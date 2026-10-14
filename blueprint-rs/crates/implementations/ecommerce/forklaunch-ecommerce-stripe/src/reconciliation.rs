@@ -132,7 +132,7 @@ fn verify_cancellation(
     Ok(VerifiedCancellation {
         provider: "stripe".into(),
         provider_ref: reference.into(),
-        canceled_at,
+        canceled_at: Some(canceled_at),
         amount_cents: payment.amount_cents,
         currency: payment.currency.to_ascii_uppercase(),
     })
