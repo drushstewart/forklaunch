@@ -38,6 +38,7 @@ function load(file) {
 
 const validation=actualValidator(root),validator=validation.statics;
 const fieldShape=field=>Object.fromEntries(Object.entries(field).filter(([key,value])=>["type","format","enum","items"].includes(key)&&!(key==="format"&&value==="double")).map(([key,value])=>[key,key==="type"&&Array.isArray(value)&&value.length===1?value[0]:key==="items"?fieldShape(value):value]));
+const canonicalSchema=value=>Array.isArray(value)?Array.from(value,canonicalSchema):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,key==='type'&&Array.isArray(item)&&item.length===1?item[0]:canonicalSchema(item)])):value;
 const families=['plan','subscription','checkoutSession','paymentLink','billingPortal'];
 const {toPrettyCamelCase}=load(path.join(root,'framework/common/src/camelCase.ts'));
 const simpleNative=route=>({method:route.method,path:route.path,operation:route.operationName,access:route.access,params:route.request.params.map(field=>field.name).sort(),query:route.request.query.map(field=>field.name).sort(),body:route.request.body!=null,statuses:route.responses.map(response=>response.statusCode).sort()});
@@ -75,6 +76,7 @@ for(const stripe of [false,true]){
    assert.deepEqual(Object.keys(actual.properties).sort(),Object.keys(expected.properties).sort(),variant+' '+sourceName+' properties');
    assert.deepEqual([...(actual.required??[])].sort(),[...(expected.required??[])].sort(),variant+' '+sourceName+' required');
    for(const [key,field]of Object.entries(expected.properties))assert.deepEqual(fieldShape(actual.properties[key]),JSON.parse(JSON.stringify(fieldShape(field))),variant+' '+sourceName+' '+key);
+   if(stripe&&family==='paymentLink'&&form==='Create')assert.deepEqual(canonicalSchema(actual.properties.stripeFields),canonicalSchema(expected.properties.stripeFields),'Stripe PaymentLink required nested provider schema');
    schemaCount++;
   }
  }

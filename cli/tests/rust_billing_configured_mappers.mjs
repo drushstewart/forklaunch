@@ -34,7 +34,7 @@ for(const variant of ['base','stripe']){
   plan:{name:'Configured plan',price:1200,cadence:variant==='base'?'MONTHLY':'month',currency:'USD',externalId:'prod_fixture',billingProvider:'stripe',active:true},
   subscription:{partyId:'customer',partyType:'user',productId:'product',active:true,externalId:'sub_fixture',startDate:new Date('2026-01-01T00:00:00Z'),status:'active',billingProvider:'stripe'},
   checkoutSession:{customerId:'customer',currency:'USD',paymentMethods:[variant==='base'?'credit_card':'card'],uri:'https://fixture.test/checkout',expiresAt:new Date('2026-12-01T00:00:00Z'),status:'PENDING'},
-  paymentLink:{amount:1200,currency:'USD',paymentMethods:[variant==='base'?'credit_card':'card'],status:'PENDING'},
+  paymentLink:{amount:1200,currency:'USD',paymentMethods:[variant==='base'?'credit_card':'card'],status:'PENDING',...(variant==='stripe'?{stripeFields:{line_items:[{price:'price_fixture',quantity:1}]}}:{})},
   billingPortal:{customerId:'customer',expiresAt:new Date('2026-12-01T00:00:00Z'),uri:'https://fixture.test/portal'}
  };
  for(const family of families){

@@ -3359,16 +3359,34 @@
             ]
           },
           "stripeFields": {
-            "example": "any",
-            "title": "Any",
-            "type": "object"
+            "additionalProperties": true,
+            "properties": {
+              "line_items": {
+                "items": {
+                  "additionalProperties": {},
+                  "type": [
+                    "object"
+                  ]
+                },
+                "type": [
+                  "array"
+                ]
+              }
+            },
+            "required": [
+              "line_items"
+            ],
+            "type": [
+              "object"
+            ]
           }
         },
         "required": [
           "amount",
           "currency",
           "paymentMethods",
-          "status"
+          "status",
+          "stripeFields"
         ],
         "type": [
           "object"

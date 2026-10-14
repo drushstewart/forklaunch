@@ -45,6 +45,7 @@ on:
       - 'cli/tests/rust_canonical_http_parity.mjs'
       - 'cli/tests/rust_router_origin_parity.mjs'
       - 'cli/tests/rust_correlation_parity.mjs'
+      - 'cli/tests/rust_cors_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -171,6 +172,7 @@ on:
       - 'cli/tests/rust_better_auth_parity.mjs'
       - 'cli/tests/rust_better_auth_error_observer.mjs'
       - 'cli/tests/rust_better_auth_fault_boundaries.mjs'
+      - 'cli/tests/rust_better_auth_jwt_header.mjs'
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
@@ -197,6 +199,7 @@ on:
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
       - 'cli/tests/rust_billing_recurring_options.mjs'
+      - 'cli/tests/rust_billing_payment_link_options.mjs'
       - 'cli/tests/fixtures/rust_billing_recurring_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'
@@ -282,6 +285,7 @@ on:
       - 'cli/tests/rust_canonical_http_parity.mjs'
       - 'cli/tests/rust_router_origin_parity.mjs'
       - 'cli/tests/rust_correlation_parity.mjs'
+      - 'cli/tests/rust_cors_parity.mjs'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -408,6 +412,7 @@ on:
       - 'cli/tests/rust_better_auth_parity.mjs'
       - 'cli/tests/rust_better_auth_error_observer.mjs'
       - 'cli/tests/rust_better_auth_fault_boundaries.mjs'
+      - 'cli/tests/rust_better_auth_jwt_header.mjs'
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
@@ -434,6 +439,7 @@ on:
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
       - 'cli/tests/rust_billing_recurring_options.mjs'
+      - 'cli/tests/rust_billing_payment_link_options.mjs'
       - 'cli/tests/fixtures/rust_billing_recurring_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'
@@ -605,6 +611,9 @@ jobs:
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_correlation_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_cors_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/typescript_response_status_validation.mjs
@@ -858,6 +867,7 @@ jobs:
       - run: node cli/tests/rust_billing_dto_types.mjs
       - run: node cli/tests/rust_billing_portal_options.mjs
       - run: node cli/tests/rust_billing_recurring_options.mjs
+      - run: node cli/tests/rust_billing_payment_link_options.mjs
       - run: node cli/tests/rust_billing_checkout_uri.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -1034,7 +1044,14 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_error_observer.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_fault_boundaries.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_jwt_header.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

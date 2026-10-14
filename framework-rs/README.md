@@ -240,6 +240,8 @@ parameters to return the TypeScript 400 text response before method dispatch.
 Native defaults, application handler responses and internal-router fallbacks are
 preserved. A root internal mount retains ownership of its root fallback. CORS,
 explicit OPTIONS routes and correlation propagation remain separate policies.
+Registered methods also produce automatic OPTIONS responses (including implicit
+HEAD for GET), unless an explicit handler owns that method.
 
 Set `RouterConfig.correlation_id_format` to `CorrelationIdFormat::TypeScript`
 to select supplied correlation values with Node-compatible repeated-header and
@@ -251,6 +253,16 @@ required incoming-header contract. Combined with the HTML fallback profile,
 non-HEAD fallbacks reproduce Express's UTF-8 serialization of Latin-1 values;
 HEAD and normal responses preserve the original wire bytes. Native defaults
 remain available. This profile does not change CORS or JSON parser selection.
+
+Set `RouterConfig.typescript_cors` to `Some(TypeScriptCors::default())` for
+the static TypeScript CORS profile. Configure fixed, reflected or exact allowlisted
+origins, credentials, headers, max-age and preflight continuation/status there.
+This option is mutually exclusive with `cors`; unsupported configuration fails
+when constructing the router. Dynamic origin callbacks/regexes and arbitrary
+JavaScript coercion are outside this profile. Hyper omits Content-Length on 204
+responses, where Express sends zero. Handlers porting incremental `res.vary`
+updates can seed headers from `TypeScriptCorsHeaders`; returned response headers
+override prepared defaults. Native CORS behavior remains the default.
 
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still

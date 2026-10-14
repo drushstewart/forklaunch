@@ -13,3 +13,9 @@ List behavior with the configured `readCachedDto` and `validateCachedRead` hooks
 The cache's existing `listKeys` API still enumerates keys when IDs are omitted; this change bounds record reads and provider traffic, not that enumeration. Use explicit ID batches for large caches. Custom mappers lacking either configured list hook retain their existing provider-ID list behavior. Native default service IDs and list behavior are unchanged.
 
 The actual-source configured mapper fixture covers lists beyond a Stripe response page, ordering/duplicates, bounded failures, malformed/missing cache, provider failures, active filtering and custom fallback. It uses owned provider fixtures, not live Stripe calls.
+
+## Create request structure
+
+Stripe payment-link create requests require a non-null `stripeFields` object with a `line_items` array of objects. Zod, TypeBox, the TypeScript wrapper and the native Stripe wrapper check this structure before provider I/O. The generic base billing DTO still permits absent provider fields. See the [Stripe create API](https://docs.stripe.com/api/payment-link/create) and the pinned SDK's required `line_items` member.
+
+Nested price/quantity fields and arbitrary provider extensions are preserved exactly and remain subject to Stripe validation; these checks do not model the complete SDK. Empty arrays pass this structural check because it does not invent a minimum item count. Applications relying on omitted provider options must supply their actual line items. Response and update payload schemas are unchanged, and this adds no authority to mutate an existing provider resource.

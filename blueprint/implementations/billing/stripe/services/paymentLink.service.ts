@@ -21,6 +21,24 @@ import {
 } from '../domain/types/stripe.dto.types';
 import { StripePaymentLinkEntities } from '../domain/types/stripe.entity.types';
 
+/** Match the required provider object/line-items structure without modeling the SDK. */
+function validatePaymentLinkCreateFields(value: unknown): void {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !Array.isArray((value as Record<string, unknown>).line_items) ||
+    !(value as { line_items: unknown[] }).line_items.every(
+      (item) =>
+        item !== null && typeof item === 'object' && !Array.isArray(item)
+    )
+  ) {
+    throw new Error(
+      'Payment link provider options require a line_items array of objects'
+    );
+  }
+}
+
 export class StripePaymentLinkService<
   SchemaValidator extends AnySchemaValidator,
   StatusEnum,
@@ -107,6 +125,7 @@ export class StripePaymentLinkService<
     paymentLinkDto: StripeCreatePaymentLinkDto<StatusEnum>,
     ...args: unknown[]
   ): Promise<Dto['PaymentLinkMapper']> {
+    validatePaymentLinkCreateFields(paymentLinkDto.stripeFields);
     const session = await this.stripeClient.paymentLinks.create({
       ...paymentLinkDto.stripeFields,
       payment_method_types: paymentLinkDto.paymentMethods,

@@ -886,3 +886,10 @@ revoked or expired, even though this browser has cleared its cookies.
 Handled-failure diagnostics contain only static route and allowlisted structural
 metadata. The fault oracle uses actual Better Auth handlers with an owned adapter;
 its transaction-completion injection is not a PostgreSQL COMMIT-failure test.
+
+`AuthHttp::with_jwt_header_disabled(true)` implements the optional Better Auth
+`disableSettingJwtHeader` setting: session reads keep their normal JSON/session
+behavior but skip JWT signing and the automatic JWT/expose response headers.
+Explicit `/token` and `/jwks` behavior is unchanged, including external signer
+failures and remote-JWKS suppression. The configured generated preset leaves
+this option off. Separately configured CORS expose headers are unchanged.

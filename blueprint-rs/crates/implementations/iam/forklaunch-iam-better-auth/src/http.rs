@@ -54,6 +54,7 @@ pub struct AuthHttp<S> {
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
+    jwt_header_disabled: bool,
     error_observer: Option<observer::Observer>,
     error_observer_mode: AuthApiErrorObserverMode,
     secret: Zeroizing<Vec<u8>>,
@@ -87,6 +88,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             store,
             google: None,
             external_jwt: None,
+            jwt_header_disabled: false,
             error_observer: None,
             error_observer_mode: AuthApiErrorObserverMode::default(),
             secret,
@@ -99,6 +101,14 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             clock: Arc::new(Utc::now),
         }
         .with_base_path("/api/auth")
+    }
+    /// Suppresses automatic JWT signing and the `set-auth-jwt` header on
+    /// get-session responses, matching `JwtOptions.disableSettingJwtHeader`.
+    /// Explicit token issuance and JWKS publication remain available.
+    #[must_use]
+    pub const fn with_jwt_header_disabled(mut self, disabled: bool) -> Self {
+        self.jwt_header_disabled = disabled;
+        self
     }
     /// Sets a trusted fixed authentication namespace. A path already present
     /// in `base_url` takes precedence, matching Better Auth's URL resolution.
@@ -322,7 +332,9 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         pending: &mut HeaderMap,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
-        if let Some(view) = &view {
+        if !self.jwt_header_disabled
+            && let Some(view) = &view
+        {
             let jwt = self.jwt(view, now).await?;
             pending.insert(
                 "set-auth-jwt",

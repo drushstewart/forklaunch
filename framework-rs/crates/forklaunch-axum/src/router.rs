@@ -39,7 +39,8 @@ use forklaunch_http::{
 };
 use forklaunch_openapi::{OpenApiOptions, OpenApiServer, generate_openapi_json_with_options};
 use opentelemetry::trace::FutureExt;
-use tower::{Layer, ServiceExt};
+#[cfg(test)]
+use tower::ServiceExt;
 use tower_http::{
     cors::CorsLayer,
     limit::RequestBodyLimitLayer,
@@ -48,6 +49,8 @@ use tower_http::{
 };
 
 mod correlation;
+mod typescript_cors;
+pub use typescript_cors::{TypeScriptCors, TypeScriptCorsHeaders, TypeScriptCorsOrigin};
 mod default_errors;
 mod origin;
 pub use correlation::CorrelationIdFormat;
@@ -120,6 +123,8 @@ pub struct RouterConfig {
     pub servers: Vec<OpenApiServer>,
     /// CORS policy; defaults to a permissive policy when unset.
     pub cors: Option<CorsLayer>,
+    /// Static TypeScript CORS profile; mutually exclusive with `cors`.
+    pub typescript_cors: Option<TypeScriptCors>,
     /// Credential verifier for routes requiring authentication. Missing verifiers fail closed.
     pub authenticator: Option<Authenticator>,
     /// Optional verifier with explicit safe HTTP errors; takes precedence when set.
@@ -163,6 +168,7 @@ impl Default for RouterConfig {
             description: None,
             servers: Vec::new(),
             cors: None,
+            typescript_cors: None,
             authenticator: None,
             response_authenticator: None,
             authorizer: None,
@@ -703,6 +709,7 @@ impl ForkLaunchRouter {
             router,
             &config,
             internal_mounts.iter().any(|mount| mount.prefix == "/"),
+            &registry,
         );
 
         for mount in internal_mounts {
@@ -728,7 +735,6 @@ impl ForkLaunchRouter {
         ));
         router = router.layer(middleware::from_fn_with_state(state, validate_contract));
 
-        let cors = config.cors.unwrap_or_else(CorsLayer::permissive);
         let router = with_body_limit(router, config.body_limit, config.parser_error_format);
         let router = router
             .layer(middleware::from_fn_with_state(telemetry, observe_request))
@@ -736,28 +742,8 @@ impl ForkLaunchRouter {
             .layer(SetRequestIdLayer::x_request_id(
                 CounterMakeRequestId::default(),
             ))
-            .layer(TraceLayer::new_for_http())
-            .layer(middleware::from_fn(move |request: Request, next: Next| {
-                let cors = cors.clone();
-                async move {
-                    // Only a genuine CORS preflight may bypass an explicit OPTIONS handler.
-                    let preflight = request.headers().contains_key(header::ORIGIN)
-                        && request
-                            .headers()
-                            .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
-                    if request.method() == Method::OPTIONS && !preflight {
-                        return next.run(request).await;
-                    }
-                    let service = tower::service_fn(move |request| {
-                        let next = next.clone();
-                        async move { Ok::<_, std::convert::Infallible>(next.run(request).await) }
-                    });
-                    match cors.layer(service).oneshot(request).await {
-                        Ok(response) => response,
-                        Err(never) => match never {},
-                    }
-                }
-            }));
+            .layer(TraceLayer::new_for_http());
+        let router = typescript_cors::wrap(router, config.cors, config.typescript_cors);
         let router = origin::wrap(router, config.router_origin_format);
         #[cfg(feature = "cookie-session")]
         if let Some(sessions) = config.cookie_sessions {

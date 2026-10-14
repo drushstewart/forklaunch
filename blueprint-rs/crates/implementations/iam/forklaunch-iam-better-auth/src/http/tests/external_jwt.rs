@@ -216,3 +216,130 @@ fn external_signer_configuration_requires_explicit_public_key_metadata() {
         assert!(ExternalJwtSigner::new(url, algorithm, signer).is_err());
     }
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn disabled_session_jwt_header_skips_signing_but_keeps_explicit_token_and_jwks() {
+    use axum::body::{Body, to_bytes};
+    use tower::ServiceExt;
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    for external in [false, true] {
+        let store = Arc::new(MemoryAuthStore::default());
+        let mut tx = store.begin(true).await.unwrap();
+        tx.insert(
+            Model::User,
+            json!({"id":"owner","email":"owner@example.test"}),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        let session = SessionService::new(store.clone())
+            .create("owner", "", "", now)
+            .await
+            .unwrap();
+        let secret = vec![42; 32];
+        let encoded = SessionCookie { secure: false }.serialize(
+            session["token"].as_str().unwrap(),
+            &secret,
+            true,
+        );
+        let cookie = encoded.split(';').next().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut app = AuthHttp::new(
+            store.clone(),
+            "http://localhost:3000".into(),
+            secret,
+            vec![],
+        )
+        .unwrap()
+        .with_clock(move || now)
+        .with_jwt_header_disabled(true);
+        if external {
+            app = app.with_external_jwt_signer(
+                ExternalJwtSigner::new(
+                    "https://keys.example.test/jwks",
+                    "EdDSA",
+                    Signer {
+                        key: SigningKey::generate("external").unwrap(),
+                        calls: calls.clone(),
+                        fail: true,
+                    },
+                )
+                .unwrap(),
+            );
+        }
+        let router = app.router();
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/get-session")
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("set-auth-jwt").is_none());
+        assert!(
+            response
+                .headers()
+                .get("access-control-expose-headers")
+                .is_none()
+        );
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+        assert_eq!(body["session"]["id"], session["id"]);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let mut tx = store.begin(false).await.unwrap();
+        assert!(
+            tx.list(Model::Jwks).await.unwrap().is_empty(),
+            "session read must not mint keys"
+        );
+        tx.commit().await.unwrap();
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/token")
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        if external {
+            assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                1,
+                "explicit issuance still invokes signer"
+            );
+        } else {
+            assert_eq!(response.status(), StatusCode::OK);
+            let body: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap())
+                    .unwrap();
+            assert!(body["token"].is_string());
+        }
+        let response = router
+            .oneshot(Request::builder().uri("/jwks").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            if external {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::OK
+            }
+        );
+        if !external {
+            let body: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap())
+                    .unwrap();
+            assert_eq!(body["keys"].as_array().unwrap().len(), 1);
+        }
+    }
+}

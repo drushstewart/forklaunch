@@ -16,7 +16,8 @@ pub enum RouterOriginFormat {
     /// Axum's empty 404/405 responses and native Allow header.
     #[default]
     Native,
-    /// Express finalhandler's escaped HTML 404, including HEAD representation headers.
+    /// Express finalhandler's escaped HTML 404, including HEAD representation headers,
+    /// and automatic OPTIONS responses derived from registered methods.
     /// Existing application fallbacks, documentation and internal routes remain owned
     /// by their routers. A root internal mount retains ownership of the root fallback.
     /// CORS and correlation propagation are independent policies.
@@ -42,7 +43,7 @@ pub(super) fn extended(
                     Err(never) => match never {},
                 },
                 None if origin_format == RouterOriginFormat::TypeScriptHtml => {
-                    fallback(&request, parser_format)
+                    fallback(&request, parser_format, Some(&allow))
                 }
                 None => (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, allow)]).into_response(),
             }
@@ -50,15 +51,47 @@ pub(super) fn extended(
     })
 }
 
-pub(super) fn install(mut router: Router, config: &RouterConfig, root_owned: bool) -> Router {
+pub(super) fn install(
+    mut router: Router,
+    config: &RouterConfig,
+    root_owned: bool,
+    registry: &forklaunch_contract::ContractRegistry,
+) -> Router {
     if config.router_origin_format == RouterOriginFormat::TypeScriptHtml {
         let parser_format = config.parser_error_format;
-        router = router.method_not_allowed_fallback(move |request: Request| async move {
-            fallback(&request, parser_format)
+        let mut allowed = std::collections::HashMap::<String, Vec<&str>>::new();
+        for route in registry.routes() {
+            let methods = allowed.entry(route.openapi_path.clone()).or_default();
+            methods.push(route.method.as_str());
+            if route.method == forklaunch_http::HttpMethod::Get {
+                methods.push("HEAD");
+            }
+        }
+        let allowed = std::sync::Arc::new(
+            allowed
+                .into_iter()
+                .map(|(path, mut methods)| {
+                    methods.sort_unstable();
+                    methods.dedup();
+                    (path, methods.join(", "))
+                })
+                .collect::<std::collections::HashMap<_, _>>(),
+        );
+        router = router.method_not_allowed_fallback(move |request: Request| {
+            let allowed = allowed.clone();
+            async move {
+                let allow = request
+                    .extensions()
+                    .get::<MatchedPath>()
+                    .and_then(|path| allowed.get(path.as_str()))
+                    .map(String::as_str);
+                fallback(&request, parser_format, allow)
+            }
         });
         if !root_owned {
-            router = router
-                .fallback(move |request: Request| async move { fallback(&request, parser_format) });
+            router = router.fallback(move |request: Request| async move {
+                fallback(&request, parser_format, None)
+            });
         }
     }
     router
@@ -95,7 +128,11 @@ pub(super) async fn remove_allow(request: Request, next: Next) -> Response {
     response
 }
 
-pub(super) fn fallback(request: &Request, parser_format: ParserErrorFormat) -> Response {
+pub(super) fn fallback(
+    request: &Request,
+    parser_format: ParserErrorFormat,
+    allow: Option<&str>,
+) -> Response {
     if parser_format == ParserErrorFormat::TypeScriptText
         && let Some(pattern) = request.extensions().get::<MatchedPath>()
         && match_path_checked(pattern.as_str(), request.uri().path()).is_err()
@@ -104,6 +141,21 @@ pub(super) fn fallback(request: &Request, parser_format: ParserErrorFormat) -> R
             framework_response_to_axum(typescript_parser_error_response(400, "No correlation ID"));
         response.extensions_mut().insert(OriginResponse);
         return response;
+    }
+    if request.method() == Method::OPTIONS
+        && let Some(allow) = allow
+    {
+        return (
+            StatusCode::OK,
+            [
+                (header::ALLOW, allow.to_owned()),
+                (header::CONTENT_TYPE, "text/plain".to_owned()),
+                (header::CONTENT_LENGTH, allow.len().to_string()),
+                (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
+            ],
+            allow.to_owned(),
+        )
+            .into_response();
     }
     let path = encode_path(request.uri().path());
     let message = format!("Cannot {} {path}", request.method());

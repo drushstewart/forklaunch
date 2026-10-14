@@ -5917,3 +5917,35 @@ fixture is wired into CI. Receipts:
 `/private/tmp/fl-iam-fault-boundaries-{ts,native,final,clippy}.log`.
 Adapter transaction-completion injection and native memory rollback do not claim
 a real PostgreSQL COMMIT-failure simulation. Gate 918 remains open.
+
+## Static CORS, provider payload and optional JWT header receipt (2026-10-14)
+
+The opt-in static TypeScript CORS profile covers fixed/reflected/allowlisted
+origins, credentials, allowed/exposed headers, preflight continuation/status and
+nonnegative JavaScript-safe integer max-age. HTML routing now derives automatic
+OPTIONS methods while preserving explicit handlers and internal ownership.
+89 native tests and strict MCP/cookie-session Clippy pass. Actual HTTP comparison
+covers 450 pairs: 310 exact, plus 140 pairs explicitly asserting that Hyper omits
+Content-Length on 204 while Express sends zero. This transport difference is
+retained, not normalized away. Existing 100 fallback and 108 correlation pairs
+also pass. Dynamic origin delegates and arbitrary JS coercions remain outside
+the static profile. Handler incremental Vary changes require the prepared
+TypeScriptCorsHeaders extension. Logs: /private/tmp/fl-cors-{tests,clippy,parity,origin-regression,correlation-regression}.log.
+
+PaymentLink creation now requires a provider object containing a line_items
+array of objects in both actual validators/services and native contracts/services,
+before provider I/O. Nested options survive; empty arrays remain structurally
+admissible, and this does not claim complete Stripe SDK payload validation.
+60 actual dual-validator cases, 353 configured mapper cases, 170 TS/SDK/native
+operations, 66 routes/28 schemas, focused real-source typechecking and strict
+Stripe Clippy pass. The reviewed contract snapshot changes only the required
+Stripe create shape. Generated runtime assertions await the new CLI snapshot.
+Logs: /private/tmp/fl-payment-link-options*.log.
+
+AuthHttp::with_jwt_header_disabled(true) matches the optional JWT plugin setting,
+skipping signing/key minting for session headers while preserving explicit
+token/JWKS endpoints. The configured preset keeps its existing enabled default.
+The actual configured oracle, three native external-JWT tests and strict IAM
+Clippy pass: /private/tmp/fl-iam-jwt-header-{native,clippy,ts}.log.
+All three differential fixtures are included in CI. Broad gates remain open;
+checklist remains 660/682 (96.8%), 22 open.

@@ -343,6 +343,19 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
         &self,
         mut request: CreatePaymentLinkDto,
     ) -> BlueprintResult<PaymentLinkDto> {
+        if !request
+            .provider_fields
+            .as_ref()
+            .and_then(Value::as_object)
+            .and_then(|fields| fields.get("line_items"))
+            .and_then(Value::as_array)
+            .is_some_and(|items| items.iter().all(Value::is_object))
+        {
+            return Err(BlueprintError::new(
+                "billing_invalid_payment_link_options",
+                "Payment link provider options require a line_items array of objects",
+            ));
+        }
         let fields = merge_fields(
             request.provider_fields.take(),
             json!({"payment_method_types":request.payment_methods,"currency":request.currency}),

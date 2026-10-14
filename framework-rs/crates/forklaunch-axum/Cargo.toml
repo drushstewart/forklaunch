@@ -72,3 +72,7 @@ required-features = ["adapter"]
 [[example]]
 name = "correlation_parity"
 required-features = ["adapter"]
+
+[[example]]
+name = "cors_parity"
+required-features = ["adapter"]
