@@ -170,6 +170,47 @@ impl StripeBillingClient {
         }
         Ok(value)
     }
+    #[cfg(feature = "postgres-identity")]
+    pub(crate) async fn verify_direct_context(
+        &self,
+        account: &str,
+        livemode: bool,
+    ) -> BlueprintResult<VerifiedStripeContext> {
+        if !matches!(self.transport, BillingTransport::Direct { .. }) {
+            return Err(mismatch());
+        }
+        self.verify_context(account, livemode).await
+    }
+
+    #[cfg(feature = "postgres-identity")]
+    pub(crate) async fn retrieve_payment_link_in_context(
+        &self,
+        context: &VerifiedStripeContext,
+        id: &str,
+    ) -> BlueprintResult<Value> {
+        context.ensure_current(self)?;
+        if !matches!(self.transport, BillingTransport::Direct { .. })
+            || context.managed.is_some()
+            || !id.starts_with("plink_")
+            || id.len() <= 6
+            || id.len() > 128
+            || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            return Err(mismatch());
+        }
+        let value = self
+            .retrieve(super::StripeResource::PaymentLink, id, &json!({}))
+            .await?;
+        context.ensure_current(self)?;
+        if value["object"] != "payment_link"
+            || value["id"] != id
+            || value["livemode"].as_bool() != Some(context.livemode)
+        {
+            return Err(mismatch());
+        }
+        Ok(value)
+    }
+
     async fn context_get(&self, resource: &str) -> BlueprintResult<Value> {
         let BillingTransport::Direct { http, secret } = &self.transport else {
             return Err(mismatch());

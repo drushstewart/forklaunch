@@ -1,15 +1,65 @@
-//! Opt-in verified, durable checkout reads through explicit public UUID aliases.
+//! Opt-in verified, durable billing reads through explicit public UUID aliases.
 use crate::services::StripeBillingService;
 use forklaunch_billing_base::services::{
     BillingKind,
     postgres::{PostgresBillingStore, StripeBindingScope},
 };
-use forklaunch_billing_interface::services::CheckoutSessionDto;
+use forklaunch_billing_interface::services::{CheckoutSessionDto, PaymentLinkDto};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use uuid::Uuid;
 
 impl StripeBillingService<PostgresBillingStore> {
+    /// Reads an explicitly provisioned durable payment-link alias under a fresh
+    /// direct account/mode observation. Public UUID and storage key remain distinct.
+    /// Only the sensitive-read audit is written; amount/status and encrypted local
+    /// data remain unchanged. This does not change the default provider-ID service.
+    /// Managed transport is rejected before any gateway request.
+    /// # Errors
+    /// Rejects unbound/foreign aliases, changed generations, stale context, invalid
+    /// provider evidence, and denied durable read audits. Scope is trusted config.
+    pub async fn get_bound_payment_link(
+        &self,
+        scope: &StripeBindingScope,
+        public_id: Uuid,
+    ) -> BlueprintResult<PaymentLinkDto> {
+        let context = self
+            .client()
+            .verify_direct_context(scope.account_id(), scope.livemode())
+            .await?;
+        let binding = self
+            .base()
+            .store()
+            .stripe_binding_by_public_id(scope, BillingKind::PaymentLink, public_id)
+            .await?
+            .ok_or_else(|| {
+                BlueprintError::new(
+                    "billing_bound_payment_link_mismatch",
+                    "Payment link identity does not match",
+                )
+            })?;
+        context.ensure_current(self.client())?;
+        let provider = self
+            .client()
+            .retrieve_payment_link_in_context(&context, binding.provider_id())
+            .await?;
+        let data = self
+            .base()
+            .store()
+            .read_stripe_bound_record(&binding)
+            .await?;
+        context.ensure_current(self.client())?;
+        let mut value: PaymentLinkDto = serde_json::from_value(data).map_err(|_| {
+            BlueprintError::new(
+                "billing_bound_payment_link_mismatch",
+                "Payment link identity does not match",
+            )
+        })?;
+        value.id = public_id.to_string();
+        value.provider_fields = Some(provider);
+        Ok(value)
+    }
+
     /// Opt-in durable read by public UUID, not the existing cache-only trait get.
     /// Verifies direct or managed account/mode, then resolves tenant-scoped ownership before
     /// fetching the bound Stripe object. Rechecks binding generation after network

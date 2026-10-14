@@ -641,3 +641,13 @@ HTTP/MCP create/read/update/delete and compliance export/erase. Verified directo
 actors and HMAC service actors retain their originating correlation; absent
 headers use the framework-generated request ID. No caller-supplied actor is
 accepted through this context propagation.
+
+
+Scoped direct payment-link reads (2026-10-13): the opt-in public UUID lookup
+authenticates a fresh account/mode observation, resolves an encrypted tenant-
+and deployment-scoped alias, validates the exact provider object, and rechecks
+its generation and five-second lifetime after the audited durable read. Provider
+reads leave local ciphertext and financial state unchanged. Restricted PostgreSQL
+tests cover foreign aliases, revocation/ABA, denied audits, provider evidence,
+and expiry while waiting for a database connection. Managed transport currently
+fails before network access; the default provider-ID service remains separate.
