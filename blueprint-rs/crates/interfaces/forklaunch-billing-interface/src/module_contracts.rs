@@ -110,6 +110,9 @@ fn enum_values(field: &str, family: &str, stripe: bool) -> Option<Value> {
         ("partyType", _) => Some(json!(["user", "organization"])),
         ("status", _) if family != "Subscription" => Some(json!([
             "PENDING",
+            "SUCCESS",
+            "CREATED",
+            "UPDATED",
             "COMPLETED",
             "CANCELLED",
             "FAILED",

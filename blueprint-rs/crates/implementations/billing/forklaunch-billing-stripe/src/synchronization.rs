@@ -53,13 +53,7 @@ impl<S: BillingStore> StripeBillingService<S> {
         let base = self.base();
         match event.event_type.as_str() {
             "billing_portal.session.created" => {
-                // Preserve the current TS controller's millisecond calculation;
-                // the cache lifetime is separately configured by the base service.
-                let expires = object["created"]
-                    .as_i64()
-                    .and_then(|v| v.checked_add(300_000))
-                    .and_then(DateTime::<Utc>::from_timestamp_millis)
-                    .ok_or_else(invalid)?;
+                let expires = portal_expiry(&object["created"])?;
                 base.create_billing_portal_session(decode(json!({"id":identifier(object)?,
                     "customerId":identifier(&object["customer"])?,"expiresAt":expires,
                     "uri":string(object,"url")?}))?)
@@ -196,6 +190,24 @@ impl<S: BillingStore> StripeBillingService<S> {
         Ok(())
     }
 }
+// Stripe uses Unix seconds. Match TS's four-digit RFC3339 application expiry
+// range; the provider URL's validity and configured cache TTL remain separate.
+#[allow(clippy::cast_possible_truncation)] // Integral/range checks precede the exact conversion.
+fn portal_expiry(created: &Value) -> BlueprintResult<DateTime<Utc>> {
+    // JSON numbers with whole-valued decimal/exponent spellings have the same
+    // semantics as integers in TS. This bound is below f64's exact integer limit.
+    let seconds = created.as_f64().ok_or_else(invalid)?;
+    if !seconds.is_finite()
+        || seconds.fract() != 0.0
+        || !(0.0..=253_402_300_499.0).contains(&seconds)
+    {
+        return Err(invalid());
+    }
+    (seconds as i64)
+        .checked_add(300)
+        .and_then(|value| DateTime::<Utc>::from_timestamp(value, 0))
+        .ok_or_else(invalid)
+}
 fn extract_features(product: &Value) -> Vec<String> {
     let Some(text) = product["metadata"]["features"].as_str() else {
         return Vec::new();
@@ -241,4 +253,47 @@ fn invalid() -> BlueprintError {
         "billing_invalid_webhook",
         "Billing webhook payload is invalid",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portal_expiry_uses_checked_unix_seconds() {
+        for (created, expires) in [
+            (0_i64, "1970-01-01T00:05:00+00:00"),
+            (1_700_000_000, "2023-11-14T22:18:20+00:00"),
+            (253_402_300_499, "9999-12-31T23:59:59+00:00"),
+        ] {
+            assert_eq!(
+                portal_expiry(&json!(created)).unwrap().to_rfc3339(),
+                expires
+            );
+        }
+        for (lexeme, expires) in [
+            ("1700000000.0", "2023-11-14T22:18:20+00:00"),
+            ("1e3", "1970-01-01T00:21:40+00:00"),
+            ("-0.0", "1970-01-01T00:05:00+00:00"),
+        ] {
+            let value: Value = serde_json::from_str(lexeme).unwrap();
+            assert_eq!(portal_expiry(&value).unwrap().to_rfc3339(), expires);
+        }
+        for value in [
+            Value::Null,
+            json!(false),
+            json!(true),
+            json!("1700000000"),
+            json!(-1),
+            json!(1.5),
+            json!(253_402_300_500_i64),
+            json!(i64::MAX),
+            json!(u64::MAX),
+            json!(1e30),
+            json!({}),
+            json!([]),
+        ] {
+            assert!(portal_expiry(&value).is_err(), "accepted {value}");
+        }
+    }
 }

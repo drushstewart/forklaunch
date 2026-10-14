@@ -772,6 +772,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -936,6 +939,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -1044,6 +1050,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -1373,6 +1382,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -1782,6 +1794,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -2896,6 +2911,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -3143,6 +3161,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -3327,6 +3348,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -3769,6 +3793,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",
@@ -4271,6 +4298,9 @@
           "status": {
             "enum": [
               "PENDING",
+              "SUCCESS",
+              "CREATED",
+              "UPDATED",
               "COMPLETED",
               "CANCELLED",
               "FAILED",

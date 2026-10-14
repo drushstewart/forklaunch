@@ -3081,19 +3081,19 @@
               "name": "StripeWebhookService",
               "kind": "ClassDeclaration",
               "source": "blueprint/implementations/billing/stripe/services/webhook.service.ts",
-              "line": 55,
+              "line": 64,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    stripeClient: Stripe,\n    em: EntityManager,\n    schemaValidator: SchemaValidator,\n    openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    billingPortalService: StripeBillingPortalService<\n      SchemaValidator,\n      BillingPortalEntities\n    >,\n    checkoutSessionService: StripeCheckoutSessionService<\n      SchemaValidator,\n      StatusEnum,\n      CheckoutSessionEntities\n    >,\n    paymentLinkService: StripePaymentLinkService<\n      SchemaValidator,\n      StatusEnum,\n      PaymentLinkEntities\n    >,\n    planService: StripePlanService<SchemaValidator, PlanEntities>,\n    subscriptionService: StripeSubscriptionService<\n      SchemaValidator,\n      PartyEnum,\n      SubscriptionEntities\n    >,\n    partyEnum: PartyEnum,\n    /**\n     * The entity used for webhook idempotency records. Defaults to\n     * resolving the application's discovered entity named\n     * 'StripeWebhookEvent'; inject your own entity (mapper-style) to use a\n     * different one.\n     */\n    /**\n     * The application's discovered webhook idempotency entity — this sealed\n     * package must operate on the entity the app's ORM actually discovered\n     * (its own definition, or this package's via the ./persistence subpath).\n     * Querying an undiscovered entity object crashes mikro-orm 7.1.x deep in\n     * EntityLoader (meta.relations undefined).\n     */\n    webhookEventEntity: { '~entity': WebhookEventEntity }\n  )",
                   "source": "blueprint/implementations/billing/stripe/services/webhook.service.ts",
-                  "line": 100
+                  "line": 109
                 },
                 {
                   "name": "handleWebhookEvent",
                   "signature": "async handleWebhookEvent(event: Stripe.Event): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/webhook.service.ts",
-                  "line": 209
+                  "line": 218
                 }
               ]
             }

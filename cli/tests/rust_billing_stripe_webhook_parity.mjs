@@ -78,6 +78,14 @@ event('customer.subscription.deleted',{id:'sub1'});event('customer.subscription.
 event('customer.subscription.updated',{...sub,id:'unseen',customer:'cus_new',status:'active'});
 event('customer.subscription.updated',{id:'invalid',items:{data:[]}});
 event('billing_portal.session.created',{id:'bps_fixture',customer:'cus_fixture',created:1700000000,url:'https://provider.example/portal'});
+const invalidPortalIds=new Set();
+for(const [i,created] of [undefined,null,false,true,'1700000000',-1,1.5,253402300500,Number.MAX_SAFE_INTEGER,1e30,{},[]].entries()){
+ const id='bps_invalid_'+i;invalidPortalIds.add(id);
+ event('billing_portal.session.created',{id,customer:'cus_fixture',created,url:'https://provider.example/portal'});
+}
+for(const [id,created] of [['bps_epoch',0],['bps_upper',253402300499]])event('billing_portal.session.created',{id,customer:'cus_fixture',created,url:'https://provider.example/portal'});
+const portalNumberSpellings={bps_decimal:'1700000000.0',bps_exponent:'1e3',bps_negative_zero:'-0.0'};
+for(const [id,spelling] of Object.entries(portalNumberSpellings))event('billing_portal.session.created',{id,customer:'cus_fixture',created:JSON.parse(spelling),url:'https://provider.example/portal'});
 event('payment_link.created',{id:'plink_fixture',currency:'USD',payment_method_types:['card'],line_items:{data:[{amount_total:20},{amount_total:30}]}});
 event('payment_link.updated',{id:'plink_fixture',currency:'USD',payment_method_types:['card']});
 for(const [i,type] of ['checkout.session.expired','checkout.session.completed'].entries()) {
@@ -100,9 +108,31 @@ try {
  const expected=[];
  for(const action of actions){let error=false;try{if(action.seed){const {kind,data}=action.seed;em.persist({entity:kind,...clone(data)});cache.rows.set(cachePrefix[kind]+':'+data.id,clone(data));}else await webhook.handleWebhookEvent(clone(action));}catch{error=true;}
  const state={};for(const name of names){state[name+':durable']=[...em.table(name).values()];state[name+':cache']=[...cache.rows].filter(([key])=>key.startsWith(cachePrefix[name]+':')).map(([,value])=>value);}
+ if(action.type==='billing_portal.session.created'){
+  const object=action.data.object,rows=state['BillingPortal:durable'];
+  if(invalidPortalIds.has(object.id)){
+   assert.equal(error,true,'invalid provider timestamp must fail before writing');
+   assert.equal(rows.some(row=>row.id===object.id),false);
+   assert.equal(state['BillingPortal:cache'].some(row=>row.id===object.id),false);
+   assert.equal(ledger.has(action.id),false,'invalid event must not gain a receipt');
+  }else{
+   const wanted={bps_fixture:'2023-11-14T22:18:20.000Z',bps_epoch:'1970-01-01T00:05:00.000Z',bps_upper:'9999-12-31T23:59:59.000Z',bps_decimal:'2023-11-14T22:18:20.000Z',bps_exponent:'1970-01-01T00:21:40.000Z',bps_negative_zero:'1970-01-01T00:05:00.000Z'}[object.id];
+   assert.equal(new Date(rows.find(row=>row.id===object.id).expiresAt).toISOString(),wanted);
+  }
+ }
+ if(['payment_link.created','payment_link.updated'].includes(action.type)){
+  assert.equal(state['PaymentLink:durable'].find(row=>row.id===action.data.object.id).status,action.type.endsWith('created')?'CREATED':'UPDATED');
+ }
+ if(action.type==='checkout.session.completed')assert.equal(state['CheckoutSession:durable'].find(row=>row.id===action.data.object.id).status,'SUCCESS');
  expected.push(normalize({error,state}));}
  const official=captured;captured=[];
- const child=spawn(path.join(target,'debug/examples/webhook_parity'),[],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';child.stdout.on('data',v=>stdout+=v);child.stderr.on('data',v=>stderr+=v);child.stdin.end(JSON.stringify({base,actions}));
+ // Preserve selected JSON numeric lexemes: JSON.stringify would otherwise hide
+ // whole-valued float/exponent differences between TS Number and serde_json.
+ const wireActions=actions.map(action=>{
+  const raw=JSON.stringify(action),spelling=portalNumberSpellings[action.data?.object?.id];
+  return spelling===undefined?raw:raw.replace(/"created":[^,}]+/,`"created":${spelling}`);
+ });
+ const child=spawn(path.join(target,'debug/examples/webhook_parity'),[],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';child.stdout.on('data',v=>stdout+=v);child.stderr.on('data',v=>stderr+=v);child.stdin.end(`{"base":${JSON.stringify(base)},"actions":[${wireActions.join(',')}]}`);
  const timer=setTimeout(()=>child.kill('SIGKILL'),30000);try{assert.equal(await new Promise(resolve=>child.once('close',resolve)),0,stderr);}finally{clearTimeout(timer);}
  const actual=normalize(JSON.parse(stdout));assert.equal(actual.length,expected.length);
  for(let i=0;i<actual.length;i++)assert.deepEqual(actual[i],expected[i],JSON.stringify({index:i,action:actions[i]}));

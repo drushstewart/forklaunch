@@ -55,7 +55,7 @@ remain open under checklist item 849; this inventory does not close that item.
 | [`@forklaunch/blueprint-ecommerce-stripe`](../blueprint/ecommerce-stripe/package.json) (generated/private) | forklaunch-ecommerce-axum; Rust CLI ecommerce-stripe module | Core 27 catalog/cart/order/payment routes plus health start over HTTP/MCP with PostgreSQL, HMAC, provider selection and durable inventory events. Live generated HTTP/MCP, both SDKs, separate inventory worker, restart persistence and init/sync/rename/delete checks pass. Tax/shipping calculators pass 32 actual TS comparisons; bulk catalog import passes actual TS and generated PostgreSQL HTTP/MCP/SDK fixtures. Checkout HTTP/MCP/SDK wiring passes eight actual TS controller comparisons, cross-process payment races and ten parallel-cart checks. Verified Stripe/PayPal callbacks pass actual TS business comparisons and cross-process capture/replay/inventory checks; 31 application routes plus health start over HTTP/MCP. Generated Compose starts the separate inventory worker; Linux HTTP/MCP, paid/cancelled delivery and graceful shutdown pass. Persistence compliance and interrupted capture reconciliation remain. |
 | [`@forklaunch/blueprint-iam-base`](../blueprint/iam-base/package.json) (generated/private) | Rust init module iam-base | Generated sessions plus thirty configured directory CRUD/grant routes, JWKS/HMAC/RBAC, transactional organization scope and HTTP/MCP startup are covered. Configured discovery/compliance also match the actual all-`none` policy; application-specific metadata and provider lifecycle remain. |
 | [`@forklaunch/blueprint-iam-better-auth`](../blueprint/iam-better-auth/package.json) (generated/private) | forklaunch-iam-better-auth and native CLI preset | All 70 configured raw routes, four server-only helpers, seven application HTTP/MCP contracts, surfacing/compliance/retention, real encrypted ORM conformance, popup helpers, Scalar sources and default/custom/root namespaces pass actual comparisons. Generated restricted PostgreSQL, SDKs, shared/separate/disabled MCP, self-JWKS, restart and rename/delete pass. Broader custom options/hooks/client plugins, typed JWT/JWKS adapters and indexed storage remain. |
-| [`@forklaunch/implementation-billing-base`](../blueprint/implementations/billing/base/package.json) | forklaunch-billing-base | Five asynchronous base services implement plan/subscription CRUD and checkout/payment-link/portal cache lifecycles, with typed DTOs, optional backups and tenant-RLS PostgreSQL persistence. 168 actual TS base-class operations and native concurrency/expiry/encryption/audit/rotation fixtures pass. Generated billing modules and HTTP/MCP startup now pass; 65 actual configured mapper cases now pass; Redis cache interop remains. |
+| [`@forklaunch/implementation-billing-base`](../blueprint/implementations/billing/base/package.json) | forklaunch-billing-base | Five asynchronous base services implement plan/subscription CRUD and checkout/payment-link/portal cache lifecycles, with typed DTOs, optional backups and tenant-RLS PostgreSQL persistence. 168 actual TS base-class operations and native concurrency/expiry/encryption/audit/rotation fixtures pass. Generated billing modules and HTTP/MCP startup now pass; 141 actual configured mapper cases now pass; Redis cache interop remains. |
 | [`@forklaunch/implementation-billing-stripe`](../blueprint/implementations/billing/stripe/package.json) | forklaunch-billing-stripe | Version-pinned authenticated Stripe client and five persistent async provider services pass 21 official SDK transport cases and 144 actual TS wrapper operations with backup/cache lifecycle. Raw-body authentication is shared with ecommerce and rejects stale callbacks. Legacy synchronous adapter fails closed. Generated modules/contracts and HTTP/MCP startup now pass. Twenty-six actual TS webhook state/provider-effect comparisons pass, with paginated product updates and subscription reassignment protection. Native tenant-RLS webhook receipts and replica-safe platform nonces pass PostgreSQL gates. Managed outbound transport passes 23 actual TS gateway comparisons and native JSON capability signature checks. Configured mapper audit now covers 65 actual cases; reconciliation remains. |
 | [`@forklaunch/implementation-cac-base`](../blueprint/implementations/cac/base/package.json) | forklaunch-cac-base | Mock codes and provider descriptor/lookup match actual TS fixtures; authenticated generated module, both SDKs and CLI lifecycle now pass. |
 | [`@forklaunch/implementation-ecommerce-base`](../blueprint/implementations/ecommerce/base/package.json) | forklaunch-ecommerce-base | Six base services, PostgreSQL persistence, restricted-role tenant RLS and encrypted/audited order addresses. Actual TypeScript 208-operation base and 35-case catalog-controller conformance pass, alongside real PostgreSQL concurrency/security and bounded catalog reads. Generated module integration remains separate. |
@@ -96,7 +96,7 @@ actual provider/storage behavior and mixed applications where applicable. The
 package-level inventory is complete; detailed symbol/DTO and conformance mapping
 is still in progress and the implementation-plan inventory task stays open.
 
-Configured billing audit: HTTP parsing strips unknown fields and allocates local UUIDs for Stripe plan/subscription creates; optional `stripeFields` now deserialize in generated SDKs, including verified-webhook-created portals. Sixty-five actual configured mapper cases execute repository schema resolvers, Zod validators and mapper definitions over owned ORM boundaries. Intentional differences remain: native scalar coercions and provider-object validation are stricter; native cached Stripe resources retain provider IDs that configured TS mappers discard; native updates can use primary cache without an optional database backup. These are recorded differences, not literal full validator/mapper parity. Generated base/Stripe HTTP/MCP and both SDK regressions pass.
+Configured billing audit: HTTP parsing strips unknown fields and allocates local UUIDs for Stripe plan/subscription creates; optional `stripeFields` now deserialize in generated SDKs, including verified-webhook-created portals. One hundred forty-one actual configured mapper cases execute repository schema resolvers, Zod validators and mapper definitions over owned ORM boundaries. Intentional differences remain: native scalar coercions and provider-object validation are stricter; native cached Stripe resources retain provider IDs that configured TS mappers discard; native updates can use primary cache without an optional database backup. These are recorded differences, not literal full validator/mapper parity. Generated base/Stripe HTTP/MCP and both SDK regressions pass.
 
 Managed payments: `forklaunch-blueprint-core::payments_client::PaymentsClient` implements instance-signed onboarding links and readiness status with typed DTOs, gateway status and positive finite numeric Retry-After hints. Sixteen actual TypeScript/native client cases cover routes, exact JSON-byte HMAC verification, fresh nonces, redirects, readiness, refusal/JSON failures and response bounds. Native redirect URL/response validation is stricter and remote error bodies remain redacted. This completes the payments helper; other managed capability helpers remain in scope.
 
@@ -4967,3 +4967,26 @@ Checklist remains **660/682 (96.8%), 22 open**.
 
 The completed generated auth workspace `AO2PeS` has been removed after its
 committed validation receipt; logs and reproducible fixtures are retained.
+
+
+### 2026-10-13 — Billing status and portal expiry corrections
+
+Configured TypeScript status enums and native HTTP schemas now accept SUCCESS,
+CREATED and UPDATED emitted by billing callbacks. The contract snapshot changes
+only by adding these three values to ten schemas; unknown statuses still fail.
+Both webhook implementations now interpret Stripe portal creation timestamps as
+Unix seconds and add the application five-minute expiry with checked bounds.
+Whole-valued decimal/exponent JSON numbers match integer spellings; malformed,
+negative, fractional and out-of-range values fail before writes or receipts.
+Provider URL validity and configured cache TTL remain separate.
+
+Validation passes 141 actual configured mapper cases, 43 actual TypeScript/native
+webhook state/provider-effect comparisons, 66 route contracts, 28 DTO schemas,
+11 native all-feature tests and strict all-target/all-feature Clippy. Public API
+inventory offsets were refreshed and its regression checks pass. Evidence:
+`/private/tmp/fl-billing-status-expiry-{mappers,webhook,contracts,tests,clippy}.log`
+and `/private/tmp/fl-rust-billing-fixes-inventory.log`.
+
+Gate855 remains open for provider/local UUID identity handling, cache-only
+configured mappers and remaining validator differences. No additional checklist
+item closes: **660/682 (96.8%), 22 open**.

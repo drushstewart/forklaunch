@@ -52,6 +52,19 @@ for(const variant of ['base','stripe']){
   if(variant==='stripe')assert.equal(dto.stripeFields.id,'provider_fixture');
   if(family==='plan')assert.equal(dto.price,1200);
   if(family==='paymentLink')assert.equal(dto.amount,1200);cases++;
+  if(['checkoutSession','paymentLink'].includes(family)){
+   // Exercise actual configured schemas and mapper calls for every retained and
+   // emitted status, rather than substituting a permissive fixture enum.
+   for(const status of ['PENDING','SUCCESS','CREATED','UPDATED','COMPLETED','CANCELLED','FAILED','EXPIRED']){
+    const created=await create.toEntity(parse(create,{...samples[family],status}),em,{id:'provider_fixture'});
+    assert.equal(parse(read,await read.toDto(created)).status,status);cases++;
+    const updated=await update.toEntity(parse(update,{id:entity.id,status}),em,{id:'provider_fixture'});
+    assert.equal(parse(read,await read.toDto(updated)).status,status);cases++;
+   }
+   for(const [mapper,input] of [[create,{...samples[family],status:'UNKNOWN'}],[update,{id:entity.id,status:'UNKNOWN'}],[read,{...dto,status:'UNKNOWN'}]]){
+    assert.equal(actual.validator.parse(actual.validator.schemify(mapper.schema),input).ok,false);cases++;
+   }
+  }
   const patch=parse(update,{id:entity.id,undeclaredField:'strip',...(family==='billingPortal'?{customerId:'must-not-reassign',uri:'https://fixture.test/updated'}:{})});
   assert.equal(patch.undeclaredField,undefined);
   if(family==='billingPortal')assert.equal(patch.customerId,undefined);
@@ -68,5 +81,5 @@ for(const variant of ['base','stripe']){
   }
  }
 }
-console.log(`PASS ${cases} actual configured billing mapper cases: schema resolution, HTTP-boundary unknown fields, optional provider payloads, local UUIDs, response mapping, ownership and missing-row failures`);
+console.log(`PASS ${cases} actual configured billing mapper cases: emitted/retained status acceptance, unknown-status rejection, schema resolution, HTTP-boundary unknown fields, optional provider payloads, local UUIDs, response mapping, ownership and missing-row failures`);
 console.log('AUDIT Stripe checkout/payment-link/portal configured TS mappers discard provider IDs; native cache services retain provider IDs so later provider calls remain valid. Native provider payloads require objects and native scalar coercions remain stricter.');
