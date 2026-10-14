@@ -80,7 +80,14 @@ impl PostgresBillingStore {
             .bind(self.tenant.id()).bind(provider).bind(event_id).bind(event_type)
             .bind(uuid::Uuid::new_v4().to_string()).execute(&mut *intent).await.map_err(db_error)?;
         intent.commit().await.map_err(db_error)?;
-        apply().await?;
+        if let Err(error) = apply().await {
+            // Release the event lock before returning an ordinary callback
+            // failure. Drop queues rollback asynchronously and can otherwise
+            // make immediate operator inspection spuriously report busy.
+            // The separately committed intent remains pending.
+            tx.rollback().await.map_err(db_error)?;
+            return Err(error);
+        }
         self.complete_webhook(&mut tx, provider, event_id, event_type)
             .await?;
         tx.commit().await.map_err(db_error)?;

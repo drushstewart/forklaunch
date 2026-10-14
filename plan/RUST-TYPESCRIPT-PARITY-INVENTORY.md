@@ -5097,3 +5097,36 @@ mode and auth-before-callback ordering. Evidence:
 and `/private/tmp/fl-query-validator-whitespace-final.log`. Generic validator
 diagnostics/coercion/transformation and response validation remain open.
 Checklist remains **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Durable billing provider identity foundation
+
+Migration5 introduces explicit administrative Stripe aliases with separate public
+UUID, unchanged storage key and provider reference. Every lookup requires the
+tenant, deployment label, account, live/test mode and resource kind. Provisioning
+requires durable ownership, a nonblank actor and atomic audit; cache-only records
+are rejected. Composite ownership foreign keys prevent deleting a bound record.
+Opaque generation-bound revocation rejects stale handles after reprovisioning.
+Audit RLS permits only tenant-local SELECT/INSERT, so broader non-bypass runtime
+grants cannot rewrite or erase audit rows. Existing ciphertext and keys remain
+unchanged; native/generated READMEs document the new grants.
+
+The supplied account scope is explicitly administrative configuration, not proof
+of account control. These APIs make no provider calls and do not yet alter service
+wrappers, webhooks, checkout repair or public HTTP routes. No automatic migration
+or providerFields-based inference occurs. Authenticated provider scope, runtime
+wiring, cache ownership and portal replacement remain in gate855.
+
+The database fixture also exposed asynchronous transaction-drop rollback after
+an ordinary webhook callback failure. That path now awaits rollback before
+returning, preserving the original callback error and separately committed intent
+while releasing its advisory lock for immediate reconciliation. Cancellation and
+interrupted-event behavior retain their existing checks.
+
+Fourteen all-feature billing tests, including restricted PostgreSQL integration
+and existing interruption/reconciliation cases, plus strict all-target Clippy pass.
+Tests cover scope/tenant isolation, duplicate races, audit rollback, missing/blank
+actors, immutable audits, stale revoke, cache-only rejection, restart and migration
+compatibility from versions1–4. Both failed-run fixture tenants/roles were cleaned.
+Evidence: `/private/tmp/fl-billing-provider-binding-{postgres,regression,clippy}.log`.
+Checklist remains **660/682 (96.8%), 22 open**.

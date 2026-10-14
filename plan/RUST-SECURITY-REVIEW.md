@@ -557,3 +557,16 @@ to that old entry point. Complete persisted token hashes, session expiry and use
 disabled status gate association resolution; resolving a directory ID grants no
 directory authorization itself. Restricted-role concurrency, rollback, stale-token
 and unchanged-old-grants checks pass.
+
+
+Billing provider binding foundation review (2026-10-13): explicit administrative
+account/mode/deployment configuration is not authenticated provider evidence.
+Durable tenant-local ownership and nonblank actors are required for provisioning;
+providerFields and public DTOs cannot automatically create bindings. Lookup is
+scoped by tenant/account/mode/deployment/kind, with separate public UUID and
+unchanged storage key. Exact generation revocation prevents stale handles from
+removing a replacement association. Provision/revoke and their audit writes are
+atomic; audit RLS allows only SELECT/INSERT to non-bypass roles. Binding handles
+are lookup snapshots, not financial-operation capabilities. Existing wrappers
+and webhooks do not use this foundation yet. Restricted PostgreSQL isolation,
+race, immutable-audit and rollback checks pass.

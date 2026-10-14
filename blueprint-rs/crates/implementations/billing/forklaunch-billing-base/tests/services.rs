@@ -1,6 +1,9 @@
 #[cfg(feature = "postgres")]
 #[path = "support/checkout_repair.rs"]
 mod checkout_repair;
+#[cfg(feature = "postgres")]
+#[path = "support/provider_bindings.rs"]
+mod provider_bindings;
 use forklaunch_billing_base::services::{
     BaseBillingService, BillingKind, BillingStore, Scope, memory::MemoryBillingStore,
 };
@@ -889,6 +892,16 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
             .await
             .unwrap()
     );
+    provider_bindings::exercise(
+        &store,
+        &other,
+        reopened.store(),
+        &owner,
+        &pool,
+        &role,
+        tenant.id(),
+    )
+    .await;
     drop(new_only);
     drop(reopened);
     drop(service);
@@ -897,6 +910,8 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     drop(other);
     pool.close().await;
     for table in [
+        "provider_bindings",
+        "provider_binding_audit",
         "records",
         "sensitive_read_audit",
         "webhook_receipts",

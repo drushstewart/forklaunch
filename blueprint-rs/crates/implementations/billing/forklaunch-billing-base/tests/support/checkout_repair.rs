@@ -26,7 +26,7 @@ async fn prepare(
     } else {
         "checkout.session.completed"
     };
-    assert!(
+    assert_eq!(
         store
             .with_webhook_receipt("stripe", &event, kind, || async {
                 Err(BlueprintError::new(
@@ -35,7 +35,9 @@ async fn prepare(
                 ))
             })
             .await
-            .is_err()
+            .unwrap_err()
+            .code,
+        "fixture"
     );
     store
         .pending_webhooks(1000)

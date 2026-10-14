@@ -1,0 +1,234 @@
+//! Explicit administrative identity provisioning. No provider verification,
+//! inferred key context, automatic backfill, or runtime wrapper integration.
+use super::{PostgresBillingStore, db_error, invalid, validate_id};
+use crate::services::BillingKind;
+use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
+use sqlx::{Postgres, Transaction};
+use uuid::Uuid;
+
+/// Trusted server configuration, never an HTTP DTO or a claim extracted from
+/// providerFields. Current Stripe transport does not authenticate this scope;
+/// administrators must provision it explicitly against their configured account.
+#[derive(Clone, PartialEq, Eq)]
+pub struct StripeBindingScope {
+    deployment_label: String,
+    account_id: String,
+    livemode: bool,
+}
+impl StripeBindingScope {
+    /// # Errors
+    /// Rejects empty/unsafe labels and non-account identifiers. This validates
+    /// syntax only; it does not prove control of an account or API key mode.
+    pub fn administrative(
+        deployment_label: String,
+        account_id: String,
+        livemode: bool,
+    ) -> BlueprintResult<Self> {
+        for value in [&deployment_label, &account_id] {
+            if value.is_empty()
+                || value.len() > 128
+                || !value
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+            {
+                return Err(invalid());
+            }
+        }
+        if !account_id.starts_with("acct_") || account_id.len() <= 5 {
+            return Err(invalid());
+        }
+        Ok(Self {
+            deployment_label,
+            account_id,
+            livemode,
+        })
+    }
+}
+/// Opaque generation-bound administrative alias. Storage keys and encrypted
+/// envelopes remain unchanged. No Serialize/Deserialize or public constructor.
+#[derive(Clone)]
+pub struct DurableStripeBinding {
+    tenant: String,
+    scope: StripeBindingScope,
+    kind: BillingKind,
+    public_id: Uuid,
+    binding_id: Uuid,
+    storage_id: String,
+    provider_id: String,
+}
+impl DurableStripeBinding {
+    #[must_use]
+    pub const fn public_id(&self) -> Uuid {
+        self.public_id
+    }
+    #[must_use]
+    pub fn storage_id(&self) -> &str {
+        &self.storage_id
+    }
+    #[must_use]
+    pub fn provider_id(&self) -> &str {
+        &self.provider_id
+    }
+}
+fn binding_kind(kind: BillingKind) -> BlueprintResult<()> {
+    if !matches!(
+        kind,
+        BillingKind::CheckoutSession | BillingKind::PaymentLink | BillingKind::BillingPortal
+    ) {
+        return Err(invalid());
+    }
+    Ok(())
+}
+fn conflict() -> BlueprintError {
+    BlueprintError::new(
+        "billing_provider_binding_conflict",
+        "Billing provider binding or ownership does not match",
+    )
+}
+impl PostgresBillingStore {
+    fn binding_actor(&self) -> BlueprintResult<&str> {
+        let actor = self.audit.actor_id.as_deref().ok_or_else(invalid)?;
+        validate_id(actor)?;
+        if actor.trim().is_empty() {
+            return Err(invalid());
+        }
+        Ok(actor)
+    }
+    /// Trusted administrative provisioning ONLY, not a provider-evidence verifier.
+    /// The caller explicitly asserts the provider/account/mode association. Requires
+    /// an existing durable owned record; rejects cache-only records. Public IDs,
+    /// storage IDs and provider IDs cannot be reassigned while a binding exists.
+    /// # Errors
+    /// Rejects invalid identifiers, absent actor/ownership, duplicate bindings and
+    /// audit failures. All binding/audit writes commit together.
+    pub async fn provision_stripe_binding(
+        &self,
+        scope: &StripeBindingScope,
+        kind: BillingKind,
+        public_id: Uuid,
+        storage_id: &str,
+        provider_id: &str,
+    ) -> BlueprintResult<DurableStripeBinding> {
+        binding_kind(kind)?;
+        validate_id(storage_id)?;
+        validate_id(provider_id)?;
+        if public_id.is_nil() {
+            return Err(invalid());
+        }
+        self.binding_actor()?;
+        let mut tx = self.transaction().await?;
+        let owned: Option<String> = sqlx::query_scalar("SELECT id FROM fl_billing.records WHERE tenant_id=$1 AND scope='durable' AND kind=$2 AND id=$3 FOR UPDATE")
+            .bind(self.tenant.id()).bind(kind.as_str()).bind(storage_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
+        if owned.is_none() {
+            return Err(conflict());
+        }
+        let binding = DurableStripeBinding {
+            tenant: self.tenant.id().into(),
+            scope: scope.clone(),
+            kind,
+            public_id,
+            binding_id: Uuid::new_v4(),
+            storage_id: storage_id.into(),
+            provider_id: provider_id.into(),
+        };
+        sqlx::query("INSERT INTO fl_billing.provider_bindings(tenant_id,kind,public_id,binding_id,storage_id,deployment_label,account_id,livemode,provider_id) VALUES($1,$2,$3::uuid,$4::uuid,$5,$6,$7,$8,$9)")
+            .bind(self.tenant.id()).bind(kind.as_str()).bind(public_id.to_string()).bind(binding.binding_id.to_string())
+            .bind(storage_id).bind(&scope.deployment_label).bind(&scope.account_id).bind(scope.livemode).bind(provider_id)
+            .execute(&mut *tx).await.map_err(db_error)?;
+        self.audit_binding(&mut tx, &binding, "provision").await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(binding)
+    }
+    /// Looks up an explicitly provisioned durable alias in exactly this scope.
+    /// This does not authenticate a provider account or enable runtime routing.
+    /// # Errors
+    /// Rejects invalid kind/ID and returns sanitized storage failures.
+    pub async fn stripe_binding_by_public_id(
+        &self,
+        scope: &StripeBindingScope,
+        kind: BillingKind,
+        public_id: Uuid,
+    ) -> BlueprintResult<Option<DurableStripeBinding>> {
+        self.find_stripe_binding(scope, kind, &public_id.to_string(), false)
+            .await
+    }
+    /// Reverse lookup for a trusted provider context, not a public DTO claim.
+    /// # Errors
+    /// Rejects invalid kind/ID and returns sanitized storage failures.
+    pub async fn stripe_binding_by_provider_id(
+        &self,
+        scope: &StripeBindingScope,
+        kind: BillingKind,
+        provider_id: &str,
+    ) -> BlueprintResult<Option<DurableStripeBinding>> {
+        self.find_stripe_binding(scope, kind, provider_id, true)
+            .await
+    }
+    async fn find_stripe_binding(
+        &self,
+        scope: &StripeBindingScope,
+        kind: BillingKind,
+        id: &str,
+        provider: bool,
+    ) -> BlueprintResult<Option<DurableStripeBinding>> {
+        binding_kind(kind)?;
+        validate_id(id)?;
+        let column = if provider {
+            "provider_id"
+        } else {
+            "public_id::text"
+        };
+        let mut tx = self.transaction().await?;
+        let row:Option<(String,String,String,String)> = sqlx::query_as(&format!("SELECT binding_id::text,public_id::text,storage_id,provider_id FROM fl_billing.provider_bindings WHERE tenant_id=$1 AND deployment_label=$2 AND account_id=$3 AND livemode=$4 AND kind=$5 AND {column}=$6"))
+            .bind(self.tenant.id()).bind(&scope.deployment_label).bind(&scope.account_id).bind(scope.livemode).bind(kind.as_str()).bind(id)
+            .fetch_optional(&mut *tx).await.map_err(db_error)?;
+        tx.commit().await.map_err(db_error)?;
+        row.map(|(binding_id, public_id, storage_id, provider_id)| {
+            Ok(DurableStripeBinding {
+                tenant: self.tenant.id().into(),
+                scope: scope.clone(),
+                kind,
+                public_id: Uuid::parse_str(&public_id).map_err(|_| invalid())?,
+                binding_id: Uuid::parse_str(&binding_id).map_err(|_| invalid())?,
+                storage_id,
+                provider_id,
+            })
+        })
+        .transpose()
+    }
+    /// Revokes precisely this generation; does not delete the owned record or
+    /// mutate Stripe. Revoke before deleting a durable record with an alias.
+    /// # Errors
+    /// Rejects absent actors, foreign tenants, stale generations and audit failure.
+    pub async fn revoke_stripe_binding(
+        &self,
+        binding: &DurableStripeBinding,
+    ) -> BlueprintResult<()> {
+        self.binding_actor()?;
+        if binding.tenant != self.tenant.id() {
+            return Err(conflict());
+        }
+        let mut tx = self.transaction().await?;
+        let changed = sqlx::query("DELETE FROM fl_billing.provider_bindings WHERE tenant_id=$1 AND kind=$2 AND public_id=$3::uuid AND binding_id=$4::uuid")
+            .bind(self.tenant.id()).bind(binding.kind.as_str()).bind(binding.public_id.to_string()).bind(binding.binding_id.to_string())
+            .execute(&mut *tx).await.map_err(db_error)?.rows_affected();
+        if changed != 1 {
+            return Err(conflict());
+        }
+        self.audit_binding(&mut tx, binding, "revoke").await?;
+        tx.commit().await.map_err(db_error)
+    }
+    async fn audit_binding(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        binding: &DurableStripeBinding,
+        operation: &str,
+    ) -> BlueprintResult<()> {
+        sqlx::query("INSERT INTO fl_billing.provider_binding_audit(id,tenant_id,binding_id,public_id,kind,storage_id,deployment_label,account_id,livemode,provider_id,operation,actor_id,correlation_id) VALUES($1::uuid,$2,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
+            .bind(Uuid::new_v4().to_string()).bind(self.tenant.id()).bind(binding.binding_id.to_string()).bind(binding.public_id.to_string())
+            .bind(binding.kind.as_str()).bind(&binding.storage_id).bind(&binding.scope.deployment_label).bind(&binding.scope.account_id)
+            .bind(binding.scope.livemode).bind(&binding.provider_id).bind(operation).bind(self.binding_actor()?)
+            .bind(&self.audit.correlation_id).execute(&mut **tx).await.map_err(db_error)?;
+        Ok(())
+    }
+}
