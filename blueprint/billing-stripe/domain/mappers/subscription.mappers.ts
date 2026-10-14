@@ -33,7 +33,7 @@ export const CreateSubscriptionMapper = requestMapper({
   }
 });
 
-export const UpdateSubscriptionMapper = requestMapper({
+const UpdateSubscriptionEntityMapper = requestMapper({
   schemaValidator,
   schema: SubscriptionSchemas.UpdateSubscriptionSchema(PartyEnum),
   entity: Subscription,
@@ -75,4 +75,33 @@ const SubscriptionEntityMapper = responseMapper({
 export const SubscriptionMapper = {
   ...SubscriptionEntityMapper,
   partyTypes: { user: PartyEnum.USER, organization: PartyEnum.ORGANIZATION }
+};
+
+export const UpdateSubscriptionMapper = {
+  ...UpdateSubscriptionEntityMapper,
+  validateUpdate: async (
+    dto: Parameters<typeof UpdateSubscriptionEntityMapper.toEntity>[0],
+    existing: Awaited<ReturnType<typeof SubscriptionEntityMapper.toDto>>
+  ) => {
+    if (
+      typeof existing.id !== 'string' ||
+      !existing.id.trim() ||
+      existing.id !== dto.id ||
+      typeof existing.partyId !== 'string' ||
+      !existing.partyId.trim() ||
+      (dto.partyId !== undefined && dto.partyId !== existing.partyId) ||
+      (dto.partyType !== undefined && dto.partyType !== existing.partyType)
+    ) {
+      throw new Error('Subscription ownership cannot change during an update');
+    }
+    const patch = schemaValidator.parse(
+      schemaValidator.schemify(
+        SubscriptionSchemas.UpdateSubscriptionSchema(PartyEnum)
+      ),
+      dto
+    );
+    if (!patch.ok) {
+      throw new Error('Invalid subscription update');
+    }
+  }
 };

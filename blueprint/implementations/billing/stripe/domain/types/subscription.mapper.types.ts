@@ -26,6 +26,11 @@ export type StripeSubscriptionMappers<
     ) => Promise<InferEntity<Entities['CreateSubscriptionMapper']>>;
   };
   UpdateSubscriptionMapper: {
+    /** Configured preflight; changing customer ownership needs a separate workflow. */
+    validateUpdate?: (
+      dto: Dto['UpdateSubscriptionMapper'],
+      existing: Dto['SubscriptionMapper']
+    ) => Promise<void>;
     entity: Entities['UpdateSubscriptionMapper'];
     toEntity: (
       dto: Dto['UpdateSubscriptionMapper'],

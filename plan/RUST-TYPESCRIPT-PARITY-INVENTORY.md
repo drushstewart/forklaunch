@@ -6449,3 +6449,22 @@ claiming an unreachable out-of-range typed Date test.
 regressions and strict all-feature/all-target IAM Clippy pass:
 /private/tmp/fl-iam-jwt-expiration-{ts,native,regression,clippy}.log.
 Custom JWKS persistence/repository adapters remain separate unfinished work.
+
+
+## Configured subscription update consistency receipt (2026-10-14)
+
+Configured Stripe Subscription updates now validate the patch against the existing
+row before provider reads/mutations. Supplied partyId/partyType must match the
+existing ownership because the provider update does not move the Stripe customer.
+Omitted or exact existing ownership remains accepted; reassignment needs a
+separate trusted migration workflow. Wrong public identity, invalid fields and
+blank/different owners fail without provider calls or database writes. The initial
+existing-row read remains. Optional custom-mapper fallback is unchanged.
+
+28 actual-source cases across user/organization ownership,353 configured mapper
+regressions, focused service TypeScript and170 actual TS/native/official-SDK
+operations pass: /private/tmp/fl-subscription-preflight{,-configured,-types,-legacy170}.log.
+This is consistency preflight, not concurrency control, authorization or verified
+provider-account binding. No cached reference becomes mutation authority. Product/
+plan identity mapping, provider/local atomicity and broader mutation semantics
+remain open. Public API line/signature changes are regenerated and checked.

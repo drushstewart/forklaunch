@@ -172,6 +172,11 @@ export class StripeSubscriptionService<
       throw new Error('Subscription not found');
     }
 
+    await this.mappers.UpdateSubscriptionMapper.validateUpdate?.(
+      subscriptionDto,
+      subscriptionEntity
+    );
+
     const existingStripeSubscription =
       await this.stripeClient.subscriptions.retrieve(
         subscriptionEntity.externalId
