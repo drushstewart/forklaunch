@@ -34,3 +34,10 @@ uuid = { version = "1", features = ["v4"], optional = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "preview_model_gateway"
+required-features = ["instance-gateway"]

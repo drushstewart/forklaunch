@@ -125,7 +125,25 @@ impl InstanceGatewayClient {
         if let Some(body) = body {
             request = request.json(body);
         }
-        self.execute(request, false, false).await
+        self.execute(request, false, false, None).await
+    }
+    /// Sends JSON with a stricter per-request raw response-byte bound.
+    /// # Errors
+    /// Rejects invalid limits before sending and preserves sanitized refusal
+    /// status/retry metadata. Invalid success bodies use `provider_invalid_response`.
+    pub async fn request_json_with_response_limit(
+        &self,
+        method: Method,
+        route: &[&str],
+        body: Option<&Value>,
+        max_response_bytes: usize,
+    ) -> BlueprintResult<ProviderResponse> {
+        let mut request = self.request(method, route)?;
+        if let Some(body) = body {
+            request = request.json(body);
+        }
+        self.execute(request, false, false, Some(max_response_bytes))
+            .await
     }
     /// Sends a provider form request. Stripe gateway signatures bind the full
     /// router-relative query as well as exact form bytes; empty forms are absent.
@@ -147,7 +165,7 @@ impl InstanceGatewayClient {
         if let Some(version) = version {
             request = request.header("stripe-version", version);
         }
-        self.execute(request, true, false).await
+        self.execute(request, true, false, None).await
     }
     /// Sends a bodyless capability request allowing an empty success response.
     /// # Errors
@@ -157,7 +175,7 @@ impl InstanceGatewayClient {
         method: Method,
         route: &[&str],
     ) -> BlueprintResult<ProviderResponse> {
-        self.execute(self.request(method, route)?, false, true)
+        self.execute(self.request(method, route)?, false, true, None)
             .await
     }
     fn request(&self, method: Method, route: &[&str]) -> BlueprintResult<RequestBuilder> {
@@ -173,6 +191,7 @@ impl InstanceGatewayClient {
         request: RequestBuilder,
         bind_query: bool,
         allow_empty: bool,
+        max_response_bytes: Option<usize>,
     ) -> BlueprintResult<ProviderResponse> {
         let wire = request
             .try_clone()
@@ -214,7 +233,11 @@ impl InstanceGatewayClient {
         )
         .map_err(|_| invalid())?;
         let request = request.header("authorization", authorization);
-        if allow_empty {
+        if let Some(limit) = max_response_bytes {
+            self.http
+                .execute_json_with_response_limit(request, limit)
+                .await
+        } else if allow_empty {
             self.http.execute_json_or_empty(request).await
         } else {
             self.http.execute_json(request).await

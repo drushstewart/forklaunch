@@ -153,7 +153,7 @@ impl ProviderHttpClient {
     /// Rejects network failures, oversized bodies and malformed success JSON.
     /// Failure-status bodies are discarded to avoid exposing provider PII/secrets.
     pub async fn execute_json(&self, request: RequestBuilder) -> BlueprintResult<ProviderResponse> {
-        self.execute(request, false).await
+        self.execute(request, false, self.max_bytes, false).await
     }
     /// Like `execute_json`, but permits an empty successful body (voice hang-up).
     /// # Errors
@@ -162,13 +162,44 @@ impl ProviderHttpClient {
         &self,
         request: RequestBuilder,
     ) -> BlueprintResult<ProviderResponse> {
-        self.execute(request, true).await
+        self.execute(request, true, self.max_bytes, false).await
+    }
+    /// Applies a stricter response-byte limit to one JSON request.
+    /// Uses browser-compatible UTF-8 decoding (replacement of malformed sequences
+    /// and removal of an initial BOM), rounding unsafe integral numbers to f64.
+    /// Default transport decoding, limits and
+    /// error categories remain unchanged.
+    /// # Errors
+    /// Rejects zero/larger-than-configured limits before sending. After response
+    /// headers, oversized, unreadable or malformed success bodies report
+    /// `provider_invalid_response`; network send failures retain their category.
+    pub async fn execute_json_with_response_limit(
+        &self,
+        request: RequestBuilder,
+        max_response_bytes: usize,
+    ) -> BlueprintResult<ProviderResponse> {
+        if max_response_bytes == 0 || max_response_bytes > self.max_bytes {
+            return Err(config_error());
+        }
+        self.execute(request, false, max_response_bytes, true).await
     }
     async fn execute(
         &self,
         request: RequestBuilder,
         allow_empty: bool,
+        max_bytes: usize,
+        distinguish_response: bool,
     ) -> BlueprintResult<ProviderResponse> {
+        let response_error = || {
+            if distinguish_response {
+                BlueprintError::new(
+                    "provider_invalid_response",
+                    "Invalid provider HTTP response",
+                )
+            } else {
+                transport_error()
+            }
+        };
         let mut response = request.send().await.map_err(|_| transport_error())?;
         let status = response.status().as_u16();
         let retry_after_seconds = response
@@ -186,27 +217,55 @@ impl ProviderHttpClient {
         }
         if response
             .content_length()
-            .is_some_and(|length| length > self.max_bytes as u64)
+            .is_some_and(|length| length > max_bytes as u64)
         {
-            return Err(transport_error());
+            return Err(response_error());
         }
         let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|_| transport_error())? {
-            if chunk.len() > self.max_bytes.saturating_sub(bytes.len()) {
-                return Err(transport_error());
+        while let Some(chunk) = response.chunk().await.map_err(|_| response_error())? {
+            if chunk.len() > max_bytes.saturating_sub(bytes.len()) {
+                return Err(response_error());
             }
             bytes.extend_from_slice(&chunk);
         }
         let body = if allow_empty && bytes.is_empty() {
             Value::Null
+        } else if distinguish_response {
+            let text = String::from_utf8_lossy(&bytes);
+            let mut decoded = serde_json::from_str(text.strip_prefix('\u{feff}').unwrap_or(&text))
+                .map_err(|_| response_error())?;
+            normalize_browser_numbers(&mut decoded);
+            decoded
         } else {
-            serde_json::from_slice(&bytes).map_err(|_| transport_error())?
+            serde_json::from_slice(&bytes).map_err(|_| response_error())?
         };
         Ok(ProviderResponse {
             status,
             body,
             retry_after_seconds,
         })
+    }
+}
+// JSON.parse represents every number as IEEE-754. Preserve safe integer storage,
+// but round larger integral source values before callers observe the decoded tree.
+fn normalize_browser_numbers(value: &mut Value) {
+    match value {
+        Value::Number(number) if number.is_i64() || number.is_u64() => {
+            let outside_safe_range = number
+                .as_i64()
+                .is_some_and(|value| value.unsigned_abs() > 9_007_199_254_740_991)
+                || number
+                    .as_u64()
+                    .is_some_and(|value| value > 9_007_199_254_740_991);
+            if outside_safe_range
+                && let Some(rounded) = number.as_f64().and_then(serde_json::Number::from_f64)
+            {
+                *number = rounded;
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(normalize_browser_numbers),
+        Value::Object(fields) => fields.values_mut().for_each(normalize_browser_numbers),
+        _ => {}
     }
 }
 fn config_error() -> BlueprintError {

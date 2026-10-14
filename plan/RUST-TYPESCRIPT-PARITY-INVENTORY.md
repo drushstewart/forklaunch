@@ -6170,3 +6170,31 @@ literals are not normalized automatically. The oracle keeps nested numeric data
 in its declared unknown-valued field: the separately observed TypeScript unknown
 property stripping/schema transformations remain an explicit residual gate.
 This supersedes the earlier profile's unsafe-integral rejection boundary.
+
+## Latest-main preview model gateway receipt (2026-10-14)
+
+The new main-branch preview capability now has a native PreviewModelGatewayClient
+under blueprint-core's instance-gateway feature. It reuses existing instance HMAC,
+TLS/loopback policy, fresh nonces and nonretrying transport. Fixed catalog/chat
+paths, typed one-model issued-ceiling catalog validation, exact8192-byte catalog
+bounds, strictly-future expiry within fifteen minutes, bounded chat JSON and preserved optional timestamps
+are verified. Catalog fields make no remaining-usage/monthly-token/BAA claims.
+
+64 actual TypeScript/native wire cases, eight all-feature core tests and strict
+core Clippy pass: /private/tmp/fl-preview-model-{wire,core,clippy}.log.
+The wire fixture checks fixed/chunked8192/8193 boundaries, HMAC bytes/path/fresh
+nonces, HTTP status/retry metadata, closed-port classification, unchanged default
+transport behavior and no retries. Review added browser UTF-8/BOM decoding and
+finite large-integer rounding for opaque chat; IEEE bits are compared. Overflow
+numbers/lone surrogates remain explicit Value representation limits, and byte-
+identical JavaScript serialization is not claimed. Default provider transport
+decoding/limits/error codes are unchanged; only the new bounded browser path
+normalizes JSON source numbers.
+
+CI includes the new fixture. The new explicit Cargo example required a CLI
+template examples symlink; package listing confirms it, the preview module,
+migration6, subject hook and request-order source:
+/private/tmp/fl-oct14-preview-package-list.txt. This is not a new archive-install
+receipt. The earlier newly-unmapped preview feature finding is addressed by
+this native profile; managed model catalog/streaming APIs and broader public
+symbol/DTO semantic coverage remain in gate849.

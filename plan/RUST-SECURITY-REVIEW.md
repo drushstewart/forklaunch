@@ -753,3 +753,14 @@ ownership verification and grants no provider mutation or webhook completion.
 Restricted-role tests verify migration compatibility, wrong-scope/tenant denial,
 revocation/reprovisioning, and audit-failure rollback. Authenticated provider
 inspection remains a separate required boundary.
+
+
+Preview gateway review (2026-10-14): the native client uses only trusted instance
+gateway credentials, fixed capability paths, existing HMAC signatures and fresh
+nonces. No provider credential or desktop login is used. Catalog bytes are capped
+before decoding, validated against exact issued-ceiling fields and expiration,
+and cannot masquerade as managed monthly usage/compliance entitlements. HTTP
+failures retain status/retry metadata without provider response text. Browser
+UTF-8/numeric compatibility is scoped to the new bounded path; existing provider
+transport policy remains unchanged. Chat has no streaming method, preserves
+absent timestamps, and retains the native JSON value representation limits.
