@@ -53,7 +53,7 @@ const UpdatePlanEntityMapper = requestMapper({
   }
 });
 
-export const PlanMapper = responseMapper({
+const PlanEntityMapper = responseMapper({
   schemaValidator,
   schema: PlanSchemas.PlanSchema,
   entity: Plan,
@@ -104,3 +104,25 @@ export const CreatePlanMapper = {
     }
   }
 };
+
+export const PlanMapper = {
+  ...PlanEntityMapper,
+  validateProviderRead
+};
+
+async function validateProviderRead(
+  expectedExternalId: string,
+  provider: Stripe.Plan
+): Promise<void> {
+  if (
+    typeof expectedExternalId !== 'string' ||
+    !expectedExternalId.trim() ||
+    !provider ||
+    typeof provider !== 'object' ||
+    Array.isArray(provider) ||
+    provider.id !== expectedExternalId ||
+    provider.object !== 'plan'
+  ) {
+    throw new Error('Invalid Stripe billing response');
+  }
+}

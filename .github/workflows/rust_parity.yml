@@ -229,6 +229,7 @@ on:
       - 'cli/tests/rust_billing_plan_update_preflight.mjs'
       - 'cli/tests/rust_billing_plan_create_preflight.mjs'
       - 'cli/tests/rust_billing_creation_preflight.mjs'
+      - 'cli/tests/rust_billing_read_identity.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_cached_session_identity.mjs'
@@ -509,6 +510,7 @@ on:
       - 'cli/tests/rust_billing_plan_update_preflight.mjs'
       - 'cli/tests/rust_billing_plan_create_preflight.mjs'
       - 'cli/tests/rust_billing_creation_preflight.mjs'
+      - 'cli/tests/rust_billing_read_identity.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_cached_session_identity.mjs'
@@ -1051,6 +1053,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_creation_preflight.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_read_identity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_subscription_update_preflight.mjs

@@ -123,6 +123,10 @@ export class StripeSubscriptionService<
     const stripeSubscription = await this.stripeClient.subscriptions.retrieve(
       subscriptionEntity.externalId
     );
+    await this.mappers.SubscriptionMapper.validateProviderRead?.(
+      subscriptionEntity.externalId,
+      stripeSubscription
+    );
     subscriptionEntity.stripeFields = stripeSubscription;
     return subscriptionEntity;
   }
@@ -139,6 +143,10 @@ export class StripeSubscriptionService<
     const stripeSubscription = await this.stripeClient.subscriptions.retrieve(
       subscriptionEntity.externalId
     );
+    await this.mappers.SubscriptionMapper.validateProviderRead?.(
+      subscriptionEntity.externalId,
+      stripeSubscription
+    );
     subscriptionEntity.stripeFields = stripeSubscription;
     return subscriptionEntity;
   }
@@ -154,6 +162,10 @@ export class StripeSubscriptionService<
     }
     const stripeSubscription = await this.stripeClient.subscriptions.retrieve(
       subscriptionEntity.externalId
+    );
+    await this.mappers.SubscriptionMapper.validateProviderRead?.(
+      subscriptionEntity.externalId,
+      stripeSubscription
     );
     subscriptionEntity.stripeFields = stripeSubscription;
     return subscriptionEntity;
@@ -238,9 +250,14 @@ export class StripeSubscriptionService<
     const stripeSubscriptions = await Promise.all(
       subscriptions.map(async (subscription) => {
         try {
-          return await this.stripeClient.subscriptions.retrieve(
+          const provider = await this.stripeClient.subscriptions.retrieve(
             subscription.externalId
           );
+          await this.mappers.SubscriptionMapper.validateProviderRead?.(
+            subscription.externalId,
+            provider
+          );
+          return provider;
         } catch {
           return null;
         }

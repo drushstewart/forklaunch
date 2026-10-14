@@ -7352,3 +7352,23 @@ legacy-key/read-identity/JSON-wire slices have separate proof; they are not sile
 included in this immutable checkpoint. This is local source-archive/runtime proof,
 not public registry publication or an AWS deployment. The failed15e tracing receipt
 remains retained. Checklist stays660/682 (96.8%),22 broad gates open.
+
+
+## Billing provider read identity (2026-10-14)
+
+Configured Plan and Subscription mappers expose optional validateProviderRead
+hooks; getters validate exact stored external ID and provider object kind before
+attaching data. Native read enrichment checks the same identity. User/organization
+subscription getters and lists are covered; lists retain skip-on-provider-error
+semantics. Generic custom mappers without the hook retain their fallback. Local
+UUIDs/provider fields are preserved and malformed responses produce fixed errors
+without local writes or provider mutations; customer IDs are not inferred from
+local party UUIDs. Legacy transport fixtures now use official singular Stripe
+object tags.64 actual configured TS cases,353 mapper regressions,52 creation
+cases, permanent12-root types with zero diagnostics,2 native loopback tests,170
+legacy operations and strict all-feature/all-target billing Clippy pass:
+/private/tmp/fl-billing-read-identity{,-configured,-creation,-types,-native,-legacy170,-clippy}.log.
+Native proof uses current working dependency sources, including frozen draft
+versioned-JSON/MCP changes; the earlier immutable archive excludes this slice.
+Provider update preflight and post-effect response validation remain separate.
+CI now runs the focused configured read fixture.

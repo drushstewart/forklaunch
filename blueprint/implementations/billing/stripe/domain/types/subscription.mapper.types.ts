@@ -9,6 +9,11 @@ export type StripeSubscriptionMappers<
   Dto extends StripeSubscriptionDtos<PartyTypeEnum>
 > = {
   SubscriptionMapper: {
+    /** Read-result identity check; does not establish provider account ownership. */
+    validateProviderRead?: (
+      expectedExternalId: string,
+      provider: Stripe.Subscription
+    ) => Promise<void>;
     /** Trusted persisted party discriminators for local subscription lookups. */
     partyTypes?: Readonly<{ user: string; organization: string }>;
     entity: Entities['SubscriptionMapper'];

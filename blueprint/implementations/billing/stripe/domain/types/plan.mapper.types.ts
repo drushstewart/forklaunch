@@ -8,6 +8,11 @@ export type StripePlanMappers<
   Dto extends StripePlanDtos
 > = {
   PlanMapper: {
+    /** Read-result identity check; does not establish provider account ownership. */
+    validateProviderRead?: (
+      expectedExternalId: string,
+      provider: Stripe.Plan
+    ) => Promise<void>;
     entity: Entities['PlanMapper'];
     toDto: (
       entity: InferEntity<Entities['PlanMapper']>

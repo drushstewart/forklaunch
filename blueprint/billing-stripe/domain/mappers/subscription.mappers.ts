@@ -74,6 +74,7 @@ const SubscriptionEntityMapper = responseMapper({
 
 export const SubscriptionMapper = {
   ...SubscriptionEntityMapper,
+  validateProviderRead,
   partyTypes: { user: PartyEnum.USER, organization: PartyEnum.ORGANIZATION }
 };
 
@@ -124,3 +125,20 @@ export const CreateSubscriptionMapper = {
     }
   }
 };
+
+async function validateProviderRead(
+  expectedExternalId: string,
+  provider: Stripe.Subscription
+): Promise<void> {
+  if (
+    typeof expectedExternalId !== 'string' ||
+    !expectedExternalId.trim() ||
+    !provider ||
+    typeof provider !== 'object' ||
+    Array.isArray(provider) ||
+    provider.id !== expectedExternalId ||
+    provider.object !== 'subscription'
+  ) {
+    throw new Error('Invalid Stripe billing response');
+  }
+}

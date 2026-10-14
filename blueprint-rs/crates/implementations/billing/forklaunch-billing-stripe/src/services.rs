@@ -42,19 +42,25 @@ impl<S: BillingStore> StripeBillingService<S> {
             )
             .await
     }
+    async fn read_plan(&self, id: &str) -> BlueprintResult<Value> {
+        let provider = self.expanded_plan(id).await?;
+        validate_read_identity(&provider, id, "plan")?;
+        Ok(provider)
+    }
     async fn enrich_subscription(
         &self,
         mut value: SubscriptionDto,
     ) -> BlueprintResult<SubscriptionDto> {
-        value.provider_fields = Some(
-            self.client
-                .retrieve(
-                    StripeResource::Subscription,
-                    external_id(&value.external_id)?,
-                    &json!({}),
-                )
-                .await?,
-        );
+        let provider = self
+            .client
+            .retrieve(
+                StripeResource::Subscription,
+                external_id(&value.external_id)?,
+                &json!({}),
+            )
+            .await?;
+        validate_read_identity(&provider, &value.external_id, "subscription")?;
+        value.provider_fields = Some(provider);
         Ok(value)
     }
     async fn link_status(&self, id: &str, status: &str) -> BlueprintResult<()> {
@@ -93,7 +99,7 @@ impl<S: BillingStore> PlanService for StripeBillingService<S> {
     }
     async fn get_plan(&self, id: &str) -> BlueprintResult<PlanDto> {
         let mut value = self.base.get_plan(id).await?;
-        value.provider_fields = Some(product(&self.expanded_plan(&value.external_id).await?)?);
+        value.provider_fields = Some(product(&self.read_plan(&value.external_id).await?)?);
         Ok(value)
     }
     async fn update_plan(&self, mut request: UpdatePlanDto) -> BlueprintResult<PlanDto> {
@@ -147,7 +153,7 @@ impl<S: BillingStore> PlanService for StripeBillingService<S> {
         let mut result = Vec::new();
         for mut value in self.base.list_plans(ids).await? {
             if let Ok(provider) = self
-                .expanded_plan(&value.external_id)
+                .read_plan(&value.external_id)
                 .await
                 .and_then(|v| product(&v))
             {
@@ -547,4 +553,11 @@ fn line_amount(provider: &Value) -> BlueprintResult<f64> {
 }
 fn invalid_response() -> BlueprintError {
     BlueprintError::new("stripe_invalid_response", "Invalid Stripe billing response")
+}
+
+fn validate_read_identity(provider: &Value, expected: &str, kind: &str) -> BlueprintResult<()> {
+    if provider["id"].as_str() != Some(expected) || provider["object"].as_str() != Some(kind) {
+        return Err(invalid_response());
+    }
+    Ok(())
 }

@@ -123,6 +123,10 @@ export class StripePlanService<
     const plan = await this.stripeClient.plans.retrieve(planEntity.externalId, {
       expand: ['product']
     });
+    await this.mappers.PlanMapper.validateProviderRead?.(
+      planEntity.externalId,
+      plan
+    );
     planEntity.stripeFields = plan.product as Stripe.Product;
     return planEntity;
   }
@@ -211,6 +215,10 @@ export class StripePlanService<
             {
               expand: ['product']
             }
+          );
+          await this.mappers.PlanMapper.validateProviderRead?.(
+            plan.externalId,
+            fetchedPlan
           );
           return fetchedPlan.product as Stripe.Product;
         } catch {
