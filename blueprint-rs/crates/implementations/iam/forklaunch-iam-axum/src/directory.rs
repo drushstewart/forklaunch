@@ -488,7 +488,9 @@ fn invalid() -> BlueprintError {
 }
 fn failure(error: &BlueprintError) -> Response {
     let status = match error.code.as_str() {
-        "iam_directory_invalid" => StatusCode::BAD_REQUEST,
+        "iam_directory_invalid" | "iam_directory_scan_limit" | "iam_directory_filter_limit" => {
+            StatusCode::BAD_REQUEST
+        }
         "iam_directory_not_found" => StatusCode::NOT_FOUND,
         "iam_directory_conflict" => StatusCode::CONFLICT,
         "iam_directory_forbidden" => StatusCode::FORBIDDEN,

@@ -26,17 +26,19 @@ mod sealed {
 /// A supported family and its core mapper DTOs. Sealed to preserve storage rules.
 pub trait DirectoryEntity: sealed::Sealed + Send + Sync {
     const KIND: DirectoryKind;
+    type Field: super::filter::DirectoryField;
     type Create: Serialize + Send;
     type Update: Serialize + Send;
     type Dto: DeserializeOwned + Send;
 }
 macro_rules! entity {
-    ($name:ident, $kind:ident, $create:ty, $update:ty, $dto:ty) => {
+    ($name:ident, $kind:ident, $create:ty, $update:ty, $dto:ty, $field:ty) => {
         #[derive(Debug, Clone, Copy)]
         pub struct $name;
         impl sealed::Sealed for $name {}
         impl DirectoryEntity for $name {
             const KIND: DirectoryKind = DirectoryKind::$kind;
+            type Field = $field;
             type Create = $create;
             type Update = $update;
             type Dto = $dto;
@@ -48,16 +50,32 @@ entity!(
     Permission,
     CreatePermissionDto,
     UpdatePermissionDto,
-    PermissionDto
+    PermissionDto,
+    super::filter::PermissionField
 );
-entity!(Roles, Role, CreateRoleDto, UpdateRoleDto, RoleDto);
-entity!(Users, User, CreateUserDto, UpdateUserDto, UserDto);
+entity!(
+    Roles,
+    Role,
+    CreateRoleDto,
+    UpdateRoleDto,
+    RoleDto,
+    super::filter::RoleField
+);
+entity!(
+    Users,
+    User,
+    CreateUserDto,
+    UpdateUserDto,
+    UserDto,
+    super::filter::UserField
+);
 entity!(
     Organizations,
     Organization,
     CreateOrganizationDto,
     UpdateOrganizationDto,
-    OrganizationDto
+    OrganizationDto,
+    super::filter::OrganizationField
 );
 
 /// Application-owned typed inputs, projection and extra context. Hooks can use
@@ -263,6 +281,81 @@ impl<T: DirectoryTransaction> DirectoryUnitOfWork<T> {
         let result = async {
             let row = self.get::<E>(id).await?;
             mapper.project(row, context).await
+        }
+        .await;
+        operation.complete = result.is_ok();
+        self.finish(result)
+    }
+    /// Lists selected IDs (or all bounded rows) matching a validated typed filter.
+    /// Tenant and organization scope remain mandatory outside the filter. Order
+    /// follows insertion sequence; duplicate input IDs never duplicate rows.
+    /// Reads and audits up to 4096 candidate rows before application filtering.
+    /// # Errors
+    /// Rejects invalid predicates before reads, malformed selector UUIDs, scan
+    /// overflow, storage failures and projection errors; poisons the transaction.
+    pub async fn list<E: DirectoryEntity>(
+        &mut self,
+        ids: Option<&[String]>,
+        filter: &super::filter::DirectoryFilter<E::Field>,
+    ) -> BlueprintResult<Vec<E::Dto>> {
+        self.ready()?;
+        let mut operation = Operation::new(self.failed.clone());
+        let result = async {
+            filter.validate()?;
+            let ids = ids
+                .map(|ids| {
+                    if ids.len() > 4096 {
+                        return Err(invalid());
+                    }
+                    ids.iter()
+                        .map(|id| super::filter::normalize_id(id))
+                        .collect::<BlueprintResult<Vec<_>>>()
+                })
+                .transpose()?;
+            let scope = if E::KIND == DirectoryKind::User {
+                self.organization_scope.as_deref()
+            } else {
+                None
+            };
+            let rows = self.tx.list(E::KIND, ids.as_deref(), scope).await?;
+            let mut result = Vec::new();
+            let mut remaining = 1_000_000;
+            for row in rows {
+                self.authorize(E::KIND, &row, false)?;
+                if filter.matches(&row, &mut remaining)? {
+                    result.push(
+                        serde_json::from_value(
+                            super::mapping::hydrate(&mut self.tx, E::KIND, row).await?,
+                        )
+                        .map_err(|_| storage_error())?,
+                    );
+                }
+            }
+            Ok(result)
+        }
+        .await;
+        operation.complete = result.is_ok();
+        self.finish(result)
+    }
+    /// Applies a custom projection to every filtered result in this transaction.
+    /// # Errors
+    /// Any predicate/read/projection failure poisons the entire transaction.
+    pub async fn mapped_list<E: DirectoryEntity, M: DirectoryMapper<E>>(
+        &mut self,
+        mapper: &M,
+        ids: Option<&[String]>,
+        filter: &super::filter::DirectoryFilter<E::Field>,
+        context: &M::Context,
+    ) -> BlueprintResult<Vec<M::Output>> {
+        self.ready()?;
+        let mut operation = Operation::new(self.failed.clone());
+        let result = async {
+            let rows = self.list::<E>(ids, filter).await?;
+            let mut result = Vec::with_capacity(rows.len());
+            for row in rows {
+                result.push(mapper.project(row, context).await?);
+            }
+            Ok(result)
         }
         .await;
         operation.complete = result.is_ok();

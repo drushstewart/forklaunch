@@ -275,3 +275,189 @@ async fn caught_mapper_panic_prevents_commit_and_invalid_email_is_rejected() {
     assert!(work.create::<Users>(dto).await.is_err());
     assert!(work.commit().await.is_err());
 }
+
+#[tokio::test]
+async fn bounded_filters_preserve_order_scope_and_projection_rollback() {
+    use crate::directory::filter::{DirectoryFilter as F, Predicate as P, UserField};
+    let store = Arc::new(MemoryDirectoryStore::default());
+    let service = BaseIamDirectory::new(store.clone());
+    let user = mapped_graph(&service).await;
+    let mut work = service.unit_of_work().await.unwrap();
+    let filter = F::Compare {
+        field: UserField::Email,
+        test: P::IsNotNull,
+    };
+    let ids = vec![user.to_uppercase(), user.clone()];
+    let rows = work.list::<Users>(Some(&ids), &filter).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, user);
+    let context = Context {
+        organization: rows[0].organization.clone().unwrap(),
+        prefix: "list".into(),
+        reject: false,
+    };
+    let rows = work
+        .mapped_list::<Users, _>(&Mapper, None, &filter, &context)
+        .await
+        .unwrap();
+    assert_eq!(rows[0].display, "list:Updated");
+    work.commit().await.unwrap();
+    let scoped = BaseIamDirectory::new(store.clone())
+        .with_organization_scope(uuid::Uuid::new_v4().to_string());
+    let mut work = scoped.unit_of_work().await.unwrap();
+    let broad = F::Any(vec![
+        filter.clone(),
+        F::Not(Box::new(F::Compare {
+            field: UserField::Id,
+            test: P::Eq(uuid::Uuid::new_v4().to_string()),
+        })),
+    ]);
+    assert!(work.list::<Users>(None, &broad).await.unwrap().is_empty());
+    work.commit().await.unwrap();
+    let mut work = service.unit_of_work().await.unwrap();
+    let org = work
+        .create::<Organizations>(organization("list-projection-rollback"))
+        .await
+        .unwrap();
+    let context = Context {
+        reject: true,
+        ..context
+    };
+    assert!(
+        work.mapped_list::<Users, _>(&Mapper, None, &filter, &context)
+            .await
+            .is_err()
+    );
+    assert!(work.commit().await.is_err());
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(
+        tx.get(DirectoryKind::Organization, &org.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn scan_limit_is_explicit_even_when_no_rows_would_match() {
+    use crate::directory::filter::{DirectoryFilter as F, PermissionField, Predicate as P};
+    let store = Arc::new(MemoryDirectoryStore::default());
+    let mut tx = store.begin(true).await.unwrap();
+    for index in 0..4097 {
+        tx.insert(
+            DirectoryKind::Permission,
+            json!({"id":uuid::Uuid::from_u128(index).to_string(),"slug":"present"}),
+        )
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+    let service = BaseIamDirectory::new(store);
+    let mut work = service.unit_of_work().await.unwrap();
+    let result = work
+        .list::<Permissions>(
+            None,
+            &F::Compare {
+                field: PermissionField::Slug,
+                test: P::Eq("absent".into()),
+            },
+        )
+        .await;
+    assert_eq!(result.err().unwrap().code, "iam_directory_scan_limit");
+    assert!(work.commit().await.is_err());
+}
+
+struct NoReads;
+impl DirectoryTransaction for NoReads {
+    async fn get(&mut self, _: DirectoryKind, _: &str) -> BlueprintResult<Option<Value>> {
+        panic!("invalid filter read storage")
+    }
+    async fn list(
+        &mut self,
+        _: DirectoryKind,
+        _: Option<&[String]>,
+        _: Option<&str>,
+    ) -> BlueprintResult<Vec<Value>> {
+        panic!("invalid filter scanned storage")
+    }
+    async fn insert(&mut self, _: DirectoryKind, _: Value) -> BlueprintResult<()> {
+        panic!("unexpected write")
+    }
+    async fn replace(&mut self, _: DirectoryKind, _: Value) -> BlueprintResult<()> {
+        panic!("unexpected write")
+    }
+    async fn delete(&mut self, _: DirectoryKind, _: &str) -> BlueprintResult<()> {
+        panic!("unexpected write")
+    }
+    async fn commit(self) -> BlueprintResult<()> {
+        Ok(())
+    }
+}
+#[tokio::test]
+async fn malformed_or_overbudget_predicates_fail_before_storage_reads() {
+    use crate::directory::filter::{DirectoryFilter as F, Predicate as P, UserField};
+    let leaf = F::Compare {
+        field: UserField::Email,
+        test: P::Eq("ok".into()),
+    };
+    let mut deep = leaf.clone();
+    for _ in 0..18 {
+        deep = F::Not(Box::new(deep));
+    }
+    for filter in [
+        F::All(vec![]),
+        F::Any(vec![]),
+        deep,
+        F::Any(vec![leaf; 257]),
+        F::Compare {
+            field: UserField::Email,
+            test: P::Eq("x".repeat(65537)),
+        },
+        F::Compare {
+            field: UserField::Id,
+            test: P::Eq("invalid-uuid".into()),
+        },
+        F::Related {
+            field: UserField::Email,
+            ids: vec![],
+        },
+        F::Compare {
+            field: UserField::RoleIds,
+            test: P::IsNull,
+        },
+        F::Compare {
+            field: UserField::Email,
+            test: P::In(vec!["a".into(); 4097]),
+        },
+    ] {
+        let mut work = DirectoryUnitOfWork::new(NoReads, None);
+        assert!(work.list::<Users>(None, &filter).await.is_err());
+        assert!(work.commit().await.is_err());
+    }
+    let mut work = DirectoryUnitOfWork::new(NoReads, None);
+    assert!(
+        work.list::<Users>(
+            Some(&["bad-id".into()]),
+            &F::Compare {
+                field: UserField::Email,
+                test: P::IsNull
+            }
+        )
+        .await
+        .is_err()
+    );
+    assert!(work.commit().await.is_err());
+    assert!(
+        serde_json::from_value::<F<UserField>>(
+            json!({"compare":{"field":"password","test":{"eq":"secret"}}})
+        )
+        .is_err()
+    );
+    assert!(
+        serde_json::from_value::<F<UserField>>(
+            json!({"compare":{"field":"email","test":{"like":"%"}}})
+        )
+        .is_err()
+    );
+}

@@ -101,6 +101,7 @@ on:
       - 'cli/tests/rust_iam_directory_authorization.mjs'
       - 'cli/tests/rust_iam_directory_grants.mjs'
       - 'cli/tests/rust_iam_mapper_extensions.mjs'
+      - 'cli/tests/rust_iam_filter_orm.mjs'
       - 'cli/tests/rust_better_auth_application_contracts.mjs'
       - 'cli/tests/rust_docs_sources.mjs'
       - 'cli/tests/rust_better_auth_http.mjs'
@@ -323,6 +324,7 @@ on:
       - 'cli/tests/rust_iam_directory_authorization.mjs'
       - 'cli/tests/rust_iam_directory_grants.mjs'
       - 'cli/tests/rust_iam_mapper_extensions.mjs'
+      - 'cli/tests/rust_iam_filter_orm.mjs'
       - 'cli/tests/rust_better_auth_application_contracts.mjs'
       - 'cli/tests/rust_docs_sources.mjs'
       - 'cli/tests/rust_better_auth_http.mjs'
@@ -898,6 +900,10 @@ jobs:
       - run: node cli/tests/rust_better_auth_public.mjs
       - run: node cli/tests/rust_better_auth_surfacing.mjs
       - run: node cli/tests/rust_better_auth_orm.mjs
+      - run: node cli/tests/rust_iam_filter_orm.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_ORM_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_relay_orm.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

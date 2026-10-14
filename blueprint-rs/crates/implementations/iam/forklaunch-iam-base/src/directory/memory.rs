@@ -90,7 +90,7 @@ impl DirectoryTransaction for MemoryDirectoryTransaction {
             .map(|(_, (sequence, value))| (*sequence, value.clone()))
             .collect::<Vec<_>>();
         if rows.len() > 4096 {
-            return Err(invalid());
+            return Err(super::scan_limit_error());
         }
         rows.sort_by_key(|(sequence, _)| *sequence);
         Ok(rows.into_iter().map(|(_, value)| value).collect())

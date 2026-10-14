@@ -5374,3 +5374,22 @@ Provider/local effects are still non-atomic, and generic/backup customer-update
 semantics remain separate from the configured cache-only profile. Remaining
 provider identity, reconciliation and validator work keeps the billing gates
 open. Checklist **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: bounded typed directory filters
+
+Caller-owned directory transactions now support typed `list` and `mapped_list`
+filters over declared fields. Comparisons preserve SQL three-valued NULL logic,
+UUID normalization only for identities, literal text and relationship membership.
+Tenant/organization scope stays outside application predicates. Validation bounds
+depth, nodes, values and bytes before reads; evaluation and candidate scans are
+bounded, with explicit scan-limit errors. Failures poison the whole transaction.
+
+Verified: 33 actual MikroORM/PostgreSQL comparisons, 23 native tests, restricted
+encrypted PostgreSQL audit/rollback checks, strict Clippy and minimal-feature
+compilation. CI runs the actual ORM comparison. Receipts:
+`/private/tmp/fl-iam-filter-{orm,native,pg,clippy,minimal}.log`.
+
+Empty logical groups, arbitrary fields/JSON paths, range/date/LIKE operators,
+sorting, pagination and custom ORM entities remain unsupported. This does not
+close generic directory extensions. Checklist: **660/682 (96.8%), 22 open**.

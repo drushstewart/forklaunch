@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::future::Future;
 
 pub mod compliance;
+pub mod filter;
 mod mapping;
 pub mod memory;
 #[cfg(feature = "postgres")]
@@ -103,3 +104,10 @@ pub(super) fn record_id(value: &Value) -> BlueprintResult<&str> {
 
 #[cfg(test)]
 mod tests;
+
+pub(super) fn scan_limit_error() -> BlueprintError {
+    BlueprintError::new(
+        "iam_directory_scan_limit",
+        "Directory candidate scan exceeds 4096 rows",
+    )
+}

@@ -232,7 +232,7 @@ impl DirectoryTransaction for PostgresDirectoryTransaction<'_> {
         }
         let rows: Vec<(String,Value)> = sqlx::query_as("SELECT id,data FROM fl_iam_directory WHERE tenant_id=$1 AND kind=$2 AND ($3::text[] IS NULL OR id=ANY($3)) AND ($4::text IS NULL OR data->>'organization'=$4) ORDER BY sequence LIMIT 4097").bind(self.store.tenant.id()).bind(kind.as_str()).bind(ids).bind(organization).fetch_all(&mut *self.tx).await.map_err(db_error)?;
         if rows.len() > 4096 {
-            return Err(invalid());
+            return Err(super::scan_limit_error());
         }
         let mut values = Vec::with_capacity(rows.len());
         for (id, row) in rows {

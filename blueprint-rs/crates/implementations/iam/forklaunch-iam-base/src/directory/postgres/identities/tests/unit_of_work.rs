@@ -1,10 +1,12 @@
 use super::*;
+use crate::directory::filter::{DirectoryFilter, Predicate, UserField};
 use crate::directory::unit_of_work::{
     Organizations, Users,
     tests::{Context, Mapper, mapped_graph, organization},
 };
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 #[ignore = "requires owned PostgreSQL with role-creation privileges"]
 async fn directory_unit_of_work_restricted_postgres_graph_audit_rollback() {
     let f = Fixture::new().await;
@@ -31,6 +33,52 @@ async fn directory_unit_of_work_restricted_postgres_graph_audit_rollback() {
             .await
             .unwrap();
     assert_eq!((credentials, bindings), (0, 0));
+    // Encrypted candidate fields are decrypted only inside the tenant-bound
+    // transaction; equality remains case-sensitive and successful reads audit.
+    let mut work = service.unit_of_work().await.unwrap();
+    let matched = work
+        .list::<Users>(
+            None,
+            &DirectoryFilter::Compare {
+                field: UserField::Email,
+                test: Predicate::Eq("custom@example.test".into()),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(matched.len(), 1);
+    assert_eq!(matched[0].id, user);
+    work.commit().await.unwrap();
+    let prior_filter = counts(&f).await;
+    let mut work = service.unit_of_work().await.unwrap();
+    assert!(
+        work.list::<Users>(
+            None,
+            &DirectoryFilter::Compare {
+                field: UserField::Email,
+                test: Predicate::Eq("CUSTOM@example.test".into())
+            }
+        )
+        .await
+        .unwrap()
+        .is_empty()
+    );
+    work.commit().await.unwrap();
+    let after_filter = counts(&f).await;
+    assert_eq!(after_filter.0, prior_filter.0);
+    assert!(
+        after_filter.1 > prior_filter.1,
+        "even filtered-out candidates retain read audits"
+    );
+    let ciphertext: String = sqlx::query_scalar(
+        "SELECT data->>'email' FROM fl_iam_directory WHERE tenant_id=$1 AND kind='user' AND id=$2",
+    )
+    .bind(&f.tenant)
+    .bind(&user)
+    .fetch_one(&f.owner)
+    .await
+    .unwrap();
+    assert_ne!(ciphertext, "custom@example.test");
     let before = counts(&f).await;
     let mut work = service.unit_of_work().await.unwrap();
     let org = work
