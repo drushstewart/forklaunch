@@ -1,5 +1,8 @@
 //! Optional browser login backed by the ordinary persistent IAM session ledger.
 //! Applications supply a trusted, durable cookie store and an exact HTTPS origin.
+#[cfg(feature = "oidc-sessions")]
+mod oidc;
+
 use axum::{
     Json, Router,
     extract::rejection::JsonRejection,
@@ -22,6 +25,8 @@ use tower_sessions::SessionStore;
 pub struct BrowserIam {
     policy: CookieSessions,
     router: Router,
+    #[cfg(feature = "oidc-sessions")]
+    origin: String,
 }
 
 impl BrowserIam {
@@ -61,7 +66,12 @@ impl BrowserIam {
                     .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
                 response
             }));
-        Ok(Self { policy, router })
+        Ok(Self {
+            policy,
+            router,
+            #[cfg(feature = "oidc-sessions")]
+            origin: origin.to_owned(),
+        })
     }
 
     /// Set this policy in `RouterConfig::cookie_sessions` for application-owned

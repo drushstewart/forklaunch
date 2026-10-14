@@ -1,4 +1,5 @@
 import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
+import {probeGeneratedOidc} from './rust_iam_oidc_generated.mjs';
 import assert from 'node:assert/strict';
 import { spawn,execFile } from 'node:child_process';
 import {promisify} from 'node:util';
@@ -33,13 +34,13 @@ databaseUrl.password = 'parity-test-only';
 const sessionKeys=['SESSION_JWT_PRIVATE_KEY_PEM','SESSION_JWT_KEY_ID','SESSION_JWT_ISSUER','SESSION_JWT_AUDIENCE'];
 function environment(tenant,classified=false,signed=tenant==='a') {
   const env={...process.env,SESSION_COOKIE_ORIGIN:'https://iam.example.test',FORKLAUNCH_FIXTURE_CLASSIFIED_IAM:classified?'1':'0',DATABASE_URL:databaseUrl.toString(),TENANT_ID:`${role}-${tenant}`,HOST:'127.0.0.1',SERVICE_PORT:'0',ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience};
-  for(const key of sessionKeys)delete env[key];
+  for(const key of [...sessionKeys,'SESSION_OIDC_ISSUER','SESSION_OIDC_CLIENT_ID','SESSION_OIDC_CLIENT_SECRET'])delete env[key];
   if(signed)Object.assign(env,{SESSION_JWT_PRIVATE_KEY_PEM:privateKey.export({format:'pem',type:'pkcs8'}),SESSION_JWT_KEY_ID:jwk.kid,SESSION_JWT_ISSUER:issuer,SESSION_JWT_AUDIENCE:audience});
   return env;
 }
-async function start(tenant, classified = false) {
+async function start(tenant, classified = false, overrides = {}) {
   const child = spawn(process.argv[2], [], {
-    env: environment(tenant,classified),
+    env: {...environment(tenant,classified),...overrides},
     stdio: ['ignore', 'pipe', 'pipe']
   });
   const exited = once(child, 'exit');
@@ -99,9 +100,11 @@ try {
     {...environment('a'),SESSION_JWT_AUDIENCE:''},
     {...environment('a'),SESSION_COOKIE_ORIGIN:'http://insecure.example.test'},
     {...environment('a'),SESSION_COOKIE_ORIGIN:''},
+    {...environment('a'),SESSION_OIDC_CLIENT_ID:'partial'},
   ])await assert.rejects(promisify(execFile)(process.argv[2],[],{env:settings,timeout:15000,maxBuffer:1024*1024}),error=>{
     assert.equal(error.code,1);assert.ok(!error.stdout.includes('listening on'));assert.ok(!error.stderr.includes('PRIVATE-SENTINEL'));return true;
   });
+  await probeGeneratedOidc(start,process.argv[2]);
   const first = await start('a');
   const second = await start('b');
   const tools=await probeMcp(first.baseUrl,['listUsers','getSessionUser','createUser','getUser','getBatchPermissions','surfaceUserRoles']);

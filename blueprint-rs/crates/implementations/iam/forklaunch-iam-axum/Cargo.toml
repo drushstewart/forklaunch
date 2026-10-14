@@ -9,6 +9,7 @@ repository.workspace = true
 
 [features]
 default = []
+oidc-sessions = ["browser-sessions", "forklaunch-iam-base/browser-sessions", "forklaunch-iam-base/oidc-sessions", "forklaunch-auth/oidc"]
 browser-sessions = ["forklaunch-axum/cookie-session", "dep:tower-sessions"]
 
 [dependencies]

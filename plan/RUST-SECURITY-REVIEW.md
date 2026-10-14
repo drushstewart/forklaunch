@@ -497,3 +497,28 @@ both blueprint usages. No new private-key operation through rsa is introduced.
 All three lockfiles pass the current advisory gate with reviewed findings visible;
 the offline scanner regression suite passes. Evidence:
 `/private/tmp/fl-iam-provider-security{,-tests}.log`.
+
+
+Base IAM browser OIDC review (2026-10-13): pending authorization state can now be
+explicitly serialized into a secret-bearing storage payload. It is never accepted
+as verified identity. Restore requires authenticated encrypted server storage,
+retains absolute expiry and provider/client/callback binding, and rejects oversized,
+expired or future-lifetime records. The PostgreSQL adapter binds ciphertext to
+tenant, namespace, hashed browser cookie and hashed state, and atomically removes
+the record before network exchange. Independent restricted database connections
+prove that exactly one callback can consume a pending flow.
+
+CSRF-protected start/callback endpoints require the initiating browser cookie and
+exact configured origin. The GET callback is a static CSP-hashed page, does not
+reflect query values or set a new cookie, removes code/state from the URL, and
+uses same-origin requests before a fixed `/` navigation. A real Chromium fixture
+proves cross-site Strict-cookie exclusion followed by bound same-origin callback,
+CSP execution, HttpOnly protection, absent Referer leakage and unbound-browser
+rejection. Native PostgreSQL/provider fixtures separately cover issuance, replay,
+process reconstruction, cookie rotation and revocation. This is not a claim of
+one browser-to-Rust end-to-end deployment test.
+
+The flow discards provider tokens and requires explicitly provisioned local
+issuer/subject bindings. It does not infer account ownership from email or add
+self-service account linking. Storage and IAM writes remain separate transactions;
+unreachable credentials can remain until expiry after failed cleanup.

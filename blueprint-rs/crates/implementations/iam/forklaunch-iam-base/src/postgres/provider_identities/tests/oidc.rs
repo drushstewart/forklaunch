@@ -166,3 +166,137 @@ async fn postgres_oidc_exchange_issues_only_explicitly_bound_verified_sessions()
         .unwrap();
     owner.close().await;
 }
+
+#[cfg(feature = "browser-sessions")]
+#[tokio::test]
+#[ignore = "requires FORKLAUNCH_TEST_POSTGRES_URL"]
+#[allow(clippy::too_many_lines)] // One durable-state lifecycle covers restart, claim races and cleanup.
+async fn postgres_oidc_pending_is_encrypted_browser_bound_and_consumed_once() {
+    use crate::browser_sessions::PostgresCookieStore;
+    use forklaunch_core::persistence::encryption::FieldEncryptor;
+    use tower_sessions::{
+        SessionStore,
+        cookie::time::{Duration, OffsetDateTime},
+        session::{Id, Record},
+    };
+    let fixture = Fixture::new().await;
+    let provider = OidcProvider::discover(
+        &fixture.issuer,
+        "local-client".into(),
+        None,
+        "http://127.0.0.1/callback",
+    )
+    .await
+    .unwrap();
+    let (owner, pool, role) = super::super::super::tests::test_pools().await;
+    let tenant = TenantContext::new(format!("pending-{}", uuid::Uuid::new_v4())).unwrap();
+    let encryptor = Arc::new(FieldEncryptor::new("pending-fixture-only").unwrap());
+    let store =
+        PostgresCookieStore::new(pool.clone(), tenant.clone(), "browser", encryptor.clone())
+            .await
+            .unwrap();
+    let mut record = Record {
+        id: Id::default(),
+        data: std::collections::HashMap::new(),
+        expiry_date: OffsetDateTime::now_utc() + Duration::minutes(30),
+    };
+    store.create(&mut record).await.unwrap();
+    let binding = record.id.to_string();
+    let pending = provider.begin(&[]).unwrap();
+    let state = pending.state().to_owned();
+    let nonce = pending
+        .authorization_url()
+        .query_pairs()
+        .find(|(name, _)| name == "nonce")
+        .unwrap()
+        .1
+        .into_owned();
+    fixture.token(&nonce, "subject");
+    store.save_oidc_pending(&binding, pending).await.unwrap();
+    let encrypted: String =
+        sqlx::query_scalar("SELECT encrypted_pending FROM fl_iam_oidc_pending WHERE tenant_id=$1")
+            .bind(tenant.id())
+            .fetch_one(&owner)
+            .await
+            .unwrap();
+    assert!(!encrypted.contains(&state));
+    assert!(!encrypted.contains(&nonce));
+    assert!(!encrypted.contains("verifier"));
+    assert!(
+        store
+            .consume_oidc_pending(&Id::default().to_string(), &state)
+            .await
+            .is_err()
+    );
+    assert!(store.consume_oidc_pending(&binding, "wrong").await.is_err());
+    let other = PostgresCookieStore::new(pool.clone(), tenant.clone(), "other", encryptor.clone())
+        .await
+        .unwrap();
+    assert!(other.consume_oidc_pending(&binding, &state).await.is_err());
+    let other = PostgresCookieStore::new(
+        pool.clone(),
+        TenantContext::new(format!("other-{}", uuid::Uuid::new_v4())).unwrap(),
+        "browser",
+        encryptor.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(other.consume_oidc_pending(&binding, &state).await.is_err());
+    let set_role = format!("SET ROLE {role}");
+    let other_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .after_connect(move |connection, _| {
+            let set_role = set_role.clone();
+            Box::pin(async move {
+                sqlx::query(&set_role).execute(connection).await?;
+                Ok(())
+            })
+        })
+        .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
+        .await
+        .unwrap();
+    let restarted =
+        PostgresCookieStore::new(other_pool.clone(), tenant.clone(), "browser", encryptor)
+            .await
+            .unwrap();
+    let (first, second) = tokio::join!(
+        store.consume_oidc_pending(&binding, &state),
+        restarted.consume_oidc_pending(&binding, &state)
+    );
+    assert_ne!(first.is_ok(), second.is_ok());
+    let restored = first.or(second).unwrap();
+    assert!(provider.exchange(restored, &state, "code").await.is_ok());
+    assert!(store.consume_oidc_pending(&binding, &state).await.is_err());
+    let pending = provider.begin(&[]).unwrap();
+    let state = pending.state().to_owned();
+    store.save_oidc_pending(&binding, pending).await.unwrap();
+    sqlx::query("UPDATE fl_iam_oidc_pending SET expires_at=0 WHERE tenant_id=$1")
+        .bind(tenant.id())
+        .execute(&owner)
+        .await
+        .unwrap();
+    assert!(store.consume_oidc_pending(&binding, &state).await.is_err());
+    let pending = provider.begin(&[]).unwrap();
+    let state = pending.state().to_owned();
+    store.save_oidc_pending(&binding, pending).await.unwrap();
+    store.delete(&record.id).await.unwrap();
+    assert!(store.consume_oidc_pending(&binding, &state).await.is_err());
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fl_iam_oidc_pending WHERE tenant_id=$1")
+            .bind(tenant.id())
+            .fetch_one(&owner)
+            .await
+            .unwrap();
+    assert_eq!(count, 0);
+    other_pool.close().await;
+    pool.close().await;
+    sqlx::query(&format!("DROP OWNED BY {role}"))
+        .execute(&owner)
+        .await
+        .unwrap();
+    sqlx::query(&format!("DROP ROLE {role}"))
+        .execute(&owner)
+        .await
+        .unwrap();
+    owner.close().await;
+}

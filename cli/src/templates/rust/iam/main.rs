@@ -49,12 +49,31 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     let store = Arc::new(store);
     let encryptor = Arc::new(FieldEncryptor::from_env()?);
+    let oidc_enabled = ["SESSION_OIDC_ISSUER", "SESSION_OIDC_CLIENT_ID", "SESSION_OIDC_CLIENT_SECRET"]
+        .iter().any(|name| env::var_os(name).is_some());
+    if oidc_enabled && env::var_os("SESSION_COOKIE_ORIGIN").is_none() {
+        return Err("OIDC requires SESSION_COOKIE_ORIGIN".into());
+    }
     let browser = match env::var("SESSION_COOKIE_ORIGIN") {
         Ok(origin) => {
             let cookie_store = forklaunch_iam_base::browser_sessions::PostgresCookieStore::new(
                 pool.clone(), tenant.clone(), {{crate_module}}::SERVICE_NAME, encryptor.clone(),
             ).await?;
-            Some(forklaunch_iam_axum::browser::BrowserIam::new(store.clone(), cookie_store, "__Host-iam", &origin)?)
+            let browser = forklaunch_iam_axum::browser::BrowserIam::new(store.clone(), cookie_store.clone(), "__Host-iam", &origin)?;
+            let browser = if oidc_enabled {
+                let issuer = env::var("SESSION_OIDC_ISSUER").map_err(|_| "SESSION_OIDC_ISSUER is required")?;
+                let client_id = env::var("SESSION_OIDC_CLIENT_ID").map_err(|_| "SESSION_OIDC_CLIENT_ID is required")?;
+                let secret = match env::var("SESSION_OIDC_CLIENT_SECRET") {
+                    Ok(value) => Some(value),
+                    Err(env::VarError::NotPresent) => None,
+                    Err(_) => return Err("Invalid OIDC client secret".into()),
+                };
+                let provider = forklaunch_auth::oidc::OidcProvider::discover(
+                    &issuer, client_id, secret, &format!("{origin}/auth/browser/oidc/callback"),
+                ).await?;
+                browser.with_oidc(store.clone(), cookie_store, Arc::new(provider), vec![])?
+            } else { browser };
+            Some(browser)
         }
         Err(env::VarError::NotPresent) => None,
         Err(env::VarError::NotUnicode(_)) => return Err("Invalid browser session origin".into()),

@@ -612,3 +612,33 @@ async fn unavailable_or_revoked_keys_never_fall_back_to_discovery_keys() {
         assert_eq!(fixture.key_requests.lock().unwrap().len(), 2);
     }
 }
+
+#[tokio::test]
+async fn durable_pending_preserves_nonce_pkce_binding_and_absolute_expiry() {
+    let fixture = ProviderFixture::new().await;
+    let client = fixture.client().await;
+    let pending = client.begin(&[]).unwrap();
+    let state = pending.state().to_owned();
+    let expiry = pending.expires_at_unix_seconds();
+    fixture.respond(&pending, &json!({}));
+    let secret = pending.into_storage_secret().unwrap();
+    let restored = PendingAuthorization::from_storage_secret(&secret).unwrap();
+    assert_eq!(restored.expires_at_unix_seconds(), expiry);
+    assert_eq!(restored.state(), state);
+    assert!(client.exchange(restored, &state, "code").await.is_ok());
+    for expiry in [
+        0,
+        chrono::Utc::now().timestamp(),
+        chrono::Utc::now().timestamp() + 601,
+        i64::MAX,
+        i64::MIN,
+    ] {
+        let mut invalid: Value = serde_json::from_str(&secret).unwrap();
+        invalid["expires_at"] = json!(expiry);
+        assert!(PendingAuthorization::from_storage_secret(&invalid.to_string()).is_err());
+    }
+    assert!(PendingAuthorization::from_storage_secret(&"x".repeat(32769)).is_err());
+    let mut invalid: Value = serde_json::from_str(&secret).unwrap();
+    invalid["verifier"] = json!("short");
+    assert!(PendingAuthorization::from_storage_secret(&invalid.to_string()).is_err());
+}

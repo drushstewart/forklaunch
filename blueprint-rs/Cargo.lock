@@ -1310,6 +1310,7 @@ dependencies = [
  "forklaunch-iam-base",
  "forklaunch-iam-interface",
  "forklaunch-validation",
+ "form_urlencoded",
  "jsonwebtoken",
  "serde_json",
  "sqlx",

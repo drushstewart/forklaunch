@@ -35,7 +35,7 @@ The `/user`, `/role`, `/permission`, and `/organization` families expose the con
 
 `GET /discovery/auth-methods` is public and returns 204 for base IAM. The system-role JWT routes `/compliance/export/:userId` and `/compliance/erase/:userId` return 404 because the configured TypeScript IAM entities explicitly classify every scalar as `none`. Field encryption does not change that classification. Application-specific compliance classifications and entity extensions require a corresponding native compliance implementation.
 
-The tenant comes from server configuration, never client headers. This scaffold serves one configured tenant. Review the configured role/access policies for your application. OAuth/OIDC providers, verification/reset flows, and Better Auth client compatibility remain separate work.
+The tenant comes from server configuration, never client headers. This scaffold serves one configured tenant. Review the configured role/access policies for your application. The optional OIDC browser flow is described below. Verification/reset flows, account-linking UI and Better Auth client compatibility remain separate work.
 
 HTTP health and Streamable HTTP MCP share the configured listener. MCP is served at `/mcp` by default, and tools retain HTTP route authentication. Set `MCP_ENABLED=false` to disable it, or configure `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.
 
@@ -65,3 +65,32 @@ minutes without writes; the backing IAM credential keeps its one-hour maximum.
 Invoke `PostgresCookieStore::purge_expired` and IAM expiry maintenance from a
 trusted scheduled task. Cookie persistence and IAM writes are separate transactions;
 failed persistence can leave an unreachable credential until normal expiry.
+
+
+To enable one OIDC browser provider, set `SESSION_OIDC_ISSUER` and
+`SESSION_OIDC_CLIENT_ID`, plus `SESSION_OIDC_CLIENT_SECRET` for a confidential
+client. `SESSION_COOKIE_ORIGIN` is required. Register the exact callback
+`<SESSION_COOKIE_ORIGIN>/auth/browser/oidc/callback` with the provider. Discovery
+and configuration validation complete before the service listens. Apply migrations
+and grant the runtime role CRUD on `fl_iam_provider_identities` and
+`fl_iam_oidc_pending` as well as the browser-session table.
+
+Provision each exact issuer/subject binding to an existing local credential user
+using `PostgresIamService::bind_provider_identity` in a trusted administrative
+path. Emails never auto-link accounts; provider roles do not grant local access.
+Unbinding prevents new sign-ins; revoke existing local sessions separately when
+required. Provider access/refresh tokens are not retained by this login flow.
+
+After GET `/auth/browser/csrf`, POST `/auth/browser/oidc/start` with the cookie,
+exact Origin and CSRF header. Navigate to the returned `authorizationUrl`. The
+fixed callback serves a static page that removes code/state from the visible URL,
+obtains the browser's existing CSRF proof and POSTs the callback on the same origin.
+This retains the Strict cookie policy across the provider redirect. Success rotates
+the cookie/CSRF proof and returns the browser to `/`; no user-selected redirect is
+accepted. The callback requires JavaScript. No provider token enters browser JSON.
+
+Pending PKCE/nonce/state data is encrypted, bound to tenant/namespace/browser,
+expires within ten minutes and is atomically consumed before provider exchange.
+A newer start replaces the prior pending flow for that browser. Pending flows
+survive process restarts; removing the cookie row also removes its pending flow.
+A rejected or interrupted exchange requires starting again.

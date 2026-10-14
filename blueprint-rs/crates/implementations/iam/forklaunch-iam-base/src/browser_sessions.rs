@@ -1,4 +1,7 @@
 //! Encrypted durable browser sessions with tenant RLS and hashed cookie IDs.
+#[cfg(feature = "oidc-sessions")]
+mod oidc;
+
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_core::persistence::{
     TenantContext, begin_tenant_transaction, encryption::FieldEncryptor,

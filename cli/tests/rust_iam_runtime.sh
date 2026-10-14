@@ -125,6 +125,7 @@ cargo run -p iam --example seed
 BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).target_directory+"/debug/iam"))')"
 cp "$SCRIPT_DIR/rust_iam_runtime.mjs" sdk_http_test.mjs
 cp "$SCRIPT_DIR/rust_mcp_probe.mjs" rust_mcp_probe.mjs
+cp "$SCRIPT_DIR/rust_iam_oidc_generated.mjs" rust_iam_oidc_generated.mjs
 node sdk_http_test.mjs "$BINARY"
 # Keep the live fixture intact; validate lifecycle mutations in a separate copy.
 cp -R "$RUN_ROOT/relocated-app" "$RUN_ROOT/lifecycle-app"

@@ -4794,3 +4794,43 @@ tests (including timestamp migration regression) and strict all-feature/all-targ
 Clippy pass. Evidence: `/private/tmp/fl-cancelled-order-review-{tests,postgres,clippy}.log`.
 Gate875 remains open for unresolved provider effects and reference reconciliation;
 checklist stays **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Completed configured base IAM browser OIDC flow
+
+The generated base IAM service now supports an explicitly configured standard
+OIDC authorization-code/S256 PKCE flow. SESSION_OIDC_ISSUER/CLIENT_ID and optional
+CLIENT_SECRET require the existing exact HTTPS cookie origin. Discovery and
+configuration validation precede listening. Explicit tenant/issuer/subject bindings
+resolve existing local identities; provider emails and roles cannot grant access.
+
+Migration 5 adds encrypted tenant/namespace/browser-bound pending state. It has
+absolute ten-minute expiry, one current flow per browser and atomic consumption
+before provider exchange. Cookie deletion cascades pending rows. Callbacks survive
+process restarts, rotate cookie/CSRF IDs and use existing local session revocation.
+A static CSP-hashed callback page removes code/state from the URL, makes same-origin
+CSRF-protected requests and navigates only to `/`. Callback GET never creates or
+replaces a cookie. Public raw endpoints remain outside SDK/MCP operation metadata.
+
+Validation passes four native PostgreSQL HTTP suites, four provider/pending tests
+(including a claim race on independent restricted connections), twelve framework
+OIDC tests, strict IAM/framework Clippy, browser-only feature compilation and VM
+relay checks. Real Chromium separately proves cross-site Strict-cookie exclusion,
+same-origin cookie binding, CSP execution, HttpOnly behavior, no Referer leakage
+and rejection without the initiating cookie.
+
+Fresh generated run `5zxkME` passes real discovery/JWKS/PKCE/code exchange through
+the generated executable, pending-state survival across a process restart,
+server-resolved grants, cookie/CSRF rotation, replay denial, logout and HTTP/MCP
+startup. Existing password/opaque/RS256, tenant/encryption, directory/compliance,
+both SDKs and source-preserving rename/delete lifecycle checks pass as well.
+Packaging checks 974 embedded sources/templates; nine release-tool tests pass.
+The owned generated workspace is removed after this receipt. Evidence:
+`/private/tmp/fl-iam-browser-oidc-*.log`,
+`/private/tmp/fl-iam-oidc-{generated,browser-relay,package,release}.log`.
+
+This closes the configured base IAM provider-flow gate: **659/682 (96.6%), 23 open**.
+It does not close directory credential integration, broader Better Auth social/
+linking/adapter work, deployment or public registry gates. Base login discards
+provider access/refresh tokens; downstream provider APIs need their own token
+lifecycle. Generic provider refresh remains available in the framework.

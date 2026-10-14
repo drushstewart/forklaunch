@@ -1,4 +1,5 @@
 //! Bounded, operator-configured `OpenID` Connect authorization-code clients.
+mod durable;
 mod refresh;
 mod transport;
 use forklaunch_common::{FrameworkError, FrameworkResult};
@@ -46,7 +47,8 @@ impl std::fmt::Debug for OidcProvider {
 }
 /// Server-owned, single-use state. Store it against a browser-bound session;
 /// send only `authorization_url()` to the browser. The callback consumes it.
-/// Deliberately not cloneable or serializable, and expires after ten minutes.
+/// Not cloneable; durable serialization is explicitly secret-bearing and must
+/// enter authenticated encrypted storage. Expires after ten minutes.
 pub struct PendingAuthorization {
     url: Url,
     state: CsrfToken,
@@ -56,6 +58,7 @@ pub struct PendingAuthorization {
     client_id: String,
     redirect: String,
     created: Instant,
+    expires_at: i64,
 }
 impl std::fmt::Debug for PendingAuthorization {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -86,6 +89,12 @@ impl std::fmt::Debug for OidcLogin {
     }
 }
 impl OidcProvider {
+    /// Operator-configured callback URI; never selected by a login request.
+    #[must_use]
+    pub fn redirect_uri(&self) -> &str {
+        self.redirect.as_str()
+    }
+
     /// Discover metadata and keys from a trusted issuer. Requests are bounded to
     /// 1 MiB/15 seconds and never follow redirects. HTTPS is required except for
     /// loopback fixtures. Client authentication uses HTTP Basic when secretful.
@@ -205,6 +214,7 @@ impl OidcProvider {
             client_id: self.client_id.as_str().into(),
             redirect: self.redirect.as_str().into(),
             created: Instant::now(),
+            expires_at: chrono::Utc::now().timestamp() + 600,
         })
     }
     /// Consume browser-bound pending state before exchanging a callback code.
@@ -220,6 +230,7 @@ impl OidcProvider {
         code: &str,
     ) -> FrameworkResult<OidcLogin> {
         if pending.created.elapsed() >= Duration::from_secs(600)
+            || !durable::valid_expiry(pending.expires_at)
             || !bool::from(
                 pending
                     .state

@@ -142,6 +142,18 @@ impl<S: Send + Sync> FromRequestParts<S> for CookieSession {
     }
 }
 impl CookieSession {
+    /// Opaque server-side browser binding for encrypted single-use challenges.
+    /// This is secret cookie identity, not authentication. Never expose or log it.
+    /// Bootstrap CSRF first so a persisted browser session ID is available.
+    /// # Errors
+    /// Rejects an absent cookie session.
+    pub fn browser_binding(&self) -> Result<String, AuthError> {
+        self.session
+            .id()
+            .map(|id| id.to_string())
+            .ok_or(AuthError::MissingCredentials)
+    }
+
     /// Reads the application-owned server-side identity binding. This is not an
     /// authentication result: use `authenticated` to apply the current resolver.
     /// Never return a secret credential binding to a browser or log it.

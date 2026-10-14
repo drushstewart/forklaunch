@@ -560,7 +560,7 @@ mod tests {
             .execute(&owner)
             .await
             .unwrap();
-        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_provider_identities TO {role}")).execute(&owner).await.unwrap();
+        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_provider_identities,fl_iam_browser_sessions,fl_iam_oidc_pending TO {role}")).execute(&owner).await.unwrap();
         let set_role = format!("SET ROLE {role}");
         let app = PgPoolOptions::new()
             .max_connections(1)

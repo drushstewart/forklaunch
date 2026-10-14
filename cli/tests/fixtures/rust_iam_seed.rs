@@ -15,7 +15,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let role = std::env::var("FORKLAUNCH_TEST_ROLE")?;
     assert!(role.starts_with("fl_gen_") && role.len() < 63 && role.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     let owner = PgPoolOptions::new().max_connections(2).connect(&owner_url).await?;
-    if std::env::args().any(|arg| arg == "--cleanup") {
+    if std::env::args().nth(1).as_deref() == Some("--bind-oidc") {
+        let issuer = std::env::args().nth(2).ok_or("missing fixture issuer")?;
+        let set_role = format!("SET ROLE {role}");
+        let app = PgPoolOptions::new().max_connections(2).after_connect(move |connection, _| {
+            let set_role = set_role.clone();
+            Box::pin(async move { sqlx::query(&set_role).execute(connection).await?; Ok(()) })
+        }).connect(&owner_url).await?;
+        let service = PostgresIamService::new(app.clone(), TenantContext::new(format!("{role}-a"))?).await?;
+        service.bind_provider_identity(&issuer, "provider-user", "user-1").await?;
+        app.close().await;
+    } else if std::env::args().any(|arg| arg == "--cleanup") {
         for table in ["fl_iam_browser_sessions", "fl_iam_sessions", "fl_iam_users", "fl_iam_organizations", "fl_iam_roles", "fl_iam_directory", "fl_iam_directory_audit"] {
             sqlx::query(&format!("DELETE FROM {table} WHERE tenant_id=$1 OR tenant_id=$2"))
                 .bind(format!("{role}-a")).bind(format!("{role}-b")).execute(&owner).await?;
@@ -26,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sqlx::query(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'parity-test-only'"))
             .execute(&owner).await?;
         sqlx::query(&format!("GRANT USAGE ON SCHEMA public TO {role}")).execute(&owner).await?;
-        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit,fl_iam_browser_sessions TO {role}"))
+        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit,fl_iam_browser_sessions,fl_iam_provider_identities,fl_iam_oidc_pending TO {role}"))
             .execute(&owner).await?;
         sqlx::query(&format!("GRANT USAGE ON SEQUENCE fl_iam_directory_sequence_seq TO {role}")).execute(&owner).await?;
         let set_role = format!("SET ROLE {role}");
