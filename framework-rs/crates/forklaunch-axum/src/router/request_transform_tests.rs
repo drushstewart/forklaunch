@@ -84,7 +84,7 @@ fn failed_transforms_preserve_entire_value_bytes_and_unset_marker_in_all_modes()
                 ));
         request.parsed_json = parsers.parse(&route, &request).unwrap();
         let before = request.clone();
-        let result = validators.transform_json(&route, &mut request);
+        let result = validators.transform_request(&route, &mut request, None);
         assert_eq!(result.is_some(), mode == ValidationMode::Error);
         assert_eq!(request, before);
         assert!(!request.parsed_json.unwrap().is_transformed());

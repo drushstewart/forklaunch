@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod request_fields;
+pub use request_fields::{ParsedRequestFields, RequestFieldValues, RequestTransformOutput};
 pub mod default_errors;
 pub use default_errors::DefaultErrorResponses;
 pub mod sse;
@@ -123,6 +125,10 @@ pub struct FrameworkRequest {
     pub path: String,
     pub params: Params,
     pub query: Query,
+    /// Original encoded query, including repeated keys, when supplied by transport.
+    pub raw_query: Option<String>,
+    /// Successful whole-request field schema projection; wire maps remain intact.
+    pub parsed_fields: Option<ParsedRequestFields>,
     pub headers: Headers,
     pub body: Body,
     /// Verified session claims populated by authentication middleware.
@@ -142,6 +148,8 @@ impl FrameworkRequest {
             path: normalize_route_path(&path.into()),
             params: Params::new(),
             query: Query::new(),
+            raw_query: None,
+            parsed_fields: None,
             headers: Headers::new(),
             body: Body::Empty,
             session: None,
@@ -765,7 +773,10 @@ pub fn validate_framework_request(
 ) -> Vec<ContractValidationError> {
     // Version selection has already validated pre-transform values. Rechecking
     // wire presence here would reject defaults and valid absent transform output.
-    if contract.options.request_validation != ValidationMode::Error || request.version.is_some() {
+    if contract.options.request_validation != ValidationMode::Error
+        || request.version.is_some()
+        || request.parsed_fields.is_some()
+    {
         return Vec::new();
     }
 

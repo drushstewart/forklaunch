@@ -8,10 +8,18 @@ use std::{collections::BTreeMap, sync::Arc};
 type JsonTransform =
     dyn Fn(&FrameworkRequest) -> Result<Option<serde_json::Value>, FrameworkResponse> + Send + Sync;
 
+type RequestTransform = dyn Fn(
+        &FrameworkRequest,
+        Option<&str>,
+    ) -> Result<forklaunch_http::RequestTransformOutput, FrameworkResponse>
+    + Send
+    + Sync;
+
 #[derive(Clone)]
 enum Callback {
     Reject(Arc<Validator>),
     JsonTransform(Arc<JsonTransform>),
+    RequestTransform(Arc<RequestTransform>),
 }
 
 type Validator = dyn Fn(&FrameworkRequest, Option<&str>) -> Option<FrameworkResponse> + Send + Sync;
@@ -99,10 +107,12 @@ impl RequestValidators {
         if !route.versions.is_empty() || entry.schema != route.request {
             return Err("Request validator schema no longer matches its route".into());
         }
-        if matches!(entry.validate, Callback::JsonTransform(_))
-            && stage != RequestValidationStage::BeforeAuthentication
+        if matches!(
+            entry.validate,
+            Callback::JsonTransform(_) | Callback::RequestTransform(_)
+        ) && stage != RequestValidationStage::BeforeAuthentication
         {
-            return Err("JSON transforms must run before authentication".into());
+            return Err("Schema transforms must run before authentication".into());
         }
         entry.stage = stage;
         Ok(())
@@ -178,46 +188,112 @@ impl RequestValidators {
         Ok(())
     }
 
+    /// Register one trusted whole-request schema callback. All declared fields
+    /// and an optional JSON body are committed atomically before auth in all modes.
+    /// Failed None/Warning validation retains every original section; Error uses
+    /// the declared public 400 response. A successful projection bypasses only
+    /// native request-schema checks, never authentication or authorization.
+    /// Headers are projected with TypeScript truthy/existing-key rules; native
+    /// credential extraction and ordinary Axum extractors still use original wire.
+    /// This does not implement generic Zod semantics, complex query parsing or MCP.
+    /// # Errors
+    /// Rejects duplicate/versioned registrations, non-400 rejection declarations,
+    /// or declared bodies without an exact registered JSON parser.
+    pub fn insert_request_transform(
+        &mut self,
+        route: &RouteContract,
+        parsers: &forklaunch_http::JsonRequestParsers,
+        rejection: ResponseContract,
+        transform: impl Fn(
+            &FrameworkRequest,
+            Option<&str>,
+        )
+            -> Result<forklaunch_http::RequestTransformOutput, FrameworkResponse>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Result<(), String> {
+        if route.request.body.is_some() {
+            parsers.validate_registration(route)?;
+        }
+        if rejection.status_code != 400 {
+            return Err("Request transforms require a 400 declaration".into());
+        }
+        self.insert_with_rejection(route, rejection, |_, _| None)?;
+        let entry = self
+            .entries
+            .get_mut(&key(route))
+            .ok_or("Missing request validator registration")?;
+        entry.stage = RequestValidationStage::BeforeAuthentication;
+        entry.validate = Callback::RequestTransform(Arc::new(transform));
+        Ok(())
+    }
+
     pub(super) fn validate_json_parsers(
         &self,
         routes: &[RouteContract],
         parsers: &forklaunch_http::JsonRequestParsers,
     ) -> Result<(), String> {
         for route in routes {
-            if self
-                .entries
-                .get(&key(route))
-                .is_some_and(|entry| matches!(entry.validate, Callback::JsonTransform(_)))
-            {
+            if self.entries.get(&key(route)).is_some_and(|entry| {
+                matches!(entry.validate, Callback::JsonTransform(_))
+                    || (matches!(entry.validate, Callback::RequestTransform(_))
+                        && route.request.body.is_some())
+            }) {
                 parsers.validate_registration(route)?;
             }
         }
         Ok(())
     }
 
-    pub(super) fn transform_json(
+    pub(super) fn transform_request(
         &self,
         route: &RouteContract,
         request: &mut FrameworkRequest,
+        raw_query: Option<&str>,
     ) -> Option<FrameworkResponse> {
         let entry = self.entries.get(&key(route))?;
-        let Callback::JsonTransform(transform) = &entry.validate else {
-            return None;
-        };
-        let Some(parsed) = request.parsed_json.clone() else {
-            return Some(internal_failure(request));
-        };
-        match transform(request) {
-            Ok(value) => {
-                request.parsed_json = Some(parsed.with_transformed_value(value));
-                None
+        let result = match &entry.validate {
+            Callback::Reject(_) => return None,
+            Callback::JsonTransform(transform) => {
+                let Some(parsed) = request.parsed_json.clone() else {
+                    return Some(internal_failure(request));
+                };
+                transform(request).map(|value| {
+                    request.parsed_json = Some(parsed.with_transformed_value(value));
+                })
             }
+            Callback::RequestTransform(transform) => {
+                if route.request.body.is_some() && request.parsed_json.is_none() {
+                    return Some(internal_failure(request));
+                }
+                match transform(request, raw_query) {
+                    Ok(output) => {
+                        if route.request.body.is_none() && output.body.is_some() {
+                            return Some(internal_failure(request));
+                        }
+                        let fields = forklaunch_http::ParsedRequestFields::from_validated(
+                            output.fields,
+                            &request.headers,
+                        );
+                        if let Some(parsed) = request.parsed_json.take() {
+                            request.parsed_json = Some(parsed.with_transformed_value(output.body));
+                        }
+                        request.parsed_fields = Some(fields);
+                        Ok(())
+                    }
+                    Err(response) => Err(response),
+                }
+            }
+        };
+        match result {
+            Ok(()) => None,
             Err(response) if route.options.request_validation == ValidationMode::Error => {
                 Some(check_rejection(entry, request, response))
             }
             Err(_) => {
                 if route.options.request_validation == ValidationMode::Warning {
-                    tracing::warn!(operation = %route.operation_name, correlation_id = %request.context.correlation_id, "request JSON schema validation failed; original parsed body retained");
+                    tracing::warn!(operation = %route.operation_name, correlation_id = %request.context.correlation_id, "request schema validation failed; original request retained");
                 }
                 None
             }

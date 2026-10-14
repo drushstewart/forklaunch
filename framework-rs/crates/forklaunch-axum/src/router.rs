@@ -1190,14 +1190,18 @@ async fn validate_matched_contract(
             ));
         }
     }
-    if let Some(response) = state
-        .request_validators
-        .transform_json(&contract, &mut framework_request)
-    {
+    if let Some(response) = state.request_validators.transform_request(
+        &contract,
+        &mut framework_request,
+        parts.uri.query(),
+    ) {
         return framework_response_to_axum(response);
     }
     if let Some(parsed) = &framework_request.parsed_json {
         parts.extensions.insert(parsed.clone());
+    }
+    if let Some(fields) = &framework_request.parsed_fields {
+        parts.extensions.insert(fields.clone());
     }
     if let Some(response) = state.request_validators.reject_at(
         RequestValidationStage::BeforeAuthentication,
@@ -1489,6 +1493,11 @@ fn build_framework_request(
         .map_err(|error| validation_error_response(&[error], &request.context.correlation_id))?
         .unwrap_or_default();
 
+    request.raw_query = parts.uri.query().map(str::to_owned);
+    request.parsed_fields = parts
+        .extensions
+        .get::<forklaunch_http::ParsedRequestFields>()
+        .cloned();
     for (key, value) in parse_query(parts.uri.query().unwrap_or_default()) {
         request = request.with_query(key, value);
     }
@@ -2274,3 +2283,6 @@ mod request_order_tests;
 
 #[cfg(test)]
 mod request_transform_tests;
+
+#[cfg(test)]
+mod request_fields_tests;

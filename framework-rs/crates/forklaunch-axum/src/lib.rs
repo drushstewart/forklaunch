@@ -3,6 +3,10 @@
 #[cfg(feature = "adapter")]
 mod body_telemetry;
 #[cfg(feature = "adapter")]
+mod parsed_fields;
+#[cfg(feature = "adapter")]
+pub use parsed_fields::{ParsedHeaders, ParsedParams, ParsedQuery};
+#[cfg(feature = "adapter")]
 mod versioned_fields;
 #[cfg(feature = "adapter")]
 pub use versioned_fields::{VersionedHeaders, VersionedParams, VersionedQuery};
@@ -37,7 +41,8 @@ pub use router::{
 };
 
 pub use forklaunch_http::{
-    DefaultErrorResponses, JsonRequestParsers, ParsedJsonBody, ParserErrorFormat, RequestContext,
+    DefaultErrorResponses, JsonRequestParsers, ParsedJsonBody, ParsedRequestFields,
+    ParserErrorFormat, RequestContext, RequestFieldValues, RequestTransformOutput,
     ResponseStatusErrorFormat,
 };
 

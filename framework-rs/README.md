@@ -306,6 +306,20 @@ the parser rather than struct literals; the transform-success marker is private.
 The callback owns schema semantics; generic Zod, query/header transformation and
 MCP handling remain separate.
 
+`RequestValidators::insert_request_transform` accepts one whole-schema callback
+for atomic parameter/query/header projections and optional JSON-body output.
+It runs before authentication in every validation mode, preserving all original
+sections on ignored failure. Body routes require matching parser registration;
+bodyless routes need none. `ParsedRequestFields` and `ParsedParams`, `ParsedQuery`,
+`ParsedHeaders` expose successful projections. Use optional projection access and
+original wire values when permissive validation fails; required typed extractors
+require success. `FrameworkRequest.raw_query` retains repeated encoded inputs.
+Headers retain every original key and replace only truthy exact-key values;
+absent-header defaults are not inserted. Native credential extraction uses
+original authorization/cookie headers. Successful schema output skips only native
+request-schema checks; authentication and authorization still run. Generic Zod,
+complex query interpretation, credential-header rewriting and MCP remain separate.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

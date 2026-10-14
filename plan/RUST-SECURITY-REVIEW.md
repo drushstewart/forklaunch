@@ -795,3 +795,12 @@ over payload sub, while stored/cookie ownership is unchanged. Custom claims are
 application policy and must not expose secret snapshot fields. Actual JOSE and
 external-signer fixtures verify precedence, failures and suppression; no callback
 is installed by default.
+
+
+Whole-request projection review (2026-10-14): private successful field wrappers
+mark complete trusted schema output; only native request-schema checks skip.
+Authentication and role enforcement still run in all modes, with explicit401/403
+regressions. Original authorization/cookie headers remain the native credential
+source even when a projection differs. Transform failure commits no field/body
+changes. Raw bytes/query remain available; typed projection extraction is an
+explicit handler choice and failed permissive validation needs wire fallback.

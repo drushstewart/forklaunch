@@ -19,6 +19,26 @@ pub struct VersionFieldValues {
     pub headers: BTreeMap<String, Value>,
 }
 
+impl VersionFieldValues {
+    /// Preserve existing wire header keys and overlay only truthy projected values.
+    /// Matching uses exact lower-case wire keys, as the TypeScript request parser.
+    #[must_use]
+    pub fn project_wire_headers(&self, headers: &crate::Headers) -> BTreeMap<String, Value> {
+        headers
+            .iter()
+            .map(|(key, raw)| {
+                let value = self
+                    .headers
+                    .get(key)
+                    .filter(|value| truthy(value))
+                    .cloned()
+                    .unwrap_or_else(|| Value::String(raw.clone()));
+                (key.clone(), value)
+            })
+            .collect()
+    }
+}
+
 impl Variant {
     pub(super) fn parse_fields(&self, request: &FrameworkRequest) -> Option<VersionFieldValues> {
         let mut output = VersionFieldValues {

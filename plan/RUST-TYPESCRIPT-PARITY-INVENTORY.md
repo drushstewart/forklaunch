@@ -6266,3 +6266,24 @@ Primitive/array object spreading is outside this typed object interface. Trusted
 snapshots remain read-only/Debug-redacted but can include session tokens; custom
 claims may require separate application authorization mapping. CI includes the
 new fixture. The archive checkpointa416 predates this optional hook.
+
+## Atomic whole-request field projection receipt (2026-10-14)
+
+A schema-bound whole-request callback now commits parameter/query/header fields
+and optional JSON body atomically before auth in every mode. No-body routes need
+no parser; body routes require matching JSON parsing. Failed None/Warning paths
+retain all original sections. Successful projections use existing versioned value
+maps and exact-key truthy header overlay: all original header keys remain and
+absent defaults are not inserted. Raw maps/bytes and encoded repeated raw_query
+remain separately available. ParsedRequestFields plus typed field extractors
+expose successful values; permissive failures require optional access/wire fallback.
+
+105 Axum plus48 HTTP tests,144 actual TypeScript/native pairs(288 observations),
+57 body-transform and30 ordering regression pairs and strict Clippy pass:
+/private/tmp/fl-request-fields-{tests,parity,clippy,body-regression,order-regression}.log.
+Dedicated mode/default tests still enforce missing-auth401 and denied-role403.
+Only native request-schema checks skip after success; auth/RBAC remain. Native
+credentials use raw authorization/cookie headers. Generic Zod/complex query
+parsing/credential rewriting/MCP remain outside this callback profile.
+FrameworkRequest adds raw_query/parsed_fields; constructor callers remain valid.
+CI includes the new oracle. The fixed archive checkpointa416 predates this API.
