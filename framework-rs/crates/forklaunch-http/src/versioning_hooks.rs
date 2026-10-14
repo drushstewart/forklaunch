@@ -105,9 +105,8 @@ pub struct VersionBodyHooksRegistry {
 impl VersionBodyHooksRegistry {
     /// Use the bounded TypeScript JSON wire parser before version schema selection.
     /// The first declared version determines the exact JSON media type. Framing or
-    /// media skips produce absence for body preprocessors/defaults. Requires
-    /// request Error validation: unmatched None/Warning parsed-value projection
-    /// is not supported, so those modes are rejected rather than losing data. Existing
+    /// media skips produce absence for body preprocessors/defaults. Unmatched
+    /// None/Warning requests retain first-parser output in `VersionParsedBody`. Existing
     /// verifier/reviver hooks run once, before per-version body callbacks. Original
     /// bytes are retained; handlers consume `SelectedVersion::parsed_body`.
     /// Direct callers must supply actual HTTP framing headers; absent headers
@@ -117,7 +116,7 @@ impl VersionBodyHooksRegistry {
     /// Combine with `enable_selection_before_authentication` for TypeScript auth
     /// ordering. Native defaults and credential/authorization checks are unchanged.
     /// # Errors
-    /// Rejects non-JSON/unversioned/invalid routes, non-Error request modes and
+    /// Rejects non-JSON/unversioned/invalid routes and
     /// duplicate registrations.
     /// Compilation rejects changed request/version/parser declarations.
     pub fn enable_typescript_json_wire(&mut self, route: &RouteContract) -> Result<(), String> {

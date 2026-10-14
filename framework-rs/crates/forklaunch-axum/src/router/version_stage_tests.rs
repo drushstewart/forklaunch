@@ -12,80 +12,57 @@ use std::sync::atomic::AtomicUsize;
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn pre_auth_version_selection_preserves_security_and_runs_actual_hooks_once() {
-    for local in [false, true] {
-        for mode in [
-            ValidationMode::None,
-            ValidationMode::Warning,
-            ValidationMode::Error,
-        ] {
-            for (tag, body, credentials) in [
-                ("one", "{}", false),
-                ("bad", "{}", false),
-                ("one", "{}", true),
-                ("bad", "{}", true),
-                ("one", "{", false),
+    for wire in [false, true] {
+        for local in [false, true] {
+            for mode in [
+                ValidationMode::None,
+                ValidationMode::Warning,
+                ValidationMode::Error,
             ] {
-                let mut field = FieldContract::required("tag", "Tag");
-                field.schema = SchemaRef::named("Tag").with_json_schema(r#"{"const":"one"}"#);
-                let mut route = RouteContract::post("Stage", "Stage", "/stage")
-                    .with_access(AccessLevel::Protected)
-                    .with_version(VersionedContract {
-                        version: "one".into(),
-                        request: RequestContract {
-                            query: vec![field],
-                            body: Some(BodyContract::json("Input")),
-                            ..RequestContract::default()
-                        },
-                        responses: vec![ResponseContract::new(200, None)],
-                    });
-                route.options.request_validation = mode;
-                route.options.response_validation = ValidationMode::None;
-                let parser_calls = Arc::new(AtomicUsize::new(0));
-                let field_calls = Arc::new(AtomicUsize::new(0));
-                let auth_calls = Arc::new(AtomicUsize::new(0));
-                let handler_calls = Arc::new(AtomicUsize::new(0));
-                let mut hooks = VersionBodyHooksRegistry::default();
-                hooks
-                    .enable_selection_before_authentication(&route)
-                    .unwrap();
-                let counted = parser_calls.clone();
-                hooks
-                    .insert_parser(
-                        &route,
-                        BodyParserHooks::default().with_verify(move |_, _, _| {
-                            counted.fetch_add(1, Ordering::SeqCst);
-                            Ok(())
-                        }),
-                    )
-                    .unwrap();
-                let counted = field_calls.clone();
-                hooks
-                    .insert_field(
-                        &route,
-                        "one",
-                        ContractValidationLocation::Query,
-                        "tag",
-                        VersionFieldHooks::default()
-                            .with_preprocess(move |input| {
+                for (tag, body, credentials) in [
+                    ("one", "{}", false),
+                    ("bad", "{}", false),
+                    ("one", "{}", true),
+                    ("bad", "{}", true),
+                    ("one", "{", false),
+                ] {
+                    let mut field = FieldContract::required("tag", "Tag");
+                    field.schema = SchemaRef::named("Tag").with_json_schema(r#"{"const":"one"}"#);
+                    let mut route = RouteContract::post("Stage", "Stage", "/stage")
+                        .with_access(AccessLevel::Protected)
+                        .with_version(VersionedContract {
+                            version: "one".into(),
+                            request: RequestContract {
+                                query: vec![field],
+                                body: Some(BodyContract::json("Input")),
+                                ..RequestContract::default()
+                            },
+                            responses: vec![ResponseContract::new(200, None)],
+                        });
+                    route.options.request_validation = mode;
+                    route.options.response_validation = ValidationMode::None;
+                    let parser_calls = Arc::new(AtomicUsize::new(0));
+                    let field_calls = Arc::new(AtomicUsize::new(0));
+                    let auth_calls = Arc::new(AtomicUsize::new(0));
+                    let handler_calls = Arc::new(AtomicUsize::new(0));
+                    let mut hooks = VersionBodyHooksRegistry::default();
+                    hooks
+                        .enable_selection_before_authentication(&route)
+                        .unwrap();
+                    if wire {
+                        hooks.enable_typescript_json_wire(&route).unwrap();
+                    }
+                    let counted = parser_calls.clone();
+                    hooks
+                        .insert_parser(
+                            &route,
+                            BodyParserHooks::default().with_verify(move |_, _, _| {
                                 counted.fetch_add(1, Ordering::SeqCst);
-                                Ok(input.clone())
-                            })
-                            .with_transform(|_| Ok(json!("ONE"))),
-                    )
-                    .unwrap();
-                let counted = handler_calls.clone();
-                let child = if local {
-                    let mut handlers = LocalRouter::new();
-                    handlers.register_with_body_hooks(
-                        route.clone(),
-                        &hooks,
-                        move |request: FrameworkRequest| {
-                            counted.fetch_add(1, Ordering::SeqCst);
-                            assert!(request.session.is_some());
-                            Ok(FrameworkResponse::text(200, "ok"))
-                        },
-                    );
-                    // Config hooks differ intentionally: local selection must use its actual plan.
+                                Ok(())
+                            }),
+                        )
+                        .unwrap();
+                    let counted = field_calls.clone();
                     hooks
                         .insert_field(
                             &route,
@@ -93,85 +70,137 @@ async fn pre_auth_version_selection_preserves_security_and_runs_actual_hooks_onc
                             ContractValidationLocation::Query,
                             "tag",
                             VersionFieldHooks::default()
-                                .with_preprocess(|_| panic!("foreign local hooks must not run")),
+                                .with_preprocess(move |input| {
+                                    counted.fetch_add(1, Ordering::SeqCst);
+                                    Ok(input.clone())
+                                })
+                                .with_transform(|_| Ok(json!("ONE"))),
                         )
                         .unwrap();
-                    ForkLaunchRouter::from_local_router(
-                        ServiceInfo::new("stage", "1"),
-                        [route],
-                        handlers,
-                    )
-                } else {
-                    ForkLaunchRouter::anonymous().post(route, move || {
-                        counted.fetch_add(1, Ordering::SeqCst);
-                        async { "ok" }
-                    })
-                };
-                let counted = auth_calls.clone();
-                let config = RouterConfig {
-                    version_body_hooks: hooks,
-                    ..RouterConfig::default()
-                }
-                .with_authenticator(move |request, _| {
-                    counted.fetch_add(1, Ordering::SeqCst);
-                    if request.query["tag"] == "one" {
-                        assert_eq!(
-                            request.version.as_ref().unwrap().parsed_fields.query["tag"],
-                            json!("ONE")
+                    let counted = handler_calls.clone();
+                    let child = if local {
+                        let mut handlers = LocalRouter::new();
+                        handlers.register_with_body_hooks(
+                            route.clone(),
+                            &hooks,
+                            move |request: FrameworkRequest| {
+                                counted.fetch_add(1, Ordering::SeqCst);
+                                assert!(request.session.is_some());
+                                assert_eq!(
+                                    request
+                                        .version_parsed_body
+                                        .as_ref()
+                                        .and_then(forklaunch_http::VersionParsedBody::value),
+                                    wire.then(|| json!({})).as_ref()
+                                );
+                                Ok(FrameworkResponse::text(200, "ok"))
+                            },
                         );
+                        // Config hooks differ intentionally: local selection must use its actual plan.
+                        hooks
+                            .insert_field(
+                                &route,
+                                "one",
+                                ContractValidationLocation::Query,
+                                "tag",
+                                VersionFieldHooks::default().with_preprocess(|_| {
+                                    panic!("foreign local hooks must not run")
+                                }),
+                            )
+                            .unwrap();
+                        ForkLaunchRouter::from_local_router(
+                            ServiceInfo::new("stage", "1"),
+                            [route],
+                            handlers,
+                        )
                     } else {
-                        assert!(request.version.is_none());
+                        ForkLaunchRouter::anonymous().post(
+                            route,
+                            move |parsed: Option<
+                                axum::Extension<forklaunch_http::VersionParsedBody>,
+                            >| {
+                                assert_eq!(
+                                    parsed.as_ref().and_then(|parsed| parsed.0.value()),
+                                    wire.then(|| json!({})).as_ref()
+                                );
+                                counted.fetch_add(1, Ordering::SeqCst);
+                                async { "ok" }
+                            },
+                        )
+                    };
+                    let counted = auth_calls.clone();
+                    let config = RouterConfig {
+                        version_body_hooks: hooks,
+                        ..RouterConfig::default()
                     }
-                    assert_eq!(
-                        request.headers.get("authorization").map(String::as_str),
-                        credentials.then_some("Bearer raw")
-                    );
-                    async move {
-                        if credentials {
-                            Ok(AuthenticatedSession::new(
-                                forklaunch_auth::Principal::new("actor"),
-                                json!({"sub":"actor"}),
-                            ))
+                    .with_authenticator(move |request, _| {
+                        counted.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(
+                            request
+                                .version_parsed_body
+                                .as_ref()
+                                .and_then(forklaunch_http::VersionParsedBody::value),
+                            wire.then(|| json!({})).as_ref()
+                        );
+                        if request.query["tag"] == "one" {
+                            assert_eq!(
+                                request.version.as_ref().unwrap().parsed_fields.query["tag"],
+                                json!("ONE")
+                            );
                         } else {
-                            Err(AuthError::MissingCredentials)
+                            assert!(request.version.is_none());
                         }
+                        assert_eq!(
+                            request.headers.get("authorization").map(String::as_str),
+                            credentials.then_some("Bearer raw")
+                        );
+                        async move {
+                            if credentials {
+                                Ok(AuthenticatedSession::new(
+                                    forklaunch_auth::Principal::new("actor"),
+                                    json!({"sub":"actor"}),
+                                ))
+                            } else {
+                                Err(AuthError::MissingCredentials)
+                            }
+                        }
+                    });
+                    let app = ForkLaunchRouter::anonymous()
+                        .nest("/nested", child)
+                        .with_config(config)
+                        .into_router();
+                    let mut request = Request::builder()
+                        .method("POST")
+                        .uri(format!("/nested/stage?tag={tag}"))
+                        .header("content-type", "application/json")
+                        .header("content-length", body.len());
+                    if credentials {
+                        request = request.header("authorization", "Bearer raw");
                     }
-                });
-                let app = ForkLaunchRouter::anonymous()
-                    .nest("/nested", child)
-                    .with_config(config)
-                    .into_router();
-                let mut request = Request::builder()
-                    .method("POST")
-                    .uri(format!("/nested/stage?tag={tag}"))
-                    .header("content-type", "application/json")
-                    .header("content-length", body.len());
-                if credentials {
-                    request = request.header("authorization", "Bearer raw");
+                    let response = app
+                        .oneshot(request.body(Body::from(body)).unwrap())
+                        .await
+                        .unwrap();
+                    let rejected = body == "{" || (tag == "bad" && mode == ValidationMode::Error);
+                    assert_eq!(
+                        response.status(),
+                        if rejected {
+                            400
+                        } else if credentials {
+                            200
+                        } else {
+                            401
+                        },
+                        "local={local} mode={mode:?} tag={tag} body={body}"
+                    );
+                    assert_eq!(parser_calls.load(Ordering::SeqCst), 1);
+                    assert_eq!(field_calls.load(Ordering::SeqCst), usize::from(body != "{"));
+                    assert_eq!(auth_calls.load(Ordering::SeqCst), usize::from(!rejected));
+                    assert_eq!(
+                        handler_calls.load(Ordering::SeqCst),
+                        usize::from(!rejected && credentials)
+                    );
                 }
-                let response = app
-                    .oneshot(request.body(Body::from(body)).unwrap())
-                    .await
-                    .unwrap();
-                let rejected = body == "{" || (tag == "bad" && mode == ValidationMode::Error);
-                assert_eq!(
-                    response.status(),
-                    if rejected {
-                        400
-                    } else if credentials {
-                        200
-                    } else {
-                        401
-                    },
-                    "local={local} mode={mode:?} tag={tag} body={body}"
-                );
-                assert_eq!(parser_calls.load(Ordering::SeqCst), 1);
-                assert_eq!(field_calls.load(Ordering::SeqCst), usize::from(body != "{"));
-                assert_eq!(auth_calls.load(Ordering::SeqCst), usize::from(!rejected));
-                assert_eq!(
-                    handler_calls.load(Ordering::SeqCst),
-                    usize::from(!rejected && credentials)
-                );
             }
         }
     }

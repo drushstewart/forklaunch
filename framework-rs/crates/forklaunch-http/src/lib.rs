@@ -15,7 +15,7 @@ pub mod versioning;
 pub use versioning::{
     BodyParserHooks, JsonRequestParsers, MultipartLimits, ParsedJsonBody, PreparedVersionSelection,
     SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry, VersionFieldHooks,
-    VersionFieldValues, VersionedRoutePlan,
+    VersionFieldValues, VersionParsedBody, VersionedRoutePlan,
 };
 
 use std::{
@@ -141,6 +141,8 @@ pub struct FrameworkRequest {
     pub session: Option<serde_json::Value>,
     /// Last matching contract version and all matching declarations.
     pub version: Option<SelectedVersion>,
+    /// Trusted first-parser output, including unmatched version requests.
+    pub version_parsed_body: Option<VersionParsedBody>,
     /// Independently parsed unversioned JSON; original wire bytes remain in `body`.
     pub parsed_json: Option<ParsedJsonBody>,
 }
@@ -160,6 +162,7 @@ impl FrameworkRequest {
             body: Body::Empty,
             session: None,
             version: None,
+            version_parsed_body: None,
             parsed_json: None,
         }
     }

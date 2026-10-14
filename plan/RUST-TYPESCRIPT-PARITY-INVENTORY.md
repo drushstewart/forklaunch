@@ -7487,3 +7487,27 @@ CI runs the new clock-controlled oracle. This working-tree proof includes the
 HTTP/MCP changes now committed as91ddee904; it is separate from the174594c48
 immutable archive. Default backend transactions/storage were unchanged; earlier
 encrypted expiry-first insertion PG proof remains separate and was not rerun.
+
+
+## Unmatched versioned JSON parser state (2026-10-14)
+
+The JSON wire profile now supports request None/Warning as well as Error. A
+private selection outcome retains first-parser/reviver output independently of
+version matching. Opaque VersionParsedBody exposes parsed value and decompressed
+parser input through read-only accessors; original wire bytes remain unchanged.
+JSON null, skipped parsing and reviver root removal retain distinct projections.
+Unmatched requests keep version absent and never use a failed candidate transform.
+Trusted application of direct/prepared outcomes replaces supplied derived state;
+input-binding and hook-identity checks remain intact. Ordinary direct dispatch
+avoids an extra request/body snapshot; only prepared pre-auth reuse retains one.
+
+The former48 unmatched-value differences are resolved:120 actual TS observations
+now produce240 native/local comparisons across all modes,216 exact plus24 retained
+generic schema-diagnostic differences.24 real MCP tools preserve bodies/callback
+counts. Protected routes cover60 default/profile/local/native/mode cases, including
+denied unmatched requests. Gzip tests preserve original/decompressed separation.
+HTTP69/Axum140 tests, strict all-feature/all-target Clippy, canonical366/zero OpenAPI
+differences and pre-auth90 regressions pass:
+/private/tmp/fl-version-json-unmatched-{allfeatures,clippy,parity,canonical,diagnostics}.log.
+The prior Error-only guard is removed with this broader state proof; omitted
+declared MCP-body admission and24 diagnostic differences remain explicit gaps.

@@ -1,10 +1,7 @@
 //! Trusted request-bound version outcomes for authentication-before-dispatch adapters.
-use super::{SelectedVersion, VersionedRoutePlan};
-use crate::{ContractValidationError, FrameworkRequest, MultipartLimits};
-use forklaunch_contract::RouteContract;
+use super::{Selection, SelectionOutcome, VersionedRoutePlan};
+use crate::{FrameworkRequest, MultipartLimits};
 use std::sync::Arc;
-
-type Selection = Result<Option<(RouteContract, SelectedVersion)>, Vec<ContractValidationError>>;
 
 /// A compiled plan's selection result, bound to the original request inputs.
 /// Fields are private: caller-supplied selected-version metadata cannot replace
@@ -14,7 +11,7 @@ type Selection = Result<Option<(RouteContract, SelectedVersion)>, Vec<ContractVa
 pub struct PreparedVersionSelection {
     identity: Arc<()>,
     request: Arc<FrameworkRequest>,
-    selection: Arc<Selection>,
+    outcome: Arc<SelectionOutcome>,
 }
 impl std::fmt::Debug for PreparedVersionSelection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -29,16 +26,40 @@ impl VersionedRoutePlan {
         prepared: Option<&PreparedVersionSelection>,
     ) -> forklaunch_common::FrameworkResult<Selection> {
         if let Some(prepared) = prepared {
-            let result = self
-                .resolve_prepared(prepared, request)
-                .map_err(|message| {
-                    forklaunch_common::FrameworkError::new("invalid_prepared_version", message)
-                })?;
-            request.version = None;
-            Ok(result)
+            self.apply_prepared(prepared, request).map_err(|message| {
+                forklaunch_common::FrameworkError::new("invalid_prepared_version", message)
+            })
         } else {
-            Ok(self.select(request))
+            Ok(self.select_into_request(request, MultipartLimits::default()))
         }
+    }
+    /// Select once and replace derived request projections without retaining a snapshot.
+    /// # Errors
+    /// Returns parser or version schema errors, with first-parser output retained.
+    pub fn select_into_request(
+        &self,
+        request: &mut FrameworkRequest,
+        limits: MultipartLimits,
+    ) -> Selection {
+        let outcome = self.selection_outcome(request, limits);
+        request.version = None;
+        request.version_parsed_body = outcome.parsed;
+        outcome.selection
+    }
+    /// Resolve trusted selection and replace any caller-supplied derived projections.
+    /// # Errors
+    /// Rejects changed schema inputs or a different compiled plan.
+    pub fn apply_prepared(
+        &self,
+        prepared: &PreparedVersionSelection,
+        request: &mut FrameworkRequest,
+    ) -> Result<Selection, String> {
+        let selection = self.resolve_prepared(prepared, request)?;
+        request.version = None;
+        request
+            .version_parsed_body
+            .clone_from(&prepared.outcome.parsed);
+        Ok(selection)
     }
     /// Run selection once and retain a trusted outcome for later dispatch.
     /// The opt-in adapter holds one request snapshot until dispatch completes;
@@ -52,7 +73,7 @@ impl VersionedRoutePlan {
         PreparedVersionSelection {
             identity: self.identity.clone(),
             request: Arc::new(request.clone()),
-            selection: Arc::new(self.select_with_multipart_limits(request, limits)),
+            outcome: Arc::new(self.selection_outcome(request, limits)),
         }
     }
     /// Reuse an outcome only with the same compiled plan and schema inputs.
@@ -79,7 +100,7 @@ impl VersionedRoutePlan {
         {
             return Err("Prepared version selection does not match this plan and request".into());
         }
-        Ok(prepared.selection.as_ref().clone())
+        Ok(prepared.outcome.selection.clone())
     }
 }
 
@@ -87,7 +108,7 @@ impl VersionedRoutePlan {
 mod tests {
     use super::*;
     use crate::{HttpMethod, RequestContext};
-    use forklaunch_contract::{RequestContract, VersionedContract};
+    use forklaunch_contract::{RequestContract, RouteContract, VersionedContract};
     #[test]
     fn prepared_selection_rejects_changed_inputs_and_other_compiled_plans() {
         let route = RouteContract::get("prepared", "prepared", "/prepared").with_version(

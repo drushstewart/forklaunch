@@ -8,7 +8,7 @@ use forklaunch_contract::{
 use forklaunch_core::ServiceInfo;
 use forklaunch_http::{
     BodyParserHooks, FrameworkRequest, FrameworkResponse, LocalRouter, SelectedVersion,
-    VersionBodyHooks, VersionBodyHooksRegistry,
+    VersionBodyHooks, VersionBodyHooksRegistry, VersionParsedBody,
 };
 use serde_json::{Value, json};
 use std::sync::{
@@ -38,8 +38,8 @@ fn contract(surface: &str, name: &str, mode: ValidationMode, optional: bool) -> 
     }
     route
 }
-fn output(selected: Option<&SelectedVersion>) -> Value {
-    json!({"selected":selected.map(|selected|selected.version.as_str()),"body":selected.and_then(|selected|selected.parsed_body.as_deref())})
+fn output(selected: Option<&SelectedVersion>, parsed: Option<&VersionParsedBody>) -> Value {
+    json!({"selected":selected.map(|selected|selected.version.as_str()),"body":selected.map_or_else(|| parsed.and_then(VersionParsedBody::value), |selected|selected.parsed_body.as_deref())})
 }
 fn configure(
     hooks: &mut VersionBodyHooksRegistry,
@@ -88,16 +88,26 @@ async fn main() {
     let mut native = ForkLaunchRouter::new(ServiceInfo::new("native", "1"));
     let mut local = LocalRouter::new();
     let mut contracts = Vec::new();
-    for (name, mode) in [("error", ValidationMode::Error)] {
+    for (name, mode) in [
+        ("none", ValidationMode::None),
+        ("warning", ValidationMode::Warning),
+        ("error", ValidationMode::Error),
+    ] {
         for optional in [false, true] {
             let route = contract("native", name, mode, optional);
             configure(&mut hooks, &route, optional, verifiers.clone());
             let count = handlers.clone();
             native = native.post(
                 route,
-                move |selected: Option<Extension<SelectedVersion>>| {
+                move |selected: Option<Extension<SelectedVersion>>,
+                      parsed: Option<Extension<VersionParsedBody>>| {
                     count.fetch_add(1, Ordering::SeqCst);
-                    async move { Json(output(selected.as_ref().map(|selected| &selected.0))) }
+                    async move {
+                        Json(output(
+                            selected.as_ref().map(|selected| &selected.0),
+                            parsed.as_ref().map(|parsed| &parsed.0),
+                        ))
+                    }
                 },
             );
             let route = contract("local", name, mode, optional);
@@ -108,7 +118,11 @@ async fn main() {
                 count.fetch_add(1, Ordering::SeqCst);
                 Ok(FrameworkResponse::json(
                     200,
-                    output(request.version.as_ref()).to_string(),
+                    output(
+                        request.version.as_ref(),
+                        request.version_parsed_body.as_ref(),
+                    )
+                    .to_string(),
                 ))
             });
         }

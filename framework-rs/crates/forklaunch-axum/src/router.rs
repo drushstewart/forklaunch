@@ -1480,15 +1480,21 @@ fn select_contract_version(
         .extensions
         .get::<forklaunch_http::PreparedVersionSelection>()
     {
-        plan.resolve_prepared(prepared, request).map_err(|_| {
+        plan.apply_prepared(prepared, request).map_err(|_| {
             vec![forklaunch_http::ContractValidationError::new(
                 forklaunch_http::ContractValidationLocation::Body,
                 "invalid prepared request selection",
             )]
         })?
     } else {
-        plan.select_with_multipart_limits(request, limits)
+        plan.select_into_request(request, limits)
     };
+    parts
+        .extensions
+        .remove::<forklaunch_http::VersionParsedBody>();
+    if let Some(parsed) = &request.version_parsed_body {
+        parts.extensions.insert(parsed.clone());
+    }
     if parts
         .extensions
         .get::<forklaunch_http::PreparedVersionSelection>()

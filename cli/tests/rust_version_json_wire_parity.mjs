@@ -93,7 +93,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
  if(input.headers?.['x-deny']==='yes'&&mediaMatch)assert.equal(expected.status,403);
  if(!mediaMatch&&optional&&!input.media.includes('bogus')){assert.equal(expected.status,200);assert.deepEqual(expected.body,{selected:'last',body:{flag:'ok'}});}
  
- for(const surface of mode==='error'?['native','local']:[]) {
+ for(const surface of ['native','local']) {
  const actual=await wire(rust,'/'+surface+path,input);const label=JSON.stringify({mode,optional,surface,input,expected,actual});
  assert.equal(actual.status,expected.status,label);assert.equal(actual.handlers,expected.handlers,label);assert.equal(actual.verifiers,expected.verifiers,label);
  if(expected.status===400&&String(expected.body).startsWith('Version first request')) {
@@ -102,7 +102,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
  assert.ok(!JSON.stringify(actual).includes('PRIVATE_VERIFY'));
  }
  }
- const listed=await mcpRpc(rust,'tools/list');const bodyTools=listed.tools.filter(tool=>tool.name!=='calls');assert.equal(bodyTools.length,8);
+ const listed=await mcpRpc(rust,'tools/list');const bodyTools=listed.tools.filter(tool=>tool.name!=='calls');assert.equal(bodyTools.length,24);
  for(const tool of bodyTools) {
  const before=await(await fetch(rust+'/calls')).json();
  const result=await mcpRpc(rust,'tools/call',{name:tool.name,arguments:{body:{flag:'ok'}}});
@@ -110,7 +110,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
  const after=await(await fetch(rust+'/calls')).json();assert.equal(after.verifiers-before.verifiers,1);assert.equal(after.handlers-before.handlers,1);
  }
  console.log('PASS '+bodyTools.length+' real MCP tool calls preserve supplied JSON bodies with exactly one verifier and handler invocation');
- console.log('PASS '+requests+' actual TypeScript request cases; '+exact+' exact native/local pairs, '+diagnostics+' explicit schema-diagnostic differences; supported Error-mode status/verify/handler counts match; None/Warning registration explicitly rejected');
+ console.log('PASS '+requests+' actual TypeScript request cases; '+exact+' exact native/local pairs, '+diagnostics+' explicit schema-diagnostic differences; all-mode status/verify/handler counts and unmatched parser projections match');
 }finally{
  for(const child of children){
   if(child.exitCode!==null||child.signalCode!==null)continue;

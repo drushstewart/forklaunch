@@ -35,6 +35,29 @@ pub use json_request::{JsonRequestParsers, ParsedJsonBody};
 mod prepared;
 pub use prepared::PreparedVersionSelection;
 
+/// First JSON parser/reviver output, independent of version schema matching.
+/// Original wire bytes remain on the request; this projection is read-only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionParsedBody(ParsedJsonBody);
+impl VersionParsedBody {
+    /// Parsed value; absence includes media/framing skips and reviver root removal.
+    #[must_use]
+    pub fn value(&self) -> Option<&Value> {
+        self.0.value.as_deref()
+    }
+    /// Decompressed parser input; absent when parsing was skipped.
+    #[must_use]
+    pub fn raw_body(&self) -> Option<&[u8]> {
+        self.0.raw_body.as_deref().map(Vec::as_slice)
+    }
+}
+type Selection = Result<Option<(RouteContract, SelectedVersion)>, Vec<ContractValidationError>>;
+#[derive(Clone)]
+struct SelectionOutcome {
+    selection: Selection,
+    parsed: Option<VersionParsedBody>,
+}
+
 /// Available to local handlers and as an Axum request extension.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectedVersion {
@@ -260,9 +283,6 @@ impl VersionedRoutePlan {
             .variants
             .first()
             .ok_or("JSON wire profile requires versions")?;
-        if first.route.options.request_validation != forklaunch_contract::ValidationMode::Error {
-            return Err("Versioned JSON wire parsing requires request Error validation".into());
-        }
         let mut parser = JsonRequestParsers::default();
         parser.insert(&first.route, self.parser_hooks.clone())?;
         self.typescript_json_parser = Some(parser);
@@ -278,12 +298,35 @@ impl VersionedRoutePlan {
         request: &FrameworkRequest,
         limits: MultipartLimits,
     ) -> Result<Option<(RouteContract, SelectedVersion)>, Vec<ContractValidationError>> {
+        self.selection_outcome(request, limits).selection
+    }
+
+    fn selection_outcome(
+        &self,
+        request: &FrameworkRequest,
+        limits: MultipartLimits,
+    ) -> SelectionOutcome {
+        let mut parsed = None;
+        let body = if let Some(parser) = &self.typescript_json_parser {
+            parser.parse(&self.variants[0].route, request).map(|value| {
+                parsed = value.map(VersionParsedBody);
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.0.value.as_deref().cloned())
+            })
+        } else {
+            self.body_value(request, limits)
+        };
+        let selection = body
+            .map_err(|error| vec![error])
+            .and_then(|body| self.select_body(request, body));
+        SelectionOutcome { selection, parsed }
+    }
+
+    fn select_body(&self, request: &FrameworkRequest, body_value: Option<Value>) -> Selection {
         if self.variants.is_empty() {
             return Ok(None);
         }
-        let body_value = self
-            .body_value(request, limits)
-            .map_err(|error| vec![error])?;
         let query = self
             .typescript_simple_query
             .then(|| crate::parse_typescript_simple_query(request.raw_query.as_deref()));
@@ -335,15 +378,6 @@ impl VersionedRoutePlan {
         request: &FrameworkRequest,
         limits: MultipartLimits,
     ) -> Result<Option<Value>, ContractValidationError> {
-        if let Some(parser) = &self.typescript_json_parser {
-            let first = self
-                .variants
-                .first()
-                .ok_or_else(|| invalid_body("missing JSON parser version"))?;
-            return parser
-                .parse(&first.route, request)
-                .map(|parsed| parsed.and_then(|parsed| parsed.value.map(Arc::unwrap_or_clone)));
-        }
         let Some(body) = self
             .variants
             .first()
