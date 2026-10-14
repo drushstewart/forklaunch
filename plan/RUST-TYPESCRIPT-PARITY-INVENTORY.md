@@ -8383,3 +8383,23 @@ Ambiguous COMMIT requires scoped historical inspection, never a retry assumption
 Fixture roles are removed. Logs /private/tmp/fl-customer-registration-{compile,pg,
 clippy,unit,sdk,plan-regression,legacy170}.log; ten exact hashes
 /private/tmp/fl-customer-registration-source-checkpoint.json. CI runs SDK/PG.
+
+
+## Zod factory email OpenAPI admission correction (2026-10-14)
+
+The actual Zod factory previously exported an explicit pattern admitting percent
+signs and rejecting apostrophes, while asserted format=email rejected Zod-valid
+domain trailing hyphens. A private definition Symbol now identifies unchanged
+factory-email checks through ordinary wrappers. The shim emits the exact ASCII
+input pattern without assertive format=email for that marked single-check leaf.
+Direct/nested optional/nullable/object/array/union exports recurse correctly;
+explicit user OpenAPI overrides, unmarked raw Zod email, modified multicheck
+strings and TypeBox retain their existing behavior. Export executes no callbacks.
+This corrects declared admission for the supported factory, not arbitrary schemas.
+
+1799 actual parse/export/AJV comparisons pass. Canonical366 HTTP outcomes pass
+with zero normalized OpenAPI differences and unchanged snapshots. Strict12-root
+TypeScript checks and public inventory tests pass with614 entry points,
+1678 declarations and zero unresolved entries (the existing package wildcard
+exposes the three helper declarations). Logs /private/tmp/fl-zod-email-{canonical,
+inventory,inventory-tests,types-final}.log. CI runs the export oracle.

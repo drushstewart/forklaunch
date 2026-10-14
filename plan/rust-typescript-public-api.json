@@ -24736,6 +24736,11 @@
           "source": "framework/validator/src/typebox/types/schema.types.ts"
         },
         {
+          "subpath": "./src/zod/emailOpenApi",
+          "target": "lib/src/zod/emailOpenApi.d.ts",
+          "source": "framework/validator/src/zod/emailOpenApi.ts"
+        },
+        {
           "subpath": "./src/zod/index",
           "target": "lib/src/zod/index.d.ts",
           "source": "framework/validator/src/zod/index.ts"
@@ -25186,20 +25191,20 @@
               "name": "AnatineSchemaObject",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 5,
+              "line": 9,
               "type": "SchemaObject & { hideDefinitions?: string[] }"
             },
             {
               "name": "OpenApiZodAny",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 7,
+              "line": 11,
               "members": [
                 {
                   "name": "metaOpenApi",
                   "signature": "metaOpenApi?: AnatineSchemaObject | AnatineSchemaObject[];",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 8
+                  "line": 12
                 }
               ]
             },
@@ -25207,13 +25212,13 @@
               "name": "extendApi",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 25
+              "line": 29
             },
             {
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 685
+              "line": 693
             }
           ]
         },
@@ -26142,6 +26147,29 @@
           ]
         },
         {
+          "source": "framework/validator/src/zod/emailOpenApi.ts",
+          "exports": [
+            {
+              "name": "factoryEmailPattern",
+              "kind": "VariableDeclaration",
+              "source": "framework/validator/src/zod/emailOpenApi.ts",
+              "line": 7
+            },
+            {
+              "name": "markFactoryEmail",
+              "kind": "FunctionDeclaration",
+              "source": "framework/validator/src/zod/emailOpenApi.ts",
+              "line": 10
+            },
+            {
+              "name": "hasFactoryEmailGrammar",
+              "kind": "FunctionDeclaration",
+              "source": "framework/validator/src/zod/emailOpenApi.ts",
+              "line": 15
+            }
+          ]
+        },
+        {
           "source": "framework/validator/src/zod/index.ts",
           "exports": [
             {
@@ -26638,235 +26666,235 @@
               "name": "ZodSchemaValidator",
               "kind": "ClassDeclaration",
               "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-              "line": 59,
+              "line": 60,
               "members": [
                 {
                   "name": "_Type",
                   "signature": "_Type = 'Zod' as const;",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 100
+                  "line": 101
                 },
                 {
                   "name": "_SchemaCatchall",
                   "signature": "_SchemaCatchall!: ZodType;",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 101
+                  "line": 102
                 },
                 {
                   "name": "_ValidSchemaObject",
                   "signature": "_ValidSchemaObject!:\n    ZodObject<ZodRawShape> | ZodArray<ZodObject<ZodRawShape>>;",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 102
+                  "line": 103
                 },
                 {
                   "name": "string",
                   "signature": "string = z.string().openapi({\n    title: 'String',\n    example: 'a string'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 105
+                  "line": 106
                 },
                 {
                   "name": "uuid",
                   "signature": "uuid = z.string().uuid().openapi({\n    title: 'UUID',\n    format: 'uuid',\n    pattern:\n      '^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$',\n    example: 'a8b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 109
+                  "line": 110
                 },
                 {
                   "name": "email",
-                  "signature": "email = z.string().email().openapi({\n    title: 'Email',\n    format: 'email',\n    pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$',\n    example: 'a@b.com'\n  });",
+                  "signature": "email = markFactoryEmail(z.string().email()).openapi({\n    title: 'Email',\n    example: 'a@b.com'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 116
+                  "line": 117
                 },
                 {
                   "name": "uri",
                   "signature": "uri = z.string().url().openapi({\n    title: 'URI',\n    format: 'uri',\n    pattern: '^[a-zA-Z][a-zA-Z\\\\d+-.]*:[^\\\\s]*$',\n    example: 'https://forklaunch.com'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 122
+                  "line": 121
                 },
                 {
                   "name": "number",
                   "signature": "number = z\n    .preprocess((value) => {\n      try {\n        return Number(value);\n      } catch {\n        return value;\n      }\n    }, z.number())\n    .openapi({\n      title: 'Number',\n      example: 123\n    });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 128
+                  "line": 127
                 },
                 {
                   "name": "bigint",
                   "signature": "bigint = z\n    .preprocess((value) => {\n      try {\n        if (value instanceof Date) {\n          return BigInt(value.getTime());\n        }\n        switch (typeof value) {\n          case 'number':\n          case 'string':\n            return BigInt(value);\n          case 'boolean':\n            return BigInt(value ? 1 : 0);\n          default:\n            return value;\n        }\n      } catch {\n        return value;\n      }\n    }, z.bigint())\n    .openapi({\n      title: 'BigInt',\n      type: 'integer',\n      format: 'int64',\n      example: 123n\n    });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 140
+                  "line": 139
                 },
                 {
                   "name": "boolean",
                   "signature": "boolean = z\n    .preprocess((val) => {\n      if (typeof val === 'string') {\n        if (val.toLowerCase() === 'true') return true;\n        if (val.toLowerCase() === 'false') return false;\n      }\n      return val;\n    }, z.boolean())\n    .openapi({\n      title: 'Boolean',\n      example: true\n    });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 165
+                  "line": 164
                 },
                 {
                   "name": "date",
                   "signature": "date = z\n    .preprocess((value) => {\n      try {\n        switch (typeof value) {\n          case 'string':\n            return new Date(value);\n          case 'number':\n            return new Date(value);\n          default:\n            return value;\n        }\n      } catch {\n        return value;\n      }\n    }, z.date())\n    .openapi({\n      title: 'Date',\n      type: 'string',\n      format: 'date-time',\n      example: '2025-05-16T21:13:04.123Z'\n    });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 177
+                  "line": 176
                 },
                 {
                   "name": "symbol",
                   "signature": "symbol = z.symbol().openapi({\n    title: 'Symbol',\n    example: Symbol('symbol')\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 198
+                  "line": 197
                 },
                 {
                   "name": "nullish",
                   "signature": "nullish = z.union([z.void(), z.null(), z.undefined()]).openapi({\n    title: 'Nullish',\n    type: 'null',\n    example: null\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 202
+                  "line": 201
                 },
                 {
                   "name": "void",
                   "signature": "void = z.void().openapi({\n    title: 'Void',\n    type: 'null',\n    example: undefined\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 207
+                  "line": 206
                 },
                 {
                   "name": "null",
                   "signature": "null = z.null().openapi({\n    title: 'Null',\n    type: 'null',\n    example: null\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 212
+                  "line": 211
                 },
                 {
                   "name": "undefined",
                   "signature": "undefined = z.undefined().openapi({\n    title: 'Undefined',\n    type: 'null',\n    example: undefined\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 217
+                  "line": 216
                 },
                 {
                   "name": "any",
                   "signature": "any = z.any().openapi({\n    title: 'Any',\n    type: 'object',\n    example: 'any'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 222
+                  "line": 221
                 },
                 {
                   "name": "unknown",
                   "signature": "unknown = z.unknown().openapi({\n    title: 'Unknown',\n    type: 'object',\n    example: 'unknown'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 227
+                  "line": 226
                 },
                 {
                   "name": "never",
                   "signature": "never = z.never().openapi({\n    title: 'Never',\n    type: 'null',\n    example: 'never'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 232
+                  "line": 231
                 },
                 {
                   "name": "binary",
                   "signature": "binary = z\n    .string()\n    .transform((val) => new Uint8Array(Buffer.from(val, 'base64')))\n    .openapi({\n      title: 'Binary',\n      type: 'string',\n      format: 'binary',\n      example: 'a base-64 encodable string'\n    });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 237
+                  "line": 236
                 },
                 {
                   "name": "file",
                   "signature": "file = z\n    .union([\n      z.instanceof(Buffer),\n      z.instanceof(ArrayBuffer),\n      z.instanceof(Blob),\n      z.string()\n    ])\n    .transform((val) => {\n      if (val instanceof Buffer) {\n        return new Blob([val as Buffer<ArrayBuffer>]);\n      }\n      if (val instanceof ArrayBuffer) {\n        return new Blob([val]);\n      }\n      if (val instanceof Blob) {\n        return val;\n      }\n      if (typeof val === 'string') {\n        return new Blob([val]);\n      }\n      return new Blob([val as Buffer<ArrayBuffer>]);\n    })\n    .refine((val) => val instanceof Blob, {\n      message:\n        'Invalid file type: expected Buffer, ArrayBuffer, Blob, or string'\n    })\n    .openapi({\n      title: 'File',\n      type: 'string',\n      format: 'binary',\n      example: 'a base-64 encodable blob or file'\n    });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 246
+                  "line": 245
                 },
                 {
                   "name": "type",
                   "signature": "type = <T>() => this.any as ZodType<T>;",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 278
+                  "line": 277
                 },
                 {
                   "name": "compile",
                   "signature": "compile<T extends ZodObject<ZodRawShape>>(schema: T): ZodResolve<T>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 286
+                  "line": 285
                 },
                 {
                   "name": "schemify",
                   "signature": "schemify<T extends ZodIdiomaticSchema>(schema: T): ZodResolve<T>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 295
+                  "line": 294
                 },
                 {
                   "name": "optional",
                   "signature": "optional<T extends ZodIdiomaticSchema>(\n    schema: T\n  ): ZodOptional<ZodResolve<T>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 325
+                  "line": 324
                 },
                 {
                   "name": "array",
                   "signature": "array<T extends ZodIdiomaticSchema>(schema: T): ZodArray<ZodResolve<T>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 337
+                  "line": 336
                 },
                 {
                   "name": "union",
                   "signature": "union<T extends ZodUnionContainer>(schemas: T): ZodUnion<UnionZodResolve<T>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 347
+                  "line": 346
                 },
                 {
                   "name": "literal",
                   "signature": "literal<T extends LiteralSchema>(value: T): ZodLiteral<T>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 360
+                  "line": 359
                 },
                 {
                   "name": "enum_",
                   "signature": "enum_<T extends Record<string, LiteralSchema>>(\n    schemaEnum: T\n  ): ZodUnion<\n    [\n      {\n        [K in keyof T]: ZodLiteral<T[K]>;\n      }[keyof T]\n    ]\n  >",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 369
+                  "line": 368
                 },
                 {
                   "name": "function_",
                   "signature": "function_<\n    Args extends ZodTupleContainer,\n    ReturnType extends ZodIdiomaticSchema\n  >(\n    args: Args,\n    returnType: ReturnType\n  ): ZodFunction<\n    ZodTuple<TupleZodResolve<Args>, null>,\n    ZodResolve<ReturnType>\n  >",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 400
+                  "line": 399
                 },
                 {
                   "name": "record",
                   "signature": "record<Key extends ZodIdiomaticSchema, Value extends ZodIdiomaticSchema>(\n    key: Key,\n    value: Value\n  ): ZodRecord<ZodRecordKey<Key>, ZodResolve<Value>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 427
+                  "line": 426
                 },
                 {
                   "name": "promise",
                   "signature": "promise<T extends ZodIdiomaticSchema>(schema: T): ZodPromise<ZodResolve<T>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 444
+                  "line": 443
                 },
                 {
                   "name": "isSchema",
                   "signature": "isSchema(value: unknown): value is ZodType",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 453
+                  "line": 452
                 },
                 {
                   "name": "isInstanceOf",
                   "signature": "isInstanceOf<T extends ZodType>(value: unknown, type: T): value is T",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 463
+                  "line": 462
                 },
                 {
                   "name": "validate",
                   "signature": "validate<T extends ZodIdiomaticSchema | ZodCatchall>(\n    schema: T,\n    value: unknown\n  ): boolean",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 477
+                  "line": 476
                 },
                 {
                   "name": "parse",
                   "signature": "parse<T extends ZodIdiomaticSchema | ZodCatchall>(\n    schema: T,\n    value: unknown\n  ): ParseResult<ZodSchemaTranslate<ZodResolve<T>>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 492
+                  "line": 491
                 },
                 {
                   "name": "openapiRequestBody",
                   "signature": "openapiRequestBody(schema: unknown): { required: boolean; schema: SchemaObject }",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 530
+                  "line": 529
                 },
                 {
                   "name": "openapi",
                   "signature": "openapi<T extends ZodIdiomaticSchema | ZodCatchall>(schema: T): SchemaObject",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 542
+                  "line": 541
                 }
               ]
             }

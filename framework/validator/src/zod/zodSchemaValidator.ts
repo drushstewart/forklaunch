@@ -22,6 +22,7 @@ import {
   ZodUnion
 } from 'zod/v3';
 import { requestBodyOpenApi } from './requestBodyOpenApi';
+import { markFactoryEmail } from './emailOpenApi';
 import { extendZodWithOpenApi } from '../../shims/zod-v3-openapi/zod-extensions';
 import { generateSchema } from '../../shims/zod-v3-openapi/zod-openapi';
 import {
@@ -113,10 +114,8 @@ export class ZodSchemaValidator implements SV<
       '^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$',
     example: 'a8b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6'
   });
-  email = z.string().email().openapi({
+  email = markFactoryEmail(z.string().email()).openapi({
     title: 'Email',
-    format: 'email',
-    pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$',
     example: 'a@b.com'
   });
   uri = z.string().url().openapi({

@@ -1,6 +1,10 @@
 import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
 import { merge } from 'ts-deepmerge';
 import { AnyZodObject, z, ZodTypeAny } from 'zod/v3';
+import {
+  factoryEmailPattern,
+  hasFactoryEmailGrammar
+} from '../../src/zod/emailOpenApi';
 
 export type AnatineSchemaObject = SchemaObject & { hideDefinitions?: string[] };
 
@@ -126,7 +130,11 @@ function parseString({
   checks.forEach((item) => {
     switch (item.kind) {
       case 'email':
-        baseSchema.format = 'email';
+        if (hasFactoryEmailGrammar(zodRef)) {
+          baseSchema.pattern = factoryEmailPattern;
+        } else {
+          baseSchema.format = 'email';
+        }
         break;
       case 'uuid':
         baseSchema.format = 'uuid';
