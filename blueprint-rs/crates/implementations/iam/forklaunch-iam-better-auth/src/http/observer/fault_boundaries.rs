@@ -28,6 +28,7 @@ async fn signup_maps_only_user_creation_and_preserves_unexpected_transaction_fai
         let capture = events.clone();
         let router = AuthHttp::new(
             Arc::new(fault_store::FaultStore {
+                page: None,
                 store: store.clone(),
                 read: None,
                 delete: None,
@@ -112,6 +113,7 @@ async fn signout_failures_clear_exact_cookies_without_committing_partial_work() 
             };
             let router = AuthHttp::new(
                 Arc::new(fault_store::FaultStore {
+                    page: None,
                     store: store.clone(),
                     read: (failure == "read").then_some(Model::Session),
                     delete: (failure == "delete").then_some(Model::Session),

@@ -71,9 +71,11 @@ impl<S: AuthStore> SessionService<S> {
             .store
             .begin(true)
             .await
-            .map_err(crate::error_origin::handled)?;
+            .map_err(crate::error_origin::session_catch)?;
         let result = load(&mut tx, token, transient || disable_refresh, now).await?;
-        tx.commit().await.map_err(crate::error_origin::handled)?;
+        tx.commit()
+            .await
+            .map_err(crate::error_origin::session_catch)?;
         Ok(result)
     }
 
@@ -112,7 +114,8 @@ impl<S: AuthStore> SessionService<S> {
                     after,
                     256,
                 )
-                .await?;
+                .await
+                .map_err(list_failure)?;
             for session in page.records {
                 if session["userId"] == current.user["id"]
                     && field_time(&session, "expiresAt")? > now
@@ -183,7 +186,7 @@ impl<S: AuthStore> SessionService<S> {
             {
                 tx.delete(Model::Session, field_text(&session, "id")?)
                     .await
-                    .map_err(crate::error_origin::handled)?;
+                    .map_err(crate::error_origin::session_catch)?;
             }
         } else {
             let mut after = None;
@@ -249,7 +252,7 @@ enum Revoke<'a> {
 
 fn revoke_failure(mode: Revoke<'_>, error: BlueprintError) -> BlueprintError {
     match mode {
-        Revoke::One(_) | Revoke::All => crate::error_origin::handled(error),
+        Revoke::One(_) | Revoke::All => crate::error_origin::internal_catch(error),
         Revoke::Others => error,
     }
 }
@@ -301,7 +304,7 @@ pub(crate) async fn load<T: AuthTransaction>(
 ) -> BlueprintResult<Option<SessionView>> {
     load_inner(tx, token, skip_refresh, now)
         .await
-        .map_err(crate::error_origin::handled)
+        .map_err(crate::error_origin::session_catch)
 }
 
 async fn load_inner<T: AuthTransaction>(
@@ -404,4 +407,10 @@ fn storage_error() -> BlueprintError {
         "better_auth_storage_error",
         "Authentication storage operation failed",
     )
+}
+
+fn list_failure(mut error: BlueprintError) -> BlueprintError {
+    error.code = "HTTP_INTERNAL_EMPTY".into();
+    error.message = "Unable to list sessions".into();
+    crate::error_origin::internal_catch(error)
 }

@@ -327,6 +327,7 @@ async fn unexpected_mode_matches_session_and_revocation_catch_boundaries() {
         let capture = events.clone();
         let router = AuthHttp::new(
             Arc::new(fault_store::FaultStore {
+                page: None,
                 store: store.clone(),
                 read,
                 delete,
@@ -425,3 +426,6 @@ async fn unexpected_mode_distinguishes_permission_json_from_handled_schema_failu
         assert_eq!(events.lock().unwrap().len(), expected, "{permission}");
     }
 }
+
+#[path = "diagnostics.rs"]
+mod diagnostics;

@@ -951,3 +951,25 @@ profile rejects stale declarations and unsupported request modes before handlers
 MCP framing derives only from encoded bytes, retaining rejection of caller-supplied
 transport headers. Exact-body, mutation/reuse and real HTTP/MCP tests pass alongside
 HTTP66/Axum140/MCP21 and strict Clippy; dated inventory records retained boundaries.
+
+
+## Resolved signing capability and configured diagnostics (2026-10-14)
+
+The new ResolvedSigningKey is a trusted server capability imported from validated
+private material, without Debug/Serialize/Clone or raw JSON construction. Its
+reuse deliberately bypasses storage/expiry/revocation checks; deleting a source
+record cannot revoke an already imported private key. The caller owns lifetime.
+The local API is not wired as caller-controlled HTTP key selection and does not
+replace external signing or strict key-ID checks. Existing claim validation and
+private-material bounds apply; no new cryptography/dependency was introduced.
+Actual JOSE and focused native public-signature/error/no-I/O tests pass, documented
+in the parity inventory.
+
+Configured error tracing preserves sanitized structural diagnostics and an
+independent observer policy. Private catch markers cannot be supplied by request
+JSON and are removed before response delivery. The new session-list catch covers
+only query failure, retaining auth/freshness/commit behavior. Subprocess-isolated
+trace/callback counts and authenticated fault tests pass; neither raw stack/message
+parity nor all plugin diagnostics are claimed. A forthcoming two-factor profile
+has actual-source characterization only at this checkpoint, not implementation
+or release certification.

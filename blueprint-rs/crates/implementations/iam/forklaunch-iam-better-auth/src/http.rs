@@ -37,7 +37,7 @@ pub use external_jwt::ExternalJwtSigner;
 pub use jwt_subject::JwtSessionContext;
 mod observer;
 mod organization;
-pub use observer::{AuthApiError, AuthApiErrorObserverMode};
+pub use observer::{AuthApiError, AuthApiErrorObserverMode, AuthApiErrorTraceMode};
 mod public;
 mod rate;
 pub use rate::{
@@ -69,6 +69,7 @@ pub struct AuthHttp<S> {
     jwks_path: String,
     error_observer: Option<observer::Observer>,
     error_observer_mode: AuthApiErrorObserverMode,
+    error_trace_mode: AuthApiErrorTraceMode,
     secret: Zeroizing<Vec<u8>>,
     base_url: String,
     base_path: String,
@@ -132,6 +133,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             jwks_path: "/jwks".into(),
             error_observer: None,
             error_observer_mode: AuthApiErrorObserverMode::default(),
+            error_trace_mode: AuthApiErrorTraceMode::default(),
             secret,
             base_url,
             base_path: "/api/auth".into(),
@@ -264,6 +266,13 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     #[must_use]
     pub fn with_api_error_observer_mode(mut self, mode: AuthApiErrorObserverMode) -> Self {
         self.error_observer_mode = mode;
+        self
+    }
+
+    /// Selects safe built-in tracing without changing callback dispatch or responses.
+    #[must_use]
+    pub fn with_api_error_trace_mode(mut self, mode: AuthApiErrorTraceMode) -> Self {
+        self.error_trace_mode = mode;
         self
     }
 
@@ -749,6 +758,11 @@ fn failure(error: &BlueprintError) -> Response {
     if response.status().is_server_error() {
         if crate::error_origin::is_handled(error) {
             response.extensions_mut().insert(observer::HandledResponse);
+        }
+        if crate::error_origin::has_internal_diagnostic(error) {
+            response
+                .extensions_mut()
+                .insert(observer::InternalCatchResponse);
         }
         response
             .extensions_mut()

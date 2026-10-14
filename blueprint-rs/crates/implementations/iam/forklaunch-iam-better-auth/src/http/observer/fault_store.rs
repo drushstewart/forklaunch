@@ -6,6 +6,7 @@ use std::sync::Arc;
 pub struct FaultStore<S> {
     pub store: Arc<S>,
     pub read: Option<Model>,
+    pub page: Option<Model>,
     pub delete: Option<Model>,
     pub insert: Option<Model>,
     pub begin: bool,
@@ -14,6 +15,7 @@ pub struct FaultStore<S> {
 pub struct FaultTransaction<T> {
     inner: T,
     read: Option<Model>,
+    page: Option<Model>,
     delete: Option<Model>,
     insert: Option<Model>,
     commit: bool,
@@ -30,6 +32,7 @@ impl<S: AuthStore> AuthStore for FaultStore<S> {
         Ok(FaultTransaction {
             inner: self.store.begin(write).await?,
             read: self.read,
+            page: self.page,
             delete: self.delete,
             insert: self.insert,
             commit: self.commit,
@@ -84,7 +87,7 @@ impl<T: AuthTransaction> AuthTransaction for FaultTransaction<T> {
         after: Option<AuthCursor>,
         limit: usize,
     ) -> BlueprintResult<AuthPage> {
-        if self.read == Some(model) {
+        if self.read == Some(model) || self.page == Some(model) {
             return Err(read_failure());
         }
         self.inner

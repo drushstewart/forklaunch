@@ -33,6 +33,19 @@ pub enum AuthApiErrorObserverMode {
     UnexpectedOnly,
 }
 
+/// Built-in safe tracing policy, independent of callback dispatch.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AuthApiErrorTraceMode {
+    /// Historical behavior: trace every raw authentication 5xx.
+    #[default]
+    AllServerErrors,
+    /// Trace unexpected errors and explicit internal catch diagnostics only.
+    /// This covers characterized native catch boundaries, not all plugin logging.
+    Configured,
+}
+#[derive(Clone)]
+pub(super) struct InternalCatchResponse;
+
 #[derive(Clone)]
 pub(super) struct HandledResponse;
 
@@ -61,13 +74,22 @@ pub(super) async fn observe<S: AuthStore + 'static>(
         .extensions_mut()
         .remove::<HandledResponse>()
         .is_some();
+    let internal_catch = response
+        .extensions_mut()
+        .remove::<InternalCatchResponse>()
+        .is_some();
     if response.status().is_server_error() {
         let event = AuthApiError {
             route,
             status: response.status().as_u16(),
             database: metadata.unwrap_or_default().0,
         };
-        tracing::error!(target: "forklaunch_iam_better_auth", route = %event.route, status = event.status, database = ?event.database, "Better Auth API error");
+        if app.error_trace_mode == AuthApiErrorTraceMode::AllServerErrors
+            || !handled
+            || internal_catch
+        {
+            tracing::error!(target: "forklaunch_iam_better_auth", route = %event.route, status = event.status, database = ?event.database, "Better Auth API error");
+        }
         if (app.error_observer_mode == AuthApiErrorObserverMode::AllServerErrors || !handled)
             && let Some(observer) = &app.error_observer
             && catch_unwind(AssertUnwindSafe(|| observer(&event))).is_err()

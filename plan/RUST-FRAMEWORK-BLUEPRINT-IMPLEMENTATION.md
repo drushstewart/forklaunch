@@ -20,7 +20,7 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: immutable95f1b203b packaged runtime, generated five-family billing HTTP/MCP lifecycle, versioned text-wire profile and real shared/generated SDK/auth composition. Dated source/hash/test receipts are in the inventory.
 - Completed: PaymentLink update result identity/totals guards and single configured local mapping; UUID/provider mutation ownership remains open.
 - Completed: optional MCP omission, explicit optional-body contracts and safe root documentation, referenced shared-SDK special-value conversion, required Portal URLs, consumed Plan/Subscription references, and trusted resolved signing keys.
-- Active: direct-only durable PaymentLink creation with UUID/binding receipts, configured diagnostic counts, and broader Better Auth two-factor lifecycle assessment.
+- Active: direct-only durable PaymentLink creation with UUID/binding receipts and broader Better Auth two-factor lifecycle implementation. Configured diagnostic counts are now validated for the characterized fault subset.
 - Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.
 
 Historical completed queue and remaining broad gates:

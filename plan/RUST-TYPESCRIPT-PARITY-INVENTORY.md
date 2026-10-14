@@ -7931,3 +7931,26 @@ CI runs the oracle. Source inventory613 entrypoints/1675 declarations remains
 syntactic; arbitrary schemas/callbacks, other wire profiles and complete artifact
 equivalence stay open. This source proof is separate from the next immutable
 packaged checkpoint.
+
+
+## Configured diagnostics and caught session-list query failures (2026-10-14)
+
+AuthApiErrorTraceMode::Configured is additive and independent of callback mode.
+Historical library AllServerErrors tracing remains default; generated presets
+select Configured plus UnexpectedOnly callbacks. Private internal-catch provenance
+retains one safe diagnostic for characterized get-session/revoke/list catches,
+while silent handled API failures produce none. Session-list find_page failures
+now return handled empty500 with unexpected callback0, matching the actual catch;
+auth/freshness/commit errors are not blanket-converted. No freeform exception/
+stack logging is added and private response markers are removed before delivery.
+
+The actual14-case/seven-route fault oracle distinguishes unexpected callback,
+internal catch and explicit APIError behavior.10 focused native observer/fault
+tests include subprocess-isolated trace counts1/0/1 and callbacks1/0/0, historical
+default behavior and authenticated list query failure. Existing actual observer
+regression, strict all-target/all-feature and minimal-feature Clippy pass. Logs:
+/private/tmp/fl-configured-diagnostics-{native,ts,observer-oracle,clippy,minimal}.log.
+No full IAM/PG rerun was needed for the new diagnostic mode and bounded catch;
+storage semantics are unchanged. Uncharacterized endpoints/plugins, native typed
+error-representation boundaries and logger payload bytes remain explicit gaps.
+CI runs the actual matrix; this is not blanket logging parity.
