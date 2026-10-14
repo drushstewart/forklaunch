@@ -8115,3 +8115,36 @@ all-target Clippy pass. No dependency/lock changes. Logs
 /private/tmp/fl-zod-string-rules-source-sha256.json. CI runs the oracle. Regex
 flags/state, custom messages, case conversions and lone-surrogate/rawJSON domain
 boundaries remain explicit gaps; literal matching does not imply regex parity.
+
+
+## Generated opt-in TOTP HTTP/MCP checkpoint (2026-10-14)
+
+A fresh source-built CLI passes the full generated Better Auth runtime, including
+112 existing real frontend actions and20 actual twoFactorClient calls against
+an opt-in generated service over realTCP HTTP. Default discovery remainsfalse;
+opt-in HTTP and MCP discovery both reporttrue with equal projections. Both SDKs,
+relocation, contracts, encrypted tenant sessions, independent JWT verification,
+listener modes, restart, preserved configuration, rename and deletion pass.
+The helper uses an owned cookie jar and actual client/plugin; browser enforcement
+is not claimed. Seed cleanup now enumerates exactly the existing two tenant
+scopes plus the new -totp scope. Role fl_auth_gen_1792017605_12346 and all three
+record/audit scopes are verified absent after exit0.
+
+Logs /private/tmp/fl-two-factor-generated-runtime.log,
+/private/tmp/fl-two-factor-client-refactor.log and
+/private/tmp/fl-oct14-totp-cli-build.log; frozen four-file hashes
+/private/tmp/fl-two-factor-generated-source-sha256.json. Build passes with four
+existing warnings. This is a source-built generated runtime, not a new immutable
+archive/public-registry checkpoint. Existing e2e matrix runs runtime.sh; native
+bridge remains in parity CI and helper/seed/runtime paths trigger it.
+Read-only elapsed-clock audits confirm current one-day rotation/reset and signed
+dont_remember inheritance; no speculative expiry change was made. Broader OTP,
+backup disableSession and plugin/options behavior remains open.
+
+Managed platform prerequisite follow-up54cd3375c adds signed creation-context
+before local reservation, required current configurationId on create, and fresh
+inspect context plus current versus historical profile/config identity.61 tests
+and focused strict types pass (/private/tmp/fl-managed-creation-context.log;
+hashes /private/tmp/fl-managed-creation-context-source-sha256.json). Native
+publication must require current==historical==sealed configuration/generation;
+that native integration is in progress, not covered by the platform receipt.

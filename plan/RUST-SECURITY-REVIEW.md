@@ -1004,3 +1004,11 @@ Restricted PostgreSQL, concurrent recovery, RFC vectors, actual client/JWT and
 full IAM regression proofs are recorded in the inventory. This fixed password-
 login profile does not implement OTP delivery, passkeys or universal MFA. The
 immutable5a8 packaged checkpoint predates it; generated opt-inTCP proof is pending.
+
+
+Generated opt-in TOTP now passes realTCP actual-client20 and HTTP/MCP discovery,
+with full generated lifecycle, exact role/tenant cleanup and existing112 frontend
+actions preserved. This supersedes the pending generated proof above; it is not
+an immutable archive or browser-enforcement claim. Elapsed-clock characterization
+confirmed existing rotation expiry, so no unproven session lifetime change was
+introduced. Detailed logs and source hashes are in the parity inventory.

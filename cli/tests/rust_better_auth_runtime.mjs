@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import http from 'node:http';
 import { probeMcp, mcpRpc } from './rust_mcp_probe.mjs';
 import { exerciseFrontendClient } from './fixtures/rust_better_auth_frontend_client.mjs';
+import { exerciseTwoFactorClient } from './fixtures/rust_better_auth_two_factor_client.mjs';
 const [binary, sdkPath] = process.argv.slice(2);
 const { createForkLaunchSdk } = await import(pathToFileURL(sdkPath));
 const role = process.env.FORKLAUNCH_TEST_ROLE;
@@ -237,6 +238,7 @@ try {
   const discovery = await sdk.iam.discovery.getauthmethods();
   assert.equal(discovery.code, 200);
   assert.equal(discovery.response.email, true);
+  assert.equal(discovery.response.twoFactor, false);
   assert.deepEqual(discovery.response.socialProviders, ['google']);
   const mcpDiscovery = await mcpRpc(first.base, 'tools/call', {
     name: 'getauthmethods',
@@ -476,6 +478,18 @@ try {
   );
   await call(ownJwks.base, '/ignored/jwks', {}, 404);
   await stop(ownJwks);
+  const totp = await start('totp', {
+    MCP_ENABLED: 'true',
+    BETTER_AUTH_TWO_FACTOR_ENABLED: 'true'
+  });
+  const totpDiscovery = await createForkLaunchSdk({ baseUrl: totp.base }).iam.discovery.getauthmethods();
+  assert.equal(totpDiscovery.code, 200);
+  assert.equal(totpDiscovery.response.twoFactor, true);
+  assert.equal((await probeMcp(totp.base, ['getauthmethods'])).length, 8);
+  const totpMcp = await mcpRpc(totp.base, 'tools/call', { name: 'getauthmethods', arguments: {} });
+  assert.deepEqual(totpMcp.structuredContent, totpDiscovery.response);
+  await exerciseTwoFactorClient({ baseURL: `${totp.base}${totp.authPath}`, origin, label: 'generated opt-in TOTP real TCP' });
+  await stop(totp);
   await stop(second);
   console.log(
     'PASS generated Better Auth HTTP/MCP shared/separate/disabled listeners, SDK discovery, custom auth paths and URL overrides, encrypted tenant sessions, independent JWT verification, default self-JWKS, HMAC tools, role denial, restart and shutdown'

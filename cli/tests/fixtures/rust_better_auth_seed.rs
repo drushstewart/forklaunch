@@ -1,4 +1,4 @@
-//! Owns only the generated fixture role and its two tenant scopes.
+//! Owns only the generated fixture role and its three explicit tenant scopes.
 use sqlx::postgres::PgPoolOptions;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,10 +17,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().any(|argument| argument == "--cleanup") {
         for table in ["records", "audit"] {
             sqlx::query(&format!(
-                "DELETE FROM fl_better_auth.{table} WHERE tenant_id=$1 OR tenant_id=$2"
+                "DELETE FROM fl_better_auth.{table} WHERE tenant_id=$1 OR tenant_id=$2 OR tenant_id=$3"
             ))
             .bind(format!("{role}-a"))
             .bind(format!("{role}-b"))
+            .bind(format!("{role}-totp"))
             .execute(&pool)
             .await?;
         }
