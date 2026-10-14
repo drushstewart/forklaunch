@@ -134,7 +134,7 @@ export class BaseCheckoutSessionService<
 
     // Creation already mapped this DTO. A cache-only session has no database
     // entity for the update mapper to load, and a read must not mutate one.
-    return cachedSessionDto(checkoutSessionDetails.value);
+    return cachedSessionDto(checkoutSessionDetails.value, id);
   }
 
   async expireCheckoutSession({ id }: IdDto): Promise<void> {

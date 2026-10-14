@@ -6049,3 +6049,17 @@ versioned tests pass with float_roundtrip enabled. Logs:
 FrameworkRequest gains parsed_json; constructor-based callers preserve forward
 compatibility. Registration metadata is validated before exposure and stale or
 duplicate registrations fail. Checklist remains 660/682 (96.8%),22open.
+
+## Checkout/portal cached identity receipt (2026-10-14)
+
+Shared cachedSessionDto now accepts an optional expected identity. Base checkout
+GET and portal GET/update supply the requested ID and reject corrupted cache-key
+payloads before mapper, ORM or provider calls. This also protects Stripe portal
+backup updates before selecting a cached customer for provider session creation.
+Explicit blank/null/undefined expectations fail; omitted helper expectations
+retain compatibility. Valid arbitrary ID formats and known-date restoration
+remain supported. 72 actual base/Stripe/backup cases, 353 configured regressions,
+focused real-source typechecking and 168 base/170 Stripe operations pass:
+/private/tmp/fl-cached-session-identity*.log. CI includes the new fixture.
+This strengthens cache identity checks without making cache rows mutation
+ownership evidence. Broad billing mapper/provider reconciliation gates remain open.

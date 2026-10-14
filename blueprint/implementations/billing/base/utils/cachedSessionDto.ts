@@ -1,8 +1,17 @@
 // Redis cache values cross a JSON boundary. Restore only declared DTO dates;
 // opaque provider payloads must retain their original representation.
 export function cachedSessionDto<
-  T extends { expiresAt: Date; createdAt?: Date; updatedAt?: Date }
->(value: T): T {
+  T extends { id?: string; expiresAt: Date; createdAt?: Date; updatedAt?: Date }
+>(value: T, expectedId?: string): T {
+  if (
+    arguments.length > 1 &&
+    (typeof expectedId !== 'string' ||
+      !expectedId.trim() ||
+      !value ||
+      value.id !== expectedId)
+  ) {
+    throw new Error('Cached session identity does not match');
+  }
   const date = (input: unknown): Date => {
     if (
       !(input instanceof Date) &&

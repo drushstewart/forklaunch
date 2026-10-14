@@ -721,3 +721,14 @@ Configurable JWKS grace changes only public-key publication, not expired-key
 signing eligibility. Typed durations reject unsupported precision/range before
 storage access. Actual-source and focused native proofs are recorded in the
 parity inventory; broader authentication/provider gates remain open.
+
+
+Cache-key and parser-order review (2026-10-14): checkout/portal reads and updates
+now bind cached DTO identity to the requested key before selecting a provider
+customer or reaching ORM/mapping/provider work. Focused base/Stripe tests cover
+both backup modes and prove zero external/storage mutations on denial.
+Opt-in unversioned JSON parsing now precedes authentication consistently even
+when schema validation is disabled. Parser verifier failures remain redacted,
+and original bytes/decoded values are exposed separately. Unsafe numeric and
+unrepresentable Unicode values fail explicitly within the supported profile;
+MCP and generic schema validation remain separate gates.

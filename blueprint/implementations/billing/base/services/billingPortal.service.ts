@@ -113,7 +113,7 @@ export class BaseBillingPortalService<
 
     // Creation already mapped this DTO. A cache-only session has no database
     // entity for the update mapper to load, and a read must not mutate one.
-    return cachedSessionDto(billingPortalDetails.value);
+    return cachedSessionDto(billingPortalDetails.value, idDto.id);
   }
 
   async updateBillingPortalSession(
@@ -136,7 +136,10 @@ export class BaseBillingPortalService<
     if (!existingBillingPortal) {
       throw new Error('Session not found');
     }
-    const existingBillingPortalDto = cachedSessionDto(existingBillingPortal);
+    const existingBillingPortalDto = cachedSessionDto(
+      existingBillingPortal,
+      billingPortalDto.id
+    );
 
     // Configured cache mappers update the DTO directly. Custom mappers without
     // this optional hook retain their existing entity mapping behavior.
@@ -156,7 +159,7 @@ export class BaseBillingPortalService<
       ) {
         throw new Error('Cached session identity cannot change');
       }
-      const updatedBillingPortalDto = cachedSessionDto(updated);
+      const updatedBillingPortalDto = cachedSessionDto(updated, billingPortalDto.id);
       await this.cache.putRecord({
         key: this.createCacheKey(updatedBillingPortalDto.id),
         value: updatedBillingPortalDto,
