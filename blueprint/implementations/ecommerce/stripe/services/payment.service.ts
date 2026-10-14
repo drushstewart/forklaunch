@@ -214,6 +214,9 @@ export class StripePaymentService<
         ? { stripeAccount: this.connect.connectedAccountId }
         : undefined
     );
+    if (paymentIntent?.id !== payment.providerRef) {
+      throw new Error('Stripe returned an invalid PaymentIntent response');
+    }
     await this.validateResume?.(payment, em ?? this.em);
     return {
       ...payment,

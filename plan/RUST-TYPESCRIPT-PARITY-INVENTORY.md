@@ -6825,3 +6825,43 @@ The reproducible configured source type check also passes with a fresh installat
 of the exact canonical runtime manifest used by CI, plus Stripe:
 /private/tmp/fl-oct14-configured-ci-{install,types}.log. CI installs this isolated
 runtime prefix as well as its locked compiler/declaration prefix.
+
+
+## Exact Stripe resume identity and fresh generated ecommerce proof (2026-10-14)
+
+TypeScript StripePaymentService.resumePayment now requires the retrieved intent's
+id to exactly match the retained provider reference before returning a secret,
+including custom mapper fallback. Wrong, missing, nonstring and null response IDs
+fail with a fixed diagnostic that does not disclose provider content. Native
+retrieval already enforced this invariant; its regression now covers the same
+malformed/substituted response shapes. 32 actual configured/custom mapper cases,
+two native provider/guard tests and focused four-service type checking pass:
+/private/tmp/fl-ecommerce-response-id-{ts-parent,native}.log and
+/private/tmp/fl-ecommerce-resume-response-id-types.log. The public API inventory
+is regenerated and its coverage checks pass (44 packages,609 exports,1667
+records,zero unresolved).
+
+A fresh detached CLI source checkpoint24a6250c5b45856b383ed0d0cb88be6a0999f010
+was built offline, embedding that committed module source. Its generated mixed
+ecommerce application passed dry-run, relocation, preservation/sync, provider
+cases, restricted PostgreSQL reconciliation, both contract/OpenAPI SDK generation
+and compilation,32-route HTTP/MCP startup/discovery, two-process checkout races,
+10 concurrent carts, signed Stripe/PayPal callbacks, durable inventory delivery,
+encryption/tenant isolation, restart persistence and rename/delete lifecycle.
+An expanded test overlay additionally cancels the order during the provider GET
+and proves both generated HTTP and MCP withhold a new secret without creating
+another payment or clearing the retained provider reference.
+
+The first expanded test run exposed a fixture-only text-as-JSON mistake; after
+correction a second reached the guard but lacked the explicit Stripe SDK fixture
+path. The final resumed run passes all runtime/lifecycle steps using the same
+unchanged generated source. Logs are retained separately:
+/private/tmp/fl-oct14-ecommerce-checkpoint-cli-build.log,
+/private/tmp/fl-oct14-ecommerce-checkpoint-runtime.log,
+/private/tmp/fl-oct14-ecommerce-checkpoint-runtime-corrected.log,
+/private/tmp/fl-oct14-ecommerce-checkpoint-runtime-final.log.
+The CLI has four existing unrelated warnings. This checkpoint predates the newer
+number/array/numeric-expiry and TS response-ID slices; those have separate source
+receipts and are not claimed as included in this generated proof. Final-check
+races, previously issued secrets and provider cancellation/refund remain outside
+the guard. Broad gates remain open at660/682.

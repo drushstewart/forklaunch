@@ -9,7 +9,7 @@ import {compareCheckout} from './fixtures/rust_ecommerce_checkout_reference.mjs'
 import {compareWebhooks} from './fixtures/rust_ecommerce_webhook_reference.mjs';
 const [binary,sdkPath,bridgeBinary]=process.argv.slice(2);
 const role=process.env.FORKLAUNCH_TEST_ROLE,secret='ecommerce-generated-hmac-secret';
-const children=[];let stripeCalls=0,paypalCalls=0,providerFailure,checkoutTaxDelay=0,captures=0,captureFailure=false;
+const children=[];let stripeCalls=0,paypalCalls=0,providerFailure,checkoutTaxDelay=0,captures=0,captureFailure=false,beforeIntentRead;
 const provider=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   res.setHeader('content-type','application/json');
@@ -19,6 +19,7 @@ const provider=http.createServer(async(req,res)=>{
     if(providerFailure==='payment'){providerFailure=undefined;res.writeHead(503);res.end('{}');return;}
     res.end(JSON.stringify({id:`pi_fixture_${stripeCalls}`,client_secret:'fixture-client-secret'}));
   }else if(req.url.startsWith('/v1/payment_intents/')){
+    if(beforeIntentRead){const callback=beforeIntentRead;beforeIntentRead=undefined;await callback();}
     res.end(JSON.stringify({id:req.url.split('/').at(-1),client_secret:'fixture-client-secret'}));
   }else if(req.url==='/v1/tax/calculations'){
     if(checkoutTaxDelay)await new Promise(resolve=>setTimeout(resolve,checkoutTaxDelay));
@@ -152,6 +153,32 @@ try{
   const sdkCheckout=await liveSdk.ecommerce.checkout.checkout({body:sdkCheckoutBody,headers:{authorization:hmac('/checkout','POST',JSON.stringify(sdkCheckoutBody))}});
   assert.equal(sdkCheckout.code,200);assert.equal(sdkCheckout.response.order.totalCents,813);
   console.log('PASS generated checkout cross-process race: one order/payment/provider call, and ten concurrent carts without application-pool starvation');
+
+  // A concurrent cancellation while Stripe is being read must withhold a new
+  // secret in both generated transports, while retaining the durable reference.
+  for(const transport of ['http','mcp']){
+    const body=await checkoutCart(`cancel-during-resume-${transport}`);
+    const initial=await value(await call(service.base,'/checkout',{method:'POST',body}));
+    const cleared=await call(service.base,`/cart/${body.cartId}`,{method:'DELETE'});
+    assert.equal(cleared.status,200);assert.equal(await cleared.text(),'Cleared cart');
+    const beforeCalls=stripeCalls;
+    beforeIntentRead=async()=>{
+      await value(await call(peer.base,`/order/${initial.order.id}/transition`,{method:'PUT',body:{to:'cancelled'}}));
+    };
+    if(transport==='http'){
+      const rejected=await call(service.base,'/checkout',{method:'POST',body});
+      assert.equal(rejected.status,502);assert.ok(!(await rejected.text()).includes('fixture-client-secret'));
+    }else{
+      const rejected=await mcpRpc(service.base,'tools/call',{name:'checkout',arguments:{body,headers:{authorization:hmac('/checkout','POST',JSON.stringify(body))}}});
+      assert.equal(rejected.isError,true,JSON.stringify(rejected));assert.ok(!JSON.stringify(rejected).includes('fixture-client-secret'));
+    }
+    assert.equal(beforeIntentRead,undefined,'provider read was reached');
+    assert.equal(stripeCalls,beforeCalls,'resume never creates another provider payment');
+    const durable=await value(await call(service.base,`/payment/${initial.payment.id}`));
+    assert.equal(durable.providerRef,initial.payment.providerRef);assert.equal(durable.orderId,initial.order.id);
+    assert.equal((await value(await call(peer.base,`/order/${initial.order.id}`))).status,'cancelled');
+  }
+  console.log('PASS generated HTTP/MCP checkout denies secrets on cancellation during provider read and retains payment references');
 
   const webhookInventory=await compareWebhooks({base:service.base,otherBase:other.base,peerBase:peer.base,call,providerBase,bridgeBinary,setCaptureFailure(value){captureFailure=value;},captureCount:()=>captures,mcpRpc,sdk});
   const webhookWorker=await start({worker:true});

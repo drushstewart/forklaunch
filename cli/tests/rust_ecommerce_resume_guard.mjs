@@ -43,6 +43,20 @@ for(const change of ['cancel','missing','order-id','payment-id','reference','rel
  const service=new Service({paymentIntents:{async retrieve(){calls++;if(change==='cancel')order.status='cancelled';if(change==='missing')order=null;if(change==='order-id')order.id='other';if(change==='payment-id')payment.id='other';if(change==='reference')payment.providerRef='pi_other';if(change==='relation')payment.orderId='other';return {id:'pi_owned',client_secret:'must-not-return'};}}},em,{},actual.validator,mappers);
  await assert.rejects(service.resumePayment({id:'payment'}));assert.equal(calls,1);cases++;
 }
+// Provider response identity is required even for custom mappers without a local guard.
+for(const guard of [true,false]){
+ for(const response of [{id:'pi_other',client_secret:'must-not-return'},{client_secret:'must-not-return'},{id:42,client_secret:'must-not-return'},{id:null,client_secret:'must-not-return'},null]){
+  let calls=0;const payment=structuredClone(original);
+  const em={isInTransaction:()=>false,async findOneOrFail(entity){return entity===Payment?structuredClone(payment):{id:'order',status:'pending'};}};
+  const service=new Service({paymentIntents:{async retrieve(id){calls++;assert.equal(id,'pi_owned');return response;}}},em,{},actual.validator,{...mappers,PaymentMapper:{...mappers.PaymentMapper,validateResume:guard?mappers.PaymentMapper.validateResume:undefined}});
+  await assert.rejects(service.resumePayment({id:'payment'}),error=>error.message==='Stripe returned an invalid PaymentIntent response');
+  assert.equal(calls,1);assert.deepEqual(payment,original);cases++;
+ }
+ // The custom-mapper fallback still accepts an exactly matching provider response.
+ let calls=0;const em={isInTransaction:()=>false,async findOneOrFail(entity){return entity===Payment?structuredClone(original):{id:'order',status:'pending'};}};
+ const service=new Service({paymentIntents:{async retrieve(id){calls++;return {id,client_secret:'owned-secret'};}}},em,{},actual.validator,{...mappers,PaymentMapper:{...mappers.PaymentMapper,validateResume:guard?mappers.PaymentMapper.validateResume:undefined}});
+ assert.equal((await service.resumePayment({id:'payment'})).clientSecret,'owned-secret');assert.equal(calls,1);cases++;
+}
 // Generic custom mapper compatibility and provider-less configured checks.
 for(const guard of [true,false]){let calls=0;const payment={...original,providerRef:undefined};const em={isInTransaction:()=>false,async findOneOrFail(entity){if(entity===Order)throw Error('missing order');return {...payment};}};const service=new Service({paymentIntents:{async retrieve(){calls++;throw Error('unexpected');}}},em,{},actual.validator,{...mappers,PaymentMapper:{...mappers.PaymentMapper,validateResume:guard?mappers.PaymentMapper.validateResume:undefined}});if(guard)await assert.rejects(service.resumePayment({id:'payment'}));else assert.equal((await service.resumePayment({id:'payment'})).clientSecret,undefined);assert.equal(calls,0);cases++;}
 if(process.env.FORKLAUNCH_TEST_POSTGRES_URL){

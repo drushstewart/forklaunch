@@ -868,3 +868,17 @@ test-only reference collision was corrected and its exact owned role/tenant clea
 Default application routes receive no administrative grants. Short-lived
 provider-account/mode verification, cancelled-order repair and reference retirement
 remain open; retain existing references for review until that integration exists.
+
+
+### Stripe resume identity and generated cancellation guard (2026-10-14)
+
+Configured and custom-fallback TS resume now reject substituted or malformed
+provider response IDs before returning secrets, matching the existing native
+identity check. Fixed diagnostics disclose no provider secret/body. Actual32
+cases and native regression pass. Fresh generated checkpoint24a additionally
+passes HTTP/MCP cancellation-during-provider-read checks: secrets are withheld,
+references retained, no replacement provider payment created. This is a pair of
+consistency observations; a race remains after the final check, previously issued
+secrets are not revoked, and no provider cancellation or monetary action occurs.
+See the dated inventory receipt for exact checkpoint and preserved failure/final
+logs.

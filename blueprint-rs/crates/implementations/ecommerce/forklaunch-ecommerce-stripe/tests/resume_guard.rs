@@ -137,3 +137,50 @@ async fn guarded_resume_denies_cancellation_before_and_during_get() {
     );
     server.abort();
 }
+
+#[tokio::test]
+async fn retrieve_rejects_mismatched_or_malformed_response_identity() {
+    let body = Arc::new(std::sync::Mutex::new(serde_json::Value::Null));
+    let app = Router::new()
+        .route(
+            "/v1/payment_intents/pi_owned",
+            get(
+                |State(body): State<Arc<std::sync::Mutex<serde_json::Value>>>| async move {
+                    Json(body.lock().unwrap().clone())
+                },
+            ),
+        )
+        .with_state(body.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = StripeClient::with_transport(
+        "owned-secret".into(),
+        ProviderHttpClient::new(&format!("http://{address}"), Duration::from_secs(5), 1024)
+            .unwrap(),
+    )
+    .unwrap();
+    for response in [
+        json!({"id":"pi_other","client_secret":"must-not-return"}),
+        json!({"client_secret":"must-not-return"}),
+        json!({"id":42,"client_secret":"must-not-return"}),
+        json!({"id":null,"client_secret":"must-not-return"}),
+        serde_json::Value::Null,
+    ] {
+        *body.lock().unwrap() = response;
+        let error = client.retrieve_intent("pi_owned", None).await.unwrap_err();
+        assert!(!format!("{error:?}").contains("must-not-return"));
+        assert!(!format!("{error:?}").contains("pi_other"));
+    }
+    *body.lock().unwrap() = json!({"id":"pi_owned","client_secret":"owned-secret"});
+    assert_eq!(
+        client
+            .retrieve_intent("pi_owned", None)
+            .await
+            .unwrap()
+            .client_secret
+            .as_deref(),
+        Some("owned-secret")
+    );
+    server.abort();
+}
