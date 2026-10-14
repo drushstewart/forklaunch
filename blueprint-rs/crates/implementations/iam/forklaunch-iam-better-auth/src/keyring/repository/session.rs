@@ -69,6 +69,18 @@ impl<'a, S: AuthStore> KeySession<'a, S> {
             .read_default_window()
             .await
     }
+    pub(in super::super) async fn by_id(&mut self, id: &str) -> BlueprintResult<Option<KeyRecord>> {
+        if self.adapter.is_some_and(|adapter| adapter.read.is_some()) {
+            return Ok(self
+                .read()
+                .await?
+                .into_iter()
+                .find(|record| record.has_id(id)));
+        }
+        KeyRepository::new(self.transaction().await?)
+            .by_id(id)
+            .await
+    }
     pub(in super::super) async fn select(
         &mut self,
         primary: &str,

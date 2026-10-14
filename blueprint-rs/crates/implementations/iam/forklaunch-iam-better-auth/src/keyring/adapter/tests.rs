@@ -392,6 +392,16 @@ async fn public_only_snapshot_publishes_verifies_and_never_falls_back_when_signi
             .await
             .is_err()
     );
+    assert!(
+        ring.sign_jwt_with_key_id(
+            Some(&json!({"payload":{"sub":"owner"}})),
+            "public-only",
+            None,
+            time()
+        )
+        .await
+        .is_err()
+    );
 }
 
 #[test]
@@ -407,4 +417,105 @@ fn public_only_rejects_private_unknown_mismatched_and_unbounded_jwk_fields() {
         public[field] = value;
         assert!(JwksPublicKeyRecord::new("public-only", "EdDSA", time(), None, &public).is_err());
     }
+}
+
+#[tokio::test]
+async fn key_id_pinning_reads_once_and_never_mints_on_constraint_failure() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    for (expiry, expected, success) in [
+        (None, None, true),
+        (None, Some("EdDSA"), true),
+        (None, Some("ES256"), false),
+        (
+            Some(time() - chrono::Duration::milliseconds(1)),
+            None,
+            false,
+        ),
+        (Some(time()), None, true),
+    ] {
+        let key = material();
+        let key =
+            JwksKeyMaterial::new("EdDSA", time(), expiry, key.private_pkcs8().to_vec()).unwrap();
+        let record = JwksKeyRecord::new("pinned", key).unwrap();
+        let count = Arc::new(AtomicUsize::new(0));
+        let reads = count.clone();
+        let ring = KeyRing::new(Arc::new(UnavailableStore), "https://owned.test")
+            .with_jwks_adapter(JwksAdapter::new("tenant").unwrap().with_get_jwks(move |_| {
+                reads.fetch_add(1, Ordering::SeqCst);
+                let record = record.clone();
+                async move { Ok(Some(vec![record])) }
+            }));
+        let result = ring
+            .sign_jwt_with_key_id(
+                Some(&json!({"payload":{"sub":"owner"}})),
+                "pinned",
+                expected,
+                time(),
+            )
+            .await;
+        assert_eq!(result.is_ok(), success);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        assert!(
+            ring.sign_jwt_with_key_id(
+                Some(&json!({"payload":{"sub":"owner"}})),
+                "missing",
+                None,
+                time()
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+    }
+}
+
+#[tokio::test]
+async fn default_key_id_lookup_exceeds_default_window_without_minting() {
+    let store = Arc::new(MemoryAuthStore::default());
+    let material = material();
+    let mut tx = store.begin(true).await.unwrap();
+    for index in 0..101 {
+        tx.insert(
+            Model::Jwks,
+            JwksKeyRecord::new(format!("key-{index:03}"), material.clone())
+                .unwrap()
+                .row()
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+    let ring = KeyRing::new(store.clone(), "https://owned.test");
+    let signed = ring
+        .sign_jwt_with_key_id(
+            Some(&json!({"payload":{"sub":"owner"}})),
+            "key-100",
+            None,
+            time(),
+        )
+        .await
+        .unwrap();
+    let header = super::super::verify::compact(signed["token"].as_str().unwrap())
+        .unwrap()
+        .0;
+    assert_eq!(header["kid"], "key-100");
+    let mut tx = store.begin(true).await.unwrap();
+    let mut legacy = tx.get(Model::Jwks, "key-100").await.unwrap().unwrap();
+    legacy.as_object_mut().unwrap().remove("alg");
+    tx.replace(Model::Jwks, legacy).await.unwrap();
+    tx.commit().await.unwrap();
+    assert!(
+        ring.sign_jwt_with_key_id(
+            Some(&json!({"payload":{"sub":"owner"}})),
+            "key-100",
+            None,
+            time()
+        )
+        .await
+        .is_err()
+    );
+    let mut tx = store.begin(false).await.unwrap();
+    assert_eq!(tx.list(Model::Jwks).await.unwrap().len(), 101);
+    tx.commit().await.unwrap();
 }

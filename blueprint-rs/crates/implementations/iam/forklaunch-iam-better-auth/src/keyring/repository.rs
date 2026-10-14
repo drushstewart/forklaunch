@@ -20,6 +20,9 @@ impl KeyRecord {
     pub(super) fn expires_at(&self) -> BlueprintResult<Option<DateTime<Utc>>> {
         optional_time(&self.0, "expiresAt")
     }
+    pub(super) fn explicit_algorithm(&self) -> Option<&str> {
+        self.0["alg"].as_str()
+    }
     pub(super) fn matches_algorithm(&self, algorithm: &str) -> bool {
         self.0["alg"] == algorithm || self.0["alg"].is_null()
     }
@@ -40,6 +43,9 @@ pub(super) struct KeyRepository<'a, T> {
 impl<'a, T: AuthTransaction> KeyRepository<'a, T> {
     pub(super) fn new(transaction: &'a mut T) -> Self {
         Self { transaction }
+    }
+    pub(super) async fn by_id(&mut self, id: &str) -> BlueprintResult<Option<KeyRecord>> {
+        Ok(self.transaction.get(Model::Jwks, id).await?.map(KeyRecord))
     }
     pub(super) async fn read_default_window(&mut self) -> BlueprintResult<Vec<KeyRecord>> {
         Ok(self

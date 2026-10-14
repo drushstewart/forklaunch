@@ -15,6 +15,34 @@ impl<S: AuthStore> KeyRing<S> {
         body: Option<&Value>,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        self.sign_selected(body, None, now).await
+    }
+    /// Signs using an explicitly provisioned key ID, optionally requiring its algorithm.
+    /// Missing, expired, mismatched or public-only keys never trigger replacement minting.
+    /// # Errors
+    /// Returns sanitized input, storage or key errors. IDs must be nonempty and at most 512 bytes.
+    pub async fn sign_jwt_with_key_id(
+        &self,
+        body: Option<&Value>,
+        key_id: &str,
+        expected_algorithm: Option<&str>,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Value> {
+        if key_id.is_empty()
+            || key_id.len() > 512
+            || expected_algorithm.is_some_and(|algorithm| algorithm.len() > 16)
+        {
+            return Err(error("Invalid signing key constraint"));
+        }
+        self.sign_selected(body, Some((key_id, expected_algorithm)), now)
+            .await
+    }
+    async fn sign_selected(
+        &self,
+        body: Option<&Value>,
+        pin: Option<(&str, Option<&str>)>,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Value> {
         schema::validate(body)?;
         let body = body.ok_or_else(|| error("Invalid signing input"))?;
         let payload = &body["payload"];
@@ -27,7 +55,24 @@ impl<S: AuthStore> KeyRing<S> {
         let primary = options["jwks"]["keyPairConfig"]["alg"]
             .as_str()
             .unwrap_or("EdDSA");
-        let selected = tx.select(primary).await?;
+        let selected = if let Some((id, expected_algorithm)) = pin {
+            let row = tx
+                .by_id(id)
+                .await?
+                .ok_or_else(|| error("Requested signing key unavailable"))?;
+            if row.explicit_algorithm().is_none()
+                || row
+                    .expires_at()?
+                    .is_some_and(|expiry| expiry.timestamp_millis() < now.timestamp_millis())
+                || expected_algorithm
+                    .is_some_and(|algorithm| row.explicit_algorithm() != Some(algorithm))
+            {
+                return Err(error("Requested signing key unavailable"));
+            }
+            Some(row)
+        } else {
+            tx.select(primary).await?
+        };
         let key = if let Some(row) = selected {
             row.signing_key()?
         } else {

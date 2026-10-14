@@ -7259,3 +7259,18 @@ suite91 pass/2 ignored and strict all-feature/all-target Clippy:
 /private/tmp/fl-observer-isolated-{stress,full}.log and
 /private/tmp/fl-observer-pin-clippy.log. This full suite also includes the pending
 key-ID signing constraint slice. A corrected immutable archive rerun is required.
+
+
+## Trusted signing-key ID constraints (2026-10-14)
+
+Additive server-only KeyRing.sign_jwt_with_key_id selects an exact tenant-bound
+default-store ID beyond the100-row window, or reads a custom source once. Missing,
+expired, algorithm-mismatched and public-only selections fail without minting or
+fallback. Optional algorithm assertions require explicit stored metadata;512-byte
+IDs and16-byte algorithm constraints are bounded. Expiry equality at the current
+millisecond is accepted, matching actual Better Auth's strict-less-than pin check.
+Seven actual JOSE cases pass: /private/tmp/fl-jwks-pinning-ts.log. Two new native
+tests plus public-only rejection pass inside the91-test IAM suite and strict
+Clippy noted above. This adds no HTTP route or client-controlled signing authority.
+Legacy missing-algorithm inheritance, algorithm-only provisioning, resolved-key
+input and external-signer pin metadata remain separate, unclaimed behavior.

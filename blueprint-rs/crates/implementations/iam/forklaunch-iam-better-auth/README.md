@@ -1045,3 +1045,15 @@ accessor and create callback are unchanged. A public-only create return remains
 unrepresentable by the typed create callback; upstream accepts it structurally
 but signing subsequently fails. This does not add arbitrary JWK import or change
 the encrypted default backend.
+
+`KeyRing::sign_jwt_with_key_id` is a trusted server-only per-call constraint,
+corresponding to upstream `signJWT` configuration `signingKeyId` with an optional
+`signingAlgorithm` assertion. It is separate from JSON `overrideOptions` and
+adds no HTTP endpoint. Default storage uses an exact tenant-bound ID lookup;
+a custom source is read exactly once. Missing, expired, algorithm-mismatched,
+public-only or invalid keys fail without minting or selecting an alternative.
+Expiry equal to the current millisecond is accepted, matching upstream's strict
+less-than check for an explicitly pinned ID. IDs are limited to 512 bytes.
+This native subset requires explicit algorithm metadata. Legacy missing-algorithm
+inheritance, algorithm-only lazy provisioning, caller-supplied resolved signing
+keys and forwarding pinning metadata to an external signer remain separate APIs.

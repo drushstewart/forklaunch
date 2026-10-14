@@ -81,3 +81,27 @@ assert.equal((await publicAuth.api.verifyJWT({body:{token:publicToken}})).payloa
 await assert.rejects(signJWT(context,{options:{jwks:{disablePrivateKeyEncryption:true},adapter:{getJwks:async()=>[publicOnly]}},payload:{sub:'owner'}}));
 await assert.rejects(signJWT(context,{options:{jwks:{disablePrivateKeyEncryption:true},adapter:{getJwks:async()=>[],createJwk:async()=>publicOnly}},payload:{sub:'owner'}}));
 console.log('PASS actual public-only key: publication and verification work; signing fails for both read-selected and create-returned public-only records');
+
+// ID pinning is a signJWT config option, not an overrideOptions payload key.
+const OriginalDate=Date;
+const pinNow=1800000000000;
+globalThis.Date=class extends OriginalDate {constructor(...args){super(...(args.length?args:[pinNow]));}static now(){return pinNow;}};
+try {
+ for(const [label,record,expectedAlg,success] of [
+  ['live',replacement,undefined,true],
+  ['matching',replacement,'EdDSA',true],
+  ['mismatch',replacement,'ES256',false],
+  ['missing',undefined,undefined,false],
+  ['expired',{...replacement,expiresAt:new Date(pinNow-1)},undefined,false],
+  ['boundary',{...replacement,expiresAt:new Date(pinNow)},undefined,true],
+  ['public',publicOnly,undefined,false],
+ ]) {
+  let pinReads=0;
+  const options={jwks:{disablePrivateKeyEncryption:true},adapter:{getJwks:async()=>{pinReads++;return record?[record]:[];},createJwk:async()=>{throw new Error('pinned selection must not create');}}};
+  const operation=signJWT(context,{options,payload:{sub:label},signingKeyId:replacement.id,...(expectedAlg?{signingAlgorithm:expectedAlg}:{})});
+  if(success){const signed=await operation;const result=await jwtVerify(signed,pair.publicKey,{currentDate:new Date(pinNow)});assert.equal(result.protectedHeader.kid,replacement.id);assert.equal(result.payload.sub,label);}
+  else await assert.rejects(operation);
+  assert.equal(pinReads,1,label);
+ }
+}finally{globalThis.Date=OriginalDate;}
+console.log('PASS actual ID pinning: single reader lookup, matching algorithm, mismatch/missing/expired/public failure without mint, exact expiry equality accepted');
