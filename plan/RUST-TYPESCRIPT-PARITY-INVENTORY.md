@@ -6675,3 +6675,17 @@ prove successful trimmed body/query projections commit atomically in all three
 modes; failure preserves all original sections and markers. This is strict JSON
 string input with u32 limits, not generic Zod, regex/case folding/custom messages,
 JavaScript object coercion or lone-surrogate support.
+
+
+## Header-array static typing follow-up (2026-10-14)
+
+The expanded configured-mapper typecheck exposed an introduced error in the
+header-array wrapper: its captured generic setter was narrowed to string-only.
+The capture now uses the actual Express Response setHeader signature, preserving
+array values without changing generic response interfaces or runtime behavior.
+All54 header HTTP pairs pass again. The full eight-root check no longer reports
+that error;13 separate Bun/SendFileOptions/Dict/Timer/swagger declaration dependency
+errors remain recorded at this checkpoint. No clean full-typecheck claim is made:
+/private/tmp/fl-response-header-types-oracle.log and
+/private/tmp/fl-response-header-full-roots-types.log. The string-profile CI step
+also explicitly selects its installed compiler and validator dependency roots.
