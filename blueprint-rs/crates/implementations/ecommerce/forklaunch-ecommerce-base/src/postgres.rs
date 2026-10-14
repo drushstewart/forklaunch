@@ -14,6 +14,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
 mod cancellation;
 mod compliance;
+mod payment_review;
 mod reconciliation;
 mod retention;
 mod webhook;

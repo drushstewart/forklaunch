@@ -4767,3 +4767,30 @@ passes with update mode disabled. Evidence:
 `/private/tmp/fl-request-errors-{parity-final,clippy-final,tests,canonical-check}.log`
 and `/private/tmp/fl-openapi-no-body.log`. Checklist remains
 **658/682 (96.5%), 24 open**.
+
+
+### 2026-10-13 — Cancelled-order payment-reference review
+
+`review_cancelled_order_payments` provides a tenant-bound read-only report with
+1–100-entry keyset pages. It requires a cancelled order and distinguishes missing
+references, unverified pending/claim-or-capture/failed states, recorded capture
+or cancellation evidence, and contradictory evidence. A local Succeeded value
+alone is not treated as proof of external capture. Every record/reference is
+preserved; the report authorizes no refund, reference reuse or order reopening.
+
+Memory holds record/audit locks together. PostgreSQL uses one MVCC statement per
+page, selecting order status and payment fields without decrypting order PII.
+Historical evidence must match payment ID/reference/amount/currency, and conflicting
+provider names or capture/cancellation/status evidence is flagged. Existing audit
+schemas cannot bind a historical merchant account or distinguish delete/recreate
+with an identical tuple, so results remain historical evidence, not fresh provider
+truth. Each page is independent; concurrent insertions before a cursor require
+restarting the scan.
+
+The shared memory/restricted PostgreSQL fixtures cover all classifications, empty/
+missing/noncancelled orders, tenant isolation, pagination, stale replacement
+references, amount mismatch and no PII output. One memory test, two PostgreSQL
+tests (including timestamp migration regression) and strict all-feature/all-target
+Clippy pass. Evidence: `/private/tmp/fl-cancelled-order-review-{tests,postgres,clippy}.log`.
+Gate875 remains open for unresolved provider effects and reference reconciliation;
+checklist stays **658/682 (96.5%), 24 open**.

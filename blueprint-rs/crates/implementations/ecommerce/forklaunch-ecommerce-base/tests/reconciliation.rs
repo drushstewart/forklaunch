@@ -1,3 +1,5 @@
+#[path = "support/payment_review.rs"]
+mod payment_review;
 use forklaunch_blueprint_core::AuditContext;
 use forklaunch_ecommerce_base::{
     BaseEcommerceService,
@@ -255,6 +257,7 @@ async fn memory_repairs_are_audited_and_reject_stale_snapshots() {
             .canceled_at,
         None
     );
+    payment_review::exercise(store.clone()).await;
 }
 #[cfg(feature = "postgres")]
 #[tokio::test]
@@ -262,6 +265,7 @@ async fn memory_repairs_are_audited_and_reject_stale_snapshots() {
 #[allow(clippy::too_many_lines)]
 async fn postgres_repair_audit_rollback_tenants_and_restart() {
     use forklaunch_core::persistence::{TenantContext, encryption::FieldEncryptor};
+    use forklaunch_ecommerce_base::payment_review::CancelledOrderPaymentReviewStore;
     use forklaunch_ecommerce_base::postgres::PostgresEcommerceStore;
     use sqlx::postgres::PgPoolOptions;
     let owner = PgPoolOptions::new()
@@ -443,6 +447,13 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
         PaymentStatus::Failed
     );
     assert!(reopened.claim_for_confirmation("void-ref").await.is_err());
+    payment_review::exercise(store.clone()).await;
+    assert!(
+        other
+            .review_cancelled_order_payments("review-order", None, 10)
+            .await
+            .is_err()
+    );
     drop(reopened);
     drop(other);
     drop(service);
