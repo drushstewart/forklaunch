@@ -1,23 +1,23 @@
-//! Opt-in direct, durable checkout reads through explicit public UUID aliases.
-use crate::{client::StripeResource, services::StripeBillingService};
+//! Opt-in verified, durable checkout reads through explicit public UUID aliases.
+use crate::services::StripeBillingService;
 use forklaunch_billing_base::services::{
     BillingKind,
     postgres::{PostgresBillingStore, StripeBindingScope},
 };
 use forklaunch_billing_interface::services::CheckoutSessionDto;
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
-use serde_json::{Value, json};
+use serde_json::Value;
 use uuid::Uuid;
 
 impl StripeBillingService<PostgresBillingStore> {
     /// Opt-in durable read by public UUID, not the existing cache-only trait get.
-    /// Verifies direct account/mode, then resolves tenant-scoped ownership before
+    /// Verifies direct or managed account/mode, then resolves tenant-scoped ownership before
     /// fetching the bound Stripe object. Rechecks binding generation after network
     /// work, audits durable decryption and checks freshness after DB work too.
     /// No provider/local mutation occurs; only the sensitive-read audit is appended.
     /// `scope` must be trusted server configuration, never an HTTP DTO.
     /// # Errors
-    /// Rejects managed mode, unbound/foreign UUIDs, changed account/mode, stale
+    /// Rejects unsupported gateways, unbound/foreign UUIDs, changed account/mode, stale
     /// context, replaced aliases, customer mismatch and malformed provider evidence.
     pub async fn get_bound_checkout_session(
         &self,
@@ -37,11 +37,7 @@ impl StripeBillingService<PostgresBillingStore> {
         context.ensure_current(self.client())?;
         let provider = self
             .client()
-            .retrieve(
-                StripeResource::CheckoutSession,
-                binding.provider_id(),
-                &json!({}),
-            )
+            .retrieve_checkout_in_context(&context, binding.provider_id())
             .await?;
         context.ensure_current(self.client())?;
         if provider["id"] != binding.provider_id()

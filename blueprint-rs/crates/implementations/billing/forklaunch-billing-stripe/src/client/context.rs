@@ -1,11 +1,10 @@
-//! Direct-account verification. Managed gateway context needs a separate,
-//! authenticated account/mode/binding-generation contract before integration.
+//! Direct and generation-scoped managed account verification.
 use super::{BillingTransport, StripeBillingClient};
 use forklaunch_blueprint_core::{
     BlueprintError, BlueprintResult, provider_http::provider_status_error,
 };
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -23,6 +22,7 @@ pub struct VerifiedStripeContext {
     started_at: Instant,
     account_id: String,
     livemode: bool,
+    managed: Option<(String, Value)>,
 }
 impl VerifiedStripeContext {
     #[must_use]
@@ -49,23 +49,18 @@ impl VerifiedStripeContext {
 impl StripeBillingClient {
     /// Authenticates the current direct account using GET /v1/account and its
     /// mode using GET /v1/balance, under the same immutable bearer/version/URL.
+    /// Managed clients use the dedicated signed JSON scope protocol instead.
     /// Expectations must come from trusted server configuration, not request DTOs.
     /// Restricted keys without these read permissions fail closed. No key-prefix
     /// inference, cache, provider writes, Connect header or local binding mutation.
     /// # Errors
     /// Rejects account/mode mismatch, malformed responses, expired verification,
-    /// provider errors, and managed mode (before issuing any gateway request).
+    /// provider errors or an unsupported/malformed managed gateway protocol.
     pub async fn verify_context(
         &self,
         expected_account: &str,
         expected_livemode: bool,
     ) -> BlueprintResult<VerifiedStripeContext> {
-        if matches!(self.transport, BillingTransport::Managed(_)) {
-            return Err(BlueprintError::new(
-                "billing_managed_context_unavailable",
-                "Managed billing context verification requires a scoped gateway contract",
-            ));
-        }
         if !expected_account.starts_with("acct_")
             || expected_account.len() <= 5
             || expected_account.len() > 128
@@ -76,6 +71,44 @@ impl StripeBillingClient {
             return Err(mismatch());
         }
         let started_at = Instant::now();
+        if let BillingTransport::Managed(gateway) = &self.transport {
+            let response = gateway.request_json(Method::POST, &["payments", "context"], Some(&json!({
+                "accountId": expected_account, "livemode": expected_livemode, "apiVersion": self.api_version.as_str()
+            }))).await?;
+            if !(200..300).contains(&response.status) {
+                return Err(mismatch());
+            }
+            let scope = &response.body["scope"];
+            if scope["version"] != 1
+                || scope["instanceId"] != gateway.instance_id()
+                || scope["accountId"] != expected_account
+                || scope["livemode"].as_bool() != Some(expected_livemode)
+                || scope["apiVersion"] != self.api_version.as_str()
+                || scope["organizationId"].as_str().is_none_or(str::is_empty)
+                || scope["bindingGeneration"]
+                    .as_str()
+                    .is_none_or(|id| uuid::Uuid::parse_str(id).is_err())
+                || scope["issuedAt"]
+                    .as_i64()
+                    .zip(scope["expiresAt"].as_i64())
+                    .is_none_or(|(a, b)| b.checked_sub(a) != Some(5000))
+            {
+                return Err(mismatch());
+            }
+            let token = response.body["contextToken"]
+                .as_str()
+                .filter(|v| !v.is_empty() && v.len() <= 4096)
+                .ok_or_else(mismatch)?;
+            let context = VerifiedStripeContext {
+                generation: self.config_generation.clone(),
+                started_at,
+                account_id: expected_account.into(),
+                livemode: expected_livemode,
+                managed: Some((token.into(), scope.clone())),
+            };
+            context.ensure_current(self)?;
+            return Ok(context);
+        }
         let account = self.context_get("account").await?;
         if account["object"] != "account" || account["id"] != expected_account {
             return Err(mismatch());
@@ -91,9 +124,51 @@ impl StripeBillingClient {
             started_at,
             account_id: expected_account.into(),
             livemode: expected_livemode,
+            managed: None,
         };
         context.ensure_current(self)?;
         Ok(context)
+    }
+    /// Reads a checkout through the same verified direct or managed scope.
+    /// # Errors
+    /// Rejects stale/foreign contexts and changed gateway scope envelopes.
+    pub async fn retrieve_checkout_in_context(
+        &self,
+        context: &VerifiedStripeContext,
+        id: &str,
+    ) -> BlueprintResult<Value> {
+        context.ensure_current(self)?;
+        super::validate_id(id)?;
+        let value = match (&self.transport, &context.managed) {
+            (BillingTransport::Direct { .. }, None) => {
+                self.retrieve(super::StripeResource::CheckoutSession, id, &json!({}))
+                    .await?
+            }
+            (BillingTransport::Managed(gateway), Some((token, scope))) => {
+                let response = gateway
+                    .request_json(
+                        Method::POST,
+                        &["payments", "context", "checkout-read"],
+                        Some(&json!({
+                            "contextToken": token, "id": id, "apiVersion": self.api_version.as_str()
+                        })),
+                    )
+                    .await?;
+                if !(200..300).contains(&response.status) || response.body["scope"] != *scope {
+                    return Err(mismatch());
+                }
+                response.body["object"].clone()
+            }
+            _ => return Err(mismatch()),
+        };
+        context.ensure_current(self)?;
+        if value["object"] != "checkout.session"
+            || value["id"] != id
+            || value["livemode"].as_bool() != Some(context.livemode)
+        {
+            return Err(mismatch());
+        }
+        Ok(value)
     }
     async fn context_get(&self, resource: &str) -> BlueprintResult<Value> {
         let BillingTransport::Direct { http, secret } = &self.transport else {
@@ -253,9 +328,9 @@ mod tests {
                 .err()
                 .unwrap()
                 .code,
-            "billing_managed_context_unavailable"
+            "billing_provider_context_mismatch"
         );
-        assert_eq!(state.calls.load(Ordering::SeqCst), calls);
+        assert_eq!(state.calls.load(Ordering::SeqCst), calls + 1);
         server.abort();
     }
     #[tokio::test]

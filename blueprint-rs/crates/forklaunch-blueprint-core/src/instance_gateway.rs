@@ -25,6 +25,12 @@ impl std::fmt::Debug for InstanceGatewayClient {
     }
 }
 impl InstanceGatewayClient {
+    /// Authenticated instance identity from trusted transport configuration.
+    #[must_use]
+    pub fn instance_id(&self) -> &str {
+        &self.instance_id
+    }
+
     /// # Errors
     /// Rejects invalid credentials, remote plaintext and unsafe gateway URLs.
     pub fn new(gateway_url: &str, instance_id: String, hmac_key: String) -> BlueprintResult<Self> {

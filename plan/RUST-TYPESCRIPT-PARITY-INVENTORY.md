@@ -5393,3 +5393,29 @@ compilation. CI runs the actual ORM comparison. Receipts:
 Empty logical groups, arbitrary fields/JSON paths, range/date/LIKE operators,
 sorting, pagination and custom ORM entities remain unsupported. This does not
 close generic directory extensions. Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: generation-scoped managed checkout reads
+
+Companion commit `b91838722` adds dedicated signed context and checkout-read
+endpoints. Contexts bind instance, organization, connected account, explicit mode,
+API version and database-generated binding generation within five seconds.
+Fresh ownership reads before/after provider work reject rebinding, including ABA
+changes; bounded provider bodies, immutable configuration and authenticated scope
+echoes prevent stale or ambiguous evidence from becoming durable checkout reads.
+The Rust client and local gateway mock implement the same read-only protocol.
+Existing financial mutation routes are unchanged.
+
+Verified: 29 actual-source platform tests, including controller HMAC, replay,
+rate limits, no-store refusals and real MikroORM/PostgreSQL fresh binding queries;
+11 native tests plus both restricted PostgreSQL bound-checkout variants; strict
+Clippy, focused actual-dependency TypeScript checks, signed cross-language HTTP
+and real gateway-mock conformance. Fixtures cover replacement races, final
+database-wait expiry, audit failure and ciphertext preservation. Receipts:
+`/private/tmp/fl-managed-payments-context-tests.log` and
+`/private/tmp/fl-billing-managed-context-{native,postgres,clippy,http}.log`.
+
+Full platform bootstrap/typecheck, live Stripe and cloud deployment remain
+unvalidated. Durable alias reads still require explicit trusted ownership and
+provider-customer mappings; broader billing integration/reconciliation stays
+open. Checklist: **660/682 (96.8%), 22 open**.

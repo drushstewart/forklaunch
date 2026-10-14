@@ -1,5 +1,10 @@
 #![cfg(feature = "postgres-identity")]
-use axum::{Json, Router, extract::State, http::HeaderMap, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::HeaderMap,
+    routing::{get, post},
+};
 use forklaunch_billing_base::services::{
     BaseBillingService, BillingKind, BillingStore, Scope,
     postgres::{PostgresBillingStore, StripeBindingScope},
@@ -31,7 +36,7 @@ fn auth(headers: &HeaderMap) {
     assert_eq!(headers["authorization"], "Bearer opaque-owned-credential");
     assert!(!headers.contains_key("stripe-account"));
 }
-async fn provider() -> (StripeBillingClient, Provider, tokio::task::JoinHandle<()>) {
+async fn provider(managed: bool) -> (StripeBillingClient, Provider, tokio::task::JoinHandle<()>) {
     let state = Provider {
         object: Arc::new(Mutex::new(
             json!({"id":"cs_remote","object":"checkout.session","mode":"subscription","livemode":false,"customer":"cus_owned","url":"https://provider.test/current"}),
@@ -41,6 +46,7 @@ async fn provider() -> (StripeBillingClient, Provider, tokio::task::JoinHandle<(
         entered: Arc::new(Notify::new()),
         resume: Arc::new(Notify::new()),
     };
+    let scope = json!({"version":1,"instanceId":"instance-owned","organizationId":"org-owned","accountId":"acct_owned","livemode":false,"bindingGeneration":"00000000-0000-4000-8000-000000000001","apiVersion":forklaunch_billing_stripe::client::STRIPE_API_VERSION,"issuedAt":10000,"expiresAt":15000});
     let app = Router::new()
         .route(
             "/v1/account",
@@ -68,6 +74,48 @@ async fn provider() -> (StripeBillingClient, Provider, tokio::task::JoinHandle<(
                 Json(s.object.lock().unwrap().clone())
             }),
         )
+        .route(
+            "/instance-gateway/payments/context",
+            post({
+                let scope = scope.clone();
+                move |h: HeaderMap| {
+                    let scope = scope.clone();
+                    async move {
+                        assert!(
+                            h["authorization"]
+                                .to_str()
+                                .unwrap()
+                                .starts_with("HMAC keyId=instance-owned ")
+                        );
+                        Json(json!({"scope":scope,"contextToken":"owned-fixture-token"}))
+                    }
+                }
+            }),
+        )
+        .route(
+            "/instance-gateway/payments/context/checkout-read",
+            post(
+                move |State(s): State<Provider>, h: HeaderMap, Json(body): Json<Value>| {
+                    let scope = scope.clone();
+                    async move {
+                        assert!(
+                            h["authorization"]
+                                .to_str()
+                                .unwrap()
+                                .starts_with("HMAC keyId=instance-owned ")
+                        );
+                        assert_eq!(body["contextToken"], "owned-fixture-token");
+                        assert_eq!(body["id"], "cs_remote");
+                        s.reads.fetch_add(1, Ordering::SeqCst);
+                        if s.pause.load(Ordering::SeqCst) {
+                            s.entered.notify_one();
+                            s.resume.notified().await;
+                        }
+                        Json(json!({"scope":scope,"object":s.object.lock().unwrap().clone()}))
+                    }
+                },
+            ),
+        )
         .with_state(state.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
@@ -79,6 +127,12 @@ async fn provider() -> (StripeBillingClient, Provider, tokio::task::JoinHandle<(
         ProviderHttpClient::new(&base, Duration::from_secs(2), 1024 * 1024).unwrap(),
     )
     .unwrap();
+    let client = if managed {
+        StripeBillingClient::managed(&base, "instance-owned".into(), "owned-instance-key".into())
+            .unwrap()
+    } else {
+        client
+    };
     (client, state, server)
 }
 
@@ -86,6 +140,15 @@ async fn provider() -> (StripeBillingClient, Provider, tokio::task::JoinHandle<(
 #[ignore = "requires an isolated FORKLAUNCH_TEST_POSTGRES_URL owner database"]
 #[allow(clippy::too_many_lines)]
 async fn direct_bound_checkout_reads_require_live_context_and_durable_generation() {
+    exercise(false).await;
+}
+#[tokio::test]
+#[ignore = "requires an isolated FORKLAUNCH_TEST_POSTGRES_URL owner database"]
+async fn managed_bound_checkout_reads_require_live_context_and_durable_generation() {
+    exercise(true).await;
+}
+#[allow(clippy::too_many_lines)]
+async fn exercise(managed: bool) {
     let owner = PgPoolOptions::new()
         .max_connections(2)
         .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
@@ -122,7 +185,7 @@ async fn direct_bound_checkout_reads_require_live_context_and_durable_generation
         .await
         .unwrap(),
     );
-    let (client, fixture, server) = provider().await;
+    let (client, fixture, server) = provider(managed).await;
     let service = Arc::new(StripeBillingService::new(
         BaseBillingService::new(store.clone()),
         client.clone(),
