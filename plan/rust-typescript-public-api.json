@@ -11521,6 +11521,11 @@
           "source": "framework/core/src/http/paymentsClient.ts"
         },
         {
+          "subpath": "./http/previewModelGatewayClient",
+          "target": "lib/http/previewModelGatewayClient.d.ts",
+          "source": "framework/core/src/http/previewModelGatewayClient.ts"
+        },
+        {
           "subpath": "./http/rateLimit/index",
           "target": "lib/http/rateLimit/index.d.ts",
           "source": "framework/core/src/http/rateLimit/index.ts"
@@ -13016,6 +13021,14 @@
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
               "line": 9,
+              "specifier": "./previewModelGatewayClient",
+              "target": "framework/core/src/http/previewModelGatewayClient.ts",
+              "exports": "*"
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/core/src/http/index.ts",
+              "line": 10,
               "specifier": "./emailClient",
               "target": "framework/core/src/http/emailClient.ts",
               "exports": "*"
@@ -13023,7 +13036,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 10,
+              "line": 11,
               "specifier": "./smsClient",
               "target": "framework/core/src/http/smsClient.ts",
               "exports": "*"
@@ -13031,7 +13044,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 11,
+              "line": 12,
               "specifier": "./whatsappClient",
               "target": "framework/core/src/http/whatsappClient.ts",
               "exports": "*"
@@ -13039,7 +13052,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 12,
+              "line": 13,
               "specifier": "./voiceClient",
               "target": "framework/core/src/http/voiceClient.ts",
               "exports": "*"
@@ -13047,7 +13060,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 13,
+              "line": 14,
               "specifier": "./paymentsClient",
               "target": "framework/core/src/http/paymentsClient.ts",
               "exports": "*"
@@ -13055,7 +13068,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 14,
+              "line": 15,
               "specifier": "./discriminateAuthMethod",
               "target": "framework/core/src/http/discriminateAuthMethod.ts",
               "exports": "*"
@@ -13063,7 +13076,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 15,
+              "line": 16,
               "specifier": "./guards/isForklaunchRequest",
               "target": "framework/core/src/http/guards/isForklaunchRequest.ts",
               "exports": "*"
@@ -13071,7 +13084,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 16,
+              "line": 17,
               "specifier": "./guards/isForklaunchRouter",
               "target": "framework/core/src/http/guards/isForklaunchRouter.ts",
               "exports": "*"
@@ -13079,7 +13092,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 17,
+              "line": 18,
               "specifier": "./handlers/delete",
               "target": "framework/core/src/http/handlers/delete.ts",
               "exports": "*"
@@ -13087,7 +13100,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 18,
+              "line": 19,
               "specifier": "./handlers/get",
               "target": "framework/core/src/http/handlers/get.ts",
               "exports": "*"
@@ -13095,7 +13108,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 19,
+              "line": 20,
               "specifier": "./handlers/head",
               "target": "framework/core/src/http/handlers/head.ts",
               "exports": "*"
@@ -13103,7 +13116,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 20,
+              "line": 21,
               "specifier": "./handlers/middleware",
               "target": "framework/core/src/http/handlers/middleware.ts",
               "exports": "*"
@@ -13111,7 +13124,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 21,
+              "line": 22,
               "specifier": "./handlers/options",
               "target": "framework/core/src/http/handlers/options.ts",
               "exports": "*"
@@ -13119,7 +13132,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 22,
+              "line": 23,
               "specifier": "./handlers/patch",
               "target": "framework/core/src/http/handlers/patch.ts",
               "exports": "*"
@@ -13127,7 +13140,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 23,
+              "line": 24,
               "specifier": "./handlers/post",
               "target": "framework/core/src/http/handlers/post.ts",
               "exports": "*"
@@ -13135,7 +13148,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 24,
+              "line": 25,
               "specifier": "./handlers/put",
               "target": "framework/core/src/http/handlers/put.ts",
               "exports": "*"
@@ -13143,7 +13156,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 25,
+              "line": 26,
               "specifier": "./handlers/trace",
               "target": "framework/core/src/http/handlers/trace.ts",
               "exports": "*"
@@ -13151,7 +13164,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 26,
+              "line": 27,
               "specifier": "./handlers/typedAuthHandler",
               "target": "framework/core/src/http/handlers/typedAuthHandler.ts",
               "exports": "*"
@@ -13159,7 +13172,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 27,
+              "line": 28,
               "specifier": "./handlers/typedHandler",
               "target": "framework/core/src/http/handlers/typedHandler.ts",
               "exports": "*"
@@ -13167,7 +13180,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 28,
+              "line": 29,
               "specifier": "./httpStatusCodes",
               "target": "framework/core/src/http/httpStatusCodes.ts",
               "exports": "*"
@@ -13175,7 +13188,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 29,
+              "line": 30,
               "specifier": "./interfaces/expressLikeRouter.interface",
               "target": "framework/core/src/http/interfaces/expressLikeRouter.interface.ts",
               "exports": "*"
@@ -13183,7 +13196,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 30,
+              "line": 31,
               "specifier": "./mcpGenerator/mcpGenerator",
               "target": "framework/core/src/http/mcpGenerator/mcpGenerator.ts",
               "exports": "*"
@@ -13191,7 +13204,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 31,
+              "line": 32,
               "specifier": "./middleware/request/createContext.middleware",
               "target": "framework/core/src/http/middleware/request/createContext.middleware.ts",
               "exports": "*"
@@ -13199,7 +13212,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 32,
+              "line": 33,
               "specifier": "./middleware/response/enrichExpressLikeSend.middleware",
               "target": "framework/core/src/http/middleware/response/enrichExpressLikeSend.middleware.ts",
               "exports": "*"
@@ -13207,7 +13220,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 33,
+              "line": 34,
               "specifier": "./openApiV3Generator/openApiV3Generator",
               "target": "framework/core/src/http/openApiV3Generator/openApiV3Generator.ts",
               "exports": "*"
@@ -13215,7 +13228,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 34,
+              "line": 35,
               "specifier": "./router/discriminateBody",
               "target": "framework/core/src/http/router/discriminateBody.ts",
               "exports": "*"
@@ -13223,7 +13236,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 35,
+              "line": 36,
               "specifier": "./router/expressLikeRouter",
               "target": "framework/core/src/http/router/expressLikeRouter.ts",
               "exports": "*"
@@ -13231,7 +13244,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 36,
+              "line": 37,
               "specifier": "./telemetry/auditLogger",
               "target": "framework/core/src/http/telemetry/auditLogger.ts",
               "exports": "*"
@@ -13239,7 +13252,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 37,
+              "line": 38,
               "specifier": "./telemetry/constants",
               "target": "framework/core/src/http/telemetry/constants.ts",
               "exports": "*"
@@ -13247,7 +13260,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 38,
+              "line": 39,
               "specifier": "./telemetry/evaluateTelemetryOptions",
               "target": "framework/core/src/http/telemetry/evaluateTelemetryOptions.ts",
               "exports": "*"
@@ -13255,7 +13268,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 39,
+              "line": 40,
               "specifier": "./telemetry/metricsDefinition",
               "target": "framework/core/src/http/telemetry/metricsDefinition.ts",
               "exports": "*"
@@ -13263,7 +13276,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 40,
+              "line": 41,
               "specifier": "./telemetry/openTelemetryCollector",
               "target": "framework/core/src/http/telemetry/openTelemetryCollector.ts",
               "exports": "*"
@@ -13271,7 +13284,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 41,
+              "line": 42,
               "specifier": "./telemetry/pinoLogger",
               "target": "framework/core/src/http/telemetry/pinoLogger.ts",
               "exports": "*"
@@ -13279,7 +13292,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 42,
+              "line": 43,
               "specifier": "./telemetry/recordMetric",
               "target": "framework/core/src/http/telemetry/recordMetric.ts",
               "exports": "*"
@@ -13287,7 +13300,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 43,
+              "line": 44,
               "specifier": "./types/apiDefinition.types",
               "target": "framework/core/src/http/types/apiDefinition.types.ts",
               "exports": "*"
@@ -13295,7 +13308,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 44,
+              "line": 45,
               "specifier": "./types/contractDetails.types",
               "target": "framework/core/src/http/types/contractDetails.types.ts",
               "exports": "*"
@@ -13303,7 +13316,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 45,
+              "line": 46,
               "specifier": "./types/docsConfiguration.types",
               "target": "framework/core/src/http/types/docsConfiguration.types.ts",
               "exports": "*"
@@ -13311,7 +13324,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 46,
+              "line": 47,
               "specifier": "./types/expressLikeOptions",
               "target": "framework/core/src/http/types/expressLikeOptions.ts",
               "exports": "*"
@@ -13319,7 +13332,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 47,
+              "line": 48,
               "specifier": "./types/expressLikeRouter.types",
               "target": "framework/core/src/http/types/expressLikeRouter.types.ts",
               "exports": "*"
@@ -13327,7 +13340,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 48,
+              "line": 49,
               "specifier": "./types/openTelemetryCollector.types",
               "target": "framework/core/src/http/types/openTelemetryCollector.types.ts",
               "exports": "*"
@@ -13335,7 +13348,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 49,
+              "line": 50,
               "specifier": "./types/router.types",
               "target": "framework/core/src/http/types/router.types.ts",
               "exports": "*"
@@ -13343,7 +13356,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 50,
+              "line": 51,
               "specifier": "./rateLimit/index",
               "target": "framework/core/src/http/rateLimit/index.ts",
               "exports": "*"
@@ -13351,7 +13364,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 51,
+              "line": 52,
               "specifier": "./types/sdk.types",
               "target": "framework/core/src/http/types/sdk.types.ts",
               "exports": "*"
@@ -13359,7 +13372,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 52,
+              "line": 53,
               "specifier": "./types/sdk.types",
               "target": "framework/core/src/http/types/sdk.types.ts",
               "exports": [
@@ -13373,7 +13386,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 53,
+              "line": 54,
               "specifier": "./types/typedHandler.types",
               "target": "framework/core/src/http/types/typedHandler.types.ts",
               "exports": "*"
@@ -14333,6 +14346,77 @@
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/paymentsClient.ts",
               "line": 251
+            }
+          ]
+        },
+        {
+          "source": "framework/core/src/http/previewModelGatewayClient.ts",
+          "exports": [
+            {
+              "name": "GatewayPreviewModels",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/core/src/http/previewModelGatewayClient.ts",
+              "line": 13,
+              "members": [
+                {
+                  "name": "models",
+                  "signature": "models: { id: string }[];",
+                  "source": "framework/core/src/http/previewModelGatewayClient.ts",
+                  "line": 14
+                },
+                {
+                  "name": "preview",
+                  "signature": "preview: {\n    /** Capability expiration, in Unix milliseconds. */\n    expiresAt: number;\n    /** Initial request ceiling; this is not a remaining-request count. */\n    maxCalls: number;\n    /** Initial conservative allowance units, not billable or monthly tokens. */\n    maxUnits: number;\n  };",
+                  "source": "framework/core/src/http/previewModelGatewayClient.ts",
+                  "line": 15
+                }
+              ]
+            },
+            {
+              "name": "GatewayPreviewChatCompletion",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/core/src/http/previewModelGatewayClient.ts",
+              "line": 26,
+              "members": [
+                {
+                  "name": "created",
+                  "signature": "created?: number;",
+                  "source": "framework/core/src/http/previewModelGatewayClient.ts",
+                  "line": 30
+                },
+                {
+                  "name": "(signature)",
+                  "signature": "[key: string]: unknown;",
+                  "source": "framework/core/src/http/previewModelGatewayClient.ts",
+                  "line": 31
+                }
+              ]
+            },
+            {
+              "name": "PreviewModelGatewayClient",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/core/src/http/previewModelGatewayClient.ts",
+              "line": 34,
+              "members": [
+                {
+                  "name": "models",
+                  "signature": "models(): Promise<GatewayPreviewModels>;",
+                  "source": "framework/core/src/http/previewModelGatewayClient.ts",
+                  "line": 35
+                },
+                {
+                  "name": "chat",
+                  "signature": "chat: {\n    completions: {\n      create(\n        request: GatewayChatRequest\n      ): Promise<GatewayPreviewChatCompletion>;\n    };\n  };",
+                  "source": "framework/core/src/http/previewModelGatewayClient.ts",
+                  "line": 36
+                }
+              ]
+            },
+            {
+              "name": "createPreviewModelGatewayClient",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/previewModelGatewayClient.ts",
+              "line": 135
             }
           ]
         },

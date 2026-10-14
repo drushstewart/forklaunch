@@ -6048,7 +6048,7 @@ versioned tests pass with float_roundtrip enabled. Logs:
 /private/tmp/fl-json-parser-{tests,clippy,parity}.log. CI includes the live oracle.
 FrameworkRequest gains parsed_json; constructor-based callers preserve forward
 compatibility. Registration metadata is validated before exposure and stale or
-duplicate registrations fail. Checklist remains 660/682 (96.8%),22open.
+duplicate registrations fail. Checklist remains 660/682 (96.8%), 22 open.
 
 ## Checkout/portal cached identity receipt (2026-10-14)
 
@@ -6063,3 +6063,33 @@ focused real-source typechecking and 168 base/170 Stripe operations pass:
 /private/tmp/fl-cached-session-identity*.log. CI includes the new fixture.
 This strengthens cache identity checks without making cache rows mutation
 ownership evidence. Broad billing mapper/provider reconciliation gates remain open.
+
+## Generated billing checkpoint and main merge (2026-10-14)
+
+After the invalid-options HTTP status correction, the coherent rebuilt CLI
+passes the full generated core billing/Stripe mixed-module fixture: both
+HTTP/MCP startup/initialization/discovery/Origin checks, both SDK artifact formats,
+encrypted PostgreSQL persistence, relocation, preservation and rename/delete
+lifecycle. Log: /private/tmp/fl-oct14-billing-corrected-generated.log; CLI build:
+/private/tmp/fl-oct14-coherent-cli-build.log. The earlier failing log is retained
+as evidence of the integration correction, not a completed receipt.
+Owned failed/successful billing runs were removed only after role/process checks.
+Generated auth validation is underway separately. This snapshot includes the
+framed JSON parser and fixed JWKS-path profile, before the optional subject hook.
+
+Latest origin/main e36cfd29c (preview model gateway client, #450) is now merged.
+The public inventory is regenerated: 44 packages, 609 entry points, 1,667 declarations,
+zero unresolved exports. The new preview client and its issued-ceiling catalog
+are an explicit unmapped native capability within gate849; this merge does not
+claim Rust support for that new feature. Existing broad gate counts remain
+660/682 (96.8%), 22 open.
+
+Generated auth checkpoint also passes from that coherent CLI: actual blueprint
+and generated clients at default/custom/root/path-override namespaces, both
+SDKs, HTTP/MCP shared/separate/disabled listeners, encrypted sessions, JWT/JWKS
+and restart/preservation/rename/delete lifecycle. Log:
+/private/tmp/fl-oct14-auth-generated.log. The owned run.yVg1mk was removed after
+role/process checks. This verifies the optional fixed JWKS path/grace/header
+production snapshot without enabling nondefault options in the preset; their
+separate differential fixtures supply option-specific proofs. It predates the
+new optional JWT subject callback and before-auth request-schema registration.
