@@ -318,3 +318,57 @@ fn strict_zod_string_transform_commits_all_sections_atomically() {
         }
     }
 }
+
+#[test]
+fn ordered_zod_number_callback_never_commits_partial_fields() {
+    use forklaunch_validation::typescript_coerce::{ZodNumberStep, zod_number};
+    for mode in [
+        ValidationMode::None,
+        ValidationMode::Warning,
+        ValidationMode::Error,
+    ] {
+        for (input, accepted) in [("12.99", true), ("Infinity", false)] {
+            let mut route = RouteContract::get("Number", "Number", "/number");
+            route.options.request_validation = mode;
+            let mut validators = RequestValidators::default();
+            validators
+                .insert_request_transform(
+                    &route,
+                    &JsonRequestParsers::default(),
+                    rejection(),
+                    |request, _| {
+                        let mut fields = RequestFieldValues::default();
+                        fields.params.insert("default".into(), json!(7));
+                        let input = json!(request.query["amount"]);
+                        let amount =
+                            zod_number(Some(&input), &[ZodNumberStep::Finite, ZodNumberStep::Safe])
+                                .map_err(|errors| {
+                                    FrameworkResponse::text(400, errors[0].message.clone())
+                                })?;
+                        fields.query.insert("amount".into(), json!(amount));
+                        Ok(RequestTransformOutput { fields, body: None })
+                    },
+                )
+                .unwrap();
+            let mut request =
+                FrameworkRequest::new(HttpMethod::Get, "/number", RequestContext::new("number"));
+            request.query.insert("amount".into(), input.into());
+            let before = request.clone();
+            let response = validators.transform_request(&route, &mut request, None);
+            assert_eq!(
+                response.is_some(),
+                !accepted && mode == ValidationMode::Error
+            );
+            if accepted {
+                let fields = request.parsed_fields.unwrap();
+                assert_eq!(fields.values().params["default"], json!(7));
+                assert_eq!(fields.values().query["amount"], json!(12.99));
+                assert_eq!(request.query, before.query);
+                assert_eq!(request.body, before.body);
+            } else {
+                assert_eq!(request, before);
+                assert!(request.parsed_fields.is_none());
+            }
+        }
+    }
+}

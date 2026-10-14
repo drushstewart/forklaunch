@@ -17,6 +17,10 @@ pub use date::{DateCoercionError, date_epoch_millis};
 mod strict_string;
 pub use strict_string::{ZodStringStep, zod_string};
 
+#[path = "zod_number.rs"]
+mod constrained_number;
+pub use constrained_number::{ZodIntegerBound, ZodNumberStep, zod_number};
+
 /// Coerce a JSON value with the actual `ForkLaunch` Zod number preprocessing.
 /// `None` represents JavaScript undefined. Infinities and signed zero are
 /// preserved, as accepted by Zod v3's unconstrained number schema.

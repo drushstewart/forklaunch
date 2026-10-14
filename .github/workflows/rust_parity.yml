@@ -55,6 +55,9 @@ on:
       - 'cli/tests/ts_response_header_arrays.mjs'
       - 'cli/tests/rust_simple_query_parity.mjs'
       - 'cli/tests/rust_zod_string_parity.mjs'
+      - 'cli/tests/rust_zod_number_parity.mjs'
+      - 'cli/tests/rust_configured_mappers_types.mjs'
+      - 'cli/tests/fixtures/configured-mappers-types/**'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -323,6 +326,9 @@ on:
       - 'cli/tests/ts_response_header_arrays.mjs'
       - 'cli/tests/rust_simple_query_parity.mjs'
       - 'cli/tests/rust_zod_string_parity.mjs'
+      - 'cli/tests/rust_zod_number_parity.mjs'
+      - 'cli/tests/rust_configured_mappers_types.mjs'
+      - 'cli/tests/fixtures/configured-mappers-types/**'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
@@ -701,6 +707,11 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_zod_number_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/typescript_response_status_validation.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -887,6 +898,15 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@26.6.5 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25
+      - name: Check configured mapper and service source types
+        run: |
+          mkdir -p "$RUNNER_TEMP/fl-configured-mappers-types"
+          cp cli/tests/fixtures/configured-mappers-types/package*.json "$RUNNER_TEMP/fl-configured-mappers-types/"
+          npm ci --prefix "$RUNNER_TEMP/fl-configured-mappers-types" --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+          node cli/tests/rust_configured_mappers_types.mjs
+        env:
+          FORKLAUNCH_CONFIGURED_TYPES_PREFIX: ${{ runner.temp }}/fl-configured-mappers-types
+          FORKLAUNCH_CONFIGURED_TYPES_RUNTIME_PREFIXES: '["${{ runner.temp }}/fl-rust-ts"]'
       - name: Install isolated Chromium relay fixture
         run: |
           npm install --prefix "$RUNNER_TEMP/fl-rust-browser" --no-save --package-lock=false --ignore-scripts playwright-core@1.62.1

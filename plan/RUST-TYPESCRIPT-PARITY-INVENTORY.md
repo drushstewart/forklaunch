@@ -6760,3 +6760,30 @@ passed; after restoring real declarations and fixing the Bun fetch capability,
 all eight changed service/configured-mapper roots now typecheck cleanly. Public
 inventory line/signature changes are regenerated and checked. Fresh committed CLI
 preset/archive validation remains a separate follow-up to this source receipt.
+
+
+## Ordered Zod number and reproducible configured source types (2026-10-14)
+
+The opt-in TypeScript coercion bridge now supports ordered Zod v3 number Int,
+Finite, Safe, and inclusive Min/Max checks with safe integer bounds. Safe checks
+magnitude and accepts fractions, matching actual Zod. Successful values retain
+IEEE-754 bits, including negative zero and unconstrained infinities. Coercion
+failures stop checking; constraint diagnostics accumulate in declaration order.
+This bounded helper does not implement multipleOf, fractional/nonfinite bounds,
+exclusive bounds, custom messages or generic schema interpretation.
+
+15,640 actual ForkLaunch Zod/native comparisons pass with exact output bits and
+ordered diagnostics. All 136 Axum and 15 validation tests and strict all-feature,
+all-target Clippy pass. Whole-request callback tests verify successful decimal query
+coercion and atomic rollback on Infinity rejection in all three validation modes.
+Evidence: /private/tmp/fl-zod-number-{parity,tests,clippy}.log.
+
+The eight changed billing/ecommerce services and configured mapper roots now have
+a reproducible strict source type check using 609 inventory export mappings, the
+manifest-declared private blueprint-core root, and real pinned Node/Bun/Vitest/
+send/Swagger declarations. The isolated fixture uses the repository-declared
+TypeScript 7.0.2, preserving existing oracle compiler installations. A fresh locked
+npm install and all eight roots pass without ambient stubs or source suppressions:
+/private/tmp/fl-configured-types-{install,repro,minimal}.log. Both fixtures are
+wired into CI. These finite checks do not close the broad validation or billing
+mapper gates; the checklist remains 660/682 with 22 gates open.
