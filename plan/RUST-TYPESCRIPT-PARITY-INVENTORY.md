@@ -8316,3 +8316,42 @@ rate, elapsed-cookie and backup-option regressions, and strict all-feature/
 all-target Clippy pass. Logs /private/tmp/fl-otp-disabled-{native,http,oracle,
 clippy}.log; exact five hashes /private/tmp/fl-otp-disabled-freeze.json. Full
 OTP delivery remains a separate unreferenced draft and is excluded here.
+
+
+## Immutable416d installation and generated MFA29 checkpoint (2026-10-14)
+
+Source416d6e5b4ff5b0f3d9bce0e9fdb49bfcb9af1157 was archived independently
+of later Plan, UUID/email, OTP and Customer changes. All2590 regular packaged
+files were byte-verified after extraction and after runtime validation. The retained
+4,557,317-byte crate has SHA256
+c36dea8df3dc97ca61f8c34eeae5c619738785ae7e74723df582a16c277e2092 at
+cli/target/parity-artifacts/forklaunch-416d6e5b4-c36dea8d.crate.
+Offline locked installation, repackage listing and portable generated runtime
+pass, including services/workers, both SDK targets, recursive exports and
+HTTP/MCP listeners. That installed CLI also passes generated Better Auth29 actual
+twoFactorClient calls over real TCP,112 existing frontend actions, shared/separate/
+disabled HTTP/MCP listeners, relocation, restart and rename/delete lifecycle.
+Post-run database fixture roles, records and audit counts are all zero.
+
+The package contains three intentional PEM certificate/test-key fixtures with
+bytes identical to the previous verified5a8 archive. Source symlinks to unrelated
+local IAM PEM paths were not followed or read. No generated output, node_modules
+or Cargo target directories were packaged. Metadata and logs are retained in
+/private/tmp/fl-oct14-complete-checkpoint.json and
+/private/tmp/fl-oct14-complete-{package,install,repackaged-files,runtime,
+totp-runtime}.log. Public registry publication remains unverified.
+
+## Pinned private platform/framework CI pair (2026-10-14)
+
+Companion commit12d8cedda adds a private-only manual/callable workflow with
+read-only contents access, fixed reviewed platform54cd3375c/frameworkd2597896c
+commits and exact source hashes. The verifier rejects modified files and wrong
+commits before executing fixtures. Dependencies are npm-lock pinned; an owned
+PostgreSQL service supplies the restricted journal/barrier tests. Successful runs
+produce a receipt including source pair, workflow commit and run identity.
+Local pinned-source positive and tamper/wrong-commit negative checks pass, as do
+locked platform61 tests and focused strict types. Logs are
+/private/tmp/fl-managed-pair-source-verification.log and
+/private/tmp/fl-managed-pair-locked-platform.log. Hosted CI and full platform
+application bootstrap have not been run; native protocol/PG proof remains the
+separately recorded d2597896c receipt. No source push or deployment is claimed.
