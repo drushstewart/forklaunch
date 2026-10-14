@@ -31,7 +31,7 @@ export const CreatePlanMapper = requestMapper({
   }
 });
 
-export const UpdatePlanMapper = requestMapper({
+const UpdatePlanEntityMapper = requestMapper({
   schemaValidator,
   schema: PlanSchemas.UpdatePlanSchema,
   entity: Plan,
@@ -70,3 +70,18 @@ export const PlanMapper = responseMapper({
     }
   }
 });
+
+export const UpdatePlanMapper = {
+  ...UpdatePlanEntityMapper,
+  validateUpdate: async (
+    dto: Parameters<typeof UpdatePlanEntityMapper.toEntity>[0]
+  ) => {
+    const patch = schemaValidator.parse(
+      schemaValidator.schemify(PlanSchemas.UpdatePlanSchema),
+      dto
+    );
+    if (!patch.ok) {
+      throw new Error('Invalid plan update');
+    }
+  }
+};

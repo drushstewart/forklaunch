@@ -157,6 +157,15 @@ export class StripePaymentLinkService<
     paymentLinkDto: StripeUpdatePaymentLinkDto<StatusEnum>,
     ...args: unknown[]
   ): Promise<Dto['PaymentLinkMapper']> {
+    if (this.mappers.UpdatePaymentLinkMapper.validateCachedUpdate) {
+      const existing = await this.basePaymentLinkService.getPaymentLink({
+        id: paymentLinkDto.id
+      });
+      await this.mappers.UpdatePaymentLinkMapper.validateCachedUpdate(
+        paymentLinkDto,
+        existing
+      );
+    }
     const session = await this.stripeClient.paymentLinks.update(
       paymentLinkDto.id,
       {

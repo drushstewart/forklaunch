@@ -23,6 +23,8 @@ export type StripePlanMappers<
     ) => Promise<InferEntity<Entities['CreatePlanMapper']>>;
   };
   UpdatePlanMapper: {
+    /** Pure configured validation before any provider replacement effects. */
+    validateUpdate?: (dto: Dto['UpdatePlanMapper']) => Promise<void>;
     entity: Entities['UpdatePlanMapper'];
     toEntity: (
       dto: Dto['UpdatePlanMapper'],

@@ -6404,3 +6404,29 @@ trusted synchronous callbacks, which must return promptly.
 strict all-feature/all-target Clippy and canonical366 HTTP outcomes with zero
 normalized OpenAPI differences pass:
 /private/tmp/fl-response-warning-{tests,parity,clippy,canonical}.log.
+
+
+## Configured Stripe update preflights receipt (2026-10-14)
+
+Configured PaymentLink updates now validate the patch and normalized cached DTO
+before Stripe mutation, including exact immutable public identity. The optional
+hook uses the existing single normalization, does not mutate either input, and
+never turns a cached provider reference into mutation authority. Both backup modes
+and custom-mapper fallback retain target dispatch through dto.id. Public UUID to
+provider identity resolution and duplicate mapping remain open.
+
+Configured Plan updates now validate patches before ORM/provider reads and the
+existing delete/create replacement sequence. Invalid patches therefore cannot
+delete a valid provider plan before local validation. Removing a redundant
+undefined name assignment preserves the name on price-only updates; explicitly
+supplied names still update. Provider/local writes remain externally non-atomic.
+
+30 PaymentLink and13 Plan actual-source cases,353 configured mapper regressions,
+focused service TypeScript and170 actual TS/native/official-SDK service operations
+pass. Final170 includes the Plan omitted-name fix:
+/private/tmp/fl-payment-link-preflight{,-configured,-types,-legacy170}.log and
+/private/tmp/fl-plan-preflight{,-configured,-types,-legacy170}.log. Cases assert
+zero provider/ORM writes on invalid input, unchanged inputs, original valid
+provider sequence and optional custom fallback. The public API inventory remains
+44 packages/609 entrypoints/1,667 declaration records with no unresolved entries;
+line/signature changes are regenerated and checked.

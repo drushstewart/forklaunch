@@ -129,6 +129,7 @@ export class StripePlanService<
     planDto: StripeUpdatePlanDto,
     em?: EntityManager
   ): Promise<Dto['PlanMapper']> {
+    await this.mappers.UpdatePlanMapper.validateUpdate?.(planDto);
     const planEntity = await this.basePlanService.getPlan(
       {
         id: planDto.id
@@ -170,7 +171,6 @@ export class StripePlanService<
       {
         ...planDto,
         externalId: updatedPlan.id,
-        name: planDto.name,
         billingProvider: 'stripe'
       },
       em,

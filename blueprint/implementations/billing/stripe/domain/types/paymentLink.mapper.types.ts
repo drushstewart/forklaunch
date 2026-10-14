@@ -34,6 +34,13 @@ export type StripePaymentLinkMappers<
     ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;
   };
   UpdatePaymentLinkMapper: {
+    /** Validate a patch against the normalized cached DTO before provider I/O.
+     * This hook does not resolve provider IDs or authorize provider mutations.
+     */
+    validateCachedUpdate?: (
+      dto: Dto['UpdatePaymentLinkMapper'],
+      existing: Dto['PaymentLinkMapper']
+    ) => Promise<void>;
     entity: Entities['UpdatePaymentLinkMapper'];
     toEntity: (
       dto: Dto['UpdatePaymentLinkMapper'],

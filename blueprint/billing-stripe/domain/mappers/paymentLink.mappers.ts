@@ -28,7 +28,7 @@ export const CreatePaymentLinkMapper = requestMapper({
   }
 });
 
-export const UpdatePaymentLinkMapper = requestMapper({
+const UpdatePaymentLinkEntityMapper = requestMapper({
   schemaValidator,
   schema: PaymentLinkSchemas.UpdatePaymentLinkSchema(StatusEnum),
   entity: PaymentLink,
@@ -129,5 +129,33 @@ export const PaymentLinkMapper = {
     // Preserve the public UUID and local fields; do not write provider evidence
     // into cache or use it to authorize mutations or managed account rebinding.
     return { ...existing, stripeFields: link };
+  }
+};
+
+export const UpdatePaymentLinkMapper = {
+  ...UpdatePaymentLinkEntityMapper,
+  validateCachedUpdate: async (
+    dto: Parameters<typeof UpdatePaymentLinkEntityMapper.toEntity>[0],
+    existing: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>
+  ) => {
+    // The base read has already normalized the configured response DTO once.
+    // Validate the patch without mutating either input or using cached provider
+    // references as mutation authority. Provider target dispatch is unchanged.
+    if (
+      typeof existing.id !== 'string' ||
+      !existing.id.trim() ||
+      existing.id !== dto.id
+    ) {
+      throw new Error('Cached payment link identity cannot change');
+    }
+    const patch = schemaValidator.parse(
+      schemaValidator.schemify(
+        PaymentLinkSchemas.UpdatePaymentLinkSchema(StatusEnum)
+      ),
+      dto
+    );
+    if (!patch.ok) {
+      throw new Error('Invalid cached payment link update');
+    }
   }
 };
