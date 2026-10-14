@@ -31,6 +31,7 @@ mod email;
 mod external_jwt;
 mod jwks_path;
 mod jwt_subject;
+mod jwt_payload;
 pub use external_jwt::ExternalJwtSigner;
 pub use jwt_subject::JwtSessionContext;
 mod observer;
@@ -59,6 +60,7 @@ pub struct AuthHttp<S> {
     external_jwt: Option<ExternalJwtSigner>,
     jwt_header_disabled: bool,
     subject_resolver: Option<jwt_subject::SubjectResolver>,
+    payload_resolver: Option<jwt_payload::PayloadResolver>,
     jwks_grace_period: std::time::Duration,
     jwks_path: String,
     error_observer: Option<observer::Observer>,
@@ -96,6 +98,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             external_jwt: None,
             jwt_header_disabled: false,
             subject_resolver: None,
+            payload_resolver: None,
             jwks_grace_period: std::time::Duration::from_secs(2_592_000),
             jwks_path: "/jwks".into(),
             error_observer: None,
@@ -366,6 +369,9 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(view.map_or(Value::Null, |view| view.body()))
     }
     async fn jwt(&self, view: &SessionView, now: DateTime<Utc>) -> BlueprintResult<String> {
+        if self.payload_resolver.is_some() {
+            return self.jwt_with_payload(view, now).await;
+        }
         let subject = self.jwt_subject(view).await?;
         if let Some(signer) = &self.external_jwt {
             let body = json!({"payload": {

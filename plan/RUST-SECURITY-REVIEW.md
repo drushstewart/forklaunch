@@ -785,3 +785,13 @@ and ambiguous commits require receipt inspection. Managed mode rejects before
 network I/O. PostgreSQL/HTTP proofs include ABA, rollback and real lock-delay
 expiry. Extra binding UPDATE permission belongs only to the trusted operator
 for row locks; default runtime grants are unchanged.
+
+
+Optional JWT payload review (2026-10-14): trusted immutable verified-session
+snapshots feed an object-valued async callback before subject resolution/signing.
+Callback failure produces empty500 without key work; invalid local JOSE claims
+retain upstream key-mint side effects before rejection. The subject policy wins
+over payload sub, while stored/cookie ownership is unchanged. Custom claims are
+application policy and must not expose secret snapshot fields. Actual JOSE and
+external-signer fixtures verify precedence, failures and suppression; no callback
+is installed by default.

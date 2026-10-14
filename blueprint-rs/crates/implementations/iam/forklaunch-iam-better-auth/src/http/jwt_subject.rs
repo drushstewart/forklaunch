@@ -14,6 +14,12 @@ pub struct JwtSessionContext {
     session: Value,
 }
 impl JwtSessionContext {
+    pub(super) fn from_view(view: &SessionView) -> Self {
+        Self {
+            user: view.user.clone(),
+            session: view.session.clone(),
+        }
+    }
     /// Persisted user fields; the callback cannot mutate the authoritative row.
     #[must_use]
     pub fn user(&self) -> &Value {
@@ -51,10 +57,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     }
     pub(super) async fn jwt_subject(&self, view: &SessionView) -> BlueprintResult<String> {
         if let Some(resolver) = &self.subject_resolver {
-            let context = JwtSessionContext {
-                user: view.user.clone(),
-                session: view.session.clone(),
-            };
+            let context = JwtSessionContext::from_view(view);
             let subject = (resolver.0)(context).await.map_err(|_| {
                 BlueprintError::new("HTTP_INTERNAL_EMPTY", "Unable to resolve JWT subject")
             })?;

@@ -935,3 +935,19 @@ The callback is trusted server code. Snapshot records can contain sensitive
 custom user fields and the secret session token; do not log or expose them.
 Context Debug output is redacted. Arbitrary payload-definition callbacks and
 custom JWKS adapter hooks remain separate options.
+
+`AuthHttp::with_jwt_payload_resolver` installs an optional trusted asynchronous
+`definePayload` policy over the same immutable, secret-bearing `JwtSessionContext`
+as the subject resolver. Its object replaces the configured payload; it does not
+merge session/email/organization claims. No callback preserves that preset, while
+`None` means empty object spread (the upstream null/undefined behavior). Primitive
+and array spreading are intentionally outside the typed object-return interface.
+The initial `iat` is followed by callback claims, then the resolved `sub` overrides
+any payload subject. Payload resolution runs before subject resolution or signing;
+callback failures produce sanitized empty 500 responses without minting keys.
+Existing local JOSE and external-signer claim defaults/validation still apply;
+local claim validation can mint a key before rejecting invalid claims, as upstream
+does. Suppressed automatic JWT headers skip both callbacks; explicit `/token`
+still invokes them. Claims never alter persisted cookie/session ownership. Custom
+claim policies may require separate application authorization mapping. Never log
+or expose callback snapshots, which can contain secret session tokens.

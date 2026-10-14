@@ -6246,3 +6246,23 @@ ciphertext preservation. Eight Stripe regressions and strict base/Stripe Clippy
 pass: /private/tmp/fl-paused-effect-{pg,clippy,lib}.log. CI runs the ignored fixture.
 Other webhook effects, absent ownership, managed paused inspection, capture/
 financial interruptions and provider/public identity integration remain open.
+
+## Optional JWT payload resolver receipt (2026-10-14)
+
+AuthHttp::with_jwt_payload_resolver replaces the configured payload with trusted
+async object claims. None means empty nullish spread; no installed callback keeps
+the existing preset. Initial iat precedes callback claims, then subject resolution
+overrides sub. Payload callback failure short-circuits subject/signing/key minting
+and returns unexpected empty500. Existing local JOSE/external defaults remain;
+invalid local claims can mint a key before rejection, matching upstream behavior.
+Cookie/persisted ownership remains independent.
+
+44 actual Better Auth local/external route cases,40 native route combinations,
+the subject regression and strict IAM Clippy pass:
+/private/tmp/fl-iam-jwt-payload-{native,regression,ts,clippy}.log. Tests include
+actual JOSE null/invalid registered claims and separate external passthrough,
+header suppression/anonymous paths, exact callback order and key side effects.
+Primitive/array object spreading is outside this typed object interface. Trusted
+snapshots remain read-only/Debug-redacted but can include session tokens; custom
+claims may require separate application authorization mapping. CI includes the
+new fixture. The archive checkpointa416 predates this optional hook.
