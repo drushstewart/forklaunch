@@ -507,6 +507,20 @@ async fn old_schema_upgrade(owner: &sqlx::PgPool) {
     .execute(&mut *tx)
     .await
     .unwrap();
+    sqlx::raw_sql(
+        &include_str!("../migrations/10_scoped_cancellation_receipts.sql")
+            .replace("fl_ecommerce.", &format!("{schema}.")),
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    let receipt_count: i64 = sqlx::query_scalar(&format!(
+        "SELECT count(*) FROM {schema}.scoped_payment_cancellation_receipts"
+    ))
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    assert_eq!(receipt_count, 0);
     let after: serde_json::Value = sqlx::query_scalar(&format!(
         "SELECT data FROM {schema}.records WHERE id='legacy'"
     ))

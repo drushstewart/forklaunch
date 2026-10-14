@@ -6970,3 +6970,40 @@ including canonical comparisons that build a blueprint example from that job.
 All eleven scripts pass syntax checks and their defaults match actual offline
 Cargo metadata. Their existing semantic receipts used the explicit shared target
 and remain valid; this fixes clean-environment artifact discovery.
+
+
+## Scoped cancelled-order terminal no-charge repair (2026-10-14)
+
+A separate direct-only operator flow now verifies authenticated Stripe account/mode,
+a bound intent's exact fields and explicit terminal canceled/no-charge evidence,
+then repairs the linked local payment under locked payment/order/binding snapshots.
+It requires a cancelled order, unchanged order xmin, complete payment identity and
+binding generation/scope, no succeeded local payment and no captured-history audit.
+The initial profile requires latest_charge explicitly null and zero received/
+capturable amounts; paid, authorized, failed/refunded charge histories, omitted
+fields and nonterminal/ambiguous provider states remain manual. Existing legacy
+reconciliation APIs are unchanged. No provider POST, order transition, cancellation,
+refund or reference clearing occurs.
+
+Additive migration10 records an append-only tenant receipt alongside the existing
+cancellation audit and failed payment in the same transaction. The operator retains
+a receipt UUID before invocation and can inspect it after ambiguous COMMIT errors or
+cancellation; absence never authorizes financial retries. Freshness is checked after
+locks/writes before COMMIT. If the deadline elapses after successful COMMIT, a typed
+recorded-but-no-longer-current outcome preserves the receipt instead of claiming
+rollback. Trusted store-level evidence/freshness callbacks are not public request
+capabilities. Explicit operator grants and lock order are documented.
+
+Restricted PG tests pass terminal/shape/amount denial, order/reference/binding ABA
+and raw-scope changes, same-status order xmin changes, succeeded/captured-state
+denial, five-second lock-wait expiry, receipt UUID collision rollback, audit/receipt
+INSERT failure rollback, precommit expiry rollback, postcommit-expired inspection,
+reference retention and receipt tenant isolation/append-only RLS. Existing three PG
+binding/reconciliation regressions also pass, including migration1–9→10 preserving
+ciphertext and historic nullable cancellation timestamps. Strict base/Stripe
+all-feature/all-target Clippy passes:
+/private/tmp/fl-ecommerce-scoped-cancellation-{pg,regression,clippy}.log. The explicit
+ignored PG case is wired into CI. Existing template directory/README symlinks expose
+the new migration/source. All owned PG fixtures clean up their exact roles and rows.
+This finite direct no-charge repair does not close the broad interrupted-capture/
+cancelled-reference gate or prove live provider/cloud behavior.

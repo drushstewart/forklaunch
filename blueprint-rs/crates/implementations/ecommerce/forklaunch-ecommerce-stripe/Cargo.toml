@@ -12,6 +12,7 @@ default = []
 postgres = ["forklaunch-ecommerce-base/postgres"]
 
 [dependencies]
+uuid = { version = "1", features = ["v4"] }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core", features = ["provider-http", "stripe-webhook"] }
 forklaunch-ecommerce-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-ecommerce-interface" }
 forklaunch-ecommerce-base = { version = "0.1.0", path = "../forklaunch-ecommerce-base" }
@@ -26,7 +27,6 @@ sha2 = "0.10"
 [dev-dependencies]
 forklaunch-core = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-core", features = ["postgres", "encryption"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
-uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net", "time"] }
 axum = "0.8"
 

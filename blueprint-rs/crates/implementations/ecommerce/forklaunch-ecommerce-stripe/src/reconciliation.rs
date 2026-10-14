@@ -99,7 +99,7 @@ impl<S: PaymentCancellationStore> StripePaymentService<S> {
             .await
     }
 }
-fn verify_cancellation(
+pub(crate) fn verify_cancellation(
     payment: &PaymentDto,
     intent: &Value,
 ) -> BlueprintResult<VerifiedCancellation> {

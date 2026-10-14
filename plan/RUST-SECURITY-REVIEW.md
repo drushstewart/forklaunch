@@ -893,3 +893,16 @@ Restricted PG tests reject replacement ABA and expiry after final database waits
 Connect rejects before I/O. This grants no monetary or repair authority and has
 no public route. Operator tenant assignment and remote post-check changes remain
 outside this proof. Existing reconciliation APIs are unchanged; see inventory.
+
+
+### Scoped cancelled-order terminal no-charge repair (2026-10-14)
+
+The new opt-in operator flow requires fresh authenticated direct Stripe scope,
+explicit canceled/no-charge evidence and locked unchanged order/payment/binding
+snapshots. It rejects succeeded/captured local history. Failure, existing audit and
+new tenant receipt commit atomically; precommit freshness/audit errors roll back.
+COMMIT ambiguity uses a retained receipt UUID, and postcommit expiry returns an
+explicit recorded outcome. References remain intact; no provider write or financial
+action occurs. Restricted PG tests cover CAS/ABA, deadlines, tenant isolation,
+append-only receipts, rollback and additive migration compatibility. Broader charge
+histories and Connect/managed/PayPal flows remain outside this bounded profile.
