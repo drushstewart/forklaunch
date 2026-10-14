@@ -212,6 +212,11 @@ export class StripeSubscriptionService<
       }
     );
 
+    await this.mappers.SubscriptionMapper.validateProviderRead?.(
+      subscriptionEntity.externalId,
+      updatedSubscription
+    );
+
     const updatedSubscriptionEntity =
       await this.baseSubscriptionService.updateSubscription(
         {

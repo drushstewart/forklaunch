@@ -97,10 +97,13 @@ export class StripePlanService<
       currency: planDto.currency as string
     });
 
-    // retrieve the plan with the product expanded
-    stripePlan = await this.stripeClient.plans.retrieve(stripePlan.id, {
+    // Retain the returned identity across the subsequent expanded read.
+    const createdId = stripePlan.id;
+    stripePlan = await this.stripeClient.plans.retrieve(createdId, {
       expand: ['product']
     });
+
+    await this.mappers.PlanMapper.validateProviderRead?.(createdId, stripePlan);
 
     const plan = await this.basePlanService.createPlan(
       {
@@ -174,9 +177,12 @@ export class StripePlanService<
       product: productId
     });
 
-    updatedPlan = await this.stripeClient.plans.retrieve(updatedPlan.id, {
+    const createdId = updatedPlan.id;
+    updatedPlan = await this.stripeClient.plans.retrieve(createdId, {
       expand: ['product']
     });
+
+    await this.mappers.PlanMapper.validateProviderRead?.(createdId, updatedPlan);
 
     const updatedPlanEntity = await this.basePlanService.updatePlan(
       {

@@ -7511,3 +7511,23 @@ differences and pre-auth90 regressions pass:
 /private/tmp/fl-version-json-unmatched-{allfeatures,clippy,parity,canonical,diagnostics}.log.
 The prior Error-only guard is removed with this broader state proof; omitted
 declared MCP-body admission and24 diagnostic differences remain explicit gaps.
+
+
+## Billing post-effect local identity protection (2026-10-14)
+
+Plan creation/replacement now compares the expanded provider GET against the
+just-created plan ID/kind before local persistence. Subscription updates compare
+the POST response against the stored reference/kind. Configured optional hooks
+preserve custom fallback; native default services enforce the same checks. Local
+mapper/assign/upsert/persist are not called for mismatches, and local snapshots,
+input objects and public UUIDs remain intact. These checks run after provider
+effects may have occurred: errors do not mean provider no-op. No retries, refunds,
+compensation or reconciliation guarantees are added.
+
+33 focused actual TS cases, Plan-create14/Plan-update13/Subscription-update28,
+353 configured cases, prior22 update/64 read cases and permanent12-root strict
+types pass. Three native loopback tests prove exact effect sequences and no local
+write/retry;170 legacy comparisons and strict all-feature/all-target billing
+Clippy pass: /private/tmp/fl-billing-post-effect-identity{,-types,-native,-legacy170,
+-clippy}.log and corresponding named regression logs. CI runs the focused fixture.
+Interrupted effects and broader configured provider response semantics remain open.

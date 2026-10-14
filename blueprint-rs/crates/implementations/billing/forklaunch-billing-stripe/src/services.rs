@@ -91,7 +91,9 @@ impl<S: BillingStore> PlanService for StripeBillingService<S> {
             json!({"amount":request.price,"interval":request.cadence,"product":request.name,"currency":request.currency}),
         )?;
         let created = self.client.create(StripeResource::Plan, &fields).await?;
-        let plan = self.expanded_plan(provider_id(&created)?).await?;
+        let created_id = provider_id(&created)?;
+        let plan = self.expanded_plan(created_id).await?;
+        validate_read_identity(&plan, created_id, "plan")?;
         provider_id(&plan)?.clone_into(&mut request.external_id);
         request.billing_provider = "stripe".into();
         request.provider_fields = Some(product(&plan)?);
@@ -137,7 +139,9 @@ impl<S: BillingStore> PlanService for StripeBillingService<S> {
             .delete(StripeResource::Plan, &original.external_id)
             .await?;
         let created = self.client.create(StripeResource::Plan, &fields).await?;
-        let plan = self.expanded_plan(provider_id(&created)?).await?;
+        let created_id = provider_id(&created)?;
+        let plan = self.expanded_plan(created_id).await?;
+        validate_read_identity(&plan, created_id, "plan")?;
         request.external_id = Some(provider_id(&plan)?.to_owned());
         request.billing_provider = Some("stripe".into());
         request.provider_fields = Some(product(&plan)?);
@@ -238,6 +242,7 @@ impl<S: BillingStore> SubscriptionService for StripeBillingService<S> {
             .client
             .update(StripeResource::Subscription, &original.external_id, &fields)
             .await?;
+        validate_read_identity(&provider, &original.external_id, "subscription")?;
         request.external_id = Some(provider_id(&provider)?.into());
         request.billing_provider = Some("stripe".into());
         request.provider_fields = Some(provider);

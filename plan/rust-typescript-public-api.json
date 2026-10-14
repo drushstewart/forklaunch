@@ -2964,25 +2964,25 @@
                   "name": "getPlan",
                   "signature": "async getPlan(idDto: IdDto, em?: EntityManager): Promise<Dto['PlanMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 118
+                  "line": 121
                 },
                 {
                   "name": "updatePlan",
                   "signature": "async updatePlan(\n    planDto: StripeUpdatePlanDto,\n    em?: EntityManager\n  ): Promise<Dto['PlanMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 134
+                  "line": 137
                 },
                 {
                   "name": "deletePlan",
                   "signature": "async deletePlan(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 196
+                  "line": 202
                 },
                 {
                   "name": "listPlans",
                   "signature": "async listPlans(\n    idsDto?: IdsDto,\n    em?: EntityManager\n  ): Promise<Dto['PlanMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/plan.service.ts",
-                  "line": 205
+                  "line": 211
                 }
               ]
             }
@@ -3043,25 +3043,25 @@
                   "name": "deleteSubscription",
                   "signature": "async deleteSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 230
+                  "line": 235
                 },
                 {
                   "name": "listSubscriptions",
                   "signature": "async listSubscriptions(\n    idsDto?: IdsDto,\n    em?: EntityManager\n  ): Promise<Dto['SubscriptionMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 242
+                  "line": 247
                 },
                 {
                   "name": "cancelSubscription",
                   "signature": "async cancelSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 280
+                  "line": 285
                 },
                 {
                   "name": "resumeSubscription",
                   "signature": "async resumeSubscription(idDto: IdDto, em?: EntityManager): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/subscription.service.ts",
-                  "line": 292
+                  "line": 297
                 }
               ]
             }
