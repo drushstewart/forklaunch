@@ -10,7 +10,7 @@ use forklaunch_http::BodyParserHooks;
 use serde_json::{Value, json};
 use std::fmt::Write as _;
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 
@@ -67,6 +67,8 @@ fn result(parsed: ParsedJsonBody) -> Value {
 }
 #[tokio::main]
 async fn main() {
+    let reviver = std::env::args().nth(2).as_deref() == Some("true");
+    let revived_numbers = Arc::new(Mutex::new(Vec::<String>::new()));
     let strict = std::env::args().nth(1).as_deref() != Some("false");
     let handlers = Arc::new(AtomicUsize::new(0));
     let verifiers = Arc::new(AtomicUsize::new(0));
@@ -92,29 +94,44 @@ async fn main() {
                 route.access = AccessLevel::Authenticated;
             }
             let verify = verifiers.clone();
-            parsers
-                .insert(
-                    &route,
-                    BodyParserHooks::default().with_verify(move |request, _, _| {
-                        verify.fetch_add(1, Ordering::SeqCst);
-                        if request
-                            .headers
-                            .get("x-deny")
-                            .is_some_and(|value| value == "yes")
-                        {
-                            Err("PRIVATE_VERIFY".into())
-                        } else {
-                            Ok(())
-                        }
-                    }),
-                )
-                .unwrap();
+            let trace = revived_numbers.clone();
+            let mut hooks = BodyParserHooks::default().with_verify(move |request, _, _| {
+                trace.lock().unwrap().clear();
+                verify.fetch_add(1, Ordering::SeqCst);
+                if request
+                    .headers
+                    .get("x-deny")
+                    .is_some_and(|value| value == "yes")
+                {
+                    Err("PRIVATE_VERIFY".into())
+                } else {
+                    Ok(())
+                }
+            });
+            if reviver {
+                let trace = revived_numbers.clone();
+                hooks = hooks.with_json_reviver(move |_, value| {
+                    if let Value::Number(number) = &value {
+                        trace
+                            .lock()
+                            .unwrap()
+                            .push(format!("{:016x}", number.as_f64().unwrap().to_bits()));
+                    }
+                    Ok(Some(value))
+                });
+            }
+            parsers.insert(&route, hooks).unwrap();
             let calls = handlers.clone();
+            let trace = revived_numbers.clone();
             router = router.post(
                 route,
                 move |Extension(parsed): Extension<ParsedJsonBody>| async move {
                     calls.fetch_add(1, Ordering::SeqCst);
-                    Json(result(parsed))
+                    let mut output = result(parsed);
+                    if reviver {
+                        output["revivedNumbers"] = json!(trace.lock().unwrap().clone());
+                    }
+                    Json(output)
                 },
             );
         }

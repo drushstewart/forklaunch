@@ -9,6 +9,19 @@ pub(super) enum Node {
     Array(Vec<Self>),
     Object(Vec<(String, Self)>),
 }
+impl Node {
+    pub(super) fn map_scalars(&mut self, transform: fn(&mut Value)) {
+        match self {
+            Self::Scalar(value) => transform(value),
+            Self::Array(values) => values
+                .iter_mut()
+                .for_each(|value| value.map_scalars(transform)),
+            Self::Object(values) => values
+                .iter_mut()
+                .for_each(|(_, value)| value.map_scalars(transform)),
+        }
+    }
+}
 impl<'de> Deserialize<'de> for Node {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct NodeVisitor;

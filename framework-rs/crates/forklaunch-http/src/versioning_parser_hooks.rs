@@ -54,6 +54,21 @@ impl BodyParserHooks {
     }
 
     pub(super) fn revive_json(&self, text: &str) -> Result<Option<Value>, ContractValidationError> {
+        self.revive_json_profile(text, false)
+    }
+
+    pub(super) fn revive_finite_json(
+        &self,
+        text: &str,
+    ) -> Result<Option<Value>, ContractValidationError> {
+        self.revive_json_profile(text, true)
+    }
+
+    fn revive_json_profile(
+        &self,
+        text: &str,
+        finite_numbers: bool,
+    ) -> Result<Option<Value>, ContractValidationError> {
         let failure = || {
             ContractValidationError::new(
                 ContractValidationLocation::BodyParser,
@@ -61,7 +76,10 @@ impl BodyParserHooks {
             )
         };
         let callback = self.reviver.as_ref().expect("configured reviver");
-        let node = serde_json::from_str(text).map_err(|_| failure())?;
+        let mut node: json_reviver::Node = serde_json::from_str(text).map_err(|_| failure())?;
+        if finite_numbers {
+            node.map_scalars(super::json_request::normalize_numbers);
+        }
         json_reviver::revive(callback.as_ref(), "", node, 0).map_err(|_| failure())
     }
 

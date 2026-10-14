@@ -6151,3 +6151,22 @@ base/Stripe Clippy also pass. Logs:
 The existing PostgreSQL CI suite invokes the new foundation proof. Generated
 startup receipts predate migration6; a new embedded snapshot remains required.
 Billing reconciliation gates855/858 remain open.
+
+## Finite JSON large-number normalization receipt (2026-10-14)
+
+The unversioned JSON profile now admits finite large integer values with the
+same IEEE-754 rounding as JavaScript, rather than rejecting all unsafe integers.
+Normalization occurs before reviver callbacks, including nested/property-order
+traversal; ordinary safe integers, callback-produced native Values and existing
+versioned reviver behavior remain intact. 96 Axum plus48 HTTP library tests,
+540 actual TypeScript/native comparisons (1080 observations) and strict all-target
+MCP/cookie-session Clippy pass. Twenty-four overflow/lone-surrogate unsupported
+cases remain separately asserted: /private/tmp/fl-json-numbers-{tests,parity,clippy}.log.
+
+Numeric input/output comparisons inspect IEEE bits and do not claim JavaScript
+response-serializer equivalence. Large values now require floating-point access
+instead of exact integer DTO conversions. Caller-owned JSON Schema enum/const
+literals are not normalized automatically. The oracle keeps nested numeric data
+in its declared unknown-valued field: the separately observed TypeScript unknown
+property stripping/schema transformations remain an explicit residual gate.
+This supersedes the earlier profile's unsafe-integral rejection boundary.

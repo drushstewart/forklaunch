@@ -272,8 +272,11 @@ framework handlers can inspect `FrameworkRequest.parsed_json`. Original wire
 bytes remain available independently from decoded bytes and parsed values.
 Unframed or nonmatching media skips parsing; framed empty JSON becomes `{}`.
 Parser options and verifier/reviver hooks reuse the versioned parser engine.
-The bounded value domain admits finite decimals/exponents, rejects integral
-magnitudes beyond JavaScript's safe range, overflow and lone UTF-16 surrogates.
+The bounded value domain admits finite decimals/exponents and normalizes large
+source integers through JavaScript-compatible IEEE-754 rounding, including before
+reviver callbacks. Overflow and lone UTF-16 surrogates remain unsupported.
+Large parsed numbers require `as_f64`; exact integer deserialization and
+caller-owned schema enum/const literals are not automatically normalized.
 This does not implement generic JSON-schema validation or JavaScript response
 serialization (including signed-zero spelling). Native behavior is unchanged
 unless explicitly registered. LocalRouter offers `execute_with_json_parsers`

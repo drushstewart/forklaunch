@@ -27,8 +27,12 @@ struct Registration {
 /// Parsing runs independently of request-schema validation mode. Native defaults
 /// are unchanged unless registered. Only exact declared media types are supported.
 /// Finite fractional and exponent values use correctly rounded IEEE-754 parsing.
-/// Integral values outside the JavaScript safe-integer range, nonfinite values
-/// and lone UTF-16 surrogates are rejected rather than silently changing values. This profile
+/// Numbers outside the JavaScript safe-integer range become rounded f64 values,
+/// including source numbers supplied to reviver callbacks. Use `Value::as_f64`
+/// for these values: exact i64/u64 access and typed integer deserialization no
+/// longer preserve the original integer spelling. Safe integer representations
+/// and callback-produced native values are retained. Nonfinite overflow and lone
+/// UTF-16 surrogates remain unsupported. This profile
 /// does not implement arbitrary JavaScript values or JSON-schema validation.
 /// Local callers must supply HTTP framing headers (`Content-Length` or
 /// `Transfer-Encoding`); an unframed body is skipped, as on the HTTP transport.
@@ -161,23 +165,23 @@ impl JsonRequestParsers {
             &entry.options.json_wire,
         )?;
         entry.hooks.verify(request, &decoded, Some(&charset))?;
-        // Check the admitted input domain before a reviver can hide unsupported values.
-        let original = parse_json_body(
+        // Parse before callbacks so unsupported overflow/surrogates cannot be hidden.
+        let mut original = parse_json_body(
             &decoded,
             &charset,
             entry.options.json_strict,
             &BodyParserHooks::default(),
         )?;
-        if original
-            .as_ref()
-            .is_some_and(|value| !supported_numbers(value))
-        {
-            return Err(invalid_body(
-                "JSON number is outside the supported safe-integer domain",
-            ));
+        if let Some(value) = &mut original {
+            normalize_numbers(value);
         }
         let value = if entry.hooks.has_json_reviver() {
-            parse_json_body(&decoded, &charset, entry.options.json_strict, &entry.hooks)?
+            let text = charset::decode(&decoded, &charset)?;
+            if text.is_empty() {
+                original
+            } else {
+                entry.hooks.revive_finite_json(&text)?
+            }
         } else {
             original
         };
@@ -187,14 +191,19 @@ impl JsonRequestParsers {
         }))
     }
 }
-fn supported_numbers(value: &Value) -> bool {
+pub(super) fn normalize_numbers(value: &mut Value) {
     match value {
-        Value::Number(number) => number.as_f64().is_some_and(|value| {
-            value.is_finite() && (value.fract() != 0.0 || value.abs() <= 9_007_199_254_740_991.0)
-        }),
-        Value::Array(values) => values.iter().all(supported_numbers),
-        Value::Object(values) => values.values().all(supported_numbers),
-        _ => true,
+        Value::Number(number) => {
+            if let Some(value) = number.as_f64()
+                && value.abs() > 9_007_199_254_740_991.0
+                && let Some(rounded) = serde_json::Number::from_f64(value)
+            {
+                *number = rounded;
+            }
+        }
+        Value::Array(values) => values.iter_mut().for_each(normalize_numbers),
+        Value::Object(values) => values.values_mut().for_each(normalize_numbers),
+        _ => {}
     }
 }
 fn matches_registration(route: &RouteContract, entry: &Registration) -> bool {
@@ -256,15 +265,12 @@ mod tests {
         let route = route();
         let mut parsers = JsonRequestParsers::default();
         parsers.insert(&route, BodyParserHooks::default()).unwrap();
-        for body in [
-            "{\"n\":9007199254740993}",
-            "{\"n\":1e400}",
-            "{\"n\":1e20}",
-            "{\"s\":\"\\ud800\"}",
-        ] {
+        for body in ["{\"n\":1e400}", "{\"s\":\"\\ud800\"}"] {
             assert!(parsers.parse(&route, &request(body)).is_err(), "{body}");
         }
         for body in [
+            "{\"n\":9007199254740993}",
+            "{\"n\":1e20}",
             "{\"n\":12.99}",
             "{\"n\":5e-324}",
             "{\"n\":-0}",
@@ -280,15 +286,49 @@ mod tests {
                 BodyParserHooks::default().with_json_reviver(|_, _| Ok(None)),
             )
             .unwrap();
-        assert!(
-            reviver
-                .parse(&route, &request("{\"n\":9007199254740993}"))
-                .is_err()
-        );
+        assert!(reviver.parse(&route, &request("{\"n\":1e400}")).is_err());
         let removed = reviver.parse(&route, &request("{}")).unwrap().unwrap();
         assert!(removed.value.is_none());
         assert!(removed.raw_body.is_some());
     }
+    #[test]
+    fn large_source_numbers_round_before_reviver_without_rewriting_callback_values() {
+        let route = route();
+        let hooks = BodyParserHooks::default().with_json_reviver(|key, value| {
+            if key == "source" {
+                assert!(value.is_f64());
+                assert_eq!(value.as_f64(), Some(9_007_199_254_740_992.0));
+                assert_eq!(value.as_i64(), None);
+            }
+            if key == "small" {
+                assert_eq!(value.as_i64(), Some(5));
+            }
+            if key == "replace" {
+                return Ok(Some(Value::from(u64::MAX)));
+            }
+            Ok(Some(value))
+        });
+        let mut parsers = JsonRequestParsers::default();
+        parsers.insert(&route, hooks).unwrap();
+        let parsed = parsers
+            .parse(
+                &route,
+                &request("{\"source\":9007199254740993,\"small\":5,\"replace\":0}"),
+            )
+            .unwrap()
+            .unwrap()
+            .value
+            .unwrap();
+        assert!(parsed["source"].is_f64());
+        assert_eq!(parsed["replace"].as_u64(), Some(u64::MAX));
+        let native_hooks = BodyParserHooks::default().with_json_reviver(|_, value| Ok(Some(value)));
+        let native = native_hooks
+            .revive_json("{\"source\":9007199254740993}")
+            .unwrap()
+            .unwrap();
+        assert_eq!(native["source"].as_u64(), Some(9_007_199_254_740_993));
+    }
+
     #[test]
     fn direct_local_registration_parses_before_validation_and_handler() {
         let route = route();
