@@ -84,7 +84,7 @@ export type StripeCreateBillingPortalDto = Omit<
   CreateBillingPortalDto,
   'providerFields'
 > & {
-  stripeFields: Omit<
+  stripeFields?: Omit<
     StripeBillingPortalSessionCreateParams,
     BillingPortalOmissions
   >;

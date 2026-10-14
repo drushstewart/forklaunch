@@ -160,6 +160,16 @@ export class StripePaymentLinkService<
   }
 
   async getPaymentLink({ id }: IdDto): Promise<Dto['PaymentLinkMapper']> {
+    const readCachedDto = this.mappers.PaymentLinkMapper.readCachedDto;
+    if (readCachedDto) {
+      const existing = await this.basePaymentLinkService.getPaymentLink({ id });
+      if (existing.id !== id) {
+        throw new Error('Cached payment link identity does not match');
+      }
+      return readCachedDto(existing, (providerId) =>
+        this.stripeClient.paymentLinks.retrieve(providerId)
+      );
+    }
     const stripePaymentLink = await this.stripeClient.paymentLinks.retrieve(id);
 
     const databasePaymentLink =

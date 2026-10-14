@@ -191,6 +191,8 @@ on:
       - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
+      - 'cli/tests/rust_billing_portal_options.mjs'
+      - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
@@ -420,6 +422,8 @@ on:
       - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
+      - 'cli/tests/rust_billing_portal_options.mjs'
+      - 'cli/tests/fixtures/rust_billing_portal_options.types.ts'
       - 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'
       - 'cli/tests/rust_billing_stripe_client_parity.mjs'
       - 'cli/tests/rust_billing_managed_stripe_parity.mjs'
@@ -834,6 +838,7 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_dto_types.mjs
+      - run: node cli/tests/rust_billing_portal_options.mjs
       - run: node cli/tests/rust_billing_checkout_uri.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

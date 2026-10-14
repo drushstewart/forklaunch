@@ -4,17 +4,18 @@ import type {
   StripeCreateCheckoutSessionDto,
   StripeUpdateCheckoutSessionDto
 } from '../../../blueprint/implementations/billing/stripe/domain/types/stripe.dto.types';
+import type { StatusEnum } from '../../../blueprint/billing-stripe/domain/enum/status.enum';
 
 type Assert<T extends true> = T;
 type Optional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
 export type CreateOptionsCanBeOmitted = Assert<
-  Optional<StripeCreateCheckoutSessionDto<'PENDING'>, 'stripeFields'>
+  Optional<StripeCreateCheckoutSessionDto<typeof StatusEnum>, 'stripeFields'>
 >;
 export type UpdateOptionsStayOptional = Assert<
-  Optional<StripeUpdateCheckoutSessionDto<'PENDING'>, 'stripeFields'>
+  Optional<StripeUpdateCheckoutSessionDto<typeof StatusEnum>, 'stripeFields'>
 >;
 export type ResponseEvidenceStaysRequired = Assert<
-  Optional<StripeCheckoutSessionDto<'PENDING'>, 'stripeFields'> extends false
+  Optional<StripeCheckoutSessionDto<typeof StatusEnum>, 'stripeFields'> extends false
     ? true
     : false
 >;

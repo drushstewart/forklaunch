@@ -2346,7 +2346,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/paymentLink.mapper.types.ts",
               "line": 6,
-              "type": "{\n  PaymentLinkMapper: {\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
+              "type": "{\n  PaymentLinkMapper: {\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2461,7 +2461,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
               "line": 83,
-              "type": "Omit<\n  CreateBillingPortalDto,\n  'providerFields'\n> & {\n  stripeFields: Omit<\n    StripeBillingPortalSessionCreateParams,\n    BillingPortalOmissions\n  >;\n}"
+              "type": "Omit<\n  CreateBillingPortalDto,\n  'providerFields'\n> & {\n  stripeFields?: Omit<\n    StripeBillingPortalSessionCreateParams,\n    BillingPortalOmissions\n  >;\n}"
             },
             {
               "name": "StripeUpdateBillingPortalDto",
@@ -2909,25 +2909,25 @@
                   "name": "expirePaymentLink",
                   "signature": "async expirePaymentLink({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 173
+                  "line": 183
                 },
                 {
                   "name": "handlePaymentSuccess",
                   "signature": "async handlePaymentSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 182
+                  "line": 192
                 },
                 {
                   "name": "handlePaymentFailure",
                   "signature": "async handlePaymentFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 191
+                  "line": 201
                 },
                 {
                   "name": "listPaymentLinks",
                   "signature": "async listPaymentLinks(idsDto?: IdsDto): Promise<Dto['PaymentLinkMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 200
+                  "line": 210
                 }
               ]
             }

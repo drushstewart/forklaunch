@@ -50,7 +50,7 @@ export const UpdatePaymentLinkMapper = requestMapper({
   }
 });
 
-export const PaymentLinkMapper = responseMapper({
+const PaymentLinkEntityMapper = responseMapper({
   schemaValidator,
   schema: PaymentLinkSchemas.PaymentLinkSchema(StatusEnum),
   entity: PaymentLink,
@@ -65,3 +65,48 @@ export const PaymentLinkMapper = responseMapper({
     }
   }
 });
+
+/** Read-only cached reference; this is not verified provider account ownership. */
+function paymentLinkEvidence(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid payment link provider evidence');
+  }
+  const link = value as Record<string, unknown>;
+  if (
+    typeof link.id !== 'string' ||
+    !/^plink_[A-Za-z0-9_]+$/.test(link.id) ||
+    link.id.length > 128 ||
+    link.object !== 'payment_link' ||
+    typeof link.livemode !== 'boolean'
+  ) {
+    throw new Error('Invalid payment link provider evidence');
+  }
+  return { id: link.id, livemode: link.livemode };
+}
+
+export const PaymentLinkMapper = {
+  ...PaymentLinkEntityMapper,
+  readCachedDto: async (
+    existing: Awaited<ReturnType<typeof PaymentLinkEntityMapper.toDto>>,
+    retrieve: (providerId: string) => Promise<Stripe.PaymentLink>
+  ) => {
+    const parsed = schemaValidator.parse(
+      schemaValidator.schemify(
+        PaymentLinkSchemas.PaymentLinkSchema(StatusEnum)
+      ),
+      existing
+    );
+    if (!parsed.ok || !parsed.value.id.trim()) {
+      throw new Error('Invalid cached payment link response');
+    }
+    const before = paymentLinkEvidence(parsed.value.stripeFields);
+    const link = await retrieve(before.id);
+    const after = paymentLinkEvidence(link);
+    if (before.id !== after.id || before.livemode !== after.livemode) {
+      throw new Error('Payment link provider evidence does not match');
+    }
+    // Preserve the public UUID and local fields; do not write provider evidence
+    // into cache or use it to authorize mutations or managed account rebinding.
+    return { ...existing, stripeFields: link };
+  }
+};

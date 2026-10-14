@@ -17,7 +17,7 @@ for(const variant of ['base','stripe']){
   if(spec==='@forklaunch/blueprint-core')return {schemaValidator:actual.validator};
   if(spec==='@forklaunch/core/http')return {evaluateTelemetryOptions:()=>({enabled:{}})};
   if(spec==='@forklaunch/core/cache')return {createCacheKey:prefix=>id=>prefix+':'+id};
-  if(spec==='@forklaunch/implementation-billing-base/services')return {...load(path.join(root,'blueprint/implementations/billing/base/services/billingPortal.service.ts')),...load(path.join(root,'blueprint/implementations/billing/base/services/checkoutSession.service.ts'))};
+  if(spec==='@forklaunch/implementation-billing-base/services')return {...load(path.join(root,'blueprint/implementations/billing/base/services/billingPortal.service.ts')),...load(path.join(root,'blueprint/implementations/billing/base/services/checkoutSession.service.ts')),...load(path.join(root,'blueprint/implementations/billing/base/services/paymentLink.service.ts'))};
   if(spec==='@forklaunch/core/mappers')return {...load(path.join(root,'framework/core/src/mappers/mapper.ts')),...load(path.join(root,'framework/core/src/mappers/mapServiceSchemas.ts'))};
   if(spec==='@forklaunch/internal')return load(path.join(root,'framework/internal/src/serviceSchemaResolver.ts'));
   if(spec===`@forklaunch/implementation-billing-${variant}/schemas`)return load(path.join(root,`blueprint/implementations/billing/${variant}/domain/schemas/index.ts`));
@@ -56,6 +56,30 @@ for(const variant of ['base','stripe']){
   if(variant==='stripe')assert.equal(dto.stripeFields.id,'provider_fixture');
   if(family==='plan')assert.equal(dto.price,1200);
   if(family==='paymentLink')assert.equal(dto.amount,1200);cases++;
+  if(variant==='stripe'&&family==='paymentLink'){
+   const Service=actual.load(path.join(root,'blueprint/implementations/billing/stripe/services/paymentLink.service.ts')).StripePaymentLinkService;
+   const provider={id:'plink_owned',object:'payment_link',livemode:false,active:true},fresh={...provider,active:false};
+   const original={...dto,stripeFields:provider};let cached=JSON.stringify(original),calls=[],response=fresh,writes=0;
+   const cache={async readRecord(){return cached?{value:JSON.parse(cached)}:null;},async putRecord(){writes++;}};
+   const client={paymentLinks:{async retrieve(id){calls.push(id);return response;}}};
+   const service=new Service(client,{},cache,{},actual.validator,mappers);
+   const got=await service.getPaymentLink({id:dto.id});assert.equal(got.id,dto.id);assert.equal(got.amount,dto.amount);assert.equal(got.stripeFields,fresh);assert.deepEqual(calls,['plink_owned']);assert.equal(cached,JSON.stringify(original));assert.equal(writes,0);cases++;
+   for(const patch of [{id:randomUUID()},{id:null},{status:'unknown'},{stripeFields:null},{stripeFields:[]},{stripeFields:{...provider,id:'public-id'}},{stripeFields:{...provider,id:'plink_'+ 'x'.repeat(128)}},{stripeFields:{...provider,object:'checkout.session'}},{stripeFields:{...provider,livemode:'false'}}]){
+    cached=JSON.stringify({...original,...patch});calls=[];await assert.rejects(service.getPaymentLink({id:dto.id}));assert.deepEqual(calls,[]);assert.equal(writes,0);cases++;
+   }
+   cached=null;calls=[];await assert.rejects(service.getPaymentLink({id:dto.id}));assert.deepEqual(calls,[]);cases++;
+   cached=JSON.stringify(original);
+   for(const bad of [null,[],{...fresh,id:'plink_other'},{...fresh,livemode:true},{...fresh,object:'customer'},{...fresh,livemode:null}]){
+    calls=[];response=bad;await assert.rejects(service.getPaymentLink({id:dto.id}));assert.deepEqual(calls,['plink_owned']);assert.equal(cached,JSON.stringify(original));assert.equal(writes,0);cases++;
+   }
+   const failed=new Service({paymentLinks:{async retrieve(){throw Error('provider unavailable');}}},{},cache,{},actual.validator,mappers);
+   await assert.rejects(failed.getPaymentLink({id:dto.id}),/provider unavailable/);assert.equal(cached,JSON.stringify(original));assert.equal(writes,0);cases++;
+   response=fresh;calls=[];const backed=new Service(client,{},cache,{},actual.validator,mappers,{enableDatabaseBackup:true});
+   assert.equal((await backed.getPaymentLink({id:dto.id})).id,dto.id);assert.deepEqual(calls,['plink_owned']);assert.equal(writes,0);cases++;
+   // Custom mappers retain the existing provider-ID-first behavior.
+   calls=[];response=fresh;const legacy=new Service(client,{},cache,{},actual.validator,{...mappers,PaymentLinkMapper:{...read,readCachedDto:undefined}});
+   assert.equal((await legacy.getPaymentLink({id:dto.id})).id,dto.id);assert.deepEqual(calls,[dto.id]);cases++;
+  }
   if(['checkoutSession','billingPortal'].includes(family)){
    const Service=actual.load(path.join(root,`blueprint/implementations/billing/base/services/${family}.service.ts`))[`Base${name}Service`];
    const suffix=family==='billingPortal'?'BillingPortalSession':name;
@@ -220,4 +244,4 @@ for(const variant of ['base','stripe']){
  }
 }
 console.log(`PASS ${cases} actual configured billing mapper cases: cache DTO reads/updates without ORM access, Stripe replacement and identity guards, emitted/retained status acceptance, unknown-status rejection, schema resolution, HTTP-boundary unknown fields, optional provider payloads, local UUIDs, response mapping, ownership and missing-row failures`);
-console.log('AUDIT Stripe configured mappers allocate local UUIDs and retain provider responses; configured checkout reads now resolve cached provider references. Other reference-based mutation paths still require identity integration; native scoped durable aliases are separate. Native provider payloads require objects and native scalar coercions remain stricter.');
+console.log('AUDIT Stripe configured mappers allocate local UUIDs and retain provider responses; configured checkout/payment-link reads now resolve cached provider references. Other reference-based mutation paths still require identity integration; native scoped durable aliases are separate. Native provider payloads require objects and native scalar coercions remain stricter.');

@@ -5645,3 +5645,50 @@ inventory remains 44 packages, 608 entry points and 1,662 records. Contract
 receipt: `/private/tmp/fl-checkout-options-contracts.log`. This does not tighten
 the existing arbitrary-value `type<T>()` runtime validator or complete provider
 identity and mutation reconciliation. Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: configured payment-link public/provider read identities
+
+The configured TypeScript Stripe payment-link mapper now opts into a cache-first
+read hook. The wrapper checks the requested public ID against the cached DTO,
+then validates the retained `plink_` reference, object discriminator and mode
+before issuing the provider GET. The returned provider ID and mode must match.
+The response retains public/local fields with fresh provider evidence, without
+rewriting cached state. Custom mappers without the hook keep their prior read
+behavior. This is read-reference validation, not proof of provider-account
+ownership or authorization for financial mutations.
+
+The actual configured mapper fixture passes 325 cases, including 20 payment-link
+cases for cache failures, malformed identities, provider failures/mismatches,
+backup mode and custom mapper fallback. Focused strict compilation includes the
+actual payment-link service and transitive source, but is not a full configured
+module/workspace type check. Receipts: `/private/tmp/fl-payment-link-read-types.log`
+and `/private/tmp/fl-payment-link-read-configured.log`. The 144 legacy TS/native
+service comparisons and normal 66-route/28-schema contract oracle also pass
+(`/private/tmp/fl-payment-link-read-{legacy,contracts}.log`).
+
+Native default payment-link creation still uses provider IDs; configured TS
+creation uses application UUIDs. Scoped durable native alias reads, configured
+listing and mutation identity/reconciliation remain separate work. Checklist:
+**660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: optional billing-portal create options
+
+Portal creation now explicitly permits omitted `stripeFields` in both validators
+and the public DTO, matching the native optional provider options and existing
+wrapper payload behavior. Updates remain optional and response evidence remains
+required. Twelve actual Zod/TypeBox cases exercise configured mappers and both
+service layers with omitted, empty and explicit options, in cache and backup
+dispatch modes. They verify identical omitted/empty provider requests, retained
+return URLs, customer identity, response evidence and cache/persistence dispatch.
+ORM, cache and Stripe transport are fixture seams; this does not claim a live
+provider or ORM integration check.
+
+The public DTO compiler now checks portal as well as checkout optionality in CI.
+Focused actual-service type checking passes (`/private/tmp/fl-portal-options-types.log`).
+The 325-case configured regression and normal 66-route/28-schema oracle pass
+with unchanged contract snapshots. Schema/mapper receipt:
+`/private/tmp/fl-portal-options-schema.log`.
+Other create-option schemas and provider identity/reconciliation remain open.
+Checklist: **660/682 (96.8%), 22 open**.

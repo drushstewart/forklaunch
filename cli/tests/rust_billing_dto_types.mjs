@@ -30,7 +30,8 @@ const options = {
   }
 };
 const program = ts.createProgram([
-  path.join(root, 'cli/tests/fixtures/rust_billing_checkout_options.types.ts')
+  path.join(root, 'cli/tests/fixtures/rust_billing_checkout_options.types.ts'),
+  path.join(root, 'cli/tests/fixtures/rust_billing_portal_options.types.ts')
 ], options);
 const diagnostics = ts.getPreEmitDiagnostics(program);
 if (diagnostics.length) {
