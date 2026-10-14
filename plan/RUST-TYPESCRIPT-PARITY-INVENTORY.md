@@ -5875,3 +5875,23 @@ comparisons, focused strict real-service TypeScript and source inventory checks.
 The new generated `PAYMENT_LINK_READS.md` explains bounds and ownership limits.
 Cached references support reads, not authorization for financial mutations.
 Receipts: `/private/tmp/fl-payment-link-list-{configured,types,base,legacy,inventory}.log`.
+
+## Current generated auth and packaging follow-up (2026-10-13)
+
+A fresh CLI snapshot containing typed auth-error provenance, generated observer
+selection, router fallback/correlation support and PostgreSQL member-query
+selection passes the full generated Better Auth fixture. HTTP/MCP shared,
+separate and disabled listeners, actual blueprint/generated frontend clients,
+both SDKs, encrypted tenant sessions, JWT/JWKS/HMAC/role behavior, restart,
+relocation, preservation and rename/delete pass. The generated service retains
+its configured native HTTP profiles; separate differential fixtures exercise
+the opt-in framework wire profiles. Logs:
+`/private/tmp/fl-observer-correlation-{cli-build,generated}.log`.
+The owned run directory was removed after confirming no fixture roles/processes.
+
+Cargo package listing also confirms the new payment-link read guide, core error
+constructor migration guide, error provenance source and correlation module.
+The core README required an explicit template symlink, which is now present.
+Receipt: `/private/tmp/fl-current-parity-package-list.txt`.
+This listing is not a new full source-archive installation test. Checklist remains
+**660/682 (96.8%), 22 open**.
