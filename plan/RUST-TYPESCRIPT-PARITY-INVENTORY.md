@@ -8355,3 +8355,31 @@ locked platform61 tests and focused strict types. Logs are
 /private/tmp/fl-managed-pair-locked-platform.log. Hosted CI and full platform
 application bootstrap have not been run; native protocol/PG proof remains the
 separately recorded d2597896c receipt. No source push or deployment is claimed.
+
+
+## Verified direct Customer association registration (2026-10-14)
+
+The opt-in direct Stripe registration method accepts a server-authorized local
+Customer/Party association, verifies current account/mode and an exact fixed
+Customer GET, and publishes an immutable scoped association generation with audit.
+It rechecks the tenant-owned encrypted local Customer body and xmin under lock;
+no decrypted email/name or provider metadata establishes Party ownership. Missing,
+deleted, malformed or wrong-mode Customer responses fail closed. The registration
+uses provider reads only and exposes no default route or Subscription dispatch.
+
+Additive migration9 enforces tenant RLS, immutable associations, scoped provider/
+Party uniqueness and RESTRICT deletion of the local Customer. Exact-generation
+CAS revocation preserves audit and rejects ABA. Party existence/authorization is
+an explicit trusted-server assertion: there is no cross-service Party FK or IAM
+lifecycle guarantee. Future Subscription creation needs fresh Customer/Plan
+proof, locked dependencies and a durable claimed-dependency barrier.
+
+Compile5.46s, restricted PostgreSQL10.60s, strict base/Stripe all-feature/all-target
+Clippy4.70s, malformed/deleted unit, official SDK fixedGET, migration9 Plan
+regression12.77s and legacy170 pass. The PG matrix includes changed encrypted
+snapshots, wrong provider evidence, actor/RLS, immutable/CAS/ABA checks, waits,
+post-audit expiry rollback and real lost snapshot/final COMMIT acknowledgements.
+Ambiguous COMMIT requires scoped historical inspection, never a retry assumption.
+Fixture roles are removed. Logs /private/tmp/fl-customer-registration-{compile,pg,
+clippy,unit,sdk,plan-regression,legacy170}.log; ten exact hashes
+/private/tmp/fl-customer-registration-source-checkpoint.json. CI runs SDK/PG.

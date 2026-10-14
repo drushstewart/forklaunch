@@ -445,3 +445,6 @@ mod tests {
 
 #[cfg(feature = "postgres-identity")]
 mod plan_creation;
+
+#[cfg(feature = "postgres-identity")]
+mod customer_registration;

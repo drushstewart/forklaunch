@@ -6,6 +6,10 @@ use crate::services::{BillingKind, Scope};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
+mod customer_registration;
+pub use customer_registration::{
+    CustomerRegistrationSnapshot, DurableStripeCustomerBinding, TrustedCustomerParty,
+};
 mod paused_effect;
 mod payment_link_creation;
 mod plan_creation;

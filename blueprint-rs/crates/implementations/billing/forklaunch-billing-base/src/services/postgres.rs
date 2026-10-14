@@ -5,6 +5,9 @@ mod provider_bindings;
 mod webhooks;
 pub use checkout_repair::CheckoutRepairSnapshot;
 pub use provider_bindings::{
+    CustomerRegistrationSnapshot, DurableStripeCustomerBinding, TrustedCustomerParty,
+};
+pub use provider_bindings::{
     DurableStripeBinding, ManagedPaymentLinkPublication, PausedEffectAcknowledgement,
     PausedSubscriptionEffectSnapshot, PaymentLinkCreationClaim, PaymentLinkCreationReservation,
     PaymentLinkCreationStatus, StripeBindingScope, StripeSubscriptionOwnership,
