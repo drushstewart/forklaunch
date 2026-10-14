@@ -14,7 +14,7 @@ async fn status_profile_preserves_defaults_declared_responses_and_validation_mod
                     ValidationMode::Warning,
                     ValidationMode::None,
                 ] {
-                    for status in [200, 201, 500] {
+                    for status in [200, 201, 301, 400, 418, 499, 500, 501, 599] {
                         check(local, versioned, format, mode, status).await;
                     }
                 }
@@ -80,10 +80,14 @@ async fn check(
         .to_str()
         .unwrap()
         .to_owned();
-    let rejected = mode == ValidationMode::Error && status == 201;
+    let rejected = mode == ValidationMode::Error && ![200, 500].contains(&status);
     assert_eq!(
         response.status().as_u16(),
-        if rejected { 500 } else { status }
+        if rejected && (format == ResponseStatusErrorFormat::Json || status < 400) {
+            500
+        } else {
+            status
+        }
     );
     let body =
         String::from_utf8(to_bytes(response.into_body(), 8192).await.unwrap().to_vec()).unwrap();
@@ -93,7 +97,14 @@ async fn check(
             assert_eq!(media, "text/plain; charset=utf-8");
             assert_eq!(
                 body,
-                "Internal server error:\n\nCorrelation id: status-test"
+                format!(
+                    "{}:\n\nCorrelation id: status-test",
+                    if (400..500).contains(&status) {
+                        "Request could not be processed"
+                    } else {
+                        "Internal server error"
+                    }
+                )
             );
         } else {
             assert_eq!(media, "application/json");

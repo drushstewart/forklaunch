@@ -56,6 +56,8 @@ pub fn router() -> ForkLaunchRouter {
 fn result(mode: &str) -> (u16, &'static str) {
     match mode {
         "invalid" => (201, "PRIVATE_STATUS_PAYLOAD"),
+        "client" => (418, "PRIVATE_STATUS_PAYLOAD"),
+        "server" => (503, "PRIVATE_STATUS_PAYLOAD"),
         "declared" => (500, "accepted"),
         _ => (200, "accepted"),
     }

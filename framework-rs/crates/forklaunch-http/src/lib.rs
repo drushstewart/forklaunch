@@ -339,6 +339,9 @@ pub enum ResponseStatusErrorFormat {
     #[default]
     Json,
     /// Redacted TypeScript final exception diagnostic with correlation ID.
+    /// Undocumented 400–599 statuses are retained; other statuses become 500.
+    /// Native status validation still runs: this does not add default error
+    /// schemas or bypass validation for empty responses.
     TypeScriptText,
 }
 
@@ -602,7 +605,7 @@ impl LocalRouter {
                             validation_error_response(&response_errors, &correlation_id)
                         }
                         ResponseStatusErrorFormat::TypeScriptText => {
-                            typescript_parser_error_response(500, &correlation_id)
+                            typescript_parser_error_response(response.status_code, &correlation_id)
                         }
                     });
                 }

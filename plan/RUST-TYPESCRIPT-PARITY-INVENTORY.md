@@ -5581,3 +5581,22 @@ audit and rollback tests; strict Clippy. Receipts:
 `/private/tmp/fl-iam-empty-filter-{native,pg,orm,clippy}.log`. Broader arbitrary
 filters, indexed traversal and custom persistence remain open. Checklist:
 **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: opt-in response diagnostic status preservation
+
+The TypeScript-text status rejection profile now preserves rejected 400–599
+statuses and chooses the corresponding redacted client/server diagnostic.
+Undocumented success/redirect statuses still become 500. Native JSON defaults
+remain unchanged; documented responses retain their existing behavior. This
+supersedes the preceding text-profile limitation that all rejections became 500.
+
+Verified: 68 Axum and 40 HTTP tests, 216 combinations of policy/mode/local or Axum
+handler/version/status, strict Clippy, and 184 cross-runtime HTTP outcomes.
+Repeated 418/503 failures now match actual TypeScript status/text/media; declared
+500 responses remain intact. The standalone warning fixture also passes 48
+outcomes and 20 warnings. Receipts:
+`/private/tmp/fl-status-preserved-{tests,clippy,canonical,warning}.log`.
+Default error-string admission and empty-send semantics remain separate work;
+three canonical document differences remain. Checklist: **660/682 (96.8%),
+22 open**.

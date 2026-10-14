@@ -1335,7 +1335,10 @@ fn validate_response_status(
 
     tracing::error!(status, operation = %contract.operation_name, correlation_id, "handler returned undocumented status");
     if format == ResponseStatusErrorFormat::TypeScriptText {
-        return framework_response_to_axum(typescript_parser_error_response(500, correlation_id));
+        return framework_response_to_axum(typescript_parser_error_response(
+            status,
+            correlation_id,
+        ));
     }
     framework_response_to_axum(
         ErrorResponse::new(ErrorKind::Internal, "internal server error")
