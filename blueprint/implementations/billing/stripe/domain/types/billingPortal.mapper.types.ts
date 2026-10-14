@@ -24,6 +24,11 @@ export type StripeBillingPortalMappers<
   };
   UpdateBillingPortalMapper: {
     entity: Entities['UpdateBillingPortalMapper'];
+    /** Optional configured preflight before creating a replacement provider session. */
+    validateCachedUpdate?: (
+      dto: Dto['UpdateBillingPortalMapper'],
+      existing: Dto['BillingPortalMapper']
+    ) => Promise<void>;
     /** Cache-only DTO update; preserve session/customer identities. */
     toCachedDto?: (
       dto: Dto['UpdateBillingPortalMapper'],

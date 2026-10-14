@@ -5533,3 +5533,15 @@ covering local and global settings and declared-schema failures. The independent
 JavaScript oracle is wired into CI with the pinned canonical dependencies.
 Receipt: `/private/tmp/fl-status-warning-oracle.log`. Broader default error
 unions and empty-send semantics stay open. Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: portal replacement preflight
+
+Configured cache-only portal updates now validate the cached public/customer
+identity and actual update/response schemas before creating a replacement Stripe
+session. Malformed or foreign cache data and invalid updates produce no provider
+call or cache write. The optional hook preserves custom and database-backup paths.
+Verified: 305 configured mapper cases, 144 legacy TypeScript/Rust service
+comparisons and focused strict source typechecking. Receipts:
+`/private/tmp/fl-portal-preflight-{mappers,types,legacy}.log`.
+Checklist remains **660/682 (96.8%), 22 open**.

@@ -65,6 +65,32 @@ export const BillingPortalMapper = responseMapper({
 
 export const UpdateBillingPortalMapper = {
   ...UpdateBillingPortalEntityMapper,
+  validateCachedUpdate: async (
+    dto: Parameters<typeof UpdateBillingPortalEntityMapper.toEntity>[0],
+    existing: Awaited<ReturnType<typeof BillingPortalMapper.toDto>>
+  ) => {
+    // These are trusted cache DTO identities, not coercible caller input.
+    if (
+      existing.id !== dto.id ||
+      typeof existing.id !== 'string' ||
+      !existing.id.trim() ||
+      typeof existing.customerId !== 'string' ||
+      !existing.customerId.trim()
+    ) {
+      throw new Error('Cached session identity cannot change');
+    }
+    const cached = schemaValidator.parse(
+      schemaValidator.schemify(BillingPortalSchemas.BillingPortalSchema),
+      existing
+    );
+    const patch = schemaValidator.parse(
+      schemaValidator.schemify(BillingPortalSchemas.UpdateBillingPortalSchema),
+      dto
+    );
+    if (!cached.ok || !patch.ok) {
+      throw new Error('Invalid cached billing portal update');
+    }
+  },
   toCachedDto: async (
     dto: Parameters<typeof UpdateBillingPortalEntityMapper.toEntity>[0],
     existing: Awaited<ReturnType<typeof BillingPortalMapper.toDto>>,

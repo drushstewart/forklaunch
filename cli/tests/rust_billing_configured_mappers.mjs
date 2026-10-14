@@ -134,6 +134,17 @@ for(const variant of ['base','stripe']){
       const providerSession={id:'bps_replaced',customer:created.customerId,url:'https://fixture.test/replaced'};
       const stripeService=new StripeService({billingPortal:{sessions:{async create(input){providerCalls++;assert.equal(input.customer,created.customerId);return providerSession;}}}},readOnlyEm,cache,{},actual.validator,mappers);
       await assert.rejects(stripeService.updateBillingPortalSession({id:created.id,customerId:'foreign-customer'}),/identity cannot change/);assert.equal(providerCalls,0);cases++;
+      const validCache=cacheRows.get(key),preflightWrites=writes;
+      for(const changed of [{id:randomUUID()},{id:null},{customerId:null},{customerId:7},{customerId:''},{customerId:'   '},{expiresAt:'invalid'}]){
+       const malformed=JSON.stringify({...JSON.parse(validCache),...changed});cacheRows.set(key,malformed);
+       await assert.rejects(stripeService.updateBillingPortalSession({id:created.id}));
+       assert.equal(providerCalls,0);assert.equal(writes,preflightWrites);assert.equal(cacheRows.get(key),malformed);cases++;
+      }
+      cacheRows.set(key,validCache);
+      for(const patch of [{expiresAt:'invalid'},{expiresAt:{}},{id:undefined}]){
+       await assert.rejects(stripeService.updateBillingPortalSession({id:created.id,...patch}));
+       assert.equal(providerCalls,0);assert.equal(writes,preflightWrites);assert.equal(cacheRows.get(key),validCache);cases++;
+      }
       const replaced=await stripeService.updateBillingPortalSession({id:created.id,stripeFields:{return_url:'https://fixture.test/return'}});
       assert.equal(providerCalls,1);assert.equal(replaced.id,created.id);assert.equal(replaced.customerId,created.customerId);assert.equal(replaced.uri,providerSession.url);assert.deepEqual(replaced.stripeFields,providerSession);assert.equal(persisted,0);cases++;
       assert.equal(writes,4);
