@@ -6787,3 +6787,20 @@ npm install and all eight roots pass without ambient stubs or source suppression
 /private/tmp/fl-configured-types-{install,repro,minimal}.log. Both fixtures are
 wired into CI. These finite checks do not close the broad validation or billing
 mapper gates; the checklist remains 660/682 with 22 gates open.
+
+
+## Strict Zod array container receipt (2026-10-14)
+
+The opt-in zod_array_shape helper supports strict JSON array type and container
+Min/Max/Length/Nonempty constraints. Like actual Zod v3, later checks of the same
+kind replace earlier ones; diagnostics appear exact-length, minimum, maximum
+regardless of declaration order. Nonempty replaces minimum with one. Accepted
+elements are borrowed unchanged. Bounds are unsigned 32-bit integers. Element
+schemas/transforms, custom messages and sparse JavaScript arrays are outside this
+helper; callers must still run element checks after container length failures to
+aggregate diagnostics and commit transformed output atomically.
+
+117,963 actual ForkLaunch factory/native comparisons, all 17 validation tests and
+strict all-feature/all-target Clippy pass:
+/private/tmp/fl-zod-array-{tests,parity,clippy}.log. The differential is wired into
+CI. Native JSON Schema behavior is unchanged; broader validation stays open.
