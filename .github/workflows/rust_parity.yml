@@ -55,6 +55,7 @@ on:
       - 'cli/tests/ts_response_header_arrays.mjs'
       - 'cli/tests/rust_simple_query_parity.mjs'
       - 'cli/tests/rust_zod_string_parity.mjs'
+      - 'cli/tests/rust_zod_string_rules_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
       - 'cli/tests/rust_zod_multiple_of_parity.mjs'
       - 'cli/tests/rust_zod_float_bound_parity.mjs'
@@ -361,6 +362,7 @@ on:
       - 'cli/tests/ts_response_header_arrays.mjs'
       - 'cli/tests/rust_simple_query_parity.mjs'
       - 'cli/tests/rust_zod_string_parity.mjs'
+      - 'cli/tests/rust_zod_string_rules_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
       - 'cli/tests/rust_zod_multiple_of_parity.mjs'
       - 'cli/tests/rust_zod_float_bound_parity.mjs'
@@ -802,6 +804,11 @@ jobs:
           FORKLAUNCH_VERSION_DIAGNOSTICS_NATIVE: '1'
           FORKLAUNCH_VERSION_PREAUTH: '1'
       - run: node cli/tests/rust_zod_string_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_zod_string_rules_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http

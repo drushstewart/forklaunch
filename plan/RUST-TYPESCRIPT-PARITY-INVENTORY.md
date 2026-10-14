@@ -8098,3 +8098,20 @@ harness. Logs /private/tmp/fl-managed-creation-reproducible.log; hashes
 /private/tmp/fl-managed-creation-source-sha256.json. Native UUID publication,
 current creation-configuration pinning, managed recovery and full production
 bootstrap are subsequent work, not claimed complete by this platform proof.
+
+
+## Ordered Zod literal string constraints (2026-10-14)
+
+Borrowed ZodStringRule and zod_string_rules add startsWith/endsWith/includes to
+existing strict-string operations without changing the original Copy step API.
+Includes positions follow JavaScript UTF16 indexing, numeric truncation/clamping,
+NaN/infinity and empty-needle behavior. Literal matching returns borrowed output;
+checks and trim preserve declaration order and failures expose no partial result.
+7140 actual ForkLaunch Zod/native comparisons pass with complete diagnostics and
+transformed values, including astral/combining Unicode and strict nonstrings.
+Full validation21 tests, prior31510 string comparisons and strict all-feature/
+all-target Clippy pass. No dependency/lock changes. Logs
+/private/tmp/fl-zod-string-rules-{parity,tests,regression,clippy}.log; frozen hashes
+/private/tmp/fl-zod-string-rules-source-sha256.json. CI runs the oracle. Regex
+flags/state, custom messages, case conversions and lone-surrogate/rawJSON domain
+boundaries remain explicit gaps; literal matching does not imply regex parity.

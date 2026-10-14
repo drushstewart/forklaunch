@@ -13,6 +13,20 @@ pub enum ZodStringStep {
     Trim,
 }
 
+/// Borrowed ordered string rules, including literal matching in UTF-16 positions.
+/// Existing scalar operations remain available through `Step` without changing
+/// the original `ZodStringStep` API. Needles are literal strings, not regexes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ZodStringRule<'a> {
+    Step(ZodStringStep),
+    StartsWith(&'a str),
+    EndsWith(&'a str),
+    Includes {
+        needle: &'a str,
+        position: Option<f64>,
+    },
+}
+
 /// Apply strict Zod v3 string checks/transforms in declaration order.
 /// `None` represents undefined; all non-string JSON values are rejected without
 /// coercion. Trim uses ECMAScript whitespace and returns a borrowed substring.
@@ -27,6 +41,28 @@ pub enum ZodStringStep {
 pub fn zod_string<'a>(
     value: Option<&'a Value>,
     steps: &[ZodStringStep],
+) -> Result<&'a str, Vec<ParseError>> {
+    evaluate(value, steps.iter().copied().map(ZodStringRule::Step))
+}
+
+/// Apply literal checks and existing string operations in declaration order.
+/// Includes positions use JavaScript's UTF-16 indexing and numeric clamping;
+/// default diagnostics retain the original supplied position. This preserves
+/// borrowed output and atomic failure semantics of [`zod_string`]. UTF-8 strings
+/// cannot represent lone UTF-16 surrogates; regexes and custom messages remain
+/// outside this explicitly Zod v3 helper.
+/// # Errors
+/// Returns all ordered default Zod v3 diagnostics at the root path.
+pub fn zod_string_rules<'a>(
+    value: Option<&'a Value>,
+    rules: &[ZodStringRule<'_>],
+) -> Result<&'a str, Vec<ParseError>> {
+    evaluate(value, rules.iter().copied())
+}
+
+fn evaluate<'a, 'r>(
+    value: Option<&'a Value>,
+    rules: impl IntoIterator<Item = ZodStringRule<'r>>,
 ) -> Result<&'a str, Vec<ParseError>> {
     let mut value = match value {
         Some(Value::String(value)) => value.as_str(),
@@ -54,8 +90,20 @@ pub fn zod_string<'a>(
     };
     let mut length = value.encode_utf16().count() as u64;
     let mut errors = Vec::new();
-    for step in steps {
-        let failed = match *step {
+    for rule in rules {
+        let step = match rule {
+            ZodStringRule::Step(step) => step,
+            literal => {
+                if let Some(message) = literal_error(value, literal) {
+                    errors.push(ParseError {
+                        path: Vec::new(),
+                        message,
+                    });
+                }
+                continue;
+            }
+        };
+        let failed = match step {
             ZodStringStep::Min(limit) if length < u64::from(limit) => Some(("at least", limit)),
             ZodStringStep::Max(limit) if length > u64::from(limit) => Some(("at most", limit)),
             ZodStringStep::Length(limit) if length != u64::from(limit) => Some(("exactly", limit)),
@@ -80,10 +128,91 @@ pub fn zod_string<'a>(
     }
 }
 
+fn literal_error(value: &str, rule: ZodStringRule<'_>) -> Option<String> {
+    match rule {
+        ZodStringRule::StartsWith(needle) if !value.starts_with(needle) => {
+            Some(format!("Invalid input: must start with \"{needle}\""))
+        }
+        ZodStringRule::EndsWith(needle) if !value.ends_with(needle) => {
+            Some(format!("Invalid input: must end with \"{needle}\""))
+        }
+        ZodStringRule::Includes { needle, position } if !includes(value, needle, position) => {
+            let suffix = position.map_or_else(String::new, |position| {
+                format!(
+                    " at one or more positions greater than or equal to {}",
+                    ryu_js::Buffer::new().format(position)
+                )
+            });
+            Some(format!("Invalid input: must include \"{needle}\"{suffix}"))
+        }
+        _ => None,
+    }
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn includes(value: &str, needle: &str, position: Option<f64>) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let position = position.unwrap_or(0.0);
+    let start = if position.is_nan() || position < 0.0 {
+        0.0
+    } else {
+        position.trunc()
+    };
+    let mut units = 0usize;
+    for (byte, character) in value.char_indices() {
+        if units as f64 >= start {
+            return value[byte..].contains(needle);
+        }
+        units += character.len_utf16();
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn literal_positions_and_order_preserve_atomic_output() {
+        let value = json!("💡a");
+        assert_eq!(
+            zod_string_rules(
+                Some(&value),
+                &[ZodStringRule::Includes {
+                    needle: "a",
+                    position: Some(1.5)
+                }]
+            ),
+            Ok("💡a")
+        );
+        assert!(
+            zod_string_rules(
+                Some(&value),
+                &[ZodStringRule::Includes {
+                    needle: "💡",
+                    position: Some(1.0)
+                }]
+            )
+            .is_err()
+        );
+        let value = json!(" a ");
+        let errors = zod_string_rules(
+            Some(&value),
+            &[
+                ZodStringRule::StartsWith("a"),
+                ZodStringRule::Step(ZodStringStep::Trim),
+                ZodStringRule::EndsWith("b"),
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(errors.len(), 2);
+        assert_eq!(errors[0].message, "Invalid input: must start with \"a\"");
+        assert_eq!(errors[1].message, "Invalid input: must end with \"b\"");
+        assert_eq!(value, json!(" a "));
+    }
+
     #[test]
     fn utf16_length_and_order_match_zod_without_changing_input() {
         assert_eq!(

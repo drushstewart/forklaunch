@@ -15,7 +15,7 @@ pub use date::{DateCoercionError, date_epoch_millis};
 
 #[path = "zod_string.rs"]
 mod strict_string;
-pub use strict_string::{ZodStringStep, zod_string};
+pub use strict_string::{ZodStringRule, ZodStringStep, zod_string, zod_string_rules};
 
 #[path = "zod_multiple_of.rs"]
 mod multiple_of;
