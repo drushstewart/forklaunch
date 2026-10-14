@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 610 resolved declaration entry points and 1,669 declaration/re-export
+It records 611 resolved declaration entry points and 1,671 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -7660,3 +7660,24 @@ and pass. Logs: /private/tmp/fl-oct14-latest-{package,install,runtime}.log;
 metadata: /private/tmp/fl-oct14-latest-checkpoint.json. Temporary roots remain
 only while the billing fixture uses this immutable installed CLI. Broad release,
 publication, cloud and conformance gates remain open; checklist660/682 (96.8%).
+
+
+## Generated billing runtime with official response kinds (2026-10-14)
+
+The generated billing runtime fixture now returns official Stripe object kinds
+with realistic plan_/sub_/cs_/plink_/bps_ identifiers for all five families. The
+full harness passes using the immutable95f1b203b installed CLI; generated native
+Stripe services bytes exactly match that checkpoint, with only the provider-mock
+fixture overlaid. Base and Stripe HTTP/MCP startup/discovery, five-family lifecycle,
+direct/managed transports, signed webhook/platform events, tenant isolation,
+persistence/reopen, both SDKs, encrypted PostgreSQL actor audit and CLI rename/
+sync/delete pass: /private/tmp/fl-billing-generated-identity-runtime.log. The
+owned runtime database role was removed successfully.
+
+A separate actual MikroORM7.2.3 connect:false probe of all five configured entity
+definitions proves local UUID allocation immediately at em.create, rather than
+in a service stub: /private/tmp/fl-billing-actual-orm-id-audit.log. Native session/
+link/portal public provider IDs therefore still differ from configured TS UUIDs.
+No UUID-required native route failure appeared, but mock success proves neither
+provider ownership nor safe mutation aliases. Trusted ownership-bound reference
+resolution and remaining mutation/consumed-field semantics keep gate855 open.
