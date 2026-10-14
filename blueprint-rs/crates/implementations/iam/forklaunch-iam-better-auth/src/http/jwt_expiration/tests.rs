@@ -167,3 +167,155 @@ async fn absolute_dates_floor_negative_milliseconds_and_preserve_payload_subject
         }
     }
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn relative_lifetimes_match_safe_iat_boundaries_and_claim_precedence() {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    for external in [false, true] {
+        for (seconds, iat) in
+            [0_u64, 1, 900, 9_007_199_254_740_991]
+                .into_iter()
+                .flat_map(|seconds| {
+                    [123_i64, 9_007_199_254_740_991, -9_007_199_254_740_991]
+                        .map(|iat| (seconds, iat))
+                })
+        {
+            for custom in [0, 1, 2] {
+                let store = Arc::new(MemoryAuthStore::default());
+                let mut tx = store.begin(true).await.unwrap();
+                tx.insert(
+                    Model::User,
+                    json!({"id":"owner","email":"expiration@example.test"}),
+                )
+                .await
+                .unwrap();
+                tx.commit().await.unwrap();
+                let session = SessionService::new(store.clone())
+                    .create("owner", "", "", now)
+                    .await
+                    .unwrap();
+                let cookie = SessionCookie { secure: false }.serialize(
+                    session["token"].as_str().unwrap(),
+                    &[42; 32],
+                    true,
+                );
+                let signed = Arc::new(Mutex::new(Vec::new()));
+                let mut service = app(store.clone())
+                    .with_clock(move || now)
+                    .with_jwt_lifetime(std::time::Duration::from_secs(seconds))
+                    .unwrap()
+                    .with_jwt_subject_resolver(|_| async { Ok(Some("resolved-subject".into())) });
+                {
+                    service = service.with_jwt_payload_resolver(move |_| async move {
+                        Ok(Some(
+                            (if custom == 0 { json!({"iat":iat,"sub":"ignored"}) } else { json!({"iat":iat,"exp":if custom == 1 { json!(456) } else { Value::Null },"sub":"ignored"}) })
+                                .as_object()
+                                .unwrap()
+                                .clone(),
+                        ))
+                    });
+                }
+                if external {
+                    service = service.with_external_jwt_signer(
+                        ExternalJwtSigner::new(
+                            "https://keys.example.test/public",
+                            "EdDSA",
+                            Signer(signed.clone()),
+                        )
+                        .unwrap(),
+                    );
+                }
+                let router = service.router();
+                for path in ["/get-session", "/token"] {
+                    let response = router
+                        .clone()
+                        .oneshot(
+                            Request::builder()
+                                .uri(path)
+                                .header("cookie", cookie.split(';').next().unwrap())
+                                .body(Body::empty())
+                                .unwrap(),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        response.status().as_u16(),
+                        200,
+                        "{seconds}/{iat}/{custom}/{external}/{path}"
+                    );
+                    let header = response
+                        .headers()
+                        .get("set-auth-jwt")
+                        .map(|value| value.to_str().unwrap().to_owned());
+                    let body: Value = serde_json::from_slice(
+                        &to_bytes(response.into_body(), 65536).await.unwrap(),
+                    )
+                    .unwrap();
+                    let token = if path == "/token" {
+                        body["token"].as_str().unwrap().to_owned()
+                    } else {
+                        header.unwrap()
+                    };
+                    let claims = if external {
+                        signed.lock().unwrap().last().unwrap().clone()
+                    } else {
+                        serde_json::from_slice::<Value>(
+                            &URL_SAFE_NO_PAD
+                                .decode(token.split('.').nth(1).unwrap())
+                                .unwrap(),
+                        )
+                        .unwrap()
+                    };
+                    assert_eq!(
+                        claims["exp"].as_f64(),
+                        Some(if custom == 1 {
+                            456.0
+                        } else {
+                            json!(iat).as_f64().unwrap() + json!(seconds).as_f64().unwrap()
+                        })
+                    );
+                    assert_eq!(claims["sub"], "resolved-subject");
+                    assert_eq!(claims["iat"], iat);
+                    assert!(claims.get("email").is_none());
+                    if path == "/get-session" {
+                        assert_eq!(body["user"]["id"], "owner");
+                        assert_eq!(body["session"]["expiresAt"], session["expiresAt"]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn lifetime_validation_precedes_storage_and_last_expiration_setter_wins() {
+    use std::time::Duration;
+    let store = Arc::new(MemoryAuthStore::default());
+    for value in [
+        Duration::from_nanos(1),
+        Duration::from_millis(1500),
+        Duration::from_secs(9_007_199_254_740_992),
+        Duration::MAX,
+    ] {
+        assert!(app(store.clone()).with_jwt_lifetime(value).is_err());
+    }
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(tx.list(Model::Jwks).await.unwrap().is_empty());
+    tx.commit().await.unwrap();
+    let date = DateTime::from_timestamp_millis(-1).unwrap();
+    let relative = app(store.clone())
+        .with_jwt_expiration_at(date)
+        .unwrap()
+        .with_jwt_lifetime(Duration::ZERO)
+        .unwrap();
+    assert_eq!(
+        relative.jwt_expiration.as_ref().unwrap().option(),
+        json!("0s")
+    );
+    let absolute = relative.with_jwt_expiration_at(date).unwrap();
+    assert_eq!(
+        absolute.jwt_expiration.as_ref().unwrap().option(),
+        json!(-1)
+    );
+}

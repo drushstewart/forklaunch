@@ -6484,3 +6484,25 @@ already supports repeated fields.
 modes, nine cases and repeat requests, plus focused source TypeScript checks:
 /private/tmp/fl-response-header-arrays.log. No response schema acceptance or Node
 header-injection checks are relaxed.
+
+
+## Typed relative JWT lifetime and duration boundary receipt (2026-10-14)
+
+AuthHttp::with_jwt_lifetime accepts whole-second nonnegative Duration values up to
+JavaScript safe-integer seconds. It shares the absolute Date option's expiration
+enum; the last Date/lifetime setter wins. Explicit payload exp still takes
+precedence, null exp falls back, and defaults/cookie-session identity are unchanged.
+This is a typed duration profile, not a complete JavaScript duration-string API.
+Fractional or unsafe native durations fail configuration before JWKS writes.
+
+The existing Better Auth duration parser now preserves upstream millisecond
+multiplication/division order and Math.round behavior at safe-integer and negative
+half boundaries. Adding0.5 before floor incorrectly incremented an already
+integral MAX_SAFE value. The separate JOSE parser branch is unchanged; exact
+negative-zero bits are verified.
+
+144 actual local JOSE/external HTTP route cases plus four exact rounding-bit
+checks, native JWT/Date/payload/subject regressions and strict all-feature/all-target
+IAM Clippy pass: /private/tmp/fl-iam-jwt-lifetime-{ts,native,rounding,clippy}.log.
+The immutable archive8f628 predates this optional lifetime slice; its service
+verification must not be presented as a lifetime-feature archive receipt.

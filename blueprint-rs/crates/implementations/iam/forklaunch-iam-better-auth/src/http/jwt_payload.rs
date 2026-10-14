@@ -57,8 +57,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         payload.extend(custom.unwrap_or_default());
         payload.insert("sub".into(), Value::String(self.jwt_subject(view).await?));
         let mut body = json!({"payload": payload});
-        if let Some(expiration) = self.jwt_expiration_at {
-            body["overrideOptions"] = json!({"jwt":{"expirationTime":expiration}});
+        if let Some(expiration) = &self.jwt_expiration {
+            body["overrideOptions"] = json!({"jwt":{"expirationTime":expiration.option()}});
         }
         let ring = KeyRing::new(self.store.clone(), self.auth_origin());
         let signed = if let Some(signer) = &self.external_jwt {

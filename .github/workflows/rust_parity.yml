@@ -185,6 +185,7 @@ on:
       - 'cli/tests/rust_better_auth_jwt_subject.mjs'
       - 'cli/tests/rust_better_auth_jwt_payload.mjs'
       - 'cli/tests/rust_better_auth_jwt_expiration.mjs'
+      - 'cli/tests/rust_better_auth_jwt_lifetime.mjs'
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
@@ -446,6 +447,7 @@ on:
       - 'cli/tests/rust_better_auth_jwt_subject.mjs'
       - 'cli/tests/rust_better_auth_jwt_payload.mjs'
       - 'cli/tests/rust_better_auth_jwt_expiration.mjs'
+      - 'cli/tests/rust_better_auth_jwt_lifetime.mjs'
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
@@ -1170,6 +1172,10 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_better_auth_jwt_expiration.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_jwt_lifetime.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

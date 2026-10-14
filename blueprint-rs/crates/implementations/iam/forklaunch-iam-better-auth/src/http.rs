@@ -60,7 +60,7 @@ pub struct AuthHttp<S> {
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
     jwt_header_disabled: bool,
-    jwt_expiration_at: Option<i64>,
+    jwt_expiration: Option<jwt_expiration::JwtExpiration>,
     subject_resolver: Option<jwt_subject::SubjectResolver>,
     payload_resolver: Option<jwt_payload::PayloadResolver>,
     jwks_grace_period: std::time::Duration,
@@ -99,7 +99,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             google: None,
             external_jwt: None,
             jwt_header_disabled: false,
-            jwt_expiration_at: None,
+            jwt_expiration: None,
             subject_resolver: None,
             payload_resolver: None,
             jwks_grace_period: std::time::Duration::from_secs(2_592_000),
@@ -375,7 +375,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(view.map_or(Value::Null, |view| view.body()))
     }
     async fn jwt(&self, view: &SessionView, now: DateTime<Utc>) -> BlueprintResult<String> {
-        if self.payload_resolver.is_some() || self.jwt_expiration_at.is_some() {
+        if self.payload_resolver.is_some() || self.jwt_expiration.is_some() {
             return self.jwt_with_payload(view, now).await;
         }
         let subject = self.jwt_subject(view).await?;

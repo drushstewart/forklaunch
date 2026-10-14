@@ -960,5 +960,14 @@ before the epoch. An explicit payload `exp` still wins, while subject resolution
 runs last. Past expiration dates intentionally issue already-expired JWTs; cookie
 and persisted session lifetimes remain unchanged. Without this option, the
 configured 15-minute JWT lifetime remains. Invalid JavaScript dates and finer
-than millisecond native timestamps are outside this typed subset. Duration-string
+than millisecond native timestamps are outside this typed subset. Arbitrary duration-string
 configuration on HTTP and custom JWKS adapter hooks are separate extensions.
+
+`with_jwt_lifetime(Duration)` configures relative expiration using whole,
+nonnegative JavaScript-safe integer seconds; zero matches the upstream immediate
+expiry behavior. Fractional seconds and values above 9,007,199,254,740,991 seconds
+are rejected before any storage access. The lifetime and absolute-date setters
+replace one another: the last call wins. Existing payload `iat` arithmetic and
+explicit non-null `exp` precedence are retained for both local and external
+signers. This typed subset does not implement the full signed/fractional
+JavaScript duration-string interface or change cookie/session expiry.
