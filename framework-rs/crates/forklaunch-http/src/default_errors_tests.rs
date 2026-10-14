@@ -287,3 +287,56 @@ fn local_versioned_default_errors_normalize_after_selection_and_preserve_head() 
         }
     }
 }
+
+#[test]
+fn versioned_defaults_reject_unmatched_request_modes_and_stale_mode_changes() {
+    let original = route().with_version(VersionedContract {
+        version: "only".into(),
+        request: RequestContract::default(),
+        responses: vec![ResponseContract::new(200, None)],
+    });
+    let mut profiles = DefaultErrorResponses::default();
+    profiles
+        .insert_versioned(&original, &[404, 500], 128, Duration::from_secs(1))
+        .unwrap();
+    for mode in [ValidationMode::None, ValidationMode::Warning] {
+        let mut changed = original.clone();
+        changed.options.request_validation = mode;
+        assert!(
+            DefaultErrorResponses::default()
+                .insert_versioned(&changed, &[404, 500], 128, Duration::from_secs(1))
+                .is_err()
+        );
+        assert!(
+            profiles
+                .validate_routes(std::slice::from_ref(&changed))
+                .is_err()
+        );
+        assert!(
+            profiles
+                .validate_execution(&changed, ParserErrorFormat::TypeScriptText)
+                .is_err()
+        );
+        let mut registry = ContractRegistry::new();
+        registry.register(changed.clone());
+        assert!(profiles.project(&registry).is_err());
+        let mut local = LocalRouter::new();
+        local.register(changed, |_: FrameworkRequest| {
+            panic!("stale profile must reject before handler")
+        });
+        assert!(
+            local
+                .execute_with_response_profiles(
+                    FrameworkRequest::new(
+                        HttpMethod::Get,
+                        "/default",
+                        RequestContext::new("stale")
+                    ),
+                    ParserErrorFormat::TypeScriptText,
+                    ResponseStatusErrorFormat::TypeScriptText,
+                    &profiles
+                )
+                .is_err()
+        );
+    }
+}

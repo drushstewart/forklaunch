@@ -7289,3 +7289,14 @@ zero diagnostics and170 legacy comparisons pass:
 /private/tmp/fl-billing-creation-{preflight,configured,preflight-types,legacy170}.log.
 CI runs the new source fixture. Provider/local atomicity, arbitrary SDK models and
 tenant ownership are not claimed by this pure input-validation slice.
+
+
+The versioned default-error profile now also requires request Error validation at
+registration, export and execution.24 additional actual TS observations expose
+no-match final-error redaction in None/Warning modes; those modes are rejected
+rather than preserving a handler message upstream would redact. Six focused
+native tests cover stale mode changes and rejection before handler execution.
+120 native comparisons,168 TS observations, canonical366/zero OpenAPI differences
+and strict HTTP/Axum Clippy pass:
+/private/tmp/fl-version-default-guard-{tests,clippy,rust_version_default_errors_parity,rust_canonical_http_parity}.log.
+Unversioned profiles retain their existing behavior.

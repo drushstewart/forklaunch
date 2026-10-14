@@ -50,6 +50,7 @@ import {z} from 'zod/v3';
 import {OpenTelemetryCollector} from '@forklaunch/core/http';
 const app=forklaunchExpress(SchemaValidator(),new OpenTelemetryCollector('versions','silent'),{mcp:false});
 for(const mode of ['none','warning','error'])app.get('/'+mode+'/:status/:body',{name:'Defaults'+mode,summary:'Defaults',options:{responseValidation:mode},versions:{first:{query:{match:z.enum(['both','first'])},responses:{200:z.string()}},last:{query:{match:z.enum(['both','last'])},responses:{201:z.string()}}}},(req,res)=>{res.setHeader('x-selected',req.version);res.status(Number(req.params.status));if(req.params.body==='empty')res.send();else if(req.params.body==='jsonstring')res.json('message');else if(req.params.body==='object')res.json({secret:'DO_NOT_LEAK'});else res.send('message');});
+for(const mode of ['none','warning','error'])app.get('/unmatched/'+mode+'/:status',{name:'Unmatched'+mode,summary:'Unmatched',options:{requestValidation:mode,responseValidation:'error'},versions:{only:{query:{match:z.literal('yes')},responses:{200:z.string()}}}},(req,res)=>res.status(Number(req.params.status)).send('PRIVATE_HANDLER_BODY'));
 const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('READY http://127.0.0.1:'+server.address().port));process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 `);
  run(join(dependencies,'node_modules/.bin/esbuild'),['service.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=service.mjs']);
@@ -82,6 +83,15 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
  assert.equal(actual.status,expectedResponse.status);assert.equal(await actual.text(),'');assert.equal(actual.headers.get('x-selected'),expectedResponse.headers.get('x-selected'));pairs++;
  }
  }
+ let unmatched=0;
+ for(const mode of ['none','warning','error'])for(const match of ['yes','invalid'])for(const status of [401,403,404,500]) {
+ const response=await fetch(ts+'/unmatched/'+mode+'/'+status+'?match='+match,{headers:{'x-correlation-id':'unmatched-oracle'}});const body=await response.text();
+ assert.equal(response.status,match==='invalid'&&mode==='error'?400:status);
+ if(match==='yes')assert.equal(body,'PRIVATE_HANDLER_BODY');
+ else {assert.ok(!body.includes('PRIVATE_HANDLER_BODY'));if(mode!=='error')assert.equal(body,(status<500?'Request could not be processed:':'Internal server error:')+'\n\nCorrelation id: unmatched-oracle');}
+ unmatched++;
+ }
+ console.log('PASS '+unmatched+' actual TypeScript no-match request-mode observations (native profile rejects None/Warning registration)');
  console.log('PASS '+pairs+' native/local versioned default comparison pairs');console.log('PASS '+count+' actual TypeScript versioned default status outcomes');
 }finally{
  for(const child of children){

@@ -87,6 +87,8 @@ impl DefaultErrorResponses {
 
     /// Register missing default strings in every version, with finite collection bounds.
     /// Requires selected 500 so normalization failures also have a truthful text declaration.
+    /// Request validation must be Error: unmatched requests in None/Warning modes
+    /// can trigger TypeScript final-error redaction instead of the handler body.
     /// Original version schemas remain available to caller-owned response validators.
     /// No request-selection diagnostic equivalence or explicit-schema unions are implied.
     /// # Errors
@@ -99,7 +101,8 @@ impl DefaultErrorResponses {
         max_bytes: usize,
         timeout: Duration,
     ) -> Result<(), String> {
-        if route.versions.is_empty()
+        if route.options.request_validation != ValidationMode::Error
+            || route.versions.is_empty()
             || statuses.contains(&400)
             || !statuses.contains(&500)
             || route.versions.values().any(|version| {
@@ -109,7 +112,7 @@ impl DefaultErrorResponses {
                     .any(|response| statuses.contains(&response.status_code))
             })
         {
-            return Err("Versioned default errors require missing statuses in every version, selected 500 and no selected 400".into());
+            return Err("Versioned default errors require missing statuses in every version, selected 500, request Error validation and no selected 400".into());
         }
         let mut unversioned = route.clone();
         unversioned.versions.clear();
@@ -442,5 +445,6 @@ fn safe_request_presence(route: &RouteContract) -> bool {
 }
 
 fn versions_match(route: &RouteContract, entry: &Registration) -> bool {
-    route.versions.values().eq(entry.versions.iter())
+    (entry.versions.is_empty() || route.options.request_validation == ValidationMode::Error)
+        && route.versions.values().eq(entry.versions.iter())
 }
