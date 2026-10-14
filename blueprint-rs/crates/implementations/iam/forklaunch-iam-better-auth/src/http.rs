@@ -30,8 +30,8 @@ mod credential;
 mod email;
 mod external_jwt;
 mod jwks_path;
-mod jwt_subject;
 mod jwt_payload;
+mod jwt_subject;
 pub use external_jwt::ExternalJwtSigner;
 pub use jwt_subject::JwtSessionContext;
 mod observer;
@@ -144,18 +144,21 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         };
         self.base_path = path;
         let effective = self.auth_base_path();
-        if effective.chars().any(|character| {
-            character.is_control()
-                || character.is_whitespace()
-                || matches!(character, '{' | '}' | ':' | '*' | '?' | '#' | '%' | '\\')
-        }) || self.base_path.chars().any(|character| {
-            character.is_control()
-                || character.is_whitespace()
-                || matches!(character, '?' | '#' | '\\')
-        }) || self
-            .base_path
-            .split('/')
-            .any(|part| matches!(part, "." | ".."))
+        if (effective.is_empty() && self.jwks_path == "/")
+            || effective.chars().any(|character| {
+                character.is_control()
+                    || character.is_whitespace()
+                    || matches!(character, '{' | '}' | ':' | '*' | '?' | '#' | '%' | '\\')
+            })
+            || self.base_path.chars().any(|character| {
+                character.is_control()
+                    || character.is_whitespace()
+                    || matches!(character, '?' | '#' | '\\')
+            })
+            || self
+                .base_path
+                .split('/')
+                .any(|part| matches!(part, "." | ".."))
         {
             return Err(BlueprintError::new(
                 "better_auth_invalid_config",
@@ -402,6 +405,15 @@ async fn dispatch<S: AuthStore + 'static>(
     State(app): State<Arc<AuthHttp<S>>>,
     request: Request,
 ) -> Response {
+    if app.jwks_path == "/"
+        && request.uri().path() == "/"
+        && request
+            .extensions()
+            .get::<axum::extract::OriginalUri>()
+            .is_some_and(|original| !original.0.path().ends_with('/'))
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     let mut pending = HeaderMap::new();
     let path = request.uri().path().to_owned();
     let response = handle(&app, request, &mut pending).await;

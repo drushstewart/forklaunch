@@ -6,10 +6,10 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     /// Relocates the local JWKS route and its `OpenAPI` operation.
     /// # Errors
     /// Requires a fixed unencoded absolute path outside owned auth namespaces.
-    /// Root JWKS is unsupported because nested Axum root URLs differ.
+    /// Root JWKS requires a nonroot authentication namespace.
     pub fn with_jwks_path(mut self, path: impl Into<String>) -> BlueprintResult<Self> {
         let path = path.into();
-        if path == "/"
+        if (path == "/" && self.auth_base_path().is_empty())
             || !path.starts_with('/')
             || path.contains("..")
             || path.contains("//")
@@ -58,7 +58,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
 fn invalid() -> BlueprintError {
     BlueprintError::new(
         "better_auth_invalid_config",
-        "JWKS path must be a nonconflicting fixed path; root JWKS is unsupported",
+        "JWKS path must be a nonconflicting fixed path; root JWKS requires a nonroot authentication namespace",
     )
 }
 

@@ -6315,3 +6315,31 @@ The packaged gateway mock follows actual companion protocol source. CI executes
 its native wire fixture; cross-repository source comparison requires the explicit
 companion checkout used for this receipt. No live Stripe/cloud deployment proof
 is claimed. The archive checkpointa416 predates managed paired support.
+
+
+## Root JWKS and full IAM regression receipt (2026-10-14)
+
+A fixed JWKS path of `/` now mounts at the trailing auth root (`/api/auth/`)
+without also serving the bare base (`/api/auth`). Ordinary token/organization
+routes, external-signer JWKS suppression, relocated OpenAPI and protected business
+routes retain their behavior. Root JWKS with root authentication remains rejected
+in either builder order; dynamic/encoded paths remain outside this static profile.
+Namespace collision checks still reject conflicting application routes.
+
+The archive a416 all-module run exposed three failures from two stale assertions
+expecting four signout cookies. The actual TypeScript successful HTTP/HTTPS oracle
+confirms the three reference cookies already emitted by production. Assertions
+now check exact names and flags rather than only counts; no signout production
+behavior changed. The corrected current-source all-feature IAM suite passes
+70 tests with two PostgreSQL tests explicitly ignored, plus strict all-target
+Clippy. Actual JWKS45 and successful signout cookie oracles pass:
+/private/tmp/fl-iam-jwks-root-{native,clippy,ts}.log and
+/private/tmp/fl-iam-signout-cookie-ts.log.
+
+The installed source archive at a416 separately passed complete generated billing
+and auth fixtures, including HTTP/MCP listeners, both SDKs, encrypted persistence,
+restart and relocation/lifecycle checks:
+/private/tmp/fl-oct14-archive-{billing,auth}-generated.log. The broader archive
+all-module suite stopped at the stale cookie assertions and is not claimed green;
+checks after that point still require the corrected archive rerun. Finished owned
+billing/auth fixture workspaces were removed after active-process checks.

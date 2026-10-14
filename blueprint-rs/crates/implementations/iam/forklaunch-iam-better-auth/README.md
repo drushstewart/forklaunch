@@ -913,10 +913,11 @@ Supported paths are fixed ASCII segments containing letters, digits, `.`, `_`,
 trailing slashes, and existing auth/application namespaces are rejected before
 router construction. This intentionally excludes upstream dynamic routing and
 conflicting paths that can shadow another authentication endpoint.
-Root `/` is explicitly unsupported: the actual plugin serves the trailing-slash
-mount root, while Axum nesting maps an inner root route to the bare mount URL.
-The builder rejects this rather than adding a differing public alias or a broad
-fallback. Unknown application namespaces
+Root `/` is supported under a nonroot auth namespace: the application mount
+preserves its trailing slash (for example `/api/auth/`), and the bare mount URL
+returns 404. Raw relative routers serve `/`; manual nesting must preserve the
+trailing slash. The complete auth namespace remains reserved. Root auth combined
+with root JWKS is rejected in either builder order. Unknown application namespaces
 remain subject to the application's registry/mount collision checks. Configure
 external clients and JWT verification URLs separately when relocating JWKS.
 

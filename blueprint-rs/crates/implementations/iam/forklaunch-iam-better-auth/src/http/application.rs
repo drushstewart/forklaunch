@@ -298,6 +298,10 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         if base_path.is_empty() {
             let namespaces = root_namespaces(self.jwks_path());
             router.merge_internal(self.router_with_redirects(), namespaces)
+        } else if self.jwks_path() == "/" {
+            let outer =
+                axum::Router::new().nest(&format!("{base_path}/"), self.router_with_redirects());
+            router.merge_internal(outer, [base_path])
         } else {
             router.nest_internal(base_path, self.router_with_redirects())
         }

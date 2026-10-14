@@ -50,3 +50,16 @@ for (const result of [failedRead, failedDelete]) {
 assert.ok(calls.some(([method,model])=>method==='create' && model==='account'));
 assert.ok(calls.some(([method,model])=>method==='create' && model==='session'));
 console.log('Better Auth fault boundaries: user422, four unexpected empty500 branches and best-effort signout200/cookie clearing verified.');
+// Successful signout uses the same three cookie names under HTTP and HTTPS.
+// OAuth state belongs to its independent authorization flow and is not cleared.
+for (const secure of [false, true]) {
+ const origin = secure ? 'https://auth.fixture.test' : 'http://localhost:3000';
+ const successReference = await betterAuthReference(root);
+ const successAuth = betterAuth({ ...successReference.config, baseURL: origin, trustedOrigins: [origin] });
+ const response = await successAuth.handler(new Request(`${origin}/api/auth/sign-out`, { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: '{}' }));
+ assert.equal(response.status, 200);
+ const cleared = response.headers.getSetCookie();
+ assert.deepEqual(cleared.map(value => value.split('=')[0]), ['session_token','session_data','dont_remember'].map(name => `${secure ? '__Secure-' : ''}better-auth.${name}`));
+ for (const value of cleared) { assert.ok(value.includes('Max-Age=0')); assert.equal(value.includes('; Secure'), secure); }
+}
+console.log('Better Auth successful HTTP/HTTPS signout: exact three-cookie names and secure flags PASS.');

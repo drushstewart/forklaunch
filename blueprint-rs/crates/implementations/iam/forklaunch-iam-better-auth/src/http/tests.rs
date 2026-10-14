@@ -107,7 +107,19 @@ async fn secure_http_requires_secure_cookie_name_and_clears_separate_secure_head
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(response.headers().get_all("set-cookie").iter().count(), 4);
+    assert_eq!(
+        response
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .map(|value| value.to_str().unwrap().split('=').next().unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            "__Secure-better-auth.session_token",
+            "__Secure-better-auth.session_data",
+            "__Secure-better-auth.dont_remember"
+        ]
+    );
     for header in response.headers().get_all("set-cookie") {
         let header = header.to_str().unwrap();
         assert!(header.starts_with("__Secure-better-auth."));
@@ -458,7 +470,19 @@ pub(crate) async fn exercise_http<S: AuthStore + 'static>(store: Arc<S>) {
         .await
         .unwrap();
     assert_eq!(logout.status(), 200);
-    assert_eq!(logout.headers().get_all("set-cookie").iter().count(), 4);
+    assert_eq!(
+        logout
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .map(|value| value.to_str().unwrap().split('=').next().unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            "better-auth.session_token",
+            "better-auth.session_data",
+            "better-auth.dont_remember"
+        ]
+    );
     for header in logout.headers().get_all("set-cookie") {
         assert!(header.to_str().unwrap().contains("Max-Age=0"));
     }
