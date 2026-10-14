@@ -7323,3 +7323,32 @@ The permanent archive fixture checks Git-free package listing and leakage. Logs:
 /private/tmp/fl-cli-untracked-package.json. Retained archive SHA256:
 94bae1cd1647620859a129ade92896033d2c2bc58a14b8ca3f9c2055c76e37f4. This is a focused repack/install/init proof; the separate
 full all-module runtime archive is unchanged and still running.
+
+
+## Fresh immutable CLI all-module runtime checkpoint (2026-10-14)
+
+Committed174594c48 sources now pass the full portable CLI archive test after the
+observer fixture fix.2511 archive files/20.1 MiB source,4,435,233 compressed bytes;
+retained SHA256 d02939d7e08decbec69ad52b895dd77a300c8a1b08deebad4547553e032826d6. Offline package and locked debug installation
+pass (four existing CLI warnings). All extracted source bytes and retained archive
+hash were verified again after the run. Git packaging tracking snapshot metadata
+is distinct from the original source SHA and recorded in the checkpoint JSON.
+
+The mixed application includes service, PostgreSQL/Redis/BullMQ/Kafka workers,
+Better Auth, CAC, base/Twilio messaging, ecommerce and both billing variants. It
+passes relocation, no symlink/checkout-path leakage and newer source-presence
+checks, workspace and provider-feature compilation, native/TypeScript WebSocket
+consumers, socket/AsyncAPI SDKs, AsyncAPI18, WebSocket/MCP transports and IAM91
+tests with2 explicit ignored PG tests. HTTP/MCP startup validates shared/separate
+listeners, disabled/custom endpoints, ephemeral/explicit ports, discovery/health,
+Origin rejection, atomic startup failures and graceful shutdown. Five native
+capability callbacks pass actual TS signatures and forgery/staleness/replay/
+redelivery checks. Contract/OpenAPI exports, both SDK imports and check mode,
+empty worker warning-denial and recursive native generators/strict SDK Clippy pass.
+
+Logs: /private/tmp/fl-oct14-corrected-{package,install,runtime}.log; exact provenance:
+/private/tmp/fl-oct14-corrected-checkpoint.json. Later Git-free packaging and draft
+legacy-key/read-identity/JSON-wire slices have separate proof; they are not silently
+included in this immutable checkpoint. This is local source-archive/runtime proof,
+not public registry publication or an AWS deployment. The failed15e tracing receipt
+remains retained. Checklist stays660/682 (96.8%),22 broad gates open.
