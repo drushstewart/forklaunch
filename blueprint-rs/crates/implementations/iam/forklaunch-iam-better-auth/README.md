@@ -1079,3 +1079,17 @@ native PKCS#8 compatibility, not import of Better Auth encrypted private JWK
 strings. Upstream's arbitrary public-JWK metadata spread remains outside this
 strict normalization profile; typed custom adapters already supply explicit
 validated algorithm metadata.
+
+`KeyPairConfig::with_rotation_interval(Duration)` optionally expires newly
+created local keys. Durations must contain whole milliseconds and fit the
+JavaScript Date range; zero disables expiry. Defaults remain unchanged. Session
+issuance, explicit signing without a `jwks` override, initial JWKS publication
+and operator rotation use the same configured interval. A `jwks` override
+replaces the configured object, including this interval. Existing rows retain
+their stored expiry. Unpinned signing replaces expired keys on demand; no timer
+is installed. Explicit key-ID signing never replaces its requested key. Public
+retention still uses the independent grace period and strict expiry-plus-grace
+boundary. Invalid configured expiration arithmetic fails before repository I/O;
+this bounded native configuration rejects unsupported clocks/overflow instead of
+persisting an invalid JavaScript Date. Custom callbacks retain persistence and
+synchronization ownership; no cross-store atomicity is implied.

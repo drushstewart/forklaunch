@@ -51,7 +51,6 @@ impl<S: AuthStore> KeyRing<S> {
             .as_f64()
             .ok_or_else(|| error("Invalid signing time"))?;
         let expiry = claims::expiry(payload, options, clock)?;
-        let mut tx = self.repository(true, now);
         // The upstream server helper shallow-merges overrideOptions: providing
         // jwks replaces the configured object rather than deep-merging it.
         let overrides_jwks = options.get("jwks").is_some();
@@ -68,6 +67,12 @@ impl<S: AuthStore> KeyRing<S> {
         let primary = options["jwks"]["keyPairConfig"]["alg"]
             .as_str()
             .unwrap_or(default_algorithm);
+        let configured_expiration = if overrides_jwks {
+            None
+        } else {
+            self.key_config.expiration(now)?
+        };
+        let mut tx = self.repository(true, now);
         let selected = if let Some((id, expected_algorithm)) = pin {
             let row = tx
                 .by_id(id)
@@ -128,7 +133,7 @@ impl<S: AuthStore> KeyRing<S> {
                     .ok_or_else(|| error("Invalid key expiration"))?;
                 Some(expires)
             } else {
-                None
+                configured_expiration
             };
             mint_session(&mut tx, now, primary, bits, expires_at).await?
         };

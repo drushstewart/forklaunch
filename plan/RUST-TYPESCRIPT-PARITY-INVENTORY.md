@@ -7464,3 +7464,26 @@ billing Clippy pass: /private/tmp/fl-billing-update-identity{,-plan,-subscriptio
 -configured,-types,-native,-legacy170,-clippy}.log. CI runs the new focused fixture.
 This prevents unchecked reads from selecting mutation inputs; validation of
 post-effect responses and interrupted provider/local atomicity remain separate.
+
+
+## Configured local JWKS rotation lifecycle (2026-10-14)
+
+KeyPairConfig optionally stamps newly minted local keys with a validated whole-
+millisecond rotation interval. Zero/default disables expiry; issuance, explicit
+local signing, empty JWKS initialization and operator rotation share the policy.
+Shallow jwks overrides replace the configured interval. Expired unpinned keys
+replace lazily; explicit ID pins never mint a replacement. Existing key rows, JWT/
+cookie expiry and custom persistence ownership remain independent. Unsupported
+intervals and expiration overflow reject before repository I/O. No timer is added.
+
+Actual clock-controlled Better Auth observations cover absent/zero,1ms/2s expiry,
+unpinned equality replacement, pinned equality admission then rejection, strict
+2ms publication grace and empty-override reset. Four focused native tests include
+those lifecycle boundaries, pre-I/O bounds and real HTTP ES256 token/session-
+header propagation with payload and lifetime callbacks independently enabled.
+All 100 IAM tests pass with two explicit ignored PG tests; strict all-feature/
+all-target Clippy passes: /private/tmp/fl-jwks-rotation-{ts,focused,native,clippy}.log.
+CI runs the new clock-controlled oracle. This working-tree proof includes the
+HTTP/MCP changes now committed as91ddee904; it is separate from the174594c48
+immutable archive. Default backend transactions/storage were unchanged; earlier
+encrypted expiry-first insertion PG proof remains separate and was not rerun.

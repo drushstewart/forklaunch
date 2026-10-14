@@ -104,6 +104,7 @@ impl<S: AuthStore> KeyRing<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<String> {
         let issued_at = u64::try_from(now.timestamp()).map_err(|_| key_error())?;
+        let key_expiration = self.key_config.expiration(now)?;
         let mut tx = self.repository(true, now);
         let selected = tx.select(self.key_config.algorithm()).await?;
         let key = if let Some(row) = selected {
@@ -114,7 +115,7 @@ impl<S: AuthStore> KeyRing<S> {
                 now,
                 self.key_config.algorithm(),
                 self.key_config.rsa_bits(),
-                None,
+                key_expiration,
             )
             .await?
         };
@@ -138,6 +139,7 @@ impl<S: AuthStore> KeyRing<S> {
     /// # Errors
     /// Returns sanitized storage or corrupted key metadata failures.
     pub async fn jwks(&self, now: DateTime<Utc>) -> BlueprintResult<Value> {
+        let key_expiration = self.key_config.expiration(now)?;
         let mut tx = self.repository(true, now);
         let mut rows = tx.read().await?;
         if rows.is_empty() {
@@ -146,7 +148,7 @@ impl<S: AuthStore> KeyRing<S> {
                 now,
                 self.key_config.algorithm(),
                 self.key_config.rsa_bits(),
-                None,
+                key_expiration,
             )
             .await?;
             rows = tx.read().await?;
@@ -182,6 +184,7 @@ impl<S: AuthStore> KeyRing<S> {
     /// # Errors
     /// Returns sanitized storage or corrupted key metadata failures.
     pub async fn rotate(&self, now: DateTime<Utc>) -> BlueprintResult<Value> {
+        let key_expiration = self.key_config.expiration(now)?;
         let mut tx = self.repository(true, now);
         tx.retire().await?;
         let key = mint_session(
@@ -189,7 +192,7 @@ impl<S: AuthStore> KeyRing<S> {
             now,
             self.key_config.algorithm(),
             self.key_config.rsa_bits(),
-            None,
+            key_expiration,
         )
         .await?;
         tx.commit().await?;

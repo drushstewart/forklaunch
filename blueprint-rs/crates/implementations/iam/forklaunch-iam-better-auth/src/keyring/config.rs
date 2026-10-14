@@ -5,12 +5,14 @@ use super::{BlueprintResult, Value, json, key_error};
 pub struct KeyPairConfig {
     algorithm: String,
     bits: usize,
+    rotation_millis: Option<i64>,
 }
 impl Default for KeyPairConfig {
     fn default() -> Self {
         Self {
             algorithm: "EdDSA".into(),
             bits: 2048,
+            rotation_millis: None,
         }
     }
 }
@@ -38,7 +40,38 @@ impl KeyPairConfig {
         Ok(Self {
             algorithm: algorithm.into(),
             bits: rsa_bits,
+            rotation_millis: None,
         })
+    }
+    /// Sets automatic expiry for newly created local keys. Zero disables expiry.
+    /// Existing records retain their persisted expiry; no timer or rewrite is added.
+    /// # Errors
+    /// Rejects submillisecond durations and values beyond JavaScript's Date range.
+    pub fn with_rotation_interval(
+        mut self,
+        interval: std::time::Duration,
+    ) -> BlueprintResult<Self> {
+        if !interval.subsec_nanos().is_multiple_of(1_000_000)
+            || interval.as_millis() > 8_640_000_000_000_000
+        {
+            return Err(key_error());
+        }
+        let millis = i64::try_from(interval.as_millis()).map_err(|_| key_error())?;
+        self.rotation_millis = (millis != 0).then_some(millis);
+        Ok(self)
+    }
+    pub(super) fn expiration(
+        &self,
+        now: super::DateTime<super::Utc>,
+    ) -> BlueprintResult<Option<super::DateTime<super::Utc>>> {
+        self.rotation_millis
+            .map(|interval| {
+                now.timestamp_millis()
+                    .checked_add(interval)
+                    .and_then(super::DateTime::from_timestamp_millis)
+                    .ok_or_else(key_error)
+            })
+            .transpose()
     }
     #[must_use]
     pub fn algorithm(&self) -> &str {
@@ -84,5 +117,7 @@ pub(super) fn public(row: &Value, fallback: &str) -> BlueprintResult<Value> {
     super::public_key(&normalized)
 }
 
+#[cfg(test)]
+mod rotation_tests;
 #[cfg(test)]
 mod tests;
