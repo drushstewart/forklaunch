@@ -10,23 +10,27 @@ use base64::{
 use chrono::{DateTime, SecondsFormat, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Value, json};
-use std::{cmp::Reverse, sync::Arc};
+use std::sync::Arc;
 use zeroize::Zeroizing;
 
+pub mod adapter;
 pub mod custom;
 mod repository;
 mod sign;
-use repository::{KeyRepository, NewKeyRecord};
+#[cfg(test)]
+use repository::KeyRepository;
+use repository::{NewKeyRecord, session::KeySession};
 #[cfg(test)]
 pub(crate) mod tests;
 pub(crate) mod verify;
 
-/// All private key records pass through the store's encrypted persistence.
-/// Production uses `PostgresAuthStore`; memory stores are reference/test backends.
+/// Default private key records use the tenant store's encrypted persistence.
+/// Custom callbacks explicitly own their key persistence and encryption.
 pub struct KeyRing<S> {
     store: Arc<S>,
     base_url: String,
     grace_millis: i64,
+    adapter: Option<adapter::JwksAdapter>,
 }
 impl<S: AuthStore> KeyRing<S> {
     #[must_use]
@@ -35,9 +39,26 @@ impl<S: AuthStore> KeyRing<S> {
             store,
             base_url: base_url.into(),
             grace_millis: 2_592_000_000,
+            adapter: None,
         }
     }
 
+    /// Uses trusted tenant-bound repository callbacks for all local key operations.
+    /// Custom callbacks own persistence; default/custom stores are not one transaction.
+    #[must_use]
+    pub fn with_jwks_adapter(mut self, adapter: adapter::JwksAdapter) -> Self {
+        self.adapter = Some(adapter);
+        self
+    }
+    fn repository(&self, write: bool, now: DateTime<Utc>) -> KeySession<'_, S> {
+        KeySession::new(
+            self.store.as_ref(),
+            write,
+            self.adapter.as_ref(),
+            &self.base_url,
+            now,
+        )
+    }
     /// Sets the publication grace period for expired public keys. This does
     /// not permit expired private keys to issue new tokens.
     /// # Errors
@@ -73,24 +94,12 @@ impl<S: AuthStore> KeyRing<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<String> {
         let issued_at = u64::try_from(now.timestamp()).map_err(|_| key_error())?;
-        let mut tx = self.store.begin(true).await?;
-        let rows = KeyRepository::new(&mut tx).read_default_window().await?;
-        let mut candidates = Vec::new();
-        for row in rows.iter().take(100) {
-            if row.expires_at()?.is_none_or(|expires| expires > now) {
-                candidates.push((row.created_at()?, row));
-            }
-        }
-        // Stable sorting preserves the actual adapter's first-insertion tie rule.
-        candidates.sort_by_key(|(created, _)| Reverse(*created));
-        let selected = candidates
-            .iter()
-            .find(|(_, row)| row.matches_algorithm("EdDSA"))
-            .or_else(|| candidates.first());
-        let key = if let Some((_, row)) = selected {
+        let mut tx = self.repository(true, now);
+        let selected = tx.select("EdDSA").await?;
+        let key = if let Some(row) = selected {
             row.signing_key()?
         } else {
-            mint(&mut tx, now).await?
+            mint_session(&mut tx, now, "EdDSA", 2048, None).await?
         };
         let token = key.issue_session(
             &self.base_url,
@@ -112,11 +121,14 @@ impl<S: AuthStore> KeyRing<S> {
     /// # Errors
     /// Returns sanitized storage or corrupted key metadata failures.
     pub async fn jwks(&self, now: DateTime<Utc>) -> BlueprintResult<Value> {
-        let mut tx = self.store.begin(true).await?;
-        let mut rows = KeyRepository::new(&mut tx).read_default_window().await?;
+        let mut tx = self.repository(true, now);
+        let mut rows = tx.read().await?;
         if rows.is_empty() {
-            mint(&mut tx, now).await?;
-            rows = KeyRepository::new(&mut tx).read_default_window().await?;
+            mint_session(&mut tx, now, "EdDSA", 2048, None).await?;
+            rows = tx.read().await?;
+        }
+        if rows.is_empty() {
+            return Err(key_error());
         }
         let mut keys = Vec::new();
         for row in rows {
@@ -141,21 +153,24 @@ impl<S: AuthStore> KeyRing<S> {
     /// Operator-controlled rotation. Retired keys remain public for the default
     /// grace period. Public key selection retains the configured first-100 limit;
     /// operators must prune old records before that window fills. No public endpoint
-    /// exposes this administrative operation.
+    /// exposes this administrative operation. Custom repositories must rotate their
+    /// own records; this operation rejects any active custom hook.
     /// # Errors
     /// Returns sanitized storage or corrupted key metadata failures.
     pub async fn rotate(&self, now: DateTime<Utc>) -> BlueprintResult<Value> {
-        let mut tx = self.store.begin(true).await?;
-        KeyRepository::new(&mut tx).retire_live(now).await?;
-        let key = mint(&mut tx, now).await?;
+        let mut tx = self.repository(true, now);
+        tx.retire().await?;
+        let key = mint_session(&mut tx, now, "EdDSA", 2048, None).await?;
         tx.commit().await?;
         Ok(key.public_jwk())
     }
 }
 
+#[cfg(test)]
 async fn mint<T: AuthTransaction>(tx: &mut T, now: DateTime<Utc>) -> BlueprintResult<SigningKey> {
     mint_profile(tx, now, "EdDSA").await
 }
+#[cfg(test)]
 async fn mint_profile<T: AuthTransaction>(
     tx: &mut T,
     now: DateTime<Utc>,
@@ -163,6 +178,7 @@ async fn mint_profile<T: AuthTransaction>(
 ) -> BlueprintResult<SigningKey> {
     mint_config(tx, now, algorithm, 2048, None).await
 }
+#[cfg(test)]
 async fn mint_config<T: AuthTransaction>(
     tx: &mut T,
     now: DateTime<Utc>,
@@ -170,6 +186,29 @@ async fn mint_config<T: AuthTransaction>(
     bits: usize,
     expires_at: Option<DateTime<Utc>>,
 ) -> BlueprintResult<SigningKey> {
+    KeyRepository::new(tx)
+        .create(generate_key_record(now, algorithm, bits, expires_at).await?)
+        .await?
+        .signing_key()
+}
+async fn mint_session<S: AuthStore>(
+    session: &mut KeySession<'_, S>,
+    now: DateTime<Utc>,
+    algorithm: &str,
+    bits: usize,
+    expires_at: Option<DateTime<Utc>>,
+) -> BlueprintResult<SigningKey> {
+    session
+        .create(generate_key_record(now, algorithm, bits, expires_at).await?)
+        .await?
+        .signing_key()
+}
+async fn generate_key_record(
+    now: DateTime<Utc>,
+    algorithm: &str,
+    bits: usize,
+    expires_at: Option<DateTime<Utc>>,
+) -> BlueprintResult<NewKeyRecord> {
     let id = uuid::Uuid::new_v4().to_string();
     let key_id = id.clone();
     let key_algorithm = algorithm.to_string();
@@ -188,10 +227,7 @@ async fn mint_config<T: AuthTransaction>(
     if let Some(expires) = expires_at {
         row["expiresAt"] = json!(timestamp(expires));
     }
-    KeyRepository::new(tx)
-        .create(NewKeyRecord(row))
-        .await?
-        .signing_key()
+    Ok(NewKeyRecord(row))
 }
 fn restore(row: &Value) -> BlueprintResult<SigningKey> {
     let encoded = row["privateKey"].as_str().ok_or_else(key_error)?;

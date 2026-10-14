@@ -7076,3 +7076,48 @@ registry caches, fingerprints, example binaries and unrelated workspaces were
 preserved. Exact dry-run/removal metadata:
 /private/tmp/fl-oct14-owned-stale-artifacts.json. This follows the earlier105MiB
 workspace cleanup and does not use blanket cargo clean.
+
+
+## Typed independent native JWKS read/create hooks (2026-10-14)
+
+KeyRing/AuthHttp now accept an explicit JwksAdapter with independent trusted read
+and create callbacks, consistently used for session JWTs, explicit signing,
+verification by ID, live/algorithm selection and JWKS publication. A custom reader
+is called again for latest-any fallback when primary selection is empty, allowing
+its second snapshot to be authoritative. Creation receives full creation/rotation
+expiry and returns the authoritative ID/key record. An empty publication source
+re-read after independent default creation fails, matching actual Better Auth.
+Absent hooks retain the encrypted store fallback; default-only operations retain
+one atomic transaction. Fallback locks are released before invoking callbacks,
+preventing same-store callback deadlock. Mixed repositories are not cross-store
+atomic; callbacks own persistence, synchronization and encryption. Active custom
+hooks explicitly disable administrative rotate rather than mutating another source.
+External signer mode bypasses these local callbacks.
+
+The fixed server-owned tenant label must be bound by the application to its backend;
+it is not backend isolation by itself. Native callback records use validated plaintext
+PKCS#8 with explicit algorithm and millisecond times, not upstream encrypted JWK
+wire strings. Byte buffers zeroize on drop; secret types expose neither Debug nor
+serde. Public-only/legacy missing-algorithm records, arbitrary JS contexts and
+per-call pinning remain outside this typed subset. Custom sets above4096 reject
+explicitly rather than truncating to the default100-record window.
+
+Actual installed Better Auth oracle covers28 independent hook/default cases,
+returned-key JOSE verification, expiry/failure, empty publication and second-read
+fallback. All87 native IAM tests pass (two PG cases ignored by that command),
+including seven adapter tests and HTTP token/header/JWKS consistency. Strict
+all-feature/all-target Clippy passes:
+/private/tmp/fl-jwks-hooks-{ts,native,clippy}.log. The prior observer fixture's
+thread-local tracing subscriber failed in parallel while passing in isolation;
+a single Dispatch bound to every request-future poll stabilizes the exact-two-event
+assertion. Production logging is unchanged, and the failed run is not claimed green.
+The full parallel final run passes. Existing CI oracle inherits real TSC,validator
+and Better Auth fixture dependencies.
+
+A fresh copy of that validated binary is now running both ignored PostgreSQL cases
+independently, pending final result. Hash
+5238e25eea0deab77edebf6fe46cbe9090a2b9fe96f2920df691e71744ad99f0;
+/private/tmp/fl-jwks-hooks-pg-binary.json records exact provenance. Source-ready
+uncommitted opt-in version-preauth framework dependencies were present at compile;
+the profile is disabled in this suite, and their snapshot patch/hash is retained
+explicitly. This is not claimed as a pure committed whole-worktree artifact.

@@ -1,9 +1,6 @@
 //! Trusted server-only verification using the persisted configured key set.
 mod rsa;
-use super::{
-    AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, KeyRepository, KeyRing,
-    Utc, Value, json,
-};
+use super::{AuthStore, BlueprintError, BlueprintResult, DateTime, KeyRing, Utc, Value, json};
 use base64::{
     Engine, alphabet,
     engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig},
@@ -42,9 +39,9 @@ impl<S: AuthStore> KeyRing<S> {
         let Some(kid) = header["kid"].as_str().filter(|kid| !kid.is_empty()) else {
             return Ok(None);
         };
-        let mut tx = self.store.begin(false).await?;
-        let row = KeyRepository::new(&mut tx)
-            .read_default_window()
+        let mut tx = self.repository(false, now);
+        let row = tx
+            .read()
             .await?
             .into_iter()
             .find(|row| row.has_id(kid))

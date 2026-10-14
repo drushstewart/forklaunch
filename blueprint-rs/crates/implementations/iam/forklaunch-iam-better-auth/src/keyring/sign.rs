@@ -3,10 +3,8 @@ mod claims;
 mod duration;
 mod schema;
 use super::{
-    AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, KeyRepository, KeyRing,
-    Utc, Value, json, mint_config,
+    AuthStore, BlueprintError, BlueprintResult, DateTime, KeyRing, Utc, Value, json, mint_session,
 };
-use std::cmp::Reverse;
 impl<S: AuthStore> KeyRing<S> {
     /// Signs a trusted server payload using persisted configured keys.
     /// Schema/default-duration errors precede key selection; claim errors follow it.
@@ -25,22 +23,12 @@ impl<S: AuthStore> KeyRing<S> {
             .as_f64()
             .ok_or_else(|| error("Invalid signing time"))?;
         let expiry = claims::expiry(payload, options, clock)?;
-        let mut tx = self.store.begin(true).await?;
+        let mut tx = self.repository(true, now);
         let primary = options["jwks"]["keyPairConfig"]["alg"]
             .as_str()
             .unwrap_or("EdDSA");
-        let mut candidates = Vec::new();
-        for row in KeyRepository::new(&mut tx).read_default_window().await? {
-            if row.expires_at()?.is_none_or(|expiry| expiry > now) {
-                candidates.push((row.created_at()?, row));
-            }
-        }
-        candidates.sort_by_key(|(created, _)| Reverse(*created));
-        let selected = candidates
-            .iter()
-            .find(|(_, row)| row.matches_algorithm(primary))
-            .or_else(|| candidates.first());
-        let key = if let Some((_, row)) = selected {
+        let selected = tx.select(primary).await?;
+        let key = if let Some(row) = selected {
             row.signing_key()?
         } else {
             let curve = match primary {
@@ -85,7 +73,7 @@ impl<S: AuthStore> KeyRing<S> {
             } else {
                 None
             };
-            mint_config(&mut tx, now, primary, bits, expires_at).await?
+            mint_session(&mut tx, now, primary, bits, expires_at).await?
         };
         // Better Auth persists a newly minted key even if later claim setters fail.
         tx.commit().await?;

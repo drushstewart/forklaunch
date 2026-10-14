@@ -1,6 +1,5 @@
-//! Internal key persistence boundary. Only the encrypted tenant store is wired.
-//! Separate read/create hooks must eventually share this boundary; no partial
-//! publication-only customization is exposed.
+//! Default encrypted tenant-store operations; session dispatches custom callbacks.
+pub(super) mod session;
 use super::{
     AuthTransaction, BlueprintResult, DateTime, Model, SigningKey, Utc, Value, key_error,
     optional_time, public_key, required_time, restore,

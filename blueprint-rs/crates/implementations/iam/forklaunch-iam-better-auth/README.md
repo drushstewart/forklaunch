@@ -991,5 +991,46 @@ insert; there is no subsequent expiry-only update/audit mutation. Signing restor
 and validates the record returned by repository creation rather than retaining the
 pre-persistence generated key. Tenant-bound transactions, default 100-key lookup
 window, rollback and post-creation claim-failure persistence remain in effect.
-This is preparation for coherent custom `getJwks`/`createJwk` support, not an exposed
-custom-adapter API: default encrypted storage remains the only repository backend.
+The typed custom adapter described below shares this boundary; absent hooks keep
+the existing encrypted tenant store as their fallback.
+
+
+`keyring::adapter::JwksAdapter` provides independent `with_get_jwks` and
+`with_create_jwk` callbacks. Install it with `KeyRing::with_jwks_adapter` or
+`AuthHttp::with_jwks_adapter`; session JWT issuance, explicit signing, verification
+by key ID, live/algorithm selection and public JWKS reads use that same configured
+source. If primary-algorithm selection is empty, the custom reader is invoked
+again for latest-any fallback, and the second snapshot is authoritative as in
+Better Auth. Default-store selection retains its atomic snapshot. The read callback returns `Option<Vec<JwksKeyRecord>>`; `None` means no
+records. The create callback receives `JwksKeyMaterial` with creation/rotation
+expiry already set and returns the authoritative record, including its chosen ID
+and key material. It owns persistence before returning. After empty-source
+initialization, JWKS re-reads that source and errors if still empty, matching the
+upstream independent-hook behavior. Missing hooks continue to use the default
+store; configuring one hook does not implicitly copy records between backends.
+
+The adapter's tenant label is fixed by server configuration and passed with the
+trusted auth base URL and clock. Requests cannot supply it. The application must
+bind its callbacks to the same tenant as its `AuthStore`: the label does not
+implement isolation in an arbitrary external backend. Default-only operations
+retain their atomic tenant transaction. Before invoking either custom callback,
+any fallback transaction is committed and released; callbacks can safely access
+the same store without a held default lock. Mixed repositories do not form one
+atomic transaction, and callback failures cannot roll back callback-owned effects.
+Callback errors are sanitized. Custom sources own synchronization and rotation;
+`KeyRing::rotate` rejects an active custom hook rather than modifying unrelated
+fallback records. External JWT signer mode still bypasses local key callbacks.
+
+This is a typed native key format: `JwksKeyMaterial` contains validated plaintext
+PKCS#8 bytes with an explicit supported algorithm and millisecond-precision times;
+`JwksKeyRecord` adds an ID. It does not import Better Auth's encrypted private JWK
+strings or replace their encryption format. The default PostgreSQL backend still
+encrypts records; custom callbacks must provide their own encryption at rest.
+Private byte buffers zeroize on drop, including explicit clones; secret-bearing
+material/record types have neither `Debug` nor serde implementations. Trusted
+persistence code can read private bytes and must not log them. Public-only,
+malformed, legacy missing-algorithm records and arbitrary JavaScript adapter
+objects are outside this typed interface. Custom read sets above 4096 records
+fail explicitly; they are not truncated to the default store's 100-record window.
+No generic request context, arbitrary plugin schema, or per-call signing-key
+pinning API is introduced by these callbacks.

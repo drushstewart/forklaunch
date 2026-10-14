@@ -59,6 +59,7 @@ pub struct AuthHttp<S> {
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
+    jwks_adapter: Option<crate::keyring::adapter::JwksAdapter>,
     jwt_header_disabled: bool,
     jwt_expiration: Option<jwt_expiration::JwtExpiration>,
     subject_resolver: Option<jwt_subject::SubjectResolver>,
@@ -77,6 +78,20 @@ pub struct AuthHttp<S> {
     clock: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Uses fixed tenant-bound callbacks for local JWT signing and JWKS publication.
+    /// The caller must bind the callbacks to the same tenant as this service's store.
+    #[must_use]
+    pub fn with_jwks_adapter(mut self, adapter: crate::keyring::adapter::JwksAdapter) -> Self {
+        self.jwks_adapter = Some(adapter);
+        self
+    }
+    fn configured_keyring(&self) -> KeyRing<S> {
+        let ring = KeyRing::new(self.store.clone(), self.auth_origin());
+        self.jwks_adapter.as_ref().map_or(ring, |adapter| {
+            KeyRing::new(self.store.clone(), self.auth_origin()).with_jwks_adapter(adapter.clone())
+        })
+    }
+
     /// # Errors
     /// Rejects invalid base URLs or signing secrets shorter than 32 bytes.
     pub fn new(
@@ -98,6 +113,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             store,
             google: None,
             external_jwt: None,
+            jwks_adapter: None,
             jwt_header_disabled: false,
             jwt_expiration: None,
             subject_resolver: None,
@@ -387,12 +403,13 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 "email": text(&view.user, "email")?,
                 "activeOrganizationId": view.session["activeOrganizationId"]
             }});
-            let result = KeyRing::new(self.store.clone(), self.auth_origin())
+            let result = self
+                .configured_keyring()
                 .sign_jwt_with_signer(Some(&body), now, signer)
                 .await?;
             return Ok(text(&result, "token")?.to_owned());
         }
-        KeyRing::new(self.store.clone(), self.auth_origin())
+        self.configured_keyring()
             .issue_session(
                 &subject,
                 text(&view.user, "email")?,

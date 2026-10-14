@@ -48,3 +48,20 @@ await assert.rejects(signJWT(context,{options:failed,payload:{sub:'owned'}}),/ow
 const invalid={...options,adapter:{createJwk:async()=>({...replacement,privateKey:'invalid'})}};
 await assert.rejects(signJWT(context,{options:invalid,payload:{sub:'owned'}}));
 console.log('PASS actual JWKS create hook: supplied expiration/createdAt, returned replacement id+key used for verified signature, independent default reads, callback failure, invalid returned material failure');
+
+// Publication re-reads the chosen source after creation and fails if still empty.
+const {betterAuthReference}=await import('./fixtures/rust_better_auth_reference.mjs');
+const {fileURLToPath}=await import('node:url');
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const {betterAuth}=await import(moduleUrl('better-auth/dist/index.mjs'));
+let emptyReads=0;
+const reference=await betterAuthReference(root,{jwt:{adapter:{getJwks:async()=>{emptyReads++;return null;}}}});
+const auth=betterAuth({...reference.config,logger:{disabled:true}});
+const response=await auth.handler(new Request('http://localhost:3000/api/auth/jwks'));
+assert.equal(response.status,500);assert.equal(emptyReads,2);
+console.log('PASS actual JWKS publication rejects a custom read source still empty after independent default creation');
+let fallbackReads=0;
+const fallbackOptions={jwks:{disablePrivateKeyEncryption:true},adapter:{getJwks:async()=>++fallbackReads===1?[]:[replacement],createJwk:async()=>{throw new Error('fallback must reuse returned key');}}};
+const fallbackToken=await signJWT(context,{options:fallbackOptions,payload:{sub:'fallback'}});
+assert.equal(fallbackReads,2);assert.equal((await jwtVerify(fallbackToken,pair.publicKey)).payload.sub,'fallback');
+console.log('PASS actual custom reader is invoked again for latest-any fallback and its second snapshot is authoritative');

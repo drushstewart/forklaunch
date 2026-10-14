@@ -1,5 +1,5 @@
 //! Trusted optional payload policy; persisted cookie identity remains independent.
-use super::{AuthHttp, AuthStore, JwtSessionContext, KeyRing, SessionView};
+use super::{AuthHttp, AuthStore, JwtSessionContext, SessionView};
 use chrono::{DateTime, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Map, Value, json};
@@ -60,7 +60,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         if let Some(expiration) = &self.jwt_expiration {
             body["overrideOptions"] = json!({"jwt":{"expirationTime":expiration.option()}});
         }
-        let ring = KeyRing::new(self.store.clone(), self.auth_origin());
+        let ring = self.configured_keyring();
         let signed = if let Some(signer) = &self.external_jwt {
             ring.sign_jwt_with_signer(Some(&body), now, signer).await
         } else {

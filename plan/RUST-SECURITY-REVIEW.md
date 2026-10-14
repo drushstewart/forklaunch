@@ -916,3 +916,16 @@ same deadline and locked durable snapshot requirements as direct APIs. Direct
 methods still reject Connect. SDK/native and restricted PG twins cover wrong-profile
 zero I/O, header/config identity, ABA, deadlines and audit/receipt rollback. No
 provider write, financial authority or reference clearing is introduced.
+
+
+### Typed custom JWKS callback boundary (2026-10-14)
+
+Fixed server-owned callback context is independent of request inputs. The application
+must implement tenant isolation/encryption in custom storage; mixed default/custom
+operations are not atomic. Returned validated native key material/ID govern signing,
+and callbacks run after releasing fallback locks. Secret byte buffers zeroize and
+have no Debug/serde exposure; callback errors are sanitized. Active hooks disable
+administrative rotate; external signers bypass them. Seven adapter cases, all87 IAM
+tests and strict Clippy pass. Upstream encrypted JWK wire/public-only/legacy records
+remain outside this explicit profile. Copied-binary PG checks and provenance are
+tracked in the dated inventory receipt.

@@ -170,12 +170,14 @@ impl tracing::Subscriber for TraceCounter {
 
 #[tokio::test]
 async fn unexpected_mode_uses_private_origin_not_status_code_or_details() {
+    use tracing::instrument::WithSubscriber;
+    let trace_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let dispatcher = tracing::Dispatch::new(TraceCounter(trace_count.clone()));
     for mode in [
         AuthApiErrorObserverMode::AllServerErrors,
         AuthApiErrorObserverMode::UnexpectedOnly,
     ] {
-        let trace_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let _trace_guard = tracing::subscriber::set_default(TraceCounter(trace_count.clone()));
+        trace_count.store(0, std::sync::atomic::Ordering::SeqCst);
         let events = Arc::new(Mutex::new(Vec::new()));
         let capture = events.clone();
         let app = Arc::new(
@@ -213,6 +215,9 @@ async fn unexpected_mode_uses_private_origin_not_status_code_or_details() {
             let response = router
                 .clone()
                 .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                // Bind the subscriber to every future poll, not a thread-local
+                // guard held across await while other async tests initialize tracing.
+                .with_subscriber(dispatcher.clone())
                 .await
                 .unwrap();
             assert_eq!(response.status(), 500);
