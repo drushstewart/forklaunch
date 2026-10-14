@@ -154,11 +154,13 @@ async function call(base, path, options = {}, status = 200) {
 async function checkFrontendClients(options) {
   await exerciseFrontendClient({
     ...options,
+    authorize: hmac,
     label: `blueprint: ${options.label}`
   });
   assert.ok(process.env.FORKLAUNCH_TEST_GENERATED_CLIENT_SDK);
   await exerciseFrontendClient({
     ...options,
+    authorize: hmac,
     sourcePath: process.env.FORKLAUNCH_TEST_GENERATED_CLIENT_SDK,
     label: `generated: ${options.label}`
   });

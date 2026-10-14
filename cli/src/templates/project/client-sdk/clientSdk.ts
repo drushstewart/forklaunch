@@ -10,14 +10,16 @@ import { createAuthClient } from "better-auth/client";{{/is_better_auth}}
 export const iamSdkClient{{^is_better_auth}}{{/is_better_auth}} = {{#is_better_auth}}async ({
     host,
     registryOptions,
+    coreHost,
     authBasePath
 }: {
     host: string,
     registryOptions: RegistryOptions,
-    authBasePath?: string
+    authBasePath?: string,
+    coreHost?: string
 }) => ({
     core: await {{/is_better_auth}}universalSdk<IamSdkClient>{{#is_better_auth}}({
-        host,
+        host: coreHost ?? host,
         registryOptions
     }),
     betterAuth: createAuthClient({

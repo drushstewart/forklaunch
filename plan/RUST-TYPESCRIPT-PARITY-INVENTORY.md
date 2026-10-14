@@ -7702,3 +7702,40 @@ calls and canonical IAM366 outcomes/zero normalized OpenAPI differences pass.
 Logs: /private/tmp/fl-version-text-wire-{allfeatures,clippy,parity,json,canonical}.log.
 CI runs the oracle after canonical dependencies. Unversioned text transforms,
 optional MCP omission and generic validation diagnostics remain open.
+
+
+## Real mixed SDK and Better Auth client composition (2026-10-14)
+
+Shared/generated Better Auth factories now accept optional coreHost so a host
+containing an auth path can still call application APIs at an explicitly chosen
+origin. The default remains host, preserving intentional reverse-proxy prefixes.
+UniversalSdk validates referenced JSON/SSE responses in their original OpenAPI
+document scope. Standard factories isolate AJV instances per document; direct
+constructor callers retain their complete supplied validator/custom keywords,
+with an additive optional factory for document isolation. Conflicting explicit
+IDs fail rather than replacing schemas; missing/external references never fetch.
+Boolean component schemas, nested refs, component IDs and cross-client/version
+isolation have real validator tests. Referenced date/binary coercion remains an
+explicit separate boundary.
+
+The previous universal-SDK construction stub is removed from the frontend fixture.
+Actual shared and freshly generated factories each pass21 owned HTTP requests;
+strict TypeScript7.0.2 checks the SDK root against611 source export paths and real
+declarations with zero diagnostics. The permanent configured-types fixture now
+has an additive --sdk profile, run in CI alongside its existing12 roots. Body/
+form13 and SSE35 comparisons pass. A newly source-built CLI-generated IAM app
+passes eight shared/generated mixed-client runs with14 native HTTP actions each
+(112 total), including core discovery/current grants and actual Better Auth
+session/profile/JWT/signout/signin behavior for default/custom/root/URL-host paths.
+HTTP/MCP shared/separate/disabled listeners, both SDKs, encrypted sessions, tenant
+isolation/restart and rename/sync/delete pass; the owned PG role was cleaned up.
+
+Logs: /private/tmp/fl-real-frontend-native-runtime.log,
+/private/tmp/fl-frontend-{composition-fixed,generated-composition}.log,
+/private/tmp/fl-real-frontend-sse.log and /private/tmp/fl-sdk-reference-types-permanent.log.
+Source/CLI hashes: /private/tmp/fl-real-frontend-source-hashes.log. This is a
+source-built checkpoint, distinct from immutable95f1b203b. DNS forwarding, a Node
+cookie jar and scoped fetch forwarding are owned fixture components; actual SDK,
+AJV and Better Auth clients execute against live native HTTP. Neither browser
+coverage nor HTTP SDK access to MCP is implied. CI installs pinned bundling/
+validation dependencies and runs the composition fixture.

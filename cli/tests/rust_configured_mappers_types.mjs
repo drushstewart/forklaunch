@@ -43,7 +43,9 @@ for(const name of ['body-parser','busboy','cors','express','qs','range-parser','
  const declaration=path.join(modules,'@types',name,'index.d.ts');await access(declaration);paths[name]=[declaration];
 }
 paths['*']=dependencyRoots.map(directory=>path.join(directory,'*'));
-const roots=[
+const sdkProfile=process.argv.includes('--sdk');
+assert.ok(process.argv.slice(2).every(argument=>argument==='--sdk'),'Only --sdk is supported');
+const roots=sdkProfile?['framework/universal-sdk/index.ts']:[
  'blueprint/implementations/billing/stripe/services/plan.service.ts',
  'blueprint/implementations/billing/stripe/services/subscription.service.ts',
  'blueprint/implementations/billing/stripe/services/paymentLink.service.ts',
@@ -62,5 +64,5 @@ try{
  const config=path.join(temporary,'tsconfig.json');
  await writeFile(config,JSON.stringify({compilerOptions:{target:'ES2022',module:'ESNext',moduleResolution:'Bundler',strict:true,skipLibCheck:true,noEmit:true,experimentalDecorators:true,esModuleInterop:true,lib:['ESNext','DOM'],types:['node','vitest/globals','bun'],typeRoots:[path.join(modules,'@types'),modules],paths},files:roots.map(file=>path.join(root,file))},null,2));
  execFileSync(path.join(modules,'.bin/tsc'),['-p',config,'--pretty','false'],{cwd:root,stdio:'inherit',timeout:120000});
- console.log(`PASS configured mapper/service TypeScript ${fixture.dependencies.typescript}: all ${roots.length} roots, ${entries} inventory exports, real Node/Bun/Vitest/send/Swagger declarations, zero source diagnostics`);
+ console.log(`PASS ${sdkProfile?'universal SDK':'configured mapper/service'} TypeScript ${fixture.dependencies.typescript}: all ${roots.length} roots, ${entries} inventory exports, real Node/Bun/Vitest/send/Swagger declarations, zero source diagnostics`);
 }finally{await rm(temporary,{recursive:true,force:true});}

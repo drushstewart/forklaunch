@@ -24313,6 +24313,11 @@
           "source": "framework/universal-sdk/src/core/resolvePath.ts"
         },
         {
+          "subpath": "./src/core/responseSchema",
+          "target": "lib/src/core/responseSchema.d.ts",
+          "source": "framework/universal-sdk/src/core/responseSchema.ts"
+        },
+        {
           "subpath": "./src/guards/isOpenApiObject",
           "target": "lib/src/guards/isOpenApiObject.d.ts",
           "source": "framework/universal-sdk/src/guards/isOpenApiObject.ts"
@@ -24415,6 +24420,37 @@
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/resolvePath.ts",
               "line": 10
+            }
+          ]
+        },
+        {
+          "source": "framework/universal-sdk/src/core/responseSchema.ts",
+          "exports": [
+            {
+              "name": "ResponseSchemas",
+              "kind": "ClassDeclaration",
+              "source": "framework/universal-sdk/src/core/responseSchema.ts",
+              "line": 8,
+              "members": [
+                {
+                  "name": "constructor",
+                  "signature": "constructor(\n    private readonly source: Ajv,\n    private readonly factory?: () => Ajv\n  )",
+                  "source": "framework/universal-sdk/src/core/responseSchema.ts",
+                  "line": 10
+                },
+                {
+                  "name": "validator",
+                  "signature": "validator(\n    document: OpenAPIObject,\n    pointer: string,\n    schema: AnySchema\n  ): ValidateFunction",
+                  "source": "framework/universal-sdk/src/core/responseSchema.ts",
+                  "line": 15
+                }
+              ]
+            },
+            {
+              "name": "schemaPointer",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/core/responseSchema.ts",
+              "line": 65
             }
           ]
         },
@@ -24539,31 +24575,31 @@
               "name": "UniversalSdk",
               "kind": "ClassDeclaration",
               "source": "framework/universal-sdk/src/universalSdk.ts",
-              "line": 24,
+              "line": 25,
               "members": [
                 {
                   "name": "constructor",
-                  "signature": "constructor(\n    private host: string,\n    private ajv: Ajv,\n    private registryOptions: RegistryOptions,\n    private contentTypeParserMap:\n      Record<string, ResponseContentParserType> | undefined\n  )",
+                  "signature": "constructor(\n    private host: string,\n    private ajv: Ajv,\n    private registryOptions: RegistryOptions,\n    private contentTypeParserMap:\n      Record<string, ResponseContentParserType> | undefined,\n    responseAjvFactory?: () => Ajv\n  )",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 29
+                  "line": 36
                 },
                 {
                   "name": "create",
                   "signature": "static async create(\n    host: string,\n    registryOptions: RegistryOptions,\n    contentTypeParserMap?: Record<string, ResponseContentParserType>\n  )",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 42
+                  "line": 52
                 },
                 {
                   "name": "executeFetchCall",
                   "signature": "async executeFetchCall(\n    path: string,\n    request?: RequestType & {\n      method:\n        | 'get'\n        | 'post'\n        | 'put'\n        | 'patch'\n        | 'delete'\n        | 'options'\n        | 'head'\n        | 'trace';\n    } & {\n      version?: string;\n    }\n  ): Promise<ResponseType>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 57
+                  "line": 75
                 },
                 {
                   "name": "executeSdkCall",
                   "signature": "async executeSdkCall(\n    sdkPath: string,\n    request?: RequestType\n  ): Promise<ResponseType>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 97
+                  "line": 115
                 }
               ]
             }

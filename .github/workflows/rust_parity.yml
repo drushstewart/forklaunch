@@ -208,6 +208,7 @@ on:
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
+      - 'cli/tests/rust_better_auth_frontend_composition.mjs'
       - 'cli/tests/rust_better_auth_callbacks.mjs'
       - 'cli/tests/fixtures/rust_better_auth_reference.mjs'
       - 'cli/tests/fixtures/rust_better_auth_routes.json'
@@ -500,6 +501,7 @@ on:
       - 'cli/tests/rust_better_auth_redirects.mjs'
       - 'cli/tests/fixtures/rust_better_auth_server.mjs'
       - 'cli/tests/fixtures/rust_better_auth_frontend_client.mjs'
+      - 'cli/tests/rust_better_auth_frontend_composition.mjs'
       - 'cli/tests/rust_better_auth_callbacks.mjs'
       - 'cli/tests/fixtures/rust_better_auth_reference.mjs'
       - 'cli/tests/fixtures/rust_better_auth_routes.json'
@@ -969,7 +971,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@26.6.5 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@26.6.5 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25 esbuild@0.28.2 ajv@8.20.0 ajv-formats@3.0.1
       - name: Check configured mapper and service source types
         run: |
           mkdir -p "$RUNNER_TEMP/fl-configured-mappers-types"
@@ -979,6 +981,7 @@ jobs:
           cp cli/tests/fixtures/canonical-iam/package.json "$RUNNER_TEMP/fl-configured-mappers-runtime/package.json"
           npm install --prefix "$RUNNER_TEMP/fl-configured-mappers-runtime" --ignore-scripts --no-audit --no-fund
           node cli/tests/rust_configured_mappers_types.mjs
+          node cli/tests/rust_configured_mappers_types.mjs --sdk
         env:
           FORKLAUNCH_CONFIGURED_TYPES_PREFIX: ${{ runner.temp }}/fl-configured-mappers-types
           FORKLAUNCH_CONFIGURED_TYPES_RUNTIME_PREFIXES: '["${{ runner.temp }}/fl-configured-mappers-runtime","${{ runner.temp }}/fl-rust-ts"]'
@@ -1340,6 +1343,7 @@ jobs:
       - run: node cli/tests/rust_better_auth_signing_algorithm.mjs
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_better_auth_frontend_composition.mjs
       - run: node cli/tests/rust_better_auth_external_signing_context.mjs
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

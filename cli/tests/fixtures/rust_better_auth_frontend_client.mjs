@@ -1,6 +1,6 @@
 // Execute the actual shared frontend factory and pinned Better Auth client over
-// live native HTTP. Only universal SDK construction, DNS forwarding and the
-// Node cookie jar are owned; auth actions, parsers and transport are real.
+// live native HTTP. DNS forwarding and the Node cookie jar are owned; both
+// client implementations, registry parsing and schema validation are real.
 import assert from 'node:assert/strict';
 import { createPublicKey, randomUUID, verify } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
@@ -15,7 +15,39 @@ const root = path.resolve(
 );
 const require = createRequire(import.meta.url);
 const factories = new Map();
-async function frontendFactory(sourcePath) {
+let universalModule;
+export async function actualUniversalSdk() {
+  if (universalModule) return universalModule;
+  const dependencies = process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES;
+  assert.ok(dependencies, 'Actual SDK esbuild/AJV dependencies are required');
+  const { build } = await import(
+    pathToFileURL(path.join(dependencies, 'node_modules/esbuild/lib/main.js'))
+  );
+  const result = await build({
+    stdin: {
+      contents: `export * from ${JSON.stringify(path.join(root, 'framework/universal-sdk/index.ts'))}; export { UniversalSdk } from ${JSON.stringify(path.join(root, 'framework/universal-sdk/src/universalSdk.ts'))};`,
+      resolveDir: root,
+      loader: 'ts'
+    },
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    write: false,
+    nodePaths: [path.join(dependencies, 'node_modules')],
+    alias: {
+      '@forklaunch/common': path.join(root, 'framework/common/index.ts')
+    }
+  });
+  const module = { exports: {} };
+  new Function('require', 'module', 'exports', result.outputFiles[0].text)(
+    require,
+    module,
+    module.exports
+  );
+  universalModule = module.exports;
+  return universalModule;
+}
+export async function frontendFactory(sourcePath) {
   if (factories.has(sourcePath)) return factories.get(sourcePath);
   const dependencies = process.env.FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES;
   assert.ok(dependencies, 'Better Auth 1.7.6 client fixture is required');
@@ -44,6 +76,7 @@ async function frontendFactory(sourcePath) {
       )
     )
   ]);
+  const universal = await actualUniversalSdk();
   const source = ts.transpileModule(readFileSync(sourcePath, 'utf8'), {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -55,8 +88,7 @@ async function frontendFactory(sourcePath) {
     exports,
     URL,
     require(specifier) {
-      if (specifier === '@forklaunch/universal-sdk')
-        return { universalSdk: async (options) => ({ options }) };
+      if (specifier === '@forklaunch/universal-sdk') return universal;
       if (specifier === 'better-auth/client') return client;
       if (specifier === 'better-auth/client/plugins') return plugins;
       throw new Error(`Unexpected frontend SDK dependency: ${specifier}`);
@@ -73,6 +105,7 @@ export async function exerciseFrontendClient({
   host,
   authBasePath,
   label,
+  authorize,
   sourcePath = path.join(root, 'blueprint/client-sdk/clientSdk.ts')
 }) {
   const createClient = await frontendFactory(sourcePath);
@@ -81,6 +114,7 @@ export async function exerciseFrontendClient({
   const requests = [];
   const publicOrigin = new URL(host).origin;
   const boundOrigin = new URL(target);
+  let surface = 'auth';
   const cookieFetch = async (input, options) => {
     const request = new Request(input, options);
     const requested = new URL(request.url);
@@ -89,9 +123,15 @@ export async function exerciseFrontendClient({
       publicOrigin,
       'Client cannot change the configured authority'
     );
-    assert.equal(request.headers.get('origin'), publicOrigin);
-    assert.equal(request.credentials, 'include');
-    requests.push({ method: request.method, path: requested.pathname });
+    if (surface === 'auth') {
+      assert.equal(request.headers.get('origin'), publicOrigin);
+      assert.equal(request.credentials, 'include');
+    }
+    requests.push({
+      method: request.method,
+      path: requested.pathname,
+      surface
+    });
     requested.protocol = boundOrigin.protocol;
     requested.host = boundOrigin.host;
     const forwarded = new Request(requested, request);
@@ -111,18 +151,49 @@ export async function exerciseFrontendClient({
     }
     return response;
   };
-  const registryOptions = { mode: 'owned-core-boundary' };
+  const registryResponse = await originalFetch(`${target}/openapi.json`);
+  assert.equal(registryResponse.status, 200);
+  const registryOptions = { raw: await registryResponse.json() };
+  const document = registryOptions.raw.paths
+    ? registryOptions.raw
+    : registryOptions.raw.latest;
+  const operationFor = (path) => {
+    const operation = document.paths[path]?.get?.operationId;
+    assert.equal(
+      typeof operation,
+      'string',
+      `Missing registry operation for ${path}`
+    );
+    return operation;
+  };
+  const discoveryOperation = operationFor('/discovery/auth-methods');
   let sdk;
   // Better Auth captures fetch when the client is constructed. Restore the
   // global immediately; subsequent client requests use the captured transport.
   globalThis.fetch = cookieFetch;
   try {
-    sdk = await createClient({ host, authBasePath, registryOptions });
+    sdk = await createClient({
+      host,
+      coreHost: publicOrigin,
+      authBasePath,
+      registryOptions
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
-  assert.equal(sdk.core.options.host, host);
-  assert.equal(sdk.core.options.registryOptions, registryOptions);
+  async function coreCall(operation, request) {
+    surface = 'core';
+    globalThis.fetch = cookieFetch;
+    try {
+      return await sdk.core[operation](request);
+    } finally {
+      globalThis.fetch = originalFetch;
+      surface = 'auth';
+    }
+  }
+  const discovery = await coreCall(discoveryOperation);
+  assert.equal(discovery.code, 200);
+  assert.equal(discovery.response.email, true);
   const email = `frontend-${randomUUID()}@fixture.test`;
   const password = 'frontend-client-fixture-password';
   const signup = await sdk.betterAuth.signUp.email({
@@ -141,6 +212,41 @@ export async function exerciseFrontendClient({
   assert.equal(session.error, null);
   assert.equal(session.data.user.id, identity);
   assert.ok(session.data.session.token);
+  {
+    assert.equal(typeof authorize, 'function');
+    const organization = await sdk.betterAuth.$fetch('/organization/create', {
+      method: 'POST',
+      body: {
+        name: 'Frontend organization',
+        slug: `frontend-${randomUUID()}`,
+        domain: 'fixture.test'
+      }
+    });
+    assert.equal(organization.error, null);
+    const params = {
+      id: identity,
+      organizationId: organization.data.id,
+      sessionId: session.data.session.id
+    };
+    for (const [suffix, expected] of [
+      ['surface-roles', [{ name: 'owner' }]],
+      [
+        'surface-permissions',
+        [{ slug: 'platform:read' }, { slug: 'platform:write' }]
+      ]
+    ]) {
+      const route = `/user/${params.id}/organizations/${params.organizationId}/sessions/${params.sessionId}/${suffix}`;
+      const operation = operationFor(
+        `/user/{id}/organizations/{organizationId}/sessions/{sessionId}/${suffix}`
+      );
+      const result = await coreCall(operation, {
+        params,
+        headers: { authorization: authorize(route) }
+      });
+      assert.equal(result.code, 200);
+      assert.deepEqual(result.response, expected);
+    }
+  }
   const update = await sdk.betterAuth.updateUser({
     firstName: 'Updated',
     lastName: 'Consumer'
@@ -182,7 +288,9 @@ export async function exerciseFrontendClient({
     (authBasePath === undefined
       ? '/api/auth'
       : `/${authBasePath.replace(/^\/+|\/+$/g, '')}`.replace(/\/+$/, ''));
-  for (const request of requests)
+  for (const request of requests.filter(
+    (request) => request.surface === 'auth'
+  ))
     assert.ok(
       request.path.startsWith(`${resolvedPath}/`),
       `${label}: ${request.path}`

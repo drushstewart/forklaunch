@@ -25,15 +25,18 @@ export const clientIamSdkClient = universalSdk<IamSdkClient>;
 export const clientIamBetterAuthSdkClient = async ({
   host,
   registryOptions,
+  coreHost,
   authBasePath
 }: {
   host: string;
   registryOptions: RegistryOptions;
   /** Defaults to /api/auth; use / for root. A path in host takes precedence. */
   authBasePath?: string;
+  /** Optional application-service URL; defaults to host, preserving proxy prefixes. */
+  coreHost?: string;
 }) => ({
   core: await universalSdk<IamBetterAuthSdkClient>({
-    host,
+    host: coreHost ?? host,
     registryOptions: registryOptions
   }),
   betterAuth: createAuthClient({

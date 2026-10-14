@@ -9,6 +9,7 @@ import { OpenAPIObject } from 'openapi3-ts/oas31';
 import { coerceSpecialTypes } from './core/coerceSpecialTypes';
 import { mapContentType } from './core/mapContentType';
 import { refreshOpenApi } from './core/openApi';
+import { ResponseSchemas, schemaPointer } from './core/responseSchema';
 import { getSdkPath } from './core/resolvePath';
 import { ResponseContentParserType } from './types/contentTypes.types';
 import {
@@ -25,14 +26,23 @@ export class UniversalSdk {
   private registryOpenApiJson: Record<string, OpenAPIObject> | undefined;
   private registryOpenApiHash: string | undefined;
   private sdkPathMap: SdkPathMap | undefined;
+  private responseSchemas: ResponseSchemas;
 
+  /**
+   * A responseAjvFactory isolates referenced schemas per registry document.
+   * Without it, the supplied AJV instance (including custom keywords) is reused;
+   * conflicting explicit schema IDs fail rather than replacing prior schemas.
+   */
   constructor(
     private host: string,
     private ajv: Ajv,
     private registryOptions: RegistryOptions,
     private contentTypeParserMap:
-      Record<string, ResponseContentParserType> | undefined
-  ) {}
+      Record<string, ResponseContentParserType> | undefined,
+    responseAjvFactory?: () => Ajv
+  ) {
+    this.responseSchemas = new ResponseSchemas(ajv, responseAjvFactory);
+  }
 
   /**
    * Creates an instance of UniversalSdk.
@@ -44,14 +54,22 @@ export class UniversalSdk {
     registryOptions: RegistryOptions,
     contentTypeParserMap?: Record<string, ResponseContentParserType>
   ) {
-    const ajv = new Ajv({
-      coerceTypes: true,
-      allErrors: true,
-      strict: false
-    });
-    addFormats(ajv);
-
-    return new UniversalSdk(host, ajv, registryOptions, contentTypeParserMap);
+    const createAjv = () => {
+      const ajv = new Ajv({
+        coerceTypes: true,
+        allErrors: true,
+        strict: false
+      });
+      addFormats(ajv);
+      return ajv;
+    };
+    return new UniversalSdk(
+      host,
+      createAjv(),
+      registryOptions,
+      contentTypeParserMap,
+      createAjv
+    );
   }
 
   async executeFetchCall(
@@ -293,7 +311,16 @@ export class UniversalSdk {
         break;
       }
       case 'text/event-stream': {
-        const ajv = this.ajv;
+        const validate = this.responseSchemas.validator(
+          this.registryOpenApiJson![version],
+          schemaPointer(
+            openApiCompliantPath(path),
+            method,
+            response.status,
+            contentType || mappedContentType
+          ),
+          responseOpenApi.content?.[contentType || mappedContentType].schema
+        );
         async function* streamEvents(
           reader: ReadableStreamDefaultReader<Uint8Array>
         ) {
@@ -316,11 +343,7 @@ export class UniversalSdk {
                   data: safeParse(data),
                   id: lastEventId
                 };
-                const isValidJson = ajv.validate(
-                  responseOpenApi.content?.[contentType || mappedContentType]
-                    .schema,
-                  json
-                );
+                const isValidJson = validate(json);
                 if (!isValidJson) {
                   throw new Error('Response does not match OpenAPI spec');
                 }
@@ -349,11 +372,7 @@ export class UniversalSdk {
                 data: safeParse(data),
                 id: id ?? lastEventId
               };
-              const isValidJson = ajv.validate(
-                responseOpenApi.content?.[contentType || mappedContentType]
-                  .schema,
-                json
-              );
+              const isValidJson = validate(json);
               if (!isValidJson) {
                 throw new Error('Response does not match OpenAPI spec');
               }
@@ -377,13 +396,20 @@ export class UniversalSdk {
       case 'application/json':
       default: {
         const json: Record<string, unknown> = await response.json();
-        const isValidJson = this.ajv.validate(
-          responseOpenApi.content?.[contentType || mappedContentType].schema,
-          json
+        const validate = this.responseSchemas.validator(
+          this.registryOpenApiJson![version],
+          schemaPointer(
+            openApiCompliantPath(path),
+            method,
+            response.status,
+            contentType || mappedContentType
+          ),
+          responseOpenApi.content?.[contentType || mappedContentType].schema
         );
+        const isValidJson = validate(json);
         if (!isValidJson) {
           throw new Error(
-            `Response does not match OpenAPI spec: ${JSON.stringify(this.ajv.errors)}`
+            `Response does not match OpenAPI spec: ${JSON.stringify(validate.errors)}`
           );
         }
         responseBody = coerceSpecialTypes(
