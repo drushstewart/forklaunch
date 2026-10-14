@@ -17,7 +17,7 @@ for(const variant of ['base','stripe']){
   if(spec==='@forklaunch/blueprint-core')return {schemaValidator:actual.validator};
   if(spec==='@forklaunch/core/http')return {evaluateTelemetryOptions:()=>({enabled:{}})};
   if(spec==='@forklaunch/core/cache')return {createCacheKey:prefix=>id=>prefix+':'+id};
-  if(spec==='@forklaunch/implementation-billing-base/services')return load(path.join(root,'blueprint/implementations/billing/base/services/billingPortal.service.ts'));
+  if(spec==='@forklaunch/implementation-billing-base/services')return {...load(path.join(root,'blueprint/implementations/billing/base/services/billingPortal.service.ts')),...load(path.join(root,'blueprint/implementations/billing/base/services/checkoutSession.service.ts'))};
   if(spec==='@forklaunch/core/mappers')return {...load(path.join(root,'framework/core/src/mappers/mapper.ts')),...load(path.join(root,'framework/core/src/mappers/mapServiceSchemas.ts'))};
   if(spec==='@forklaunch/internal')return load(path.join(root,'framework/internal/src/serviceSchemaResolver.ts'));
   if(spec===`@forklaunch/implementation-billing-${variant}/schemas`)return load(path.join(root,`blueprint/implementations/billing/${variant}/domain/schemas/index.ts`));
@@ -86,6 +86,36 @@ for(const variant of ['base','stripe']){
     }
     cacheRows.set(key,serialized);
     await assert.rejects(service[`get${suffix}`]({id:randomUUID()}));cases++;
+    if(family==='checkoutSession'&&variant==='stripe'){
+     const StripeService=actual.load(path.join(root,'blueprint/implementations/billing/stripe/services/checkoutSession.service.ts')).StripeCheckoutSessionService;
+     const fresh={id:'cs_cache_owned',object:'checkout.session',mode:'subscription',livemode:false,customer:'cus_owned',url:'https://fixture.test/stripe'};
+     let response=fresh;const calls=[];
+     const stripe={checkout:{sessions:{async create(){return structuredClone(fresh);},async retrieve(id){calls.push(id);return structuredClone(response);}}}};
+     const wrapper=new StripeService(stripe,readOnlyEm,cache,{},actual.validator,mappers,{enableDatabaseBackup});
+     const made=await wrapper.createCheckoutSession(samples[family]);
+     assert.match(made.id,/^[a-f0-9-]{36}$/);assert.notEqual(made.id,fresh.id);
+     const ownKey='checkout_session:'+made.id,ownJson=cacheRows.get(ownKey),writesBefore=writes;
+     const result=await wrapper.getCheckoutSession({id:made.id});
+     assert.deepEqual(calls,['cs_cache_owned']);assert.equal(result.id,made.id);assert.equal(result.customerId,made.customerId);assert.deepEqual(result.stripeFields,fresh);assert.equal(writes,writesBefore);assert.equal(cacheRows.get(ownKey),ownJson);cases++;
+     await assert.rejects(wrapper.getCheckoutSession({id:randomUUID()}));assert.equal(calls.length,1);cases++;
+     for(const patch of [{id:randomUUID()},{id:'cs_bad'},{customerId:null},{expiresAt:'not-a-date'},{stripeFields:null},{stripeFields:{...fresh,id:'cs_bad/path'}},{stripeFields:{...fresh,object:'customer'}},{stripeFields:{...fresh,mode:'payment'}},{stripeFields:{...fresh,livemode:null}},{stripeFields:{...fresh,customer:undefined}},{stripeFields:{...fresh,customer:{id:'cus_owned',object:'customer',deleted:'false'}}}]){
+      cacheRows.set(ownKey,JSON.stringify({...JSON.parse(ownJson),...patch}));const count=calls.length;
+      await assert.rejects(wrapper.getCheckoutSession({id:made.id}));assert.equal(calls.length,count);cases++;
+     }
+     cacheRows.set(ownKey,ownJson);
+     for(const patch of [{id:'cs_other'},{object:'payment_intent'},{mode:'payment'},{livemode:true},{customer:'cus_other'},{customer:null},{customer:{id:'cus_owned',object:'customer',deleted:true}}]){
+      response={...fresh,...patch};await assert.rejects(wrapper.getCheckoutSession({id:made.id}));assert.equal(cacheRows.get(ownKey),ownJson);cases++;
+     }
+     response={...fresh,customer:{id:'cus_owned',object:'customer',deleted:false}};
+     assert.equal((await wrapper.getCheckoutSession({id:made.id})).customerId,made.customerId);cases++;
+     cacheRows.set(ownKey,JSON.stringify({...JSON.parse(ownJson),stripeFields:{...fresh,customer:null}}));response=fresh;
+     assert.equal((await wrapper.getCheckoutSession({id:made.id})).customerId,made.customerId);cases++;
+     cacheRows.set(ownKey,ownJson);
+     const legacyMappers={...mappers,CheckoutSessionMapper:{...mappers.CheckoutSessionMapper,readCachedDto:undefined}};
+     const legacy=new StripeService(stripe,readOnlyEm,cache,{},actual.validator,legacyMappers,{enableDatabaseBackup});
+     await legacy.getCheckoutSession({id:made.id});assert.equal(calls.at(-1),made.id);cases++;
+     assert.equal(cacheRows.get(ownKey),ownJson);assert.equal(writes,writesBefore);
+    }
     if(family==='billingPortal'&&!enableDatabaseBackup){
      records.clear(); // No persisted entity exists; readOnlyEm rejects ORM access.
      const nextProvider={id:'provider_updated_cache',opaqueTimestamp:'2026-01-01T00:00:00Z'};
@@ -179,4 +209,4 @@ for(const variant of ['base','stripe']){
  }
 }
 console.log(`PASS ${cases} actual configured billing mapper cases: cache DTO reads/updates without ORM access, Stripe replacement and identity guards, emitted/retained status acceptance, unknown-status rejection, schema resolution, HTTP-boundary unknown fields, optional provider payloads, local UUIDs, response mapping, ownership and missing-row failures`);
-console.log('AUDIT Stripe checkout/payment-link/portal configured TS mappers discard provider IDs; native cache services retain provider IDs so later provider calls remain valid. Native provider payloads require objects and native scalar coercions remain stricter.');
+console.log('AUDIT Stripe configured mappers allocate local UUIDs and retain provider responses; configured checkout reads now resolve cached provider references. Other reference-based mutation paths still require identity integration; native scoped durable aliases are separate. Native provider payloads require objects and native scalar coercions remain stricter.');

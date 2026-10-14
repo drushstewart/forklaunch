@@ -5439,3 +5439,35 @@ differences remain; no unreachable response was added to force equality. Logs:
 and `/private/tmp/fl-request-rejection-review-{tests,clippy}.log`.
 
 Checklist remains **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: configured checkout public/provider identity reads
+
+Configured Stripe checkout reads now resolve the provider reference from the
+server-written cached DTO through an optional mapper hook. The wrapper checks
+requested/cache identity before retrieval; the configured hook validates actual
+response schemas, object type, subscription mode, live/test mode and known
+provider-customer evidence. Provider responses cannot replace the public ID or
+local customer relation. Customer assignment from an initially null Stripe
+customer is admitted without rewriting the application relation. Custom mapper
+fallback preserves the existing provider-ID-first behavior. These cached
+references do not establish connected-account ownership; the separately scoped
+gateway protocol remains necessary for managed rebinding safety.
+
+Verified: 295 actual-source configured mapper cases and 144 legacy
+TypeScript/Rust Stripe service comparisons. A focused strict TypeScript5.9
+check of the actual base/Stripe service files and transitive framework source
+also passes with real dependency types and explicit source export mappings:
+`/private/tmp/fl-billing-focused-types/tsconfig-services.json`. This caught and
+fixed an earlier OpenAPI generic type error: absent-body markers are now optional
+validator capabilities and guarded before schema-kind checks. Canonical runtime
+and document checks pass. Full configured-module typechecking still reaches
+unrelated Bun ambient/Express shim type mismatches; it is not claimed clean.
+Logs: `/private/tmp/fl-checkout-configured-stripe-services.log`,
+`/private/tmp/fl-billing-focused-services-final.log`, and
+`/private/tmp/fl-billing-focused-types-configured.log`. Public inventory remains
+44 packages, 608 entrypoints and 1662 declaration/reexport records.
+
+Configured mutations still need explicit ownership/identity integration, and
+remaining URI/schema/mapping boundaries stay open. Checklist: **660/682 (96.8%),
+22 open**.

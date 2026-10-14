@@ -119,6 +119,17 @@ export class StripeCheckoutSessionService<
   async getCheckoutSession(
     idDto: IdDto
   ): Promise<Dto['CheckoutSessionMapper']> {
+    const readCachedDto = this.mappers.CheckoutSessionMapper.readCachedDto;
+    if (readCachedDto) {
+      const existing =
+        await this.baseCheckoutSessionService.getCheckoutSession(idDto);
+      if (existing.id !== idDto.id) {
+        throw new Error('Cached checkout identity does not match');
+      }
+      return readCachedDto(existing, (providerId) =>
+        this.stripeClient.checkout.sessions.retrieve(providerId)
+      );
+    }
     const session = await this.stripeClient.checkout.sessions.retrieve(
       idDto.id
     );

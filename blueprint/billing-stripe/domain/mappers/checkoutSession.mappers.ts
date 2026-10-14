@@ -53,7 +53,7 @@ export const UpdateCheckoutSessionMapper = requestMapper({
   }
 });
 
-export const CheckoutSessionMapper = responseMapper({
+const CheckoutSessionEntityMapper = responseMapper({
   schemaValidator,
   schema: CheckoutSessionSchemas.CheckoutSessionSchema(StatusEnum),
   entity: CheckoutSession,
@@ -68,3 +68,76 @@ export const CheckoutSessionMapper = responseMapper({
     }
   }
 });
+
+/**
+ * A reference from the server-written cache, not an account-ownership proof.
+ * Managed account rebinding requires the separate verified gateway protocol.
+ * This hook is read-only; mutation paths do not use it.
+ */
+function checkoutEvidence(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid cached checkout provider evidence');
+  }
+  const session = value as Record<string, unknown>;
+  if (
+    typeof session.id !== 'string' ||
+    !/^cs_[A-Za-z0-9_]+$/.test(session.id) ||
+    session.id.length > 128 ||
+    session.object !== 'checkout.session' ||
+    session.mode !== 'subscription' ||
+    typeof session.livemode !== 'boolean'
+  ) {
+    throw new Error('Invalid cached checkout provider evidence');
+  }
+  const raw = session.customer;
+  const customer =
+    typeof raw === 'string' || raw === null
+      ? raw
+      : raw &&
+          typeof raw === 'object' &&
+          !Array.isArray(raw) &&
+          (raw as Record<string, unknown>).object === 'customer' &&
+          (!Object.hasOwn(raw, 'deleted') ||
+            (raw as Record<string, unknown>).deleted === false)
+        ? (raw as Record<string, unknown>).id
+        : undefined;
+  if (
+    customer !== null &&
+    (typeof customer !== 'string' ||
+      !/^cus_[A-Za-z0-9_]+$/.test(customer) ||
+      customer.length > 128)
+  ) {
+    throw new Error('Invalid cached checkout customer evidence');
+  }
+  return { id: session.id, livemode: session.livemode, customer };
+}
+
+export const CheckoutSessionMapper = {
+  ...CheckoutSessionEntityMapper,
+  readCachedDto: async (
+    existing: Awaited<ReturnType<typeof CheckoutSessionEntityMapper.toDto>>,
+    retrieve: (providerId: string) => Promise<Stripe.Checkout.Session>
+  ) => {
+    const parsed = schemaValidator.parse(
+      schemaValidator.schemify(
+        CheckoutSessionSchemas.CheckoutSessionSchema(StatusEnum)
+      ),
+      existing
+    );
+    if (!parsed.ok) throw new Error('Invalid cached checkout response');
+    const before = checkoutEvidence(parsed.value.stripeFields);
+    const session = await retrieve(before.id);
+    const after = checkoutEvidence(session);
+    if (
+      after.id !== before.id ||
+      after.livemode !== before.livemode ||
+      (before.customer !== null && after.customer !== before.customer)
+    ) {
+      throw new Error('Checkout provider evidence does not match');
+    }
+    // https://docs.stripe.com/api/checkout/sessions/object: subscription checkout
+    // can assign a customer during the payment flow when none was supplied.
+    // Keep the application's public UUID/customer relation unchanged.
+    return { ...existing, stripeFields: session };
+  }
+};

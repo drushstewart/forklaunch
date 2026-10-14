@@ -2273,7 +2273,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/checkoutSession.mapper.types.ts",
               "line": 6,
-              "type": "{\n  CheckoutSessionMapper: {\n    entity: Entities['CheckoutSessionMapper'];\n    toDto: (\n      entity: InferEntity<Entities['CheckoutSessionMapper']>\n    ) => Promise<Dto['CheckoutSessionMapper']>;\n  };\n  CreateCheckoutSessionMapper: {\n    entity: Entities['CreateCheckoutSessionMapper'];\n    toEntity: (\n      dto: Dto['CreateCheckoutSessionMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.Checkout.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateCheckoutSessionMapper']>>;\n  };\n  UpdateCheckoutSessionMapper: {\n    entity: Entities['UpdateCheckoutSessionMapper'];\n    toEntity: (\n      dto: Dto['UpdateCheckoutSessionMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.Checkout.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateCheckoutSessionMapper']>>;\n  };\n}"
+              "type": "{\n  CheckoutSessionMapper: {\n    entity: Entities['CheckoutSessionMapper'];\n    toDto: (\n      entity: InferEntity<Entities['CheckoutSessionMapper']>\n    ) => Promise<Dto['CheckoutSessionMapper']>;\n    /** Opt-in configured UUID/cache profile; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['CheckoutSessionMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.Checkout.Session>\n    ) => Promise<Dto['CheckoutSessionMapper']>;\n  };\n  CreateCheckoutSessionMapper: {\n    entity: Entities['CreateCheckoutSessionMapper'];\n    toEntity: (\n      dto: Dto['CreateCheckoutSessionMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.Checkout.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateCheckoutSessionMapper']>>;\n  };\n  UpdateCheckoutSessionMapper: {\n    entity: Entities['UpdateCheckoutSessionMapper'];\n    toEntity: (\n      dto: Dto['UpdateCheckoutSessionMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.Checkout.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateCheckoutSessionMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2777,19 +2777,19 @@
                   "name": "expireCheckoutSession",
                   "signature": "async expireCheckoutSession({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 133
+                  "line": 144
                 },
                 {
                   "name": "handleCheckoutSuccess",
                   "signature": "async handleCheckoutSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 138
+                  "line": 149
                 },
                 {
                   "name": "handleCheckoutFailure",
                   "signature": "async handleCheckoutFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 147
+                  "line": 158
                 }
               ]
             }
@@ -14217,7 +14217,7 @@
               "name": "generateOpenApiSpecs",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/openApiV3Generator/openApiV3Generator.ts",
-              "line": 347
+              "line": 349
             }
           ]
         },
@@ -25109,130 +25109,142 @@
                   "line": 129
                 },
                 {
+                  "name": "undefined",
+                  "signature": "undefined?: unknown;",
+                  "source": "framework/validator/src/shared/types/schema.types.ts",
+                  "line": 132
+                },
+                {
+                  "name": "void",
+                  "signature": "void?: unknown;",
+                  "source": "framework/validator/src/shared/types/schema.types.ts",
+                  "line": 133
+                },
+                {
                   "name": "any",
                   "signature": "any: unknown;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 134
+                  "line": 138
                 },
                 {
                   "name": "unknown",
                   "signature": "unknown: unknown;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 139
+                  "line": 143
                 },
                 {
                   "name": "never",
                   "signature": "never: unknown;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 144
+                  "line": 148
                 },
                 {
                   "name": "binary",
                   "signature": "binary: unknown;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 149
+                  "line": 153
                 },
                 {
                   "name": "file",
                   "signature": "file: unknown;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 154
+                  "line": 158
                 },
                 {
                   "name": "type",
                   "signature": "type: TypeFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 159
+                  "line": 163
                 },
                 {
                   "name": "compile",
                   "signature": "compile: CompilationFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 167
+                  "line": 171
                 },
                 {
                   "name": "schemify",
                   "signature": "schemify: SchematicFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 175
+                  "line": 179
                 },
                 {
                   "name": "optional",
                   "signature": "optional: OptionalFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 183
+                  "line": 187
                 },
                 {
                   "name": "array",
                   "signature": "array: ArrayFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 191
+                  "line": 195
                 },
                 {
                   "name": "union",
                   "signature": "union: UnionFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 199
+                  "line": 203
                 },
                 {
                   "name": "literal",
                   "signature": "literal: LiteralFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 207
+                  "line": 211
                 },
                 {
                   "name": "enum_",
                   "signature": "enum_: EnumFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 215
+                  "line": 219
                 },
                 {
                   "name": "function_",
                   "signature": "function_: FunctionFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 224
+                  "line": 228
                 },
                 {
                   "name": "promise",
                   "signature": "promise: PromiseFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 232
+                  "line": 236
                 },
                 {
                   "name": "record",
                   "signature": "record: RecordFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 241
+                  "line": 245
                 },
                 {
                   "name": "isSchema",
                   "signature": "isSchema: SchemaGuardFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 249
+                  "line": 253
                 },
                 {
                   "name": "isInstanceOf",
                   "signature": "isInstanceOf: InstanceOfFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 258
+                  "line": 262
                 },
                 {
                   "name": "validate",
                   "signature": "validate: ValidationFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 267
+                  "line": 271
                 },
                 {
                   "name": "parse",
                   "signature": "parse: ParseFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 276
+                  "line": 280
                 },
                 {
                   "name": "openapi",
                   "signature": "openapi: OpenAPIFunction;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 284
+                  "line": 288
                 }
               ]
             },
@@ -25240,32 +25252,32 @@
               "name": "AnySchemaValidator",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 290,
+              "line": 294,
               "type": "SchemaValidator<\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown\n> & {\n  /**\n   * The type of the schema resolver.\n   */\n  _Type: keyof SchemaResolve<unknown>;\n}"
             },
             {
               "name": "SchemaResolve",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 319,
+              "line": 323,
               "members": [
                 {
                   "name": "Zod",
                   "signature": "Zod: ZodResolve<T>;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 323
+                  "line": 327
                 },
                 {
                   "name": "TypeBox",
                   "signature": "TypeBox: TResolve<T>;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 328
+                  "line": 332
                 },
                 {
                   "name": "Mock",
                   "signature": "Mock: T;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 333
+                  "line": 337
                 }
               ]
             },
@@ -25273,25 +25285,25 @@
               "name": "SchemaTranslate",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 341,
+              "line": 345,
               "members": [
                 {
                   "name": "Zod",
                   "signature": "Zod: ZodSchemaTranslate<T>;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 345
+                  "line": 349
                 },
                 {
                   "name": "TypeBox",
                   "signature": "TypeBox: TSchemaTranslate<T>;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 350
+                  "line": 354
                 },
                 {
                   "name": "Mock",
                   "signature": "Mock: T;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 355
+                  "line": 359
                 }
               ]
             },
@@ -25299,42 +25311,42 @@
               "name": "Schema",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 379,
+              "line": 383,
               "type": "SchemaTranslate<\n  SchemaResolve<T>[SV['_Type']]\n>[SV['_Type']] extends infer Schema\n  ? Schema extends (...args: infer Args) => infer Return\n    ? (...args: Args) => Return\n    : SchemaPrettify<SchemaResolve<T>[SV['_Type']], SV>\n  : never"
             },
             {
               "name": "UnboxedObjectSchema",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 395,
+              "line": 399,
               "type": "{\n  [key: KeyTypes]: IdiomaticSchema<SV>;\n}"
             },
             {
               "name": "LiteralSchema",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 402,
+              "line": 406,
               "type": "string | number | boolean"
             },
             {
               "name": "IdiomaticSchema",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 409,
+              "line": 413,
               "type": "LiteralSchema | SV['_SchemaCatchall'] | UnboxedObjectSchema<SV>"
             },
             {
               "name": "Increment",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 449,
+              "line": 453,
               "type": "T extends keyof IncrementMap\n  ? IncrementMap[T]\n  : 25"
             },
             {
               "name": "KeyTypes",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 456,
+              "line": 460,
               "type": "string | number"
             }
           ]

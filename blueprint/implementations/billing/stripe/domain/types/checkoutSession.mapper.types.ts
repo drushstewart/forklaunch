@@ -13,6 +13,11 @@ export type StripeCheckoutSessionMappers<
     toDto: (
       entity: InferEntity<Entities['CheckoutSessionMapper']>
     ) => Promise<Dto['CheckoutSessionMapper']>;
+    /** Opt-in configured UUID/cache profile; does not prove provider account ownership. */
+    readCachedDto?: (
+      existing: Dto['CheckoutSessionMapper'],
+      retrieve: (providerId: string) => Promise<Stripe.Checkout.Session>
+    ) => Promise<Dto['CheckoutSessionMapper']>;
   };
   CreateCheckoutSessionMapper: {
     entity: Entities['CreateCheckoutSessionMapper'];
