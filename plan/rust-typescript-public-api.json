@@ -2005,19 +2005,19 @@
               "name": "UpdateCheckoutSessionSchema",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/typebox/checkoutSession.schema.ts",
-              "line": 36
+              "line": 38
             },
             {
               "name": "CheckoutSessionSchema",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/typebox/checkoutSession.schema.ts",
-              "line": 55
+              "line": 57
             },
             {
               "name": "StripeCheckoutSessionServiceSchemas",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/typebox/checkoutSession.schema.ts",
-              "line": 73
+              "line": 75
             }
           ]
         },
@@ -2150,19 +2150,19 @@
               "name": "UpdateCheckoutSessionSchema",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/zod/checkoutSession.schema.ts",
-              "line": 36
+              "line": 38
             },
             {
               "name": "CheckoutSessionSchema",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/zod/checkoutSession.schema.ts",
-              "line": 55
+              "line": 57
             },
             {
               "name": "StripeCheckoutSessionServiceSchemas",
               "kind": "VariableDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/schemas/zod/checkoutSession.schema.ts",
-              "line": 73
+              "line": 75
             }
           ]
         },
@@ -2489,7 +2489,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.dto.types.ts",
               "line": 123,
-              "type": "Omit<\n  CreateCheckoutSessionDto<\n    typeof PaymentMethodEnum,\n    typeof CurrencyEnum,\n    StatusEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields: Omit<\n    StripeCheckoutSessionCreateParams,\n    CheckoutSessionOmissions\n  >;\n}"
+              "type": "Omit<\n  CreateCheckoutSessionDto<\n    typeof PaymentMethodEnum,\n    typeof CurrencyEnum,\n    StatusEnum\n  >,\n  'providerFields'\n> & {\n  stripeFields?: Omit<\n    StripeCheckoutSessionCreateParams,\n    CheckoutSessionOmissions\n  >;\n}"
             },
             {
               "name": "StripeUpdateCheckoutSessionDto",

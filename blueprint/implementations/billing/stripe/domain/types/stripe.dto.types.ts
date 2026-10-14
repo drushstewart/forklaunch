@@ -128,7 +128,7 @@ export type StripeCreateCheckoutSessionDto<StatusEnum> = Omit<
   >,
   'providerFields'
 > & {
-  stripeFields: Omit<
+  stripeFields?: Omit<
     StripeCheckoutSessionCreateParams,
     CheckoutSessionOmissions
   >;

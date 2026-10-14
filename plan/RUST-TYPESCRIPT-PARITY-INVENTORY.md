@@ -5621,6 +5621,25 @@ The reviewed contract snapshot changes exactly two required-field entries. CI
 runs the new fixture with TypeBox and PostgreSQL and watches private billing
 module sources. Receipts: `/private/tmp/fl-checkout-uri{,-configured,-types,-contracts}.log`.
 
-The separate TypeBox versus Zod create stripeFields-presence discrepancy remains
-open, along with provider customer mapping and mutation reconciliation.
+The TypeBox versus Zod create stripeFields-presence discrepancy is resolved in
+the follow-up below. Provider customer mapping and mutation reconciliation remain open.
 Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: optional checkout provider options
+
+Create checkout `stripeFields` is now explicitly optional in both configured
+validators and the public TypeScript DTO, matching native omitted options.
+Update options remain optional; response provider evidence remains required.
+Omitted options and an empty object produce identical provider requests, without
+inferring a provider customer from the application customer ID. Explicit Stripe
+customer and metadata options are preserved.
+
+Verified: 44 actual Zod/TypeBox URI/options/schema/mapper/cache cases, 305
+configured regressions, 66 actual TS/native route contracts and 28 DTO schemas
+with unchanged contract snapshots, plus focused actual-service TypeScript
+compilation and a compile-only DTO optionality fixture. The public source
+inventory remains 44 packages, 608 entry points and 1,662 records. Contract
+receipt: `/private/tmp/fl-checkout-options-contracts.log`. This does not tighten
+the existing arbitrary-value `type<T>()` runtime validator or complete provider
+identity and mutation reconciliation. Checklist: **660/682 (96.8%), 22 open**.

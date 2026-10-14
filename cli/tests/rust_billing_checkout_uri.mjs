@@ -112,6 +112,63 @@ for (const flavor of ['zod', 'typebox']) {
       return { async flush() {} };
     }
   });
+  // Optional create options must have the same provider payload as an empty object.
+  for (const backup of [false, true]) {
+    const payloads = [];
+    const service = new StripeCheckoutSessionService(
+      {
+        checkout: {
+          sessions: {
+            async create(payload) {
+              payloads.push(structuredClone(payload));
+              return provider;
+            }
+          }
+        }
+      },
+      em,
+      { getTtlMilliseconds: () => 60000, async putRecord() {} },
+      {},
+      validator,
+      mappers,
+      { enableDatabaseBackup: backup }
+    );
+    for (const fields of [
+      undefined,
+      {},
+      { customer: 'cus_explicit', metadata: { owned: 'kept' } }
+    ]) {
+      const dto = {
+        ...sample,
+        customerId: 'local-public-customer',
+        ...(fields === undefined ? {} : { stripeFields: fields })
+      };
+      assert.equal(
+        validator.parse(
+          validator.schemify(schemas.CreateCheckoutSessionSchema(status)),
+          dto
+        ).ok,
+        true
+      );
+      const made = await service.createCheckoutSession(dto);
+      assert.equal(made.customerId, 'local-public-customer');
+      assert.deepEqual(made.stripeFields, provider);
+      cases++;
+    }
+    assert.deepEqual(payloads[0], payloads[1]);
+    assert.deepEqual(payloads[0], {
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      currency: 'USD',
+      success_url: undefined,
+      cancel_url: undefined
+    });
+    assert.deepEqual(payloads[2], {
+      ...payloads[0],
+      customer: 'cus_explicit',
+      metadata: { owned: 'kept' }
+    });
+  }
   for (const backup of [false, true])
     for (const url of [null, undefined, 'https://owned.test/session']) {
       const rows = new Map(),
@@ -168,7 +225,7 @@ for (const flavor of ['zod', 'typebox']) {
     }
 }
 console.log(
-  `PASS ${cases} actual Zod/TypeBox configured checkout optional-URI/schema/mapper/cache cases`
+  `PASS ${cases} actual Zod/TypeBox configured checkout optional-URI/provider-options/schema/mapper/cache cases`
 );
 if (!process.env.FORKLAUNCH_TEST_POSTGRES_URL) {
   console.log(

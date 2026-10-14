@@ -30,7 +30,9 @@ export const CreateCheckoutSessionSchema = <
   cancelRedirectUri: optional(string),
   expiresAt: date,
   status: enum_(StatusEnum),
-  stripeFields: type<StripeCreateCheckoutSessionDto<T>['stripeFields']>()
+  stripeFields: optional(
+    type<StripeCreateCheckoutSessionDto<T>['stripeFields']>()
+  )
 });
 
 export const UpdateCheckoutSessionSchema = <
