@@ -98,6 +98,8 @@ on:
       - 'cli/tests/rust_oidc_relay.mjs'
       - 'cli/tests/rust_iam_oidc_browser_relay.mjs'
       - 'cli/tests/rust_iam_oidc_generated.mjs'
+      - 'cli/tests/rust_iam_directory_authorization.mjs'
+      - 'cli/tests/rust_iam_directory_grants.mjs'
       - 'cli/tests/rust_better_auth_application_contracts.mjs'
       - 'cli/tests/rust_docs_sources.mjs'
       - 'cli/tests/rust_better_auth_http.mjs'
@@ -315,6 +317,8 @@ on:
       - 'cli/tests/rust_oidc_relay.mjs'
       - 'cli/tests/rust_iam_oidc_browser_relay.mjs'
       - 'cli/tests/rust_iam_oidc_generated.mjs'
+      - 'cli/tests/rust_iam_directory_authorization.mjs'
+      - 'cli/tests/rust_iam_directory_grants.mjs'
       - 'cli/tests/rust_better_auth_application_contracts.mjs'
       - 'cli/tests/rust_docs_sources.mjs'
       - 'cli/tests/rust_better_auth_http.mjs'
@@ -966,6 +970,9 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_iam_directory_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_iam_directory_grants.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_base_parity.mjs

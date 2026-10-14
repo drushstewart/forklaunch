@@ -2,7 +2,10 @@ use super::*;
 use crate::{directory::service::BaseIamDirectory, postgres::PostgresIamService};
 use forklaunch_blueprint_core::AuditContext;
 use forklaunch_core::persistence::{TenantContext, encryption::FieldEncryptor};
-use forklaunch_iam_interface::{Credentials, User, services::UserService};
+use forklaunch_iam_interface::{
+    Credentials, User,
+    services::{OrganizationService, PermissionService, RoleService, UserService},
+};
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::sync::Arc;
@@ -412,9 +415,102 @@ async fn directory_identity_binding_is_explicit_session_verified_and_atomic() {
             None
         );
     }
+    let directory_service = BaseIamDirectory::new(f.store.clone());
+    let permission = directory_service
+        .create_permission(serde_json::from_value(json!({"slug":"literal:permission"})).unwrap())
+        .await
+        .unwrap();
+    let role = directory_service
+        .create_role(
+            serde_json::from_value(json!({"name":"literal-role","permissionIds":[permission.id]}))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let organization = directory_service
+        .create_organization(
+            serde_json::from_value(json!({"name":"Authorization organization","domain":"authorization.example","subscription":"fixture"})).unwrap(),
+        )
+        .await
+        .unwrap();
+    directory_service
+        .update_user(
+            serde_json::from_value(
+                json!({"id":directory,"roles":[role.id],"organization":organization.id}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut tx = f.store.begin(true).await.unwrap();
+    let mut row = tx
+        .get(DirectoryKind::User, &directory)
+        .await
+        .unwrap()
+        .unwrap();
+    row["organization"] = json!(organization.id);
+    tx.replace(DirectoryKind::User, row).await.unwrap();
+    tx.commit().await.unwrap();
+    let snapshot = f
+        .store
+        .authorization_for_session(&session.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(snapshot.auth_user_id, "auth-one");
+    assert_eq!(snapshot.directory_user_id, directory);
+    assert_eq!(snapshot.roles, ["literal-role"]);
+    assert_eq!(snapshot.permissions, ["literal:permission"]);
+    assert_eq!(snapshot.organization_id, Some(organization.id.clone()));
+    let audited: i64 = sqlx::query_scalar("SELECT count(*) FROM fl_iam_directory_audit WHERE tenant_id=$1 AND operation='read' AND actor_id=$2 AND correlation_id='identity-fixture'")
+        .bind(&f.tenant).bind(&directory).fetch_one(&f.owner).await.unwrap();
+    assert!(
+        audited >= 3,
+        "verified snapshot reads retain caller correlation and bound actor"
+    );
+
+    directory_service
+        .update_role(serde_json::from_value(json!({"id":role.id,"name":"current-role"})).unwrap())
+        .await
+        .unwrap();
+    directory_service
+        .delete_permission(&permission.id)
+        .await
+        .unwrap();
+    let current = f
+        .store
+        .authorization_for_session(&session.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.roles, ["current-role"]);
+    assert!(current.permissions.is_empty());
+    assert_eq!(snapshot.roles, ["literal-role"]);
+    assert_eq!(snapshot.permissions, ["literal:permission"]);
+    assert!(
+        f.store
+            .authorization_for_session("auth-one")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.store
+            .authorization_for_session(&foreign.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let mut user = f.auth.get_user("auth-one").await.unwrap().unwrap();
     user.disabled = true;
     f.auth.update_user(user.clone()).await.unwrap();
+    assert!(
+        f.store
+            .authorization_for_session(&session.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         f.auth
             .directory_user_for_session(&session.id)
@@ -474,6 +570,13 @@ async fn directory_identity_binding_is_explicit_session_verified_and_atomic() {
         .await
         .unwrap();
     f.auth.revoke_session(&session.id).await.unwrap();
+    assert!(
+        f.store
+            .authorization_for_session(&session.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         f.auth
             .directory_user_for_session(&session.id)

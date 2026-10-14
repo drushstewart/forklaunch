@@ -25,7 +25,7 @@ fn storage_error(_: impl std::fmt::Display) -> BlueprintError {
 fn invalid_input() -> BlueprintError {
     BlueprintError::new("iam_invalid_input", "Invalid IAM input")
 }
-fn token_hash(token: &str) -> String {
+pub(crate) fn token_hash(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
 }
 

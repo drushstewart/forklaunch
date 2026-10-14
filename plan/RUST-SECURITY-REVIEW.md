@@ -581,3 +581,15 @@ Managed mode rejects before network calls because its current gateway contract
 lacks authenticated context and binding-generation evidence. Malformed responses,
 account/mode mismatch, 401/403, foreign/reconfigured clients and stale observations
 are covered. Current wrappers do not yet consume this check.
+
+
+Stored-session directory authorization review (2026-10-13): a verified JWT alone
+cannot establish a directory identity. Exact complete persisted-token hashes,
+expiry/enabled checks and an explicit tenant-local binding precede fresh grant
+hydration under directory/user/session locks. Credential grants are replaced,
+not merged, and the same snapshot provides organization scope. Unverified actor
+context is cleared; snapshot reads carry the verified directory actor and request
+correlation. MCP now forwards envelope correlation with precedence over tool
+arguments. Generated HTTP/MCP and restricted PostgreSQL tests cover grant changes,
+organization movement, invalid/unpersisted JWTs, disable/unlink/revoke/delete and
+restart. This remains an explicit mode; default JWT-claims behavior is separate.

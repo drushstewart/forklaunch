@@ -5201,3 +5201,31 @@ and strict all-target Clippy pass. Logs:
 The new guide is included through an explicit generated-workspace template link.
 Checklist remains **660/682 (96.8%), 22 open**; scoped wrapper integration and
 managed protocol support remain part of the billing identity gate.
+
+
+### 2026-10-13 — Stored-session directory authorization and MCP audit correlation
+
+Generated IAM supports opt-in `IAM_DIRECTORY_AUTHORIZATION=stored-session`.
+JWT signature/issuer/audience checks precede exact persisted-token resolution.
+An explicit tenant-local binding selects the directory identity; one locked
+snapshot supplies current role names, permission slugs and organization. These
+grants replace credential claims before framework authorization. The default
+JWT-claims mode, internal HMAC routes and legacy bearer sessions remain available.
+Native mode deliberately reads fresh grants; the actual TypeScript surfacing
+oracle confirms its existing user-keyed cache semantics separately.
+
+Full generated run `gujjFz` passes HTTP/MCP startup, discovery, Origin rejection,
+both SDKs, current-grant removal/restoration with the same token, organization
+moves, signed-but-unpersisted/tampered token denial, disable/unbind/revoke/delete
+and restart. Existing OIDC/browser flows, classified compliance, tenant isolation,
+source preservation, sync, rename and delete also pass. Audit assertions caught
+missing MCP transport correlation forwarding; the fix gives the envelope header
+precedence while preserving argument-only correlation. Four focused forwarding
+cases and generated HTTP/MCP audit actor/correlation checks now pass.
+
+Restricted PostgreSQL authorization/identity tests, strict base/IAM Axum/MCP
+Clippy and the actual TypeScript grant oracle pass. Logs:
+`/private/tmp/fl-iam-directory-auth-{pg,axum,clippy,generated}.log`.
+The generated harness removes its database role; failed owned fixture workspaces
+were removed. Generic entity/DTO mapper hooks, richer filters and caller-owned
+transaction composition remain gate 603. Checklist: **660/682 (96.8%), 22 open**.

@@ -5,6 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use forklaunch_auth::{AuthError, Principal, parse_bearer};
 use forklaunch_axum::{
     ForkLaunchRouter, RouterConfig, module_auth::HmacJwksAuth, session::AuthenticatedSession,
 };
@@ -24,6 +25,17 @@ use forklaunch_iam_interface::{
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
+
+/// Authentication grant source for directory JWT routes. Legacy bearer and
+/// internal HMAC routes retain their existing credential policy.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DirectoryAuthorizationMode {
+    #[default]
+    JwtClaims,
+    /// Require both verified JWT and current persisted session/binding; resolve
+    /// fresh directory grants. JWT/credential grants are never merged.
+    StoredSessions,
+}
 
 /// Combines stored bearer session authentication with configured IAM directory CRUD.
 /// Directory reads use JWKS JWTs; internal operations use request HMAC signatures.
@@ -52,16 +64,64 @@ pub fn iam_router_with_compliance<S: AsyncIamSessions + 'static>(
     info: ServiceInfo,
     compliance: DirectoryCompliance,
 ) -> ForkLaunchRouter {
+    iam_router_with_options(
+        sessions,
+        store,
+        auth,
+        info,
+        compliance,
+        DirectoryAuthorizationMode::default(),
+    )
+}
+
+/// Compose directory routes with explicit grant source and compliance policy.
+/// Stored-session mode verifies JWTs before replacing identity and grants, and
+/// framework RBAC runs only after that replacement. It does not cache grants.
+/// # Panics
+/// Only inconsistent package-owned metadata can panic.
+#[must_use]
+pub fn iam_router_with_options<S: AsyncIamSessions + 'static>(
+    sessions: Arc<S>,
+    store: PostgresDirectoryStore,
+    auth: HmacJwksAuth,
+    info: ServiceInfo,
+    compliance: DirectoryCompliance,
+    mode: DirectoryAuthorizationMode,
+) -> ForkLaunchRouter {
     let opaque = super::session_config(&sessions)
         .authenticator
         .expect("session verifier exists");
-    let auth = Arc::new(auth);
+    let auth = Arc::new(if mode == DirectoryAuthorizationMode::StoredSessions {
+        auth.with_role_resolver(|_| async { Ok(Vec::new()) })
+    } else {
+        auth
+    });
+    let authorization_store = store.clone();
     let config = RouterConfig::default().with_authenticator(move |request, contract| {
         let opaque = opaque.clone();
         let auth = auth.clone();
+        let store = authorization_store.clone();
         async move {
             if matches!(contract.auth, Some(AuthConfig::Bearer)) {
                 opaque(request, contract).await
+            } else if mode == DirectoryAuthorizationMode::StoredSessions && matches!(contract.auth, Some(AuthConfig::Jwt(_))) {
+                let token = request.headers.get("authorization").and_then(|header| parse_bearer(header))
+                    .filter(|token| token.len() <= 8192).ok_or(AuthError::MissingCredentials)?.to_owned();
+                let store = store.with_audit_context(AuditContext::system(request.context.correlation_id.clone()))
+                    .map_err(|error| super::auth_backend_error(&error))?;
+                let verified = auth.authenticate(request, contract).await?;
+                let snapshot = store.authorization_for_session(&token).await
+                    .map_err(|error| super::auth_backend_error(&error))?
+                    .ok_or(AuthError::InvalidCredentials)?;
+                if verified.principal.subject != snapshot.auth_user_id { return Err(AuthError::InvalidCredentials); }
+                let mut principal = Principal::new(&snapshot.directory_user_id);
+                principal.roles = snapshot.roles;
+                principal.permissions = snapshot.permissions;
+                let expiry = verified.claims.get("exp").and_then(Value::as_u64)
+                    .map_or(snapshot.expires_at_unix_seconds, |expiry| expiry.min(snapshot.expires_at_unix_seconds));
+                let claims = json!({"sub":principal.subject,"roles":principal.roles,"permissions":principal.permissions,
+                    "credentialUserId":snapshot.auth_user_id,"directoryOrganizationId":snapshot.organization_id,"exp":expiry});
+                Ok(AuthenticatedSession::new(principal, claims))
             } else {
                 auth.authenticate(request, contract).await
             }
@@ -71,6 +131,7 @@ pub fn iam_router_with_compliance<S: AsyncIamSessions + 'static>(
         super::build_session_router(sessions, info, true),
         store,
         compliance,
+        mode,
     )
     .with_config(config)
 }
@@ -79,6 +140,7 @@ fn add_routes(
     mut router: ForkLaunchRouter,
     store: PostgresDirectoryStore,
     compliance: DirectoryCompliance,
+    mode: DirectoryAuthorizationMode,
 ) -> ForkLaunchRouter {
     let store = Arc::new(store);
     let compliance = Arc::new(compliance);
@@ -118,14 +180,26 @@ fn add_routes(
                 contract.clone(),
                 move |Extension(session): Extension<AuthenticatedSession>,
                       Json(input): Json<Value>| {
-                    dispatch(store.clone(), session, handler_contract.clone(), input)
+                    dispatch(
+                        store.clone(),
+                        session,
+                        handler_contract.clone(),
+                        input,
+                        mode,
+                    )
                 },
             ),
             HttpMethod::Put => router.put(
                 contract.clone(),
                 move |Extension(session): Extension<AuthenticatedSession>,
                       Json(input): Json<Value>| {
-                    dispatch(store.clone(), session, handler_contract.clone(), input)
+                    dispatch(
+                        store.clone(),
+                        session,
+                        handler_contract.clone(),
+                        input,
+                        mode,
+                    )
                 },
             ),
             HttpMethod::Get if contract.request.params.is_empty() => router.get(
@@ -136,7 +210,7 @@ fn add_routes(
                     let contract = handler_contract.clone();
                     async move {
                         match query_input(query.as_deref()) {
-                            Ok(input) => dispatch(store, session, contract, input).await,
+                            Ok(input) => dispatch(store, session, contract, input, mode).await,
                             Err(error) => failure(&error),
                         }
                     }
@@ -151,6 +225,7 @@ fn add_routes(
                         session,
                         handler_contract.clone(),
                         json!({"id":id}),
+                        mode,
                     )
                 },
             ),
@@ -162,7 +237,7 @@ fn add_routes(
                     let contract = handler_contract.clone();
                     async move {
                         match query_input(query.as_deref()) {
-                            Ok(input) => dispatch(store, session, contract, input).await,
+                            Ok(input) => dispatch(store, session, contract, input, mode).await,
                             Err(error) => failure(&error),
                         }
                     }
@@ -177,6 +252,7 @@ fn add_routes(
                         session,
                         handler_contract.clone(),
                         json!({"id":id}),
+                        mode,
                     )
                 },
             ),
@@ -252,8 +328,9 @@ async fn dispatch(
     session: AuthenticatedSession,
     contract: RouteContract,
     input: Value,
+    mode: DirectoryAuthorizationMode,
 ) -> Response {
-    match call(&store, &session, &contract, input).await {
+    match call(&store, &session, &contract, input, mode).await {
         Ok(response) => response,
         Err(error) => failure(&error),
     }
@@ -263,6 +340,7 @@ async fn call(
     session: &AuthenticatedSession,
     contract: &RouteContract,
     input: Value,
+    mode: DirectoryAuthorizationMode,
 ) -> BlueprintResult<Response> {
     let store = store.with_audit_context(AuditContext::actor(
         &session.principal.subject,
@@ -271,15 +349,23 @@ async fn call(
     let mut service = BaseIamDirectory::new(Arc::new(store));
     let operation = contract.operation_name.as_str();
     if matches!(contract.auth, Some(AuthConfig::Jwt(_))) && contract.path.starts_with("/user") {
-        let organization = service
-            .get_organization_id_by_user_id(&session.principal.subject)
-            .await?
-            .ok_or_else(|| {
-                BlueprintError::new(
-                    "iam_directory_organization_required",
-                    "Unauthorized: missing organization context",
-                )
-            })?;
+        let organization = if mode == DirectoryAuthorizationMode::StoredSessions {
+            session
+                .claims
+                .get("directoryOrganizationId")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        } else {
+            service
+                .get_organization_id_by_user_id(&session.principal.subject)
+                .await?
+        }
+        .ok_or_else(|| {
+            BlueprintError::new(
+                "iam_directory_organization_required",
+                "Unauthorized: missing organization context",
+            )
+        })?;
         // Resolve organization membership from trusted storage rather than caller claims.
         service = service.with_organization_scope(organization);
     }

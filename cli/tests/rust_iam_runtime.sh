@@ -56,7 +56,7 @@ python3 - <<'PYTHON'
 from pathlib import Path
 p=Path('crates/iam/src/main.rs')
 s=p.read_text()
-old='let router = forklaunch_iam_axum::directory::iam_router(store, directory, auth, service_info());'
+old='let router = forklaunch_iam_axum::directory::iam_router_with_options(store, directory, auth, service_info(), Default::default(), directory_mode);'
 assert old in s
 new='''#[allow(dead_code)]
     #[derive(forklaunch_core::persistence::compliance::ComplianceMetadata)]
@@ -72,7 +72,7 @@ new='''#[allow(dead_code)]
     if env::var("FORKLAUNCH_FIXTURE_CLASSIFIED_IAM").as_deref() == Ok("1") {
         compliance = compliance.with_entity::<ClassifiedUser>(forklaunch_iam_base::directory::DirectoryKind::User, "id")?;
     }
-    let router = forklaunch_iam_axum::directory::iam_router_with_compliance(store, directory, auth, service_info(), compliance);
+    let router = forklaunch_iam_axum::directory::iam_router_with_options(store, directory, auth, service_info(), compliance, directory_mode);
 '''
 p.write_text(s.replace(old,new,1))
 PYTHON
@@ -126,6 +126,7 @@ BINARY="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";proces
 cp "$SCRIPT_DIR/rust_iam_runtime.mjs" sdk_http_test.mjs
 cp "$SCRIPT_DIR/rust_mcp_probe.mjs" rust_mcp_probe.mjs
 cp "$SCRIPT_DIR/rust_iam_oidc_generated.mjs" rust_iam_oidc_generated.mjs
+cp "$SCRIPT_DIR/rust_iam_directory_authorization.mjs" rust_iam_directory_authorization.mjs
 node sdk_http_test.mjs "$BINARY"
 # Keep the live fixture intact; validate lifecycle mutations in a separate copy.
 cp -R "$RUN_ROOT/relocated-app" "$RUN_ROOT/lifecycle-app"

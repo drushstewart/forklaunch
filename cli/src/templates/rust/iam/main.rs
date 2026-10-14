@@ -42,8 +42,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
+    let directory_mode = match env::var("IAM_DIRECTORY_AUTHORIZATION") {
+        Err(env::VarError::NotPresent) => forklaunch_iam_axum::directory::DirectoryAuthorizationMode::JwtClaims,
+        Ok(value) if value == "jwt-claims" => forklaunch_iam_axum::directory::DirectoryAuthorizationMode::JwtClaims,
+        Ok(value) if value == "stored-session" => forklaunch_iam_axum::directory::DirectoryAuthorizationMode::StoredSessions,
+        _ => return Err("IAM_DIRECTORY_AUTHORIZATION must be jwt-claims or stored-session".into()),
+    };
+    let issuer = forklaunch_iam_base::jwt_sessions::RsaJwtSessionIssuer::from_env()?;
+    if directory_mode == forklaunch_iam_axum::directory::DirectoryAuthorizationMode::StoredSessions && issuer.is_none() {
+        return Err("Stored-session directory authorization requires SESSION_JWT signing configuration".into());
+    }
     let store = PostgresIamService::new(pool.clone(), tenant.clone()).await?;
-    let store = match forklaunch_iam_base::jwt_sessions::RsaJwtSessionIssuer::from_env()? {
+    let store = match issuer {
         Some(issuer) => store.with_jwt_session_issuer(Arc::new(issuer)),
         None => store,
     };
@@ -96,7 +106,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let port: u16 = env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?;
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
-    let router = forklaunch_iam_axum::directory::iam_router(store, directory, auth, service_info());
+    let router = forklaunch_iam_axum::directory::iam_router_with_options(store, directory, auth, service_info(), Default::default(), directory_mode);
     let router = match browser { Some(browser) => browser.mount(router), None => router };
     {{crate_module}}::routes::register_router(router).serve_with_default_mcp(listener, shutdown()).await?;
     pool.close().await;

@@ -1,6 +1,6 @@
 //! Test-only provisioning for the generated IAM runtime fixture.
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
-use forklaunch_iam_base::directory::{postgres::PostgresDirectoryStore,service::BaseIamDirectory};
+use forklaunch_iam_base::directory::{postgres::PostgresDirectoryStore,service::BaseIamDirectory,DirectoryKind,DirectoryStore,DirectoryTransaction};
 use forklaunch_blueprint_core::AuditContext;
 use forklaunch_iam_interface::services::{UserService,RoleService,PermissionService,OrganizationService};
 use std::sync::Arc;
@@ -15,7 +15,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let role = std::env::var("FORKLAUNCH_TEST_ROLE")?;
     assert!(role.starts_with("fl_gen_") && role.len() < 63 && role.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
     let owner = PgPoolOptions::new().max_connections(2).connect(&owner_url).await?;
-    if std::env::args().nth(1).as_deref() == Some("--bind-oidc") {
+    if std::env::args().nth(1).as_deref() == Some("--directory-auth") {
+        directory_auth_action(&owner_url, &role, &std::env::args().nth(2).ok_or("missing action")?).await?;
+    } else if std::env::args().nth(1).as_deref() == Some("--bind-oidc") {
         let issuer = std::env::args().nth(2).ok_or("missing fixture issuer")?;
         let set_role = format!("SET ROLE {role}");
         let app = PgPoolOptions::new().max_connections(2).after_connect(move |connection, _| {
@@ -27,8 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.close().await;
     } else if std::env::args().any(|arg| arg == "--cleanup") {
         for table in ["fl_iam_browser_sessions", "fl_iam_sessions", "fl_iam_users", "fl_iam_organizations", "fl_iam_roles", "fl_iam_directory", "fl_iam_directory_audit"] {
-            sqlx::query(&format!("DELETE FROM {table} WHERE tenant_id=$1 OR tenant_id=$2"))
-                .bind(format!("{role}-a")).bind(format!("{role}-b")).execute(&owner).await?;
+            sqlx::query(&format!("DELETE FROM {table} WHERE tenant_id=$1 OR tenant_id=$2 OR tenant_id=$3"))
+                .bind(format!("{role}-a")).bind(format!("{role}-b")).bind(format!("{role}-directory")).execute(&owner).await?;
         }
         sqlx::query(&format!("DROP OWNED BY {role}")).execute(&owner).await?;
         sqlx::query(&format!("DROP ROLE {role}")).execute(&owner).await?;
@@ -36,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sqlx::query(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'parity-test-only'"))
             .execute(&owner).await?;
         sqlx::query(&format!("GRANT USAGE ON SCHEMA public TO {role}")).execute(&owner).await?;
-        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit,fl_iam_browser_sessions,fl_iam_provider_identities,fl_iam_oidc_pending TO {role}"))
+        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit,fl_iam_browser_sessions,fl_iam_provider_identities,fl_iam_oidc_pending,fl_iam_directory_identities TO {role}"))
             .execute(&owner).await?;
         sqlx::query(&format!("GRANT USAGE ON SEQUENCE fl_iam_directory_sequence_seq TO {role}")).execute(&owner).await?;
         let set_role = format!("SET ROLE {role}");
@@ -49,7 +51,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         seed(&first, "First", "first-password").await?;
         seed(&second, "Second", "second-password").await?;
         let mut directory=serde_json::Map::new();
-        for suffix in ["a","b"] {
+        for suffix in ["a","b","directory"] {
+            if suffix == "directory" {
+                let service=PostgresIamService::new(app.clone(),TenantContext::new(format!("{role}-{suffix}"))?).await?;
+                seed(&service,"Directory","directory-password").await?;
+            }
             let store=PostgresDirectoryStore::new(app.clone(),TenantContext::new(format!("{role}-{suffix}"))?,Arc::new(FieldEncryptor::new("iam-fixture-encryption-only")?),AuditContext::system("fixture-seed")).await?;
             directory.insert(suffix.into(),seed_directory(BaseIamDirectory::new(Arc::new(store))).await?);
         }
@@ -78,4 +84,41 @@ async fn seed_directory(service:BaseIamDirectory<PostgresDirectoryStore>) -> Res
         users.push(service.create_user(serde_json::from_value(json!({"email":format!("directory{index}@fixture.test"),"password":"unused","firstName":"Directory","lastName":"Member","organization":organization,"roles":[role.id]}))?).await?);
     }
     Ok(json!({"permission":permission,"role":role,"organization":organization,"outsiderOrganization":outsider_org,"users":users}))
+}
+
+async fn directory_auth_action(url: &str, role: &str, action: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let set_role=format!("SET ROLE {role}");
+    let pool=PgPoolOptions::new().max_connections(2).after_connect(move |connection,_| {
+        let query=set_role.clone(); Box::pin(async move {sqlx::query(&query).execute(connection).await?;Ok(())})
+    }).connect(url).await?;
+    let tenant=TenantContext::new(format!("{role}-directory"))?;
+    let store=PostgresDirectoryStore::new(pool.clone(),tenant.clone(),Arc::new(FieldEncryptor::new("iam-fixture-encryption-only")?),AuditContext::actor("fixture-operator","directory-auth-fixture")).await?;
+    let auth=PostgresIamService::new(pool.clone(),tenant.clone()).await?;
+    let fixture:Value=serde_json::from_slice(&std::fs::read("iam-directory-fixture.json")?)?;
+    let directory=fixture["directory"]["users"][0]["id"].as_str().ok_or("missing directory user")?;
+    match action {
+        "verify-correlation" => {
+            let mut tx=forklaunch_core::persistence::begin_tenant_transaction(&pool,&tenant).await?;
+            for correlation in ["directory-auth-http-correlation","directory-auth-mcp-correlation"] {
+                let count:i64=sqlx::query_scalar("SELECT count(*) FROM fl_iam_directory_audit WHERE tenant_id=$1 AND actor_id=$2 AND correlation_id=$3 AND operation='read'")
+                    .bind(tenant.id()).bind(directory).bind(correlation).fetch_one(&mut *tx).await?;
+                assert!(count>=3,"snapshot audit must retain {correlation} and verified directory actor; actual reads={count}");
+            }
+            tx.commit().await?;
+        },
+        "move-organization" | "restore-organization" => {
+            let key=if action=="move-organization" {"outsiderOrganization"} else {"organization"};
+            let mut tx=store.begin(true).await?;
+            let mut row=tx.get(DirectoryKind::User,directory).await?.ok_or("missing directory user")?;
+            row["organization"]=fixture["directory"][key]["id"].clone();
+            tx.replace(DirectoryKind::User,row).await?;tx.commit().await?;
+        },
+        "bind" => store.bind_auth_identity(directory,"user-1").await?,
+        "unbind" => {assert!(store.unbind_auth_identity(directory,"user-1").await?);},
+        "delete" => store.delete_linked_identity(directory,"user-1").await?,
+        "disable" | "enable" => {let mut user=auth.get_user("user-1").await?.ok_or("missing user")?;user.disabled=action=="disable";auth.update_user(user).await?;},
+        _ => return Err("invalid directory fixture action".into()),
+    }
+    pool.close().await;
+    Ok(())
 }

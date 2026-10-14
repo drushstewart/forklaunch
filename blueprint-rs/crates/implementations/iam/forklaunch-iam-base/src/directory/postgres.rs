@@ -11,7 +11,9 @@ use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::sync::Arc;
 
+mod authorization;
 mod identities;
+pub use authorization::DirectoryAuthorization;
 
 const SENSITIVE: &[&str] = &[
     "email",
@@ -124,6 +126,7 @@ pub struct PostgresDirectoryTransaction<'a> {
     store: &'a PostgresDirectoryStore,
     tx: Transaction<'a, Postgres>,
     write: bool,
+    audit: AuditContext,
 }
 impl DirectoryStore for PostgresDirectoryStore {
     type Transaction<'a> = PostgresDirectoryTransaction<'a>;
@@ -147,6 +150,7 @@ impl DirectoryStore for PostgresDirectoryStore {
             store: self,
             tx,
             write,
+            audit: self.audit.clone(),
         })
     }
 }
@@ -158,7 +162,7 @@ impl PostgresDirectoryTransaction<'_> {
         operation: &str,
     ) -> BlueprintResult<()> {
         sqlx::query("INSERT INTO fl_iam_directory_audit(id,tenant_id,kind,record_id,actor_id,correlation_id,operation) VALUES($1::uuid,$2,$3,$4,$5,$6,$7)")
-            .bind(uuid::Uuid::new_v4().to_string()).bind(self.store.tenant.id()).bind(kind.as_str()).bind(id).bind(&self.store.audit.actor_id).bind(&self.store.audit.correlation_id).bind(operation).execute(&mut *self.tx).await.map_err(db_error)?;
+            .bind(uuid::Uuid::new_v4().to_string()).bind(self.store.tenant.id()).bind(kind.as_str()).bind(id).bind(&self.audit.actor_id).bind(&self.audit.correlation_id).bind(operation).execute(&mut *self.tx).await.map_err(db_error)?;
         Ok(())
     }
     async fn claims(&mut self, kind: DirectoryKind, row: &Value) -> BlueprintResult<()> {

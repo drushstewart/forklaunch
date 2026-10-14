@@ -386,6 +386,11 @@ fn build_request(
             headers.insert(name, value);
         }
     }
+    // Keep the transport trace attached to the internally dispatched operation.
+    // Explicit argument correlation remains supported when the envelope has none.
+    if let Some(correlation) = transport_headers.and_then(|h| h.get("x-correlation-id")) {
+        headers.insert("x-correlation-id", correlation.clone());
+    }
     // Browser credentials must retain the actual envelope's Origin and CSRF
     // proof. Tool arguments cannot overwrite that trust boundary.
     if matches!(
@@ -480,6 +485,34 @@ fn encode_body(
 mod tests {
     use super::*;
     use forklaunch_contract::{FieldContract, RouteContract};
+    #[test]
+    fn correlation_preserves_transport_precedence_and_argument_fallback() {
+        let route = RouteContract::get("Read", "Read", "/read");
+        for (transport_value, argument_value, expected) in [
+            (Some("transport"), None, Some("transport")),
+            (Some("transport"), Some("argument"), Some("transport")),
+            (None, Some("argument"), Some("argument")),
+            (None, None, None),
+        ] {
+            let mut transport = HeaderMap::new();
+            if let Some(value) = transport_value {
+                transport.insert("x-correlation-id", HeaderValue::from_static(value));
+            }
+            let args = argument_value.map_or_else(
+                || serde_json::json!({}),
+                |value| serde_json::json!({"headers":{"x-correlation-id":value}}),
+            );
+            let request =
+                build_request(&route, args.as_object().unwrap(), Some(&transport)).unwrap();
+            assert_eq!(
+                request
+                    .headers()
+                    .get("x-correlation-id")
+                    .map(|value| value.to_str().unwrap()),
+                expected
+            );
+        }
+    }
     #[test]
     fn cookie_tools_preserve_transport_security_headers() {
         let route = RouteContract::post("Write", "Write", "/write")
