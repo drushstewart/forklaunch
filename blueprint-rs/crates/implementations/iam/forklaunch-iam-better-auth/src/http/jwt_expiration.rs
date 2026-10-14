@@ -4,17 +4,36 @@ use chrono::{DateTime, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 pub(super) enum JwtExpiration {
     Absolute(i64),
+    Numeric(f64),
     Lifetime(u64),
 }
 impl JwtExpiration {
     pub(super) fn option(&self) -> serde_json::Value {
         match self {
+            Self::Numeric(seconds) => serde_json::json!(seconds),
             Self::Absolute(seconds) => serde_json::json!(seconds),
             Self::Lifetime(seconds) => serde_json::json!(format!("{seconds}s")),
         }
     }
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Sets absolute JWT expiration seconds, matching numeric `jwt.expirationTime`.
+    /// Fractions, negative timestamps and past expirations are preserved. Payload
+    /// `exp` takes precedence; cookie/session expiration remains independent.
+    /// Numeric, Date and lifetime setters replace each other; the last call wins.
+    /// # Errors
+    /// Rejects nonfinite values outside the supported JSON `NumericDate` profile.
+    pub fn with_jwt_expiration_seconds(mut self, seconds: f64) -> BlueprintResult<Self> {
+        if !seconds.is_finite() {
+            return Err(BlueprintError::new(
+                "better_auth_invalid_config",
+                "JWT expiration seconds must be finite",
+            ));
+        }
+        self.jwt_expiration = Some(JwtExpiration::Numeric(seconds));
+        Ok(self)
+    }
+
     /// Sets a trusted relative JWT lifetime as whole nonnegative seconds.
     /// Zero issues immediately expired tokens. Payload `exp` still takes precedence.
     /// This and the absolute-date setter replace one another; the last call wins.

@@ -6804,3 +6804,24 @@ aggregate diagnostics and commit transformed output atomically.
 strict all-feature/all-target Clippy pass:
 /private/tmp/fl-zod-array-{tests,parity,clippy}.log. The differential is wired into
 CI. Native JSON Schema behavior is unchanged; broader validation stays open.
+
+
+## Better Auth numeric absolute JWT expiration (2026-10-14)
+
+AuthHttp.with_jwt_expiration_seconds now accepts finite absolute seconds, including
+fractional, negative, zero and large finite values. Payload nonnull exp still wins;
+null falls back to configured expiry. Numeric, Date and relative lifetime setters
+replace one another, with the last call winning. Subject resolution and cookie/
+stored-session expiry retain their independent behavior. Nonfinite configuration
+is rejected before storage; this is an explicit finite JSON NumericDate profile.
+
+60 actual installed Better Auth local JOSE/external-signer route cases, six native
+expiration tests covering the same matrix and setter/config boundaries, and strict
+IAM all-feature/all-target Clippy pass:
+/private/tmp/fl-iam-jwt-numeric-{ts,native,clippy}.log. The actual-source fixture is
+wired into CI. Broader custom adapters and arbitrary JavaScript options stay open.
+
+The reproducible configured source type check also passes with a fresh installation
+of the exact canonical runtime manifest used by CI, plus Stripe:
+/private/tmp/fl-oct14-configured-ci-{install,types}.log. CI installs this isolated
+runtime prefix as well as its locked compiler/declaration prefix.

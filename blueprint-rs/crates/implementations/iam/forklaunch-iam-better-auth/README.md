@@ -971,3 +971,15 @@ replace one another: the last call wins. Existing payload `iat` arithmetic and
 explicit non-null `exp` precedence are retained for both local and external
 signers. This typed subset does not implement the full signed/fractional
 JavaScript duration-string interface or change cookie/session expiry.
+
+
+`AuthHttp::with_jwt_expiration_seconds(f64)` accepts a finite numeric absolute
+JWT expiration in seconds (the numeric `jwt.expirationTime` option). Fractional,
+negative, past, and large finite timestamps are retained through the existing
+local/external signer paths; these are absolute NumericDate seconds, not a
+relative duration or millisecond timestamp. Numeric, Date and lifetime setters
+replace each other, so the last configured setter wins. Non-null payload `exp`
+still overrides the configured expiry, and subject policy runs last. Persisted
+sessions and cookies retain their existing expiration. Nonfinite numbers are
+rejected before storage/signing; JavaScript external callbacks accepting such
+non-JSON values are outside this typed configuration subset.

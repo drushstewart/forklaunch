@@ -319,3 +319,163 @@ async fn lifetime_validation_precedes_storage_and_last_expiration_setter_wins() 
         json!(-1)
     );
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn numeric_seconds_preserve_fractions_payload_subject_and_cookie_rules() {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    for external in [false, true] {
+        for seconds in [
+            1_800_000_000.125,
+            0.0,
+            -0.5,
+            9_007_199_254_740_992.0,
+            f64::MAX,
+        ] {
+            for custom in [0, 1, 2] {
+                let store = Arc::new(MemoryAuthStore::default());
+                let mut tx = store.begin(true).await.unwrap();
+                tx.insert(
+                    Model::User,
+                    json!({"id":"owner","email":"expiration@example.test"}),
+                )
+                .await
+                .unwrap();
+                tx.commit().await.unwrap();
+                let session = SessionService::new(store.clone())
+                    .create("owner", "", "", now)
+                    .await
+                    .unwrap();
+                let cookie = SessionCookie { secure: false }.serialize(
+                    session["token"].as_str().unwrap(),
+                    &[42; 32],
+                    true,
+                );
+                let signed = Arc::new(Mutex::new(Vec::new()));
+                let mut service = app(store.clone())
+                    .with_clock(move || now)
+                    .with_jwt_expiration_seconds(seconds)
+                    .unwrap()
+                    .with_jwt_subject_resolver(|_| async { Ok(Some("resolved-subject".into())) });
+                if custom > 0 {
+                    service = service.with_jwt_payload_resolver(move |_| async move {
+                        Ok(Some(
+                            json!({"iat":123,"exp":if custom == 1 { json!(456) } else { Value::Null },"sub":"ignored"})
+                                .as_object()
+                                .unwrap()
+                                .clone(),
+                        ))
+                    });
+                }
+                if external {
+                    service = service.with_external_jwt_signer(
+                        ExternalJwtSigner::new(
+                            "https://keys.example.test/public",
+                            "EdDSA",
+                            Signer(signed.clone()),
+                        )
+                        .unwrap(),
+                    );
+                }
+                let router = service.router();
+                for path in ["/get-session", "/token"] {
+                    let response = router
+                        .clone()
+                        .oneshot(
+                            Request::builder()
+                                .uri(path)
+                                .header("cookie", cookie.split(';').next().unwrap())
+                                .body(Body::empty())
+                                .unwrap(),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        response.status().as_u16(),
+                        200,
+                        "{seconds}/{custom}/{external}/{path}"
+                    );
+                    let header = response
+                        .headers()
+                        .get("set-auth-jwt")
+                        .map(|value| value.to_str().unwrap().to_owned());
+                    let body: Value = serde_json::from_slice(
+                        &to_bytes(response.into_body(), 65536).await.unwrap(),
+                    )
+                    .unwrap();
+                    let token = if path == "/token" {
+                        body["token"].as_str().unwrap().to_owned()
+                    } else {
+                        header.unwrap()
+                    };
+                    let claims = if external {
+                        signed.lock().unwrap().last().unwrap().clone()
+                    } else {
+                        serde_json::from_slice::<Value>(
+                            &URL_SAFE_NO_PAD
+                                .decode(token.split('.').nth(1).unwrap())
+                                .unwrap(),
+                        )
+                        .unwrap()
+                    };
+                    assert_eq!(
+                        claims["exp"].as_f64(),
+                        Some(if custom == 1 { 456.0 } else { seconds })
+                    );
+                    assert_eq!(claims["sub"], "resolved-subject");
+                    if custom > 0 {
+                        assert_eq!(claims["iat"], 123);
+                        assert!(claims.get("email").is_none());
+                    } else {
+                        assert_eq!(claims["email"], "expiration@example.test");
+                        assert_eq!(claims["sessionId"], session["id"]);
+                    }
+                    if path == "/get-session" {
+                        assert_eq!(body["user"]["id"], "owner");
+                        assert_eq!(body["session"]["expiresAt"], session["expiresAt"]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn numeric_expiration_rejects_nonfinite_before_storage_and_all_setters_are_last_wins() {
+    let store = Arc::new(MemoryAuthStore::default());
+    for seconds in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(
+            app(store.clone())
+                .with_jwt_expiration_seconds(seconds)
+                .is_err()
+        );
+    }
+    let mut tx = store.begin(false).await.unwrap();
+    assert!(tx.list(Model::Jwks).await.unwrap().is_empty());
+    tx.commit().await.unwrap();
+    let numeric = app(store)
+        .with_jwt_lifetime(std::time::Duration::ZERO)
+        .unwrap()
+        .with_jwt_expiration_seconds(-0.5)
+        .unwrap();
+    assert_eq!(
+        numeric.jwt_expiration.as_ref().unwrap().option(),
+        json!(-0.5)
+    );
+    let dated = numeric
+        .with_jwt_expiration_at(DateTime::from_timestamp_millis(-1).unwrap())
+        .unwrap();
+    assert_eq!(dated.jwt_expiration.as_ref().unwrap().option(), json!(-1));
+    let numeric = dated.with_jwt_expiration_seconds(1.25).unwrap();
+    assert_eq!(
+        numeric.jwt_expiration.as_ref().unwrap().option(),
+        json!(1.25)
+    );
+    let lifetime = numeric
+        .with_jwt_lifetime(std::time::Duration::from_secs(1))
+        .unwrap();
+    assert_eq!(
+        lifetime.jwt_expiration.as_ref().unwrap().option(),
+        json!("1s")
+    );
+}
