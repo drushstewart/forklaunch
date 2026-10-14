@@ -1,5 +1,5 @@
 //! Acknowledgement of an already-satisfied effect, not causal webhook repair.
-use crate::{client::StripeResource, services::StripeBillingService};
+use crate::services::StripeBillingService;
 use chrono::{DateTime, Utc};
 use forklaunch_billing_base::services::{
     BillingKind,
@@ -62,6 +62,7 @@ fn event_evidence(
     id: &str,
     customer_id: &str,
     livemode: bool,
+    connected_account: Option<&str>,
 ) -> BlueprintResult<()> {
     let started = DateTime::parse_from_str(&pending.started_at, "%Y-%m-%d %H:%M:%S%.f%#z")
         .or_else(|_| DateTime::parse_from_rfc3339(&pending.started_at))
@@ -77,9 +78,11 @@ fn event_evidence(
         || event["id"] != pending.event_id
         || event["type"] != pending.event_type
         || event["livemode"].as_bool() != Some(livemode)
-        || ["account", "context"]
-            .iter()
-            .any(|key| event.get(key).is_some_and(|value| !value.is_null()))
+        || event.get("context").is_some_and(|value| !value.is_null())
+        || event
+            .get("account")
+            .filter(|value| !value.is_null())
+            .is_some_and(|value| connected_account.is_none() || value.as_str() != connected_account)
     {
         return Err(review());
     }
@@ -90,7 +93,7 @@ impl StripeBillingService<PostgresBillingStore> {
     /// Acknowledges an already-satisfied paused effect; no subscription/provider write
     /// or replay. Stripe provides no pause epoch token, so this does not prove an
     /// uninterrupted pause or that the original callback caused local active=false.
-    /// Managed transports require a separate protocol and are rejected before I/O.
+    /// Managed transports use one signed, generation-scoped paired read.
     /// Stripe event retrieval supports the last 30 days:
     /// <https://docs.stripe.com/api/events/retrieve>.
     /// # Errors
@@ -103,7 +106,6 @@ impl StripeBillingService<PostgresBillingStore> {
         scope: &StripeBindingScope,
         public_id: Uuid,
     ) -> BlueprintResult<PausedEffectAcknowledgement> {
-        self.client().require_direct_paused_evidence()?;
         if pending.provider != "stripe" || pending.event_type != "customer.subscription.paused" {
             return Err(review());
         }
@@ -120,9 +122,9 @@ impl StripeBillingService<PostgresBillingStore> {
             .ok_or_else(review)?;
         context.ensure_current(self.client())?;
         let relation = binding.subscription_ownership().ok_or_else(review)?;
-        let event = self
+        let (event, current) = self
             .client()
-            .retrieve_paused_evidence(&context, StripeResource::Event, &pending.event_id)
+            .retrieve_paused_effect_in_context(&context, &pending.event_id, binding.provider_id())
             .await?;
         event_evidence(
             pending,
@@ -130,15 +132,8 @@ impl StripeBillingService<PostgresBillingStore> {
             binding.provider_id(),
             relation.provider_customer_id(),
             context.livemode(),
+            context.connected_account(),
         )?;
-        let current = self
-            .client()
-            .retrieve_paused_evidence(
-                &context,
-                StripeResource::Subscription,
-                binding.provider_id(),
-            )
-            .await?;
         subscription(
             &current,
             binding.provider_id(),

@@ -30,6 +30,8 @@ struct Evidence {
     event: Arc<Mutex<Value>>,
     subscription: Arc<Mutex<Value>>,
     paths: Arc<Mutex<Vec<String>>>,
+    managed: bool,
+    scope: Arc<Mutex<Value>>,
 }
 async fn pending(store: &PostgresBillingStore, id: &str) -> PendingWebhook {
     assert!(
@@ -50,8 +52,16 @@ async fn pending(store: &PostgresBillingStore, id: &str) -> PendingWebhook {
 }
 #[tokio::test]
 #[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
-#[allow(clippy::too_many_lines)]
 async fn paused_effect_evidence_and_atomic_bookkeeping() {
+    exercise(false).await;
+}
+#[tokio::test]
+#[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
+async fn managed_paused_effect_evidence_and_atomic_bookkeeping() {
+    exercise(true).await;
+}
+#[allow(clippy::too_many_lines)]
+async fn exercise(managed: bool) {
     let owner = PgPoolOptions::new()
         .max_connections(3)
         .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
@@ -98,10 +108,38 @@ async fn paused_effect_evidence_and_atomic_bookkeeping() {
         event: Arc::new(Mutex::new(event.clone())),
         subscription: Arc::new(Mutex::new(subscription.clone())),
         paths: Arc::new(Mutex::new(Vec::new())),
+        managed,
+        scope: Arc::new(Mutex::new(Value::Null)),
     };
     let app = Router::new()
         .fallback(any(
             |State(state): State<Evidence>, request: Request| async move {
+                if state.managed {
+                    use forklaunch_auth::request_hmac::{HmacAuthorization, SignedBody};
+                    assert_eq!(request.method(), "POST");
+                    assert!(request.uri().query().is_none());
+                    let path = request.uri().path().to_owned();
+                    let authorization = request.headers()["authorization"].to_str().unwrap().to_owned();
+                    let auth = HmacAuthorization::parse(&authorization).unwrap();
+                    let body = axum::body::to_bytes(request.into_body(), 8192).await.unwrap();
+                    assert_eq!(auth.key_id(), "fixture-instance");
+                    assert!(auth.verify_at(b"fixture-key", "POST", path.strip_prefix("/instance-gateway").unwrap(), SignedBody::Bytes(&body), chrono::Utc::now().timestamp_millis(), Duration::from_secs(5)));
+                    let body: Value = serde_json::from_slice(&body).unwrap();
+                    state.paths.lock().unwrap().push(path.clone());
+                    if path == "/instance-gateway/payments/context" {
+                        assert_eq!(body["accountId"], "acct_owned");
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let scope = json!({"version":1,"instanceId":"fixture-instance","organizationId":"org-owned","accountId":"acct_owned","livemode":false,"bindingGeneration":"00000000-0000-4000-8000-000000000001","apiVersion":body["apiVersion"],"issuedAt":now,"expiresAt":now+5000});
+                        *state.scope.lock().unwrap() = scope.clone();
+                        return Json(json!({"scope":scope,"contextToken":"fixture-token"}));
+                    }
+                    assert_eq!(path, "/instance-gateway/payments/context/paused-subscription-read");
+                    assert_eq!(body["contextToken"], "fixture-token");
+                    assert_eq!(body["subscriptionId"], "sub_owned");
+                    let mut event = state.event.lock().unwrap().clone();
+                    if event.get("id").is_none() { event["id"] = body["eventId"].clone(); }
+                    return Json(json!({"scope":state.scope.lock().unwrap().clone(),"event":event,"subscription":state.subscription.lock().unwrap().clone()}));
+                }
                 assert_eq!(request.method(), "GET");
                 assert_eq!(
                     request.headers()["authorization"],
@@ -137,8 +175,16 @@ async fn paused_effect_evidence_and_atomic_bookkeeping() {
         1024 * 1024,
     )
     .unwrap();
-    let client =
-        StripeBillingClient::with_transport("opaque-owned-credential".into(), http).unwrap();
+    let client = if managed {
+        StripeBillingClient::managed(
+            &format!("http://{address}"),
+            "fixture-instance".into(),
+            "fixture-key".into(),
+        )
+        .unwrap()
+    } else {
+        StripeBillingClient::with_transport("opaque-owned-credential".into(), http).unwrap()
+    };
     let service = StripeBillingService::new(BaseBillingService::new(store.clone()), client.clone());
     let scope =
         StripeBindingScope::administrative("paused-deployment".into(), "acct_owned".into(), false)
@@ -172,31 +218,13 @@ async fn paused_effect_evidence_and_atomic_bookkeeping() {
     .await
     .unwrap();
     let pending = pending(&store, "evt_main").await;
-    let managed = StripeBillingService::new(
-        BaseBillingService::new(store.clone()),
-        StripeBillingClient::managed(
-            &format!("http://{address}"),
-            "fixture-instance".into(),
-            "fixture-key".into(),
-        )
-        .unwrap(),
-    );
-    let before = evidence.paths.lock().unwrap().len();
-    assert_eq!(
-        managed
-            .acknowledge_already_paused_effect(&pending, &scope, public)
-            .await
-            .unwrap_err()
-            .code,
-        "billing_paused_effect_unsupported"
-    );
-    assert_eq!(evidence.paths.lock().unwrap().len(), before);
-    drop(managed);
     for (index, change) in [
         json!({"id":"evt_other"}),
         json!({"type":"customer.subscription.resumed"}),
         json!({"livemode":true}),
         json!({"account":"acct_other"}),
+        json!({"account":123}),
+        json!({"account":{}}),
         json!({"context":"acct_other"}),
         json!({"created":chrono::Utc::now().timestamp()+60}),
         json!({"created":0}),
@@ -500,17 +528,13 @@ async fn paused_effect_evidence_and_atomic_bookkeeping() {
     .await
     .unwrap();
     assert_eq!(audits, 2);
-    assert!(
-        evidence
-            .paths
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|path| path == "/v1/account"
-                || path == "/v1/balance"
-                || path == "/v1/subscriptions/sub_owned"
-                || path.starts_with("/v1/events/evt_"))
-    );
+    assert!(evidence.paths.lock().unwrap().iter().all(|path| path
+        == "/instance-gateway/payments/context"
+        || path == "/instance-gateway/payments/context/paused-subscription-read"
+        || path == "/v1/account"
+        || path == "/v1/balance"
+        || path == "/v1/subscriptions/sub_owned"
+        || path.starts_with("/v1/events/evt_")));
     server.abort();
     drop(service);
     drop(foreign);

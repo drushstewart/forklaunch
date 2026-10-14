@@ -6287,3 +6287,31 @@ credentials use raw authorization/cookie headers. Generic Zod/complex query
 parsing/credential rewriting/MCP remain outside this callback profile.
 FrameworkRequest adds raw_query/parsed_fields; constructor callers remain valid.
 CI includes the new oracle. The fixed archive checkpointa416 predates this API.
+
+## Managed paused-evidence protocol receipt (2026-10-14)
+
+Companion commit7cd2959f1712334826f58527e5c9ddb216426483 adds the dedicated signed
+POST /payments/context/paused-subscription-read. Strict IDs/request keys, no query,
+8KiB body/no-store/shared rate policy and exact HMAC path protect the paired read.
+One token binds instance/organization/account/mode/API version/mapping generation
+and a five-second window; fresh database checks surround provider awaits. Only
+fixed balance/event/subscription GETs are issued; no raw proxy allowlist expands.
+The aggregate response is bounded and preserves the exact scope envelope.
+
+Native direct/managed paired reads verify that envelope, immutable client context
+and event/subscription identity/mode before existing sealed local ownership/CAS
+bookkeeping. Account metadata must match when present; absent/null account relies
+on the authenticated SDK request pinned to the verified connected account, not
+on assumptions about webhook-only metadata. Nonnull context remains unsupported.
+This extends paused-effect acknowledgement to managed mode without provider or
+subscription writes, original-HMAC claims or pause-epoch causality claims. Old
+gateways fail closed.
+
+37 actual platform tests plus focused TypeScript, native signed-wire/source
+conformance, two restricted PostgreSQL direct/managed twins, eight Stripe library
+regressions and strict base/Stripe Clippy pass:
+/private/tmp/fl-managed-paused-{platform-full,types,wire,pg,lib,clippy}.log.
+The packaged gateway mock follows actual companion protocol source. CI executes
+its native wire fixture; cross-repository source comparison requires the explicit
+companion checkout used for this receipt. No live Stripe/cloud deployment proof
+is claimed. The archive checkpointa416 predates managed paired support.

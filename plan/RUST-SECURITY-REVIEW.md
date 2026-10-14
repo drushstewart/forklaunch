@@ -804,3 +804,15 @@ regressions. Original authorization/cookie headers remain the native credential
 source even when a projection differs. Transform failure commits no field/body
 changes. Raw bytes/query remain available; typed projection extraction is an
 explicit handler choice and failed permissive validation needs wire fallback.
+
+
+Managed paused-evidence review (2026-10-14): the dedicated signed endpoint pins
+all fixed provider reads to the token's verified account/API version, with fresh
+instance/organization/mapping-generation/mode checks between awaits. Unknown
+keys/query, malformed IDs, stale/remapped scope and oversized aggregates deny.
+Native envelope and sealed local ownership checks precede bookkeeping completion.
+Present event-account metadata must match; absent metadata relies on the scoped
+authenticated SDK request, not webhook metadata assumptions. There is no raw
+proxy expansion, financial/provider mutation or original-signature/causal proof.
+Actual platform, signed-wire and PostgreSQL twins verify these boundaries locally;
+live provider/deployment validation remains separate.

@@ -25,6 +25,11 @@ pub struct VerifiedStripeContext {
     managed: Option<(String, Value)>,
 }
 impl VerifiedStripeContext {
+    #[cfg(feature = "postgres-reconciliation")]
+    pub(crate) fn connected_account(&self) -> Option<&str> {
+        self.managed.as_ref().map(|_| self.account_id.as_str())
+    }
+
     #[must_use]
     pub fn account_id(&self) -> &str {
         &self.account_id
@@ -217,34 +222,76 @@ impl StripeBillingClient {
         }
         Ok(value)
     }
-    #[cfg(feature = "postgres-reconciliation")]
-    pub(crate) fn require_direct_paused_evidence(&self) -> BlueprintResult<()> {
-        if !matches!(&self.transport, BillingTransport::Direct { .. }) {
-            return Err(BlueprintError::new(
-                "billing_paused_effect_unsupported",
-                "Paused effect acknowledgement requires a direct provider client",
-            ));
-        }
-        Ok(())
-    }
-    #[cfg(feature = "postgres-reconciliation")]
-    pub(crate) async fn retrieve_paused_evidence(
+    /// Retrieves a fixed event/subscription pair in one verified direct or managed scope.
+    /// Provider identity/mode and the exact managed envelope are checked here;
+    /// callers must additionally verify event semantics and trusted local ownership.
+    /// # Errors
+    /// Rejects malformed IDs, stale/foreign contexts and remapped managed scopes.
+    pub async fn retrieve_paused_effect_in_context(
         &self,
         context: &VerifiedStripeContext,
-        resource: super::StripeResource,
-        id: &str,
-    ) -> BlueprintResult<Value> {
-        self.require_direct_paused_evidence()?;
+        event_id: &str,
+        subscription_id: &str,
+    ) -> BlueprintResult<(Value, Value)> {
+        for (id, prefix) in [(event_id, "evt_"), (subscription_id, "sub_")] {
+            if !id.starts_with(prefix)
+                || id.len() <= prefix.len()
+                || id.len() > 128
+                || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            {
+                return Err(mismatch());
+            }
+        }
         context.ensure_current(self)?;
-        if !matches!(
-            resource,
-            super::StripeResource::Event | super::StripeResource::Subscription
-        ) {
+        let pair = match (&self.transport, &context.managed) {
+            (BillingTransport::Direct { .. }, None) => {
+                let event = self
+                    .retrieve(super::StripeResource::Event, event_id, &json!({}))
+                    .await?;
+                context.ensure_current(self)?;
+                let subscription = self
+                    .retrieve(
+                        super::StripeResource::Subscription,
+                        subscription_id,
+                        &json!({}),
+                    )
+                    .await?;
+                (event, subscription)
+            }
+            (BillingTransport::Managed(gateway), Some((token, scope))) => {
+                let response = gateway
+                    .request_json(
+                        Method::POST,
+                        &["payments", "context", "paused-subscription-read"],
+                        Some(&json!({
+                            "contextToken": token,
+                            "eventId": event_id,
+                            "subscriptionId": subscription_id,
+                            "apiVersion": self.api_version.as_str()
+                        })),
+                    )
+                    .await?;
+                if !(200..300).contains(&response.status) || response.body["scope"] != *scope {
+                    return Err(mismatch());
+                }
+                (
+                    response.body["event"].clone(),
+                    response.body["subscription"].clone(),
+                )
+            }
+            _ => return Err(mismatch()),
+        };
+        context.ensure_current(self)?;
+        if pair.0["object"] != "event"
+            || pair.0["id"] != event_id
+            || pair.0["livemode"].as_bool() != Some(context.livemode)
+            || pair.1["object"] != "subscription"
+            || pair.1["id"] != subscription_id
+            || pair.1["livemode"].as_bool() != Some(context.livemode)
+        {
             return Err(mismatch());
         }
-        let value = self.retrieve(resource, id, &json!({})).await?;
-        context.ensure_current(self)?;
-        Ok(value)
+        Ok(pair)
     }
     async fn context_get(&self, resource: &str) -> BlueprintResult<Value> {
         let BillingTransport::Direct { http, secret } = &self.transport else {

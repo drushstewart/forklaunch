@@ -493,7 +493,7 @@ async function scopedRead(ctx, operation) {
     return {status:object ? 200 : 404,body:JSON.stringify(object ?? {})};
   });
   try {
-    const fields = operation === 'issue' ? ['accountId','livemode','apiVersion'] : ['contextToken','id','apiVersion'];
+    const fields = operation === 'issue' ? ['accountId','livemode','apiVersion'] : operation === 'pausedSubscription' ? ['contextToken','eventId','subscriptionId','apiVersion'] : ['contextToken','id','apiVersion'];
     if (!ctx.body || typeof ctx.body !== 'object' || Array.isArray(ctx.body)
       || Object.keys(ctx.body).some(k => !fields.includes(k)) || ctx.req.url.includes('?')) throw new Error('invalid');
     const minute = Math.floor(Date.now()/60000);
@@ -577,6 +577,7 @@ export default {
     { method: 'POST', path: '/payments/context', handler: ctx => scopedRead(ctx,'issue') },
     { method: 'POST', path: '/payments/context/checkout-read', handler: ctx => scopedRead(ctx,'checkout') },
     { method: 'POST', path: '/payments/context/payment-link-read', handler: ctx => scopedRead(ctx,'paymentLink') },
+    { method: 'POST', path: '/payments/context/paused-subscription-read', handler: ctx => scopedRead(ctx,'pausedSubscription') },
     ...['GET', 'POST', 'DELETE'].map((method) => ({ method, path: PROXY, handler: stripeProxy }))
   ],
   vendorRoutes: [

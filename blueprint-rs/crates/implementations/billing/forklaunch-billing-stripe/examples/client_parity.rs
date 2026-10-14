@@ -49,6 +49,15 @@ async fn run(client: &StripeBillingClient, action: &Value) -> BlueprintResult<Va
             )
             .await?;
         context.ensure_current(client)?;
+        if let (Some(event), Some(subscription)) = (
+            action["eventId"].as_str(),
+            action["subscriptionId"].as_str(),
+        ) {
+            let (event, subscription) = client
+                .retrieve_paused_effect_in_context(&context, event, subscription)
+                .await?;
+            return Ok(json!({"event":event,"subscription":subscription}));
+        }
         if let Some(id) = action["paymentLinkId"].as_str() {
             return client.retrieve_payment_link_in_context(&context, id).await;
         }
