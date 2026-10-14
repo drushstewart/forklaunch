@@ -946,4 +946,15 @@ array. A requested Rust type may reject that result. Strict JSON remains the
 codec default. Both profiles reject invalid UTF-8 and enforce authentication
 before parsing encrypted values; missing tenant context, wrong keys and tampering
 never become plaintext fallbacks. JavaScript class/BigInt serialization, number
-rounding and TypeScript's falsy queue-batch filtering are separate boundaries.
+rounding remain separate boundaries.
+
+`JsonQueue::peek_records_typescript` and `dequeue_batch_records_typescript`
+explicitly apply TypeScript's `.filter(Boolean)` after decoding. They omit null,
+false, numeric zero and empty strings while retaining empty arrays and objects.
+Counts apply before filtering. A zero dequeue count removes nothing; a zero peek
+count reads the entire current queue, matching TypeScript's LRANGE behavior.
+Ordinary native methods continue preserving falsy values and return empty batches
+for zero counts. Both profiles authenticate before filtering, retain FIFO order
+and propagate decoding errors. Dequeue failures do not requeue removed messages.
+Select `with_typescript_safe_values` on the codec as well when TS producers write
+unquoted string values. These typed APIs accept nonnegative integer counts.

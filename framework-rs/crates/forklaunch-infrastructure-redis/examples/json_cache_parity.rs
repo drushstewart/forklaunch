@@ -170,6 +170,16 @@ fn execute(
             };
             values.map(|values| json!(values))
         }
+        "queueGetBatchTs" | "queuePeekBatchTs" => {
+            let max = usize::try_from(operation["count"].as_u64().ok_or("Count required")?)?;
+            let queue = queue.as_mut().ok_or("Queue required")?;
+            let values = if operation["op"] == "queueGetBatchTs" {
+                queue.dequeue_batch_records_typescript::<Value>(max, tenant)
+            } else {
+                queue.peek_records_typescript::<Value>(max, tenant)
+            };
+            values.map(|values| json!(values))
+        }
         "queuePeek" => queue
             .as_mut()
             .ok_or("Queue required")?

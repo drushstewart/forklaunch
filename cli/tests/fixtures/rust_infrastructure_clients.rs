@@ -162,6 +162,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map_err(|error| error.to_string())?
                     .is_none()
             );
+            queue
+                .enqueue_batch_records(&[false, true], Some(&tenant))
+                .map_err(|error| error.to_string())?;
+            assert_eq!(
+                queue
+                    .peek_records_typescript::<bool>(0, Some(&tenant))
+                    .map_err(|error| error.to_string())?,
+                vec![true]
+            );
+            assert!(
+                queue
+                    .peek_records_typescript::<bool>(0, Some(&wrong))
+                    .is_err()
+            );
+            assert!(
+                queue
+                    .dequeue_batch_records_typescript::<bool>(1, Some(&tenant))
+                    .map_err(|error| error.to_string())?
+                    .is_empty()
+            );
+            assert_eq!(
+                queue
+                    .dequeue_batch_records_typescript::<bool>(2, Some(&tenant))
+                    .map_err(|error| error.to_string())?,
+                vec![true]
+            );
         }
         Ok(())
     })

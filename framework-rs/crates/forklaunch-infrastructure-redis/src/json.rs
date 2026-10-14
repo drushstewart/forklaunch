@@ -320,6 +320,22 @@ impl JsonQueue {
             .collect()
     }
 
+    /// Matches TypeScript bulk queue reads by removing falsy decoded values.
+    /// The count limits removed items before filtering, not the returned length.
+    /// Zero removes nothing. Authentication failures are not filtered out.
+    ///
+    /// # Errors
+    /// Propagates Redis, JSON, type and authentication errors. Removed items are
+    /// not requeued when decoding fails, matching the ordinary dequeue methods.
+    pub fn dequeue_batch_records_typescript<T: DeserializeOwned>(
+        &mut self,
+        max: usize,
+        tenant: Option<&TenantContext>,
+    ) -> FrameworkResult<Vec<T>> {
+        let values = self.queue.dequeue_batch(max)?;
+        self.decode_typescript_batch(&values, tenant)
+    }
+
     /// # Errors
     /// Propagates Redis, JSON and authentication failures without removing the item.
     pub fn peek_record<T: DeserializeOwned>(
@@ -344,6 +360,39 @@ impl JsonQueue {
             .iter()
             .map(|value| self.codec.decode(value, tenant))
             .collect()
+    }
+
+    /// Matches TypeScript bulk peeks, including truthiness filtering and a zero
+    /// count reading the entire queue. Empty arrays/objects are retained.
+    /// Use `peek_records` for native zero-count and falsy-preserving behavior.
+    ///
+    /// # Errors
+    /// Propagates Redis, JSON, type and authentication errors without removing items.
+    pub fn peek_records_typescript<T: DeserializeOwned>(
+        &mut self,
+        max: usize,
+        tenant: Option<&TenantContext>,
+    ) -> FrameworkResult<Vec<T>> {
+        let values = if max == 0 {
+            self.queue.peek_all()?
+        } else {
+            self.queue.peek_batch(max)?
+        };
+        self.decode_typescript_batch(&values, tenant)
+    }
+
+    fn decode_typescript_batch<T: DeserializeOwned>(
+        &self,
+        values: &[Vec<u8>],
+        tenant: Option<&TenantContext>,
+    ) -> FrameworkResult<Vec<T>> {
+        let mut output = Vec::new();
+        for value in values {
+            if let Some(value) = self.codec.decode_typescript_truthy(value, tenant)? {
+                output.push(value);
+            }
+        }
+        Ok(output)
     }
 }
 

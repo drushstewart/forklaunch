@@ -377,3 +377,13 @@ wrong-context/corrupt-record failures and plaintext migration pass real Redis
 interop checks. Native unit coverage checks typed failures and invalid UTF-8.
 JavaScript class/BigInt and IEEE-number compatibility are not claimed by this
 bounded JSON-compatible-value profile.
+
+Typed Redis compatibility queue methods apply truthiness only after authenticating
+and decoding every visited record. Empty arrays/objects remain values; null,
+false, zero and empty strings are omitted before conversion to the requested Rust
+type. Wrong-tenant or corrupted ciphertext cannot become an omitted/falsy record.
+Peeks do not consume on failure; dequeues remove their selected items before
+decoding, as ordinary native/TS queue methods do. Count limits apply before
+filtering. Explicit TypeScript zero-count peeks read the whole current queue;
+the ordinary native zero-count method remains empty. These APIs accept nonnegative
+integer counts and do not emulate negative/fractional JavaScript inputs.

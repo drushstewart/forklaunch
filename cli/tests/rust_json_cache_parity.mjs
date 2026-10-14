@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createRequire,Module} from 'node:module';
 import {readFile,realpath} from 'node:fs/promises';
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -37,9 +37,18 @@ vm.runInNewContext(compile(await readFile(path.join(root,'framework/infrastructu
 }});
 const master='native-json-current-fixture-key',previous=['native-json-previous-fixture-key'],tenant='tenant-a';
 const key=()=>{const value=`fl-json-parity:${randomUUID()}`;keys.push(value);return value;};
+let nativeExecutable;
+async function buildNative(){
+ const manifest=path.join(root,'framework-rs/Cargo.toml');
+ const child=spawn('cargo',['build','--quiet','--manifest-path',manifest,'-p','forklaunch-infrastructure-redis','--features','redis-client,encryption,serde_json/arbitrary_precision,serde_json/raw_value','--example','json_cache_parity'],{cwd:root,env:process.env,stdio:'inherit'});
+ await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',code=>code===0?resolve():reject(new Error(`Native fixture build failed: ${code}`)));});
+ const metadata=JSON.parse(execFileSync('cargo',['metadata','--manifest-path',manifest,'--no-deps','--format-version','1'],{cwd:root,env:process.env,encoding:'utf8'}));
+ return path.join(metadata.target_directory,'debug/examples/json_cache_parity');
+}
 async function native(operations,options={}){
- const child=spawn('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-infrastructure-redis','--features','redis-client,encryption,serde_json/arbitrary_precision,serde_json/raw_value','--example','json_cache_parity'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_REDIS_URL:url},stdio:['pipe','pipe','inherit']});let output='';child.stdout.on('data',chunk=>output+=chunk);child.stdin.end(JSON.stringify({master,previous,tenant,operations,typescriptSafe:true,...options}));
- assert.equal(await new Promise(resolve=>child.once('close',resolve)),0);return JSON.parse(output);
+ const binary=await (nativeExecutable??=buildNative());
+ const child=spawn(binary,[],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_REDIS_URL:url},stdio:['pipe','pipe','inherit']});let output='';child.stdout.on('data',chunk=>output+=chunk);child.stdin.end(JSON.stringify({master,previous,tenant,operations,typescriptSafe:true,...options}));
+ assert.equal(await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);}),0);return JSON.parse(output);
 }
 try{
  for(const format of ['v2','v3']){
@@ -77,6 +86,22 @@ try{
   assert.deepEqual(JSON.parse(JSON.stringify(await actual.dequeueBatchRecords(queue,2,compliance))),[{order:4},{order:5}]);
   await native([{op:'queuePutBatch',values:[false,0,null]}],{queue,format});
   assert.deepEqual(await native([{op:'queuePeekBatch',count:10},{op:'queueGetBatch',count:10},{op:'queueGet'}],{queue,format}),[[false,0,null],[false,0,null],{found:false,value:null}]);
+  const mixed=[false,0,null,'',true,1,-1,'0','false',' ',[],{},'[]','text',{order:1},{'$serde_json::private::Number':'123'},{'$serde_json::private::RawValue':{literal:true}}];
+  for(const count of [0,1,2,5,25]) {
+   const tsQueue=key(),rustQueue=key();
+   await actual.enqueueBatchRecords(tsQueue,mixed,compliance);
+   await native([{op:'queuePutBatch',values:mixed}],{queue:rustQueue,format});
+   const expectedPeek=JSON.parse(JSON.stringify(await actual.peekQueueRecords(tsQueue,count,compliance)));
+   assert.deepEqual(await native([{op:'queuePeekBatchTs',count}],{queue:rustQueue,format}),[expectedPeek]);
+   assert.ok((await native([{op:'queuePeekBatchTs',count}],{queue:rustQueue,format,tenant:'wrong'}))[0].error);
+   const expectedPop=JSON.parse(JSON.stringify(await actual.dequeueBatchRecords(tsQueue,count,compliance)));
+   assert.deepEqual(await native([{op:'queueGetBatchTs',count}],{queue:rustQueue,format}),[expectedPop]);
+   assert.deepEqual(await transport.command('LLEN',rustQueue),await transport.command('LLEN',tsQueue));
+   assert.deepEqual(await native([{op:'queuePeekBatchTs',count:0}],{queue:rustQueue,format}),[JSON.parse(JSON.stringify(await actual.peekQueueRecords(tsQueue,0,compliance)))]);
+  }
+  const badQueue=key();await transport.command('LPUSH',badQueue,'v2:bad:bad:bad');
+  assert.ok((await native([{op:'queuePeekBatchTs',count:0}],{queue:badQueue,format}))[0].error);
+  assert.equal(await transport.command('LLEN',badQueue),1);
   const timed=key(),persistent=key();
   const [written,timedRecord]=await native([{op:'put',key:timed,value:false,ttl:1250},{op:'getWithTtl',key:timed}],{format});
   assert.equal(written,null);assert.equal(timedRecord.value,false);assert.ok(timedRecord.ttl>1000&&timedRecord.ttl<=1250);
@@ -140,5 +165,5 @@ try{
   await new Promise(resolve=>setTimeout(resolve,10));
   assert.deepEqual(await native([{op:'get',key:expires},{op:'peek',key:expires}]),[{found:false,value:null},false]);
  }
- console.log('PASS actual TypeScript/native encrypted Redis cache/queue JSON: actual safeParse/safeStringify string semantics, strict JSON opt-out, per-record batch/millisecond/persistent TTL metadata, literal prefix scans, prevalidated writes/deletes, typed existence batches without decryption, raw client access, FIFO/batches/peeks, v2/v3 both directions, rotation, plaintext migration, falsy values, missing/expired keys and wrong-tenant/corruption rejection');
+ console.log('PASS actual TypeScript/native encrypted Redis cache/queue JSON: actual safeParse/safeStringify string semantics, strict JSON opt-out, per-record batch/millisecond/persistent TTL metadata, literal prefix scans, prevalidated writes/deletes, typed existence batches without decryption, opt-in falsy queue filtering and zero-count peeks, raw client access, FIFO/batches/peeks, v2/v3 both directions, rotation, plaintext migration, falsy values, missing/expired keys and wrong-tenant/corruption rejection');
 }finally{for(const key of keys)await transport.command('DEL',key);}

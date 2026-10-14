@@ -93,6 +93,36 @@ impl JsonRecordCodec {
             serde_json::from_str(json).map_err(|_| json_error())
         }
     }
+
+    /// Decode and apply JavaScript truthiness before converting to a Rust type.
+    /// Null, false, numeric zero and empty strings are omitted; empty arrays and
+    /// objects remain present. Enable `with_typescript_safe_values` separately
+    /// when interoperating with TypeScript's top-level string wire encoding.
+    ///
+    /// # Errors
+    /// Authentication and parsing failures propagate before filtering. Retained
+    /// values must deserialize as the requested Rust type.
+    pub fn decode_typescript_truthy<T: DeserializeOwned>(
+        &self,
+        bytes: &[u8],
+        tenant: Option<&TenantContext>,
+    ) -> FrameworkResult<Option<T>> {
+        let value = self.decode::<serde_json::Value>(bytes, tenant)?;
+        let truthy = match &value {
+            serde_json::Value::Null => false,
+            serde_json::Value::Bool(value) => *value,
+            serde_json::Value::Number(value) => value.as_f64() != Some(0.0),
+            serde_json::Value::String(value) => !value.is_empty(),
+            serde_json::Value::Array(_) | serde_json::Value::Object(_) => true,
+        };
+        if truthy {
+            serde_json::from_value(value)
+                .map(Some)
+                .map_err(|_| json_error())
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 fn json_error() -> FrameworkError {

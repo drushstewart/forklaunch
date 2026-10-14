@@ -467,6 +467,20 @@ impl RedisQueue {
         } else {
             (0, count - 1)
         };
+        self.peek_range(start, end)
+    }
+
+    /// Reads the entire current list in dequeue order without removing items.
+    /// This is the TypeScript zero-size peek behavior; ordinary `peek_batch(0)`
+    /// continues to return an empty batch.
+    ///
+    /// # Errors
+    /// Returns an error when Redis rejects the range.
+    pub fn peek_all(&mut self) -> FrameworkResult<Vec<Vec<u8>>> {
+        self.peek_range(0, -1)
+    }
+
+    fn peek_range(&mut self, start: i64, end: i64) -> FrameworkResult<Vec<Vec<u8>>> {
         let mut values: Vec<Vec<u8>> = self.query(
             redis::cmd("LRANGE")
                 .arg(self.key.clone())

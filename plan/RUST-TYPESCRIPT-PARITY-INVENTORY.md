@@ -41,7 +41,7 @@ remain open under checklist item 849; this inventory does not close that item.
 | [`@forklaunch/express`](../framework/express/package.json) | forklaunch-axum | Equivalent HTTP behavior is the target; multipart/SSE and full validation/auth/error fixtures remain. |
 | [`@forklaunch/hyper-express`](../framework/hyper-express/package.json) | forklaunch-axum | All 27 exported HTTP methods dispatch through shared validation/auth and nested contracts; both SDK artifact sources and actual compiled TypeScript router token forwarding are covered. Runtime-specific adapter internals need no clone. |
 | [`@forklaunch/infrastructure-s3`](../framework/infrastructure/S3/package.json) | forklaunch-infrastructure-s3 | Async store, bounded streaming/multipart transfers, codecs, signed downloads and browser POST policies are implemented with real MinIO fixtures. POST size/type/key/expiry enforcement, AWS signature vectors, SDK credential cache/rotation and actual TypeScript policy fixtures are covered; ordinary SigV4 bucket endpoints only. |
-| [`@forklaunch/infrastructure-redis`](../framework/infrastructure/redis/package.json) | forklaunch-infrastructure-redis | Redis cache/queue/pubsub, typed EXISTS/delete batches, literal-prefix/glob scans and native client/config access have real fixtures. Opt-in safe-value codecs now use actual TS safeParse/safeStringify source for JSON-compatible string interoperability; JavaScript-special values, number boundaries and falsy queue-batch semantics remain. |
+| [`@forklaunch/infrastructure-redis`](../framework/infrastructure/redis/package.json) | forklaunch-infrastructure-redis | Redis cache/queue/pubsub, typed EXISTS/delete batches, literal-prefix/glob scans and native client/config access have real fixtures. Opt-in safe-value codecs now use actual TS safeParse/safeStringify source for JSON-compatible string interoperability; Opt-in bulk queue methods also match falsy filtering and zero-count peeks. JavaScript-special values, number boundaries and remaining provider options remain. |
 | [`@forklaunch/internal`](../framework/internal/package.json) | contract macros, CLI embedded templates and Rust tooling | Map remaining exported build/runtime helpers; JavaScript compiler utilities remain in the TypeScript path. |
 | [`@forklaunch/testing`](../framework/testing/package.json) | forklaunch-testing and runtime fixtures | Test environment configuration, nine database aliases, Redis/Kafka/S3 endpoints and mock tokens match 970 actual TypeScript cases; child-process environment isolation passes. Container ownership/lifecycle, ORM setup/database clearing and the complete blueprint harness remain. |
 | [`@forklaunch/universal-sdk`](../framework/universal-sdk/package.json) | forklaunch-sdk-rust, forklaunch-sdk-typescript, forklaunch-sdk-codegen and CLI SDKs | HTTP/multipart uploads, bounded CLI SSE responses and guarded recursive CLI models and omission/null presence exist through both artifact formats, with actual TypeScript conformance and live clients; native Rust and TypeScript typed HTTP/SSE responses and recursive models share the CLI compiler and pass strict consumers and live clients; one shared HTTP SDK now imports native contracts and TypeScript OpenAPI, with both live client languages, lifecycle preservation and custom-path watch recovery. Remaining schema conformance, multipart response scope and broader realtime profiles remain. |
@@ -4504,4 +4504,27 @@ codec/Redis sources match the final source. A separate fresh application from th
 final rebuilt CLI also verifies the updated core dev-dependency manifest and
 exact runtime sources. Logs:
 `/private/tmp/fl-json-peek-{parity,clippy,codec-tests,tests,generated,package,release-tests}.log`.
+Checklist remains **658/682 (96.5%), 24 open**.
+
+### 2026-10-13 — Explicit TypeScript queue batch semantics
+
+`JsonQueue::peek_records_typescript` and `dequeue_batch_records_typescript` now
+apply TS truthiness filtering after authenticated decoding. Null, false, zero and
+empty strings are omitted, while empty arrays/objects and literal private-protocol
+marker keys survive. Counts apply before filtering. Zero-count dequeues remove
+nothing; zero-count peeks use one LRANGE over the full current list. Ordinary
+native methods preserve falsy values and retain empty zero-count behavior.
+Authentication/type/parse failures propagate and failed peeks leave items intact.
+Dequeues do not requeue removed records after a decoding failure. Supported counts
+are nonnegative integers; negative/fractional JavaScript inputs are not emulated.
+
+Actual TS Redis source, including its real safeParse/safeStringify functions,
+passes both envelope formats, five count boundaries, mixed truthy/falsy values,
+FIFO order, remaining lengths, wrong-tenant checks and corrupted-peek retention.
+The fixture now builds the native example once and executes it for each case.
+Seven native Redis tests including the backend and strict core/Redis Clippy pass.
+Fresh relocated run `L0EhpR` validates the compatibility queue methods, encrypted
+Redis/S3 factories, both SDKs, CLI ownership/lifecycle and the full HTTP/MCP
+startup/shutdown matrix. All **951** embedded source/template files pass packaging.
+Logs: `/private/tmp/fl-json-batch-{parity,clippy,tests,generated,package}.log`.
 Checklist remains **658/682 (96.5%), 24 open**.
