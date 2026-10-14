@@ -7637,3 +7637,26 @@ full list in one call: /private/tmp/fl-jwks-window-audit.{mjs,log}. Native keeps
 default window; an unlimited indexed query would incorrectly change behavior.
 Cross-database membership of an unordered page and optional global-limit settings
 remain explicit boundaries rather than claimed deterministic equivalence.
+
+
+## Immutable packaged checkpoint with MCP admission (2026-10-14)
+
+The Git-free source archive at95f1b203b80ab979850117680925e969c9775334
+passes the complete packaged installation/runtime harness: portable generated
+services and workers, feature checks, WebSocket/AsyncAPI contracts, both SDKs,
+recursive clients/Clippy, the105-test IAM suite with two explicit ignored
+PostgreSQL tests, and generated accounts HTTP/MCP startup and callbacks. This
+checkpoint includes creation-response validation, algorithm selection and MCP
+admission; it excludes the later2a09c5bcd external-signing-context slice and
+subsequent text-parser/SDK drafts. Billing feature compilation in this harness
+is distinct from the separate generated billing runtime proof.
+
+Offline locked installation and source repackaging pass with2531 retained files,
+including embedded dotfiles and excluding dependency/output directories. The
+retained archive cli/target/parity-artifacts/forklaunch-95f1b203b-4067ee2d.crate
+has SHA2564067ee2dcc155ba9476a4790f177748ea8e9353691b5ef58a2799f256f4e2848.
+After runtime, the hash and every extracted file were compared with the archive
+and pass. Logs: /private/tmp/fl-oct14-latest-{package,install,runtime}.log;
+metadata: /private/tmp/fl-oct14-latest-checkpoint.json. Temporary roots remain
+only while the billing fixture uses this immutable installed CLI. Broad release,
+publication, cloud and conformance gates remain open; checklist660/682 (96.8%).
