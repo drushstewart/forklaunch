@@ -903,3 +903,19 @@ JavaScript negative/NaN/infinite option values, rejects sub-millisecond duration
 and values exceeding signed 64-bit milliseconds before storage access, and reports
 checked timestamp overflow as an error. Existing first-100-key publication bounds
 remain unchanged; no custom getJwks/createJwk adapter hooks are implied.
+
+`AuthHttp::with_jwks_path` relocates public-key publication and the raw/application
+OpenAPI operation; `jwks_path()` exposes the relative path for client/verifier
+configuration. The default remains `/jwks`. The old path returns 404 after
+relocation, as do HEAD/POST and the relocated endpoint with a remote signer.
+Supported paths are fixed ASCII segments containing letters, digits, `.`, `_`,
+`-`, and `~`. Encoded/dynamic/query/fragment paths, dot traversal, duplicate or
+trailing slashes, and existing auth/application namespaces are rejected before
+router construction. This intentionally excludes upstream dynamic routing and
+conflicting paths that can shadow another authentication endpoint.
+Root `/` is explicitly unsupported: the actual plugin serves the trailing-slash
+mount root, while Axum nesting maps an inner root route to the bare mount URL.
+The builder rejects this rather than adding a differing public alias or a broad
+fallback. Unknown application namespaces
+remain subject to the application's registry/mount collision checks. Configure
+external clients and JWT verification URLs separately when relocating JWKS.

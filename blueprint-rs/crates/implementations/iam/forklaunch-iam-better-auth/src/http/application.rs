@@ -296,7 +296,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     fn mount_raw_auth(self, router: ForkLaunchRouter) -> ForkLaunchRouter {
         let base_path = self.auth_base_path();
         if base_path.is_empty() {
-            router.merge_internal(self.router_with_redirects(), root_namespaces())
+            let namespaces = root_namespaces(self.jwks_path());
+            router.merge_internal(self.router_with_redirects(), namespaces)
         } else {
             router.nest_internal(base_path, self.router_with_redirects())
         }
@@ -332,7 +333,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .docs_sources
             .push(forklaunch_axum::ScalarSource::inline(
                 "BetterAuth",
-                super::public::openapi_schema(&self.auth_base_url()),
+                super::public::openapi_schema(&self.auth_base_url(), self.jwks_path()),
             ));
         config
     }
@@ -369,10 +370,10 @@ async fn scoped_surface<S: AuthStore>(
     }
 }
 
-fn root_namespaces() -> Vec<String> {
+fn root_namespaces(jwks_path: &str) -> Vec<String> {
     // The fixed preset's OpenAPI paths supply the raw namespaces. These public
     // metadata/helper routes may be hidden by the upstream OpenAPI generator.
-    let schema = super::public::openapi_schema("http://auth.invalid");
+    let schema = super::public::openapi_schema("http://auth.invalid", jwks_path);
     schema["paths"]
         .as_object()
         .expect("embedded auth paths")

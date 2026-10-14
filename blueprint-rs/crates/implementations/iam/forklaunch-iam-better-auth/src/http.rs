@@ -29,6 +29,7 @@ mod callback;
 mod credential;
 mod email;
 mod external_jwt;
+mod jwks_path;
 pub use external_jwt::ExternalJwtSigner;
 mod observer;
 mod organization;
@@ -56,6 +57,7 @@ pub struct AuthHttp<S> {
     external_jwt: Option<ExternalJwtSigner>,
     jwt_header_disabled: bool,
     jwks_grace_period: std::time::Duration,
+    jwks_path: String,
     error_observer: Option<observer::Observer>,
     error_observer_mode: AuthApiErrorObserverMode,
     secret: Zeroizing<Vec<u8>>,
@@ -91,6 +93,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             external_jwt: None,
             jwt_header_disabled: false,
             jwks_grace_period: std::time::Duration::from_secs(2_592_000),
+            jwks_path: "/jwks".into(),
             error_observer: None,
             error_observer_mode: AuthApiErrorObserverMode::default(),
             secret,
@@ -313,7 +316,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 get(|| async { Json(json!({"ok":true})) }).head(not_found),
             )
             .route("/verify-email", get(email::dispatch::<S>).head(not_found))
-            .route("/jwks", get(dispatch::<S>).head(not_found))
+            .route(&app.jwks_path, get(dispatch::<S>).head(not_found))
             .route("/token", get(dispatch::<S>).head(not_found))
             .route(
                 "/get-session",
@@ -453,7 +456,7 @@ async fn handle<S: AuthStore + 'static>(
     if let Some(result) = credential::public(app, path, &payload, &query, now).await {
         return result;
     }
-    if path == "/jwks" {
+    if path == app.jwks_path {
         return app.jwks(now).await;
     }
     let sessions = SessionService::new(app.store.clone());

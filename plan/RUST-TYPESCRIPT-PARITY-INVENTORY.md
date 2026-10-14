@@ -5992,3 +5992,21 @@ A focused response/body-secrecy test and strict Axum Clippy pass:
 /private/tmp/fl-payment-link-options-http400{,-clippy}.log.
 The failing generated log is /private/tmp/fl-oct14-billing-generated.log; it is
 not a completed runtime receipt. A rebuilt generated rerun remains required.
+
+## Fixed JWKS route configuration receipt (2026-10-14)
+
+AuthHttp::with_jwks_path relocates a fixed ASCII JWKS GET route and both raw
+and application OpenAPI operations; jwks_path exposes the relative client path.
+The default remains /jwks. Old paths, HEAD/POST, and remote-signer publication
+retain404. Root-auth application namespace isolation remains enforced.
+Three native tests, 45 actual TypeScript route/schema/config cases and strict
+IAM Clippy pass: /private/tmp/fl-iam-jwks-path-{native,clippy,ts}.log.
+The new fixture is included in CI.
+
+This is a bounded option profile, not full jwksPath equivalence: upstream root
+/ serves the trailing-slash auth mount, while Axum nesting maps inner root to
+the bare mount. Native explicitly rejects it; the actual oracle retains this
+remaining gap. Encoded/dynamic/query/fragment paths, conflicting owned namespaces
+and arbitrary upstream route-shadowing behavior also remain unsupported. Unknown
+application namespaces are subject to registry/mount collision checks.
+Gate918 remains open and checklist remains660/682 (96.8%),22open.
