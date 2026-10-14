@@ -88,6 +88,8 @@ export class StripeSubscriptionService<
     subscriptionDto: StripeCreateSubscriptionDto<PartyType>,
     em?: EntityManager
   ): Promise<Dto['SubscriptionMapper']> {
+    await this.mappers.CreateSubscriptionMapper.validateCreate?.(subscriptionDto);
+
     const subscription = await this.stripeClient.subscriptions.create({
       ...subscriptionDto.stripeFields,
       customer: subscriptionDto.partyId,

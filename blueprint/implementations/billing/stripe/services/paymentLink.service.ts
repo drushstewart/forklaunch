@@ -125,6 +125,8 @@ export class StripePaymentLinkService<
     paymentLinkDto: StripeCreatePaymentLinkDto<StatusEnum>,
     ...args: unknown[]
   ): Promise<Dto['PaymentLinkMapper']> {
+    await this.mappers.CreatePaymentLinkMapper.validateCreate?.(paymentLinkDto);
+
     validatePaymentLinkCreateFields(paymentLinkDto.stripeFields);
     const session = await this.stripeClient.paymentLinks.create({
       ...paymentLinkDto.stripeFields,

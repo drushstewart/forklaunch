@@ -93,6 +93,8 @@ export class StripeCheckoutSessionService<
     checkoutSessionDto: StripeCreateCheckoutSessionDto<StatusEnum>,
     ...args: unknown[]
   ): Promise<Dto['CheckoutSessionMapper']> {
+    await this.mappers.CreateCheckoutSessionMapper.validateCreate?.(checkoutSessionDto);
+
     const session = await this.stripeClient.checkout.sessions.create({
       ...checkoutSessionDto.stripeFields,
       mode: 'subscription',

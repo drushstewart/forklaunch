@@ -14,6 +14,8 @@ export type StripeBillingPortalMappers<
     ) => Promise<Dto['BillingPortalMapper']>;
   };
   CreateBillingPortalMapper: {
+    /** Pure configured validation before any provider creation effects. */
+    validateCreate?: (dto: Dto['CreateBillingPortalMapper']) => Promise<void>;
     entity: Entities['CreateBillingPortalMapper'];
     toEntity: (
       dto: Dto['CreateBillingPortalMapper'],

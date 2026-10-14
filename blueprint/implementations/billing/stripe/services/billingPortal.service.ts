@@ -78,6 +78,8 @@ export class StripeBillingPortalService<
     billingPortalDto: StripeCreateBillingPortalDto,
     ...args: unknown[]
   ): Promise<Dto['BillingPortalMapper']> {
+    await this.mappers.CreateBillingPortalMapper.validateCreate?.(billingPortalDto);
+
     const session = await this.stripeClient.billingPortal.sessions.create({
       ...billingPortalDto.stripeFields,
       customer: billingPortalDto.customerId

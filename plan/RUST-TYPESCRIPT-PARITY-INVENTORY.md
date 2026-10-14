@@ -7274,3 +7274,18 @@ tests plus public-only rejection pass inside the91-test IAM suite and strict
 Clippy noted above. This adds no HTTP route or client-controlled signing authority.
 Legacy missing-algorithm inheritance, algorithm-only provisioning, resolved-key
 input and external-signer pin metadata remain separate, unclaimed behavior.
+
+
+## Configured billing creation preflight batch (2026-10-14)
+
+Subscription, checkout, portal and payment-link configured mappers now expose an
+optional pure validateCreate hook invoked before provider POST. It checks the
+actual configured schema and its coercions while omitting only fields replaced
+by the service. Nullish payment-link amounts remain provider-derived; supplied
+amounts are validated. Custom mapper fallback, provider options, backup/cache
+behavior, overwritten caller fields and input immutability are retained.52 actual
+source cases,353 configured regressions, permanent12-root strict typecheck with
+zero diagnostics and170 legacy comparisons pass:
+/private/tmp/fl-billing-creation-{preflight,configured,preflight-types,legacy170}.log.
+CI runs the new source fixture. Provider/local atomicity, arbitrary SDK models and
+tenant ownership are not claimed by this pure input-validation slice.

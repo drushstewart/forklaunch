@@ -25,6 +25,8 @@ export type StripePaymentLinkMappers<
     ) => Promise<Dto['PaymentLinkMapper']>;
   };
   CreatePaymentLinkMapper: {
+    /** Pure configured validation before any provider creation effects. */
+    validateCreate?: (dto: Dto['CreatePaymentLinkMapper']) => Promise<void>;
     entity: Entities['CreatePaymentLinkMapper'];
     toEntity: (
       dto: Dto['CreatePaymentLinkMapper'],

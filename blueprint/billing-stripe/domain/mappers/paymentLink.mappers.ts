@@ -6,7 +6,7 @@ import { PaymentLink } from '../../persistence/entities/paymentLink.entity';
 import { StatusEnum } from '../enum/status.enum';
 import { PaymentLinkSchemas } from '../schemas';
 
-export const CreatePaymentLinkMapper = requestMapper({
+const CreatePaymentLinkEntityMapper = requestMapper({
   schemaValidator,
   schema: PaymentLinkSchemas.CreatePaymentLinkSchema(StatusEnum),
   entity: PaymentLink,
@@ -156,6 +156,25 @@ export const UpdatePaymentLinkMapper = {
     );
     if (!patch.ok) {
       throw new Error('Invalid cached payment link update');
+    }
+  }
+};
+
+export const CreatePaymentLinkMapper = {
+  ...CreatePaymentLinkEntityMapper,
+  validateCreate: async (
+    dto: Parameters<typeof CreatePaymentLinkEntityMapper.toEntity>[0]
+  ) => {
+    // The service derives a nullish amount and replaces the id from Stripe.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, amount, ...inputSchema } =
+      PaymentLinkSchemas.CreatePaymentLinkSchema(StatusEnum);
+    const input = schemaValidator.parse(
+      schemaValidator.schemify({ ...inputSchema, ...(dto.amount == null ? {} : { amount }) }),
+      dto
+    );
+    if (!input.ok) {
+      throw new Error('Invalid paymentLink creation');
     }
   }
 };

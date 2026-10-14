@@ -5,7 +5,7 @@ import Stripe from 'stripe';
 import { BillingPortal } from '../../persistence/entities/billingPortal.entity';
 import { BillingPortalSchemas } from '../schemas';
 
-export const CreateBillingPortalMapper = requestMapper({
+const CreateBillingPortalEntityMapper = requestMapper({
   schemaValidator,
   schema: BillingPortalSchemas.CreateBillingPortalSchema,
   entity: BillingPortal,
@@ -125,5 +125,24 @@ export const UpdateBillingPortalMapper = {
       throw new Error('Invalid cached billing portal response');
     }
     return updated;
+  }
+};
+
+export const CreateBillingPortalMapper = {
+  ...CreateBillingPortalEntityMapper,
+  validateCreate: async (
+    dto: Parameters<typeof CreateBillingPortalEntityMapper.toEntity>[0]
+  ) => {
+    // The service replaces these fields with provider or server-generated values.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, uri, expiresAt, ...inputSchema } =
+      BillingPortalSchemas.CreateBillingPortalSchema;
+    const input = schemaValidator.parse(
+      schemaValidator.schemify(inputSchema),
+      dto
+    );
+    if (!input.ok) {
+      throw new Error('Invalid billingPortal creation');
+    }
   }
 };

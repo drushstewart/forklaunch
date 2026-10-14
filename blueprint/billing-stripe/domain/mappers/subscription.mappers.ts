@@ -6,7 +6,7 @@ import { Subscription } from '../../persistence/entities/subscription.entity';
 import { PartyEnum } from '../enum/party.enum';
 import { SubscriptionSchemas } from '../schemas';
 
-export const CreateSubscriptionMapper = requestMapper({
+const CreateSubscriptionEntityMapper = requestMapper({
   schemaValidator,
   schema: SubscriptionSchemas.CreateSubscriptionSchema(PartyEnum),
   entity: Subscription,
@@ -102,6 +102,25 @@ export const UpdateSubscriptionMapper = {
     );
     if (!patch.ok) {
       throw new Error('Invalid subscription update');
+    }
+  }
+};
+
+export const CreateSubscriptionMapper = {
+  ...CreateSubscriptionEntityMapper,
+  validateCreate: async (
+    dto: Parameters<typeof CreateSubscriptionEntityMapper.toEntity>[0]
+  ) => {
+    // The service replaces these fields with provider or server-generated values.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { externalId, billingProvider, ...inputSchema } =
+      SubscriptionSchemas.CreateSubscriptionSchema(PartyEnum);
+    const input = schemaValidator.parse(
+      schemaValidator.schemify(inputSchema),
+      dto
+    );
+    if (!input.ok) {
+      throw new Error('Invalid subscription creation');
     }
   }
 };

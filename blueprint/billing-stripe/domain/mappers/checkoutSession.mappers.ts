@@ -6,7 +6,7 @@ import { CheckoutSession } from '../../persistence/entities/checkoutSession.enti
 import { StatusEnum } from '../enum/status.enum';
 import { CheckoutSessionSchemas } from '../schemas';
 
-export const CreateCheckoutSessionMapper = requestMapper({
+const CreateCheckoutSessionEntityMapper = requestMapper({
   schemaValidator,
   schema: CheckoutSessionSchemas.CreateCheckoutSessionSchema(StatusEnum),
   entity: CheckoutSession,
@@ -140,5 +140,24 @@ export const CheckoutSessionMapper = {
     // can assign a customer during the payment flow when none was supplied.
     // Keep the application's public UUID/customer relation unchanged.
     return { ...existing, stripeFields: session };
+  }
+};
+
+export const CreateCheckoutSessionMapper = {
+  ...CreateCheckoutSessionEntityMapper,
+  validateCreate: async (
+    dto: Parameters<typeof CreateCheckoutSessionEntityMapper.toEntity>[0]
+  ) => {
+    // The service replaces these fields with provider or server-generated values.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, uri, expiresAt, ...inputSchema } =
+      CheckoutSessionSchemas.CreateCheckoutSessionSchema(StatusEnum);
+    const input = schemaValidator.parse(
+      schemaValidator.schemify(inputSchema),
+      dto
+    );
+    if (!input.ok) {
+      throw new Error('Invalid checkoutSession creation');
+    }
   }
 };
