@@ -119,6 +119,10 @@ impl RequestValidators {
         Ok(Some(projected))
     }
 
+    pub(super) fn contains(&self, route: &RouteContract) -> bool {
+        self.entries.contains_key(&key(route))
+    }
+
     pub(super) fn validate_routes(&self, routes: &[RouteContract]) -> Result<(), String> {
         for (key, registration) in &self.entries {
             let matches: Vec<_> = routes

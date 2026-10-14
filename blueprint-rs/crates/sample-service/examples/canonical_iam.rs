@@ -1,4 +1,6 @@
 //! Live counterpart of cli/tests/fixtures/canonical-iam/service.ts.
+#[path = "support/canonical_defaults.rs"]
+mod canonical_defaults;
 #[path = "support/canonical_query.rs"]
 mod canonical_query;
 #[path = "support/canonical_response.rs"]
@@ -201,6 +203,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
         canonical_query::reject,
     )?;
+    for route in iam.registry().routes() {
+        let statuses: &[u16] = if route.path == "/users" {
+            &[404, 500]
+        } else {
+            &[500]
+        };
+        config.default_error_responses.insert(
+            route,
+            statuses,
+            1024,
+            std::time::Duration::from_secs(1),
+        )?;
+    }
+    let mut iam = iam;
+    for path in ["/users", "/users/:id"] {
+        iam = iam.map_route(path, |route| {
+            route.layer(axum::middleware::from_fn(
+                |request: axum::extract::Request, next: axum::middleware::Next| async move {
+                    if let Some(status) = request
+                        .headers()
+                        .get("x-default-status")
+                        .and_then(|value| value.to_str().ok())
+                        .and_then(|value| value.parse::<u16>().ok())
+                    {
+                        let kind = request
+                            .headers()
+                            .get("x-default-kind")
+                            .and_then(|value| value.to_str().ok())
+                            .unwrap_or("text");
+                        return canonical_defaults::wire(status, kind);
+                    }
+                    next.run(request).await
+                },
+            ))
+        })?;
+    }
     let count = Arc::clone(&query_calls);
     let iam = iam.map_route("/users", move |route| {
         let count = Arc::clone(&count);
@@ -225,7 +263,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/errors", errors)
         .nest("/parser", parser_router)
         .nest("/response", canonical_response::router())
-        .nest("/status", canonical_status::router());
+        .nest("/status", canonical_status::router())
+        .nest("/defaults", canonical_defaults::router());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     println!("READY http://{}", listener.local_addr()?);
     axum::serve(listener, assembled.into_router())

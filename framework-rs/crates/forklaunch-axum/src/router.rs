@@ -32,10 +32,10 @@ use forklaunch_contract::{
 };
 use forklaunch_core::{ServiceInfo, telemetry::OpenTelemetryCollector};
 use forklaunch_http::{
-    Body as FrameworkBody, ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse,
-    LocalRouter, ParserErrorFormat, RequestContext, ResponseStatusErrorFormat, match_path_checked,
-    typescript_parser_error_response, validate_framework_request, validation_error_response,
-    validation_error_response_with_parser_format,
+    Body as FrameworkBody, DefaultErrorResponses, ErrorKind, ErrorResponse, FrameworkRequest,
+    FrameworkResponse, LocalRouter, ParserErrorFormat, RequestContext, ResponseStatusErrorFormat,
+    match_path_checked, typescript_parser_error_response, validate_framework_request,
+    validation_error_response, validation_error_response_with_parser_format,
 };
 use forklaunch_openapi::{OpenApiOptions, OpenApiServer, generate_openapi_json_with_options};
 use opentelemetry::trace::FutureExt;
@@ -47,6 +47,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+mod default_errors;
 mod response_validation;
 pub use response_validation::ResponseValidators;
 mod request_validation;
@@ -84,6 +85,8 @@ pub struct RouterConfig {
     pub request_validators: RequestValidators,
     /// Opt-in bounded validators for finite response bodies.
     pub response_validators: ResponseValidators,
+    /// Selected missing default error-string responses with finite collection bounds.
+    pub default_error_responses: DefaultErrorResponses,
     /// Native callbacks run around each version's body schema validation.
     pub version_body_hooks: forklaunch_http::VersionBodyHooksRegistry,
     /// Optional server-side browser sessions and CSRF policy.
@@ -137,6 +140,7 @@ impl Default for RouterConfig {
             version_body_hooks: forklaunch_http::VersionBodyHooksRegistry::default(),
             request_validators: RequestValidators::default(),
             response_validators: ResponseValidators::default(),
+            default_error_responses: DefaultErrorResponses::default(),
             #[cfg(feature = "cookie-session")]
             cookie_sessions: None,
             openapi_enabled: true,
@@ -344,10 +348,16 @@ impl ForkLaunchRouter {
                         .get::<ResponseStatusErrorFormat>()
                         .copied()
                         .unwrap_or_default();
-                    match handlers.execute_with_error_formats(
+                    let default_errors = parts
+                        .extensions
+                        .get::<Arc<DefaultErrorResponses>>()
+                        .cloned()
+                        .unwrap_or_default();
+                    match handlers.execute_with_response_profiles(
                         request,
                         parser_format,
                         response_status_format,
+                        &default_errors,
                     ) {
                         Ok(response) => framework_response_to_axum(response),
                         Err(error) => {
@@ -408,11 +418,17 @@ impl ForkLaunchRouter {
     }
 
     fn refresh_rejection_contracts(&mut self) {
-        self.projected_registry = self
+        let request_registry = self
             .config
             .request_validators
             .project(&self.registry)
             .expect("invalid request validator response declaration");
+        self.projected_registry = self
+            .config
+            .default_error_responses
+            .project(request_registry.as_ref().unwrap_or(&self.registry))
+            .expect("invalid default error response declaration")
+            .or(request_registry);
     }
 
     /// Install native version body callbacks without replacing other router options.
@@ -534,6 +550,10 @@ impl ForkLaunchRouter {
         self.config
             .response_validators
             .extend(config.response_validators);
+        self.config
+            .default_error_responses
+            .extend(config.default_error_responses)
+            .expect("duplicate default error profile operation");
 
         for mut mount in internal_mounts {
             mount.prefix = join_base_path(&prefix, &mount.prefix);
@@ -613,8 +633,16 @@ impl ForkLaunchRouter {
 
     /// Borrows the effective registry, including explicit validator rejection
     /// declarations, for consistent contract, SDK and `OpenAPI` export.
+    /// # Panics
+    /// Panics if a default error profile lacks its original matching route.
     #[must_use]
-    pub const fn registry(&self) -> &ContractRegistry {
+    pub fn registry(&self) -> &ContractRegistry {
+        self.config
+            .default_error_responses
+            .validate_routes(self.registry.routes())
+            .expect("invalid default error profile export");
+        default_errors::validate_configuration(&self.config, self.registry.routes())
+            .expect("incompatible default error response profile");
         match &self.projected_registry {
             Some(registry) => registry,
             None => &self.registry,
@@ -893,6 +921,7 @@ fn docs_handler(html: String) -> MethodRouter {
 /// Indexed contracts used by the validation middleware.
 struct ValidationState {
     response_validators: ResponseValidators,
+    default_error_responses: Arc<DefaultErrorResponses>,
     request_validators: RequestValidators,
     routes: HashMap<String, RouteContract>,
     versions: HashMap<String, forklaunch_http::VersionedRoutePlan>,
@@ -953,6 +982,12 @@ impl ValidationState {
             .response_validators
             .validate_routes(declared_registry.routes())
             .expect("invalid response validator registration");
+        config
+            .default_error_responses
+            .validate_routes(declared_registry.routes())
+            .expect("invalid default error profile registration");
+        default_errors::validate_configuration(config, declared_registry.routes())
+            .expect("incompatible default error response profile");
         let hooks = &config.version_body_hooks;
         hooks
             .validate_routes(declared_registry.routes())
@@ -977,6 +1012,7 @@ impl ValidationState {
         Self {
             request_validators: config.request_validators.clone(),
             response_validators: config.response_validators.clone(),
+            default_error_responses: Arc::new(config.default_error_responses.clone()),
             routes,
             versions,
             local_validation,
@@ -1090,6 +1126,42 @@ async fn validate_contract(
         return next.run(request).await;
     };
 
+    let selected = [400, 401, 403, 404, 500].iter().any(|status| {
+        state
+            .default_error_responses
+            .limits(&contract, *status)
+            .is_some()
+    });
+    if !selected {
+        return validate_matched_contract(&state, contract, request, next).await;
+    }
+    let correlation_id = request
+        .headers()
+        .get("x-correlation-id")
+        .or_else(|| request.headers().get("x-request-id"))
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("forklaunch-request");
+    let context_request = FrameworkRequest::new(
+        method,
+        request.uri().path(),
+        RequestContext::new(correlation_id),
+    );
+    let response = validate_matched_contract(&state, contract.clone(), request, next).await;
+    default_errors::normalize(
+        &state.default_error_responses,
+        &contract,
+        &context_request,
+        response,
+    )
+    .await
+}
+
+async fn validate_matched_contract(
+    state: &Arc<ValidationState>,
+    contract: RouteContract,
+    request: Request,
+    next: Next,
+) -> Response {
     let (mut parts, body) = request.into_parts();
     let bytes = match to_bytes(body, state.body_limit).await {
         Ok(bytes) => bytes,
@@ -1105,7 +1177,7 @@ async fn validate_contract(
         || contract.access != AccessLevel::Public;
     if requires_auth {
         let authenticated =
-            authenticate_contract(&state, &contract, &parts, &framework_request).await;
+            authenticate_contract(state, &contract, &parts, &framework_request).await;
         let result = authenticated.and_then(|session| {
             if let Some(authorizer) = &state.authorizer {
                 authorizer(&session, &contract)?;
@@ -1144,7 +1216,7 @@ async fn validate_contract(
     {
         return framework_response_to_axum(response);
     }
-    execute_validated(&state, contract, parts, bytes, framework_request, next).await
+    execute_validated(state, contract, parts, bytes, framework_request, next).await
 }
 
 async fn execute_validated(
@@ -1160,6 +1232,9 @@ async fn execute_validated(
     parts.extensions.insert(state.handler_error_format);
     parts.extensions.insert(state.parser_error_format);
     parts.extensions.insert(state.response_status_error_format);
+    parts
+        .extensions
+        .insert(state.default_error_responses.clone());
     // LocalRouter owns selection and response validation for its handlers.
     // Authentication and the transport body limit still run above, but runtime
     // callbacks must execute exactly once and may change the selected schema.
@@ -1170,10 +1245,7 @@ async fn execute_validated(
         let response = next
             .run(Request::from_parts(parts, AxumBody::from(bytes)))
             .await;
-        return state
-            .response_validators
-            .validate(&contract, &framework_request, response)
-            .await;
+        return finish_response(state, &contract, &framework_request, response).await;
     }
     let version_plan = &state.versions[&route_key(contract.method, &contract.openapi_path)];
     let contract =
@@ -1197,15 +1269,38 @@ async fn execute_validated(
     let response = next
         .run(Request::from_parts(parts, AxumBody::from(bytes)))
         .await;
-    let response = validate_response_status(
-        &contract,
-        response,
-        &correlation_id,
-        state.response_status_error_format,
-    );
+    let response = if state
+        .default_error_responses
+        .limits(&contract, response.status().as_u16())
+        .is_some()
+    {
+        default_errors::normalize(
+            &state.default_error_responses,
+            &contract,
+            &framework_request,
+            response,
+        )
+        .await
+    } else {
+        validate_response_status(
+            &contract,
+            response,
+            &correlation_id,
+            state.response_status_error_format,
+        )
+    };
+    finish_response(state, &contract, &framework_request, response).await
+}
+
+async fn finish_response(
+    state: &ValidationState,
+    contract: &RouteContract,
+    request: &FrameworkRequest,
+    response: Response,
+) -> Response {
     state
         .response_validators
-        .validate(&contract, &framework_request, response)
+        .validate(contract, request, response)
         .await
 }
 

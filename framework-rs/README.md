@@ -208,6 +208,30 @@ This helper preserves the native validation envelope. Callers own their schema
 messages; it does not make native JSON Schema diagnostics equivalent to Zod or
 TypeBox.
 
+For finite, unversioned default-error responses, register selected missing
+statuses with `config.default_error_responses.insert(&route, &[404, 500],
+65536, Duration::from_secs(1))?`. The supported selections are 400, 401, 403,
+404 and 500. Registration rejects explicit response conflicts, duplicates,
+versioned routes and zero bounds. In response-validation Error mode, the
+profile accepts plain text, JSON-encoded strings and absent bodies; JSON
+strings become plain text. Other values receive redacted text diagnostics.
+Axum enforces byte/time bounds and normalizes selected statuses at the
+validation middleware boundary, including early failures and response callbacks.
+Configure the corresponding parser/auth error profiles as required; incompatible
+known combinations are rejected before export or serving. Direct `LocalRouter`
+execution uses `execute_with_response_profiles`; handler `Err` remains its
+separate result channel.
+
+The effective registry includes only active, selected declarations, so SDK and
+OpenAPI exports share the runtime profile. Resetting the configuration removes
+its contributions. `ForkLaunchRouter::registry()` now validates completed profile
+registrations and is no longer a `const fn`; callers using it from a const
+function must move that export to runtime. Selected zero-byte wire bodies are
+admitted as absent bodies: Axum cannot recover whether they originated as an
+empty byte buffer or an absent value. That boundary differs from TypeScript's
+original-value validation. Versioned and streaming default-error responses
+remain outside this finite profile.
+
 `RouterConfig::with_authorizer` replaces native RBAC with an application-owned
 callback over the verified session and declared contract. Authentication still
 runs first. Async grant resolution belongs in `with_authenticator`; the returned

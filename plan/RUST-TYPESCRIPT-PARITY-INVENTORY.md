@@ -5692,3 +5692,33 @@ with unchanged contract snapshots. Schema/mapper receipt:
 `/private/tmp/fl-portal-options-schema.log`.
 Other create-option schemas and provider identity/reconciliation remain open.
 Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13: bounded default error strings and canonical OpenAPI agreement
+
+`DefaultErrorResponses` registers selected missing 400/401/403/404/500 statuses
+for unversioned routes, with positive byte/time limits and explicit-declaration
+conflict checks. Error-mode runtime admission and effective registry projection
+share the same selections. Finite text, serialized JSON strings and absent
+bodies are admitted; invalid values and collection failures produce redacted
+text. Selected responses normalize at Axum's matched middleware boundary,
+covering early failures and response callbacks. Parser/auth profile checks reject
+known incompatible combinations. Explicit declarations, callback header checks,
+nesting and configuration reset are covered.
+
+The canonical comparison passes 366 live TS/Rust outcomes, including 182 added
+default-error comparisons and 42 on documented IAM paths. Only after those
+checks passed were the final three normalized OpenAPI differences removed.
+Successful responses, parameter and auth schemas are unchanged. Native suites
+pass 76 Axum and 43 HTTP tests, with focused early-return regressions and strict
+MCP-enabled Clippy. Receipts: `/private/tmp/fl-default-errors-{tests,clippy,canonical,canonical-update,review-tests,core-review}.log`.
+The framework README documents usage and the source API
+change: `ForkLaunchRouter::registry()` now validates profiles and is no longer
+a const function.
+
+This proves agreement for the canonical IAM fixture. Gate 209 still requires
+broader HTTP/AsyncAPI artifact coverage; gate 806 still includes native schema
+diagnostics, router/extractor origins and versioned default-error behavior.
+Zero-byte transport bodies cannot preserve TypeScript's original distinction
+between absent values and empty buffers; direct LocalRouter handler errors
+remain its separate `Err` result channel. Checklist: **660/682 (96.8%), 22 open**.

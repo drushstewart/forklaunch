@@ -167,6 +167,26 @@
               }
             },
             "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/String"
+                }
+              }
+            },
+            "description": "Response"
+          },
+          "500": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/String"
+                }
+              }
+            },
+            "description": "Response"
           }
         },
         "security": [
@@ -235,6 +255,16 @@
             "description": "Forbidden"
           },
           "404": {
+            "description": "Response"
+          },
+          "500": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/String"
+                }
+              }
+            },
             "description": "Response"
           }
         },

@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod default_errors;
+pub use default_errors::DefaultErrorResponses;
 pub mod sse;
 pub mod versioning;
 pub use versioning::{
@@ -537,9 +539,28 @@ impl LocalRouter {
     /// Returns an error when the matched handler fails before producing a response.
     pub fn execute_with_error_formats(
         &self,
+        request: FrameworkRequest,
+        parser_error_format: ParserErrorFormat,
+        response_status_error_format: ResponseStatusErrorFormat,
+    ) -> FrameworkResult<FrameworkResponse> {
+        self.execute_with_response_profiles(
+            request,
+            parser_error_format,
+            response_status_error_format,
+            &DefaultErrorResponses::default(),
+        )
+    }
+
+    /// Execute with selected finite default error responses in addition to error profiles.
+    /// Registrations must match the original local route contracts.
+    /// # Errors
+    /// Returns an error if the handler fails or profile registrations are stale.
+    pub fn execute_with_response_profiles(
+        &self,
         mut request: FrameworkRequest,
         parser_error_format: ParserErrorFormat,
         response_status_error_format: ResponseStatusErrorFormat,
+        default_error_responses: &DefaultErrorResponses,
     ) -> FrameworkResult<FrameworkResponse> {
         let explicit_head = request.method == HttpMethod::Head
             && self.routes.iter().any(|route| {
@@ -561,13 +582,18 @@ impl LocalRouter {
             let params = match match_path_checked(&route.contract.path, &request.path) {
                 Ok(params) => params,
                 Err(error) => {
-                    return Ok(validation_error_response(
-                        &[error],
+                    return Ok(normalize_local_error(
+                        default_error_responses,
+                        &route.contract,
+                        validation_error_response(&[error], &request.context.correlation_id),
                         &request.context.correlation_id,
                     ));
                 }
             };
             if let Some(params) = params {
+                default_error_responses
+                    .validate_execution(&route.contract, parser_error_format)
+                    .map_err(|message| FrameworkError::new("invalid_response_profile", message))?;
                 request.params = params;
                 normalize_framework_request_body(&route.contract, &mut request);
                 let selected = route.versions.select(&request);
@@ -580,35 +606,41 @@ impl LocalRouter {
                         if route.contract.options.request_validation == ValidationMode::Error
                             || errors.iter().any(ContractValidationError::is_parser_error) =>
                     {
-                        return Ok(validation_error_response_with_parser_format(
-                            &errors,
+                        return Ok(normalize_local_error(
+                            default_error_responses,
+                            &route.contract,
+                            validation_error_response_with_parser_format(
+                                &errors,
+                                &request.context.correlation_id,
+                                parser_error_format,
+                            ),
                             &request.context.correlation_id,
-                            parser_error_format,
                         ));
                     }
                     Ok(None) | Err(_) => route.contract.clone(),
                 };
                 let request_errors = validate_framework_request(&contract, &request);
                 if !request_errors.is_empty() {
-                    return Ok(validation_error_response(
-                        &request_errors,
+                    return Ok(normalize_local_error(
+                        default_error_responses,
+                        &contract,
+                        validation_error_response(&request_errors, &request.context.correlation_id),
                         &request.context.correlation_id,
                     ));
                 }
                 let correlation_id = request.context.correlation_id.clone();
                 let head = request.method == HttpMethod::Head;
-                let mut response = route.handler.call(request)?;
-                let response_errors = validate_framework_response(&contract, &response);
-                if !response_errors.is_empty() {
-                    return Ok(match response_status_error_format {
-                        ResponseStatusErrorFormat::Json => {
-                            validation_error_response(&response_errors, &correlation_id)
-                        }
-                        ResponseStatusErrorFormat::TypeScriptText => {
-                            typescript_parser_error_response(response.status_code, &correlation_id)
-                        }
-                    });
-                }
+                let response = route.handler.call(request)?;
+                let mut response = match validate_local_response(
+                    &contract,
+                    response,
+                    &correlation_id,
+                    response_status_error_format,
+                    default_error_responses,
+                ) {
+                    Ok(response) => response,
+                    Err(response) => return Ok(response),
+                };
                 if head {
                     response.body = Body::Empty;
                 }
@@ -620,6 +652,53 @@ impl LocalRouter {
             .with_correlation_id(request.context.correlation_id)
             .to_response())
     }
+}
+
+fn normalize_local_error(
+    profiles: &DefaultErrorResponses,
+    contract: &RouteContract,
+    response: FrameworkResponse,
+    correlation_id: &str,
+) -> FrameworkResponse {
+    if profiles.limits(contract, response.status_code).is_some()
+        && response
+            .headers
+            .get("content-type")
+            .is_some_and(|media| media == "application/json")
+    {
+        return typescript_parser_error_response(response.status_code, correlation_id);
+    }
+    match profiles.normalize(contract, response, correlation_id) {
+        Ok(response) | Err(response) => response,
+    }
+}
+
+fn validate_local_response(
+    contract: &RouteContract,
+    response: FrameworkResponse,
+    correlation_id: &str,
+    format: ResponseStatusErrorFormat,
+    profiles: &DefaultErrorResponses,
+) -> Result<FrameworkResponse, FrameworkResponse> {
+    let response = profiles.normalize(contract, response, correlation_id)?;
+    if profiles.limits(contract, response.status_code).is_some() {
+        return Ok(response);
+    }
+    let errors = validate_framework_response(contract, &response);
+    if errors.is_empty() {
+        return Ok(response);
+    }
+    Err(normalize_local_error(
+        profiles,
+        contract,
+        match format {
+            ResponseStatusErrorFormat::Json => validation_error_response(&errors, correlation_id),
+            ResponseStatusErrorFormat::TypeScriptText => {
+                typescript_parser_error_response(response.status_code, correlation_id)
+            }
+        },
+        correlation_id,
+    ))
 }
 
 #[must_use]

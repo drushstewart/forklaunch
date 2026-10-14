@@ -11,10 +11,18 @@ const users = [
 const user = {id:string,email:string,display_name:optional(union([string,null_])),disabled:boolean,roles:array(string)};
 const auth = {jwt:{signatureKey:'test-only-signing-key'}};
 const app = forklaunchExpress(SchemaValidator(), new OpenTelemetryCollector('canonical-iam','silent'), {mcp:false,json:{limit:'64b',verify(req){if(req.headers['x-deny']==='yes')throw new Error('PRIVATE_VERIFIER_DETAIL');}}});
+function defaultResponse(res:any,status:number,kind:string){
+ res.status(status);
+ if(kind==='jsonstring')res.json('value');else if(kind==='object')res.json({secret:'PRIVATE'});else if(kind==='number')res.json(42);else if(kind==='binary')res.send(Buffer.from('PRIVATE'));else if(kind==='empty')res.send();else res.send(kind==='emptytext'?'':'value');
+}
+for(const adapter of ['axum','local'])app.get('/defaults/'+adapter+'/:status/:kind',{
+ name:'Defaults '+adapter,summary:'Defaults',options:{openapi:false},params:{status:string,kind:string},responses:{200:string}
+},(req,res)=>defaultResponse(res,Number(req.params.status),req.params.kind));
 app.get('/users/:id', {
   name:'Get User',summary:'Get a user by id',access:'authenticated',auth,
   params:{id:string},responses:{200:user,404:undefined_}
 }, (req,res)=>{
+  if(req.headers['x-default-status']){defaultResponse(res,Number(req.headers['x-default-status']),String(req.headers['x-default-kind']??'text'));return;}
   const found=users.find(user=>user.id===req.params.id);
   if(found) res.status(200).json(found); else res.status(404).send();
 });
@@ -31,7 +39,7 @@ app.get('/users', {
   name:'List Users',summary:'List users',access:'authenticated',auth,
   query:{limit:optional(z.coerce.number().int()),cursor:optional(string)},
   responses:{200:{items:array(user),next_cursor:optional(union([string,null_]))}}
-}, (_req,res)=>{queryCalls++;res.status(200).json({items:users,next_cursor:null});});
+}, (req,res)=>{queryCalls++;if(req.headers['x-default-status']){defaultResponse(res,Number(req.headers['x-default-status']),String(req.headers['x-default-kind']??'text'));return;}res.status(200).json({items:users,next_cursor:null});});
 app.get('/query/calls',{name:'Query Calls',summary:'Calls',options:{openapi:false},responses:{200:z.number()}},(_req,res)=>res.status(200).json(queryCalls));
 app.get('/errors/throw', {
  name:'Failure',summary:'Failure',options:{openapi:false},responses:{500:string}

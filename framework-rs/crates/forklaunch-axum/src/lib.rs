@@ -35,7 +35,9 @@ pub use router::{
     RequestValidators, ResponseValidators, RouterConfig,
 };
 
-pub use forklaunch_http::{ParserErrorFormat, RequestContext, ResponseStatusErrorFormat};
+pub use forklaunch_http::{
+    DefaultErrorResponses, ParserErrorFormat, RequestContext, ResponseStatusErrorFormat,
+};
 
 use forklaunch_http::{
     Body, ContractValidationError, FrameworkRequest, FrameworkResponse, Headers, HttpApplication,

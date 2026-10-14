@@ -221,6 +221,27 @@ try{
   assert.equal(wire[0].text,['valid','declared'].includes(mode)?'accepted':`${mode==='client'?'Request could not be processed':'Internal server error'}:\n\nCorrelation id: status-fixture`);
  }
  console.log('PASS 32 live undocumented-status/profile outcomes including repeated redacted418/503 and declared500 preservation');
+ let defaultOutcomes=0;
+ const defaultKinds=['text','jsonstring','object','number','binary','empty','emptytext'];
+ for(const adapter of ['axum','local'])for(const status of [400,401,403,404,500])for(const kind of defaultKinds){
+  const wire=[];
+  for(const url of [ts,rust]){
+   const response=await fetch(`${url}/defaults/${adapter}/${status}/${kind}`,{headers:{'x-correlation-id':'default-fixture'}});
+   wire.push({status:response.status,type:response.headers.get('content-type'),body:await response.text()});defaultOutcomes++;
+  }
+  assert.deepEqual(wire[1],wire[0],`default error ${adapter}/${status}/${kind}`);
+  assert.equal(wire[0].status,['object','number','binary'].includes(kind)?500:status);
+  assert.ok(!wire[0].body.includes('PRIVATE'));
+ }
+ for(const [path,status] of [['/users',404],['/users',500],['/users/user_1',500]])for(const kind of defaultKinds){
+  const wire=[];
+  for(const url of [ts,rust]){
+   const response=await fetch(url+path,{headers:{authorization:`Bearer ${token}`,'x-correlation-id':'default-fixture','x-default-status':String(status),'x-default-kind':kind}});
+   wire.push({status:response.status,type:response.headers.get('content-type'),body:await response.text()});defaultOutcomes++;
+  }
+  assert.deepEqual(wire[1],wire[0],`documented default ${path}/${status}/${kind}`);
+ }
+ console.log(`PASS ${defaultOutcomes} live selected default error-string outcomes, including actual documented routes`);
  const normalized=[];
  for(const [url,path] of [[ts,'/api/openapi'],[rust,'/openapi.json']]){
   const response=await fetch(url+path,{signal:AbortSignal.timeout(5000)});assert.equal(response.status,200);
