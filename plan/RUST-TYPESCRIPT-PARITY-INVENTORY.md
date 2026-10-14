@@ -6949,8 +6949,11 @@ all-feature/all-target Clippy passes:
 /private/tmp/fl-jwks-repository-{ts,native,clippy}.log. The oracle is wired into CI.
 
 The exact validated all-feature binary is copied for an independent direct run
-of both ignored PostgreSQL cases, currently pending. Its SHA256 is
+of both ignored PostgreSQL cases, both PASS in271.77seconds. Its SHA256 is
 fb31b75a53d411b56d9f98b3f6860d9da7dd34ca1c739552ecab51a3e15d0875;
 metadata /private/tmp/fl-jwks-repository-pg-binary.json and run log
-/private/tmp/fl-jwks-repository-pg-run.log will retain the final result. Later
-source work cannot change this copied binary.
+/private/tmp/fl-jwks-repository-pg-run.log retain the final result. Encryption,
+RLS, rotation, audit atomicity,32k indexed lookups and live HTTP/MCP sessions pass.
+Restricted fixture roles are absent; matching records/audits/unique/lookup claims
+are all zero (/private/tmp/fl-jwks-repository-pg-cleanup.log). The copied binary
+was hash-verified again and removed; later source work is outside this receipt.
