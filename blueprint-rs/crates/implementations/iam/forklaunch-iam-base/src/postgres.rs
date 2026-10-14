@@ -4,6 +4,7 @@
 //! role without SUPERUSER/BYPASSRLS privileges. Bind a store to the authenticated
 //! tenant for each request. `Argon2` work runs outside the async executor.
 mod async_service;
+mod directory_identities;
 mod provider_identities;
 
 use super::credentials::{hash_password, verify_password};

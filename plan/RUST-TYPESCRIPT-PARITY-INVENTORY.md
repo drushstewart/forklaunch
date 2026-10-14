@@ -5039,3 +5039,34 @@ Completed generated mixed-development applications in runs 4t05u9pg, v8f0ns32,
 xb4uz99y and 3r582t9d were removed after checking their committed pass receipts
 and absence of owned running processes/Compose resources. Their runtime logs
 remain in the original run directories. Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Explicit directory and credential identity association
+
+Base IAM now supports authorized one-to-one associations between existing
+tenant-local directory users and credential/provider users. Migration0006 adds
+composite foreign keys and forced RLS. The new administrative bind/unbind/exact-
+pair deletion methods require a nonblank actor and commit directory audits with
+their mutations. Matching email, profile fields, directory passwords, organization
+and grants never create or populate a link. Ordinary directory deletion is
+restricted while linked; coordinated deletion removes the credential user, all
+persisted sessions/provider bindings and the directory row in one transaction.
+Unlinking alone preserves the independent credential account and sessions. Legacy
+auth-user deletion cascades associations with its existing unaudited semantics.
+
+The resolver hashes the complete issued opaque or RS256 token and joins a current
+persisted session, enabled user and existing tenant-local association. Arbitrary
+user/session IDs, foreign tenants, altered JWTs and expired/revoked sessions fail.
+The result is an identity association; callers still authorize directory operations
+and resolve current grants. Native/generated READMEs describe explicit integration
+and the additional bridge-table runtime grant. Default HTTP/MCP routes are unchanged.
+
+Restricted PostgreSQL checks cover audit denial rollback, absent/blank actor,
+competing bindings, bind/delete and login/coordinated-delete races, restart,
+revocation/expiry, SQL tenant isolation and old runtime grants. Existing directory
+and auth PostgreSQL regressions, strict all-feature/all-target Clippy, 44 actual
+TypeScript/native operations, 33 route contracts, 22 schemas and five generic
+compliance operations pass. CI includes the new ignored database fixture. Evidence:
+`/private/tmp/fl-iam-directory-identity-{pg,existing-pg,auth-pg,clippy,ts}.log`.
+Higher-level directory authorization and generic mapper/filter extensions keep
+gate603 open. Checklist remains **660/682 (96.8%), 22 open**.

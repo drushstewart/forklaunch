@@ -543,3 +543,17 @@ callbacks are synchronous and should not block; panics are caught to preserve
 HTTP behavior, but existing application panic hooks still execute. Default tracing
 uses the same sanitized event. This observes handled 5xx responses as well as
 unexpected failures, unlike the upstream unexpected-error-only hook.
+
+
+Base IAM directory identity association review (2026-10-13): explicit administrative
+bind/unbind/coordinated-delete methods require a trusted nonblank actor, tenant-
+bound store and correlation ID. One-to-one composite foreign keys and forced RLS
+prevent cross-tenant associations; no email/password/provider-claim autolinking
+or grant copying occurs. Directory/auth/session/provider deletion and new admin
+audits roll back together on failure. Ordinary directory deletion fails while
+bound. Legacy credential-user deletion still cascades its association using its
+existing unaudited API semantics; this change does not claim to add actor auditing
+to that old entry point. Complete persisted token hashes, session expiry and user
+disabled status gate association resolution; resolving a directory ID grants no
+directory authorization itself. Restricted-role concurrency, rollback, stale-token
+and unchanged-old-grants checks pass.

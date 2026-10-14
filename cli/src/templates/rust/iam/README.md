@@ -94,3 +94,5 @@ expires within ten minutes and is atomically consumed before provider exchange.
 A newer start replaces the prior pending flow for that browser. Pending flows
 survive process restarts; removing the cookie row also removes its pending flow.
 A rejected or interrupted exchange requires starting again.
+
+Directory and login identities can be associated explicitly through the administrative `PostgresDirectoryStore::{bind_auth_identity,unbind_auth_identity,delete_linked_identity}` APIs. These require a trusted nonblank audit actor, never infer links from email/password/provider claims, and do not change default CRUD linking behavior. Grant the restricted runtime role SELECT/INSERT/UPDATE/DELETE on `fl_iam_directory_identities` when using them. `PostgresIamService::directory_user_for_session` resolves only complete, current persisted session tokens. See the embedded [base IAM identity integration guide](../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-base/README.md) for atomic deletion, unlink semantics and migration details.
