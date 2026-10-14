@@ -138,6 +138,33 @@ export class BaseBillingPortalService<
     }
     const existingBillingPortalDto = cachedSessionDto(existingBillingPortal);
 
+    // Configured cache mappers update the DTO directly. Custom mappers without
+    // this optional hook retain their existing entity mapping behavior.
+    if (
+      !this.enableDatabaseBackup &&
+      this.mappers.UpdateBillingPortalMapper.toCachedDto
+    ) {
+      const updated = await this.mappers.UpdateBillingPortalMapper.toCachedDto(
+        billingPortalDto,
+        existingBillingPortalDto,
+        args[0] instanceof EntityManager ? args[0] : this.em,
+        ...(args[0] instanceof EntityManager ? args.slice(1) : args)
+      );
+      if (
+        updated.id !== existingBillingPortalDto.id ||
+        updated.customerId !== existingBillingPortalDto.customerId
+      ) {
+        throw new Error('Cached session identity cannot change');
+      }
+      const updatedBillingPortalDto = cachedSessionDto(updated);
+      await this.cache.putRecord({
+        key: this.createCacheKey(updatedBillingPortalDto.id),
+        value: updatedBillingPortalDto,
+        ttlMilliseconds: this.cache.getTtlMilliseconds()
+      });
+      return updatedBillingPortalDto;
+    }
+
     const billingPortal = await this.mappers.UpdateBillingPortalMapper.toEntity(
       billingPortalDto,
       args[0] instanceof EntityManager ? args[0] : this.em,

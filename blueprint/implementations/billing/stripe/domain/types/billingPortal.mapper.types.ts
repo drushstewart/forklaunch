@@ -24,6 +24,14 @@ export type StripeBillingPortalMappers<
   };
   UpdateBillingPortalMapper: {
     entity: Entities['UpdateBillingPortalMapper'];
+    /** Cache-only DTO update; preserve session/customer identities. */
+    toCachedDto?: (
+      dto: Dto['UpdateBillingPortalMapper'],
+      existing: Dto['BillingPortalMapper'],
+      em: EntityManager,
+      stripeSession: Stripe.BillingPortal.Session,
+      ...args: unknown[]
+    ) => Promise<Dto['BillingPortalMapper']>;
     toEntity: (
       dto: Dto['UpdateBillingPortalMapper'],
       em: EntityManager,

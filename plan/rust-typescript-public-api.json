@@ -1053,7 +1053,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/base/domain/types/billingPortal.mapper.types.ts",
               "line": 5,
-              "type": "{\n  BillingPortalMapper: {\n    entity: MapperEntities['BillingPortalMapper'];\n    toDto: (\n      entity: InferEntity<MapperEntities['BillingPortalMapper']>\n    ) => Promise<MapperDomains['BillingPortalMapper']>;\n  };\n  CreateBillingPortalMapper: {\n    entity: MapperEntities['CreateBillingPortalMapper'];\n    toEntity: (\n      dto: MapperDomains['CreateBillingPortalMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['CreateBillingPortalMapper']>>;\n  };\n  UpdateBillingPortalMapper: {\n    entity: MapperEntities['UpdateBillingPortalMapper'];\n    toEntity: (\n      dto: MapperDomains['UpdateBillingPortalMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['UpdateBillingPortalMapper']>>;\n  };\n}"
+              "type": "{\n  BillingPortalMapper: {\n    entity: MapperEntities['BillingPortalMapper'];\n    toDto: (\n      entity: InferEntity<MapperEntities['BillingPortalMapper']>\n    ) => Promise<MapperDomains['BillingPortalMapper']>;\n  };\n  CreateBillingPortalMapper: {\n    entity: MapperEntities['CreateBillingPortalMapper'];\n    toEntity: (\n      dto: MapperDomains['CreateBillingPortalMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['CreateBillingPortalMapper']>>;\n  };\n  UpdateBillingPortalMapper: {\n    entity: MapperEntities['UpdateBillingPortalMapper'];\n    /** Cache-only DTO update; preserve session/customer identities. */\n    toCachedDto?: (\n      dto: MapperDomains['UpdateBillingPortalMapper'],\n      existing: MapperDomains['BillingPortalMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<MapperDomains['BillingPortalMapper']>;\n    toEntity: (\n      dto: MapperDomains['UpdateBillingPortalMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<InferEntity<MapperEntities['UpdateBillingPortalMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -1209,7 +1209,7 @@
                   "name": "expireBillingPortalSession",
                   "signature": "async expireBillingPortalSession(idDto: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/base/services/billingPortal.service.ts",
-                  "line": 165
+                  "line": 192
                 }
               ]
             }
@@ -2261,7 +2261,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/billingPortal.mapper.types.ts",
               "line": 6,
-              "type": "{\n  BillingPortalMapper: {\n    entity: Entities['BillingPortalMapper'];\n    toDto: (\n      entity: InferEntity<Entities['BillingPortalMapper']>\n    ) => Promise<Dto['BillingPortalMapper']>;\n  };\n  CreateBillingPortalMapper: {\n    entity: Entities['CreateBillingPortalMapper'];\n    toEntity: (\n      dto: Dto['CreateBillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateBillingPortalMapper']>>;\n  };\n  UpdateBillingPortalMapper: {\n    entity: Entities['UpdateBillingPortalMapper'];\n    toEntity: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateBillingPortalMapper']>>;\n  };\n}"
+              "type": "{\n  BillingPortalMapper: {\n    entity: Entities['BillingPortalMapper'];\n    toDto: (\n      entity: InferEntity<Entities['BillingPortalMapper']>\n    ) => Promise<Dto['BillingPortalMapper']>;\n  };\n  CreateBillingPortalMapper: {\n    entity: Entities['CreateBillingPortalMapper'];\n    toEntity: (\n      dto: Dto['CreateBillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreateBillingPortalMapper']>>;\n  };\n  UpdateBillingPortalMapper: {\n    entity: Entities['UpdateBillingPortalMapper'];\n    /** Cache-only DTO update; preserve session/customer identities. */\n    toCachedDto?: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      existing: Dto['BillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<Dto['BillingPortalMapper']>;\n    toEntity: (\n      dto: Dto['UpdateBillingPortalMapper'],\n      em: EntityManager,\n      stripeSession: Stripe.BillingPortal.Session,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdateBillingPortalMapper']>>;\n  };\n}"
             }
           ]
         },

@@ -25,7 +25,7 @@ export const CreateBillingPortalMapper = requestMapper({
   }
 });
 
-export const UpdateBillingPortalMapper = requestMapper({
+const UpdateBillingPortalEntityMapper = requestMapper({
   schemaValidator,
   schema: BillingPortalSchemas.UpdateBillingPortalSchema,
   entity: BillingPortal,
@@ -62,3 +62,42 @@ export const BillingPortalMapper = responseMapper({
     }
   }
 });
+
+export const UpdateBillingPortalMapper = {
+  ...UpdateBillingPortalEntityMapper,
+  toCachedDto: async (
+    dto: Parameters<typeof UpdateBillingPortalEntityMapper.toEntity>[0],
+    existing: Awaited<ReturnType<typeof BillingPortalMapper.toDto>>,
+    _em: EntityManager,
+    providerFields: Stripe.BillingPortal.Session
+  ) => {
+    const patch = schemaValidator.parse(
+      schemaValidator.schemify(BillingPortalSchemas.UpdateBillingPortalSchema),
+      dto
+    );
+    if (!patch.ok) {
+      throw new Error('Invalid cached billing portal update');
+    }
+    if (patch.value.id !== existing.id) {
+      throw new Error('Cached session identity cannot change');
+    }
+    const updated = {
+      ...existing,
+      id: patch.value.id,
+      ...(patch.value.uri === undefined ? {} : { uri: patch.value.uri }),
+      ...(patch.value.expiresAt === undefined
+        ? {}
+        : { expiresAt: patch.value.expiresAt }),
+      providerFields,
+      stripeFields: providerFields
+    };
+    const result = schemaValidator.parse(
+      schemaValidator.schemify(BillingPortalSchemas.BillingPortalSchema),
+      updated
+    );
+    if (!result.ok) {
+      throw new Error('Invalid cached billing portal response');
+    }
+    return updated;
+  }
+};

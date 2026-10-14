@@ -116,6 +116,14 @@ export class StripeBillingPortalService<
       await this.baseBillingPortalService.getBillingPortalSession({
         id: billingPortalDto.id
       });
+    if (
+      !this.options?.enableDatabaseBackup &&
+      this.mappers.UpdateBillingPortalMapper.toCachedDto &&
+      billingPortalDto.customerId !== undefined &&
+      billingPortalDto.customerId !== existingSession.customerId
+    ) {
+      throw new Error('Cached session identity cannot change');
+    }
     const session = await this.stripeClient.billingPortal.sessions.create({
       ...billingPortalDto.stripeFields,
       customer: billingPortalDto.customerId || existingSession.customerId

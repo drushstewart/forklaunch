@@ -5344,3 +5344,33 @@ Clippy pass. CI runs the new oracle. Logs:
 `/private/tmp/fl-date-coercion-{parity,tests-final,clippy-final}.log`.
 Broader runtime/schema validation remains open; checklist **660/682 (96.8%),
 22 open**.
+
+
+### 2026-10-13 — Configured cache-only portal updates
+
+Base/Stripe portal mapper contracts now allow an optional `toCachedDto` hook.
+With database backup disabled, the base service passes the normalized cached DTO,
+selected EntityManager and extra arguments directly to that hook and writes its
+validated result once. The configured application mappers implement this path
+without ORM allocation, lookup or mutation, using their actual request/response
+schemas. Session/customer identity remains fixed; declared dates are restored and
+Stripe provider payload aliases are updated together. The configured cache-only
+Stripe wrapper rejects customer reassignment before creating a provider session.
+Custom mappers without the optional hook and database-backup paths retain entity
+mapping. Custom hooks own their projections and must preserve identity.
+
+**249 configured-mapper cases** pass, including actual composed Stripe/base
+services, absence of a persisted entity, no ORM reads/writes, extra context and
+caller EntityManager propagation, provider replacement, immutable identities,
+invalid dates and unchanged cache on rejected mapping. **168 base** and **144
+Stripe service** TypeScript/Rust operation comparisons pass. Public API inventory
+is refreshed and checked. Logs: `/private/tmp/fl-billing-cache-update-{mappers,base,stripe-final,inventory}.log`.
+A full workspace TypeScript build was attempted but cannot resolve absent
+workspace dependency links; the available isolated compiler also predates the
+repository's TypeScript 7 config. These runtime/source fixtures do not claim a
+full workspace typecheck (`/private/tmp/fl-billing-cache-update-tsc.log`).
+
+Provider/local effects are still non-atomic, and generic/backup customer-update
+semantics remain separate from the configured cache-only profile. Remaining
+provider identity, reconciliation and validator work keeps the billing gates
+open. Checklist **660/682 (96.8%), 22 open**.

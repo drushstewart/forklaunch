@@ -10,12 +10,14 @@ const families=['plan','subscription','checkoutSession','paymentLink','billingPo
 let cases=0;
 for(const variant of ['base','stripe']){
  let actual;
+ class FixtureEntityManager {}
  const entities=new Map();
  actual=actualValidator(root,(spec,file,load)=>{
   if(spec==='@forklaunch/validator/zod')return actual.statics;
   if(spec==='@forklaunch/blueprint-core')return {schemaValidator:actual.validator};
   if(spec==='@forklaunch/core/http')return {evaluateTelemetryOptions:()=>({enabled:{}})};
   if(spec==='@forklaunch/core/cache')return {createCacheKey:prefix=>id=>prefix+':'+id};
+  if(spec==='@forklaunch/implementation-billing-base/services')return load(path.join(root,'blueprint/implementations/billing/base/services/billingPortal.service.ts'));
   if(spec==='@forklaunch/core/mappers')return {...load(path.join(root,'framework/core/src/mappers/mapper.ts')),...load(path.join(root,'framework/core/src/mappers/mapServiceSchemas.ts'))};
   if(spec==='@forklaunch/internal')return load(path.join(root,'framework/internal/src/serviceSchemaResolver.ts'));
   if(spec===`@forklaunch/implementation-billing-${variant}/schemas`)return load(path.join(root,`blueprint/implementations/billing/${variant}/domain/schemas/index.ts`));
@@ -26,7 +28,7 @@ for(const variant of ['base','stripe']){
    if(!entities.has(name))entities.set(name,{[exportName]:{name}});
    return entities.get(name);
   }
-  if(spec==='@mikro-orm/core')return {EntityManager:class {},wrap:entity=>({toPOJO:()=>({...entity})})};
+  if(spec==='@mikro-orm/core')return {EntityManager:FixtureEntityManager,wrap:entity=>({toPOJO:()=>({...entity})})};
  });
  const samples={
   plan:{name:'Configured plan',price:1200,cadence:variant==='base'?'MONTHLY':'month',currency:'USD',externalId:'prod_fixture',billingProvider:'stripe',active:true},
@@ -62,7 +64,7 @@ for(const variant of ['base','stripe']){
     const {safeStringify}=actual.load(path.join(root,'framework/common/src/safeStringify.ts'));
     const {safeParse}=actual.load(path.join(root,'framework/common/src/safeParse.ts'));
     const cacheRows=new Map(),cache={getTtlMilliseconds:()=>60000,async putRecord({key,value}){writes++;cacheRows.set(key,safeStringify(value));},async readRecord(key){return cacheRows.has(key)?{value:safeParse(cacheRows.get(key))}:null;}};
-    const readOnlyEm={create:em.create,persist(){persisted++;return {async flush(){}};},async findOneOrFail(){throw Error('cache read must not query a database entity');},assign(){throw Error('cache read must not mutate an entity');}};
+    const readOnlyEm=Object.assign(new FixtureEntityManager(),{create:em.create,persist(){persisted++;return {async flush(){}};},async findOneOrFail(){throw Error('cache read must not query a database entity');},assign(){throw Error('cache read must not mutate an entity');}});
     const service=new Service(readOnlyEm,cache,{},actual.validator,mappers,{enableDatabaseBackup});
     const provider={id:'provider_cache_fixture',url:'https://fixture.test/provider',opaqueTimestamp:'2026-01-01T00:00:00.000Z'};
     const created=await service[`create${suffix}`](samples[family],provider);
@@ -84,6 +86,38 @@ for(const variant of ['base','stripe']){
     }
     cacheRows.set(key,serialized);
     await assert.rejects(service[`get${suffix}`]({id:randomUUID()}));cases++;
+    if(family==='billingPortal'&&!enableDatabaseBackup){
+     records.clear(); // No persisted entity exists; readOnlyEm rejects ORM access.
+     const nextProvider={id:'provider_updated_cache',opaqueTimestamp:'2026-01-01T00:00:00Z'};
+     const nextExpiry=new Date('2026-12-02T00:00:00Z');
+     const updated=await service.updateBillingPortalSession({id:created.id,uri:'https://fixture.test/cache-update',expiresAt:nextExpiry,customerId:'must-not-reassign',...(variant==='base'?{providerFields:nextProvider}:{stripeFields:{id:'caller-must-not-replace-provider-response'}})},nextProvider);
+     assert.equal(updated.id,created.id);assert.equal(updated.customerId,created.customerId);assert.equal(updated.uri,'https://fixture.test/cache-update');assert.equal(updated.expiresAt.getTime(),nextExpiry.getTime());
+     assert.deepEqual(variant==='stripe'?updated.stripeFields:updated.providerFields,nextProvider);assert.deepEqual(updated.providerFields,nextProvider);assert.equal(writes,2);assert.equal(persisted,0);
+     assert.deepEqual(JSON.parse(JSON.stringify(await service.getBillingPortalSession({id:created.id}))),JSON.parse(JSON.stringify(updated)));cases++;
+     const overrideManager=new FixtureEntityManager(),extraContext={request:'context'},forwarded={...mappers,UpdateBillingPortalMapper:{...update,async toCachedDto(input,existing,manager,...args){assert.equal(manager,overrideManager);assert.deepEqual(args,[nextProvider,extraContext]);return update.toCachedDto(input,existing,manager,...args);}}};
+     const contextual=new Service(readOnlyEm,cache,{},actual.validator,forwarded);
+     await contextual.updateBillingPortalSession({id:created.id},overrideManager,nextProvider,extraContext);cases++;
+     assert.equal(writes,3);
+     if(variant==='stripe'){
+      let providerCalls=0;
+      const StripeService=actual.load(path.join(root,'blueprint/implementations/billing/stripe/services/billingPortal.service.ts')).StripeBillingPortalService;
+      const providerSession={id:'bps_replaced',customer:created.customerId,url:'https://fixture.test/replaced'};
+      const stripeService=new StripeService({billingPortal:{sessions:{async create(input){providerCalls++;assert.equal(input.customer,created.customerId);return providerSession;}}}},readOnlyEm,cache,{},actual.validator,mappers);
+      await assert.rejects(stripeService.updateBillingPortalSession({id:created.id,customerId:'foreign-customer'}),/identity cannot change/);assert.equal(providerCalls,0);cases++;
+      const replaced=await stripeService.updateBillingPortalSession({id:created.id,stripeFields:{return_url:'https://fixture.test/return'}});
+      assert.equal(providerCalls,1);assert.equal(replaced.id,created.id);assert.equal(replaced.customerId,created.customerId);assert.equal(replaced.uri,providerSession.url);assert.deepEqual(replaced.stripeFields,providerSession);assert.equal(persisted,0);cases++;
+      assert.equal(writes,4);
+     }
+     const before=cacheRows.get(key),beforeWrites=writes;
+     await assert.rejects(service.updateBillingPortalSession({id:created.id,expiresAt:'invalid'},nextProvider));
+     assert.equal(cacheRows.get(key),before);assert.equal(writes,beforeWrites);cases++;
+     for(const changed of [{id:randomUUID()},{customerId:'different-customer'}]){
+      const invalidMappers={...mappers,UpdateBillingPortalMapper:{...update,toCachedDto:async()=>({...updated,...changed})}};
+      const invalidService=new Service(readOnlyEm,cache,{},actual.validator,invalidMappers);
+      await assert.rejects(invalidService.updateBillingPortalSession({id:created.id}),/identity cannot change/);
+      assert.equal(cacheRows.get(key),before);assert.equal(writes,beforeWrites);cases++;
+     }
+    }
    }
   }
   if(family==='billingPortal'){
@@ -97,7 +131,7 @@ for(const variant of ['base','stripe']){
     let writes=0,persisted=0,updates=0,responses=0;
     const rows=new Map(),cache={getTtlMilliseconds:()=>60000,async putRecord({key,value}){writes++;rows.set(key,safeStringify(value));},async readRecord(key){return rows.has(key)?{value:safeParse(rows.get(key))}:null;}};
     const manager={...em,persist(){persisted++;return {async flush(){}};}};
-    const mapped={...mappers,UpdateBillingPortalMapper:{...update,async toEntity(...args){updates++;assert.equal(updates,1,'update mapper must run once');return update.toEntity(...args);}},BillingPortalMapper:{...read,async toDto(...args){responses++;return read.toDto(...args);}}};
+    const mapped={...mappers,UpdateBillingPortalMapper:{...update,toCachedDto:undefined,async toEntity(...args){updates++;assert.equal(updates,1,'update mapper must run once');return update.toEntity(...args);}},BillingPortalMapper:{...read,async toDto(...args){responses++;return read.toDto(...args);}}};
     const service=new Service(manager,cache,{},actual.validator,mapped,{enableDatabaseBackup});
     const created=await service.createBillingPortalSession(samples.billingPortal,{id:'old_provider'});
     updates=0;responses=0;persisted=0;writes=0;
@@ -114,6 +148,7 @@ for(const variant of ['base','stripe']){
     assert.equal(updates,0);assert.equal(responses,0);assert.equal(persisted,0);assert.equal(writes,0);cases++;
    }
   }
+  records.set(entity.id,entity);
   if(['checkoutSession','paymentLink'].includes(family)){
    // Exercise actual configured schemas and mapper calls for every retained and
    // emitted status, rather than substituting a permissive fixture enum.
@@ -143,5 +178,5 @@ for(const variant of ['base','stripe']){
   }
  }
 }
-console.log(`PASS ${cases} actual configured billing mapper cases: cache DTO reads without ORM access, emitted/retained status acceptance, unknown-status rejection, schema resolution, HTTP-boundary unknown fields, optional provider payloads, local UUIDs, response mapping, ownership and missing-row failures`);
+console.log(`PASS ${cases} actual configured billing mapper cases: cache DTO reads/updates without ORM access, Stripe replacement and identity guards, emitted/retained status acceptance, unknown-status rejection, schema resolution, HTTP-boundary unknown fields, optional provider payloads, local UUIDs, response mapping, ownership and missing-row failures`);
 console.log('AUDIT Stripe checkout/payment-link/portal configured TS mappers discard provider IDs; native cache services retain provider IDs so later provider calls remain valid. Native provider payloads require objects and native scalar coercions remain stricter.');
