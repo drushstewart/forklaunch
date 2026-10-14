@@ -5229,3 +5229,24 @@ Clippy and the actual TypeScript grant oracle pass. Logs:
 The generated harness removes its database role; failed owned fixture workspaces
 were removed. Generic entity/DTO mapper hooks, richer filters and caller-owned
 transaction composition remain gate 603. Checklist: **660/682 (96.8%), 22 open**.
+
+
+### 2026-10-13 — Reusable TypeScript scalar coercion
+
+Opt-in `forklaunch_validation::typescript_coerce` now exposes number, integer
+number and boolean conversion for the JSON value domain (`None` represents
+undefined). It matches the actual ForkLaunch Zod preprocessors for ECMAScript
+whitespace, signed zero, decimal/radix literals, nested arrays, booleans, null and
+plain JSON objects. Long radix literals use one ties-to-even rounding step;
+integer results retain IEEE-754 semantics rather than imposing an i64 range.
+Number schemas accept infinities as the actual unconstrained Zod v3 schema does;
+integer schemas reject them. Arbitrary JavaScript objects/prototypes, Dates,
+Symbols and functions are outside this helper's scope. Native strict coercion
+remains unchanged. Canonical query validation now uses the public helpers.
+
+**6,498 actual-source comparisons**, eight native validation tests and strict
+all-target Clippy pass. Canonical HTTP remains **152 matching live outcomes**,
+with four explicitly tracked OpenAPI differences. The differential fixture is
+wired into CI. Logs: `/private/tmp/fl-scalar-coercion-{parity,tests,clippy,canonical}.log`.
+Checklist remains **660/682 (96.8%), 22 open**; broader validator/schema and
+diagnostic parity remains open.

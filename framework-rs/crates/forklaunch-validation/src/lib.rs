@@ -28,6 +28,7 @@ use schemars::JsonSchema;
 use serde::{Serialize, de::DeserializeOwned};
 
 mod parse_errors;
+pub mod typescript_coerce;
 pub use parse_errors::{
     ParseError, pretty_print_parse_errors, typescript_request_validation_error_response,
     typescript_response_validation_error_response,
