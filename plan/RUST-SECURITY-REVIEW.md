@@ -1292,3 +1292,14 @@ sanitizeempty500. Anonymous500ms minimum is a floor, not constanttime; missing/
 verifiedusers receive same200 withoutdelivery. Explicitsend awaitsignoresbackground
 dispatch. Actual11, restrictedPG/currentuser verification and liveHTTP/MCPregression
 pass with strictClippy; no new authentication or automatic signup policy.
+
+
+### Plan-read route capability separation (2026-10-14)
+
+Selected Plan read needs direct runtime SELECT/audit access, no publication pool
+or dispatch authority. PublisherURL is rejected for solely Plan-read selection;
+creation selections stillrequire validated publishers. Startupgrant/configdenials
+precede providerI/O. Authenticatedactor gates sealedcreatedUUID provenance, fresh
+Plan/Product verifiedfields and currentlocalproof; no inferred financialmutation.
+Existing66legacyroutes remain, so this selector doesnot make entire service read-only.
+RestrictedPG mutationgrantsrevoked/HTTP/MCP/bothSDK andstrictClippy proofs pass.

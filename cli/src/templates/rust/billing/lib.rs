@@ -39,8 +39,11 @@ pub fn identity_profile_from_env() -> BlueprintResult<BillingIdentityProfile> {
             BoundCheckoutConfig::from_json(config.as_deref().ok_or_else(invalid)?)?;
         }
         BillingIdentityProfile::BoundBillingV1 => {
-            if config.is_some() || !{{#stripe}}true{{/stripe}}{{^stripe}}false{{/stripe}} || publisher.as_ref().is_none_or(|v|v.trim().is_empty()) { return Err(invalid()); }
-            BoundBillingConfig::from_json(aggregate.as_deref().ok_or_else(invalid)?)?;
+            if config.is_some() || !{{#stripe}}true{{/stripe}}{{^stripe}}false{{/stripe}} { return Err(invalid()); }
+            let parsed = BoundBillingConfig::from_json(aggregate.as_deref().ok_or_else(invalid)?)?;
+            if parsed.requires_publisher() {
+                if publisher.as_ref().is_none_or(|v|v.trim().is_empty()) { return Err(invalid()); }
+            } else if publisher.is_some() { return Err(invalid()); }
         }
         _ => {}
     }

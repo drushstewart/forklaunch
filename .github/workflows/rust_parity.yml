@@ -303,6 +303,8 @@ on:
       - 'cli/tests/rust_billing_bound_checkout_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_checkout_runtime.mjs'
       - 'cli/tests/rust_billing_bound_portal_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_plan_read_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_plan_read_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_portal_route_sdks.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
@@ -688,6 +690,8 @@ on:
       - 'cli/tests/rust_billing_bound_checkout_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_checkout_runtime.mjs'
       - 'cli/tests/rust_billing_bound_portal_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_plan_read_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_plan_read_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_portal_route_sdks.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
@@ -1395,6 +1399,8 @@ jobs:
         run: node cli/tests/rust_billing_bound_checkout_runtime.mjs
       - name: Bound Portal live HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_portal_runtime.mjs
+      - name: Bound Plan read HTTP, MCP and both SDKs
+        run: node cli/tests/rust_billing_bound_plan_read_runtime.mjs
       - name: Stored Portal provenance and original-lifetime PostgreSQL checks
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_reads -- --ignored --nocapture
       - name: Bound Plan read provenance, provider and race PostgreSQL checks

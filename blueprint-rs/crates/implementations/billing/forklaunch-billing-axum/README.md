@@ -111,17 +111,18 @@ Select `BILLING_IDENTITY_PROFILE=bound-billing-v1` and supply
 }
 ```
 
-At least one of `checkout` and `portal` is required; omit an unselected domain.
+At least one of `checkout`, `portal`, and `planRead` is required; omit an unselected domain.
 Null, empty, unknown, or partial sections fail. The shared scope is server-owned;
-no DTO may override it. `BILLING_PUBLISHER_DATABASE_URL` remains the single
-explicit separate publisher connection. Its role must have each selected
+no DTO may override it. When `checkout` or `portal` is selected,
+`BILLING_PUBLISHER_DATABASE_URL` is the single explicit separate publisher
+connection. Its role must have each selected
 publication function grant, independently validated before listening. Mixed old
 `BILLING_BOUND_CHECKOUT_CONFIG` and aggregate configuration fail. The existing
 `bound-checkout-v1` spelling, its configuration, and legacy registry APIs remain
 supported; they do not select Portal implicitly.
 
 Library callers construct `BoundBillingConfig` and `BoundBillingV1::trusted`
-with exactly the selected independent publisher capabilities, then call
+with exactly the selected creation publisher capabilities (none for `planRead`), then call
 `with_bound_billing`. Artifact callers use `contract_registry_with_bound_billing`
 with the same configuration; a selector alone cannot guess selected families.
 The existing optional `bound-checkout` Cargo feature also enables this additive
@@ -159,5 +160,44 @@ The stored URL may already be invalid remotely. Its local five-minute policy
 proves neither remote validity nor payment/entitlement state. Creation duplicates
 and operation inspection still return IDs only, even when a separate explicit
 stored-read operation is permitted. This preserves that separation while adding
-an authorized bounded form of the configured TypeScript cache reread. Plan,
-Subscription, and PaymentLink route integration remain separate gaps.
+an authorized bounded form of the configured TypeScript cache reread. Subscription and PaymentLink route integration
+remain separate gaps; Plan has only the explicitly selected read capability below.
+
+
+### Explicit Plan provenance reads without a publisher
+
+Set `BILLING_IDENTITY_PROFILE=bound-billing-v1` with, for example:
+
+```json
+{"deploymentLabel":"your-deployment","accountId":"acct_your_account","livemode":false,"planRead":{"trustedProducts":["your-product-id"]}}
+```
+
+`planRead` requires a nonempty bounded product allowlist and adds only
+`getBoundCreatedPlan`, GET `/bound-plans/:publicId`. It does not select Plan
+creation, mutation, listing, or publisher authority. A Plan-only selection rejects
+`BILLING_PUBLISHER_DATABASE_URL`; combining it with Checkout or Portal creation
+requires that connection and the corresponding separate publication grants.
+Unknown, null, partial, or mixed old/new configuration fails before listening.
+
+Startup checks the local direct Stripe client configuration, schema USAGE,
+SELECT on `fl_billing.records`, `provider_bindings`, and `plan_creation_intents`,
+and INSERT on `sensitive_read_audit`. It makes no provider request and neither
+creates nor assumes publication privileges. Missing permissions, base/managed
+transport, or backup fallback fail. Revoked grants after startup still fail reads.
+HTTP/MCP and generated artifacts/both SDKs use the same selected registry.
+
+The getter requires the authenticated actor's completed direct Plan journal,
+the original normalized product allowlist, and an unchanged current durable
+Plan DTO/alias. It verifies account/mode and expanded Plan/Product identity and
+terms, then returns the original public UUID/local fields with fresh Product
+presentation in `stripeFields`. No mutable `externalId`, cache entry, or raw
+administrative alias supplies missing provenance. Only read audits are written;
+no provider POST, retry, or compensation occurs. Data linearizes at the final
+matching database SELECT; provider context expiry is rechecked after audit
+COMMIT. Later remote/local changes remain possible, and no payment or
+entitlement claim follows.
+
+The existing 66 legacy routes remain available unchanged: selecting only this
+new read capability does **not** make the entire generated service read-only.
+Its internal HMAC service key/tenant authority is the same existing boundary,
+not new end-user or cross-service IAM ownership proof.

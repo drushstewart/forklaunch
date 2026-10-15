@@ -10159,3 +10159,31 @@ clippy,cli-full}.log). Lastsource changes were lint extraction/methodpointer
 cleanup followedfinalminimal/SDK/fullCLI; finalfixture-only warningproof passed.
 No lock/dependency/newexample edits. Broader callback/emitter/constraint gate
 remainsopen;660/682 (96.8%),22open unchanged.
+
+
+### Explicit aggregate Plan-read capability and routes (2026-10-14)
+
+BoundBillingV1 adds exact optional planRead:{trustedProducts} within sharedscope.
+requires_publisher() is checkout||portal only: Plan-read-only selection rejects
+stray publisherURL and constructs no publisher connection; mixed/create selections
+still require separately validated publisher. Public trusted constructor remains
+sourcecompatible. Startup validates localdirect transport and required schema/table
+SELECT/auditINSERT grants beforelisten, with zero providerI/O; deniesbase/managed/
+backup/missinggrants. Ordinary legacyCRUD privileges neither inferred nor forbidden.
+GET /bound-plans/:publicId uses authenticatedserviceactor and createdPlan provenance
+getter, Product-only enrichment/no POST. Shared runtime/artifact contracts and both
+SDKs expose exact selectedcapabilities; Dateprojection andlegacyselectors preserved.
+Existing66legacyroutes remain; Plan-read-only describes the newselection, not an
+entire read-only service or inability to use legacyAPI credentials.
+Frozen11 /private/tmp/fl-plan-read-route-final.json SHA256
+e7c88fc5012e21188a0680c72f3515e47d39d657c83199a1dd1c91a7a7d6f29d.
+RestrictedPG/HTTP/MCP+bothSDK onecall each2total pass2.49s with Planrecord/binding/
+journal mutation grants revoked; startupdenials beforeproviderI/O, actor/provenance/
+wrongproviderID cases pass.46artifact/config cases plusactualbase/Stripe maincompile,
+7units, strict3crateallfeature/alltarget andfeatureoffClippy pass. Rootdirectexe CI
+wrapper independentlypasses2.46s (/private/tmp/fl-plan-read-root-wrapper.log),
+releasingCargo buildlock before nestedSDKcompile. Logs /private/tmp/fl-plan-read-
+{route-live,artifacts,route-units,route-clippy-final,route-default-clippy}.log.
+Onlyfixturesemicolon correction; productionpassed unchanged. Ownedfl_bound_plan
+roles0. No manifests/locks/newmigration; no newimmutablearchive selectedprofile
+claim. Subscription/otherfamilies/remainingmapper semantics open;660/682 (96.8%).

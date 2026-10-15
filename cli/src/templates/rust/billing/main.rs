@@ -60,8 +60,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(issuer) = env::var("JWT_ISSUER") { validation.set_issuer(&[issuer]); }
     if let Ok(audience) = env::var("JWT_AUDIENCE") { validation.validate_aud = true; validation.set_audience(&[audience]); }
     let auth = HmacJwksAuth::new(secret.into_bytes(), jwks, validation)?;
-    let publisher_pool = if bound_checkout_config.is_some() || bound_billing_config.is_some() {
-        Some(PgPoolOptions::new().max_connections(4).connect(&env::var("BILLING_PUBLISHER_DATABASE_URL").map_err(|_| "Bound Checkout requires a publisher database")?).await.map_err(|_| "Unable to connect to billing publisher database")?)
+    let publisher_pool = if bound_checkout_config.is_some() || bound_billing_config.as_ref().is_some_and(|c|c.requires_publisher()) {
+        Some(PgPoolOptions::new().max_connections(4).connect(&env::var("BILLING_PUBLISHER_DATABASE_URL").map_err(|_| "Selected bound creation requires a publisher database")?).await.map_err(|_| "Unable to connect to billing publisher database")?)
     } else { None };
     let checkout_selected=bound_checkout_config.is_some() || bound_billing_config.as_ref().is_some_and(|c|c.has_checkout());
     let portal_selected=bound_billing_config.as_ref().is_some_and(|c|c.has_portal());

@@ -23,6 +23,19 @@ impl PlanCreationReadSnapshot {
     }
 }
 impl PostgresBillingStore {
+    /// Checks local table-level read/audit privileges only, without provider I/O
+    /// or publishing authority. Existing generic CRUD privileges are not changed.
+    /// # Errors
+    /// Fails before listening when schema usage, SELECT or audit INSERT is absent.
+    pub async fn validate_plan_creation_read_access(&self) -> BlueprintResult<()> {
+        let allowed: bool = sqlx::query_scalar("SELECT has_schema_privilege(current_user,'fl_billing','USAGE') AND has_table_privilege(current_user,'fl_billing.records','SELECT') AND has_table_privilege(current_user,'fl_billing.provider_bindings','SELECT') AND has_table_privilege(current_user,'fl_billing.plan_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.sensitive_read_audit','INSERT')")
+            .fetch_one(&self.pool).await.map_err(db_error)?;
+        if !allowed {
+            return Err(conflict());
+        }
+        Ok(())
+    }
+
     /// Reads actor-owned completed provenance and the current exact durable body.
     /// Missing provenance never falls back to an administrative alias.
     /// # Errors

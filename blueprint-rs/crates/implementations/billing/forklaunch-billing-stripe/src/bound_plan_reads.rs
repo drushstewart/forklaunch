@@ -19,6 +19,18 @@ fn mismatch() -> BlueprintError {
     )
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Validates direct transport configuration and local read/audit grants.
+    /// No provider request, publication credential or financial authority is used.
+    /// # Errors
+    /// Denies managed transport and missing local table-level read/audit grants.
+    pub async fn validate_bound_plan_read_configuration(&self) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        self.base()
+            .store()
+            .validate_plan_creation_read_access()
+            .await
+    }
+
     /// Reads an actor-owned, directly created public UUID using sealed creation
     /// provenance and a fresh expanded Stripe Plan/Product observation. Only the
     /// Product presentation is refreshed; all local fields remain the receipt's.

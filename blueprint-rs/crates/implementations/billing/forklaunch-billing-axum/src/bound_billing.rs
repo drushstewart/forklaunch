@@ -1,11 +1,12 @@
 //! One explicit finite selector for compatible domain-specific authority profiles.
 use super::{
     BillingBackend, BoundCheckoutConfig, BoundCheckoutV1, BoundPortalV1, bound_checkout_contracts,
-    bound_portal_contracts,
+    bound_plan_read_contracts, bound_portal_contracts,
 };
 use forklaunch_billing_base::services::postgres::{
     StripeBindingScope, TrustedCheckoutPublisher, TrustedPortalPublisher,
 };
+use forklaunch_billing_stripe::bound_plan_creation::BoundPlanCreationProfile;
 use forklaunch_billing_stripe::bound_portal_creation::BoundPortalCreationProfile;
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult, contract::RouteContract};
 use serde_json::Value;
@@ -24,6 +25,7 @@ pub struct BoundPortalConfig {
 pub struct BoundBillingConfig {
     checkout: Option<BoundCheckoutConfig>,
     portal: Option<BoundPortalConfig>,
+    plan_read: Option<BoundPlanCreationProfile>,
 }
 fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult<()> {
     let object = value.as_object().ok_or_else(configuration)?;
@@ -48,7 +50,7 @@ impl BoundBillingConfig {
         exact(
             &value,
             &["deploymentLabel", "accountId", "livemode"],
-            &["checkout", "portal"],
+            &["checkout", "portal", "planRead"],
         )?;
         let scope = StripeBindingScope::administrative(
             value["deploymentLabel"]
@@ -76,7 +78,7 @@ impl BoundBillingConfig {
             exact(part, &["configurationId", "returnUrl"], &[])?;
             Some(BoundPortalConfig {
                 profile: BoundPortalCreationProfile::trusted(
-                    scope,
+                    scope.clone(),
                     part["configurationId"]
                         .as_str()
                         .ok_or_else(configuration)?
@@ -91,10 +93,22 @@ impl BoundBillingConfig {
         } else {
             None
         };
-        if checkout.is_none() && portal.is_none() {
+        let plan_read = if let Some(part) = value.get("planRead") {
+            exact(part, &["trustedProducts"], &[])?;
+            let products: Vec<String> = serde_json::from_value(part["trustedProducts"].clone())
+                .map_err(|_| configuration())?;
+            Some(BoundPlanCreationProfile::trusted(scope, products).map_err(|_| configuration())?)
+        } else {
+            None
+        };
+        if checkout.is_none() && portal.is_none() && plan_read.is_none() {
             return Err(configuration());
         }
-        Ok(Self { checkout, portal })
+        Ok(Self {
+            checkout,
+            portal,
+            plan_read,
+        })
     }
     #[must_use]
     pub const fn has_checkout(&self) -> bool {
@@ -103,6 +117,15 @@ impl BoundBillingConfig {
     #[must_use]
     pub const fn has_portal(&self) -> bool {
         self.portal.is_some()
+    }
+    #[must_use]
+    pub const fn has_plan_read(&self) -> bool {
+        self.plan_read.is_some()
+    }
+    /// Only creation families need a separately trusted publication connection.
+    #[must_use]
+    pub const fn requires_publisher(&self) -> bool {
+        self.has_checkout() || self.has_portal()
     }
     /// Shared runtime/artifact contracts, with no server configuration embedded.
     #[must_use]
@@ -114,17 +137,21 @@ impl BoundBillingConfig {
         if self.has_portal() {
             routes.extend(bound_portal_contracts());
         }
+        if self.has_plan_read() {
+            routes.extend(bound_plan_read_contracts());
+        }
         routes
     }
 }
-/// Explicit independent publisher capabilities; one pool may hold both grants.
+/// Explicit independent capabilities. Creation needs publishers; Plan read does not.
 pub struct BoundBillingV1 {
     checkout: Option<BoundCheckoutV1>,
     portal: Option<BoundPortalV1>,
+    plan_read: Option<BoundPlanCreationProfile>,
 }
 impl BoundBillingV1 {
     /// # Errors
-    /// Requires exactly one matching publisher per selected domain; no fallback.
+    /// Requires exactly one matching publisher per selected creation domain; no fallback.
     pub fn trusted(
         configuration: BoundBillingConfig,
         checkout: Option<TrustedCheckoutPublisher>,
@@ -136,6 +163,7 @@ impl BoundBillingV1 {
             return Err(self::configuration());
         }
         Ok(Self {
+            plan_read: configuration.plan_read,
             checkout: configuration
                 .checkout
                 .zip(checkout)
@@ -152,7 +180,10 @@ impl BillingBackend {
     /// # Errors
     /// Rejects mixed builders, base/managed/backup and any invalid publisher authority.
     pub async fn with_bound_billing(mut self, profile: BoundBillingV1) -> BlueprintResult<Self> {
-        if self.bound_checkout.is_some() || self.bound_portal.is_some() {
+        if self.bound_checkout.is_some()
+            || self.bound_portal.is_some()
+            || self.bound_plan_read.is_some()
+        {
             return Err(configuration());
         }
         if let Some(checkout) = profile.checkout {
@@ -160,6 +191,9 @@ impl BillingBackend {
         }
         if let Some(portal) = profile.portal {
             self = self.with_bound_portal(portal).await?;
+        }
+        if let Some(plan_read) = profile.plan_read {
+            self = self.with_bound_plan_read(plan_read).await?;
         }
         Ok(self)
     }
@@ -193,6 +227,27 @@ mod tests {
             bound_checkout_contracts()
         );
         assert!(BoundBillingV1::trusted(portal, None, None).is_err());
+    }
+    #[test]
+    fn plan_read_selects_no_publisher_or_create_capability() {
+        let value = json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"planRead":{"trustedProducts":["custom-product"]}});
+        let config = BoundBillingConfig::from_json(&value.to_string()).unwrap();
+        assert!(config.has_plan_read());
+        assert!(!config.requires_publisher());
+        assert_eq!(config.contracts(), bound_plan_read_contracts());
+        assert!(BoundBillingV1::trusted(config, None, None).is_ok());
+        for invalid in [
+            json!(null),
+            json!({}),
+            json!({"trustedProducts":[]}),
+            json!({"trustedProducts":[1]}),
+            json!({"trustedProducts":["../product"]}),
+            json!({"trustedProducts":["custom-product"],"create":true}),
+        ] {
+            let mut bad = value.clone();
+            bad["planRead"] = invalid;
+            assert!(BoundBillingConfig::from_json(&bad.to_string()).is_err());
+        }
     }
     #[test]
     fn aggregate_rejects_partial_unknown_and_untrusted_options() {
