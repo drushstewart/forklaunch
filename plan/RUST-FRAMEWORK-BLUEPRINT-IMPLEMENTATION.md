@@ -2952,3 +2952,10 @@ All10 integrated paths match `/private/tmp/fl-array-float-length-source.json` SH
 `e45d482641f069a7b2b8bf803e009797db2d197f9ea25e9929b66b00ca001f97`.
 No manifests/dependencies changed. CI includes the new oracle. Checklist660/682 is
 unchanged.
+
+
+The clean committed array worktree was removed after exact HEAD,10 integrated
+hashes and no active/open path checks. `/private/tmp/fl-array-float-length-cleanup.json`
+records4,228 regular files and45,349,618 logical bytes removed; proof branch and
+native caches remain. Main was also fetched again: origin/main e36cfd29c has zero
+commits missing from this branch.
