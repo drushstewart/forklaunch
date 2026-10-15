@@ -57,7 +57,7 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: private SDK own-property compilation,128cases/controls and strict types; dual-use literal schema repairs reject explicitly to preserve defaults/equality.
 - Completed: optional application-owned OTP background delivery,3focused/36affected/5actual checks and strictClippy; defaultawait retained.
 - Active: provenance-aware stored Portal rereads, trusted password-reset delivery/shared background scheduler, and explicit dialect/positional tuple SDK consumers. Broader plugin/mapper/schema/deployment gates remain open.
-- Validation: immutable37b54 archive package/install/hash checks pass for2775files; relocated portable runtime is underway. Later OTPdispatcher/new drafts are excluded by source commit.
+- Validation: immutable37b54 archive package/install/portable services/workers/SDK/HTTP/MCP runtime passes with2775 before/after byte-verified files and packagedIAM184 (3PGignored). Later OTPdispatcher/tupleconsumer/new drafts are excluded by source commit; owned-root cleanup follows.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
 - Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.

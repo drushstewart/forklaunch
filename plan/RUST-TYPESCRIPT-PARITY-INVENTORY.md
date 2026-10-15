@@ -9914,3 +9914,30 @@ across44packages; inventorytests pass. Refreshed strict12roots/619exports fixtur
 initial parent invocation lacked required fixtureenv and was corrected.
 No native/Cargo/lock/emitter changes; precise Rust tuple models and explicit
 positional emitter follow-through remain open.660/682 (96.8%),22open unchanged.
+
+
+### Immutable37b54 package and portable runtime (2026-10-14)
+
+Explicit source37b54efb4119f623793ab43c9648ed75e27c0a31 git-free Cargo source
+archive installs offline/locked/debug and retains dotfiles/repackage listings.
+2775regular files match archive bytes before and after runtime;4871008byte archive
+SHA25625019de2b2243f714712a05efd683fa7d0ac9b45522587a783f2eee89f03e556
+retained at cli/target/parity-artifacts/forklaunch-37b54efb4-25019de2.crate.
+CLI ignoredlock SHA256d66f3120b6fab6af185dfa4e22c614b4bf5324370aede8667c9807e3e5bc5110.
+Same3intentional public/test PEM fixtures match earlier retained416d;2absolute
+TSbaseline PEM symlinks preserved without dereferencing. No draft source leakage.
+Relocated application with all4worker families, IAM/CAC/base+provider messaging/
+billing/ecommerce modules and infrastructure/capabilities compiles;12OpenAPI exports,
+contract/native/CLI recursive SDKs, strict generatedTS/Rust/WebSocket consumers and
+HTTP/MCP lifecycle/discovery/health/origin/auth/invocation/shutdown checks pass.
+PackagedIAM184pass/3deliberatelyignoredPG in83.13s; separate restrictedPG receipts
+remain separate. All5signed capability callbacks pass. No new generated actual
+MFA29client rerun or archive-generated bound-profile live claim: distinct
+working-source Portal/Checkout HTTP/MCP+SDK fixtures cover those opt-in routes.
+Source includes asyncbackup, View, AggregatePortal/Checkout, Tuple runtime and
+own-property socket repair; excludes later OTPdispatcher, explicit response tuple
+consumers, storedPortal/reset/emitter drafts. No latest-source equivalence claim.
+Metadata /private/tmp/fl-oct14-billing-sdk-checkpoint.json; package/install/runtime
+logs /private/tmp/fl-oct14-billing-sdk-{driver,package,install,repackaged-files,runtime}.log.
+Owned source/install roots pending guarded cleanup; archive/logs retained.
+660/682 (96.8%),22open unchanged.
