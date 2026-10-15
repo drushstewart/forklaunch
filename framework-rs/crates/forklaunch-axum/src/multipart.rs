@@ -15,7 +15,7 @@ use serde_json::{Map, Value};
 
 /// Limits in addition to Axum's request body limit and the framework router limit.
 /// Install with `Extension(MultipartLimits { .. })`; version matching shares it.
-pub use forklaunch_http::MultipartLimits;
+pub use forklaunch_http::{BusboyTextOptions, MultipartLimits};
 
 /// A multipart model decoded with Serde and validated with the framework's garde
 /// rules before entering the handler. Error responses never include field values.
@@ -29,6 +29,7 @@ where
     type Rejection = Response;
 
     async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let text_options = request.extensions().get::<BusboyTextOptions>().cloned();
         let limits = request
             .extensions()
             .get::<MultipartLimits>()
@@ -68,6 +69,9 @@ where
                         .trim()
                         .eq_ignore_ascii_case("application/octet-stream")
                 });
+            let charset = field
+                .content_type()
+                .and_then(forklaunch_http::multipart_text_charset);
             let mut bytes = Vec::new();
             while let Some(chunk) = field.chunk().await.map_err(|error| parser_error(&error))? {
                 if chunk.len() > limits.field_bytes.saturating_sub(bytes.len())
@@ -77,6 +81,19 @@ where
                 }
                 total += chunk.len();
                 bytes.extend_from_slice(&chunk);
+            }
+            if !file && let Some(options) = &text_options {
+                match options.decode(&bytes, charset.as_deref()).map_err(|_| {
+                    reject(StatusCode::BAD_REQUEST, "unrepresentable multipart text")
+                })? {
+                    Some(value) => {
+                        fields.insert(name, Value::String(value));
+                    }
+                    None => {
+                        fields.remove(&name);
+                    }
+                }
+                continue;
             }
             let value = if file {
                 Value::Array(bytes.into_iter().map(Value::from).collect())

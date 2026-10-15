@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod multipart_text;
+pub use multipart_text::{BusboyTextError, BusboyTextOptions, multipart_text_charset};
+
 mod parse_errors;
 pub use parse_errors::{ParseError, pretty_print_parse_errors};
 

@@ -21,10 +21,19 @@ impl Default for MultipartLimits {
     }
 }
 
+#[cfg(test)]
 pub(super) fn parse(
     bytes: &[u8],
     content_type: &str,
     limits: MultipartLimits,
+) -> Result<Value, ContractValidationError> {
+    parse_with_text(bytes, content_type, limits, None)
+}
+pub(super) fn parse_with_text(
+    bytes: &[u8],
+    content_type: &str,
+    limits: MultipartLimits,
+    text: Option<&crate::BusboyTextOptions>,
 ) -> Result<Value, ContractValidationError> {
     if limits.parts == 0 || limits.field_bytes == 0 || limits.total_bytes == 0 {
         return Err(ContractValidationError::new(
@@ -60,6 +69,10 @@ pub(super) fn parse(
                     mime.essence_str()
                         .eq_ignore_ascii_case("application/octet-stream")
                 });
+            let charset = field
+                .content_type()
+                .and_then(|mime| mime.get_param("charset"))
+                .map(|value| value.as_str().to_owned());
             let mut bytes = Vec::new();
             while let Some(chunk) = field
                 .chunk()
@@ -73,6 +86,20 @@ pub(super) fn parse(
                 }
                 total += chunk.len();
                 bytes.extend_from_slice(&chunk);
+            }
+            if !file && let Some(options) = text {
+                match options
+                    .decode(&bytes, charset.as_deref())
+                    .map_err(|_| invalid_body("unrepresentable multipart text"))?
+                {
+                    Some(value) => {
+                        fields.insert(name, Value::String(value));
+                    }
+                    None => {
+                        fields.remove(&name);
+                    }
+                }
+                continue;
             }
             let value = if file {
                 Value::Array(bytes.into_iter().map(Value::from).collect())
@@ -132,5 +159,170 @@ mod tests {
         );
         assert!(parse(BODY, "multipart/form-data", limits).is_err());
         assert!(parse(&BODY[..BODY.len() - 10], MIME, limits).is_err());
+    }
+}
+
+#[cfg(test)]
+mod busboy_profile_tests {
+    use super::*;
+    fn wire(bytes: &[u8], charset: &str) -> Vec<u8> {
+        let mime = if charset == "default" {
+            String::new()
+        } else {
+            format!("Content-Type: text/plain; charset={charset}\r\n")
+        };
+        let mut data =
+            format!("--b\r\nContent-Disposition: form-data; name=\"field\"\r\n{mime}\r\n")
+                .into_bytes();
+        data.extend_from_slice(bytes);
+        data.extend_from_slice(b"\r\n--b--\r\n");
+        data
+    }
+    #[test]
+    fn busboy_text_actual_parser_differential() {
+        let Ok(path) = std::env::var("FORKLAUNCH_MULTIPART_REFERENCE_OUTPUT") else {
+            return;
+        };
+        let cases: Vec<Value> = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let mut compared = 0;
+        for case in cases {
+            if case.get("collision").is_some() {
+                continue;
+            }
+            let bytes: Vec<u8> = serde_json::from_value(case["bytes"].clone()).unwrap();
+            let data = wire(&bytes, case["charset"].as_str().unwrap());
+            let actual = parse_with_text(
+                &data,
+                "multipart/form-data; boundary=b",
+                MultipartLimits::default(),
+                Some(&crate::BusboyTextOptions::default()),
+            )
+            .unwrap();
+            let expected = if case["undefined"] == true {
+                serde_json::json!({})
+            } else {
+                serde_json::json!({"field":case["value"]})
+            };
+            assert_eq!(actual, expected, "{case}");
+            compared += 1;
+        }
+        assert_eq!(compared, 45);
+    }
+    #[test]
+    fn busboy_text_defaults_bounds_and_unrepresentable_values() {
+        let mime = "multipart/form-data; boundary=b";
+        let options = crate::BusboyTextOptions::default().with_default_charset("latin1");
+        let data = wire(&[128, 255], "default");
+        assert_eq!(
+            parse_with_text(&data, mime, MultipartLimits::default(), Some(&options)).unwrap(),
+            serde_json::json!({"field":"\u{80}ÿ"})
+        );
+        assert!(parse(&data, mime, MultipartLimits::default()).is_err());
+        assert!(
+            parse_with_text(
+                &data,
+                mime,
+                MultipartLimits {
+                    field_bytes: 1,
+                    ..MultipartLimits::default()
+                },
+                Some(&options)
+            )
+            .is_err()
+        );
+        assert!(
+            parse_with_text(
+                &wire(&[0, 216], "utf-16le"),
+                mime,
+                MultipartLimits::default(),
+                Some(&options)
+            )
+            .is_err()
+        );
+        assert_eq!(
+            parse_with_text(
+                &wire(&[195, 40], "utf-8"),
+                mime,
+                MultipartLimits::default(),
+                Some(&options)
+            )
+            .unwrap(),
+            serde_json::json!({"field":"�("})
+        );
+    }
+}
+
+#[cfg(test)]
+mod busboy_version_tests {
+    use super::*;
+    use crate::{
+        Body, FrameworkRequest, HttpMethod, RequestContext, VersionBodyHooksRegistry,
+        VersionedRoutePlan,
+    };
+    use forklaunch_contract::{
+        BodyContract, BodyKind, RequestContract, ResponseContract, RouteContract, VersionedContract,
+    };
+    #[test]
+    fn busboy_text_registry_snapshot_and_selection_identity() {
+        let mut body = BodyContract::json("Upload");
+        body.kind = BodyKind::Multipart;
+        body.content_type = Some("multipart/form-data".into());
+        body.schema = body.schema.with_json_schema(
+            r#"{"type":"object","properties":{"field":{"type":"string"}},"required":["field"]}"#,
+        );
+        let route =
+            RouteContract::post("Upload", "Upload", "/upload").with_version(VersionedContract {
+                version: "one".into(),
+                request: RequestContract::default().with_body(body),
+                responses: vec![ResponseContract::new(200, None)],
+            });
+        let mut hooks = VersionBodyHooksRegistry::default();
+        hooks
+            .enable_busboy_text(&route, crate::BusboyTextOptions::default())
+            .unwrap();
+        assert!(
+            hooks
+                .enable_busboy_text(&route, crate::BusboyTextOptions::default())
+                .is_err()
+        );
+        let mut combined = VersionBodyHooksRegistry::default();
+        combined.extend(hooks);
+        let plan = combined.compile(&route).unwrap();
+        let mut request = FrameworkRequest::new(
+            HttpMethod::Post,
+            "/upload",
+            RequestContext::new("multipart"),
+        )
+        .with_body(Body::Binary(
+            b"--b\r\nContent-Disposition: form-data; name=\"field\"\r\n\r\n\xff\r\n--b--\r\n"
+                .to_vec(),
+        ));
+        request.headers.insert(
+            "content-type".into(),
+            "multipart/form-data; boundary=b".into(),
+        );
+        let prepared = plan.prepare_selection(&request, MultipartLimits::default());
+        let (_, selected) = plan
+            .apply_prepared(&prepared, &mut request)
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            selected.parsed_body.as_deref(),
+            Some(&serde_json::json!({"field":"�"}))
+        );
+        let changed = plan
+            .with_busboy_text(crate::BusboyTextOptions::default().with_default_charset("latin1"))
+            .unwrap();
+        assert!(changed.resolve_prepared(&prepared, &request).is_err());
+        let mut stale = route.clone();
+        stale.options.request_validation = forklaunch_contract::ValidationMode::Warning;
+        assert!(combined.compile(&stale).is_err());
+        assert!(
+            VersionedRoutePlan::compile(&RouteContract::get("Plain", "Plain", "/plain"))
+                .unwrap()
+                .with_busboy_text(crate::BusboyTextOptions::default())
+                .is_err()
+        );
     }
 }

@@ -185,3 +185,50 @@ async fn multipart_matches_typescript_parser() {
         assert_eq!(body, case["expected"], "case {index}");
     }
 }
+
+#[tokio::test]
+async fn busboy_text_profile_matches_actual_parser_with_binary_preserved() {
+    let Ok(path) = std::env::var("FORKLAUNCH_MULTIPART_REFERENCE_OUTPUT") else {
+        return;
+    };
+    let cases: Vec<Value> = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let mut compared = 0;
+    for case in cases {
+        if case.get("collision").is_some() {
+            continue;
+        }
+        let bytes: Vec<u8> = serde_json::from_value(case["bytes"].clone()).unwrap();
+        let charset = case["charset"].as_str().unwrap();
+        let mime = if charset == "default" {
+            String::new()
+        } else {
+            format!("Content-Type: text/plain; charset={charset}\r\n")
+        };
+        let mut data =
+            format!("--boundary\r\nContent-Disposition: form-data; name=\"label\"\r\n{mime}\r\n")
+                .into_bytes();
+        data.extend_from_slice(&bytes);
+        data.extend_from_slice(b"\r\n--boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"ignored\"\r\nContent-Type: text/plain; charset=unknown-owned\r\n\r\n\0\xff\r\n--boundary--\r\n");
+        let response = send(
+            app(MultipartLimits::default()).layer(Extension(BusboyTextOptions::default())),
+            data,
+            MIME,
+        )
+        .await;
+        if case["undefined"] == true || case["value"] == "" {
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{case}");
+        } else {
+            assert_eq!(response.status(), StatusCode::OK, "{case}");
+            let body: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap())
+                    .unwrap();
+            assert_eq!(
+                body,
+                serde_json::json!({"label":case["value"],"file":[0,255]}),
+                "{case}"
+            );
+        }
+        compared += 1;
+    }
+    assert_eq!(compared, 45);
+}

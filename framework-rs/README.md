@@ -710,6 +710,19 @@ have been published publicly.
 
 ### Typed multipart requests
 
+Text fields use strict UTF-8 by default. For the pinned TypeScript/Busboy text
+profile, install `Extension(forklaunch_http::BusboyTextOptions::default())` on
+typed extractors and `VersionBodyHooksRegistry::enable_busboy_text` on versioned
+contracts. `with_default_charset` changes the fallback charset; an explicit
+part charset takes precedence. Byte limits apply before decoding. This profile
+preserves malformed-UTF-8 replacement, Latin-1 aliases, UTF-16LE and base64
+text while leaving file bytes unchanged. Unknown decoder results become absent
+JSON fields. JavaScript own-undefined identity and isolated UTF-16 surrogates
+are not Rust JSON values; the latter return a safe parser error. Mixed file/text
+name collisions remain sensitive to upstream stream scheduling, so this profile
+does not certify that ordering.
+
+
 Enable `forklaunch-axum`'s `multipart` feature and use
 `multipart::Multipart<Upload>` as the last handler extractor. `Upload` implements
 `FrameworkSchema` (Serde, Schemars and garde); parsing and validation finish before

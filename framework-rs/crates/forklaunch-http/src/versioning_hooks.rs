@@ -108,9 +108,28 @@ pub struct VersionBodyHooksRegistry {
     simple_queries: BTreeMap<String, RouteContract>,
     json_wire: BTreeMap<String, RouteContract>,
     text_wire: BTreeMap<String, RouteContract>,
+    multipart_text: BTreeMap<String, (RouteContract, crate::BusboyTextOptions)>,
     pre_authentication: BTreeMap<String, RouteContract>,
 }
 impl VersionBodyHooksRegistry {
+    /// Use the same Busboy text-decoding policy as the typed multipart extractor.
+    /// # Errors
+    /// Rejects non-multipart/unversioned routes and duplicate registrations.
+    /// Compilation rejects changed request/options/authentication metadata.
+    pub fn enable_busboy_text(
+        &mut self,
+        route: &RouteContract,
+        options: crate::BusboyTextOptions,
+    ) -> Result<(), String> {
+        VersionedRoutePlan::compile(route)?.with_busboy_text(options.clone())?;
+        let key = route_key(route);
+        if self.multipart_text.contains_key(&key) {
+            return Err("Duplicate multipart text profile".into());
+        }
+        self.multipart_text.insert(key, (route.clone(), options));
+        Ok(())
+    }
+
     /// Register a trusted whole-request parser for one version. All versions must
     /// be registered before compilation; body/field hook combinations are rejected.
     /// Parser hooks and explicit wire/query/pre-auth profiles remain available.
@@ -324,6 +343,7 @@ impl VersionBodyHooksRegistry {
             .chain(self.simple_queries.keys())
             .chain(self.json_wire.keys())
             .chain(self.text_wire.keys())
+            .chain(self.multipart_text.keys())
             .chain(self.pre_authentication.keys())
         {
             if counts.get(key) != Some(&1) {
@@ -342,6 +362,12 @@ impl VersionBodyHooksRegistry {
             assert!(
                 self.request_parsers.insert(key, value).is_none(),
                 "duplicate whole-request parser operation"
+            );
+        }
+        for (key, entry) in other.multipart_text {
+            assert!(
+                self.multipart_text.insert(key, entry).is_none(),
+                "duplicate multipart text profile"
             );
         }
         for (key, route) in other.text_wire {
@@ -455,6 +481,12 @@ impl VersionBodyHooksRegistry {
                 return Err("Stale versioned text wire profile".into());
             }
             plan = plan.with_typescript_text_wire()?;
+        }
+        if let Some((snapshot, options)) = self.multipart_text.get(&route_key(route)) {
+            if !request_snapshot_matches(snapshot, route) {
+                return Err("Stale multipart text profile".into());
+            }
+            plan = plan.with_busboy_text(options.clone())?;
         }
         if let Some(entry) = self.request_parsers.get(&route_key(route)) {
             if !request_snapshot_matches(&entry.route, route) {

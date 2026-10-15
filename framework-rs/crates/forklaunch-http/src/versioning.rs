@@ -107,6 +107,7 @@ enum BodyValidator {
 pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
     request_parsers: Option<Arc<std::collections::BTreeMap<String, VersionRequestParser>>>,
+    multipart_text: Option<crate::BusboyTextOptions>,
     identity: Arc<()>,
     typescript_simple_query: bool,
     typescript_wire_parser: Option<VersionWireParser>,
@@ -187,6 +188,7 @@ impl VersionedRoutePlan {
             response_plan: crate::versioned_response::VersionResponsePlan::compile(route),
             variants,
             request_parsers: None,
+            multipart_text: None,
             identity: Arc::new(()),
             typescript_simple_query: false,
             typescript_wire_parser: None,
@@ -319,6 +321,28 @@ impl VersionedRoutePlan {
             &first.route,
             self.parser_hooks.clone(),
         )?);
+        self.identity = Arc::new(());
+        Ok(self)
+    }
+
+    /// Opt into Busboy text decoding for a multipart version plan.
+    /// # Errors
+    /// Rejects plans without multipart versions. Replaces prior decoding options
+    /// and invalidates cached prepared selections.
+    pub fn with_busboy_text(mut self, options: crate::BusboyTextOptions) -> Result<Self, String> {
+        if self.variants.is_empty()
+            || self.variants.iter().any(|variant| {
+                variant
+                    .route
+                    .request
+                    .body
+                    .as_ref()
+                    .is_none_or(|body| body.kind != BodyKind::Multipart)
+            })
+        {
+            return Err("Busboy text decoding requires multipart versions".into());
+        }
+        self.multipart_text = Some(options);
         self.identity = Arc::new(());
         Ok(self)
     }
@@ -508,11 +532,12 @@ impl VersionedRoutePlan {
                 charset == "iso-8859-1",
                 &self.parsers,
             )?,
-            BodyKind::Multipart => multipart::parse(
+            BodyKind::Multipart => multipart::parse_with_text(
                 bytes,
                 crate::header_value(&request.headers, "content-type")
                     .ok_or_else(|| invalid_body("missing multipart content type"))?,
                 limits,
+                self.multipart_text.as_ref(),
             )?,
             _ => Value::String(charset::decode(bytes, &charset)?.into_owned()),
         };

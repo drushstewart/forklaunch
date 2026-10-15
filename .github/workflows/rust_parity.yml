@@ -136,6 +136,8 @@ on:
       - 'cli/tests/fixtures/configured-mappers-types/**'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
+      - 'cli/tests/rust_multipart_text_parity.mjs'
+      - 'cli/tests/fixtures/rust_multipart_text_reference.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
       - 'cli/tests/rust_security_audit.py'
       - 'cli/tests/rust_security_audit_test.py'
@@ -262,6 +264,7 @@ on:
       - 'cli/tests/rust_better_auth_orm.mjs'
       - 'cli/tests/rust_better_auth_member_orm.mjs'
       - 'cli/tests/fixtures/rust_better_auth_team_limit_orm.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_organization_features.mjs'
       - 'cli/tests/rust_better_auth_compliance.mjs'
       - 'cli/tests/rust_ecommerce_compliance.mjs'
       - 'cli/tests/rust_ecommerce_retention.mjs'
@@ -615,6 +618,8 @@ on:
       - 'cli/tests/fixtures/configured-mappers-types/**'
       - 'cli/tests/typescript_response_status_validation.mjs'
       - 'cli/tests/rust_multipart_extract_parity.mjs'
+      - 'cli/tests/rust_multipart_text_parity.mjs'
+      - 'cli/tests/fixtures/rust_multipart_text_reference.mjs'
       - 'cli/tests/rust_benchmarks.mjs'
       - 'cli/tests/rust_security_audit.py'
       - 'cli/tests/rust_security_audit_test.py'
@@ -741,6 +746,7 @@ on:
       - 'cli/tests/rust_better_auth_orm.mjs'
       - 'cli/tests/rust_better_auth_member_orm.mjs'
       - 'cli/tests/fixtures/rust_better_auth_team_limit_orm.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_organization_features.mjs'
       - 'cli/tests/rust_better_auth_compliance.mjs'
       - 'cli/tests/rust_ecommerce_compliance.mjs'
       - 'cli/tests/rust_ecommerce_retention.mjs'
@@ -1514,6 +1520,9 @@ jobs:
       - run: node cli/tests/rust_multipart_extract_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_multipart_text_parity.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_tanstack_query_parity.mjs
         env:
           FORKLAUNCH_TEST_TANSTACK_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
@@ -2041,6 +2050,7 @@ jobs:
       - run: node cli/tests/rust_better_auth_surfacing.mjs
       - run: node cli/tests/rust_better_auth_orm.mjs
       - run: node cli/tests/fixtures/rust_better_auth_team_limit_orm.mjs
+      - run: node cli/tests/fixtures/rust_better_auth_organization_features.mjs
       - run: node cli/tests/rust_better_auth_member_orm.mjs
       - run: node cli/tests/rust_better_auth_member_orm.mjs
         env:
