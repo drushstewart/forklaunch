@@ -386,3 +386,16 @@ Customer and completed Plan provenance. Migrations14/15 add four durable depende
 claims and separate-role UUID publication. Exact Price/line-item evidence and
 provider expiry are preserved; open-session creation does not grant entitlement.
 See [the Checkout provider guide](crates/implementations/billing/forklaunch-billing-stripe/README.md#direct-bound-checkout-creation).
+
+Generated billing services default to legacy request dates. Set
+`BILLING_REQUEST_DATE_PROFILE=utc-iso-and-epoch` (or use
+`BillingBackend::with_request_dates(BillingRequestDateProfile::UtcIsoAndEpoch)`)
+to accept numeric epoch milliseconds and the deterministic UTC/offset ISO subset
+on declared startDate/endDate/expiresAt fields through HTTP and MCP. Fractions
+truncate toward zero. The UTC year range is 0000–9999; locale and offsetless
+datetime strings return an explicit unsupported-profile 400. Null and invalid
+dates remain invalid. Omitted fields and opaque provider payloads are preserved;
+responses retain ISO date-time schemas. Contract request metadata and generated
+SDKs expose string-or-number admission with profile annotations. This is a bounded
+profile, not all JavaScript Date formats. Runtime environment selection persists
+across regeneration/sync.

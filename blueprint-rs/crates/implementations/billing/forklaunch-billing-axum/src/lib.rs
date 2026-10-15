@@ -1,5 +1,6 @@
 //! Persistent billing HTTP handlers shared with authenticated MCP dispatch.
 #![forbid(unsafe_code)]
+mod request_dates;
 mod webhook;
 use axum::{
     Extension, Json,
@@ -24,12 +25,14 @@ use forklaunch_blueprint_core::{
     contract::{HttpMethod, RouteContract},
 };
 use forklaunch_core::ServiceInfo;
+pub use request_dates::BillingRequestDateProfile;
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 pub struct BillingBackend {
     store: PostgresBillingStore,
     client: Option<StripeBillingClient>,
     backup: bool,
+    request_dates: BillingRequestDateProfile,
     webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
     platform_key: Option<zeroize::Zeroizing<String>>,
 }
@@ -40,6 +43,7 @@ impl BillingBackend {
             store,
             client: None,
             backup: false,
+            request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
         }
@@ -50,6 +54,7 @@ impl BillingBackend {
             store,
             client: Some(client),
             backup: false,
+            request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
         }
@@ -57,6 +62,11 @@ impl BillingBackend {
     #[must_use]
     pub const fn with_database_backup(mut self, enabled: bool) -> Self {
         self.backup = enabled;
+        self
+    }
+    #[must_use]
+    pub const fn with_request_dates(mut self, profile: BillingRequestDateProfile) -> Self {
+        self.request_dates = profile;
         self
     }
     /// # Errors
@@ -84,6 +94,7 @@ impl BillingBackend {
         contract: &RouteContract,
         mut input: Value,
     ) -> BlueprintResult<BillingResponse> {
+        self.request_dates.normalize(contract, &mut input)?;
         validate_input(contract, &mut input)?;
         if self.client.is_some()
             && let Some(fields) = input
@@ -204,6 +215,10 @@ fn invalid() -> BlueprintError {
 }
 fn failure(error: &BlueprintError) -> Response {
     let (status, message) = match error.code.as_str() {
+        "billing_date_profile_unsupported" => (
+            StatusCode::BAD_REQUEST,
+            "Date is outside the configured billing date profile",
+        ),
         "billing_not_found" => (StatusCode::NOT_FOUND, "Billing record not found"),
         "billing_validation"
         | "billing_invalid_webhook"
@@ -266,7 +281,11 @@ pub fn billing_router(
         .iter()
         .filter(|route| route.operation_name != "getHealth")
     {
-        let contract = contract.clone();
+        let mut contract = contract.clone();
+        backend
+            .request_dates
+            .project(&mut contract)
+            .expect("package-owned billing request schema");
         if contract.operation_name == "handlewebhookevent" {
             let backend = Arc::clone(&backend);
             router = router.post(

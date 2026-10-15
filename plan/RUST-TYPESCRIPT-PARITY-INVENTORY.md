@@ -9437,3 +9437,24 @@ CI explicitly pins Node24.2 for these checks then restores its existing Node22.
 This fixes the97 observed parser admission discrepancies; it does not claim
 exhaustive URL equivalence, cross-platform/MSRV proof or corrected RFC URI schema
 emission. Broader schema gate stays open; checklist remains660/682 (96.8%),22open.
+
+
+### Declared billing request date profile (2026-10-14)
+
+Opt-in BILLING_REQUEST_DATE_PROFILE=utc-iso-and-epoch projects request-only
+string|number admission and normalizes declared startDate/endDate/expiresAt before
+typed deserialization through shared HTTP/MCP dispatch. UTC years0000..9999,
+fraction truncation, explicit unsupported400 for locale/offsetless/outside-profile
+inputs; null/invalid reject. Missing/default/required semantics and opaque payloads
+remain normal route behavior. Responses unchanged; defaultlegacy unchanged.
+320 actual configured16field comparisons pass:112normalized,96actual-invalid,
+96explicitunsupported,16omissions. Three Axum unit tests, live restrictedPG
+base+Stripe HTTP/MCP with6 generated TypeScriptSDK calls,66route/28schema default
+regression and strict allfeature/alltarget AxumClippy pass. Invalid/unsupported
+requests cause zero provider calls. Cleanup0ownedroles/DBs.
+Frozen9 /private/tmp/fl-billing-request-dates-source-final.json; logs
+/private/tmp/fl-billing-request-dates-{check,oracle,unit,live,contracts,clippy,cleanup}.log.
+CI adds oracle and live ignored integration execution using jobTSC/PG environment.
+Lock adds only3 billing-Axum dependency edges (validation and two dev SDK crates).
+No full JSDate/TimeClip-extreme or configured billing identity-wiring claim.
+Checklist remains660/682 (96.8%),22open.

@@ -40,7 +40,8 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: direct bound Checkout creation with four durable Customer/Plan claims, exact Price/line-item evidence and separate-role local UUID publication; restricted PG, Portal/Subscription regressions, SDK and configured186/legacy170 checks pass. Generated default HTTP wiring remains a separate gate.
 - Completed: trusted async OTP field codecs with durable revision/lease CAS, no transaction across callbacks, final14/PG/actual10 and default HTTP clock-preservation checks. Native race safety is deliberately stronger than upstream.
 - Completed: optional pinned Node24.2/Ada3.2.4 URI validation,205676 exact admission comparisons plus ordered/composition and255 HTTP/120 MCP/both-SDK checks. URI schema emission remains open.
-- Active: declared billing requestdate integration and built-in backup field-codec validation. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: opt-in declared billing UTC ISO/epoch requestdate normalization with320 actual-source classifications, live base/Stripe HTTP/MCP and6 generated SDK calls. Default legacy and response metadata remain unchanged.
+- Active: built-in backup field-codec validation, URI emitter audit and configured billing identity/read wiring proposal. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
 - Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.

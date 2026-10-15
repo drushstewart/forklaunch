@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+forklaunch-validation = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-validation" }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
 forklaunch-billing-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-billing-interface" }
 forklaunch-billing-base = { version = "0.1.0", path = "../forklaunch-billing-base", features = ["postgres"] }
@@ -25,6 +26,8 @@ tokio = { version="1", features=["time"] }
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
+forklaunch-sdk-codegen = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-sdk-codegen" }
+forklaunch-sdk-typescript = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-sdk-typescript" }
 tokio = { version="1", features=["macros","rt-multi-thread","net","sync"] }
 reqwest = { version="0.12", default-features=false, features=["rustls-tls","json"] }
 sqlx = {version="0.8",default-features=false,features=["runtime-tokio","tls-rustls","postgres"]}
