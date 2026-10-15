@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 625 resolved declaration entry points and 1,709 declaration/re-export
+It records 625 resolved declaration entry points and 1,710 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -12747,3 +12747,9 @@ bytes referring exclusively to the completed, removed auth-package roots. Retain
 archive hash, no active compiler/open candidates, unchanged inode/mtime/size and
 current-source exclusions were verified. Unrelated watcher46080 remains running.
 Receipt: `/private/tmp/fl-oct15-auth-package-cache-cleanup.json`.
+
+The completed predicate worktree was removed after exact commit, all 11 source
+hashes, clean status and no active/open owned files were verified. Branch and
+proofs remain; `/private/tmp/fl-string-predicate-domain-cleanup.json` records
+54,992 KiB logical data. Current inventory metadata now has 1,710 declaration/
+re-export records; the 625 entry points are unchanged.

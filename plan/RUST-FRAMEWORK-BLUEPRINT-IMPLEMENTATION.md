@@ -17,6 +17,14 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 
 Current parallel work (these are slices of the existing gates, not extra checklist items):
 
+- Active: team quota callbacks, including borrowed transaction capabilities during invitation acceptance; Unicode case-insensitive routing with preserved original URI/signature bytes and ordered-dispatch follow-up; remaining versioned validation diagnostics.
+- Latest integrated slices: role and invitation quota callbacks, shared permission caching, optional trailing-slash routing, nested LocalRouter root/alias correction, selected automatic OPTIONS, extended UTF-16 bounds and positioned literal predicates. Their dated receipts below identify exact scopes and remaining differences.
+- Latest combined IAM regression: 237 passed, five PostgreSQL tests deliberately ignored in that run and covered by separate focused receipts.
+- Latest immutable package checkpoint: `6fcbf887c`, 3,084 archive files verified before/after runtime, 233 bundled IAM tests, all five HTTP/MCP listener modes and five signed capability callbacks passed. Later quota, routing and predicate changes have separate proofs and are excluded from that archive.
+- Current source inventory: 44 packages, 625 entry points and 1,710 declaration/re-export records; 16 reviewed common symbol mappings have checked implementation/fixture references. These are audit counts, not completed feature counts.
+
+Earlier milestone snapshots (historical counts and boundaries apply to their named source revisions):
+
 - Completed: immutable95f1b203b packaged runtime, generated five-family billing HTTP/MCP lifecycle, versioned text-wire profile and real shared/generated SDK/auth composition. Dated source/hash/test receipts are in the inventory.
 - Completed: PaymentLink update result identity/totals guards and single configured local mapping; UUID/provider mutation ownership remains open.
 - Completed: optional MCP omission, explicit optional-body contracts and safe root documentation, referenced shared-SDK special-value conversion, required Portal URLs, consumed Plan/Subscription references, and trusted resolved signing keys.
@@ -77,7 +85,7 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: explicit CUID/CUID2/ULID/Nano ID/Base64/Base64url assertions pass 66,624 actual-source/native comparisons and live generated HTTP/socket consumers. Other raw formats and regex remain open.
 - Completed: immutable d7bd packaged CLI/runtime checkpoint, with 2,858 verified archive files, generated services/workers/modules, actual HTTP/MCP startup and all five capability callbacks, strict SDKs and 214 bundled IAM tests. Later drafts are excluded; cloud/publication gates remain open.
 - Completed: direct Plan creation and IDs-only inspection across HTTP/MCP/both SDKs, restricted PostgreSQL and 120 rendered artifact/startup cases. Subscription creation and broader mutations remain open.
-- Active: broader credential/options parity, explicit Zod format/regex compatibility, and bound billing creation HTTP/MCP/SDK wiring. Signup auto-signin, Subscription read selection, password-reset revocation/observer, and bounded string-schema fixes have landed. Broader plugin/mapper/schema/deployment gates remain open.
+- Historical active scope: broader credential/options parity, explicit Zod format/regex compatibility, and bound billing creation HTTP/MCP/SDK wiring. Signup auto-signin, Subscription read selection, password-reset revocation/observer, and bounded string-schema fixes have landed. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable4ff9e3958 package/install passed2799 files with SHA256db6cb114da0e7faabb74e01ceb1ae0da081020194764fbabbbc177171ca0033c. Portable runtime/HTTP/MCP/SDK checks now pass with195IAM tests and3PGignored; all2799bytes verified after. Current policy/pure/Subscription/collision fixes are excluded by exact source commit.
 - Validation: immutable37b54 archive package/install/portable services/workers/SDK/HTTP/MCP runtime passes with2775 before/after byte-verified files and packagedIAM184 (3PGignored). Later OTPdispatcher/tupleconsumer/new drafts are excluded by source commit; owned roots and414MB exclusive nonexecutable cache cleaned with guards.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
@@ -3543,3 +3551,9 @@ bytes referring exclusively to the completed, removed auth-package roots. Retain
 archive hash, no active compiler/open candidates, unchanged inode/mtime/size and
 current-source exclusions were verified. Unrelated watcher46080 remains running.
 Receipt: `/private/tmp/fl-oct15-auth-package-cache-cleanup.json`.
+
+The completed predicate worktree was removed after exact commit, all 11 source
+hashes, clean status and no active/open owned files were verified. Branch and
+proofs remain; `/private/tmp/fl-string-predicate-domain-cleanup.json` records
+54,992 KiB logical data. Current inventory metadata now has 1,710 declaration/
+re-export records; the 625 entry points are unchanged.
