@@ -12150,3 +12150,28 @@ hashes and no active/open path checks. `/private/tmp/fl-array-float-length-clean
 records4,228 regular files and45,349,618 logical bytes removed; proof branch and
 native caches remain. Main was also fetched again: origin/main e36cfd29c has zero
 commits missing from this branch.
+
+
+### 2026-10-15: Configured PaymentLink update preflight
+
+Generated Stripe services now explicitly select a separate configured PaymentLink
+update profile. It reads/normalizes cached DTOs and validates admitted patches
+before provider mutation, matching configured TypeScript effect ordering. Generic
+services and the read-only selection retain their existing provider-first behavior.
+The public mutation target is unchanged; this adds no alias remapping or monetary
+authority. Selected errors use the TypeScript status/text/correlation path.
+
+Native1 and restricted PostgreSQL/HMAC HTTP1 (0.65s) pass, along with actual mapper
+preflight30, configured373, legacy170, artifact186 and full/minimal strict Clippy
+19.50s/3.58s. Actual fixture43 consists of39 owned-route/final-error-handler cases
+and4 actual parse-middleware/controller successes. The latter prove null/number
+coercion remains a separate request gap: amount:null becomes0 in TypeScript, while
+the native typed request currently rejects it. The owned error route bypasses
+controller admission; its39 cases do not prove full request-schema parity. Cache
+and returned successful amount follow the provider line sum, not the requested
+amount. Owned database/role cleanup is0. CI includes the new source/native tests.
+
+All9 paths match `/private/tmp/fl-payment-link-update-final.json` SHA256
+`39b0087e9a2bfd3ddf9c91787d5e2628472aabf6ab75b0304bb983f94e3b7344`.
+Logs use `/private/tmp/fl-payment-link-update-`. No dependency changes. Remaining
+request coercion and broader billing gates stay open. Checklist660/682 unchanged.

@@ -272,6 +272,15 @@ impl StripeBillingClient {
         )
         .await
     }
+    pub(crate) async fn update_configured(
+        &self,
+        resource: StripeResource,
+        id: &str,
+        fields: &Value,
+    ) -> BlueprintResult<Value> {
+        self.request_with_status(Method::POST, resource, Some(id), None, fields, true)
+            .await
+    }
     async fn request_with_status(
         &self,
         method: Method,

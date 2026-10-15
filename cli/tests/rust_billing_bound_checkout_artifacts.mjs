@@ -157,6 +157,7 @@ try {
   const renderedMain=render(mainTemplate);
   assert.equal(renderedMain.includes('BillingBackend::stripe(store,client).with_configured_subscription_updates(true)'),stripe,'generated Stripe backend selects configured owner preflight; base template does not');
   assert.equal(renderedMain.includes('.with_configured_cached_reads(true)'),stripe,'generated Stripe backend selects configured cached GET mapping; generic base stays unchanged');
+  assert.equal(renderedMain.includes('.with_configured_payment_link_updates(true)'),stripe,'generated Stripe backend selects configured PaymentLink update preflight independently from reads');
   writeFileSync(path.join(temporary,'src/main.rs'),renderedMain);
   run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
  }

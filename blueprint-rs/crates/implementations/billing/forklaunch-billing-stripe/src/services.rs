@@ -65,6 +65,7 @@ pub struct StripeBillingService<S> {
     base: BaseBillingService<S>,
     client: StripeBillingClient,
     configured_subscription_updates: bool,
+    configured_payment_link_updates: bool,
     configured_cached_reads: bool,
     pub(crate) max_configured_list_records: usize,
 }
@@ -75,6 +76,7 @@ impl<S: BillingStore> StripeBillingService<S> {
             base,
             client,
             configured_subscription_updates: false,
+            configured_payment_link_updates: false,
             configured_cached_reads: false,
             max_configured_list_records: 100,
         }
@@ -84,6 +86,13 @@ impl<S: BillingStore> StripeBillingService<S> {
     #[must_use]
     pub const fn with_configured_subscription_updates(mut self, enabled: bool) -> Self {
         self.configured_subscription_updates = enabled;
+        self
+    }
+    /// Selects the configured application's `PaymentLink` cache/patch update preflight.
+    /// This never resolves a retained provider reference into mutation authority.
+    #[must_use]
+    pub const fn with_configured_payment_link_updates(mut self, enabled: bool) -> Self {
+        self.configured_payment_link_updates = enabled;
         self
     }
     /// Selects the configured application's cache-first Checkout GET and `PaymentLink` GET/list mappers.
@@ -487,6 +496,10 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
         &self,
         mut request: UpdatePaymentLinkDto,
     ) -> BlueprintResult<PaymentLinkDto> {
+        if self.configured_payment_link_updates {
+            self.configured_preflight_payment_link_update(&request)
+                .await?;
+        }
         let mut overrides = json!({});
         if let Some(value) = &request.payment_methods {
             overrides["payment_method_types"] = json!(value);
@@ -498,10 +511,15 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
                 .ok_or_else(invalid_response)?
                 .remove("payment_method_types");
         }
-        let provider = self
-            .client
-            .update(StripeResource::PaymentLink, &request.id, &fields)
-            .await?;
+        let provider = if self.configured_payment_link_updates {
+            self.client
+                .update_configured(StripeResource::PaymentLink, &request.id, &fields)
+                .await?
+        } else {
+            self.client
+                .update(StripeResource::PaymentLink, &request.id, &fields)
+                .await?
+        };
         validate_read_identity(&provider, &request.id, "payment_link")?;
         request.amount = Some(line_amount(&provider)?);
         request.provider_fields = Some(provider);

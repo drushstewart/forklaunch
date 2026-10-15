@@ -1,7 +1,9 @@
 //! The configured TypeScript cache-read hooks, not a provider ownership proof.
 use crate::{client::StripeResource, services::StripeBillingService};
 use forklaunch_billing_base::services::{BillingKind, BillingStore};
-use forklaunch_billing_interface::services::{CheckoutSessionDto, PaymentLinkDto};
+use forklaunch_billing_interface::services::{
+    CheckoutSessionDto, PaymentLinkDto, UpdatePaymentLinkDto,
+};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::sync::OnceLock;
@@ -161,6 +163,36 @@ impl<S: BillingStore> StripeBillingService<S> {
             .await?
             .ok_or_else(invalid)?;
         serde_json::from_value(raw).map_err(|_| invalid())
+    }
+    pub(crate) async fn configured_preflight_payment_link_update(
+        &self,
+        request: &UpdatePaymentLinkDto,
+    ) -> BlueprintResult<()> {
+        let local: PaymentLinkDto = self
+            .configured_cached_dto(BillingKind::PaymentLink, &request.id)
+            .await?;
+        // This checks the configured cache DTO and patch only. In particular,
+        // providerFields remain opaque and never replace the dispatch target.
+        local_fields(
+            &local.id,
+            &request.id,
+            &local.currency,
+            &local.payment_methods,
+            &local.status,
+        )?;
+        if !local.amount.is_finite() || request.amount.is_some_and(|amount| !amount.is_finite()) {
+            return Err(invalid());
+        }
+        local_fields(
+            &request.id,
+            &local.id,
+            request.currency.as_deref().unwrap_or(&local.currency),
+            request
+                .payment_methods
+                .as_deref()
+                .unwrap_or(&local.payment_methods),
+            request.status.as_deref().unwrap_or(&local.status),
+        )
     }
     pub(crate) async fn configured_get_checkout_session(
         &self,

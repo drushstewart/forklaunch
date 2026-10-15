@@ -76,6 +76,9 @@ use forklaunch_core::ServiceInfo;
 pub use request_dates::BillingRequestDateProfile;
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
+// Independent backward-compatible mapper selections and backup policy; these
+// are orthogonal switches, not states of one authorization workflow.
+#[allow(clippy::struct_excessive_bools)]
 pub struct BillingBackend {
     store: PostgresBillingStore,
     client: Option<StripeBillingClient>,
@@ -102,6 +105,7 @@ pub struct BillingBackend {
     #[cfg(feature="bound-checkout")]
     bound_payment_link_expiration: Option<Arc<bound_payment_link_expiration::BoundPaymentLinkExpirationV1>>,
     configured_subscription_updates: bool,
+    configured_payment_link_updates: bool,
     configured_cached_reads: bool,
     max_configured_list_records: usize,
     request_dates: BillingRequestDateProfile,
@@ -136,6 +140,7 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
             configured_subscription_updates: false,
+            configured_payment_link_updates: false,
             configured_cached_reads: false,
             max_configured_list_records: 100,
             request_dates: BillingRequestDateProfile::Legacy,
@@ -170,6 +175,7 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
             configured_subscription_updates: false,
+            configured_payment_link_updates: false,
             configured_cached_reads: false,
             max_configured_list_records: 100,
             request_dates: BillingRequestDateProfile::Legacy,
@@ -182,6 +188,13 @@ impl BillingBackend {
     #[must_use]
     pub const fn with_configured_subscription_updates(mut self, enabled: bool) -> Self {
         self.configured_subscription_updates = enabled;
+        self
+    }
+    /// Selects configured `PaymentLink` cache/patch validation before provider updates.
+    /// Read selectors do not imply this mutation behavior.
+    #[must_use]
+    pub const fn with_configured_payment_link_updates(mut self, enabled: bool) -> Self {
+        self.configured_payment_link_updates = enabled;
         self
     }
     /// Selects configured cache-first Checkout and `PaymentLink` read mappers.
@@ -271,6 +284,7 @@ impl BillingBackend {
                 execute(
                     &StripeBillingService::new(service, client.clone())
                         .with_configured_subscription_updates(self.configured_subscription_updates)
+                        .with_configured_payment_link_updates(self.configured_payment_link_updates)
                         .with_configured_cached_reads(self.configured_cached_reads)
                         .with_max_configured_list_records(self.max_configured_list_records)?,
                     &contract.operation_name,
@@ -414,28 +428,31 @@ async fn dispatch_with_context(
     input: Value,
     context: forklaunch_axum::RequestContext,
 ) -> Response {
-    let configured_read = backend.configured_cached_reads
+    let configured_operation = (backend.configured_cached_reads
         && matches!(
             contract.operation_name.as_str(),
             "getCheckoutSession" | "getPaymentLink" | "listPaymentLinks"
-        );
+        ))
+        || (backend.configured_payment_link_updates
+            && contract.operation_name == "updatePaymentLink");
     match backend.call(&session, &contract, input).await {
         Ok(result) => result.into_response(),
         Err(error)
             if error.code == "billing_configured_mapper_error"
-                || (configured_read && error.code != "billing_validation") =>
+                || (configured_operation && error.code != "billing_validation") =>
         {
-            let status = if configured_read && error.code == "billing_configured_provider_error" {
-                error
-                    .details
-                    .get("status")
-                    .and_then(Value::as_u64)
-                    .filter(|status| (400..600).contains(status))
-                    .and_then(|status| u16::try_from(status).ok())
-                    .unwrap_or(500)
-            } else {
-                500
-            };
+            let status =
+                if configured_operation && error.code == "billing_configured_provider_error" {
+                    error
+                        .details
+                        .get("status")
+                        .and_then(Value::as_u64)
+                        .filter(|status| (400..600).contains(status))
+                        .and_then(|status| u16::try_from(status).ok())
+                        .unwrap_or(500)
+                } else {
+                    500
+                };
             let response =
                 forklaunch_http::typescript_parser_error_response(status, &context.correlation_id);
             (
@@ -462,13 +479,16 @@ pub fn billing_router(
     let backend = Arc::new(backend);
     let auth = Arc::new(auth);
     let config = RouterConfig {
-        response_status_error_format: if backend.configured_cached_reads {
+        response_status_error_format: if backend.configured_cached_reads
+            || backend.configured_payment_link_updates
+        {
             forklaunch_axum::ResponseStatusErrorFormat::TypeScriptText
         } else {
             forklaunch_axum::ResponseStatusErrorFormat::Json
         },
         correlation_id_format: if backend.configured_subscription_updates
             || backend.configured_cached_reads
+            || backend.configured_payment_link_updates
         {
             forklaunch_axum::CorrelationIdFormat::TypeScript
         } else {
