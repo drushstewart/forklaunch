@@ -162,18 +162,22 @@ def verify(directory: Path, target: Path):
     for name in ("forklaunch-jsonschema-protocol", "forklaunch-referencing-protocol", "forklaunch-bullmq-protocol"):
         dependencies[name]["default-features"] = False
     dependencies["forklaunch-axum"]["features"] = ["mcp"]
+    bounded_regex = "forklaunch-regress" in dependencies
+    if bounded_regex:
+        dependencies["forklaunch-common"]["features"] = ["zod-regex"]
     dependencies.update({
         "tokio": {"version": "1", "features": ["rt-multi-thread", "macros", "signal", "net"]},
         "axum": "0.8", "serde_json": {"version": "=1.0.151", "features": ["raw_value", "arbitrary_precision"]},
     })
     (consumer / "Cargo.toml").write_bytes(manifest_text({
         "package": {"name": "forklaunch-registry-smoke", "version": "0.0.0", "edition": "2024", "publish": False},
+        "features": {"bounded-regex": [], "default": ["bounded-regex"] if bounded_regex else []},
         "dependencies": dependencies, "patch": {"crates-io": {"serde_json": {"path": "serde_json"}}},
     }))
     (consumer / "src").mkdir()
     (consumer / "src/main.rs").write_text((ROOT / "scripts/rust_registry_smoke.rs").read_text())
     (consumer / ".cargo").mkdir()
-    env = {**os.environ, "CARGO_INCREMENTAL": "0", "CARGO_BUILD_JOBS": "2"}
+    env = {**os.environ, "CARGO_INCREMENTAL": "0", "CARGO_BUILD_JOBS": os.environ.get("CARGO_BUILD_JOBS", "2")}
     with registry(directory, report) as index:
         (consumer / ".cargo/config.toml").write_bytes(manifest_text({"registries": {"forklaunch-staging": {"index": index}}}))
         run(["cargo", "build", "--target-dir", str(target)], cwd=consumer, env=env)
@@ -191,6 +195,9 @@ def verify(directory: Path, target: Path):
     (directory / "verification.json").write_text(json.dumps({
         "schemaVersion": 1, "releaseSha256": hashlib.sha256((directory / "release.json").read_bytes()).hexdigest(),
         "packages": len(report["packages"]), "httpMcpStartup": True,
-        "scope": "local sparse registry, default features plus Axum MCP; owned dependency registry metadata rewritten",
+        "boundedRegex": bounded_regex,
+        "scope": "local sparse registry, default features plus Axum MCP" +
+                 (" and checked common regex" if bounded_regex else "") +
+                 "; owned dependency registry metadata rewritten",
     }, indent=2) + "\n")
     print(f"Verified {len(report['packages'])} registry-installed crates and HTTP/MCP startup")

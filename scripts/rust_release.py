@@ -153,6 +153,9 @@ def publication_preflight(output: Path, tag: str):
             or verified.get("releaseSha256") != hashlib.sha256(report_bytes).hexdigest()
             or verified.get("packages") != len(report["packages"])):
         raise ValueError("Missing or mismatched registry/startup verification")
+    if (any(package["name"] == "forklaunch-regress" for package in report["packages"])
+            and verified.get("boundedRegex") is not True):
+        raise ValueError("Missing bounded regex registry verification")
     plan = release_plan()
     prepared = [{key: package[key] for key in ("name", "version", "manifest", "dependencies")}
                 for package in report["packages"]]

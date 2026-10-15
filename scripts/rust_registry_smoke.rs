@@ -7,6 +7,8 @@ use serde_json::{Value, json};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "bounded-regex")]
+    check_bounded_regex();
     for literal in [
         "$serde_json::private::Number",
         "$serde_json::private::RawValue",
@@ -47,4 +49,30 @@ async fn shutdown() {
     tokio::signal::ctrl_c()
         .await
         .expect("install shutdown handler");
+}
+
+// Exercise the optional API from registry-installed crates before serving requests.
+#[cfg(feature = "bounded-regex")]
+fn check_bounded_regex() {
+    use forklaunch_common::zod_regex::{
+        RegexCompileError, RegexCompileLimits, RegexMatchLimits, RegexResourceLimit, ZodRegex,
+    };
+    let pattern: Vec<u16> = r"^\p{Letter}+$".encode_utf16().collect();
+    let regex = ZodRegex::compile(&pattern, "u", RegexCompileLimits::default()).unwrap();
+    assert_eq!(regex.test("Rust", RegexMatchLimits::default()), Ok(true));
+    assert_eq!(regex.test("42", RegexMatchLimits::default()), Ok(false));
+    assert_eq!(
+        regex.test(
+            "Rust",
+            RegexMatchLimits {
+                work: 0,
+                ..RegexMatchLimits::default()
+            }
+        ),
+        Err(RegexResourceLimit::Work),
+    );
+    assert!(matches!(
+        ZodRegex::compile(&pattern, "uv", RegexCompileLimits::default()),
+        Err(RegexCompileError::InvalidFlags)
+    ));
 }

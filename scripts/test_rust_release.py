@@ -137,6 +137,21 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 release.publication_preflight(self.root, "rust-v0.1.0")
 
+    def test_regex_release_requires_optional_feature_proof(self):
+        report = {"schemaVersion": 1, "dirty": False,
+                  "packages": [{"name": "forklaunch-regress"}]}
+        contents = json.dumps(report).encode()
+        (self.root / "release.json").write_bytes(contents)
+        for proof in (None, False, "true"):
+            with self.subTest(proof=proof):
+                (self.root / "verification.json").write_text(json.dumps({
+                    "schemaVersion": 1, "httpMcpStartup": True, "packages": 1,
+                    "releaseSha256": hashlib.sha256(contents).hexdigest(),
+                    "boundedRegex": proof,
+                }))
+                with self.assertRaisesRegex(ValueError, "bounded regex"):
+                    release.publication_preflight(self.root, "rust-v0.1.0")
+
     def test_publication_binds_clean_tag_graph_and_artifacts(self):
         self.crate("forklaunch-a")
         def git(*args):
