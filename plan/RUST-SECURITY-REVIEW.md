@@ -1572,3 +1572,24 @@ reservations remain rejected. Frozen7 /private/tmp/fl-payment-link-list-final.js
 verified SHA25688e805997d17acdefd3135403b32e22707980f6c3dc2ffd9dfa13705d35adc5e.
 Logs /private/tmp/fl-payment-link-list-{ts,unit,pg-final,clippy-final}.log.
 Owned fixture roles0. HTTP/MCP list wiring remains next;660/682(96.8%),22open.
+
+### 2026-10-15 — PaymentLink list HTTP/MCP/SDK surface
+
+Existing explicit paymentLinkRead selection now adds GET /bound-payment-links
+with required typed array-of-UUID ids and trusted optional maxRecords(default100,
+max1000). Runtime uses one JSON-encoded query entry, matching existing generated
+TS client/native list convention; TS callers pass an array, Rust callers serialize
+into the current string query map. Repeated query keys/unknown keys are rejected.
+This is not a claim of repeated-array TS-controller wire equivalence. Metadata
+reflects the selected limit. Existing path-only HMAC convention is unchanged.
+
+HTTP/MCP plus two actual TS/two actual Rust getter/list calls passed2.81s,
+including pre-provider query/auth denials. Artifact88 plus generated base/Stripe
+binaries, units9, strict all-feature/all-target Clippy3.26s and feature-off7.08s
+pass. Existing66legacy routes remain unchanged; no publisher/write authority.
+Frozen7 /private/tmp/fl-payment-link-list-route-final.json verified SHA256
+bdeb6560d5d327acf6c9a96b1059ef7c7c4f207c654ca338cc0e97ba7c02c9eb.
+Logs /private/tmp/fl-payment-link-list-route-{live,artifacts,units-final,clippy-final,default}.log.
+Existing CI direct-executable payment_link_read wrapper runs this expanded test
+without holding Cargo's lock across SDK compilation; no extra wrapper needed.
+Checklist660/682(96.8%),22broad gates remain open.

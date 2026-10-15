@@ -259,3 +259,20 @@ No line-item, price, paid/entitlement, cache, creation, or mutation authority is
 Read evidence is bounded and provider freshness is checked after the final audit commit;
 data linearizes at the last matching SELECT and can change afterward. The existing
 66 legacy routes remain available unchanged; this is not whole-service read-only mode.
+
+The same selector also adds `listBoundCreatedPaymentLinks`, GET
+`/bound-payment-links?ids=<JSON-array-of-UUIDs>`. `ids` is required and nonempty;
+unknown or repeated query keys are rejected. The contract/MCP/TypeScript SDK input
+is an array; the generated TypeScript SDK encodes it as one JSON query value. The
+current Rust SDK query map requires an explicitly serialized JSON array. This is
+the native generated-client convention, not a claim of repeated-key TypeScript
+controller wire parity. Existing HMAC authentication signs the path, not query contents.
+
+Optional trusted `paymentLinkRead.maxRecords` defaults to 100 and accepts 1..1000;
+callers cannot override it. Metadata projects the configured maximum. Every selected
+completed local proof is checked before provider I/O, retaining input order and
+duplicates. Only provider `active: true` records are returned; missing/nonboolean
+active is an error, and local amount/status are unchanged. The whole remote phase
+shares one five-second context. Evidence and result aggregates each have an 8 MiB
+limit. Omitted/empty selection enumeration, account scans and pagination are unsupported.
+Each original proof is reobserved after I/O; this is not an atomic multi-record snapshot.

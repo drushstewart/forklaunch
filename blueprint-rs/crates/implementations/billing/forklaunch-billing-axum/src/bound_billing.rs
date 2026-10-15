@@ -1,8 +1,7 @@
 //! One explicit finite selector for compatible domain-specific authority profiles.
 use super::{
     BillingBackend, BoundCheckoutConfig, BoundCheckoutV1, BoundPortalV1, bound_checkout_contracts,
-    bound_payment_link_read_contracts, bound_plan_read_contracts, bound_portal_contracts,
-    bound_subscription_read_contracts,
+    bound_plan_read_contracts, bound_portal_contracts, bound_subscription_read_contracts,
 };
 use forklaunch_billing_base::services::postgres::{
     StripeBindingScope, TrustedCheckoutPublisher, TrustedPortalPublisher,
@@ -28,12 +27,16 @@ pub struct BoundPortalConfig {
     pub(super) profile: BoundPortalCreationProfile,
 }
 /// Shared scope, optional explicitly selected domains; no Debug/Serde or credentials.
+pub(super) struct PaymentLinkReadConfig {
+    pub(super) profile: BoundPaymentLinkCreationProfile,
+    pub(super) max_records: usize,
+}
 pub struct BoundBillingConfig {
     checkout: Option<BoundCheckoutConfig>,
     portal: Option<BoundPortalConfig>,
     plan_read: Option<BoundPlanCreationProfile>,
     subscription_read: Option<BoundSubscriptionCreationProfile>,
-    payment_link_read: Option<BoundPaymentLinkCreationProfile>,
+    payment_link_read: Option<PaymentLinkReadConfig>,
 }
 fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult<()> {
     let object = value.as_object().ok_or_else(configuration)?;
@@ -73,6 +76,27 @@ fn subscription_profile(
         SubscriptionCollectionPolicy::AutomaticDefaultIncomplete,
     )
     .map_err(|_| configuration())
+}
+fn payment_link_profile(
+    scope: &StripeBindingScope,
+    part: &Value,
+) -> BlueprintResult<PaymentLinkReadConfig> {
+    exact(part, &["trustedPrices"], &["maxRecords"])?;
+    let prices: Vec<String> =
+        serde_json::from_value(part["trustedPrices"].clone()).map_err(|_| configuration())?;
+    let max_records = match part.get("maxRecords") {
+        Some(value) => value
+            .as_u64()
+            .and_then(|v| usize::try_from(v).ok())
+            .filter(|v| (1..=1000).contains(v))
+            .ok_or_else(configuration)?,
+        None => 100,
+    };
+    Ok(PaymentLinkReadConfig {
+        profile: BoundPaymentLinkCreationProfile::trusted(scope.clone(), prices)
+            .map_err(|_| configuration())?,
+        max_records,
+    })
 }
 impl BoundBillingConfig {
     /// Parses at most 64 KiB of exact configuration. At least one domain is required.
@@ -150,17 +174,10 @@ impl BoundBillingConfig {
             .get("subscriptionRead")
             .map(|part| subscription_profile(&scope, part))
             .transpose()?;
-        let payment_link_read = if let Some(part) = value.get("paymentLinkRead") {
-            exact(part, &["trustedPrices"], &[])?;
-            let prices: Vec<String> = serde_json::from_value(part["trustedPrices"].clone())
-                .map_err(|_| configuration())?;
-            Some(
-                BoundPaymentLinkCreationProfile::trusted(scope.clone(), prices)
-                    .map_err(|_| configuration())?,
-            )
-        } else {
-            None
-        };
+        let payment_link_read = value
+            .get("paymentLinkRead")
+            .map(|part| payment_link_profile(&scope, part))
+            .transpose()?;
         if checkout.is_none()
             && portal.is_none()
             && plan_read.is_none()
@@ -218,8 +235,10 @@ impl BoundBillingConfig {
         if self.has_subscription_read() {
             routes.extend(bound_subscription_read_contracts());
         }
-        if self.has_payment_link_read() {
-            routes.extend(bound_payment_link_read_contracts());
+        if let Some(profile) = &self.payment_link_read {
+            routes.extend(super::bound_payment_link_read::contracts(
+                profile.max_records,
+            ));
         }
         routes
     }
@@ -230,7 +249,7 @@ pub struct BoundBillingV1 {
     portal: Option<BoundPortalV1>,
     plan_read: Option<BoundPlanCreationProfile>,
     subscription_read: Option<BoundSubscriptionCreationProfile>,
-    payment_link_read: Option<BoundPaymentLinkCreationProfile>,
+    payment_link_read: Option<PaymentLinkReadConfig>,
 }
 impl BoundBillingV1 {
     /// # Errors
@@ -305,12 +324,18 @@ mod tests {
         let config = BoundBillingConfig::from_json(&value.to_string()).unwrap();
         assert!(config.has_payment_link_read());
         assert!(!config.requires_publisher());
-        assert_eq!(config.contracts(), bound_payment_link_read_contracts());
+        assert_eq!(
+            config.contracts(),
+            super::super::bound_payment_link_read_contracts()
+        );
         assert!(BoundBillingV1::trusted(config, None, None).is_ok());
         for bad in [
             Value::Null,
             json!({}),
             json!({"trustedPrices":[]}),
+            json!({"trustedPrices":["price_owned"],"maxRecords":0}),
+            json!({"trustedPrices":["price_owned"],"maxRecords":1001}),
+            json!({"trustedPrices":["price_owned"],"maxRecords":null}),
             json!({"trustedPrices":["not-a-price"]}),
             json!({"trustedPrices":["price_owned"],"create":true}),
         ] {

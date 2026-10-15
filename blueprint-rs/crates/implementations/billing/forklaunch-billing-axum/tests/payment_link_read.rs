@@ -32,7 +32,7 @@ fn sign(path: &str, key_id: &str) -> String {
         KEY,
         key_id,
         "GET",
-        path,
+        path.split('?').next().unwrap(),
         SignedBody::Absent,
         &chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         &Uuid::new_v4().to_string(),
@@ -100,7 +100,7 @@ async fn matrix(f: &Fixture) {
         .unwrap();
     let router = billing_router(backend, authentication(), ServiceInfo::new("billing", "1"));
     let legacy = forklaunch_billing_interface::module_contracts::module_registry(true);
-    assert_eq!(router.registry().routes().len(), legacy.routes().len() + 1);
+    assert_eq!(router.registry().routes().len(), legacy.routes().len() + 2);
     for route in legacy.routes() {
         assert!(router.registry().routes().contains(route));
     }
@@ -132,37 +132,12 @@ async fn matrix(f: &Fixture) {
     assert_eq!(value["stripeFields"]["active"], false);
     assert_eq!(value["stripeFields"]["metadata"]["presentation"], "fresh");
     assert!(value.get("providerFields").is_none());
-    let before_denials = f.provider.requests.load(Ordering::SeqCst);
-    assert_eq!(get(&client, &base, &path, "other").await.status(), 409);
-    for invalid in ["invalid", "00000000-0000-0000-0000-000000000000"] {
-        assert_eq!(
-            get(
-                &client,
-                &base,
-                &format!("/bound-payment-links/{invalid}"),
-                "default"
-            )
-            .await
-            .status(),
-            400
-        );
-    }
-    assert_eq!(
-        get(
-            &client,
-            &base,
-            &format!("/bound-payment-links/{}", Uuid::new_v4()),
-            "default"
-        )
-        .await
-        .status(),
-        409
-    );
-    assert_eq!(before_denials, f.provider.requests.load(Ordering::SeqCst));
+    get_denials(f, &client, &base, &path).await;
     let mcp=client.post(format!("{base}/mcp")).header("accept","application/json, text/event-stream")
         .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"getBoundCreatedPaymentLink","arguments":{"params":{"publicId":id},"headers":{"authorization":sign(&path,"default")}}}})).send().await.unwrap();
     let mcp: Value = mcp.json().await.unwrap();
     assert_eq!(mcp["result"]["isError"], false, "{mcp}");
+    list_routes(f, &client, &base, &id).await;
     sdks(&base, &id).await;
     *f.provider.readback.lock().unwrap() =
         Some(json!({"id":"plink_wrong","object":"payment_link","livemode":false}));
@@ -300,4 +275,87 @@ async fn sdks(base: &str, id: &str) {
         String::from_utf8_lossy(&output.stderr)
     );
     println!("{}", String::from_utf8_lossy(&output.stdout));
+}
+
+async fn list_routes(f: &Fixture, client: &reqwest::Client, base: &str, id: &str) {
+    let query = |ids: Value| {
+        format!(
+            "/bound-payment-links?{}",
+            form_urlencoded::Serializer::new(String::new())
+                .append_pair("ids", &ids.to_string())
+                .finish()
+        )
+    };
+    let path = query(json!([id, id]));
+    assert_eq!(
+        client
+            .get(format!("{base}{path}"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    let response = get(client, base, &path, "default").await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.json::<Value>().await.unwrap(), json!([]));
+    f.provider.readback.lock().unwrap().as_mut().unwrap()["active"] = json!(true);
+    let response = get(client, base, &path, "default").await;
+    assert_eq!(response.status(), 200);
+    let response: Value = response.json().await.unwrap();
+    assert_eq!(response.as_array().unwrap().len(), 2);
+    assert_eq!(response[0]["id"], id);
+    assert_eq!(response[1]["id"], id);
+    assert_eq!(response[0]["stripeFields"]["active"], true);
+    let before = f.provider.requests.load(Ordering::SeqCst);
+    for path in [
+        "/bound-payment-links".into(),
+        query(json!([])),
+        query(json!(["invalid"])),
+        query(json!([Uuid::nil().to_string()])),
+        query(json!(vec![id; 101])),
+        format!("{path}&extra=1"),
+        format!("{path}&ids=[]"),
+    ] {
+        assert_eq!(
+            get(client, base, &path, "default").await.status(),
+            400,
+            "{path}"
+        );
+    }
+    assert_eq!(get(client, base, &path, "other").await.status(), 409);
+    assert_eq!(f.provider.requests.load(Ordering::SeqCst), before);
+    let mcp=client.post(format!("{base}/mcp")).header("accept","application/json, text/event-stream").json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"listBoundCreatedPaymentLinks","arguments":{"query":{"ids":[id,id]},"headers":{"authorization":sign(&path,"default")}}}})).send().await.unwrap();
+    let mcp: Value = mcp.json().await.unwrap();
+    assert_eq!(mcp["result"]["isError"], false, "{mcp}");
+}
+
+async fn get_denials(f: &Fixture, client: &reqwest::Client, base: &str, path: &str) {
+    let before_denials = f.provider.requests.load(Ordering::SeqCst);
+    assert_eq!(get(client, base, path, "other").await.status(), 409);
+    for invalid in ["invalid", "00000000-0000-0000-0000-000000000000"] {
+        assert_eq!(
+            get(
+                client,
+                base,
+                &format!("/bound-payment-links/{invalid}"),
+                "default"
+            )
+            .await
+            .status(),
+            400
+        );
+    }
+    assert_eq!(
+        get(
+            client,
+            base,
+            &format!("/bound-payment-links/{}", Uuid::new_v4()),
+            "default"
+        )
+        .await
+        .status(),
+        409
+    );
+    assert_eq!(before_denials, f.provider.requests.load(Ordering::SeqCst));
 }

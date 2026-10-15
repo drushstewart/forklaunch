@@ -20,6 +20,10 @@ const get=find(sdk,'getBoundCreatedPaymentLink');assert.equal(typeof get,'functi
 const route=`/bound-payment-links/${customer}`;
 const result=await get({params:{publicId:customer},headers:{authorization:sign('GET',route)}});
 assert.equal(result.status,200);assert.equal(result.response.id,customer);assert.equal(result.response.stripeFields.metadata.presentation,'fresh');
+const list=find(sdk,'listBoundCreatedPaymentLinks');assert.equal(typeof list,'function');
+const listRoute='/bound-payment-links?'+new URLSearchParams({ids:JSON.stringify([customer,customer])});
+const listed=await list({query:{ids:[customer,customer]},headers:{authorization:sign('GET','/bound-payment-links')}});
+assert.equal(listed.status,200);assert.deepEqual(Array.from(listed.response,v=>v.id),[customer,customer]);
 const scratch=mkdtempSync(path.join(tmpdir(),'fl-payment_link-read-route-sdk-'));
 try {
  mkdirSync(path.join(scratch,'src'));
@@ -29,10 +33,12 @@ try {
  let args:Vec<_>=std::env::args().collect();let client=BoundPaymentLinkClient::new(&args[1]);
  let response=client.get_bound_created_payment_link(GetBoundCreatedPaymentLinkRequest{params:std::collections::BTreeMap::from([("publicId".into(),args[2].clone())]),headers:std::collections::BTreeMap::from([("authorization".into(),args[3].clone())]),..Default::default()}).await.unwrap();
  let GetBoundCreatedPaymentLinkResponses::Status200(value)=response else{panic!("unexpected status")};println!("{}",serde_json::to_value(value).unwrap());
+ let response=client.list_bound_created_payment_links(ListBoundCreatedPaymentLinksRequest{query:std::collections::BTreeMap::from([("ids".into(),serde_json::json!([args[2],args[2]]).to_string())]),headers:std::collections::BTreeMap::from([("authorization".into(),args[4].clone())]),..Default::default()}).await.unwrap();
+ let ListBoundCreatedPaymentLinksResponses::Status200(value)=response else{panic!("unexpected list status")};assert_eq!(value.len(),2);
 }`);
  const target=process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target');
- run('cargo',['build','--quiet','--manifest-path',path.join(scratch,'Cargo.toml')],{env:{...process.env,CARGO_TARGET_DIR:target,CARGO_BUILD_JOBS:'2',CARGO_INCREMENTAL:'0'}});
- const result=JSON.parse(run(path.join(target,'debug/bound-payment-link-read-route-sdk-proof'),[base,customer,sign('GET',route)]));
+ run('cargo',['build','--quiet','--manifest-path',path.join(scratch,'Cargo.toml')],{env:{...process.env,CARGO_TARGET_DIR:target,CARGO_BUILD_JOBS:'1',CARGO_INCREMENTAL:'0'}});
+ const result=JSON.parse(run(path.join(target,'debug/bound-payment-link-read-route-sdk-proof'),[base,customer,sign('GET',route),sign('GET','/bound-payment-links')]));
  assert.equal(result.id,customer);assert.equal(result.stripeFields.metadata.presentation,'fresh');
- console.log('PASS generated TypeScript strict typecheck + one live PaymentLink read; compiled Rust SDK + one live PaymentLink read');
+ console.log('PASS generated TypeScript strict typecheck + two live PaymentLink reads/list; compiled Rust SDK + two live PaymentLink reads/list');
 } finally {rmSync(scratch,{recursive:true,force:true});}

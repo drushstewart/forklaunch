@@ -68,7 +68,7 @@ pub struct BillingBackend {
     #[cfg(feature = "bound-checkout")]
     bound_subscription_read: Option<Arc<forklaunch_billing_stripe::bound_subscription_creation::BoundSubscriptionCreationProfile>>,
     #[cfg(feature="bound-checkout")]
-    bound_payment_link_read: Option<Arc<forklaunch_billing_stripe::bound_creation::BoundPaymentLinkCreationProfile>>,
+    bound_payment_link_read: Option<Arc<bound_billing::PaymentLinkReadConfig>>,
     request_dates: BillingRequestDateProfile,
     webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
     platform_key: Option<zeroize::Zeroizing<String>>,
