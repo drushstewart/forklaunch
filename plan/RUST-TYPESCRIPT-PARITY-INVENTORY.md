@@ -12205,3 +12205,27 @@ Logs use `/private/tmp/fl-org-authorizers-`; CI adds the actual oracle and exist
 focused PG exercises the new cases. No dependencies changed. Remaining async
 organization policies, topology/schema/hooks and broader Better Auth gates stay
 open. Checklist660/682 unchanged.
+
+
+### 2026-10-15 — Exact opt-in array cardinality export
+
+Integrated a2a50e304 preserves fractional and nonfinite Zod array bounds through
+explicit zodChecks metadata, native schema validation and both SDK consumers.
+Baseline export bytes and explicit own-key overrides remain unchanged. A shared
+IEEE cardinality kernel avoids silently capping bounds. No dependencies or vendor
+sources changed; the contract manifest adds only a gated example.
+
+Both JSON modes pass 7,699 instance comparisons across 966 schemas, 128 baseline
+controls and 44 raw probes. The arbitrary-precision mode explicitly retains six
+known draft04 raw-schema admission exceptions; those are outside the new profile.
+Common15/contract39/validation98, feature-off contract31, strict Clippy and all12
+TypeScript roots/625 exports pass. Consumer coverage is38 live HTTP responses and
+152 generated SDK codec/type-admission checks. Prior checks3332 native, array169920,
+string10200, baseline bounds153972 and pure-export577+246 regressions pass.
+
+All13 integrated source hashes match `/private/tmp/fl-cardinality-source.json`
+SHA256 `168a6285f4004291d75f0271fe69ad269a7ccc920588e90f553a84beeb6bf033`.
+Detailed evidence and corrections: `/private/tmp/fl-cardinality-receipt.md` and
+`/private/tmp/fl-cardinality-*.log`. CI runs the new oracle in both number modes.
+This closes the retained-array cardinality export slice; broader schema/emitter
+and validation gates remain open. Checklist660/682 (96.8%) is unchanged.

@@ -112,6 +112,7 @@ on:
       - 'cli/tests/rust_zod_case_parity.mjs'
       - 'cli/tests/rust_zod_string_float_length_parity.mjs'
       - 'cli/tests/rust_zod_array_checks_parity.mjs'
+      - 'cli/tests/rust_zod_array_cardinality_openapi.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -574,6 +575,7 @@ on:
       - 'cli/tests/rust_zod_case_parity.mjs'
       - 'cli/tests/rust_zod_string_float_length_parity.mjs'
       - 'cli/tests/rust_zod_array_checks_parity.mjs'
+      - 'cli/tests/rust_zod_array_cardinality_openapi.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -1206,6 +1208,21 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - name: Exact array cardinalities in default JSON mode
+        run: node cli/tests/rust_zod_array_cardinality_openapi.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+          FORKLAUNCH_CARDINALITY_PROBE_NATIVE: '1'
+      - name: Exact array cardinalities in arbitrary precision JSON mode
+        run: node cli/tests/rust_zod_array_cardinality_openapi.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+          FORKLAUNCH_CARDINALITY_PROBE_NATIVE: '1'
+          FORKLAUNCH_CARDINALITY_PROBE_FEATURES: arbitrary
       - run: node cli/tests/rust_zod_array_checks_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
