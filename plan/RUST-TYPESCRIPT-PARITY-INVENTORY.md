@@ -9334,6 +9334,52 @@ ordered record/absence/object policies, AsyncAPI correlations, scoped PayPal rea
 VOIDED repair and direct Portal creation. Their specialized provider fixtures are
 separate source receipts; archive startup does not create live provider objects.
 Logs /private/tmp/fl-oct14-parity-{driver,package,install,repackaged-files,runtime}.log;
-metadata /private/tmp/fl-oct14-parity-checkpoint.json. Owned source/install/generated
-roots are queued for guarded cleanup after this receipt; archive/logs stay retained.
+metadata /private/tmp/fl-oct14-parity-checkpoint.json. After receipt commit d6bb0c973, process/open-file and retained-checksum guards
+passed. Owned roots were removed: source32,775,326 logicalbytes and
+install/generated174,919,218 logicalbytes. Archive/logs stay retained; cleanup
+metadata is /private/tmp/fl-oct14-parity-checkpoint.json and log
+/private/tmp/fl-oct14-parity-cleanup.log.
 Full parity remains660/682,22open.
+
+### 2026-10-14: direct bound Checkout creation (working source)
+
+Explicit finite hosted subscription/card profile verifies account/mode, registered
+Customer, completed bound Plan/Product provenance and exact authenticated Price.
+Stripe Price retrieval accepts Plan ID; no synthesized mapping or arbitrary raw
+options/delegation are used. Four durable Customer/Plan body+binding claims precede
+one POST and finite exact line-items readback. Separate Checkout journal/publisher
+(migrations14/15) atomically commits local UUID, encrypted URI/provider fields/
+receipt, binding and audits; only its own claims release. Runtime, Subscription
+and Portal completion cannot release Checkout claims. Fresh exact dependencies
+and context are checked after locks and before COMMIT. All uncertain effects
+remain inspectable without automatic POST retry; historical results return IDs,
+not bearer URLs. Actual provider expires_at replaces legacy local5-minute TTL.
+Open/unpaid exact totals are admitted (including zero-total unpaid); zero-total
+no_payment_required/completed states remain unresolved. Session totals are neither
+later invoice/payment nor entitlement evidence. Remote reads do not lock remote
+state. Generic/generated route wiring and managed transport remain separate.
+
+Frozen14 hashes: /private/tmp/fl-bound-checkout-source-final.json. Stripe library14
+tests, restrictedPG matrix1/6.52s, existing PortalPG1 +Subscription3 barrier/race
+regressions, SDK22.6.2 wire, actual configured creation186 and legacy170 operations,
+strict base+Stripe all-feature/all-target Clippy pass. Matrix covers0POST invalid
+preflight, malformed post-effect/no-local-write, foreignactor/tenant/runtime
+publication denial, OLD-tenant/crossjournal/concurrentpending claims, audit
+rollback,5.1s deadline and true dropped reserve/finalCOMMIT acknowledgements.
+Initial testTRUNCATE hitFK denial beforetrigger; CASCADE variant now proves
+immutable trigger. Production changes after initial source were lint-only.
+Cleanup zero owned roles/databases. Logs /private/tmp/fl-bound-checkout-{unit,
+pg-final,portal-regression,subscription-regression,sdk,configured-uuid,legacy170,
+clippy,cleanup}.log. CI tracks SDK+restrictedPG. No live provider/generated/
+immutable Checkout claim; overall660/682 unchanged.
+
+### 2026-10-14: completed-checkpoint cache cleanup
+
+After successful immutable8403 runtime, a read-only dependency-file audit found
+783 rebuildable cache files tied exclusively to three already-removed committed
+checkpoint roots. Rechecked absent source roots, exact dependency prefixes/
+file sizes and no-open-file guards before removing1,441,799,112 logicalbytes.
+Current caches/binaries, retained archives, source/log receipts, unrelated SDK
+watcher and PostgreSQL fixture remain. Evidence:
+/private/tmp/fl-old-checkpoint-artifact-audit.json. Physical APFS reclaim is not
+equated to logical file size.

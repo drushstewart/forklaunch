@@ -124,3 +124,30 @@ The five-minute local expiry is application policy, not a Stripe URL lifetime
 guarantee. A Portal session grants access to configured features; it proves
 neither payment nor entitlement. Managed transport, arbitrary flow/delegation
 options and automatic default HTTP route wiring remain separate work.
+
+## Direct bound Checkout creation
+
+`BoundCheckoutCreationProfile` authorizes completed local Plan provenance and
+HTTPS success/cancel URLs. `BoundCheckoutCreateRequest` selects local Customer/
+Plan UUIDs and quantity. The application authorizes Customer access; no arbitrary
+provider options or caller-owned provider ID are forwarded.
+`create_bound_checkout_session` verifies direct account/mode, registered Customer,
+expanded Plan/Product and an independently retrieved Price. Stripe's Price
+retrieval accepts Plan IDs; the returned Price must exactly match the completed
+Plan receipt. Four durable Customer/Plan record/binding claims precede one hosted
+subscription/card session POST. A bounded line-items GET must return exactly the
+verified Price, quantity and undiscounted/untaxed totals.
+
+Billing migrations14/15 add separate immutable Checkout intent/claims and
+`TrustedCheckoutPublisher` publication, with local UUID, encrypted record/receipt
+and provider binding in one transaction. Runtime cannot complete/release claims;
+Portal/Subscription publication cannot release Checkout claims. Uncertain dispatch
+or COMMIT stays inspectable without automatic POST retry. Historical inspection
+and completion return IDs without a bearer URL. Provider `expires_at` is retained;
+it is not replaced by a local five-minute TTL.
+
+This profile admits open/unpaid sessions with exact finite totals. A zero-total
+`no_payment_required` or already-completed session remains unresolved. Remote
+reads are observations, not locks on later changes. Proposed-session totals prove
+neither later payment nor subscription entitlement. Generic routes and managed
+transport remain separate; the durable APIs require explicit server wiring.

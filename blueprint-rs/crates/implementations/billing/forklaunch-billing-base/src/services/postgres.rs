@@ -405,3 +405,8 @@ fn sensitive_fields(kind: BillingKind) -> &'static [&'static str] {
         &["providerFields", "uri"]
     }
 }
+
+pub use provider_bindings::{
+    CheckoutCreationClaim, CheckoutCreationPending, CheckoutCreationReservation,
+    CheckoutCreationStatus, CheckoutDependencySnapshot, TrustedCheckoutPublisher,
+};

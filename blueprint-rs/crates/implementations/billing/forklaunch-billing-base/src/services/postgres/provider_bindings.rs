@@ -470,3 +470,9 @@ impl PostgresBillingStore {
         Ok(())
     }
 }
+
+mod checkout_creation;
+pub use checkout_creation::{
+    CheckoutCreationClaim, CheckoutCreationPending, CheckoutCreationReservation,
+    CheckoutCreationStatus, CheckoutDependencySnapshot, TrustedCheckoutPublisher,
+};

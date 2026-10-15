@@ -380,3 +380,9 @@ separate-role atomic publication. Historical inspection never refreshes a bearer
 URL; uncertain dispatch remains inspectable without automatic POST retry. See
 [the provider guide](crates/implementations/billing/forklaunch-billing-stripe/README.md#direct-bound-portal-creation)
 for migrations12/13, caller authorization and publication-role requirements.
+
+The same explicit Stripe profile supports bound Checkout creation from registered
+Customer and completed Plan provenance. Migrations14/15 add four durable dependency
+claims and separate-role UUID publication. Exact Price/line-item evidence and
+provider expiry are preserved; open-session creation does not grant entitlement.
+See [the Checkout provider guide](crates/implementations/billing/forklaunch-billing-stripe/README.md#direct-bound-checkout-creation).
