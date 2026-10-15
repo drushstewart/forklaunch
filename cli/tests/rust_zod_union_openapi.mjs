@@ -32,8 +32,8 @@ for(const left of branches)for(const right of branches)check('ordinary pair',z.u
 for(const version of ['3.0','3.1']){
  const branches=[z.number().min(0),z.number().max(10)];
  const generated=branches.map(x=>generateSchema(x,false,version));
- assert.deepEqual(generateSchema(z.union(branches).openapi({oneOf:[{type:'boolean'}]}),false,version),{oneOf:[...generated,{type:'boolean'}]});
- assert.deepEqual(generateSchema(z.union(branches).openapi({anyOf:[{type:'boolean'}]}),false,version),{oneOf:generated,anyOf:[{type:'boolean'}]});
+ assert.equal(JSON.stringify(generateSchema(z.union(branches).openapi({oneOf:[{type:'boolean'}]}),false,version)),JSON.stringify({oneOf:[...generated,{type:'boolean'}]}));
+ assert.equal(JSON.stringify(generateSchema(z.union(branches).openapi({anyOf:[{type:'boolean'}]}),false,version)),JSON.stringify({oneOf:generated,anyOf:[{type:'boolean'}]}));
  const discriminated=generateSchema(z.discriminatedUnion('kind',[z.object({kind:z.literal('a')}),z.object({kind:z.literal('b')})]),false,version);
  assert.ok(discriminated.oneOf);assert.equal(discriminated.anyOf,undefined);assert.equal(discriminated.discriminator.propertyName,'kind');
  const nonfinite=generateSchema(validator.enum_({a:Infinity,b:-Infinity}),false,version);

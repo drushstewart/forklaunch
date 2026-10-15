@@ -1218,3 +1218,11 @@ Zod Never exports an always-false schema, including required object fields.
 Optional Never properties may be omitted but reject every supplied JSON value.
 The [Never fixture](../cli/tests/rust_zod_never_openapi.mjs) checks both OpenAPI
 versions. Generated exact static `never`/uninhabited types remain separate.
+
+Finite structural string-key records preserve key restrictions: OAS3.1 uses
+`propertyNames`, and OAS3.0 uses optional named properties with additional keys
+rejected. Safe schema merging preserves own reserved property names without
+prototype mutation. UniversalSdk's owned AJV engines validate own properties;
+injected engines retain caller options. OAS3.0 AJV still filters `__proto__` schema
+properties, an explicit consumer limitation. Transform/regex/UTF-16 key grammars
+remain separate. See the [record fixture](../cli/tests/rust_zod_record_openapi.mjs).

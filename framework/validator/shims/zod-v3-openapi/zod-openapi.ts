@@ -1,5 +1,5 @@
 import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
-import { merge } from 'ts-deepmerge';
+import { merge } from './schemaMerge';
 import { AnyZodObject, z, ZodTypeAny } from 'zod/v3';
 import {
   factoryEmailPattern,
@@ -349,19 +349,66 @@ function parseObject({
   );
 }
 
+// A finite set of literal input strings, never a projection of transformed keys.
+function recordStringKeys(schema: ZodTypeAny): string[] | undefined {
+  let remaining = 10000;
+  function visit(input: ZodTypeAny, depth: number): string[] | undefined {
+    if (--remaining < 0 || depth > 64) return undefined;
+    const def = input._def as z.ZodTypeDef & { typeName: string; value?: unknown; values: string[]; innerType: ZodTypeAny; options: ZodTypeAny[] };
+    switch (def.typeName) {
+      case 'ZodLiteral':
+        return typeof def.value === 'string' ? [def.value] : undefined;
+      case 'ZodEnum':
+        return def.values.length <= remaining &&
+          def.values.every((value: unknown) => typeof value === 'string')
+          ? (remaining -= def.values.length, def.values)
+          : undefined;
+      case 'ZodOptional':
+      case 'ZodNullable':
+        return visit(def.innerType, depth + 1);
+      case 'ZodUnion': {
+        if (def.options.length > remaining) return undefined;
+        const keys: string[] = [];
+        for (const option of def.options) {
+          const branch = visit(option, depth + 1);
+          if (branch === undefined) return undefined;
+          keys.push(...branch);
+        }
+        return keys;
+      }
+      default:
+        return undefined;
+    }
+  }
+  const keys = visit(schema, 0);
+  return keys === undefined ? undefined : [...new Set(keys)];
+}
+
 function parseRecord({
   zodRef,
   schemas,
   useOutput,
   openApiVersion
 }: ParsingArgs<z.ZodRecord>): SchemaObject {
+  const valueSchema =
+    zodRef._def.valueType instanceof z.ZodUnknown
+      ? {}
+      : generateSchema(zodRef._def.valueType, useOutput, openApiVersion);
+  const keys = recordStringKeys(zodRef._def.keyType);
+  const constraints: SchemaObject = {};
+  if (keys !== undefined) {
+    if (openApiVersion === '3.1') {
+      constraints.propertyNames = keys.length ? { enum: keys } : { not: {} };
+    } else {
+      constraints.properties = Object.fromEntries(keys.map(key => [key, valueSchema]));
+      constraints.additionalProperties = false;
+    }
+  }
   return merge(
     {
       type: typeFormat('object', openApiVersion),
-      additionalProperties:
-        zodRef._def.valueType instanceof z.ZodUnknown
-          ? {}
-          : generateSchema(zodRef._def.valueType, useOutput, openApiVersion)
+      additionalProperties: valueSchema,
+      ...constraints
     },
     zodRef.description ? { description: zodRef.description } : {},
     ...schemas

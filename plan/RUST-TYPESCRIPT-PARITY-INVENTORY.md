@@ -9726,3 +9726,39 @@ backup/Checkoutread, excludes later asyncbackup/boundCheckout routes/emitter fix
 Runtime log /private/tmp/fl-oct14-uri-runtime.log; metadata
 /private/tmp/fl-oct14-uri-checkpoint.json. Cleanup of owned source/install roots
 pending guarded removal; retained archive and logs remain.660/682 unchanged.
+
+
+### Finite record key emission and safe schema merging (2026-10-14)
+
+Structural finite string literal/enum/union key sets (optional/nullable wrappers)
+export OAS3.1 propertyNames enum/false and OAS3.0 optional named properties with
+additionalProperties:false. Empty set permits onlyempty record. Bounded pure key
+classification executes no callbacks. Other coercion/trim/regexflags/UTF16 key
+semantics remain unchanged unsupported boundaries, not generic key equivalence.
+Existing ts-deepmerge dropped reserved names even inside schema properties. A
+per-call reversible key bijection at actual schema positions protects property
+maps before merge and restores own keys with defineProperty into fresh maps.
+Original inputs/$refs and literal default/const/enum handling are preserved;
+100k schema-position/64depth/cycle guards do not claim arbitrary literal-data cycle
+safety. No prototype mutation. UniversalSdk default-owned AJV enables ownProperties;
+injected engines retain caller options (must configure own-property semantics).
+Frozen5 /private/tmp/fl-record-export-source.json.1744 exact runtime/AJV pairs over
+160exports and16 explicitly asserted OAS3.0 AJV __proto__ filtering disagreements
+pass; no claim0mismatches across that boundary. Default/injected SDK controls and
+strict12roots/614exports types(TS7.0.2) pass. URI203261, bounds153972, union10674,
+Never224 regression logs /private/tmp/fl-record-{openapi,types,uri,bounds,union,never}.log.
+No native/Cargo/lock changes; broader schema gate remains open;660/682 unchanged.
+
+### Checkpoint cleanup and CI runner follow-through (2026-10-14)
+
+After committed7b6482390 runtime receipt, removed immutable9e374 source/install
+roots (33146504+176104340=209250844 logical bytes), preserving archive/logs; process,
+open-file and retainedSHA guards passed. Metadata/cleanup log fl-oct14-uri- prefix.
+487 nonexecutable rebuildable cache files in80 groups tied exclusively to those
+removed roots also removed (835932431 logicalbytes), preserving current cache and
+executables; source/hash/open-file/stat guards passed, receipt
+/private/tmp/fl-oct14-uri-cache-cleanup.json. No physical APFS-space claim.
+New bound Checkout CI wrapper passes actual HTTP/MCP and6SDK calls in3.63s,
+log /private/tmp/fl-bound-checkout-ci-wrapper.log, against coherent current-main
+Aggregate initial compile. Wrapper releases Cargo buildlock before nested SDK
+compile. This is not a new archive-installed bound-profile runtime claim.

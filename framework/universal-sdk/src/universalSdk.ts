@@ -63,6 +63,7 @@ export class UniversalSdk {
     const createAjv = () => {
       const ajv = new Ajv({
         coerceTypes: true,
+        ownProperties: true,
         allErrors: true,
         strict: false
       });
