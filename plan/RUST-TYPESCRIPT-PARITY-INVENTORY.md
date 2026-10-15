@@ -12662,3 +12662,14 @@ Twelve source hashes match `/private/tmp/fl-invitation-limit-freeze.json`, SHA25
 `8f981d4fbb6c7e36b86865bfbfdde861a52d54140caac223858e7e1cfea00387`.
 Logs: `/private/tmp/fl-invitation-limit-{actual,native,pg,clippy,minimal-clippy,cleanup}.log`.
 Broader auth/ORM hooks coverage remains open; checklist660/682 (96.8%) unchanged.
+
+
+### 2026-10-15 — Reconciliation documentation audit
+
+Reviewed the existing scoped Stripe direct/connected and PayPal VOIDED operator
+implementations against their guides. Corrected stale introductory text that
+still described these integrations as future/unsupported, and added the existing
+PayPal migration12 receipt flow to the open reconciliation checklist description.
+The provider-specific evidence requirements and retained-reference behavior remain
+unchanged. This is documentation reconciliation, not new runtime validation or a
+closed gate; pending/ambiguous/charged and omitted-history cases remain open.
