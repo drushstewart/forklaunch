@@ -111,7 +111,7 @@ Select `BILLING_IDENTITY_PROFILE=bound-billing-v1` and supply
 }
 ```
 
-At least one of `checkout`, `portal`, `planRead`, and `subscriptionRead` is required; omit an unselected domain.
+At least one of `checkout`, `portal`, `planRead`, `subscriptionRead`, and `paymentLinkRead` is required; omit an unselected domain.
 Null, empty, unknown, or partial sections fail. The shared scope is server-owned;
 no DTO may override it. When `checkout` or `portal` is selected,
 `BILLING_PUBLISHER_DATABASE_URL` is the single explicit separate publisher
@@ -122,7 +122,7 @@ publication function grant, independently validated before listening. Mixed old
 supported; they do not select Portal implicitly.
 
 Library callers construct `BoundBillingConfig` and `BoundBillingV1::trusted`
-with exactly the selected creation publisher capabilities (none for `planRead` or `subscriptionRead`), then call
+with exactly the selected creation publisher capabilities (none for `planRead`, `subscriptionRead`, or `paymentLinkRead`), then call
 `with_bound_billing`. Artifact callers use `contract_registry_with_bound_billing`
 with the same configuration; a selector alone cannot guess selected families.
 The existing optional `bound-checkout` Cargo feature also enables this additive
@@ -232,3 +232,30 @@ unchanged. There is no payment or entitlement claim, provider POST, creation ali
 fallback, or automatic lifecycle synchronization. The data snapshot linearizes at
 the final matching database SELECT; context freshness is checked after audit commit.
 Later local or provider changes remain possible.
+
+
+### Direct completed PaymentLink reads without a publisher
+
+An explicit `paymentLinkRead` capability uses the same aggregate selector:
+
+```json
+{"deploymentLabel":"your-deployment","accountId":"acct_your_account","livemode":false,"paymentLinkRead":{"trustedPrices":["price_your_reference"]}}
+```
+
+It adds `getBoundCreatedPaymentLink`, GET `/bound-payment-links/:publicId` to the
+shared HTTP/MCP/artifact registry. Read-only selections reject a publisher setting;
+mixed creation selections still require their existing separate publisher grants.
+Startup checks direct local Stripe configuration, schema USAGE, SELECT on records,
+provider bindings and payment-link creation intents, and sensitive-read audit INSERT.
+No provider request occurs during startup. Managed/base/backup transports, partial
+or unknown options, and absent grants fail before listening.
+
+The authenticated actor must own a completed direct creation journal. The original
+normalized trusted price set, current local receipt/body and alias scope/generation
+must match. Administrative-only aliases and managed creation envelopes do not qualify.
+An authenticated exact id/kind/mode provider read refreshes `stripeFields`; local
+amount/status and other fields stay unchanged, even when provider `active` is false.
+No line-item, price, paid/entitlement, cache, creation, or mutation authority is inferred.
+Read evidence is bounded and provider freshness is checked after the final audit commit;
+data linearizes at the last matching SELECT and can change afterward. The existing
+66 legacy routes remain available unchanged; this is not whole-service read-only mode.

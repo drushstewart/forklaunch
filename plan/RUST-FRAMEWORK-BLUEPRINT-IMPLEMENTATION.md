@@ -2517,3 +2517,23 @@ variable tuples: 920; codegen: 49; full CLI: 1,128; strict Clippy passed.
 Frozen four-path manifest /private/tmp/fl-reserved-type-source.json verified.
 Builtin/prelude shadowing remains a separate audit. Checklist: 660/682 (96.8%),
 22 broader gates open.
+
+### 2026-10-14 — Aggregate PaymentLink read surface
+
+Explicit paymentLinkRead trusted-price selection now exposes
+GET /bound-payment-links/:publicId through the shared authenticated HTTP/MCP
+registry and generated TypeScript/Rust SDKs. Sole read selection requires no
+publisher; creation selections still require their own publisher. Startup checks
+direct client configuration and local SELECT/audit INSERT privileges without
+provider I/O. Completed actor-owned creation provenance is required. Current
+provider fields may show active=false while local amount/status stay unchanged;
+this is not payment, entitlement or lifecycle synchronization. Existing 66 legacy
+routes remain available; selection does not make the entire service read-only.
+
+Restricted PostgreSQL/HTTP/MCP/two actual SDK calls passed (2.39s), config units9,
+rendered artifacts78 plus base/Stripe templates, strict all-feature/all-target
+Clippy and feature-off Clippy passed. Independent root CI wrapper passed2.65s
+and releases Cargo's lock before nested SDK compilation. Frozen nine-path
+manifest /private/tmp/fl-payment-link-read-route-final.json verified; evidence
+/private/tmp/fl-payment-link-route-{live,units,artifacts,clippy,default-clippy,root-wrapper}.log.
+Checklist remains660/682(96.8%),22 broad gates open.

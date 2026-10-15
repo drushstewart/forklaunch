@@ -1,11 +1,13 @@
 //! One explicit finite selector for compatible domain-specific authority profiles.
 use super::{
     BillingBackend, BoundCheckoutConfig, BoundCheckoutV1, BoundPortalV1, bound_checkout_contracts,
-    bound_plan_read_contracts, bound_portal_contracts, bound_subscription_read_contracts,
+    bound_payment_link_read_contracts, bound_plan_read_contracts, bound_portal_contracts,
+    bound_subscription_read_contracts,
 };
 use forklaunch_billing_base::services::postgres::{
     StripeBindingScope, TrustedCheckoutPublisher, TrustedPortalPublisher,
 };
+use forklaunch_billing_stripe::bound_creation::BoundPaymentLinkCreationProfile;
 use forklaunch_billing_stripe::bound_plan_creation::BoundPlanCreationProfile;
 use forklaunch_billing_stripe::bound_portal_creation::BoundPortalCreationProfile;
 use forklaunch_billing_stripe::bound_subscription_creation::{
@@ -31,6 +33,7 @@ pub struct BoundBillingConfig {
     portal: Option<BoundPortalConfig>,
     plan_read: Option<BoundPlanCreationProfile>,
     subscription_read: Option<BoundSubscriptionCreationProfile>,
+    payment_link_read: Option<BoundPaymentLinkCreationProfile>,
 }
 fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult<()> {
     let object = value.as_object().ok_or_else(configuration)?;
@@ -83,7 +86,13 @@ impl BoundBillingConfig {
         exact(
             &value,
             &["deploymentLabel", "accountId", "livemode"],
-            &["checkout", "portal", "planRead", "subscriptionRead"],
+            &[
+                "checkout",
+                "portal",
+                "planRead",
+                "subscriptionRead",
+                "paymentLinkRead",
+            ],
         )?;
         let scope = StripeBindingScope::administrative(
             value["deploymentLabel"]
@@ -141,10 +150,22 @@ impl BoundBillingConfig {
             .get("subscriptionRead")
             .map(|part| subscription_profile(&scope, part))
             .transpose()?;
+        let payment_link_read = if let Some(part) = value.get("paymentLinkRead") {
+            exact(part, &["trustedPrices"], &[])?;
+            let prices: Vec<String> = serde_json::from_value(part["trustedPrices"].clone())
+                .map_err(|_| configuration())?;
+            Some(
+                BoundPaymentLinkCreationProfile::trusted(scope.clone(), prices)
+                    .map_err(|_| configuration())?,
+            )
+        } else {
+            None
+        };
         if checkout.is_none()
             && portal.is_none()
             && plan_read.is_none()
             && subscription_read.is_none()
+            && payment_link_read.is_none()
         {
             return Err(configuration());
         }
@@ -153,6 +174,7 @@ impl BoundBillingConfig {
             portal,
             plan_read,
             subscription_read,
+            payment_link_read,
         })
     }
     #[must_use]
@@ -170,6 +192,10 @@ impl BoundBillingConfig {
     #[must_use]
     pub const fn has_subscription_read(&self) -> bool {
         self.subscription_read.is_some()
+    }
+    #[must_use]
+    pub const fn has_payment_link_read(&self) -> bool {
+        self.payment_link_read.is_some()
     }
     /// Only creation families need a separately trusted publication connection.
     #[must_use]
@@ -192,6 +218,9 @@ impl BoundBillingConfig {
         if self.has_subscription_read() {
             routes.extend(bound_subscription_read_contracts());
         }
+        if self.has_payment_link_read() {
+            routes.extend(bound_payment_link_read_contracts());
+        }
         routes
     }
 }
@@ -201,6 +230,7 @@ pub struct BoundBillingV1 {
     portal: Option<BoundPortalV1>,
     plan_read: Option<BoundPlanCreationProfile>,
     subscription_read: Option<BoundSubscriptionCreationProfile>,
+    payment_link_read: Option<BoundPaymentLinkCreationProfile>,
 }
 impl BoundBillingV1 {
     /// # Errors
@@ -218,6 +248,7 @@ impl BoundBillingV1 {
         Ok(Self {
             plan_read: configuration.plan_read,
             subscription_read: configuration.subscription_read,
+            payment_link_read: configuration.payment_link_read,
             checkout: configuration
                 .checkout
                 .zip(checkout)
@@ -238,6 +269,7 @@ impl BillingBackend {
             || self.bound_portal.is_some()
             || self.bound_plan_read.is_some()
             || self.bound_subscription_read.is_some()
+            || self.bound_payment_link_read.is_some()
         {
             return Err(configuration());
         }
@@ -253,6 +285,9 @@ impl BillingBackend {
         if let Some(subscription_read) = profile.subscription_read {
             self = self.with_bound_subscription_read(subscription_read).await?;
         }
+        if let Some(payment_link_read) = profile.payment_link_read {
+            self = self.with_bound_payment_link_read(payment_link_read).await?;
+        }
         Ok(self)
     }
 }
@@ -263,6 +298,25 @@ mod tests {
     use serde_json::json;
     fn valid() -> Value {
         json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}})
+    }
+    #[test]
+    fn payment_link_read_selects_no_creation_authority() {
+        let mut value = json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"paymentLinkRead":{"trustedPrices":["price_owned"]}});
+        let config = BoundBillingConfig::from_json(&value.to_string()).unwrap();
+        assert!(config.has_payment_link_read());
+        assert!(!config.requires_publisher());
+        assert_eq!(config.contracts(), bound_payment_link_read_contracts());
+        assert!(BoundBillingV1::trusted(config, None, None).is_ok());
+        for bad in [
+            Value::Null,
+            json!({}),
+            json!({"trustedPrices":[]}),
+            json!({"trustedPrices":["not-a-price"]}),
+            json!({"trustedPrices":["price_owned"],"create":true}),
+        ] {
+            value["paymentLinkRead"] = bad;
+            assert!(BoundBillingConfig::from_json(&value.to_string()).is_err());
+        }
     }
     #[test]
     fn subscription_read_is_an_explicit_nonpublishing_capability() {

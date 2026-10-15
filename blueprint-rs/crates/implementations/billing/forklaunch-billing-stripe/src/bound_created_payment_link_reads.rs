@@ -12,6 +12,18 @@ fn mismatch() -> BlueprintError {
     )
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Checks direct client configuration and local read/audit grants only.
+    /// No provider request or publisher capability is used.
+    /// # Errors
+    /// Rejects managed transport and missing local privileges.
+    pub async fn validate_bound_payment_link_read_configuration(&self) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        self.base()
+            .store()
+            .validate_payment_link_creation_read_access()
+            .await
+    }
+
     /// Reads actor-owned completed direct creation provenance, never a mutable
     /// cache reference or administrative alias fallback. The original trusted
     /// price allowlist and current exact local receipt/binding must still match.

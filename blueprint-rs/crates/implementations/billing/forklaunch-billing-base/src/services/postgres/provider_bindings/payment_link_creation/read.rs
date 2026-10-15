@@ -23,6 +23,17 @@ impl PaymentLinkCreationReadSnapshot {
     }
 }
 impl PostgresBillingStore {
+    /// Checks local read/audit privileges only; never performs provider I/O.
+    /// # Errors
+    /// Denies missing schema usage, table SELECT or sensitive-audit INSERT.
+    pub async fn validate_payment_link_creation_read_access(&self) -> BlueprintResult<()> {
+        let allowed:bool=sqlx::query_scalar("SELECT has_schema_privilege(current_user,'fl_billing','USAGE') AND has_table_privilege(current_user,'fl_billing.records','SELECT') AND has_table_privilege(current_user,'fl_billing.provider_bindings','SELECT') AND has_table_privilege(current_user,'fl_billing.payment_link_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.sensitive_read_audit','INSERT')").fetch_one(&self.pool).await.map_err(db_error)?;
+        if !allowed {
+            return Err(conflict());
+        }
+        Ok(())
+    }
+
     fn open_payment_link_read_evidence(
         &self,
         operation: Uuid,
