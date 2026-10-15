@@ -173,7 +173,13 @@ Generated presets do not select a delivery channel. Trusted applications can use
 `AuthHttp::with_two_factor_otp_options` to configure 1–32 digits, positive whole
 milliseconds and 1–100 invalid attempts. Existing codes retain their original
 expiry and digit length; verification uses the current attempt limit. Custom
-storage, TOTP parameters, background dispatch and broader plugins remain parity work.
+storage, background dispatch and broader plugins remain parity work. Trusted
+`TotpOptions` additionally selects six/eight digits and a positive whole-millisecond
+period from 1ms through 24h through `AuthHttp::with_two_factor_totp_options`.
+It retains SHA-1 and the one-step skew window, preserves installed OTP settings,
+and applies to existing secrets without rewriting them. Nonnegative clock bounds
+and the source's floating-point period arithmetic are explicit; see the native
+README for unsupported historical-clock and lifecycle-option boundaries.
 
 This preset serves one configured tenant. `AuthTransaction::find_unique` performs
 exact email/subscription and organization-slug lookups using the existing

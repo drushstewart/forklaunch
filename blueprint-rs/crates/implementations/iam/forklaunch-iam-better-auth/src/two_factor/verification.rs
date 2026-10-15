@@ -169,7 +169,12 @@ impl<S: AuthStore> TwoFactorService<S> {
                 matched | (code.len() == expected.len() && difference == 0)
             })
         } else {
-            crypto::matches(&secret(&row)?, code, now.timestamp())
+            crypto::matches_with_options(
+                &secret(&row)?,
+                code,
+                now.timestamp_millis(),
+                self.totp_options,
+            )
         };
         if !valid {
             if let Some(mut challenge_row) = pending {

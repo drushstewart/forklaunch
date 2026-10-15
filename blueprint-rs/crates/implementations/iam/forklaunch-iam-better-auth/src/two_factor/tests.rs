@@ -13,6 +13,7 @@ mod otp;
 mod otp_options;
 #[cfg(feature = "postgres")]
 mod postgres;
+mod totp_options;
 const PASSWORD: &str = "owned-totp-password";
 fn signin() -> SigninInput {
     SigninInput {

@@ -1047,3 +1047,25 @@ legacy mutable DTOs and Plan CRUD are not secured merely by the new binding kind
 Future Subscription dispatch must resolve independent current Customer/Plan
 business associations and verify provider evidence, not copy public UUIDs or
 mutable externalId/providerFields. No provider mutation was sent outside fixtures.
+
+
+## Subsequent delivered OTP and configurable code policies (2026-10-14)
+
+The separate trusted delivery profile now persists encrypted purpose/session-or-
+challenge-bound OTP before awaiting a server-owned hook, without database locks.
+Unambiguous user/session framing is hashed. Its context has no Debug/Serde or
+session token and owns a zeroizing code; delivery destinations never come from
+HTTP input. Atomic consumption/issuance, failed-commit reuse, concurrent winner,
+lock/counter/expiry and hook-off verification pass restricted PG and actual-client
+handler checks. Preparation returns sanitized empty500; asynchronous delivery
+failure leaves200 and the stored expiring code. Rust panics and background dispatch
+are outside the supported callback contract. Native cancellation after commit
+may retain a code and never grants authentication. Default two-factor remains off.
+
+Trusted bounded OTP digits/validity/attempt policy and TOTP six/eight-digit/period
+policy preserve defaults. Attempts are current policy; issued OTP expiry/length
+remain fixed. TOTP policy applies to existing secrets, preserves the source's
+binary64 counter behavior and explicitly excludes negative/epoch-wrap differences.
+These profiles do not imply passkeys, universal/social MFA or browser delivery.
+Exact source/hash/native/PG/client receipts are in the parity inventory; immutable
+d835 packaging predates the later OTP/TOTP option drafts and is scoped separately.

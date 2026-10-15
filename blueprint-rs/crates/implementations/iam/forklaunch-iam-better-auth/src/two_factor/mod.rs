@@ -1,20 +1,21 @@
 //! Opt-in default TOTP lifecycle for credential sign-in. Secret records are never
 //! exposed through user/session projections; durable stores must encrypt records.
 //!
-//! The supported profile is SHA-1, six digits, a 30-second timestep and a one-step
+//! The default profile is SHA-1, six digits, a 30-second timestep and a one-step
 //! window, with no timestep replay suppression. Recovery codes, browser challenges
 //! and trusted-device identifiers are consumed under the store transaction lock.
 //! Enabling protection affects subsequent password logins; existing sessions and
 //! social/provider flows retain their independently configured policy. Public
 //! service methods accept trusted server time, not caller-selected HTTP timestamps.
-//! Optional delivered OTP uses a trusted server hook; custom TOTP parameters
-//! remain unsupported. Recovery values are authorized disclosures and
+//! Optional delivered OTP uses a trusted server hook; `TotpOptions` supports bounded
+//! six/eight-digit periods while preserving SHA-1 and the one-step window. Recovery values are authorized disclosures and
 //! must not be logged; this module intentionally provides no secret-bearing Debug.
 mod crypto;
 mod enrollment;
 mod otp;
 pub use otp::{OtpDelivery, OtpDeliveryContext, OtpDeliveryFuture, OtpOptions};
 pub(crate) mod signin;
+mod totp_options;
 mod verification;
 use crate::{
     accounts::CredentialService,
@@ -27,16 +28,18 @@ use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Value, json};
 use std::sync::Arc;
+pub use totp_options::{TotpDigits, TotpOptions};
 pub use verification::BackupVerificationOptions;
 use zeroize::Zeroizing;
 
-/// Trusted fixed defaults. No Debug/Serialize: the service holds signing secrets.
+/// Trusted two-factor configuration. No Debug/Serialize: this holds signing secrets.
 pub struct TwoFactorService<S> {
     pub(crate) store: Arc<S>,
     secret: Zeroizing<Vec<u8>>,
     issuer: String,
     otp_delivery: Option<Arc<dyn OtpDelivery>>,
     otp_options: OtpOptions,
+    totp_options: TotpOptions,
 }
 /// A successful state transition. Explicit wire projection can contain recovery
 /// credentials and must only be returned to the authorized browser.
@@ -128,6 +131,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             issuer,
             otp_delivery: None,
             otp_options: OtpOptions::default(),
+            totp_options: TotpOptions::default(),
         })
     }
     async fn password_snapshot(

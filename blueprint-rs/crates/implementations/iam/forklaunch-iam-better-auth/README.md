@@ -1190,3 +1190,32 @@ and uses the current validity/digits. Options are trusted server configuration,
 never request parameters. Default builders retain six digits / 180 seconds / five
 attempts. Custom OTP storage transforms and background dispatch remain separate
 unsupported options; the existing encrypted record format is unchanged.
+
+## Trusted TOTP parameters
+
+`TotpOptions::new(TotpDigits::Six | TotpDigits::Eight, Duration)` accepts a positive
+whole-millisecond period from 1ms through 24h. Use
+`TwoFactorService::with_totp_options` or
+`AuthHttp::with_two_factor_totp_options`; the HTTP builder preserves independent
+OTP delivery/options in either builder order. Default builders retain SHA-1,
+six digits, 30 seconds and the fixed ±1-step verification window. These parameters
+are trusted configuration; request fields cannot override them. Both enrollment
+and URI retrieval advertise the configured digits/period. Current configuration
+also governs verification of existing secrets without rewriting factor records.
+Applications changing policy must account for authenticators retaining old settings.
+
+The duration maps to upstream seconds as binary64 `milliseconds / 1000`, followed
+by the upstream `seconds * 1000` division and floor for the counter. This matters
+at fractional-period boundaries: 2.007 seconds produces a counter of 99 at
+200700ms, rather than integer division's 100. Supported clocks are nonnegative
+JavaScript-Date milliseconds through 8640000000000000. Invalid clocks fail closed
+before unsigned conversion. The previous window at epoch zero is skipped: upstream
+wraps that negative counter to unsigned64, while native retains its historical
+fail-closed boundary. Negative clocks, sub-millisecond/zero/negative periods,
+periods over 24h, and other digit widths are outside this typed subset.
+
+TOTP disable, skip-verification enrollment, separate URI issuer configuration and
+passwordless policies remain separate parity work. No configurable hash algorithm
+is exposed by the upstream plugin; this profile continues to use SHA-1. The actual
+source fixture additionally characterizes those pending lifecycle policies without
+claiming their native implementation.

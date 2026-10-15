@@ -505,3 +505,96 @@ async fn http_otp_options_are_trusted_and_reach_delivery() {
         "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE"
     );
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn http_totp_options_preserve_otp_in_both_builder_orders() {
+    let now = DateTime::<Utc>::from_timestamp_millis(1_800_000_000_123).unwrap();
+    let origin = "http://auth.fixture.test";
+    for totp_first in [true, false] {
+        let store = Arc::new(MemoryAuthStore::default());
+        let delivery = Arc::new(otp::Delivery::default());
+        let totp =
+            TotpOptions::new(TotpDigits::Eight, std::time::Duration::from_millis(2007)).unwrap();
+        let otp = OtpOptions::new(4, std::time::Duration::from_millis(1500), 1).unwrap();
+        let app = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+            .unwrap()
+            .with_clock(move || now)
+            .with_rate_limiting(false);
+        let app = if totp_first {
+            app.with_two_factor_totp_options(totp)
+                .unwrap()
+                .with_two_factor_otp_options(delivery.clone(), otp)
+                .unwrap()
+        } else {
+            app.with_two_factor_otp_options(delivery.clone(), otp)
+                .unwrap()
+                .with_two_factor_totp_options(totp)
+                .unwrap()
+        };
+        let mut browser = Browser {
+            router: app.with_two_factor().unwrap().router(),
+            jar: BTreeMap::new(),
+            origin: origin.into(),
+        };
+        assert_eq!(browser.call("/sign-up/email",Some(json!({"name":"Factor","firstName":"Factor","lastName":"User","email":"totp-options@example.test","password":PASSWORD}))).await.0,200);
+        assert_eq!(
+            browser
+                .call("/two-factor/send-otp", Some(json!({})))
+                .await
+                .0,
+            200
+        );
+        assert_eq!(delivery.last().len(), 4);
+        assert_eq!(
+            browser
+                .call("/two-factor/verify-otp", Some(json!({"code":"invalid"})))
+                .await
+                .1["code"],
+            "INVALID_CODE"
+        );
+        assert_eq!(
+            browser
+                .call(
+                    "/two-factor/verify-otp",
+                    Some(json!({"code":delivery.last()}))
+                )
+                .await
+                .1["code"],
+            "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE"
+        );
+        let enrollment = browser
+            .call(
+                "/two-factor/enable",
+                Some(json!({"password":PASSWORD,"digits":6,"period":30})),
+            )
+            .await;
+        assert_eq!(enrollment.0, 200);
+        let uri = url::Url::parse(enrollment.1["totpURI"].as_str().unwrap()).unwrap();
+        let pairs: BTreeMap<_, _> = uri.query_pairs().into_owned().collect();
+        assert_eq!(pairs["digits"], "8");
+        assert_eq!(pairs["period"], "2.007");
+        let get = browser
+            .call(
+                "/two-factor/get-totp-uri",
+                Some(json!({"password":PASSWORD})),
+            )
+            .await;
+        assert_eq!(get.0, 200);
+        assert_eq!(get.1["totpURI"], enrollment.1["totpURI"]);
+        let row = rows(store.as_ref(), Model::TwoFactor).await.remove(0);
+        let code = crypto::code(
+            &secret(&row).unwrap(),
+            totp.counter(now.timestamp_millis()).unwrap(),
+            8,
+        );
+        assert_eq!(
+            browser
+                .call("/two-factor/verify-totp", Some(json!({"code":code})))
+                .await
+                .0,
+            200
+        );
+        assert!(rows(store.as_ref(), Model::User).await[0]["twoFactorEnabled"] == true);
+    }
+}

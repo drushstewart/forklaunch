@@ -563,3 +563,5 @@ console.log(
   'PASS follow-on actual client: issuer override/get-URI reset; authenticated disableSession retains token; challenged disableSession consumes code/attempt capability without session or trust, later TOTP401'
 );
 globalThis.Date = RealDate;
+
+await import('./fixtures/rust_better_auth_totp_options.mjs');

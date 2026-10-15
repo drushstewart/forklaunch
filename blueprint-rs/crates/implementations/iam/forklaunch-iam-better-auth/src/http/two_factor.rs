@@ -1,4 +1,4 @@
-//! Optional fixed TOTP profile. All mutation routes share the existing origin guard.
+//! Optional TOTP and delivered OTP profiles. All mutation routes share the existing origin guard.
 use super::{
     Arc, AuthHttp, AuthStore, BlueprintError, BlueprintResult, DateTime, HeaderMap, Router, Utc,
     Value, dispatch, internal, json, post, request, set_cookie, value,
@@ -39,13 +39,31 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     ) -> BlueprintResult<Self> {
         self = self.with_two_factor()?;
         self.two_factor = Some(Arc::new(
-            TwoFactorService::new(
-                self.store.clone(),
-                self.secret.to_vec(),
-                "Better Auth".into(),
-            )?
-            .with_otp_delivery(delivery)
-            .with_otp_options(options),
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_otp_delivery(delivery)
+                .with_otp_options(options),
+        ));
+        Ok(self)
+    }
+
+    /// Enables TOTP using validated trusted parameters, preserving any configured
+    /// delivered-OTP hook and policy. This does not enable passwordless enrollment.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted auth configuration.
+    pub fn with_two_factor_totp_options(
+        mut self,
+        options: crate::two_factor::TotpOptions,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_totp_options(options),
         ));
         Ok(self)
     }

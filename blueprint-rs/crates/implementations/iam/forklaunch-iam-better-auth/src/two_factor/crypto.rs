@@ -70,17 +70,30 @@ pub(super) fn code(secret: &[u8], counter: u64, digits: u32) -> String {
         width = digits as usize
     )
 }
+#[cfg(test)]
 pub(super) fn matches(secret: &[u8], supplied: &str, seconds: i64) -> bool {
-    if seconds < 0 || supplied.len() != 6 || !supplied.bytes().all(|byte| byte.is_ascii_digit()) {
+    seconds
+        .checked_mul(1000)
+        .is_some_and(|ms| matches_with_options(secret, supplied, ms, super::TotpOptions::default()))
+}
+pub(super) fn matches_with_options(
+    secret: &[u8],
+    supplied: &str,
+    millis: i64,
+    options: super::TotpOptions,
+) -> bool {
+    if supplied.len() != options.digits().count() as usize
+        || !supplied.bytes().all(|byte| byte.is_ascii_digit())
+    {
         return false;
     }
-    let Ok(counter) = u64::try_from(seconds / 30) else {
+    let Some(counter) = options.counter(millis) else {
         return false;
     };
     let mut matched = false;
     for offset in [-1i64, 0, 1] {
         if let Some(step) = counter.checked_add_signed(offset) {
-            let expected = code(secret, step, 6);
+            let expected = code(secret, step, options.digits().count());
             let difference = expected
                 .bytes()
                 .zip(supplied.bytes())

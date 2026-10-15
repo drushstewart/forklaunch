@@ -8548,3 +8548,28 @@ final code/tests preserve previously issued lengths across configuration changes
 Logs /private/tmp/fl-otp-options-{native-final,final-source,clippy,actual}.log;
 ten frozen hashes /private/tmp/fl-otp-options-freeze.json. Existing CI oracle
 imports the new options helper. Custom storage, background and TOTP options remain open.
+
+
+## Trusted TOTP digit and period options (2026-10-14)
+
+TotpDigits selects six/eight digits; validated TotpOptions selects positive whole-
+millisecond periods1ms..24h with unchanged6/30s defaults. SHA1 and fixed±1window
+remain. URI/enrollment/verification share current policy, including existing
+secrets, and HTTP builders preserve independently configured OTP in both orders.
+No request selects parameters; no factor/backend/schema rewrite is introduced.
+Milliseconds map to source numeric seconds, then binary64 period*1000/floor
+counter arithmetic. At2.007sec, integer division would give a different boundary;
+actual vectors cover that case. Admitted clocks are nonnegative bounded JS-Date
+integers. The prior negative window at epoch0 is skipped rather than unsigned-
+wrapped as upstream; historical/negative clocks remain an explicit boundary.
+JavaScript zero/negative/sub-ms options and remaining lifecycle flags are not claimed.
+
+Native two_factor16/1ignored PG, strict all-feature/all-target Clippy7.48s and
+minimal-profile Clippy2.39s pass. Actual-source six option/lifecycle profiles and
+96 SHA1/counter vectors pass alongside existing61-status/client7/rate/cookie/
+backup regressions. A new seeded test initially used20 bytes against the existing
+32-byte persisted-secret constraint; only its fixture was corrected. Backend/PG
+proof is not rerun/relabelled for this configuration-only change. Logs
+/private/tmp/fl-totp-options-{native-final,clippy,minimal-clippy,actual-full}.log;
+13 hashes /private/tmp/fl-totp-options-freeze.json. Existing CI oracle imports
+new helper/vectors. Disable, skip-verification, issuer and passwordless flags remain open.

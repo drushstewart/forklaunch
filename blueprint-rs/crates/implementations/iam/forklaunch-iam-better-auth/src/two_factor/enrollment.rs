@@ -46,7 +46,7 @@ impl<S: AuthStore> TwoFactorService<S> {
         }
         tx.commit().await?;
         Ok(empty_response(
-            json!({"method":"totp","totpURI":uri(issuer,text(&user,"email")?,&secret),"backupCodes":codes}),
+            json!({"method":"totp","totpURI":uri(issuer,text(&user,"email")?,&secret,self.totp_options),"backupCodes":codes}),
         ))
     }
     /// Returns an enrollment URI after checking the current password and session.
@@ -63,7 +63,12 @@ impl<S: AuthStore> TwoFactorService<S> {
         let (user, _) = authenticated(&mut tx, token, now).await?;
         checked.check(&mut tx, &user).await?;
         let row = factor(&mut tx, &user).await?;
-        let result = uri(&self.issuer, text(&user, "email")?, &secret(&row)?);
+        let result = uri(
+            &self.issuer,
+            text(&user, "email")?,
+            &secret(&row)?,
+            self.totp_options,
+        );
         tx.commit().await?;
         Ok(empty_response(json!({"totpURI":result})))
     }
@@ -149,7 +154,7 @@ pub(super) async fn rotate<T: AuthTransaction>(
     tx.delete(Model::Session, text(old, "id")?).await?;
     Ok(session)
 }
-fn uri(issuer: &str, email: &str, secret: &[u8]) -> String {
+fn uri(issuer: &str, email: &str, secret: &[u8], options: super::TotpOptions) -> String {
     // Path components use encodeURIComponent; query values use URLSearchParams.
     const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
         .remove(b'-')
@@ -164,8 +169,11 @@ fn uri(issuer: &str, email: &str, secret: &[u8]) -> String {
     let query = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("secret", &crypto::base32(secret))
         .append_pair("issuer", issuer)
-        .append_pair("digits", "6")
-        .append_pair("period", "30")
+        .append_pair("digits", &options.digits().count().to_string())
+        .append_pair(
+            "period",
+            ryu_js::Buffer::new().format(options.period_seconds()),
+        )
         .finish();
     format!(
         "otpauth://totp/{}:{}?{query}",
