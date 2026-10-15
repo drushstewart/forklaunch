@@ -51,5 +51,12 @@ for(const metadata of [{nested:{enabled:true}},42,[true,null],'{"stored":true}',
  const added=await auth.api.addMember({body:{userId:'target-user',role:'member',organizationId:'org-policy-existing'}});
  assert.equal(added.userId,'target-user');assert.deepEqual(seen,[metadata]);
 }
-console.log('PASS organization callback metadata shapes '+rows.length+' invitation/delivery +5 membership');
+for(const metadata of [{nested:{enabled:true}},42,[true,null],'{"stored":true}',null]){
+ const seen=[];const auth=setup({membershipLimit:async(_user,organization)=>{seen.push(organization.metadata);return 100;}},0);
+ ref.database.organization[0].metadata=metadata;
+ ref.database.invitation.push({id:'metadata-accept',organizationId:'org-policy-existing',inviterId:'target-user',email:'org-policy@example.test',role:'member',status:'pending',expiresAt:new Date(Date.now()+3600000),createdAt:new Date()});
+ const accepted=await call(auth,'/organization/accept-invitation',{invitationId:'metadata-accept'},cookie);
+ assert.equal(accepted.status,200,JSON.stringify(accepted.body));assert.deepEqual(seen,[metadata]);
+}
+console.log('PASS organization callback metadata shapes '+rows.length+' invitation/delivery +5 add-member +5 accept-invitation');
 
