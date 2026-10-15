@@ -58,7 +58,7 @@ pub struct {{name}} {
 }
 
 impl Serialize for {{name}} {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<__ForklaunchSerializer: serde::Serializer>(&self, serializer: __ForklaunchSerializer) -> Result<__ForklaunchSerializer::Ok, __ForklaunchSerializer::Error> {
         use serde::ser::SerializeSeq as _;
         #[allow(unused_mut)]
         let mut length = 0usize;
@@ -67,22 +67,22 @@ impl Serialize for {{name}} {
 {{#fields}}
 {{#optional}}
         if self.{{field_name}}.is_some() {
-            if missing { return Err(<S::Error as serde::ser::Error>::custom("tuple positions must be contiguous")); }
-            length = length.checked_add(1).ok_or_else(|| <S::Error as serde::ser::Error>::custom("tuple length overflow"))?;
+            if missing { return Err(<__ForklaunchSerializer::Error as serde::ser::Error>::custom("tuple positions must be contiguous")); }
+            length = length.checked_add(1).ok_or_else(|| <__ForklaunchSerializer::Error as serde::ser::Error>::custom("tuple length overflow"))?;
         } else { missing = true; }
 {{/optional}}
 {{^optional}}
-        length = length.checked_add(1).ok_or_else(|| <S::Error as serde::ser::Error>::custom("tuple length overflow"))?;
+        length = length.checked_add(1).ok_or_else(|| <__ForklaunchSerializer::Error as serde::ser::Error>::custom("tuple length overflow"))?;
 {{/optional}}
 {{/fields}}
 {{#sequence_rest}}
-        if missing && !self.rest.is_empty() { return Err(<S::Error as serde::ser::Error>::custom("tuple rest requires every prefix position")); }
-        length = length.checked_add(self.rest.len()).ok_or_else(|| <S::Error as serde::ser::Error>::custom("tuple length overflow"))?;
+        if missing && !self.rest.is_empty() { return Err(<__ForklaunchSerializer::Error as serde::ser::Error>::custom("tuple rest requires every prefix position")); }
+        length = length.checked_add(self.rest.len()).ok_or_else(|| <__ForklaunchSerializer::Error as serde::ser::Error>::custom("tuple length overflow"))?;
 {{/sequence_rest}}
         let _ = missing;
-        let wire_length = u64::try_from(length).map_err(|_| <S::Error as serde::ser::Error>::custom("tuple length overflow"))?;
+        let wire_length = u64::try_from(length).map_err(|_| <__ForklaunchSerializer::Error as serde::ser::Error>::custom("tuple length overflow"))?;
         if !({{sequence_min}}..={{sequence_max}}).contains(&wire_length) {
-            return Err(<S::Error as serde::ser::Error>::custom("tuple length outside declared bounds"));
+            return Err(<__ForklaunchSerializer::Error as serde::ser::Error>::custom("tuple length outside declared bounds"));
         }
         #[allow(unused_mut)]
         let mut sequence = serializer.serialize_seq(Some(length))?;
@@ -102,14 +102,14 @@ impl Serialize for {{name}} {
 }
 
 impl<'de> Deserialize<'de> for {{name}} {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct SequenceVisitor;
-        impl<'de> serde::de::Visitor<'de> for SequenceVisitor {
+    fn deserialize<__ForklaunchDeserializer: serde::Deserializer<'de>>(deserializer: __ForklaunchDeserializer) -> Result<Self, __ForklaunchDeserializer::Error> {
+        struct __ForklaunchSequenceVisitor;
+        impl<'de> serde::de::Visitor<'de> for __ForklaunchSequenceVisitor {
             type Value = {{name}};
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("the {{name}} tuple sequence")
             }
-            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+            fn visit_seq<__ForklaunchSeqAccess: serde::de::SeqAccess<'de>>(self, mut sequence: __ForklaunchSeqAccess) -> Result<Self::Value, __ForklaunchSeqAccess::Error> {
                 #[allow(unused_mut)]
                 let mut length = 0u64;
                 #[allow(unused_mut)]
@@ -152,7 +152,7 @@ impl<'de> Deserialize<'de> for {{name}} {
                 Ok({{name}} { {{#fields}}{{field_name}}, {{/fields}}{{#sequence_rest}}rest,{{/sequence_rest}} })
             }
         }
-        deserializer.deserialize_seq(SequenceVisitor)
+        deserializer.deserialize_seq(__ForklaunchSequenceVisitor)
     }
 }
 {{/sequence}}

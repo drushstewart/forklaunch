@@ -10249,3 +10249,17 @@ strict base/Stripe allfeature/alltarget Clippy pass. Frozen11 manifest
 /private/tmp/fl-subscription-read-final.json verified. Logs /private/tmp/fl-subscription-
 read-final-pg.log and /private/tmp/fl-subscription-read-clippy-final.log. No new
 routes yet; aggregate selection remains separate. Broad660/682(96.8%),22open.
+
+
+### Generated Rust tuple internal names (2026-10-14)
+
+Generated visitor/generic identifiers now use reserved __Forklaunch prefixes,
+which public ASCII-alphanumeric model-name normalization cannot produce. Public
+model names and field layout remain unchanged. Recursive models SequenceVisitor,
+A, D and S prove earlier internal-name shadowing fixed. 47 codegen tests,920
+variable cases/55 schemas,79 fixed cases, strict generated rustc -Dwarnings and
+real TS assignments/roundtrips, strict Clippy and1126 CLI tests pass. Frozen4
+manifest /private/tmp/fl-tuple-collision-source.json verified; isolated cli/target
+logs /private/tmp/fl-tuple-collision-{units,variable,fixed,clippy,cli}.log. No lock or
+dependency changes. Immutable4ff checkpoint predates this fix and does not prove
+these model names. Broader schema/codegen gates remain open,660/682(96.8%).

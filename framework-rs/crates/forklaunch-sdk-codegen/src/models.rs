@@ -976,6 +976,26 @@ mod sequence_tests {
     use serde_json::json;
 
     #[test]
+    fn generated_model_names_cannot_collide_with_sequence_internals() {
+        for name in [
+            "SequenceVisitor",
+            "A",
+            "D",
+            "S",
+            "__ForklaunchSequenceVisitor",
+            "__ForklaunchSerializer",
+            "__ForklaunchDeserializer",
+            "__ForklaunchSeqAccess",
+            "",
+            "12 _ A",
+        ] {
+            let generated = rust_type_name(name);
+            assert!(generated.chars().all(|ch| ch.is_ascii_alphanumeric()));
+            assert!(!generated.starts_with('_'));
+        }
+    }
+
+    #[test]
     fn positional_shapes_preserve_presence_rest_and_bounds() {
         for count in [0, 1, 16, 17, 128] {
             let schema = json!({"type":"array", "prefixItems":vec![json!({"type":"string"});count], "items":false, "minItems":count});

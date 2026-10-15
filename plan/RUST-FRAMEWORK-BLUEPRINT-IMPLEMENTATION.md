@@ -2222,3 +2222,8 @@ Trusted required signup/signin policy now has actual13/focusedHTTP/restrictedPG/
 ### Bound completed Subscription read (2026-10-14)
 
 Library completed Subscription read now has actualTS66/restrictedPG/provider/provenance race evidence; aggregate route and lifecycle synchronization remain separate. Checklist660/682(96.8%),22open unchanged.
+
+
+### Generated Rust tuple internal names (2026-10-14)
+
+Reserved generated internal names prevent recursive model collisions;920 variable/79 fixed/47 codegen/1126 CLI and strict generated compilation pass. Checklist660/682(96.8%),22open unchanged.
