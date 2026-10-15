@@ -9694,3 +9694,17 @@ retained. CI uses no-run compilation then direct test executable to release Carg
 build lock before nested Rust SDK compilation. Wrapper syntax checked; standalone
 wrapper run queued after immutable runtime. No fresh CLI-generated bound-profile
 runtime receipt yet; broad billing gate stays open,660/682 (96.8%),22open.
+
+
+### Never-leaf and required property emission (2026-10-14)
+
+ZodNever now emits not:{} instead of readOnly:true. Direct Never remains required
+in objects; optional/default detection unchanged. Optional Never allows omission
+and rejects all supplied JSON values. Explicit not overrides and discriminator
+behavior preserved. Frozen3 /private/tmp/fl-zod-never-source.json;224pairs/16exports
+across both OASversions, direct/optional/objects/arrays/unions/annotations and zero
+root callbacks pass. Prior union10674/592 andbounds153972/9108 regressions plus
+strict12root/614export types(TS7.0.2) pass. Logs
+/private/tmp/fl-zod-never-{openapi,union,bounds,types}.log. No native/Cargo changes;
+exact generated never/uninhabited types, broader object isOptional callback
+execution and OAS3.0 nullable unions remain distinct boundaries.660/682 unchanged.

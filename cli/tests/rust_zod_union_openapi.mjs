@@ -45,8 +45,8 @@ const nullable=z.union([z.string(),z.null()]);
 const nullableSchema=generateSchema(nullable,false,'3.1');const nullableCheck=new Ajv({strict:false}).compile(nullableSchema);
 for(const value of values){assert.equal(nullableCheck(value),validator.parse(nullable,value).ok);comparisons++;}
 assert.throws(()=>new AjvDraft4({strict:false}).compile(generateSchema(nullable,false,'3.0')),/nullable/);
-// Existing Never export is not a false schema; outside this union correction.
-assert.equal(JSON.stringify(generateSchema(z.never(),false,'3.1')),JSON.stringify({readOnly:true}));
+// Never is represented as an always-false schema.
+assert.equal(JSON.stringify(generateSchema(z.never(),false,'3.1')),JSON.stringify({not:{}}));
 let callbacks=0;const callback=()=>{callbacks++;throw Error('callback executed during export')};
 for(const schema of [z.union([z.string().transform(callback),z.number()]),z.union([z.preprocess(callback,z.string()),z.number()]),z.union([z.string(),z.number()]).transform(callback)])validator.openapi(schema);
 assert.equal(callbacks,0);

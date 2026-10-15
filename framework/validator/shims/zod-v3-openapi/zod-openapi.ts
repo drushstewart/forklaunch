@@ -321,7 +321,7 @@ function parseObject({
         item.isOptional() ||
         item instanceof z.ZodDefault ||
         item._def.typeName === 'ZodDefault'
-      ) && !(item instanceof z.ZodNever || item._def.typeName === 'ZodDefault')
+      )
     );
   });
 
@@ -688,7 +688,7 @@ function parseNever({
   schemas
 }: ParsingArgs<z.ZodNever>): SchemaObject {
   return merge(
-    { readOnly: true },
+    { not: {} },
     zodRef.description ? { description: zodRef.description } : {},
     ...schemas
   );

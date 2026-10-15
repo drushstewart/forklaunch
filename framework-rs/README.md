@@ -1211,5 +1211,10 @@ Finite homogeneous literal enums deduplicate values; mixed enums retain alternat
 types and empty unions export an always-false schema. Explicit composition annotations
 and discriminated unions retain existing behavior. The
 [union fixture](../cli/tests/rust_zod_union_openapi.mjs) checks 10,674 cases.
-Nonfinite enum, OAS3.0 nullable-union and Never-leaf emission remain separate gaps;
+Nonfinite enum and OAS3.0 nullable-union emission remain separate gaps;
 empty-union validation does not imply a generated precise `never` type.
+
+Zod Never exports an always-false schema, including required object fields.
+Optional Never properties may be omitted but reject every supplied JSON value.
+The [Never fixture](../cli/tests/rust_zod_never_openapi.mjs) checks both OpenAPI
+versions. Generated exact static `never`/uninhabited types remain separate.
