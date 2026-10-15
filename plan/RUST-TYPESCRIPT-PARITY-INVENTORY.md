@@ -9708,3 +9708,21 @@ strict12root/614export types(TS7.0.2) pass. Logs
 /private/tmp/fl-zod-never-{openapi,union,bounds,types}.log. No native/Cargo changes;
 exact generated never/uninhabited types, broader object isOptional callback
 execution and OAS3.0 nullable unions remain distinct boundaries.660/682 unchanged.
+
+
+### Immutable9e374 portable runtime verification (2026-10-14)
+
+Prepared9e374 source/archive checkpoint now passes portable relocated services,
+all four worker families/modules, provider/infrafeature checks, recursive/shared
+CLI/native contract/OpenAPI SDK generation and strict TS/WebSocket/Rust consumers.
+Generated accounts HTTP/MCP listener matrix and allfive capability callbacks pass
+startup/discovery/authentication/invocation/forgery/staleness/replay/redelivery/
+shutdown checks. Packaged IAM167 pass/3 deliberately ignoredPG in82.76s; separate
+PG receipts remain separate. No new generated actual-client MFA29 rerun claim.
+All2745 regular extracted files match retained archive both before and after
+runtime; SHA256d5ce67809545afc4f88ce16dd37f6a319643e34d470444c71d1a44acbfd2c2da
+unchanged. Source9e3749cae8b9d9cde907bd65742f8fd6fed23d71 includes URI/date/builtin
+backup/Checkoutread, excludes later asyncbackup/boundCheckout routes/emitter fixes.
+Runtime log /private/tmp/fl-oct14-uri-runtime.log; metadata
+/private/tmp/fl-oct14-uri-checkpoint.json. Cleanup of owned source/install roots
+pending guarded removal; retained archive and logs remain.660/682 unchanged.
