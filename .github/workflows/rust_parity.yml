@@ -1549,9 +1549,6 @@ jobs:
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_ecommerce_scoped_capture.mjs
         env:
-          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
-          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
-          FORKLAUNCH_TEST_ORM_DEPENDENCIES: ${{ runner.temp }}/fl-rust-orm
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_ecommerce_paypal_parity.mjs
         env:
