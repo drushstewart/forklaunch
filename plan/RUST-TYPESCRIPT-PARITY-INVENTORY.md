@@ -12014,3 +12014,22 @@ Logs use `/private/tmp/fl-org-access-`; CI includes the new actual fixture.
 Custom Role.authorize callbacks, remaining asynchronous options, custom default
 teams, topology/schema extensions and hooks remain open. No dependencies changed.
 Checklist660/682 remains unchanged.
+
+
+### 2026-10-15: General numeric string length bounds
+
+Commit6a7a6d9bc adds MinFloat/MaxFloat/LengthFloat with every IEEE registration,
+JavaScript diagnostic number formatting and NaN-inert exact length comparisons.
+Existing u32/borrowed APIs remain supported. Ordered custom messages, UTF16 length,
+trim/case composition and atomic outputs are covered. No dependencies or schema
+emitter changed; lone UTF16, non-JSON domains and broader schema gates remain open.
+
+Actual/native10,200 comparisons, full96/minimal90 tests, strict validation/Axum
+checks, Unicode regression2,224,128 scalar plus13,855 context cases and live369HTTP/
+177MCP/3safe500/6TypeScriptSDK/6RustSDK calls pass. Full/minimal tests preceded an
+equivalent Clippy partial_cmp adjustment; focused test, oracle, strict checks and
+live consumers followed it. Exact commands/source order are in
+`/private/tmp/fl-string-float-length-receipt.md`; logs share that prefix. All6
+integrated hashes match `/private/tmp/fl-string-float-length-source.json` SHA256
+`c6dcb70c3d06f7187bd299ad9f3412166ce690c5a4b8f861401baf33638bfe80`.
+CI includes the new oracle. Checklist660/682 remains unchanged.
