@@ -25,7 +25,9 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(member_missing)?;
         let member = joined(&mut tx, member).await?.ok_or_else(member_missing)?;
-        if owns(&member) && owner_count(&mut tx, id).await? <= 1 {
+        if owns(&member, self.creator_role.as_str())
+            && owner_count(&mut tx, id, self.creator_role.as_str()).await? <= 1
+        {
             return Err(only_owner());
         }
         delete_member(&mut tx, &member).await?;

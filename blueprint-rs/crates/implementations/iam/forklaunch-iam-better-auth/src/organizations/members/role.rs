@@ -57,15 +57,15 @@ impl<S: AuthStore> OrganizationService<S> {
         if target["organizationId"] != id {
             return Err(forbidden());
         }
-        let creator = owns(&actor);
-        let setting_creator = roles.iter().any(|role| role == "owner");
-        if (owns(&target) || setting_creator) && !creator {
+        let creator = owns(&actor, self.creator_role.as_str());
+        let setting_creator = roles.iter().any(|role| role == self.creator_role.as_str());
+        if (owns(&target, self.creator_role.as_str()) || setting_creator) && !creator {
             return Err(forbidden());
         }
         if creator
             && actor["id"] == target["id"]
             && !setting_creator
-            && owner_count(&mut tx, id).await? <= 1
+            && owner_count(&mut tx, id, self.creator_role.as_str()).await? <= 1
         {
             return Err(BlueprintError::new(
                 "YOU_CANNOT_LEAVE_THE_ORGANIZATION_WITHOUT_AN_OWNER",
@@ -77,7 +77,7 @@ impl<S: AuthStore> OrganizationService<S> {
             id,
             text(&actor, "role")?,
             Some(&serde_json::json!({"member":["update"]})),
-            true,
+            Some(self.creator_role.as_str()),
         )
         .await?
         {

@@ -76,6 +76,7 @@ pub struct AuthHttp<S> {
     invitation_policy: crate::organizations::InvitationPolicy,
     team_policy: crate::organizations::TeamPolicy,
     organization_controls: crate::organizations::OrganizationControls,
+    creator_role: crate::organizations::CreatorRole,
     invitation_delivery: Option<Arc<dyn crate::organizations::InvitationEmailDelivery>>,
     cancel_pending_invitations_on_reinvite: bool,
     store: Arc<S>,
@@ -131,7 +132,13 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self
     }
 
-    /// Installs trusted organization deletion and dynamic-role admission controls.
+    /// Installs trusted creator identity without declaring permission roles.
+    #[must_use]
+    pub fn with_creator_role(mut self, role: crate::organizations::CreatorRole) -> Self {
+        self.creator_role = role;
+        self
+    }
+    /// Installs trusted deletion and dynamic-role quota controls.
     #[must_use]
     pub fn with_organization_controls(
         mut self,
@@ -228,6 +235,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             invitation_policy: crate::organizations::InvitationPolicy::default(),
             team_policy: crate::organizations::TeamPolicy::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),
+            creator_role: crate::organizations::CreatorRole::default(),
             invitation_delivery: None,
             cancel_pending_invitations_on_reinvite: false,
             store,

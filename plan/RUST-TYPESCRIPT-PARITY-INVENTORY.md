@@ -11839,3 +11839,30 @@ Strict minimal-all-target Clippy passes12.72s and the minimal keyring suite pass
 `/private/tmp/fl-creator-role-minimal-keyring.log`. Exact three-file hashes are in
 `/private/tmp/fl-keyring-http-test-gating-source.json`. Both commands are now in CI.
 The earlier minimal-all-target failure is resolved; broader auth remains open.
+
+
+### 2026-10-15: Trusted organization creator-role lifecycle
+
+`CreatorRole` now propagates through service and HTTP builders, organization
+creation, invitations, member removal/updates/leaving and scoped last-creator
+counts. Empty configuration uses `owner`; otherwise the exact trusted string is
+preserved, bounded to4096 UTF-8 bytes. Actor trimming follows each actual route;
+comma-containing configuration is not silently split. Creator permission bypass
+applies only to member-role updates. Configuration does not register a static role
+or grant general organization permissions. Request bodies cannot override it.
+
+Actual Better Auth14 cases, native organization9 tests (0.28s), restricted
+PostgreSQL (224.70s), strict full/all-target Clippy18.71s and minimal/all-target
+Clippy12.72s pass. Concurrent last-creator departures/demotions, first100/101
+counting, foreign organization exclusion and HTTP propagation are covered. Owned
+PostgreSQL role/record/audit cleanup counts are zero. Minimal keyring38 tests also
+pass with the separately committed HTTP test-gating repair. Frozen16 manifest
+`/private/tmp/fl-creator-role-freeze.json` SHA256
+`33d3bab007b98931c808debcbf2a422e720692fb71b66e4f9179515898c9f932`
+was checked against integrated source; logs use `/private/tmp/fl-creator-role-`.
+CI runs the permanent actual-source fixture. No dependencies or locks changed.
+
+Configurable access-control roles/statements, seven async policy variants,
+custom default-team creation, topology toggles, schema mappings and lifecycle
+hooks remain open. This closes the creator-role implementation slice, not the
+broader Better Auth gate; checklist660/682 is unchanged.

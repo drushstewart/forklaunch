@@ -10,14 +10,14 @@ pub(super) async fn allowed<T: AuthTransaction>(
     roles: &str,
     requested: Option<&Value>,
 ) -> BlueprintResult<bool> {
-    allowed_with_creator(tx, organization, roles, requested, false).await
+    allowed_with_creator(tx, organization, roles, requested, None).await
 }
 pub(super) async fn allowed_with_creator<T: AuthTransaction>(
     tx: &mut T,
     organization: &str,
     roles: &str,
     requested: Option<&Value>,
-    creator_all: bool,
+    creator_role: Option<&str>,
 ) -> BlueprintResult<bool> {
     let mut grants: BTreeMap<String, Statements> = BTreeMap::new();
     for role in ["owner", "admin", "editor", "system", "viewer"] {
@@ -51,7 +51,7 @@ pub(super) async fn allowed_with_creator<T: AuthTransaction>(
     let Some(requested) = requested.and_then(Value::as_object) else {
         return Ok(false);
     };
-    if creator_all && roles.split(',').any(|role| role == "owner") {
+    if creator_role.is_some_and(|creator| roles.split(',').any(|role| role == creator)) {
         return Ok(true);
     }
     if requested.is_empty() {

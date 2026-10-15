@@ -23,6 +23,7 @@ fn service<S: AuthStore>(app: &AuthHttp<S>) -> OrganizationService<S> {
         .with_invitation_policy(app.invitation_policy)
         .with_team_policy(app.team_policy)
         .with_organization_controls(app.organization_controls)
+        .with_creator_role(app.creator_role.clone())
         .with_cancel_pending_invitations_on_reinvite(app.cancel_pending_invitations_on_reinvite);
     if let Some(hook) = &app.invitation_delivery {
         service = service.with_invitation_delivery(hook.clone());

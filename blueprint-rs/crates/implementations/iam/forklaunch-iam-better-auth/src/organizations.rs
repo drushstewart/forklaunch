@@ -15,6 +15,8 @@ mod create;
 mod delivery;
 pub use delivery::{InvitationDeliveryContext, InvitationEmailDelivery};
 mod controls;
+mod creator_role;
+pub use creator_role::CreatorRole;
 mod full;
 mod invitation_policy;
 mod team_policy;
@@ -39,6 +41,7 @@ pub struct OrganizationService<S> {
     invitation_policy: InvitationPolicy,
     team_policy: TeamPolicy,
     controls: OrganizationControls,
+    creator_role: CreatorRole,
     invitation_delivery: Option<Arc<dyn InvitationEmailDelivery>>,
     background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     cancel_pending_invitations_on_reinvite: bool,
@@ -83,6 +86,12 @@ impl<S: AuthStore> OrganizationService<S> {
         self
     }
 
+    /// Installs the trusted creator identity across creation and member safeguards.
+    #[must_use]
+    pub fn with_creator_role(mut self, role: CreatorRole) -> Self {
+        self.creator_role = role;
+        self
+    }
     /// Installs trusted deletion and dynamic-role quota controls.
     #[must_use]
     pub fn with_organization_controls(mut self, controls: OrganizationControls) -> Self {
@@ -123,6 +132,7 @@ impl<S: AuthStore> OrganizationService<S> {
             invitation_policy: InvitationPolicy::default(),
             team_policy: TeamPolicy::default(),
             controls: OrganizationControls::default(),
+            creator_role: CreatorRole::default(),
             invitation_delivery: None,
             background_dispatcher: None,
             cancel_pending_invitations_on_reinvite: false,

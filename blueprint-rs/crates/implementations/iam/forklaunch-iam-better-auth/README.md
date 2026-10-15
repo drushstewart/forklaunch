@@ -2063,3 +2063,23 @@ permission-resource validation and duplicate stored-name checks. The quota grant
 no permissions itself. Writer serialization prevents concurrent admissions from
 exceeding the last slot; default deletion behavior remains unchanged. These are
 trusted scalar options, not HTTP body fields or arbitrary policy callbacks.
+
+### Configured creator role
+
+`CreatorRole::new(value)` and `with_creator_role` on `OrganizationService` or
+`AuthHttp` select the trusted organization creator identity. The default and
+empty-string fallback are `owner`; other UTF-8 values up to 4096 bytes are kept
+exactly, including whitespace and commas. This setting applies to the initial
+membership, invitation creator-role admission, member removal/role changes,
+leaving, and last-creator protection. It does not register a dynamic role or
+change the configured static grants. Creator permission bypass is limited to
+member-role updates and still validates stored dynamic grants first.
+
+The existing adapter profile counts creators in the first 100 organization
+members. Role token comparisons preserve upstream endpoint-specific trimming;
+a configured comma-containing value is stored intact but does not match its
+individual split tokens. Membership mutations retain tenant/session authority
+checks and writer-transaction serialization, including concurrent last-creator
+changes. HTTP body fields cannot override this server-owned setting. Async
+organization policy callbacks and general custom role definitions are separate
+capabilities.

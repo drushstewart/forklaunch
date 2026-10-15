@@ -67,7 +67,7 @@ impl<S: AuthStore> OrganizationService<S> {
         }
         tx.insert(Model::Organization, organization.clone()).await?;
         let user = text(&view.user, "id")?;
-        let owner = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":id,"userId":user,"role":"owner","createdAt":created});
+        let owner = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":id,"userId":user,"role":self.creator_role.as_str(),"createdAt":created});
         tx.insert(Model::Member, owner.clone()).await?;
         let team_id = if self.team_policy.default_team {
             let team_id = uuid::Uuid::new_v4().to_string();

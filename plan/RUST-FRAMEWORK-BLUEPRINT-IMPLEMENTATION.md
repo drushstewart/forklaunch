@@ -2769,3 +2769,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Organization deletion/dynamic-role controls pass actual16, final native organization8, restricted PostgreSQL and strict full/all-target plus minimal-library Clippy. Quota concurrency and malformed deletion ordering covered; broader auth remains open,660/682 unchanged. Separate minimal-all-target keyring feature-gating failure recorded.
 
 - 2026-10-15: Configured Subscription ownership errors now match TS500 text/correlation behavior; actual12 HTTP, signed native PostgreSQL HTTP, service2, legacy170, artifacts186 and strict full/minimal checks pass. Generic semantics and malformed-input400 preserved; broader billing stays open,660/682 unchanged.
+
+- 2026-10-15: Trusted creator-role lifecycle passes actual14, native organization9, restricted PostgreSQL concurrency and strict full/minimal all-target checks. Exact role semantics, first100 counts and HTTP propagation covered; broader access-control/options/hooks remain open,660/682 unchanged.

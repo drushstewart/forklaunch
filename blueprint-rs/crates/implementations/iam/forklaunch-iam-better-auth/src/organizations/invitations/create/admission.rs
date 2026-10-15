@@ -55,8 +55,10 @@ impl<S: AuthStore> OrganizationService<S> {
         input::validate_roles(tx, org, &role).await?;
         if !text(&member, "role")?
             .split(',')
-            .any(|role| input::trim(role) == "owner")
-            && role.split(',').any(|role| role == "owner")
+            .any(|role| input::trim(role) == self.creator_role.as_str())
+            && role
+                .split(',')
+                .any(|role| role == self.creator_role.as_str())
         {
             return Err(error(
                 "YOU_ARE_NOT_ALLOWED_TO_INVITE_USER_WITH_THIS_ROLE",

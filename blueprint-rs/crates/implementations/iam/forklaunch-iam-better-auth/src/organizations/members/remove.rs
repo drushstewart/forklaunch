@@ -37,12 +37,12 @@ impl<S: AuthStore> OrganizationService<S> {
         let target = removal_target(&mut tx, text(body, "memberIdOrEmail")?, id)
             .await?
             .ok_or_else(member_missing)?;
-        if owns(&target)
+        if owns(&target, self.creator_role.as_str())
             && (!text(&actor, "role")?
                 .split(',')
                 .map(trim)
-                .any(|role| role == "owner")
-                || owner_count(&mut tx, id).await? <= 1)
+                .any(|role| role == self.creator_role.as_str())
+                || owner_count(&mut tx, id, self.creator_role.as_str()).await? <= 1)
         {
             return Err(only_owner());
         }

@@ -32,10 +32,10 @@ fn only_owner() -> BlueprintError {
         "You cannot leave the organization as the only owner",
     )
 }
-fn owns(member: &Value) -> bool {
+fn owns(member: &Value, creator: &str) -> bool {
     member["role"]
         .as_str()
-        .is_some_and(|roles| roles.split(',').any(|role| role == "owner"))
+        .is_some_and(|roles| roles.split(',').any(|role| role == creator))
 }
 fn trim(value: &str) -> &str {
     value.trim_matches(|character: char| {
@@ -58,14 +58,18 @@ fn joined_user(mut member: Value, user: &Value) -> Value {
     member["user"] = public;
     member
 }
-async fn owner_count<T: AuthTransaction>(tx: &mut T, organization: &str) -> BlueprintResult<usize> {
+async fn owner_count<T: AuthTransaction>(
+    tx: &mut T,
+    organization: &str,
+    creator: &str,
+) -> BlueprintResult<usize> {
     Ok(
         crate::store::find_all(tx, Model::Member, "organizationId", organization)
             .await?
             .iter()
             .filter(|row| row["organizationId"] == organization)
             .take(100)
-            .filter(|row| owns(row))
+            .filter(|row| owns(row, creator))
             .count(),
     )
 }

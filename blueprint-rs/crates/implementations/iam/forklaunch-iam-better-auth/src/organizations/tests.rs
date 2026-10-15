@@ -202,3 +202,5 @@ async fn seed_owners<S: AuthStore>(store: &S) {
     }
     tx.commit().await.unwrap();
 }
+
+pub(crate) mod creator_role;
