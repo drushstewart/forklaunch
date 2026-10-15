@@ -40,7 +40,7 @@ rsa = { version = "0.9.10", default-features = false, features = ["std", "u64_di
 p521 = { version = "0.13.3", default-features = false, features = ["ecdsa", "pkcs8", "std"] }
 zeroize = "1"
 serde_json = { version = "1", features = ["raw_value", "arbitrary_precision", "preserve_order"] }
-tokio = { version = "1", default-features = false, features = ["sync", "rt"] }
+tokio = { version = "1", default-features = false, features = ["sync", "rt", "time"] }
 serde = { version = "1", features = ["derive"] }
 regex = "1"
 url = "2"

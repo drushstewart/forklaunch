@@ -1128,3 +1128,20 @@ issued. Existing128-byte supplied proof bound remains explicit. Five actual
 Node/Rust vectors, native35, restrictedPG rollback/races and strict Clippy pass.
 The production/source19 hashes and detailed receipts are in the parity inventory.
 Async custom codecs and backup field representation remain separate open work.
+
+### 2026-10-14: trusted async OTP callback leases
+
+Custom callbacks receive bounded zeroizing owned strings, without user/token
+context, and run outside database transactions. Private durable revisions require
+existing exact-owner CAS; missing/expired/deleted/replaced state cannot authorize
+a stale completion. Verification consumes availability before callback failure
+or cancellation; resend encodefailure restores only its own prior proof.
+Authority, account lockout, lease and proof expiry are rechecked after writer
+acquisition/awaited writes and before COMMIT/callback. This is deliberately
+stronger than observed upstream races. Cooperative timeouts cannot interrupt
+blocking user code, and pre-COMMIT checks do not guarantee COMMIT completion time.
+No-codec readers fail closed; enable only after all readers understand the native
+envelope. Cleanup is explicit and bounded; no scheduler is promised. Final14
+focused tests, restrictedPG48.28s, actual10/fullfixture, defaultHTTP one-clock
+regression and strictClippy pass. Detailed/provenance-separated receipts are in
+the parity inventory; no generated/immutable async proof is claimed.

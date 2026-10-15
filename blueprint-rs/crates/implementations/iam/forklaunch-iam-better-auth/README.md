@@ -1393,3 +1393,59 @@ Plain, while this bounded native profile rejects that input before consuming an
 attempt. Existing digit proofs and hashed fields are not rewritten. Plain/Hashed
 to Encrypted conversion errors consume; Encrypted to Plain/Hashed comparison
 failures retain the proof and increment its attempt count.
+
+### Trusted asynchronous OTP field codecs
+
+`TwoFactorService::with_otp_hash_codec` and `with_otp_encryption_codec` install
+server-owned `OtpHashCodec` or `OtpEncryptionCodec` callbacks. `AuthHttp` exposes
+matching `with_two_factor_otp_*_codec` builders. Configure delivery separately;
+these builders preserve OTP/TOTP and lifecycle policies. Selecting a built-in
+`OtpStorage` or encryption key configuration removes the custom codec. The
+feature is opt-in; default field storage remains plain inside encrypted records.
+
+Callbacks receive only owned `OtpCodecText` secrets and return an owned
+`OtpCodecFuture`. Secret wrappers have neither `Debug` nor `Serialize` and zeroize
+their strings on drop. Inputs and outputs are limited to 1024 UTF-8 bytes; empty
+and Unicode results are supported. Encoded/hash output cannot contain `:` because
+upstream uses that delimiter for its attempt counter. The HTTP supplied-code
+limit remains 128 bytes. Callback `Err`, timeout and invalid output produce a
+sanitized empty HTTP 500. Rust panics and blocking callback constructors are not
+modeled as callback errors; callbacks must cooperate with the Tokio runtime.
+`OtpCodecOptions` admits whole-millisecond deadlines from 1ms through 30s and
+requires an enabled Tokio timer. This bounds cooperative future waiting and
+acceptance of results, not execution of blocking or non-yielding callback code;
+there is no forced interruption or panic guarantee. No transaction is held while
+callbacks run.
+
+A private versioned envelope in the existing encrypted verification record binds
+encoding/verification to a random revision and persisted deadline. No SQL schema
+migration or new `AuthStore` methods are required. Verification consumes proof
+availability before invoking the callback; failure or cancellation cannot rearm
+that proof. Failed resend encoding restores an older proof only if it still owns
+the exact reservation. Session/trust issuance, counters and final state commit
+atomically. Completion rechecks the exact row/revision, authority, current
+lockout and clock. Clock checks occur after acquiring each writer, before each
+commit and again before invoking a callback after its reservation commit. A final
+COMMIT can itself complete after the checked deadline; this is not a promise of
+post-COMMIT rollback or an absolute storage-completion deadline. A new send, consumed replacement, signout or expired authority
+cannot be overwritten by an older callback. These race checks are deliberately
+stronger than upstream's audited asynchronous behavior.
+
+Existing methods advance their supplied trusted time with monotonic elapsed time
+while awaiting callbacks. The additive `send_otp_with_clock` and
+`verify_otp_with_clock` entrypoints sample a caller-owned clock again before final
+commit; HTTP uses its configured clock. Backward clock movement fails closed.
+Cancellation spawns no detached task. Expired encoding leases lazily recover a
+still-live older proof; expired verification leases remain consumed.
+`cleanup_otp_codec_states` visits at most 256 tenant verification records and
+returns an opaque continuation. Operators must invoke it to physically remove
+unvisited expired tombstones; no automatic background sweep is promised. Removing
+an expired state cannot authorize a stale callback, which requires an existing
+matching revision and unexpired lease.
+
+Instances without a codec recognize custom envelopes and reject verification
+without deleting pending work. Deploy this envelope-aware version to all readers
+before enabling custom codecs: older binaries do not implement the envelope
+lifecycle. This native envelope is not a Better Auth database interchange format.
+Custom callback storage is distinct from whole-record encryption. Backup-code
+field codecs remain a separate capability.

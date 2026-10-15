@@ -1205,3 +1205,167 @@ async fn http_encrypted_otp_failure_consumes_without_session_or_cookie() {
         200
     );
 }
+
+#[tokio::test]
+async fn http_custom_otp_codec_error_is_empty_without_authentication_headers() {
+    struct Codec;
+    impl OtpEncryptionCodec for Codec {
+        fn encrypt(&self, input: OtpCodecText) -> OtpCodecFuture {
+            Box::pin(async move { Ok(input) })
+        }
+        fn decrypt(&self, _: OtpCodecText) -> OtpCodecFuture {
+            Box::pin(async { Err(error("private-codec-secret", "never expose callback data")) })
+        }
+    }
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    let store = Arc::new(MemoryAuthStore::default());
+    let session = new_session("custom-http-user", "", "", now).unwrap();
+    let cookie = crate::cookies::sign_cookie_value(text(&session, "token").unwrap(), &[42; 32]);
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(
+        Model::User,
+        json!({"id":"custom-http-user","email":"custom-http@example.test","twoFactorEnabled":true}),
+    )
+    .await
+    .unwrap();
+    tx.insert(Model::Session, session).await.unwrap();
+    tx.commit().await.unwrap();
+    let delivery = Arc::new(otp::Delivery::default());
+    let router = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+        .unwrap()
+        .with_clock(move || now)
+        .with_rate_limiting(false)
+        .with_two_factor_otp_encryption_codec(Arc::new(Codec), OtpCodecOptions::default())
+        .unwrap()
+        .with_two_factor_otp(delivery.clone())
+        .unwrap()
+        .with_two_factor_backup_code_options(BackupCodeOptions::default())
+        .unwrap()
+        .router();
+    let mut browser = Browser {
+        router,
+        origin: origin.into(),
+        jar: BTreeMap::from([("better-auth.session_token".into(), cookie)]),
+    };
+    assert_eq!(
+        browser
+            .call("/two-factor/send-otp", Some(json!({"storeOTP":"plain"})))
+            .await
+            .0,
+        200
+    );
+    let before = rows(store.as_ref(), Model::Session).await;
+    let (status, body, headers) = browser
+        .call(
+            "/two-factor/verify-otp",
+            Some(json!({"code":delivery.last()})),
+        )
+        .await;
+    assert_eq!(status, 500);
+    assert!(body.is_null());
+    assert!(headers.get("set-cookie").is_none());
+    assert!(headers.get("set-auth-jwt").is_none());
+    assert_eq!(rows(store.as_ref(), Model::Session).await, before);
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/verify-otp",
+                Some(json!({"code":delivery.last()}))
+            )
+            .await
+            .1["code"],
+        "OTP_HAS_EXPIRED"
+    );
+}
+
+#[tokio::test]
+async fn http_otp_builtin_clock_is_sampled_once_and_custom_clock_stays_fresh() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct Codec;
+    impl OtpHashCodec for Codec {
+        fn hash(&self, input: OtpCodecText) -> OtpCodecFuture {
+            Box::pin(async move { Ok(input) })
+        }
+    }
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    for mode in 0..4 {
+        let store = Arc::new(MemoryAuthStore::default());
+        let session = new_session("clock-user", "", "", now).unwrap();
+        let cookie = crate::cookies::sign_cookie_value(text(&session, "token").unwrap(), &[42; 32]);
+        let mut tx = store.begin(true).await.unwrap();
+        tx.insert(
+            Model::User,
+            json!({"id":"clock-user","email":"clock@example.test","twoFactorEnabled":true}),
+        )
+        .await
+        .unwrap();
+        tx.insert(Model::Session, session).await.unwrap();
+        tx.commit().await.unwrap();
+        let count = Arc::new(AtomicUsize::new(0));
+        let clock_count = count.clone();
+        let delivery = Arc::new(otp::Delivery::default());
+        let app = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+            .unwrap()
+            .with_clock(move || {
+                let tick = clock_count.fetch_add(1, Ordering::SeqCst);
+                now + Duration::milliseconds(i64::try_from(tick).unwrap())
+            })
+            .with_rate_limiting(false)
+            .with_two_factor_otp(delivery.clone())
+            .unwrap();
+        let app = match mode {
+            0 => app.with_two_factor_otp_storage(OtpStorage::Plain).unwrap(),
+            1 => app.with_two_factor_otp_storage(OtpStorage::Hashed).unwrap(),
+            2 => app
+                .with_two_factor_otp_encryption_keys(Arc::new(
+                    OtpEncryptionKeys::versioned(7, vec![(7, "x".repeat(32))], None).unwrap(),
+                ))
+                .unwrap(),
+            _ => app
+                .with_two_factor_otp_hash_codec(Arc::new(Codec), OtpCodecOptions::default())
+                .unwrap(),
+        };
+        let mut browser = Browser {
+            router: app.router(),
+            origin: origin.into(),
+            jar: BTreeMap::from([("better-auth.session_token".into(), cookie)]),
+        };
+        assert_eq!(
+            browser
+                .call("/two-factor/send-otp", Some(json!({})))
+                .await
+                .0,
+            200
+        );
+        let calls = count.load(Ordering::SeqCst);
+        let saved = rows(store.as_ref(), Model::Verification).await.remove(0);
+        if mode < 3 {
+            assert_eq!(calls, 1);
+            assert_eq!(
+                time(&saved, "expiresAt").unwrap(),
+                now + Duration::seconds(180)
+            );
+        } else {
+            assert!(calls > 1);
+            assert!(time(&saved, "expiresAt").unwrap() > now + Duration::seconds(180));
+        }
+        assert_eq!(
+            browser
+                .call(
+                    "/two-factor/verify-otp",
+                    Some(json!({"code": delivery.last()}))
+                )
+                .await
+                .0,
+            200
+        );
+        let verify_calls = count.load(Ordering::SeqCst) - calls;
+        if mode < 3 {
+            assert_eq!(verify_calls, 1);
+        } else {
+            assert!(verify_calls > 1);
+        }
+    }
+}

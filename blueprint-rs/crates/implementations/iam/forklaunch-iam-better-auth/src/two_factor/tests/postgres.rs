@@ -70,6 +70,9 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
         backup_options::lifecycle(store.clone()).await;
         otp_storage::lifecycle(store.clone()).await;
         otp_encryption::lifecycle(store.clone()).await;
+        otp_async::lifecycle(store.clone()).await;
+        otp_async::rollback(store.clone()).await;
+        otp_async::late_commit(store.clone()).await;
         let secret=STANDARD.encode([7u8;32]);
         let backup="ABCDE-FGHIJ";
         let mut tx=store.begin(true).await.unwrap();

@@ -85,6 +85,42 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(self)
     }
 
+    /// Installs a server-owned asynchronous OTP hash codec. No request selects this policy.
+    /// # Errors
+    /// Rejects invalid existing authentication configuration or namespace conflicts.
+    pub fn with_two_factor_otp_hash_codec(
+        mut self,
+        codec: Arc<dyn crate::two_factor::OtpHashCodec>,
+        options: crate::two_factor::OtpCodecOptions,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_otp_hash_codec(codec, options),
+        ));
+        Ok(self)
+    }
+    /// Installs a server-owned asynchronous OTP encryption codec. No request selects this policy.
+    /// # Errors
+    /// Rejects invalid existing authentication configuration or namespace conflicts.
+    pub fn with_two_factor_otp_encryption_codec(
+        mut self,
+        codec: Arc<dyn crate::two_factor::OtpEncryptionCodec>,
+        options: crate::two_factor::OtpCodecOptions,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_otp_encryption_codec(codec, options),
+        ));
+        Ok(self)
+    }
     /// Enables TOTP using validated trusted parameters, preserving any configured
     /// delivered-OTP hook and policy. This does not enable passwordless enrollment.
     /// # Errors
@@ -356,6 +392,8 @@ pub(super) fn cookie<S: AuthStore>(
         ),
     )
 }
+// Keep route dispatch together so built-in and async-codec clock authority stays explicit.
+#[allow(clippy::too_many_lines)]
 pub(super) async fn handle<S: AuthStore + 'static>(
     app: &AuthHttp<S>,
     path: &str,
@@ -372,6 +410,26 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     let trust = signed(app, headers, "trust_device");
     let password = || body["password"].as_str().unwrap_or("").to_owned();
     let result = match path {
+        "/two-factor/send-otp" if service.has_custom_otp_codec() => {
+            service
+                .send_otp_with_clock(
+                    &token,
+                    &signed(app, headers, "two_factor").unwrap_or_default(),
+                    app.clock.as_ref(),
+                )
+                .await
+        }
+        "/two-factor/verify-otp" if service.has_custom_otp_codec() => {
+            service
+                .verify_otp_with_clock(
+                    &token,
+                    &signed(app, headers, "two_factor").unwrap_or_default(),
+                    body["code"].as_str().unwrap_or(""),
+                    body["trustDevice"] == true,
+                    app.clock.as_ref(),
+                )
+                .await
+        }
         "/two-factor/send-otp" => {
             service
                 .send_otp(

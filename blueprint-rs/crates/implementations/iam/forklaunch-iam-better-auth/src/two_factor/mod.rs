@@ -22,7 +22,14 @@ pub use lifecycle::TwoFactorLifecycleOptions;
 pub use lifetime_options::TwoFactorLifetimeOptions;
 pub use lockout_options::AccountLockoutOptions;
 mod otp;
+mod otp_async;
+mod otp_codec;
+mod otp_codec_state;
 pub use otp::{OtpDelivery, OtpDeliveryContext, OtpDeliveryFuture, OtpOptions};
+pub use otp_async::OtpCodecCleanup;
+pub use otp_codec::{
+    OtpCodecFuture, OtpCodecOptions, OtpCodecText, OtpEncryptionCodec, OtpHashCodec,
+};
 mod otp_encryption;
 pub use otp_encryption::OtpEncryptionKeys;
 mod otp_storage;
@@ -54,6 +61,7 @@ pub struct TwoFactorService<S> {
     otp_options: OtpOptions,
     otp_storage: OtpStorage,
     otp_encryption_keys: Option<Arc<OtpEncryptionKeys>>,
+    otp_codec: Option<Arc<otp_codec::Codec>>,
     totp_options: TotpOptions,
     lifecycle_options: TwoFactorLifecycleOptions,
     lifetime_options: TwoFactorLifetimeOptions,
@@ -153,6 +161,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             otp_options: OtpOptions::default(),
             otp_storage: OtpStorage::default(),
             otp_encryption_keys: None,
+            otp_codec: None,
             totp_options: TotpOptions::default(),
             lifecycle_options: TwoFactorLifecycleOptions::default(),
             lifetime_options: TwoFactorLifetimeOptions::default(),

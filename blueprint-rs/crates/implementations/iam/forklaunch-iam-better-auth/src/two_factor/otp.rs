@@ -99,13 +99,13 @@ pub trait OtpDelivery: Send + Sync {
     fn prepare(&self, context: OtpDeliveryContext) -> BlueprintResult<OtpDeliveryFuture>;
 }
 
-struct Authority {
-    user: Value,
-    session: Option<Value>,
-    challenge: Option<Value>,
-    identifier: String,
+pub(super) struct Authority {
+    pub user: Value,
+    pub session: Option<Value>,
+    pub challenge: Option<Value>,
+    pub identifier: String,
 }
-async fn authority<T: AuthTransaction>(
+pub(super) async fn authority<T: AuthTransaction>(
     tx: &mut T,
     token: &str,
     challenge: &str,
@@ -158,7 +158,7 @@ fn identifier(key: &str) -> String {
     let hash = ring::digest::digest(&ring::digest::SHA256, key.as_bytes());
     format!("2fa-otp-{}", URL_SAFE_NO_PAD.encode(hash.as_ref()))
 }
-fn code(digits: u8) -> BlueprintResult<Zeroizing<String>> {
+pub(super) fn code(digits: u8) -> BlueprintResult<Zeroizing<String>> {
     let digits = usize::from(digits);
     let mut value = Zeroizing::new(String::with_capacity(digits));
     while value.len() < digits {
@@ -208,8 +208,17 @@ impl<S: AuthStore> TwoFactorService<S> {
         challenge: &str,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
-        let delivery = self
-            .otp_delivery
+        if self.otp_codec.is_some() {
+            let started = std::time::Instant::now();
+            let clock = move || {
+                now.checked_add_signed(
+                    chrono::Duration::from_std(started.elapsed()).unwrap_or(chrono::Duration::MAX),
+                )
+                .unwrap_or(DateTime::<Utc>::MAX_UTC)
+            };
+            return self.send_custom_otp(token, challenge, &clock).await;
+        }
+        self.otp_delivery
             .as_ref()
             .ok_or_else(|| error("OTP_NOT_CONFIGURED", "otp isn't configured"))?;
         let expires = now
@@ -237,10 +246,18 @@ impl<S: AuthStore> TwoFactorService<S> {
             tx.insert(Model::Verification, row).await?;
         }
         tx.commit().await?;
-        let context = OtpDeliveryContext {
-            user: output_user(&bound.user),
-            code,
-        };
+        self.deliver_otp(output_user(&bound.user), code).await
+    }
+    pub(super) async fn deliver_otp(
+        &self,
+        user: Value,
+        code: Zeroizing<String>,
+    ) -> BlueprintResult<FactorResponse> {
+        let delivery = self
+            .otp_delivery
+            .as_ref()
+            .ok_or_else(|| error("OTP_NOT_CONFIGURED", "otp isn't configured"))?;
+        let context = OtpDeliveryContext { user, code };
         let future = delivery.prepare(context).map_err(|_| {
             error(
                 "TWO_FACTOR_DELIVERY_PREPARATION_FAILED",
@@ -306,6 +323,18 @@ impl<S: AuthStore> TwoFactorService<S> {
         trust_device: bool,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
+        if self.otp_codec.is_some() {
+            let started = std::time::Instant::now();
+            let clock = move || {
+                now.checked_add_signed(
+                    chrono::Duration::from_std(started.elapsed()).unwrap_or(chrono::Duration::MAX),
+                )
+                .unwrap_or(DateTime::<Utc>::MAX_UTC)
+            };
+            return self
+                .verify_custom_otp(token, challenge, supplied, trust_device, &clock)
+                .await;
+        }
         if supplied.len() > 128 {
             return Err(error("INVALID_CODE", "Invalid code"));
         }
@@ -326,6 +355,9 @@ impl<S: AuthStore> TwoFactorService<S> {
             tx.commit().await?;
             return Err(error("OTP_HAS_EXPIRED", "OTP has expired"));
         };
+        if super::otp_codec_state::Envelope::read(&otp)?.is_some() {
+            return Err(super::otp_codec::failure());
+        }
         tx.delete(Model::Verification, text(&otp, "id")?).await?;
         if time(&otp, "expiresAt")? < now {
             tx.commit().await?;
@@ -381,6 +413,17 @@ impl<S: AuthStore> TwoFactorService<S> {
             self.reset_account_failures(&mut factor);
             tx.replace(Model::TwoFactor, factor).await?;
         }
+        let response = self.complete_otp(&mut tx, bound, trust_device, now).await?;
+        tx.commit().await?;
+        Ok(response)
+    }
+    pub(super) async fn complete_otp<T: AuthTransaction>(
+        &self,
+        tx: &mut T,
+        bound: Authority,
+        trust_device: bool,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<FactorResponse> {
         let mut user = bound.user;
         let mut response = empty_response(
             json!({"token":bound.session.as_ref().map(|session|session["token"].clone()),"user":output_user(&user)}),
@@ -390,7 +433,7 @@ impl<S: AuthStore> TwoFactorService<S> {
                 user["twoFactorEnabled"] = json!(true);
                 user["updatedAt"] = json!(super::timestamp(now));
                 tx.replace(Model::User, user.clone()).await?;
-                let replacement = enrollment::rotate(&mut tx, &user, &session, now).await?;
+                let replacement = enrollment::rotate(tx, &user, &session, now).await?;
                 response.body = json!({"token":replacement["token"],"user":output_user(&user)});
                 response.session = Some(replacement);
             }
@@ -410,10 +453,9 @@ impl<S: AuthStore> TwoFactorService<S> {
             response.clear_challenge = true;
             response.persistent = challenge["persistent"].as_bool().unwrap_or(true);
             if trust_device {
-                response.trust = Some(self.create_trust(&mut tx, &user, now).await?);
+                response.trust = Some(self.create_trust(tx, &user, now).await?);
             }
         }
-        tx.commit().await?;
         Ok(response)
     }
 }

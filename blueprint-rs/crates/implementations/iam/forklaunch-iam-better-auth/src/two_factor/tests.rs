@@ -15,6 +15,8 @@ mod lifetime_options;
 mod lockout_options;
 mod lockout_store;
 mod otp;
+mod otp_async;
+mod otp_commit_store;
 mod otp_encryption;
 mod otp_options;
 mod otp_storage;

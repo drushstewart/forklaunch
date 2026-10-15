@@ -39,6 +39,7 @@ impl<S> TwoFactorService<S> {
     /// Does not change delivery, digit/attempt limits, expiry, or row encryption.
     #[must_use]
     pub fn with_otp_storage(mut self, storage: OtpStorage) -> Self {
+        self.otp_codec = None;
         self.otp_storage = storage;
         self
     }

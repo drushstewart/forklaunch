@@ -9383,3 +9383,41 @@ Current caches/binaries, retained archives, source/log receipts, unrelated SDK
 watcher and PostgreSQL fixture remain. Evidence:
 /private/tmp/fl-old-checkpoint-artifact-audit.json. Physical APFS reclaim is not
 equated to logical file size.
+
+### 2026-10-14: trusted asynchronous OTP field codecs (working source)
+
+Owned Send hash/encrypt/decrypt futures receive bounded zeroizing1024-byte secret
+wrappers without Debug/Serde/session/token context; empty/Unicode supported, colon
+encoded outputs excluded explicitly. HTTP proof128-byte bound stays. Cooperative
+Tokio timeout1ms..30s plus durable private revision/phase/lease prevents stale
+publication; no DBtransaction spans callback, detached task or forced interruption
+is claimed. Encoding failure restores an older proof only under exact owner CAS;
+verification consumes availability before callback, including failure/cancellation.
+Resend/consumed replacement cannot be overwritten or resurrected from absence.
+Final session/trust/counter/state writes commit together with fresh authority/
+lockout/clock checks. Initial clocks sample after writer acquisition, guard every
+reservation write/COMMIT and again before callback; final guard follows awaited
+writes immediately before COMMIT. Actual COMMIT timing itself is not guaranteed.
+Default HTTP builtin modes retain exactly one clock sample/exact expiry; custom
+HTTP uses fresh configured clock. Domain supplied-now methods advance monotonic
+elapsed time; explicit clock overloads are additive. Default/no-codec instances
+recognize custom states and fail closed. Bounded cleanup256/cursor and lazy expired
+encoding recovery are explicit, without a background scheduling promise. Deploy
+envelope-aware readers before enabling; native internal envelopes are not upstream
+DB interchange. Native rejects stale-authority races that actual upstream permits.
+
+Frozen20 final hashes: /private/tmp/fl-otp-async-freeze.json (manifest SHA256
+0f71d6496dd973c15d6a7eb11c1a56ba1c79b7950d38da6385bbd636700aab16).
+Actual10 async observations+fullfixture pass. Final domain focused14/0.03s,
+restrictedPG1/48.28s, allfeature/alltargetClippy8.76s andminimal2.52s pass.
+Initial/final lock/write/COMMIT delay tests prove zero callback entry after expiry;
+wrong/success rollback, oneuse, cancellation/restart, resend+consumeABA, reentry,
+currentlockout/signout/disable/nohook and cooperative timeout are covered. Earlier
+affected45/1ignored56.52s predates final clock guards; final focused/PG prove those
+corrections. Subsequent HTTP-only clock correction passes four-profile1/0.03s plus
+strict allfeatureClippy8.96s/minimal; domain/storage unchanged. Cleanup0/0/0.
+Logs /private/tmp/fl-otp-async-{native,regression,postgres,clippy,minimal,actual,
+full-actual,cleanup}.log and fl-otp-async-http-clock{,-clippy,-minimal}.log.
+Only existing Tokio time feature added; no lock/migration change. CI tracks helper.
+No new generated/immutable async claim; backup field codecs remain open,660/682
+unchanged.

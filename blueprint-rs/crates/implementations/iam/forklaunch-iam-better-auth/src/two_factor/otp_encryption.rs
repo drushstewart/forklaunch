@@ -204,6 +204,7 @@ impl<S> TwoFactorService<S> {
     /// cookie signing and tenant encryption keys are unchanged.
     #[must_use]
     pub fn with_otp_encryption_keys(mut self, keys: Arc<OtpEncryptionKeys>) -> Self {
+        self.otp_codec = None;
         self.otp_encryption_keys = Some(keys);
         self.otp_storage = super::OtpStorage::Encrypted;
         self
