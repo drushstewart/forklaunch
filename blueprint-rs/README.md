@@ -404,3 +404,13 @@ Billing contract/OpenAPI export uses the same `BILLING_REQUEST_DATE_PROFILE` as
 runtime startup. Library callers can explicitly select
 `contract_registry_with_request_dates`; the existing `contract_registry()` stays
 legacy. Application-defined custom routes are unaffected by package date projection.
+
+Generated Stripe billing can explicitly select `BILLING_IDENTITY_PROFILE=bound-checkout-v1`
+with bounded `BILLING_BOUND_CHECKOUT_CONFIG` and a separate
+`BILLING_PUBLISHER_DATABASE_URL`. See the
+[Axum profile guide](crates/implementations/billing/forklaunch-billing-axum/README.md).
+The profile adds create/get/inspect Checkout operations over HTTP/MCP and both
+SDKs, preserving local UUIDs and durable creation evidence. Unknown outcomes return
+202 without redispatch; historical inspection returns IDs without reviving URLs.
+Internal HMAC authenticates the calling service; application code must authorize
+individual users and Customer/Party ownership. Default routes stay legacy.

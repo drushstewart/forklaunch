@@ -23,7 +23,7 @@ try {
   'forklaunch-billing-interface':'blueprint-rs/crates/interfaces/forklaunch-billing-interface',
   'forklaunch-billing-axum':'blueprint-rs/crates/implementations/billing/forklaunch-billing-axum'
  };
- const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))} }`).join('\n');
+ const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-billing-axum'?', features = ["bound-checkout"]':''} }`).join('\n');
  const patches=readFileSync(path.join(root,'blueprint-rs/Cargo.toml'),'utf8').split('[patch.crates-io]')[1].replaceAll('path = "../framework-rs/',`path = "${root}/framework-rs/`);
  writeFileSync(path.join(temporary,'Cargo.toml'),`[package]\nname="fl-billing-date-artifacts"\nversion="0.1.0"\nedition="2024"\n[dependencies]\nserde_json="1"\n${dependencies}\n[patch.crates-io]${patches}`);
  writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_contract::RouteContract> { vec![] }');

@@ -281,6 +281,9 @@ on:
       - 'cli/tests/rust_billing_request_dates.mjs'
       - 'cli/tests/rust_billing_request_dates_sdk.mjs'
       - 'cli/tests/rust_billing_date_artifacts.mjs'
+      - 'cli/tests/rust_billing_bound_checkout_artifacts.mjs'
+      - 'cli/tests/rust_billing_bound_checkout_route_sdks.mjs'
+      - 'cli/tests/rust_billing_bound_checkout_runtime.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
@@ -643,6 +646,9 @@ on:
       - 'cli/tests/rust_billing_request_dates.mjs'
       - 'cli/tests/rust_billing_request_dates_sdk.mjs'
       - 'cli/tests/rust_billing_date_artifacts.mjs'
+      - 'cli/tests/rust_billing_bound_checkout_artifacts.mjs'
+      - 'cli/tests/rust_billing_bound_checkout_route_sdks.mjs'
+      - 'cli/tests/rust_billing_bound_checkout_runtime.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
@@ -1307,6 +1313,9 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_request_dates.mjs
       - run: node cli/tests/rust_billing_date_artifacts.mjs
+      - run: node cli/tests/rust_billing_bound_checkout_artifacts.mjs
+      - name: Bound Checkout live HTTP, MCP and both SDKs
+        run: node cli/tests/rust_billing_bound_checkout_runtime.mjs
       - name: Billing date HTTP, MCP and generated SDK profile
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --test request_dates -- --ignored
       - run: node cli/tests/rust_billing_dto_types.mjs

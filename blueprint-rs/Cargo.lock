@@ -1254,6 +1254,7 @@ dependencies = [
  "forklaunch-blueprint-core",
  "forklaunch-core",
  "forklaunch-sdk-codegen",
+ "forklaunch-sdk-rust",
  "forklaunch-sdk-typescript",
  "forklaunch-validation",
  "form_urlencoded",

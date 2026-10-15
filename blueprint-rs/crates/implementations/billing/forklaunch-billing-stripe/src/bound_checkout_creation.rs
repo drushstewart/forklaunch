@@ -90,6 +90,17 @@ fn invalid() -> BlueprintError {
     )
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Preflight for an explicitly selected direct-only server adapter. No provider I/O.
+    /// # Errors
+    /// Rejects managed transport or a publisher with different actor/tenant/database/roles.
+    pub async fn validate_bound_checkout_configuration(
+        &self,
+        publisher: &TrustedCheckoutPublisher,
+    ) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        publisher.validate_for(self.base().store()).await
+    }
+
     /// One POST after a confirmed reservation. Unknown outcomes retain all claims;
     /// inspection never reconstructs dispatch capability or returns historical URL.
     /// # Errors

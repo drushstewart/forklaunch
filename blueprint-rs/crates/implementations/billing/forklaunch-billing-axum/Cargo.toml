@@ -7,6 +7,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+bound-checkout = ["forklaunch-billing-stripe/postgres-identity"]
+
 [dependencies]
 forklaunch-validation = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-validation" }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
@@ -26,6 +30,7 @@ tokio = { version="1", features=["time"] }
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
+forklaunch-sdk-rust = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-sdk-rust" }
 forklaunch-sdk-codegen = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-sdk-codegen" }
 forklaunch-sdk-typescript = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-sdk-typescript" }
 tokio = { version="1", features=["macros","rt-multi-thread","net","sync"] }

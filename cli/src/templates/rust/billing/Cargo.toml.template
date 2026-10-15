@@ -19,6 +19,6 @@ forklaunch-blueprint-core = { path = "../../.forklaunch/blueprint-rs/crates/fork
 forklaunch-billing-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/forklaunch-billing-interface" }
 forklaunch-billing-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/billing/forklaunch-billing-base", features = ["postgres"] }
 forklaunch-billing-stripe = { path = "../../.forklaunch/blueprint-rs/crates/implementations/billing/forklaunch-billing-stripe" }
-forklaunch-billing-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/billing/forklaunch-billing-axum" }
+forklaunch-billing-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/billing/forklaunch-billing-axum", features = ["bound-checkout"] }
 jsonwebtoken = "9"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }

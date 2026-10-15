@@ -1,0 +1,85 @@
+// Compile the actual generated billing library template and export both profiles.
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const temporary=mkdtempSync(path.join(tmpdir(),'fl-billing-bound-checkout-artifacts-'));
+const target=process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target');
+const template=readFileSync(path.join(root,'cli/src/templates/rust/billing/lib.rs'),'utf8');
+function run(command,args,env={}) {
+ const result=spawnSync(command,args,{cwd:temporary,env:{...Object.fromEntries(Object.entries(process.env).filter(([key])=>!['BILLING_BOUND_CHECKOUT_CONFIG','BILLING_PUBLISHER_DATABASE_URL'].includes(key))),CARGO_TARGET_DIR:target,CARGO_INCREMENTAL:'0',...env},encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
+ assert.equal(result.status,0,result.stderr);return result.stdout;
+}
+try {
+ mkdirSync(path.join(temporary,'src'));
+ const crates={
+  'forklaunch-contract':'framework-rs/crates/forklaunch-contract',
+  'forklaunch-core':'framework-rs/crates/forklaunch-core',
+  'forklaunch-openapi':'framework-rs/crates/forklaunch-openapi',
+  'forklaunch-blueprint-core':'blueprint-rs/crates/forklaunch-blueprint-core',
+  'forklaunch-billing-interface':'blueprint-rs/crates/interfaces/forklaunch-billing-interface',
+  'forklaunch-billing-axum':'blueprint-rs/crates/implementations/billing/forklaunch-billing-axum'
+ };
+ const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-billing-axum'?', features = ["bound-checkout"]':''} }`).join('\n');
+ const patches=readFileSync(path.join(root,'blueprint-rs/Cargo.toml'),'utf8').split('[patch.crates-io]')[1].replaceAll('path = "../framework-rs/',`path = "${root}/framework-rs/`);
+ writeFileSync(path.join(temporary,'Cargo.toml'),`[package]\nname="fl-billing-bound-checkout-artifacts"\nversion="0.1.0"\nedition="2024"\n[dependencies]\nserde_json="1"\n${dependencies}\n[patch.crates-io]${patches}`);
+ writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_contract::RouteContract> { vec![] }');
+ writeFileSync(path.join(temporary,'src/main.rs'),`fn main() {
+  let contract=std::path::PathBuf::from(std::env::var("ARTIFACT_DIR").unwrap()).join("contract.json");
+  let openapi=contract.with_file_name("openapi.json");
+  let result=fl_billing_bound_checkout_artifacts::write_contract_artifacts(&contract,&openapi);
+  if std::env::var("EXPECT_FAILURE").as_deref()==Ok("1") {
+    assert!(result.is_err()); assert!(!contract.exists()); assert!(!openapi.exists());
+  } else { result.unwrap(); }
+ }`);
+ for(const stripe of [false,true]) {
+  const rendered=template.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body).replaceAll('{{{name}}}','billing-date-artifacts');
+  assert.ok(!rendered.includes('{{'));writeFileSync(path.join(temporary,'src/lib.rs'),rendered);
+  run('cargo',['build','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
+  const configured={deploymentLabel:'owned',accountId:'acct_private',livemode:false,plans:[{localPlanId:'11111111-1111-4111-8111-111111111111',creationOperationId:'22222222-2222-4222-8222-222222222222'}],successUrl:'https://private.example/success',cancelUrl:'https://private.example/cancel'};
+  const cases=[
+   {name:'legacy',profile:'legacy',config:null,publisher:null,fail:false},
+   {name:'bound',profile:'bound-checkout-v1',config:configured,publisher:'postgres://publisher:private-password@localhost/db',fail:!stripe},
+   {name:'missing-publisher',profile:'bound-checkout-v1',config:configured,publisher:null,fail:true},
+   {name:'missing-config',profile:'bound-checkout-v1',config:null,publisher:'postgres://publisher@localhost/db',fail:true},
+   {name:'stray',profile:'legacy',config:configured,publisher:null,fail:true},
+   {name:'unknown',profile:'unknown',config:null,publisher:null,fail:true},
+   {name:'unknown-config-field',profile:'bound-checkout-v1',config:{...configured,stripeFields:{}},publisher:'postgres://publisher@localhost/db',fail:true}
+  ];
+  let legacy;
+  for(const test of cases){
+   const directory=path.join(temporary,`${stripe}-${test.name}`);
+   const env={ARTIFACT_DIR:directory,BILLING_REQUEST_DATE_PROFILE:'utc-iso-and-epoch',BILLING_IDENTITY_PROFILE:test.profile,EXPECT_FAILURE:test.fail?'1':'0'};
+   if(test.config)env.BILLING_BOUND_CHECKOUT_CONFIG=JSON.stringify(test.config);
+   if(test.publisher)env.BILLING_PUBLISHER_DATABASE_URL=test.publisher;
+   run(path.join(target,'debug/fl-billing-bound-checkout-artifacts'),[],env);
+   if(test.fail)continue;
+   const contract=JSON.parse(readFileSync(path.join(directory,'contract.json'))),openapi=JSON.parse(readFileSync(path.join(directory,'openapi.json')));
+   const text=JSON.stringify({contract,openapi});assert(text.includes('x-forklaunch-date-profile'));
+   for(const secret of ['acct_private','private-password','private.example'])assert(!text.includes(secret));
+   const bound=contract.routes.filter(r=>r.path.startsWith('/bound-checkout/'));
+   if(test.profile==='legacy'){assert.equal(bound.length,0);legacy=contract.routes;}
+   else {assert.equal(bound.length,3);assert.deepEqual(contract.routes.filter(r=>!r.path.startsWith('/bound-checkout/')),legacy);assert(bound.some(r=>r.responses.some(v=>v.statusCode===202)));}
+  }
+
+ }
+ // Compile the real binary template too: library-only metadata cannot prove startup wiring.
+ const mainTemplate=readFileSync(path.join(root,'cli/src/templates/rust/billing/main.rs'),'utf8');
+ const manifestTemplate=readFileSync(path.join(root,'cli/src/templates/rust/billing/Cargo.toml.template'),'utf8');
+ const manifest=manifestTemplate.replaceAll('{{{name}}}','fl-billing-bound-checkout-artifacts').replaceAll('{{{description}}}','Owned template compilation proof')
+  .replace('version.workspace = true','version = "0.1.0"').replace('edition.workspace = true','edition = "2024"')
+  .replace('license.workspace = true','license = "MIT"').replace('authors.workspace = true','authors = []')
+  .replaceAll('../../.forklaunch/',`${root}/`);
+ writeFileSync(path.join(temporary,'Cargo.toml'),`${manifest}\n[patch.crates-io]${patches}`);
+ writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_contract::RouteContract> { vec![] } pub fn register_router(router: forklaunch_axum::router::ForkLaunchRouter) -> forklaunch_axum::router::ForkLaunchRouter { router }');
+ for(const stripe of [false,true]) {
+  const render=text=>text.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body).replaceAll('{{{name}}}','billing-checkout-artifacts').replaceAll('{{crate_module}}','fl_billing_bound_checkout_artifacts');
+  writeFileSync(path.join(temporary,'src/lib.rs'),render(template));
+  writeFileSync(path.join(temporary,'src/main.rs'),render(mainTemplate));
+  run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
+ }
+ console.log('PASS actual rendered generated library: 14 base/Stripe identity startup/export cases, shared three-route registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
+} finally {rmSync(temporary,{recursive:true,force:true});}

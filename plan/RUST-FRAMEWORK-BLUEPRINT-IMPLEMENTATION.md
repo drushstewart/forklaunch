@@ -47,7 +47,8 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: conjunctive finite numeric/array OpenAPI bounds with153972 actual runtime/AJV comparisons across OAS3.0/3.1 and strict types. Tuple/string/record emitter gaps remain open.
 - Completed: trusted async backup codecs with durable phases/revision leases, lazy/generic expiry recovery and exact final authority/CAS; actual12/focused11/fullIAM178/restrictedPG and strict Clippy pass.
 - Completed: ordinary union anyOf and finite literal enum dedup/mixed/empty emission,10674 comparisons and153972 bounds regressions; explicit annotations/discriminated unions unchanged.
-- Active: configured bound Checkout HTTP/MCP/SDK integration, checked tuple composition and server-only backup viewing validation. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: explicit BoundCheckoutV1 HTTP/MCP create/get/inspect and both SDKs, separate actor-scoped publisher, typed202 uncertainty and localUUID preservation; live restrictedPG/unit/artifact/generated-main/default regressions and strict Clippy pass. Other billing families/default identity wiring stay open.
+- Active: checked tuple composition, server-only backup viewing validation and immutable9e374 runtime checks. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
 - Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.

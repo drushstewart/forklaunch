@@ -1193,3 +1193,16 @@ rolling upgrades require envelope-aware writers. Callback text is bounded/zeroiz
 no Debug/Serde secret wrappers; no forced interruption or arbitrary future panic
 containment promise. Actual12/focused11/fullIAM178 and restrictedPG pass. Native
 stale-authority behavior intentionally strengthens upstream race handling.
+
+
+### Bound Checkout route authority (2026-10-14)
+
+Explicit HMAC service routes use fixed trusted profile and separate publisher
+credentials. Publisher audit actor derives from authenticated principal; database/
+role validation is retained on derived wrappers. Raw provider fields cannot supply
+scope/Plan/redirect authority; unknown provider outcomes do not redispatch, and
+historical inspection suppresses URLs. Startup denies managed/base/backup/partial
+configuration. No individual end-user authorization/Party ownership claim is made.
+Live actor isolation, concurrency, retained dependency claims and both SDKs pass;
+metadata/config failures do not reflect private configuration. Other billing
+families and automatic alias provisioning remain separate gates.

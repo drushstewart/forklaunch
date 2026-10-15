@@ -9663,3 +9663,34 @@ SDK model/schema traversal supports both composition keywords; no new native/SDK
 runtime receipt or precise generated never-model claim. Nonfinite enum/OAS3.0
 nullable-union/Never-leaf emitter gaps explicitly remain. No Rust/Cargo changes;
 broad schema gate stays open;660/682 (96.8%),22open.
+
+
+### Explicit bound Checkout HTTP/MCP and both SDKs (2026-10-14)
+
+BoundCheckoutV1 adds three operation-named contracts: finite UUID Customer/Plan/
+quantity create under caller-visible operationUUID, provenance-aware publicUUID
+get and actor-owned IDs-only inspect. Configuration fixes server scope/redirects/
+completed Plan provenance; explicit separate trusted publisher is re-derived for
+authenticated service actor without changing pool/role boundary. Startup denies
+base/managed/backup fallback and partial/unknown settings. HMAC authenticates the
+calling service, not individual end-user Party authorization; application owns it.
+Unknown/ambiguous outcomes return typed202 without dispatch retry; completed
+historical reads/inspection return IDs, never revive Checkout URLs. Runtime,
+artifacts and both SDKs share contracts; Date projection APIs preserved.
+New routes declare sanitized400/404/409/500/502/503, fixing live-discovered
+undeclared400→framework500 only within these new contracts. Default66routes/
+28schemas unchanged, no automatic alias provision or other-family parity claim.
+Frozen17 /private/tmp/fl-bound-checkout-routes-final.json SHA256
+ea4e581a0ce7063b38d49d07d0abf9cdd6934e600ac08b0e3baa6aa795d72402.
+Live restrictedPG/HTTP/MCP plus strict actualTS and compiledRust SDK3calls each
+pass (4.79s fixture); actor isolation/concurrent pending/idempotency/claims covered.
+Unit4, rendered library14 env/artifact cases, actual base/Stripe binary Cargo/main
+template compilation, Date artifact regression, default66/28 and strict billing
+base/Stripe/Axum allfeature/alltarget+Axumminimal Clippy pass. Cleanup0roles/DBs.
+Logs /private/tmp/fl-bound-checkout-{routes-live,routes-unit,artifacts,
+date-artifacts-regression,default-contracts,routes-clippy,default-clippy}.log.
+Only blueprintlockedge billingAxum→sdkRust(dev), no external upgrade; rustls0.23.46
+retained. CI uses no-run compilation then direct test executable to release Cargo
+build lock before nested Rust SDK compilation. Wrapper syntax checked; standalone
+wrapper run queued after immutable runtime. No fresh CLI-generated bound-profile
+runtime receipt yet; broad billing gate stays open,660/682 (96.8%),22open.

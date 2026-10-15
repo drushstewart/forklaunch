@@ -188,6 +188,23 @@ impl PostgresBillingStore {
     }
 }
 impl TrustedCheckoutPublisher {
+    /// Derives an actor-scoped wrapper from an explicitly validated trusted publisher.
+    /// Credentials, pool identity and runtime-role separation remain unchanged.
+    /// Only trusted server authentication may choose this audit actor.
+    /// # Errors
+    /// Rejects invalid/absent actors and malformed audit context.
+    pub fn with_audit_context(
+        &self,
+        audit: forklaunch_blueprint_core::AuditContext,
+    ) -> BlueprintResult<Self> {
+        let store = self.store.with_audit_context(audit)?;
+        store.binding_actor()?;
+        Ok(Self {
+            store,
+            runtime: self.runtime.clone(),
+        })
+    }
+
     /// Validates explicit publication configuration before any provider effect.
     /// # Errors
     /// Denies a different runtime database, tenant, actor or publication privilege.
