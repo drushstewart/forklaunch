@@ -1760,3 +1760,27 @@ password and consumed proof committed without running later revocation. A callba
 may reenter storage/authentication; successful completion then revokes the current
 sessions if configured, including ones it created. Blocking code and panics are
 outside the fallible cooperative callback contract.
+
+`AuthHttp::with_before_email_verification` and
+`with_after_email_verification` independently install trusted
+`EmailVerificationObserver` callbacks. Both receive an opaque, zeroized owned
+public-user JSON snapshot through `EmailVerificationObserverContext::user_json()`;
+there is no Debug/Serde, raw Request, credential or arbitrary custom-field access.
+Selected borrowed fields are bounded and validated before cloning. No-hook paths
+skip this projection. Both preparation and the future are awaited outside database
+transactions, regardless of the background dispatcher.
+Ordinary unverified proofs call before with `emailVerified:false`, commit the
+verification, then call after with `emailVerified:true`. Already-verified replays
+skip both. Change-email verification calls after only, after its user/session commit
+but before response cookies; legacy change and confirmation branches call neither.
+Before errors/cancellation prevent this handler's verification update (callback-owned
+effects remain the application's responsibility). After errors/cancellation
+leave committed user/session state intact. Callback errors return empty HTTP500
+without redirects or response cookies; this also suppresses any pending refresh
+cookie from earlier processing. The native writer retains its ID/email recheck
+after the before callback, rejecting a changed address/owner instead of applying a
+stale update. This stronger callback race boundary is distinct from upstream's
+email-based update. Tokens retain the existing address-owner, reassignment and
+replay semantics, not single-use or ID-bound authority. These hooks do not enable
+`autoSignInAfterVerification`. Callback-owned copies, blocking code and panics are
+outside the bounded cooperative context contract.

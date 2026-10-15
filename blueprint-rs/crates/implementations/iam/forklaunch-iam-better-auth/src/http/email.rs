@@ -26,7 +26,12 @@ pub(super) async fn dispatch<S: AuthStore + 'static>(
     let mut pending = HeaderMap::new();
     let mut response = match handle(&app, parts, &mut pending).await {
         Ok(response) => response,
-        Err(error) => failure(&error),
+        Err(error) => {
+            if error.code == "EMAIL_VERIFICATION_OBSERVER_FAILED" {
+                pending.clear();
+            }
+            failure(&error)
+        }
     };
     for (name, value) in &pending {
         response.headers_mut().append(name, value.clone());
@@ -104,6 +109,16 @@ async fn handle<S: AuthStore + 'static>(
             return Ok(success(destination, json!({"status":true})));
         }
     }
+    if !changing
+        && user["emailVerified"] != true
+        && let Some(observer) = &app.before_email_verification
+    {
+        observe(
+            observer.as_ref(),
+            crate::accounts::email_observer::context(&user)?,
+        )
+        .await?;
+    }
     let (ip, agent) = request::client_metadata(&parts.headers);
     let result = apply(
         app,
@@ -115,14 +130,28 @@ async fn handle<S: AuthStore + 'static>(
         now,
     )
     .await;
-    let (body, session) = match result {
+    let applied = match result {
         Ok(result) => result,
         Err(error) if matches!(error.code.as_str(), "INVALID_USER" | "USER_NOT_FOUND") => {
             return token_error(destination, &error.code, &error.message);
         }
         Err(error) => return Err(error),
     };
-    if let Some(session) = session {
+    complete(app, pending, applied, destination, transient).await
+}
+async fn complete<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    pending: &mut HeaderMap,
+    applied: Applied,
+    destination: Option<&str>,
+    transient: bool,
+) -> BlueprintResult<Response> {
+    if let Some(context) = applied.after
+        && let Some(observer) = &app.after_email_verification
+    {
+        observe(observer.as_ref(), context?).await?;
+    }
+    if let Some(session) = applied.session {
         set_cookie(
             pending,
             &app.cookie
@@ -132,7 +161,22 @@ async fn handle<S: AuthStore + 'static>(
             set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;
         }
     }
-    Ok(success(destination, body))
+    Ok(success(destination, applied.body))
+}
+struct Applied {
+    body: Value,
+    session: Option<Value>,
+    after: Option<BlueprintResult<crate::accounts::EmailVerificationObserverContext>>,
+}
+async fn observe(
+    observer: &dyn crate::accounts::EmailVerificationObserver,
+    context: crate::accounts::EmailVerificationObserverContext,
+) -> BlueprintResult<()> {
+    observer
+        .prepare(context)
+        .map_err(|_| crate::accounts::email_observer::failure())?
+        .await
+        .map_err(|_| crate::accounts::email_observer::failure())
 }
 async fn apply<S: AuthStore + 'static>(
     app: &AuthHttp<S>,
@@ -142,7 +186,7 @@ async fn apply<S: AuthStore + 'static>(
     ip: &str,
     agent: &str,
     now: DateTime<Utc>,
-) -> BlueprintResult<(Value, Option<Value>)> {
+) -> BlueprintResult<Applied> {
     let mut tx = app.store.begin(true).await?;
     let mut user = tx
         .get(Model::User, text(previous, "id")?)
@@ -152,6 +196,7 @@ async fn apply<S: AuthStore + 'static>(
         return Err(BlueprintError::new("INVALID_USER", "Invalid user"));
     }
     let mut session = None;
+    let mut after = None;
     let body = if let Some(email) = claims.update_to.as_ref().filter(|email| !email.is_empty()) {
         let current = if let Some(token) = active_token {
             let current = load(&mut tx, token, true, now)
@@ -172,17 +217,29 @@ async fn apply<S: AuthStore + 'static>(
         user["updatedAt"] = json!(now.to_rfc3339_opts(SecondsFormat::Millis, true));
         tx.replace(Model::User, user.clone()).await?;
         session = Some(current);
+        if claims.request_type.as_deref() == Some("change-email-verification")
+            && app.after_email_verification.is_some()
+        {
+            after = Some(crate::accounts::email_observer::context(&user));
+        }
         json!({"status":true,"user":public_user(&user)})
     } else {
         if user["emailVerified"] != true {
             user["emailVerified"] = json!(true);
             user["updatedAt"] = json!(now.to_rfc3339_opts(SecondsFormat::Millis, true));
-            tx.replace(Model::User, user).await?;
+            tx.replace(Model::User, user.clone()).await?;
+        }
+        if previous["emailVerified"] != true && app.after_email_verification.is_some() {
+            after = Some(crate::accounts::email_observer::context(&user));
         }
         json!({"status":true,"user":null})
     };
     tx.commit().await?;
-    Ok((body, session))
+    Ok(Applied {
+        body,
+        session,
+        after,
+    })
 }
 fn success(destination: Option<&str>, body: Value) -> Response {
     destination.map_or_else(|| Json(body).into_response(), redirect)
@@ -320,3 +377,29 @@ pub(super) async fn send<S: AuthStore + 'static>(
     }
     Ok(json!({"status":true}))
 }
+
+impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Installs the awaited ordinary-proof pre-update `beforeEmailVerification` hook.
+    #[must_use]
+    pub fn with_before_email_verification(
+        mut self,
+        observer: Arc<dyn crate::accounts::EmailVerificationObserver>,
+    ) -> Self {
+        self.before_email_verification = Some(observer);
+        self
+    }
+    /// Installs `afterEmailVerification` after committed ordinary verification or
+    /// change-email verification, before response cookies. Does not use background dispatch.
+    #[must_use]
+    pub fn with_after_email_verification(
+        mut self,
+        observer: Arc<dyn crate::accounts::EmailVerificationObserver>,
+    ) -> Self {
+        self.after_email_verification = Some(observer);
+        self
+    }
+}
+
+#[cfg(test)]
+#[path = "email_observer_tests.rs"]
+pub(crate) mod observer_tests;

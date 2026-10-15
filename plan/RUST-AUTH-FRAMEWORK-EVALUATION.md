@@ -424,3 +424,27 @@ Logs /private/tmp/fl-reset-hook-actual.log and /private/tmp/fl-reset-observer-
 {native,pg,regression,clippy,minimal-clippy}.log. Final source-only rustfmt reexport
 ordering followed green checks; no deps/locks. Broader auth hooks/provider/plugin
 gates remain open;660/682(96.8%),22open unchanged.
+
+### 2026-10-14 — Awaited email-verification hooks
+
+Independent trusted before/after builders now cover ordinary verification and
+the existing change-email verification after-hook branch. Hooks always run
+outside database transactions and bypass background dispatch. Before failure
+leaves the user unverified; after failure preserves committed verification and
+session changes, returns sanitized empty500 and suppresses cookies/redirects.
+Already-verified replay, change-email confirmation and legacy branches retain
+their observed hook skips. Writer ID/email rechecks reject stale callback changes;
+this is a stronger stale-callback boundary than the upstream flow. Native
+cancellation preserves the corresponding pre/post-commit state, without claiming
+JavaScript disconnect equivalence. Public-user context validates borrowed fields
+before cloning, owns bounded zeroized JSON, exposes no request/credentials or
+Debug/Serde; no-hook paths skip projection. Blocking hooks/panics are not caught.
+
+Actual Better Auth oracle12 passed; native2 covers14 branches and before/after
+cancellation; affected email5 passed3.59s; restricted PostgreSQL1 passed132.89s;
+strict all-feature/all-target18.09s and minimal2.95s passed. Frozen eight-path
+manifest /private/tmp/fl-email-observer-freeze.json verified (SHA256
+42e07c6aa2f787a9637249e1ce58461fef21f779265e827506d5a141c02b7f5c).
+Evidence: /private/tmp/fl-email-verification-hooks-actual.log and
+/private/tmp/fl-email-observer-{native,regression,pg,clippy,minimal-clippy}.log.
+Auto-signin after verification remains separate; checklist660/682(96.8%),22open.
