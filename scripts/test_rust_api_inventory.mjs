@@ -10,6 +10,19 @@ const pkg = name => {
   assert.ok(found, name);
   return found;
 };
+// Published current counts must describe the checked artifacts, not an older receipt.
+const inventoryText = readFileSync(new URL('../plan/RUST-TYPESCRIPT-PARITY-INVENTORY.md', import.meta.url), 'utf8');
+const entries = packages.reduce((count, value) => count + value.entries.length, 0);
+const declarations = packages.reduce((count, value) => count + value.files.reduce((sum, file) => sum + file.exports.length, 0), 0);
+assert.ok(inventoryText.includes(`It records ${entries.toLocaleString('en-US')} resolved declaration entry points and ${declarations.toLocaleString('en-US')} declaration/re-export`),
+  'Current inventory introduction has stale entry/declaration counts');
+const plan = readFileSync(new URL('../plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md', import.meta.url), 'utf8');
+const completed = [...plan.matchAll(/^- \[x\]/gm)].length;
+const open = [...plan.matchAll(/^- \[ \]/gm)].length;
+const total = completed + open;
+assert.ok(total > 0, 'Checklist is empty');
+assert.ok(plan.includes(`**${completed}/${total} checklist items (${(100 * completed / total).toFixed(1)}%), ${open} open**`),
+  'Current checklist introduction has stale progress counts');
 assert.equal(packages.length, 44);
 assert.equal(packages.filter(value => value.private).length, 13);
 for (const value of packages) {
