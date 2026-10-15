@@ -9223,3 +9223,19 @@ the parser fixture and encryptedOTP helper path filters. No new live HTTP/MCP
 or generated/immutable receipt is implied by this metadata change. Dynamic reply
 addresses, broader event imports and overall AsyncAPI gate remain open;660/682
 unchanged. Primary grammar: https://www.asyncapi.com/docs/reference/specification/v3.0.0#runtimeExpression.
+
+### 2026-10-14: JSON-domain absence factories (working source)
+
+Null/Undefined/Void/Never are distinct reusable schemas with actual missing/null
+diagnostics and object omission. Nullish lowers to ordered[Void,Null,Undefined];
+existing first-valid unions, path-prefix behavior and record key-before-value
+validation remain intact. No Any alias, undefined-valued JSON properties or sparse
+array claim. Frozen7 hashes: /private/tmp/fl-zod-absence-source.json.
+
+Native62 and actual4212 exact comparisons pass EACH default/arbitrary_precision
+mode; Record7844+4 explicit nonfinite boundaries pass each mode. Live195HTTP/
+90registeredMCP/3safe500/6TS SDK/6Rust SDK pass. Strict validation+Axum all-feature/
+all-target Clippy passes. Initial example too-many-lines lint was corrected by
+extracting unchanged string_schema; final oracle/Clippy reran. Logs:
+/private/tmp/fl-zod-absence-{default-tests,tests,parity,record-regression,live,clippy}.log.
+CI adds actual absence oracle. Broader schema gates remain open;660/682 unchanged.

@@ -20,27 +20,30 @@ fn literal(spec: &Value) -> ZodJsonLiteral<'_> {
         _ => panic!("unsupported literal kind"),
     }
 }
+fn string_schema(spec: &Value) -> ZodJsonSchema<'_> {
+    ZodJsonSchema::String(
+        spec["checks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|check| ZodStringCheck {
+                message: check["message"].as_str(),
+                rule: match check["name"].as_str().unwrap() {
+                    "trim" => ZodStringRule::Step(ZodStringStep::Trim),
+                    "min" => ZodStringRule::Step(ZodStringStep::Min(
+                        check["argument"].as_u64().unwrap().try_into().unwrap(),
+                    )),
+                    "endsWith" => ZodStringRule::EndsWith(check["argument"].as_str().unwrap()),
+                    _ => panic!("unknown string check"),
+                },
+            })
+            .collect(),
+    )
+}
 fn schema(spec: &Value) -> ZodJsonSchema<'_> {
     let inner = || Box::new(schema(&spec["inner"]));
     match spec["kind"].as_str().unwrap() {
-        "string" => ZodJsonSchema::String(
-            spec["checks"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|check| ZodStringCheck {
-                    message: check["message"].as_str(),
-                    rule: match check["name"].as_str().unwrap() {
-                        "trim" => ZodStringRule::Step(ZodStringStep::Trim),
-                        "min" => ZodStringRule::Step(ZodStringStep::Min(
-                            check["argument"].as_u64().unwrap().try_into().unwrap(),
-                        )),
-                        "endsWith" => ZodStringRule::EndsWith(check["argument"].as_str().unwrap()),
-                        _ => panic!("unknown string check"),
-                    },
-                })
-                .collect(),
-        ),
+        "string" => string_schema(spec),
         "number" => ZodJsonSchema::Number(
             spec["checks"]
                 .as_array()
@@ -74,6 +77,15 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
         "literal" => ZodJsonSchema::Literal(literal(&spec["literal"])),
         "boolean" => ZodJsonSchema::Boolean,
         "unknown" => ZodJsonSchema::Unknown,
+        "null" => ZodJsonSchema::Null,
+        "undefined" => ZodJsonSchema::Undefined,
+        "void" => ZodJsonSchema::Void,
+        "never" => ZodJsonSchema::Never,
+        "nullish" => ZodJsonSchema::Union(vec![
+            ZodJsonSchema::Void,
+            ZodJsonSchema::Null,
+            ZodJsonSchema::Undefined,
+        ]),
         "optional" => ZodJsonSchema::Optional(inner()),
         "nullable" => ZodJsonSchema::Nullable(inner()),
         "default" => ZodJsonSchema::Default {

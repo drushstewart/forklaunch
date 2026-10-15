@@ -332,6 +332,12 @@ signed zeros compare equal and preserve the input sign. This API accepts an
 explicit ordered schema; it does not reflect arbitrary JavaScript enum objects.
 Repeated input metric scans also debit the shared evaluation node budget.
 
+`ZodJsonSchema::{Null, Undefined, Void, Never}` distinguish supplied null from
+absent input (`None`). Undefined/Void accept absence and preserve object-field
+omission; Never rejects every input. Lower nullish through ordered
+`Union(vec![Void, Null, Undefined])` to retain source diagnostics. Explicit
+JavaScript undefined-valued properties and sparse array holes are outside JSON.
+
 `ZodJsonSchema::Record { key, value }` evaluates each own string key and its
 value, retaining source key-before-value diagnostics and transformed-key collision
 behavior. Use `OrderedJsonDocument` when input insertion order affects diagnostics

@@ -43,6 +43,14 @@ pub enum ZodJsonSchema<'a> {
     Boolean,
     Number(Vec<ZodNumberCheck<'a>>),
     Unknown,
+    /// Accept only a supplied JSON null.
+    Null,
+    /// Accept only absent input (`None`), preserving omission in objects.
+    Undefined,
+    /// Accept absent input with the distinct Zod `void` diagnostics.
+    Void,
+    /// Reject every input, including absence.
+    Never,
     Literal(ZodJsonLiteral<'a>),
     Optional(Box<Self>),
     Nullable(Box<Self>),
@@ -448,6 +456,10 @@ fn evaluate_ordered(
                 )
             }
         }
+        ZodJsonSchema::Null => terminal(input, "null"),
+        ZodJsonSchema::Undefined => terminal(input, "undefined"),
+        ZodJsonSchema::Void => terminal(input, "void"),
+        ZodJsonSchema::Never => terminal(input, "never"),
         ZodJsonSchema::Unknown => Parsed::valid(input.map(clone_json).transpose()?),
         ZodJsonSchema::Optional(_) if input.is_none() => Parsed::valid(None),
         ZodJsonSchema::Nullable(_) if input == Some(&Value::Null) => {
@@ -497,6 +509,36 @@ fn evaluate_ordered(
             record::evaluate(input, key, value, remaining, order)?
         }
     })
+}
+
+fn terminal(input: Option<&Value>, expected: &str) -> Parsed {
+    if input.is_none() && matches!(expected, "undefined" | "void") {
+        return Parsed::valid(None);
+    }
+    if expected == "null" && input == Some(&Value::Null) {
+        return Parsed::valid(Some(Value::Null));
+    }
+    let message = input.map_or_else(
+        || "Required".to_owned(),
+        |value| {
+            let received = match value {
+                Value::Null => "null",
+                Value::Bool(_) => "boolean",
+                Value::Number(_) => "number",
+                Value::String(_) => "string",
+                Value::Array(_) => "array",
+                Value::Object(_) => "object",
+            };
+            format!("Expected {expected}, received {received}")
+        },
+    );
+    Parsed::invalid(
+        vec![ParseError {
+            path: Vec::new(),
+            message,
+        }],
+        Status::Aborted,
+    )
 }
 
 fn union(
@@ -694,3 +736,7 @@ mod ordered_tests;
 #[cfg(test)]
 #[path = "zod_json_record_tests.rs"]
 mod record_tests;
+
+#[cfg(test)]
+#[path = "zod_json_absence_tests.rs"]
+mod absence_tests;

@@ -19,7 +19,7 @@ use std::sync::{
 };
 fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> {
     use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
-    Schema::Object(vec![
+    let mut fields = vec![
         Field {
             name: "amount",
             schema: Schema::Number(vec![]),
@@ -100,8 +100,36 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
                 checks: vec![],
             })),
         },
-    ])
+    ];
+    fields.extend(absence_fields());
+    Schema::Object(fields)
 }
+fn absence_fields<'a>() -> Vec<typescript_coerce::ZodJsonField<'a>> {
+    use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
+    vec![
+        Field {
+            name: "cleared",
+            schema: Schema::Optional(Box::new(Schema::Null)),
+        },
+        Field {
+            name: "omitted",
+            schema: Schema::Undefined,
+        },
+        Field {
+            name: "voided",
+            schema: Schema::Void,
+        },
+        Field {
+            name: "forbidden",
+            schema: Schema::Optional(Box::new(Schema::Never)),
+        },
+        Field {
+            name: "nothing",
+            schema: Schema::Union(vec![Schema::Void, Schema::Null, Schema::Undefined]),
+        },
+    ]
+}
+
 fn transform(
     request: &FrameworkRequest,
     root_default: bool,
