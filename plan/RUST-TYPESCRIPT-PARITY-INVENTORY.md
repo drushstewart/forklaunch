@@ -11772,3 +11772,8 @@ This does not admit sparse arrays, Date/non-JSON outputs or arbitrary callbacks;
 nonfinite outputs required for merging remain explicit unsupported values.
 Discriminated dispatch, allocating case transforms and remaining schema/emitter
 constraints stay open. No dependency, manifest, lock or TypeScript API changes.
+
+The committed intersection worktree was removed after exact-HEAD/clean-state,
+eleven integrated source hashes and no active/open-path checks. The proof branch
+and external artifacts remain. Receipt `/private/tmp/fl-intersection-cleanup.json`
+records4,185 regular files and44,828,865 logical bytes removed.
