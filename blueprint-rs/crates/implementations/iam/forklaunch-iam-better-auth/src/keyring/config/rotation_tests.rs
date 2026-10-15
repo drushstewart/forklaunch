@@ -139,6 +139,7 @@ async fn absent_zero_and_shallow_overrides_disable_new_key_expiration() {
     }
 }
 
+#[cfg(feature = "http")]
 #[tokio::test]
 async fn http_token_and_session_header_keep_configured_algorithm_and_rotation_with_hooks() {
     use axum::{body::Body, http::Request};
@@ -242,6 +243,7 @@ async fn http_token_and_session_header_keep_configured_algorithm_and_rotation_wi
     }
 }
 
+#[cfg(feature = "http")]
 async fn response_token(response: axum::response::Response) -> String {
     let header_token = response
         .headers()

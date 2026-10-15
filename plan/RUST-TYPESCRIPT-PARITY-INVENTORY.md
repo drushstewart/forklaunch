@@ -11825,3 +11825,17 @@ Clippy1.68s pass; PostgreSQL cleanup counts are0/0. Frozen8 manifest
 is verified. Logs use `/private/tmp/fl-subscription-owner-`; CI runs the new actual
 HTTP oracle alongside the existing native fixture. Broader billing and general
 schema-error parity remain open; checklist660/682 is unchanged.
+
+
+### 2026-10-15: Minimal auth test feature gating repaired
+
+Four HTTP-dependent keyring tests and their response helper now require the
+existing `http` feature. This fixes the ten missing Axum/AuthHttp references
+reported during organization-controls validation while retaining non-HTTP keyring
+coverage in minimal builds. Production code and dependencies are unchanged.
+Strict minimal-all-target Clippy passes12.72s and the minimal keyring suite passes
+38 tests in55.45s (terminal session54797, exit0). Logs:
+`/private/tmp/fl-creator-role-minimal-clippy.log` and
+`/private/tmp/fl-creator-role-minimal-keyring.log`. Exact three-file hashes are in
+`/private/tmp/fl-keyring-http-test-gating-source.json`. Both commands are now in CI.
+The earlier minimal-all-target failure is resolved; broader auth remains open.

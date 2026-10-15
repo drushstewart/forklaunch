@@ -100,6 +100,7 @@ async fn legacy_conflicts_reject_without_mint_and_modern_rows_stay_strict() {
     assert!(KeyPairConfig::new("HS256", 2048).is_err());
     assert!(KeyPairConfig::new("RS256", 1024).is_err());
 }
+#[cfg(feature = "http")]
 #[tokio::test]
 async fn configured_http_publication_and_rotation_use_the_same_algorithm() {
     use axum::{

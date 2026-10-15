@@ -219,6 +219,7 @@ async fn custom_reads_are_not_truncated_to_default_window_and_select_live_primar
     assert_eq!(header["kid"], "newer-other-algorithm");
 }
 
+#[cfg(feature = "http")]
 #[tokio::test]
 async fn http_token_header_and_jwks_share_fixed_custom_repository() {
     use axum::{
@@ -324,6 +325,7 @@ async fn custom_latest_fallback_reads_again_and_uses_second_snapshot() {
     );
 }
 
+#[cfg(feature = "http")]
 #[tokio::test]
 async fn public_only_snapshot_publishes_verifies_and_never_falls_back_when_signing() {
     use axum::{

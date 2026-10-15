@@ -2162,6 +2162,8 @@ jobs:
           exit 1
       - run: python3 scripts/rust_format.py blueprint-rs/Cargo.toml
       - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: cargo clippy --locked --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --no-default-features --all-targets -- -D warnings
+      - run: cargo test --locked --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --no-default-features --lib keyring
       - run: cargo doc --manifest-path blueprint-rs/Cargo.toml --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
