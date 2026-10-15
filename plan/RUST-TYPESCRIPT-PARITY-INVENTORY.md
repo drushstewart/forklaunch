@@ -11255,3 +11255,33 @@ Frozen13-source receipt `/private/tmp/fl-org-policy-freeze.json`, SHA256
 Logs `/private/tmp/fl-org-policy-{actual,native,full,pg,clippy,minimal-clippy}.log`.
 CI includes the actual policy fixture and existing native/PG suites. Broader Better
 Auth options and invitation policy/delivery remain open;660/682(96.8%) unchanged.
+
+
+### 2026-10-15 — Fifty-package registry installation with bounded regex
+
+Immutable committed snapshot `c045e5814d1a0dd154c386dd8da215be56ce6125` packages
+all50 public crates plus the required literal-key serde_json root patch. Source
+preparation ran offline. A private loopback sparse registry then installed all50
+crates by exact version; Cargo metadata verified registry origin for every owned
+crate and rejected unexpected local dependencies. The consumer enables common
+`zod-regex` when the release includes its dependency. Before serving, it verifies
+true/false Unicode regex matching, typed Work exhaustion and invalid flag rejection.
+The registry-built HTTP/MCP service passes discovery/health/Origin, shared/separate/
+disabled/custom listeners, explicit/ephemeral/+2000 ports, atomic startup rejection
+and graceful shutdown. Compilation took2m18s. Registry consumer resolution is a
+fresh graph, not an offline installation claim.
+
+Verification now records boundedRegex=true and release preflight requires that
+proof for reports containing the regex crate. The release-script regression suite
+passes10 tests, including rejection of absent/false/nonboolean optional-feature
+proof. No public registry publication, credentials or cloud deployment was used.
+
+Release report, verification, all50 original crate archives, parser patch and
+consumer manifests/lock are retained at
+`cli/target/parity-artifacts/registry-c045e5814`. All53 report/archive artifacts were
+hash-checked before and after cleanup. Receipt:
+`/private/tmp/fl-regex-registry-checkpoint.json`; logs
+`/private/tmp/fl-regex-registry-{prepare,verify}.log`. Exact clean detached worktree
+and temporary release root were removed after process/open-file checks, removing
+49,651,071 logical bytes without a physical APFS claim. Public installation and
+checked schema/HTTP/MCP/WS regex integration remain open;660/682(96.8%) unchanged.

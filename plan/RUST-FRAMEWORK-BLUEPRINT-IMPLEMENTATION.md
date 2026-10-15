@@ -111,7 +111,7 @@ Historical completed queue and remaining broad gates:
 - [x] Finish unified mixed development orchestration (phases 13–15). Node/Bun mixed and TypeScript-only fixtures pass source reloads, contracts, SDK refresh, HTTP/MCP and owned watcher shutdown; Bun also covers socket lifecycle and watched image reuse.
 - [ ] Finish AsyncAPI export and cross-language contract conformance checks (phases 13–15).
 - [x] Install the CLI from its Cargo source archive outside the checkout, generate and relocate service/PostgreSQL/Redis workers, compile them, and export real framework contracts/OpenAPI plus both SDK targets; run the regression in the CLI build CI job.
-- [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive and local sparse-registry installation of all 49 public crates are checked, including registry-built HTTP/MCP startup. Public crates.io publication and installation remain unverified; no crate has been published during this port.
+- [ ] Validate registry publication and installation of published crate versions (phases 13–15). Source-archive and local sparse-registry installation of all 50 public crates are checked, including bounded regex behavior and registry-built HTTP/MCP startup. Public crates.io publication and installation remain unverified; no crate has been published during this port.
 
 PostgreSQL IAM is wired into generated modules. General service storage, auth/provider lifecycle and billing remain explicit tasks in phase 12. Kafka has a broker-backed implementation and generated runtime coverage; additional TypeScript module families are tracked below.
 
@@ -2735,3 +2735,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Default-off bounded regex kernel passes178,182 semantic/1,717 constructor comparisons,540 upstream tests, bounded resource tests, strict common checks and74-entry licensed source package. Checked schema/HTTP/MCP/WS integration remains open;660/682 unchanged.
 
 - 2026-10-15: Trusted scalar organization policy passes24 actual cases, full IAM221/3ignored, restricted PostgreSQL and strict full/minimal Clippy. Default/zero/count-window/hydration behavior and concurrent admissions validated; broader auth remains open,660/682 unchanged.
+
+- 2026-10-15: Immutable c045e5814 packages/installs all50 crates through local sparse registry, verifies optional bounded regex outcomes and HTTP/MCP startup/shutdown. Release tests10 pass, exact worktree cleaned and artifacts retained. Public publication and broader parity remain open;660/682 unchanged.
