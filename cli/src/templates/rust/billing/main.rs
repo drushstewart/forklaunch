@@ -72,6 +72,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let portal_publisher = if portal_selected {
         Some(startup_store.trusted_portal_publisher(publisher_pool.as_ref().ok_or("Missing publisher")?.clone()).await?)
     } else { None };
+    let subscription_publisher = if bound_billing_config.as_ref().is_some_and(|c|c.has_subscription()) {
+        Some(startup_store.trusted_subscription_publisher(publisher_pool.as_ref().ok_or("Missing publisher")?.clone()).await?)
+    } else { None };
     {{#stripe}}
     let gateway = env::var("PLATFORM_GATEWAY_URL").ok().filter(|value|!value.is_empty());
     let instance_id = env::var("INSTANCE_ID").ok().filter(|value|!value.is_empty());
@@ -92,7 +95,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let backend = backend.with_database_backup(env::var("BILLING_DATABASE_BACKUP").unwrap_or_else(|_|"false".into()).parse()?);
     let backend = backend.with_request_dates(request_date_profile_from_env()?);
     let backend = if let Some(config)=bound_billing_config {
-        backend.with_bound_billing(BoundBillingV1::trusted(config,publisher,portal_publisher)?).await?
+        backend.with_bound_billing(BoundBillingV1::trusted_with_subscription(config,publisher,portal_publisher,subscription_publisher)?).await?
     } else {
         match (bound_checkout_config,publisher) {
             (Some(config),Some(publisher)) => backend.with_bound_checkout(BoundCheckoutV1::trusted(config,publisher)).await?,

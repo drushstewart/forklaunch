@@ -336,5 +336,45 @@ GET `/bound-plan-operations/:operationId` (`inspectBoundPlanOperation`) returns 
 actor-owned historical pending/completed status and IDs, or404. It performs no
 provider calls and provides neither current ownership proof nor redispatch authority.
 Changed actor/request conflicts; pending repeats do not issue another POST.
-Existing66 legacy routes remain unchanged and available, so this is an explicit
+Existing 66 legacy routes remain unchanged and available, so this is an explicit
 capability rather than a whole-service restricted profile or full default TS parity.
+
+### Explicit direct Subscription creation
+
+`bound-billing-v1` separately selects `subscription` with exactly
+`authority: "internal_service_tenant_v1"`, `collectionPolicy:
+"automatic_default_incomplete_v1"` and trusted `plans` entries containing
+`localPlanId`/`creationOperationId`. This authorizes an authenticated internal
+service to subscribe registered Customers within this configured tenant; it does
+not establish end-user consent, external IAM Party ownership or its current lifecycle.
+Customer association is an explicit administrative business assertion, corroborated
+by exact authenticated provider Customer reads. `subscriptionRead` alone grants no
+creation capability. The server-selected Plan must have completed creation provenance.
+
+A separate validated `TrustedSubscriptionPublisher` is mandatory. The additive
+`BoundBillingV1::trusted_with_subscription` constructor accepts it; the original
+`trusted(config, checkout, portal)` remains compatible and rejects a selected
+Subscription creation capability without its publisher. Generated startup uses the
+explicit `BILLING_PUBLISHER_DATABASE_URL`, never the runtime pool as a fallback.
+Both actor-scoped store and publisher wrappers retain their validated tenant/pools,
+and the publisher checks the same authenticated actor before dispatch/publication.
+Startup checks direct transport, role/database separation, function execution and
+all local dependency/read/reservation/audit grants, with no provider I/O. Runtime
+must not inherit the publisher role or execute publication itself. Base, managed,
+backup and incomplete configuration fail before listening.
+
+POST `/bound-subscriptions` (`createBoundSubscription`) accepts exactly operationId,
+localCustomerId, localPlanId, quantity (integral 1..9007199254740991) and optional
+nullable description (at most 500 UTF-8 bytes, no NUL). It reserves four immutable
+dependency claims before one provider POST. The fixed automatic/default-incomplete
+profile and exact Customer/Plan/Subscription evidence retain the library's limitations;
+creation or active status does not prove payment, invoice total or entitlement.
+There is no arbitrary provider-option forwarding, reassignment, retry or recovery route.
+
+Confirmed/historical completion returns HTTP200 IDs only (state, operationId,
+publicId); HTTP202 unresolved/recordedEvidenceNoLongerCurrent can already have
+provider/local effects. GET `/bound-subscription-operations/:operationId`
+(`inspectBoundSubscriptionOperation`) returns only actor-owned historical status
+and IDs, or404; it supplies neither current ownership evidence nor redispatch
+capability. Pending operations retain their dependency claims until trusted
+validated publication. Existing 66 legacy routes remain unchanged and available.

@@ -1649,3 +1649,8 @@ operations; fixture roles are cleaned after passing validation.
 ### 2026-10-15 — Credential policy / TTL validation
 
 Trusted builders alone configure bounded UTF-16 password limits, signup disable and whole-second reset/verification expiry. Existing-password checks retain maximum-only semantics; new passwords check minimum first. Disabled signup reaches no store/hash work after HTTP schema validation. Checked expiry construction and existing authoritative password/MFA proofs remain enforced. Restricted PostgreSQL and full IAM217 pass; owned fixture roles/data/audit return to zero. Fresh clock resampling after awaited work remains an explicit follow-up, as do change-email/delete-user and broader plugins.
+
+
+### 2026-10-15 — Subscription creation surfaces
+
+Explicit internal service tenant authority is required; the route does not establish end-user Customer ownership. Independent checked publisher credentials preserve tenant/runtime identity and authenticated actor. Startup rejects absent individual runtime/publisher grants and role/actor mismatches before provider I/O. Existing provenance, claim retention, provider readback and atomic publication remain enforced. Real restricted PostgreSQL HTTP/MCP and SDK checks pass; uncertain operations retain claims with no automatic redispatch. Read selectors remain separate; managed/base/backup reject creation.

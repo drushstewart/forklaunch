@@ -15,6 +15,8 @@ mod bound_plan_read;
 #[cfg(feature = "bound-checkout")]
 mod bound_portal;
 #[cfg(feature = "bound-checkout")]
+mod bound_subscription;
+#[cfg(feature = "bound-checkout")]
 mod bound_subscription_read;
 #[cfg(feature = "bound-checkout")]
 pub use bound_billing::{BoundBillingConfig, BoundBillingV1, BoundPortalConfig};
@@ -32,6 +34,8 @@ pub use bound_plan::bound_plan_contracts;
 pub use bound_plan_read::bound_plan_read_contracts;
 #[cfg(feature = "bound-checkout")]
 pub use bound_portal::{BoundPortalV1, bound_portal_contracts};
+#[cfg(feature = "bound-checkout")]
+pub use bound_subscription::bound_subscription_contracts;
 #[cfg(feature = "bound-checkout")]
 pub use bound_subscription_read::bound_subscription_read_contracts;
 mod request_dates;
@@ -81,6 +85,8 @@ pub struct BillingBackend {
     bound_payment_link: Option<Arc<forklaunch_billing_stripe::bound_creation::BoundPaymentLinkCreationProfile>>,
     #[cfg(feature = "bound-checkout")]
     bound_plan: Option<Arc<forklaunch_billing_stripe::bound_plan_creation::BoundPlanCreationProfile>>,
+    #[cfg(feature = "bound-checkout")]
+    bound_subscription: Option<Arc<bound_subscription::BoundSubscriptionV1>>,
     request_dates: BillingRequestDateProfile,
     webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
     platform_key: Option<zeroize::Zeroizing<String>>,
@@ -106,6 +112,8 @@ impl BillingBackend {
             bound_payment_link: None,
             #[cfg(feature = "bound-checkout")]
             bound_plan: None,
+            #[cfg(feature = "bound-checkout")]
+            bound_subscription: None,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -131,6 +139,8 @@ impl BillingBackend {
             bound_payment_link: None,
             #[cfg(feature = "bound-checkout")]
             bound_plan: None,
+            #[cfg(feature = "bound-checkout")]
+            bound_subscription: None,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -501,6 +511,8 @@ pub fn billing_router(
     let router = bound_payment_link::register(router, &backend);
     #[cfg(feature = "bound-checkout")]
     let router = bound_plan::register(router, &backend);
+    #[cfg(feature = "bound-checkout")]
+    let router = bound_subscription::register(router, &backend);
     router
         .get(module_contracts::health_contract(), move || {
             let name = service.name.clone();

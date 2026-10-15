@@ -192,6 +192,32 @@ impl PostgresBillingStore {
     }
 }
 impl TrustedSubscriptionPublisher {
+    /// Derives an authenticated actor wrapper without changing the validated pools/tenant.
+    /// Only trusted server authentication may select this actor; no new credential authority.
+    /// # Errors
+    /// Rejects missing/blank actors or invalid audit context.
+    pub fn with_audit_context(
+        &self,
+        audit: forklaunch_blueprint_core::AuditContext,
+    ) -> BlueprintResult<Self> {
+        let store = self.store.with_audit_context(audit)?;
+        store.binding_actor()?;
+        Ok(Self {
+            store,
+            runtime: self.runtime.clone(),
+        })
+    }
+    /// Checks publisher role separation and dependency-lock/read grants before dispatch.
+    /// # Errors
+    /// Denies mismatched runtime identity/actor, publication privilege or local read grants.
+    pub async fn validate_creation_access(
+        &self,
+        runtime: &PostgresBillingStore,
+    ) -> BlueprintResult<()> {
+        self.validate_for(runtime).await?;
+        self.store.subscription_dependency_access().await
+    }
+
     /// Validates explicit publication configuration before any provider effect.
     /// # Errors
     /// Denies a different runtime database, tenant, actor or publication privilege.

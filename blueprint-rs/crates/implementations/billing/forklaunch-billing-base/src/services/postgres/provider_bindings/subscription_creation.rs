@@ -163,6 +163,25 @@ fn hash(public_id: &str, value: &str) -> String {
     format!("{:x}", hash.finalize())
 }
 impl PostgresBillingStore {
+    async fn subscription_dependency_access(&self) -> BlueprintResult<()> {
+        let allowed:bool=sqlx::query_scalar("SELECT has_schema_privilege(current_user,'fl_billing','USAGE') AND has_table_privilege(current_user,'fl_billing.records','SELECT') AND has_table_privilege(current_user,'fl_billing.records','UPDATE') AND has_table_privilege(current_user,'fl_billing.provider_bindings','SELECT') AND has_table_privilege(current_user,'fl_billing.provider_bindings','UPDATE') AND has_table_privilege(current_user,'fl_billing.stripe_customer_bindings','SELECT') AND has_table_privilege(current_user,'fl_billing.stripe_customer_bindings','UPDATE') AND has_table_privilege(current_user,'fl_billing.plan_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.sensitive_read_audit','INSERT') AND has_table_privilege(current_user,'fl_billing.subscription_publication_identity','SELECT')").fetch_one(&self.pool).await.map_err(db_error)?;
+        if !allowed {
+            return Err(conflict());
+        }
+        Ok(())
+    }
+    /// Checks ordinary-role grants used for dependency locks, reservation and inspection.
+    /// # Errors
+    /// Rejects missing local privileges; does not contact the provider or claim ownership.
+    pub async fn validate_subscription_creation_access(&self) -> BlueprintResult<()> {
+        self.subscription_dependency_access().await?;
+        let allowed:bool=sqlx::query_scalar("SELECT has_table_privilege(current_user,'fl_billing.subscription_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.subscription_creation_intents','INSERT') AND has_table_privilege(current_user,'fl_billing.subscription_dependency_claims','INSERT') AND has_table_privilege(current_user,'fl_billing.subscription_creation_audit','INSERT')").fetch_one(&self.pool).await.map_err(db_error)?;
+        if !allowed {
+            return Err(conflict());
+        }
+        Ok(())
+    }
+
     async fn subscription_runtime_role(
         &self,
         tx: &mut Transaction<'_, Postgres>,

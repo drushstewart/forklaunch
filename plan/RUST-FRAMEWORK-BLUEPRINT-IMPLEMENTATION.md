@@ -2707,3 +2707,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Bounded credential policy and reset/verification TTLs validated: actual17, focused3, full IAM217, restricted PostgreSQL and strict full/minimal Clippy pass. Fresh-clock timing and broader auth remain open; 660/682 unchanged.
 
 - 2026-10-15: Raw Zod date assertions now pass 70,000 actual/AJV plus 70,000 native comparisons, 16 HTTP/64 socket checks, strict Clippy and configured TypeScript/inventory. Regex and remaining formats stay open; 660/682 unchanged.
+
+- 2026-10-15: Subscription creation HTTP/MCP/both SDKs pass real restricted PostgreSQL role separation, 12 unit tests, 136 rendered artifact cases and strict full/minimal Clippy. Explicit service tenant authority and separate publisher required; broader billing remains open, 660/682 unchanged.

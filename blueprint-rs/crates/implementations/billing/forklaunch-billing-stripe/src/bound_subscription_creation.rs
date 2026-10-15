@@ -93,6 +93,23 @@ fn completed(
     })
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Preflights explicit direct creation and both roles without provider I/O.
+    /// # Errors
+    /// Rejects managed transport, missing local grants or invalid publisher identity.
+    pub async fn validate_bound_subscription_configuration(
+        &self,
+        publisher: &TrustedSubscriptionPublisher,
+    ) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        self.base()
+            .store()
+            .validate_subscription_creation_access()
+            .await?;
+        publisher
+            .validate_creation_access(self.base().store())
+            .await
+    }
+
     /// One provider POST only after confirmed reservation. Explicit separate
     /// publisher credentials are required; default routes/legacy APIs unchanged.
     /// Customer and Plan GETs establish bounded observations, not atomic remote

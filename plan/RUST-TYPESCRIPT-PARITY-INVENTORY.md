@@ -10869,3 +10869,30 @@ SDK crates. Configured TypeScript passes all 12 roots and 623 exports; refreshed
 public API inventory passes 623 entries/1703 declarations. Logs:
 `/private/tmp/fl-zod-date-{native,consumers,clippy,types,inventory}.log`.
 Regex and further format/configuration parity remain open; 660/682 is unchanged.
+
+
+### 2026-10-15 — Subscription creation HTTP, MCP and SDK surfaces
+
+The independent `subscription` selector now exposes POST `/bound-subscriptions`
+and historical GET `/bound-subscription-operations/:operationId`. It explicitly
+selects `internal_service_tenant_v1` authority: customer association is a trusted
+service assertion, not proof of end-user ownership. Typed requests admit existing
+local Customer/Plan IDs, safe-integer positive quantity and bounded description.
+Plan creation provenance and provider evidence remain required. A separately
+constructed `TrustedSubscriptionPublisher` is mandatory; the existing constructor
+remains compatible and cannot silently acquire this authority. Generated binaries
+wire the explicit publisher pool. Both roles' individual startup privileges are
+checked without provider I/O. Read-only selectors gain no creation capability.
+
+Restricted PostgreSQL, live HTTP/MCP and four generated SDK calls pass in 3.32s.
+Completed operations leave zero claims; uncertain outcomes retain four claims and
+return 202 without a second provider POST. Actor-bound inspection returns historical
+IDs only, with no recovery/retry/current-ownership assertion. Twelve unit tests,
+136 rendered artifact/startup cases including base/Stripe binary compilation,
+strict full/all-target billing Clippy and minimal Axum Clippy pass. Owned fixture
+roles/databases return to zero. Test closure ownership and a parser lint were fixed
+before final live/artifact reruns. Final 12-source manifest:
+`/private/tmp/fl-subscription-creation-route-final.json`; logs:
+`/private/tmp/fl-subscription-creation-route-{live-final2,unit,artifacts-final,clippy-final,minimal}.log`.
+Default 66 routes remain unchanged. Managed creation, broader mutations and the
+full billing gate remain open; checklist stays 660/682 (96.8%).

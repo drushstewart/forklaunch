@@ -5,6 +5,7 @@ use super::{
 };
 use forklaunch_billing_base::services::postgres::{
     StripeBindingScope, TrustedCheckoutPublisher, TrustedPortalPublisher,
+    TrustedSubscriptionPublisher,
 };
 use forklaunch_billing_stripe::bound_creation::BoundPaymentLinkCreationProfile;
 use forklaunch_billing_stripe::bound_plan_creation::BoundPlanCreationProfile;
@@ -39,6 +40,7 @@ pub struct BoundBillingConfig {
     payment_link_read: Option<PaymentLinkReadConfig>,
     payment_link: Option<BoundPaymentLinkCreationProfile>,
     plan: Option<BoundPlanCreationProfile>,
+    subscription: Option<BoundSubscriptionCreationProfile>,
 }
 fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult<()> {
     let object = value.as_object().ok_or_else(configuration)?;
@@ -79,6 +81,21 @@ fn subscription_profile(
     )
     .map_err(|_| configuration())
 }
+fn subscription_creation_profile(
+    scope: &StripeBindingScope,
+    part: &Value,
+) -> BlueprintResult<BoundSubscriptionCreationProfile> {
+    exact(part, &["plans", "collectionPolicy", "authority"], &[])?;
+    if part["authority"] != "internal_service_tenant_v1" {
+        return Err(configuration());
+    }
+    let mut selected = part.clone();
+    selected
+        .as_object_mut()
+        .ok_or_else(configuration)?
+        .remove("authority");
+    subscription_profile(scope, &selected)
+}
 fn payment_link_profile(
     scope: &StripeBindingScope,
     part: &Value,
@@ -118,6 +135,23 @@ fn plan_profile(
         serde_json::from_value(part["trustedProducts"].clone()).map_err(|_| configuration())?;
     BoundPlanCreationProfile::trusted(scope.clone(), products).map_err(|_| configuration())
 }
+fn portal_profile(scope: &StripeBindingScope, part: &Value) -> BlueprintResult<BoundPortalConfig> {
+    exact(part, &["configurationId", "returnUrl"], &[])?;
+    Ok(BoundPortalConfig {
+        profile: BoundPortalCreationProfile::trusted(
+            scope.clone(),
+            part["configurationId"]
+                .as_str()
+                .ok_or_else(configuration)?
+                .to_owned(),
+            part["returnUrl"]
+                .as_str()
+                .ok_or_else(configuration)?
+                .to_owned(),
+        )
+        .map_err(|_| configuration())?,
+    })
+}
 impl BoundBillingConfig {
     /// Parses at most 64 KiB of exact configuration. At least one domain is required.
     /// # Errors
@@ -138,6 +172,7 @@ impl BoundBillingConfig {
                 "paymentLinkRead",
                 "paymentLink",
                 "plan",
+                "subscription",
             ],
         )?;
         let scope = StripeBindingScope::administrative(
@@ -162,25 +197,10 @@ impl BoundBillingConfig {
         } else {
             None
         };
-        let portal = if let Some(part) = value.get("portal") {
-            exact(part, &["configurationId", "returnUrl"], &[])?;
-            Some(BoundPortalConfig {
-                profile: BoundPortalCreationProfile::trusted(
-                    scope.clone(),
-                    part["configurationId"]
-                        .as_str()
-                        .ok_or_else(configuration)?
-                        .to_owned(),
-                    part["returnUrl"]
-                        .as_str()
-                        .ok_or_else(configuration)?
-                        .to_owned(),
-                )
-                .map_err(|_| configuration())?,
-            })
-        } else {
-            None
-        };
+        let portal = value
+            .get("portal")
+            .map(|part| portal_profile(&scope, part))
+            .transpose()?;
         let plan_read = value
             .get("planRead")
             .map(|part| plan_profile(&scope, part))
@@ -188,6 +208,10 @@ impl BoundBillingConfig {
         let subscription_read = value
             .get("subscriptionRead")
             .map(|part| subscription_profile(&scope, part))
+            .transpose()?;
+        let subscription = value
+            .get("subscription")
+            .map(|part| subscription_creation_profile(&scope, part))
             .transpose()?;
         let plan = value
             .get("plan")
@@ -208,6 +232,7 @@ impl BoundBillingConfig {
             && payment_link_read.is_none()
             && payment_link.is_none()
             && plan.is_none()
+            && subscription.is_none()
         {
             return Err(configuration());
         }
@@ -219,6 +244,7 @@ impl BoundBillingConfig {
             payment_link_read,
             payment_link,
             plan,
+            subscription,
         })
     }
     #[must_use]
@@ -242,6 +268,10 @@ impl BoundBillingConfig {
         self.payment_link_read.is_some()
     }
     #[must_use]
+    pub const fn has_subscription(&self) -> bool {
+        self.subscription.is_some()
+    }
+    #[must_use]
     pub const fn has_plan(&self) -> bool {
         self.plan.is_some()
     }
@@ -253,12 +283,15 @@ impl BoundBillingConfig {
     /// `PaymentLink` uses its existing ordinary-role immutable journal authority.
     #[must_use]
     pub const fn requires_publisher(&self) -> bool {
-        self.has_checkout() || self.has_portal()
+        self.has_checkout() || self.has_portal() || self.has_subscription()
     }
     /// Shared runtime/artifact contracts, with no server configuration embedded.
     #[must_use]
     pub fn contracts(&self) -> Vec<RouteContract> {
         let mut routes = Vec::new();
+        if self.has_subscription() {
+            routes.extend(super::bound_subscription::bound_subscription_contracts());
+        }
         if self.has_plan() {
             routes.extend(super::bound_plan::bound_plan_contracts());
         }
@@ -285,7 +318,7 @@ impl BoundBillingConfig {
         routes
     }
 }
-/// Explicit independent capabilities. Checkout/Portal creation require publishers.
+/// Explicit independent capabilities. Checkout/Portal/Subscription creation require publishers.
 pub struct BoundBillingV1 {
     checkout: Option<BoundCheckoutV1>,
     portal: Option<BoundPortalV1>,
@@ -294,6 +327,7 @@ pub struct BoundBillingV1 {
     payment_link_read: Option<PaymentLinkReadConfig>,
     payment_link: Option<BoundPaymentLinkCreationProfile>,
     plan: Option<BoundPlanCreationProfile>,
+    subscription: Option<super::bound_subscription::BoundSubscriptionV1>,
 }
 impl BoundBillingV1 {
     /// # Errors
@@ -303,8 +337,21 @@ impl BoundBillingV1 {
         checkout: Option<TrustedCheckoutPublisher>,
         portal: Option<TrustedPortalPublisher>,
     ) -> BlueprintResult<Self> {
+        Self::trusted_with_subscription(configuration, checkout, portal, None)
+    }
+    /// Adds an explicitly separate subscription publisher without changing the legacy constructor.
+    /// The selector attests internal service-level tenant authority, not end-user ownership.
+    /// # Errors
+    /// Rejects any missing or surplus publisher; never falls back to ordinary runtime credentials.
+    pub fn trusted_with_subscription(
+        configuration: BoundBillingConfig,
+        checkout: Option<TrustedCheckoutPublisher>,
+        portal: Option<TrustedPortalPublisher>,
+        subscription: Option<TrustedSubscriptionPublisher>,
+    ) -> BlueprintResult<Self> {
         if configuration.has_checkout() != checkout.is_some()
             || configuration.has_portal() != portal.is_some()
+            || configuration.has_subscription() != subscription.is_some()
         {
             return Err(self::configuration());
         }
@@ -314,6 +361,12 @@ impl BoundBillingV1 {
             payment_link_read: configuration.payment_link_read,
             payment_link: configuration.payment_link,
             plan: configuration.plan,
+            subscription: configuration.subscription.zip(subscription).map(
+                |(profile, publisher)| super::bound_subscription::BoundSubscriptionV1 {
+                    profile,
+                    publisher,
+                },
+            ),
             checkout: configuration
                 .checkout
                 .zip(checkout)
@@ -337,8 +390,12 @@ impl BillingBackend {
             || self.bound_payment_link_read.is_some()
             || self.bound_payment_link.is_some()
             || self.bound_plan.is_some()
+            || self.bound_subscription.is_some()
         {
             return Err(configuration());
+        }
+        if let Some(subscription) = profile.subscription {
+            self = self.with_bound_subscription(subscription).await?;
         }
         if let Some(plan) = profile.plan {
             self = self.with_bound_plan(plan).await?;
@@ -371,6 +428,28 @@ mod tests {
     use serde_json::json;
     fn valid() -> Value {
         json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}})
+    }
+    #[test]
+    fn subscription_creation_requires_explicit_authority_and_publisher() {
+        let raw = serde_json::json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"subscription":{"plans":[{"localPlanId":Uuid::new_v4(),"creationOperationId":Uuid::new_v4()}],"collectionPolicy":"automatic_default_incomplete_v1","authority":"internal_service_tenant_v1"}});
+        let config = BoundBillingConfig::from_json(&raw.to_string()).unwrap();
+        assert!(config.has_subscription());
+        assert!(config.requires_publisher());
+        assert_eq!(
+            config.contracts(),
+            super::super::bound_subscription_contracts()
+        );
+        assert!(BoundBillingV1::trusted(config, None, None).is_err());
+        let config = BoundBillingConfig::from_json(&raw.to_string()).unwrap();
+        assert!(BoundBillingV1::trusted_with_subscription(config, None, None, None).is_err());
+        let mut invalid = raw;
+        invalid["subscription"]
+            .as_object_mut()
+            .unwrap()
+            .remove("authority");
+        assert!(BoundBillingConfig::from_json(&invalid.to_string()).is_err());
+        invalid["subscription"]["authority"] = serde_json::json!("end_user");
+        assert!(BoundBillingConfig::from_json(&invalid.to_string()).is_err());
     }
     #[test]
     fn plan_creation_is_separate_from_plan_read_and_publisher() {
