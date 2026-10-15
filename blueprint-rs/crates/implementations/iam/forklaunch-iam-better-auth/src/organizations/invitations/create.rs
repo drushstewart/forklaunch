@@ -32,8 +32,8 @@ impl<S: AuthStore> OrganizationService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
-        let first = if let Some(hook) = &self.invitation_limit {
-            self.invitation_with_limit(token, body, now, hook.as_ref())
+        let first = if self.invitation_limit.is_some() || self.team_member_limit.is_some() {
+            self.invitation_with_limit(token, body, now, self.invitation_limit.as_deref())
                 .await?
         } else {
             self.invitation_step(token, body, now, None).await?
@@ -78,6 +78,7 @@ impl<S: AuthStore> OrganizationService<S> {
             actor,
             inviter,
             quota_inviter: _,
+            team_view: _,
         } = self.invitation_admission(&mut tx, token, body, now).await?;
         let org = org.as_str();
         let matching_rows =

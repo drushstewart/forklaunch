@@ -1,7 +1,7 @@
 use super::invitation_policy::{Fixture, request, seed};
 use super::*;
 use crate::organizations::{AddMemberInput, MemberRoles, TeamPolicy};
-async fn setup<S: AuthStore>(store: &S, label: &str) -> Fixture {
+pub(super) async fn setup<S: AuthStore>(store: &S, label: &str) -> Fixture {
     let f = seed(store, &format!("team-policy-{label}")).await;
     let mut tx = store.begin(true).await.unwrap();
     let mut grant = tx
@@ -19,12 +19,17 @@ async fn setup<S: AuthStore>(store: &S, label: &str) -> Fixture {
     tx.commit().await.unwrap();
     f
 }
-async fn team<S: AuthStore>(store: &S, f: &Fixture, id: &str, count: i64) {
+pub(super) async fn team<S: AuthStore>(store: &S, f: &Fixture, id: &str, count: i64) {
     let mut tx = store.begin(true).await.unwrap();
     tx.insert(Model::Team,json!({"id":id,"organizationId":f.org,"name":id,"memberCount":count,"createdAt":timestamp(f.now)})).await.unwrap();
     tx.commit().await.unwrap();
 }
-async fn records<S: AuthStore>(store: &S, model: Model, field: &str, id: &str) -> Vec<Value> {
+pub(super) async fn records<S: AuthStore>(
+    store: &S,
+    model: Model,
+    field: &str,
+    id: &str,
+) -> Vec<Value> {
     let mut tx = store.begin(false).await.unwrap();
     let rows = crate::store::find_all(&mut tx, model, field, id)
         .await

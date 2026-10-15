@@ -2128,7 +2128,7 @@ Remaining organization option families after these scalar/declarative profiles:
 | Family | Implemented scope | Remaining scope |
 | --- | --- | --- |
 | Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle, awaited creation allow/quota, membership and dynamic-role quota callbacks | Arbitrary JavaScript callback context/return coercion |
-| Teams | Default creation toggle, team/seat limits, last-team policy | Plugin route disabling, custom default-team creation, async limits |
+| Teams | Default creation toggle, scalar/awaited team and seat limits, last-team policy | Plugin route disabling, custom default-team creation |
 | Invitations | TTL, scalar/awaited quota, verification, cancellation, trusted delivery/scheduler | Lifecycle hooks and arbitrary JS AuthContext mutation |
 | Access control | Declarative catalog/static roles, persisted dynamic grants and trusted synchronous authorizers | Plugin-disable topology and arbitrary JS receiver/return behavior |
 | Lifecycle hooks | Invitation delivery only | Before/after organization, member, invitation, team and team-member hooks |
@@ -2356,3 +2356,57 @@ partial failures or all interleavings of upstream adapters. Commit uncertainty
 before the quota callback never invokes it; insertion commit uncertainty never
 invokes delivery. Successful persistence still uses the existing captured
 invitation-delivery context and preparation/future/scheduler error behavior.
+
+### Awaited team quotas and current-adapter access
+
+`with_team_count_limit_policy` and `with_team_member_limit_policy` install trusted
+`TeamCountLimitPolicy` and `TeamMemberLimitPolicy` callbacks on the service or
+`AuthHttp`. Both return a lifetime-bound `TeamLimitFuture`, whose output is
+`BlueprintResult<f64>`, preserving all IEEE values.
+`with_team_policy` clears both callbacks; installing either callback afterward
+replaces only its own quota. Default-team creation during organization creation
+bypasses both callbacks. `create_team_for_organization` is a trusted server-only
+counterpart with no public route and a null/absent callback session.
+
+Team creation captures its first-100 team count before awaiting the callback;
+zero and NaN mean unlimited, while other values use the captured `>=` comparison.
+Invitation creation validates the requested team IDs first, then captures each
+team's first-100 hydrated member count before its callback, in request order.
+Its `>=` comparison allows NaN. Team addition, server member addition and invitation
+acceptance instead reserve against the current synchronized seat count after the
+callback; `< NaN` cannot reserve a new seat. Existing member pairs still bypass
+seat denial, but do not bypass the callback. These comparisons are intentionally
+separate. Session, member and organization admission is not repeated after callbacks.
+
+Contexts contain bounded configured user/session projections, including the real
+stored session token when present. They preserve absent versus null fields, have
+no Debug/Serde implementation, and are sensitive trusted server data. Projection
+validates selected scalar values before cloning, with 4096-byte string limits.
+No request field can install callbacks or access the adapter capability.
+
+`OrganizationCallbackAdapter` exposes tenant-fixed get, indexed-page, insert,
+replace and delete operations. During acceptance it borrows the same transaction
+as invitation acceptance, team enrollment, member creation and session selection.
+The callback sees the accepted invitation; its adapter mutations roll back with
+seat denial, callback error, missing single-team session or dropped acceptance
+future. A successful callback's invitation mutation is retained, even if it changes
+the accepted row to canceled. There is no commit, rollback or transaction escape
+method. An implementation that captures a separate store does not enlist that
+store in this transaction; use the provided adapter for transactional work.
+
+Other routes provide an autocommit adapter: each operation has its own transaction.
+Server member addition commits the new organization member before invoking the
+seat callback and deletes that member and its scoped team memberships if the
+callback or enrollment fails. Cancellation while that callback is pending does
+not execute compensating cleanup. Team creation and invitation callbacks run
+outside write transactions, and their completed adapter mutations remain committed
+on later failure. Error values are sanitized to empty HTTP 500 responses; panic,
+raw JavaScript receiver/object mutation and arbitrary adapter/query methods are
+not represented. Native final graph writes retain the existing atomic storage
+boundary rather than claiming every upstream adapter commit-failure interleaving.
+
+The callback differential fixture uses the pinned Better Auth memory adapter.
+Restricted PostgreSQL tests validate this native implementation's tenant scope,
+audit and transaction behavior; they do not establish equality with the configured
+MikroORM adapter's integer-column bindings for non-integral or non-finite quota
+results. That adapter-specific numeric behavior remains under separate audit.

@@ -79,6 +79,8 @@ pub struct AuthHttp<S> {
     role_limit: Option<Arc<dyn crate::organizations::RoleLimitPolicy>>,
     invitation_policy: crate::organizations::InvitationPolicy,
     invitation_limit: Option<Arc<dyn crate::organizations::InvitationLimitPolicy>>,
+    team_count_limit: Option<Arc<dyn crate::organizations::TeamCountLimitPolicy>>,
+    team_member_limit: Option<Arc<dyn crate::organizations::TeamMemberLimitPolicy>>,
     team_policy: crate::organizations::TeamPolicy,
     organization_controls: crate::organizations::OrganizationControls,
     creator_role: crate::organizations::CreatorRole,
@@ -207,8 +209,29 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     #[must_use]
     pub fn with_team_policy(mut self, policy: crate::organizations::TeamPolicy) -> Self {
         self.team_policy = policy;
+        self.team_count_limit = None;
+        self.team_member_limit = None;
         self
     }
+    /// Installs the trusted awaited maximum-team callback, preserving other options.
+    #[must_use]
+    pub fn with_team_count_limit_policy(
+        mut self,
+        hook: Arc<dyn crate::organizations::TeamCountLimitPolicy>,
+    ) -> Self {
+        self.team_count_limit = Some(hook);
+        self
+    }
+    /// Installs the trusted awaited per-team seat callback, preserving other options.
+    #[must_use]
+    pub fn with_team_member_limit_policy(
+        mut self,
+        hook: Arc<dyn crate::organizations::TeamMemberLimitPolicy>,
+    ) -> Self {
+        self.team_member_limit = Some(hook);
+        self
+    }
+
     /// Installs server-owned invitation expiry, quota and recipient verification options.
     #[must_use]
     pub fn with_invitation_policy(
@@ -326,6 +349,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             role_limit: None,
             invitation_policy: crate::organizations::InvitationPolicy::default(),
             invitation_limit: None,
+            team_count_limit: None,
+            team_member_limit: None,
             team_policy: crate::organizations::TeamPolicy::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),
             creator_role: crate::organizations::CreatorRole::default(),

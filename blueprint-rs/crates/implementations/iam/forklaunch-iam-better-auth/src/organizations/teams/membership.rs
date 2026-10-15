@@ -3,10 +3,20 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
 pub(in crate::organizations) async fn add<T: AuthTransaction>(
     tx: &mut T,
-    mut team: Value,
+    team: Value,
     user: &str,
     now: DateTime<Utc>,
     limit: Option<u32>,
+) -> BlueprintResult<Value> {
+    add_numeric(tx, team, user, now, limit.map(f64::from)).await
+}
+#[allow(clippy::cast_precision_loss)] // Stored counter is compared as an ECMAScript Number.
+pub(in crate::organizations) async fn add_numeric<T: AuthTransaction>(
+    tx: &mut T,
+    mut team: Value,
+    user: &str,
+    now: DateTime<Utc>,
+    limit: Option<f64>,
 ) -> BlueprintResult<Value> {
     let id = text(&team, "id")?.to_owned();
     let pair = serde_json::to_vec(&json!([id, user])).map_err(|_| super::super::internal())?;
@@ -33,7 +43,9 @@ pub(in crate::organizations) async fn add<T: AuthTransaction>(
         team["updatedAt"] = json!(super::super::timestamp(now));
     }
     let count = stored.max(actual);
-    if limit.is_some_and(|limit| count >= i64::from(limit)) {
+    if limit
+        .is_some_and(|limit| (count as f64).partial_cmp(&limit) != Some(std::cmp::Ordering::Less))
+    {
         return Err(super::super::team_policy::member_limit());
     }
     team["memberCount"] = json!(count.checked_add(1).ok_or_else(super::super::internal)?);

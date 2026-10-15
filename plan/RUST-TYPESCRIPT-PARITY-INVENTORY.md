@@ -12753,3 +12753,15 @@ hashes, clean status and no active/open owned files were verified. Branch and
 proofs remain; `/private/tmp/fl-string-predicate-domain-cleanup.json` records
 54,992 KiB logical data. Current inventory metadata now has 1,710 declaration/
 re-export records; the 625 entry points are unchanged.
+
+### 2026-10-15 — Organization callback metadata audit
+
+Independent installed Better Auth observations (`/private/tmp/fl-organization-metadata-audit.mjs`, direct exit 0; corresponding `.log`) distinguish normal creation from adapter-seeded rows. Organization creation serializes metadata to a JSON string for storage, returns an object to the client, and supplies the stored string to invitation quota and delivery callbacks. That ordinary path agrees with the native string projection. Adapter-seeded object, null and numeric metadata also produce HTTP 200 upstream and reach both callbacks unchanged. The native shared organization projection currently rejects object and numeric metadata; bounded shape-preserving metadata projection remains part of the open ORM/options gate. This audit logged only synthetic metadata and status, and is evidence of a remaining difference rather than native conformance.
+
+### 2026-10-15 — Awaited team count and membership quota callbacks
+
+Integrated 25-file source manifest `/private/tmp/fl-team-limit-freeze.json`, SHA256 `e0e77e86f2b910ef3a157ad279dd03ca290f0fee5f4d3ff5840ac2b071b215ac`, independently verified before staging. Typed policies preserve captured team counts, caller-specific IEEE comparisons, duplicate seat behavior, server-only null-session creation and default-team callback bypass. Invitation acceptance supplies a borrowed current-transaction adapter, so callback mutations participate in rollback. Other callers expose autocommit operations; server member creation retains compensating cleanup. Contexts contain actual session tokens and intentionally omit Debug/Serde implementations. Independent captured stores are not enlisted.
+
+Final actual memory-reference fixture: 81 observations, direct exit 0. Final native organization regression: 20 passed, one PostgreSQL test deliberately ignored; focused PostgreSQL passed separately in 20.25s. Strict full/minimal Clippy passed in 20.54s/12.15s. Final command chain 72097 exited 0; owned cleanup returned five zero counts. Logs: `/private/tmp/fl-team-limit-{actual,native,pg,clippy,minimal-clippy,cleanup}.log`. CI runs the permanent actual fixture and watches its path. The earlier boolean user-projection failure was fixed using the existing account projection and its failing log retained.
+
+These proofs establish the memory-reference numeric profile and native PostgreSQL implementation. Actual configured MikroORM integer predicates for fractional/nonfinite/out-of-range limits remain under audit; native PostgreSQL success alone does not establish adapter equivalence. Metadata shape and broader ORM/hook options also remain open. Checklist remains 660/682 (96.8%), 22 open.

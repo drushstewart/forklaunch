@@ -30,8 +30,14 @@ mod creator_role;
 pub use creator_role::CreatorRole;
 mod full;
 mod invitation_policy;
+mod team_callbacks;
 mod team_policy;
 pub use controls::OrganizationControls;
+pub use team_callbacks::{
+    OrganizationAdapterFuture, OrganizationCallbackAdapter, TeamCountLimitContext,
+    TeamCountLimitPolicy, TeamLimitFuture, TeamMemberLimitContext, TeamMemberLimitPolicy,
+    TeamPolicySession,
+};
 pub use team_policy::TeamPolicy;
 mod invitations;
 pub use invitation_policy::InvitationPolicy;
@@ -62,6 +68,8 @@ pub struct OrganizationService<S> {
     role_limit: Option<Arc<dyn RoleLimitPolicy>>,
     invitation_policy: InvitationPolicy,
     invitation_limit: Option<Arc<dyn InvitationLimitPolicy>>,
+    team_count_limit: Option<Arc<dyn TeamCountLimitPolicy>>,
+    team_member_limit: Option<Arc<dyn TeamMemberLimitPolicy>>,
     team_policy: TeamPolicy,
     controls: OrganizationControls,
     creator_role: CreatorRole,
@@ -164,8 +172,23 @@ impl<S: AuthStore> OrganizationService<S> {
     #[must_use]
     pub fn with_team_policy(mut self, policy: TeamPolicy) -> Self {
         self.team_policy = policy;
+        self.team_count_limit = None;
+        self.team_member_limit = None;
         self
     }
+    /// Installs the trusted awaited maximum-team callback, preserving other options.
+    #[must_use]
+    pub fn with_team_count_limit_policy(mut self, hook: Arc<dyn TeamCountLimitPolicy>) -> Self {
+        self.team_count_limit = Some(hook);
+        self
+    }
+    /// Installs the trusted awaited per-team seat callback, preserving other options.
+    #[must_use]
+    pub fn with_team_member_limit_policy(mut self, hook: Arc<dyn TeamMemberLimitPolicy>) -> Self {
+        self.team_member_limit = Some(hook);
+        self
+    }
+
     /// Installs trusted invitation expiry, quota and recipient verification options.
     #[must_use]
     pub fn with_invitation_policy(mut self, policy: InvitationPolicy) -> Self {
@@ -234,6 +257,8 @@ impl<S: AuthStore> OrganizationService<S> {
             role_limit: None,
             invitation_policy: InvitationPolicy::default(),
             invitation_limit: None,
+            team_count_limit: None,
+            team_member_limit: None,
             team_policy: TeamPolicy::default(),
             controls: OrganizationControls::default(),
             creator_role: CreatorRole::default(),

@@ -9,6 +9,7 @@ pub(super) struct Admission {
     pub role: String,
     pub actor: String,
     pub inviter: Option<BlueprintResult<Value>>,
+    pub team_view: Option<crate::sessions::SessionView>,
     pub quota_inviter: Option<BlueprintResult<Value>>,
 }
 impl<S: AuthStore> OrganizationService<S> {
@@ -83,6 +84,7 @@ impl<S: AuthStore> OrganizationService<S> {
             email,
             role,
             actor: text(&view.user, "id")?.to_owned(),
+            team_view: self.team_member_limit.as_ref().map(|_| view),
         })
     }
 }

@@ -61,20 +61,14 @@ impl<S: AuthStore> OrganizationService<S> {
             .map_or_else(Vec::new, |s| s.split(',').collect::<Vec<_>>());
         let now = self.time_source.sample(now);
         for id in &teams {
-            let team = tx
-                .get(Model::Team, id)
-                .await?
-                .filter(|row| row["organizationId"] == org)
-                .ok_or_else(|| BlueprintError::new("TEAM_NOT_FOUND", "Team not found"))?;
-            super::super::teams::add_team_member(
-                &mut tx,
-                team,
-                text(&view.user, "id")?,
-                now,
-                self.team_policy.maximum_members,
-            )
-            .await?;
+            self.enroll_accepted_team(&mut tx, org.as_ref(), id, &view, now)
+                .await?;
         }
+        let now = if self.team_member_limit.is_some() {
+            self.time_source.sample(now)
+        } else {
+            now
+        };
         let cookie = teams.len() == 1;
         if let Some(mut session) = tx.find_unique(Model::Session, "token", token).await? {
             session["activeOrganizationId"] = json!(org);

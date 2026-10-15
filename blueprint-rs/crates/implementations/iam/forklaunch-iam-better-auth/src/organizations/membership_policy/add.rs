@@ -58,6 +58,19 @@ impl<S: AuthStore> OrganizationService<S> {
         let now = self.time_source.sample(now);
         let member = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":id,"userId":user["id"],"role":input.role.joined(),"createdAt":super::super::timestamp(now)});
         tx.insert(Model::Member, member.clone()).await?;
+        if let (Some(hook), Some(team)) = (&self.team_member_limit, team_id) {
+            tx.commit().await?;
+            return self
+                .complete_member_with_team_callback(
+                    member,
+                    team,
+                    session.as_ref(),
+                    now,
+                    hook.as_ref(),
+                )
+                .await;
+        }
+
         if let Some(team) = team_id {
             enroll(
                 &mut tx,

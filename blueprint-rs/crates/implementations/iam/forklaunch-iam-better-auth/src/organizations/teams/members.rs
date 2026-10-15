@@ -24,6 +24,26 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let team = authorized_team(&self.access_control, &mut tx, &view, body, false).await?;
+        if let Some(hook) = &self.team_member_limit {
+            let org = text(&team, "organizationId")?.to_owned();
+            let id = text(&team, "id")?.to_owned();
+            tx.commit().await?;
+            let mut adapter = super::super::team_callbacks::AutocommitAdapter(self.store.as_ref());
+            let limit =
+                super::super::team_callbacks::member(hook.as_ref(), &org, &id, &view, &mut adapter)
+                    .await?;
+            let mut tx = self.store.begin(true).await?;
+            let row = super::super::team_callbacks::seat(
+                &mut tx,
+                &id,
+                text(body, "userId")?,
+                self.time_source.sample(now),
+                limit,
+            )
+            .await?;
+            tx.commit().await?;
+            return Ok(public_member(row));
+        }
         let row = add_team_member(
             &mut tx,
             team,

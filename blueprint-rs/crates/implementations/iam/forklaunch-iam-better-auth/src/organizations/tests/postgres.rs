@@ -14,6 +14,7 @@ pub(crate) async fn exercise<S: AuthStore + 'static>(store: Arc<S>, foreign: &S)
     invitation_cancel::exercise(store.clone()).await;
     invitation_delivery::exercise(store.clone()).await;
     team_policy::exercise(store.clone()).await;
+    team_callbacks::exercise(store.clone()).await;
     controls::exercise(store.clone()).await;
     creator_role::exercise(store.clone()).await;
     access_control::exercise(store.clone()).await;

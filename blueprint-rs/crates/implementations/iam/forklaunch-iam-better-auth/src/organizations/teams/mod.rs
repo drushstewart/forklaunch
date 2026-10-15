@@ -85,3 +85,5 @@ async fn user_teams<T: AuthTransaction>(tx: &mut T, user: &str) -> BlueprintResu
 mod members;
 mod membership;
 pub(super) use membership::add as add_team_member;
+
+pub(in crate::organizations) use membership::add_numeric as add_team_member_numeric;

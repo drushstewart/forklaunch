@@ -74,7 +74,7 @@ impl<S: AuthStore> OrganizationService<S> {
         token: &str,
         body: &Value,
         now: DateTime<Utc>,
-        hook: &dyn InvitationLimitPolicy,
+        hook: Option<&dyn InvitationLimitPolicy>,
     ) -> BlueprintResult<Step> {
         let mut tx = self.store.begin(true).await?;
         let mut admitted = self.invitation_admission(&mut tx, token, body, now).await?;
@@ -114,16 +114,19 @@ impl<S: AuthStore> OrganizationService<S> {
         }
         tx.commit().await?;
         // Projection/preparation failures occur after the cancellation commit.
-        let inviter = admitted
-            .quota_inviter
-            .take()
-            .ok_or_else(failure)?
-            .map_err(|_| failure())?;
-        let limit = hook
-            .prepare(context(inviter, &organization)?)
-            .map_err(|_| failure())?
-            .await
-            .map_err(|_| failure())?;
+        let limit = if let Some(hook) = hook {
+            let inviter = admitted
+                .quota_inviter
+                .take()
+                .ok_or_else(failure)?
+                .map_err(|_| failure())?;
+            hook.prepare(context(inviter, &organization)?)
+                .map_err(|_| failure())?
+                .await
+                .map_err(|_| failure())?
+        } else {
+            f64::from(self.invitation_policy.limit)
+        };
         self.insert_after_invitation_limit(admitted, &organization, body, now, limit)
             .await
     }
@@ -151,6 +154,50 @@ impl<S: AuthStore> OrganizationService<S> {
                 "INVITATION_LIMIT_REACHED",
                 "Invitation limit reached",
             ));
+        }
+        if let Some(hook) = &self.team_member_limit {
+            let teams = input::teams(&mut tx, &admitted.org, body.get("teamId"), None).await?;
+            tx.commit().await?;
+            if body
+                .get("teamId")
+                .is_some_and(|v| v.is_array() || v.as_str().is_some_and(|s| !s.is_empty()))
+            {
+                for id in &teams {
+                    let mut read = self.store.begin(false).await?;
+                    read.get(Model::Team, id)
+                        .await?
+                        .filter(|row| row["organizationId"] == admitted.org)
+                        .ok_or_else(|| error("TEAM_NOT_FOUND", "Team not found"))?;
+                    let count = crate::store::find_all(&mut read, Model::TeamMember, "teamId", id)
+                        .await?
+                        .iter()
+                        .filter(|row| row["teamId"] == *id)
+                        .take(100)
+                        .count();
+                    read.commit().await?;
+                    let mut adapter = crate::organizations::team_callbacks::AutocommitAdapter(
+                        self.store.as_ref(),
+                    );
+                    let limit = crate::organizations::team_callbacks::member(
+                        hook.as_ref(),
+                        &admitted.org,
+                        id,
+                        admitted.team_view.as_ref().ok_or_else(failure)?,
+                        &mut adapter,
+                    )
+                    .await?;
+                    if f64::from(u32::try_from(count).map_err(|_| failure())?) >= limit {
+                        return Err(crate::organizations::team_policy::member_limit());
+                    }
+                }
+            }
+            let mut tx = self.store.begin(true).await?;
+            let now = self.time_source.sample(now);
+            let row = json!({"id":uuid::Uuid::new_v4().to_string(),"email":admitted.email,"role":admitted.role,"organizationId":admitted.org,"inviterId":admitted.actor,"status":"pending","expiresAt":timestamp(self.invitation_policy.expiry(now)?),"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
+            tx.insert(Model::Invitation, row.clone()).await?;
+            let completed = complete(row, admitted.inviter, organization);
+            tx.commit().await?;
+            return Ok(completed);
         }
         let teams = input::teams(
             &mut tx,

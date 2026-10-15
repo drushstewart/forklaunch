@@ -1,5 +1,4 @@
 //! Atomic invitation acceptance, team enrollment and active scope.
-use super::super::teams::add_team_member;
 use super::super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
     OrganizationSelection, OrganizationService, Utc, json, missing, text, timestamp, unauthorized,
@@ -74,31 +73,38 @@ impl<S: AuthStore> OrganizationService<S> {
             .filter(|s| !s.is_empty())
             .map_or_else(Vec::new, |s| s.split(',').collect::<Vec<_>>());
         for id in &teams {
-            let team = tx
-                .get(Model::Team, id)
-                .await?
-                .filter(|row| row["organizationId"] == org)
-                .ok_or_else(|| BlueprintError::new("TEAM_NOT_FOUND", "Team not found"))?;
-            add_team_member(
-                &mut tx,
-                team,
-                text(&view.user, "id")?,
-                now,
-                self.team_policy.maximum_members,
-            )
-            .await?;
+            self.enroll_accepted_team(&mut tx, org.as_ref(), id, &view, now)
+                .await?;
         }
+        let now = if self.team_member_limit.is_some() {
+            self.time_source.sample(now)
+        } else {
+            now
+        };
         let member = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":org,"userId":view.user["id"],"role":invitation["role"],"createdAt":timestamp(now)});
         tx.insert(Model::Member, member.clone()).await?;
         let cookie = teams.len() == 1;
-        update_active(
-            &mut tx,
-            &view,
-            Some(&org),
-            if cookie { teams.first().copied() } else { None },
-            now,
-        )
-        .await?;
+        if self.team_member_limit.is_some() {
+            if let Some(mut session) = tx.find_unique(Model::Session, "token", token).await? {
+                session["activeOrganizationId"] = json!(org);
+                if cookie {
+                    session["activeTeamId"] = json!(teams[0]);
+                }
+                session["updatedAt"] = json!(timestamp(self.time_source.sample(now)));
+                tx.replace(Model::Session, session).await?;
+            } else if cookie {
+                return Err(super::super::team_callbacks::failure());
+            }
+        } else {
+            update_active(
+                &mut tx,
+                &view,
+                Some(&org),
+                if cookie { teams.first().copied() } else { None },
+                now,
+            )
+            .await?;
+        }
         tx.commit().await?;
         Ok(OrganizationSelection {
             body: json!({"invitation":invitation,"member":member}),

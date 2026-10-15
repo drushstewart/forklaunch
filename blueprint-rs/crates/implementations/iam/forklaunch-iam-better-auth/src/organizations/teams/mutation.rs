@@ -120,6 +120,36 @@ impl<S: AuthStore> OrganizationService<S> {
             None,
         )
         .await?;
+        if let Some(hook) = &self.team_count_limit {
+            let id = id.to_owned();
+            let count = crate::store::find_all(&mut tx, Model::Team, "organizationId", &id)
+                .await?
+                .iter()
+                .filter(|row| row["organizationId"] == id)
+                .take(100)
+                .count();
+            tx.commit().await?;
+            let mut adapter = super::super::team_callbacks::AutocommitAdapter(self.store.as_ref());
+            let limit =
+                super::super::team_callbacks::count(hook.as_ref(), &id, Some(&view), &mut adapter)
+                    .await?;
+            if limit != 0.0
+                && !limit.is_nan()
+                && f64::from(u32::try_from(count).map_err(|_| super::super::internal())?) >= limit
+            {
+                return Err(BlueprintError::new(
+                    "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_TEAMS",
+                    "You have reached the maximum number of teams",
+                ));
+            }
+            let mut tx = self.store.begin(true).await?;
+            organization(&mut tx, &id).await?;
+            let now = self.time_source.sample(now);
+            let team = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":id,"name":text(body,"name")?,"memberCount":0,"createdAt":timestamp(now),"updatedAt":timestamp(now)});
+            tx.insert(Model::Team, team.clone()).await?;
+            tx.commit().await?;
+            return Ok(public_team(team));
+        }
         if let Some(limit) = self.team_policy.maximum_teams.filter(|limit| *limit != 0) {
             let count = crate::store::find_all(&mut tx, Model::Team, "organizationId", id)
                 .await?

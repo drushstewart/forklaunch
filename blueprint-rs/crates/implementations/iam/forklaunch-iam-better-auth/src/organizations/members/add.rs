@@ -102,6 +102,22 @@ impl<S: AuthStore> OrganizationService<S> {
         }
         let member = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":id,"userId":user["id"],"role":input.role.joined(),"createdAt":super::super::timestamp(now)});
         tx.insert(Model::Member, member.clone()).await?;
+        if let (Some(hook), Some(team)) = (
+            &self.team_member_limit,
+            team.as_ref().map(|row| text(row, "id")).transpose()?,
+        ) {
+            tx.commit().await?;
+            return self
+                .complete_member_with_team_callback(
+                    member,
+                    team,
+                    session.as_ref(),
+                    now,
+                    hook.as_ref(),
+                )
+                .await;
+        }
+
         if let Some(team) = team {
             super::super::teams::add_team_member(
                 &mut tx,
