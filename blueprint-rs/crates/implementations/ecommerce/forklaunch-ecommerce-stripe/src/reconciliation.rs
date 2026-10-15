@@ -164,7 +164,7 @@ fn unpaid_latest_charge(payment: &PaymentDto, charge: Option<&Value>, reference:
             .as_str()
             .is_some_and(|currency| currency.eq_ignore_ascii_case(&payment.currency))
 }
-fn verify_capture(payment: &PaymentDto, intent: &Value) -> BlueprintResult<VerifiedCapture> {
+pub(crate) fn verify_capture(payment: &PaymentDto, intent: &Value) -> BlueprintResult<VerifiedCapture> {
     let reference = payment
         .provider_ref
         .as_deref()

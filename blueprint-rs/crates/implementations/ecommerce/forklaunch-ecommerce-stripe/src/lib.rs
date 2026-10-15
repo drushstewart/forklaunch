@@ -7,6 +7,8 @@ pub mod context;
 pub mod reconciliation;
 #[cfg(feature = "postgres")]
 pub mod scoped_cancellation;
+#[cfg(feature = "postgres")]
+pub mod scoped_capture;
 pub mod tax;
 pub mod webhook;
 use forklaunch_blueprint_core::{

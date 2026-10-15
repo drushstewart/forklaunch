@@ -26,3 +26,26 @@ Generate and retain a nonnil receipt UUID before invocation. `Recorded` confirms
 `inspect_bound_connected_payment_intent` and `reconcile_bound_connected_cancelled_order_payment` require a configured Connect account and share the direct counterparts' exact durable binding, evidence, generation, snapshot, deadline and transaction/receipt checks. The direct APIs still reject Connect; neither profile falls back to the other. Account/mode expectations remain trusted configuration and administrative bindings, not caller fields or key-prefix inference. The connected repair still requires explicit null latest charge, zero received/capturable amounts, a cancelled local order, and no captured/succeeded local history. No provider POST or reference clearing is added.
 
 This is the repository's existing Accounts-v1/PaymentIntents-v1 compatibility profile. Stripe documents [per-request connected-account authentication](https://docs.stripe.com/connect/authentication) and [connected account balance retrieval](https://docs.stripe.com/connect/account-balances#check-a-connected-accounts-balance); the pinned official SDK's `accounts.retrieveCurrent` sends `/v1/account`. The owned SDK/native fixture checks both direct and connected triples, including each header. Local fixtures are not live Stripe validation, and Accounts-v2 migration is separate work.
+
+
+## Interrupted confirmation after full capture
+
+With `postgres`, `reconcile_bound_captured_payment(scope, payment_id, actor,
+receipt_id)` adopts an already fully captured direct-account payment. Retain the
+receipt UUID before calling. The method authenticates account/mode and reads the
+exact PaymentIntent with expanded Charge/balance transaction. Immutable local
+payment, noncancelled order version and administrative binding generation must
+match through locked publication. Full captured/received amount, canonical
+currency, paid/captured flags and zero refunded amount/no dispute are mandatory.
+The initial profile admits only same-currency non-FX balance evidence with exact
+charge source and pending/available bookkeeping state; legitimate FX, unexpanded
+or ambiguous evidence require manual review. Bookkeeping is not settlement or a
+lock against later remote refunds/disputes.
+
+Apply additive ecommerce migration11. Payment status becomes succeeded with the
+existing reconciliation audit and a tenant-scoped durable receipt in one
+transaction. The order and provider references are retained. No provider POST,
+capture, refund or retry occurs. Unknown COMMIT outcomes require
+`scoped_capture_receipt(receipt_id)` inspection; recorded-but-expired observations
+return `RecordedEvidenceNoLongerCurrent`. Connect and managed capture adoption
+remain separate. No default HTTP/MCP route is added.

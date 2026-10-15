@@ -309,6 +309,7 @@ on:
       - 'cli/tests/rust_ecommerce_stripe_parity.mjs'
       - 'cli/tests/rust_ecommerce_resume_guard.mjs'
       - 'cli/tests/rust_ecommerce_direct_context.mjs'
+      - 'cli/tests/rust_ecommerce_scoped_capture.mjs'
       - 'cli/tests/rust_ecommerce_paypal_parity.mjs'
       - 'cli/tests/rust_ecommerce_pricing_parity.mjs'
       - 'cli/tests/rust_ecommerce_import_parity.mjs'
@@ -639,6 +640,7 @@ on:
       - 'cli/tests/rust_ecommerce_stripe_parity.mjs'
       - 'cli/tests/rust_ecommerce_resume_guard.mjs'
       - 'cli/tests/rust_ecommerce_direct_context.mjs'
+      - 'cli/tests/rust_ecommerce_scoped_capture.mjs'
       - 'cli/tests/rust_ecommerce_paypal_parity.mjs'
       - 'cli/tests/rust_ecommerce_pricing_parity.mjs'
       - 'cli/tests/rust_ecommerce_import_parity.mjs'
@@ -1545,6 +1547,12 @@ jobs:
       - run: node cli/tests/rust_ecommerce_direct_context.mjs
         env:
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
+      - run: node cli/tests/rust_ecommerce_scoped_capture.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_ORM_DEPENDENCIES: ${{ runner.temp }}/fl-rust-orm
+          STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_ecommerce_paypal_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -1593,6 +1601,7 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test payment_resume -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test bound_reads -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test scoped_cancellation -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test scoped_capture -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test reconciliation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-axum --all-features --test http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-messaging-base --all-features --test postgres_sms -- --ignored

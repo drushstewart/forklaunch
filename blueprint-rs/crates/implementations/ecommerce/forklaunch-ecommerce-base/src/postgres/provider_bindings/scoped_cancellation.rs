@@ -244,7 +244,7 @@ type BindingRow = (
     String,
 );
 
-async fn locked_binding_matches(
+pub(super) async fn locked_binding_matches(
     tx: &mut Transaction<'_, Postgres>,
     binding: &PaymentProviderBinding,
     lock: bool,

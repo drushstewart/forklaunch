@@ -18,8 +18,9 @@ mod payment_resume;
 mod payment_review;
 mod provider_bindings;
 pub use provider_bindings::{
-    CancelledOrderPaymentSnapshot, PaymentProviderBinding, PaymentProviderScope,
-    ScopedCancellationOutcome, ScopedCancellationReceipt,
+    CancelledOrderPaymentSnapshot, CapturedPaymentSnapshot, PaymentProviderBinding,
+    PaymentProviderScope, ScopedCancellationOutcome, ScopedCancellationReceipt,
+    ScopedCaptureOutcome, ScopedCaptureReceipt,
 };
 mod reconciliation;
 mod retention;

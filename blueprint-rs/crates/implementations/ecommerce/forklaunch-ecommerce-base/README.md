@@ -13,3 +13,15 @@ Administrative operators need `SELECT, INSERT, DELETE` on `fl_ecommerce.payment_
 Migration 10 adds `scoped_payment_cancellation_receipts` without changing previous migrations, old cancellation timestamps, ciphertext, or administrative bindings. The table uses tenant SELECT/INSERT-only RLS; it retains the binding generation, account/mode/deployment, order version, terminal evidence and actor/correlation alongside the existing cancellation audit. It has no public HTTP endpoint. Trusted operator credentials need SELECT/UPDATE on records and provider bindings for row locks, UPDATE on the payment record, SELECT on capture history, and INSERT on both cancellation audit/receipt tables (plus SELECT on receipts for outcome inspection). The normal read-only inspection profile requires no added write grants. The store API accepts already verified evidence and a freshness callback from trusted code; it does not independently contact Stripe or grant ownership. Lock order is payment → order → binding, matching provisioning; revoke only locks binding. Do not introduce callers that acquire those locks in reverse order.
 
 `record_scoped_cancelled_order_cancellation` compares the exact sealed payment/order/binding snapshot and retains references while marking only the payment failed. Ordinary validation/audit failures explicitly await rollback. COMMIT transport errors or task cancellation may still be ambiguous, so retain the supplied receipt UUID and use the tenant-scoped receipt query. A successful commit followed by deadline expiry is returned as `RecordedEvidenceNoLongerCurrent`, not as a rollback. No payment/order data or financial operation can be replayed from the receipt.
+
+
+Migration11 adds tenant SELECT/INSERT-only scoped capture receipts linked to
+existing reconciliation audits. `captured_payment_snapshot` selects no order
+address; `record_scoped_capture` locks payment → order → binding and compares
+exact payment body/order xmin/binding generation before atomic succeeded status,
+audit and receipt. Retained cancellation history blocks adoption even if order
+status was restored. This trusted store API accepts authenticated evidence from
+the operator adapter; it makes no provider request or settlement guarantee.
+Operators need existing record/binding lock/update grants, capture/cancellation
+history SELECT and reconciliation-audit/receipt INSERT, plus receipt SELECT for
+ambiguous COMMIT inspection. No default application grant is widened.

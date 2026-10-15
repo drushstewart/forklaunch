@@ -8837,3 +8837,37 @@ retained at /private/tmp/fl-oct14-current-package-sources.log. This is a current
 working-tree source-list proof including coherent active drafts, not another
 immutable archive installation/startup receipt. Earlier d835 receipts retain
 their exact source/package hashes and scope.
+
+
+## Scoped adoption after interrupted captured-payment confirmation (2026-10-14)
+
+Direct-only operator recovery authenticates account/mode and exact expanded
+PaymentIntent→Charge→balance evidence, then publishes against sealed local
+payment/noncancelled order xmin/administrative binding generation. Full amount,
+canonical currency, captured/paid, zero refunded amount and no dispute are
+required. The explicit non-FX balance subset admits pending/available bookkeeping
+with exact charge source, not settled/available funds or protection against later
+refunds/disputes. Metadata is consistency only; ownership comes from the trusted
+binding. No provider financial write, order transition or reference clearing.
+
+Additive migration11 retains tenant SELECT/INSERT-only receipts; payment→order→
+binding locks match provisioning/cancellation. Exact CAS, retained cancellation
+history, audit+receipt+payment atomicity, post-await/preCOMMIT freshness and
+unknown COMMIT inspection preserve authority. Recorded evidence expiry after
+COMMIT is a typed committed outcome. Connect/managed adoption and ambiguous
+provider histories remain open. Default routes and legacy reconciliation retain
+their behavior.
+
+Initial compile, restricted PG matrix5.60s, native Stripe unit4, strict base/Stripe
+all-feature/all-target Clippy6.79s, existing direct/Connect cancellation PG2 in
+5.47s and actual configured TS confirmation+official Stripe22.6.2 GET wire pass.
+The TS confirmation oracle executes repository service/mapper code over an owned
+transaction boundary, not real ORM database confirmation; its header was corrected
+and rerun by parent (/private/tmp/fl-scoped-capture-ts-sdk-root.log). Native PG
+covers order-xmin/CAS/bindingABA, tenant/identity, cancellation history, deadline
+waits, concurrent single publication, audit/receipt-collision rollback and actual
+lost COMMIT ack. Existing records_check denies raw body-ID tampering; initial
+fixture setup failure retained and strengthened to prove denial. Owned roles/
+records0. Final10 hashes /private/tmp/fl-scoped-capture-source.json; logs
+/private/tmp/fl-scoped-capture-{initial-check,ts-sdk,pg-second,unit,clippy,
+cancellation-regression,cleanup}.log. CI adds SDK/source oracle and isolated PG.

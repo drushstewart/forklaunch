@@ -1,11 +1,13 @@
 //! Durable administrative scope assertions; never provider ownership proof.
 mod scoped_cancellation;
+mod scoped_capture;
 use super::{PostgresEcommerceStore, storage_error};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use forklaunch_ecommerce_interface::PaymentDto;
 pub use scoped_cancellation::{
     CancelledOrderPaymentSnapshot, ScopedCancellationOutcome, ScopedCancellationReceipt,
 };
+pub use scoped_capture::{CapturedPaymentSnapshot, ScopedCaptureOutcome, ScopedCaptureReceipt};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
