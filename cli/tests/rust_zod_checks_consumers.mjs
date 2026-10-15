@@ -28,6 +28,8 @@ const source = z
     unknownPayload: validator.unknown,
     typedPayload: validator.type(),
     text: z.string().length(2),
+    floatText: z.string().min(1.5).max(2.5),
+    nanText: z.string().length(NaN),
     dispatch: z.discriminatedUnion("tag", [z.object({tag:z.literal("a").default("a")}),z.object({tag:z.literal("b")})]),
     keyed: z.record(z.string().min(2).max(3), z.string()),
     cardinality: z.array(z.string()).min(1.5).max(2.5).length(NaN),
@@ -68,6 +70,8 @@ const cases = [
   { text: "😀", number: 0.1 + 0.2 },
 ];
 const validFormats = {
+  floatText: "😀",
+  nanText: "anything",
   nullableBound: null,
   finiteBound: 0,
   dispatch: {tag:"a"},
@@ -94,6 +98,9 @@ const validFormats = {
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
+  {floatText:"a"},
+  {floatText:"a😀"},
+  {nanText:""},
   {nullableBound:2},
   {finiteBound:-1},
   {finiteBound:-1.5},

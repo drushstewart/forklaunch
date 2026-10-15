@@ -391,9 +391,9 @@ assert.throws(
   () => validator.openapi2020(z.string().trim().min(3), { zodChecks: true }),
   /transformations/,
 );
-assert.throws(
-  () => validator.openapi2020(z.string().min(-1), { zodChecks: true }),
-  /nonnegative/,
+assert.deepEqual(
+  validator.openapi2020(z.string().min(-1), { zodChecks: true })["x-forklaunch-zod-checks"],
+  { version: 1, utf16MinLengths: [-1] },
 );
 assert.throws(
   () =>

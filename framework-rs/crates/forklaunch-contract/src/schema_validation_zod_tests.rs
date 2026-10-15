@@ -136,3 +136,54 @@ fn array_cardinalities_preserve_ieee_and_reject_bad_or_excess_rules() {
     }
     assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"arrayMinItems":vec![0;5001],"arrayMaxItems":vec![2;5000]}})).is_err());
 }
+
+#[test]
+fn extended_utf16_capability_tracks_schema_positions_and_refs() {
+    let assertion = json!({"x-forklaunch-zod-checks":{"version":1,"utf16MinLengths":[1.5],"utf16MaxLengths":[2.5,"NaN"]}});
+    for schema in [
+        assertion.clone(),
+        json!({"properties":{"text":assertion}}),
+        json!({"$defs":{"Text":assertion},"$ref":"#/$defs/Text"}),
+        json!({"default":assertion,"$ref":"#/default"}),
+    ] {
+        assert_eq!(compile(&schema).is_ok(), cfg!(feature = "zod-checks"));
+    }
+    assert!(compile(&json!({"const":assertion})).unwrap()(&assertion).is_ok());
+}
+
+#[cfg(feature = "zod-checks")]
+#[test]
+fn extended_utf16_ieee_bounds_preserve_legacy_admission_and_budget() {
+    let validate = compile(&json!({"x-forklaunch-zod-checks":{"version":1,"utf16MinLengths":[1.5,"NaN"],"utf16MaxLengths":[2.5]}})).unwrap();
+    for (value, allowed) in [
+        (json!("a"), false),
+        (json!("😀"), true),
+        (json!("a😀"), false),
+        (json!(null), true),
+    ] {
+        assert_eq!(validate(&value).is_ok(), allowed);
+    }
+    for key in ["utf16MinLengths", "utf16MaxLengths"] {
+        for invalid in [
+            json!(null),
+            json!(0),
+            json!([null]),
+            json!([true]),
+            json!(["nan"]),
+            json!(vec![0; 10001]),
+        ] {
+            assert!(
+                compile(&json!({"x-forklaunch-zod-checks":{"version":1,key:invalid}})).is_err()
+            );
+        }
+    }
+    for key in ["utf16MinLength", "utf16MaxLength"] {
+        for invalid in [json!(-1), json!(0.5), json!("Infinity")] {
+            assert!(
+                compile(&json!({"x-forklaunch-zod-checks":{"version":1,key:invalid}})).is_err()
+            );
+        }
+    }
+    assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"utf16MinLengths":vec![0;5001],"arrayMaxItems":vec![2;5000]}})).is_err());
+    assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"utf16MinLengths":vec![0;5000],"arrayMaxItems":vec![2;5000]}})).is_ok());
+}

@@ -108,6 +108,8 @@ interface ZodChecks {
   version: 1;
   arrayMinItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
   arrayMaxItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
+  utf16MinLengths?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
+  utf16MaxLengths?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6' | 'emoji')[];
@@ -126,6 +128,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
       (key) =>
         ![
           'version',
+          'utf16MinLengths',
+          'utf16MaxLengths',
           'utf16MinLength',
           'utf16MaxLength',
           'multipleOf',
@@ -148,7 +152,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     )
       throw new Error('Invalid Zod UTF-16 bound');
   }
-  for (const key of ['multipleOf', 'arrayMinItems', 'arrayMaxItems']) {
+  for (const key of ['multipleOf', 'arrayMinItems', 'arrayMaxItems', 'utf16MinLengths', 'utf16MaxLengths']) {
     if (Object.prototype.hasOwnProperty.call(value,key)) {
       const rules=value[key];
       if (!Array.isArray(rules) || rules.length>10000 || rules.some(rule=>
@@ -180,6 +184,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
        value.jwtAlgorithms.some((algorithm) => algorithm !== null && typeof algorithm !== 'string')))
     throw new Error('Invalid Zod JWT algorithms');
   if (
+    (Array.isArray(value.utf16MinLengths) ? value.utf16MinLengths.length : 0) +
+    (Array.isArray(value.utf16MaxLengths) ? value.utf16MaxLengths.length : 0) +
     (Array.isArray(value.arrayMinItems) ? value.arrayMinItems.length : 0) +
     (Array.isArray(value.arrayMaxItems) ? value.arrayMaxItems.length : 0) +
     (Array.isArray(value.jwtAlgorithms) ? value.jwtAlgorithms.length : 0) +
@@ -197,6 +203,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
   const divisors = profile.multipleOf?.map((divisor) =>
     typeof divisor === 'number' ? divisor : Number(divisor)
   );
+  const utf16Minimum = profile.utf16MinLengths?.map(bound=>typeof bound==='number'?bound:Number(bound));
+  const utf16Maximum = profile.utf16MaxLengths?.map(bound=>typeof bound==='number'?bound:Number(bound));
   const arrayMinimum = profile.arrayMinItems?.map(bound=>typeof bound==='number'?bound:Number(bound));
   const arrayMaximum = profile.arrayMaxItems?.map(bound=>typeof bound==='number'?bound:Number(bound));
   const formatChecks = profile.formats?.slice();
@@ -248,7 +256,9 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
 
     if (
       typeof data === 'string' &&
-      ((minimum !== undefined && data.length < minimum) ||
+      ((utf16Minimum?.some(bound=>data.length<bound)) ||
+        (utf16Maximum?.some(bound=>data.length>bound)) ||
+        (minimum !== undefined && data.length < minimum) ||
         (maximum !== undefined && data.length > maximum))
     )
       return false;

@@ -231,8 +231,8 @@ function parseString({
     if (exact?.dateTimes?.length && baseSchema.format === 'date-time') delete baseSchema.format;
     if (exact?.formats?.some(format => format !== 'email' || !hasFactoryEmailGrammar(zodRef)) && ['email', 'uuid', 'uri', 'cuid', factoryUriFormat].includes(baseSchema.format as string)) delete baseSchema.format;
     if (exact?.formats?.includes('email') && hasFactoryEmailGrammar(zodRef)) delete baseSchema.pattern;
-    if (exact?.utf16MinLength !== undefined) delete baseSchema.minLength;
-    if (exact?.utf16MaxLength !== undefined) delete baseSchema.maxLength;
+    if (exact?.utf16MinLength !== undefined || exact?.utf16MinLengths !== undefined) delete baseSchema.minLength;
+    if (exact?.utf16MaxLength !== undefined || exact?.utf16MaxLengths !== undefined) delete baseSchema.maxLength;
     if (exact) Object.assign(baseSchema, { [zodChecksKeyword]: exact });
   }
   if (regexProfile) Object.assign(baseSchema, { [zodRegexKeyword]: regexProfile });

@@ -7,6 +7,8 @@ use serde_json::{Map, Value};
 
 pub(super) const KEYWORD: &str = "x-forklaunch-zod-checks";
 struct Checks {
+    utf16_minimum: Vec<ZodCardinality>,
+    utf16_maximum: Vec<ZodCardinality>,
     array_minimum: Vec<ZodCardinality>,
     array_maximum: Vec<ZodCardinality>,
     minimum: Option<u64>,
@@ -239,6 +241,8 @@ pub(super) fn compile<'a>(
             !matches!(
                 key.as_str(),
                 "version"
+                    | "utf16MinLengths"
+                    | "utf16MaxLengths"
                     | "utf16MinLength"
                     | "utf16MaxLength"
                     | "multipleOf"
@@ -253,6 +257,24 @@ pub(super) fn compile<'a>(
     {
         return Err(invalid());
     }
+    // Validate aggregate rule counts before allocating any per-rule vectors.
+    let mut count = 0usize;
+    for key in [
+        "utf16MinLengths",
+        "utf16MaxLengths",
+        "formats",
+        "multipleOf",
+        "arrayMinItems",
+        "arrayMaxItems",
+        "timePrecisions",
+        "dateTimes",
+        "jwtAlgorithms",
+    ] {
+        count = count
+            .checked_add(raw_rules(fields.get(key))?.map_or(0, Vec::len))
+            .filter(|count| *count <= 10_000)
+            .ok_or_else(invalid)?;
+    }
     let jwt_algorithms = jwt_algorithms(fields.get("jwtAlgorithms"))?;
     let date_times = date_times(fields.get("dateTimes"))?;
     let time_precisions = time_precisions(fields.get("timePrecisions"))?;
@@ -262,17 +284,8 @@ pub(super) fn compile<'a>(
     let raw_divisors = raw_rules(fields.get("multipleOf"))?;
     let raw_minimum = raw_rules(fields.get("arrayMinItems"))?;
     let raw_maximum = raw_rules(fields.get("arrayMaxItems"))?;
-    if raw_formats.map_or(0, Vec::len)
-        + raw_divisors.map_or(0, Vec::len)
-        + raw_minimum.map_or(0, Vec::len)
-        + raw_maximum.map_or(0, Vec::len)
-        + time_precisions.len()
-        + date_times.len()
-        + jwt_algorithms.len()
-        > 10_000
-    {
-        return Err(invalid());
-    }
+    let utf16_minimum = cardinalities(raw_rules(fields.get("utf16MinLengths"))?)?;
+    let utf16_maximum = cardinalities(raw_rules(fields.get("utf16MaxLengths"))?)?;
     let formats = formats(raw_formats)?;
     let divisors = raw_divisors
         .into_iter()
@@ -282,6 +295,8 @@ pub(super) fn compile<'a>(
     let array_minimum = cardinalities(raw_minimum)?;
     let array_maximum = cardinalities(raw_maximum)?;
     Ok(Box::new(Checks {
+        utf16_minimum,
+        utf16_maximum,
         array_minimum,
         array_maximum,
         minimum,
@@ -336,7 +351,15 @@ impl<'i> Keyword<'i> for Checks {
                 return false;
             }
             let length = value.encode_utf16().count() as u64;
-            if self.minimum.is_some_and(|minimum| length < minimum)
+            if !self
+                .utf16_minimum
+                .iter()
+                .all(|bound| bound.accepts_minimum(length))
+                || !self
+                    .utf16_maximum
+                    .iter()
+                    .all(|bound| bound.accepts_maximum(length))
+                || self.minimum.is_some_and(|minimum| length < minimum)
                 || self.maximum.is_some_and(|maximum| length > maximum)
             {
                 return false;

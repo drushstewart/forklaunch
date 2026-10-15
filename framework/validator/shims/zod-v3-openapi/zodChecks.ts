@@ -9,6 +9,8 @@ interface Checks {
   version: 1;
   arrayMinItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
   arrayMaxItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
+  utf16MinLengths?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
+  utf16MaxLengths?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6' | 'emoji')[];
@@ -108,6 +110,24 @@ export function projectStringChecks(
       'Zod check projection cannot combine string transformations with length checks'
     );
   const result: Checks = formatResult ?? { version: 1 };
+  const active = bounds.filter((check) =>
+    check.kind === 'length' ||
+    (check.kind === 'min' ? !minOverride : !maxOverride)
+  );
+  if (active.some((check) => !Number.isSafeInteger(check.value) || check.value < 0)) {
+    const minimumCount = minOverride ? 0 : bounds.filter(check => check.kind !== 'max').length;
+    const maximumCount = maxOverride ? 0 : bounds.filter(check => check.kind !== 'min').length;
+    if (minimumCount + maximumCount + formats.length + timePrecisions.length +
+        dateTimes.length + jwtAlgorithms.length > maximumRules)
+      throw new Error('Zod check profile exceeds 10000 rules');
+    const encode = (value: number): number | 'NaN' | 'Infinity' | '-Infinity' => {
+      if (typeof value !== 'number') throw new Error('Zod string length bounds must be numbers');
+      return Number.isNaN(value) ? 'NaN' : value === Infinity ? 'Infinity' : value === -Infinity ? '-Infinity' : value;
+    };
+    if (minimumCount) result.utf16MinLengths = bounds.filter(check => check.kind !== 'max').map(check => encode(check.value));
+    if (maximumCount) result.utf16MaxLengths = bounds.filter(check => check.kind !== 'min').map(check => encode(check.value));
+    return result;
+  }
   for (const check of bounds) {
     if (
       (check.kind === 'min' && minOverride) ||
