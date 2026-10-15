@@ -332,6 +332,41 @@ function parseNumber({
     }
   }
   if (zodChecks) {
+    // In the admitted finite-JSON number domain, nonfinite registrations can
+    // be represented exactly without serializing NaN/Infinity as null bounds.
+    delete baseSchema.minimum;
+    delete baseSchema.maximum;
+    delete baseSchema.exclusiveMinimum;
+    delete baseSchema.exclusiveMaximum;
+    let impossible = false;
+    for (const check of bounds) {
+      const keyword = check.kind === 'min'
+        ? (check.inclusive ? 'minimum' : 'exclusiveMinimum')
+        : (check.inclusive ? 'maximum' : 'exclusiveMaximum');
+      if (schemas.some((metadata) =>
+        Object.prototype.hasOwnProperty.call(metadata, keyword)
+      )) continue;
+      if (typeof check.value !== 'number')
+        throw new Error('Zod numeric bounds must be numbers');
+      if (Number.isNaN(check.value)) continue;
+      if (!Number.isFinite(check.value)) {
+        impossible ||= check.kind === 'min'
+          ? check.value === Infinity
+          : check.value === -Infinity;
+        continue;
+      }
+      const previous = baseSchema[keyword];
+      baseSchema[keyword] = previous === undefined
+        ? check.value
+        : check.kind === 'min'
+          ? Math.max(previous, check.value)
+          : Math.min(previous, check.value);
+    }
+    // Keep impossible source bounds conjunctive with unrelated annotations.
+    // Explicit annotations for the original bound keyword were handled above.
+    // Like ordinary numeric keywords, this assertion is inert for other
+    // types (notably the general exporter's merged nullable type).
+    if (impossible) baseSchema.allOf = [{ not: { type: 'number' } }];
     if (exact) {
       delete baseSchema.multipleOf;
       Object.assign(baseSchema, { [zodChecksKeyword]: exact });

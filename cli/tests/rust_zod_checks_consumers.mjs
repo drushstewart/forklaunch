@@ -32,6 +32,9 @@ const source = z
     keyed: z.record(z.string().min(2).max(3), z.string()),
     cardinality: z.array(z.string()).min(1.5).max(2.5).length(NaN),
     number: z.number().multipleOf(0.1),
+    finiteBound: z.number().min(NaN).min(-1).gt(-2).max(Infinity),
+    impossibleBound: z.number().min(Infinity).min(-1).optional(),
+    nullableBound: z.number().max(-Infinity).nullable(),
     email: z.string().email().email(),
     uuid: z.string().uuid(),
     uri: z.string().url().url(),
@@ -65,6 +68,8 @@ const cases = [
   { text: "😀", number: 0.1 + 0.2 },
 ];
 const validFormats = {
+  nullableBound: null,
+  finiteBound: 0,
   dispatch: {tag:"a"},
   keyed: {"😀": "value", "ab": "value"},
   cardinality:["a","b"],
@@ -89,6 +94,10 @@ const validFormats = {
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
+  {nullableBound:2},
+  {finiteBound:-1},
+  {finiteBound:-1.5},
+  {impossibleBound:0},
   {dispatch:{}},
   {dispatch:{tag:"b"}},
   {dispatch:{tag:"unknown"}},
