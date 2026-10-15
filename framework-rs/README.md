@@ -1325,3 +1325,8 @@ Date/time, IP-related and other raw Zod formats remain under parity development.
 The explicit `zodChecks` profile also preserves raw Zod `.date()` assertions: exact
 four-digit Gregorian dates, including year zero and century leap-year rules. This
 is string validation; date/time coercion and other time formats remain independent.
+
+Raw Zod `.duration()` also survives explicit `zodChecks` export: signed ordered
+components and terminal dot/comma fractions retain lexical acceptance. Native
+validation scans bytes without numeric conversion or regex backtracking. No
+normalization, elapsed-time arithmetic or general ISO duration claim is implied.

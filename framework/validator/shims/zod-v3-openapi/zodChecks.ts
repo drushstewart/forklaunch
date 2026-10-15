@@ -9,7 +9,7 @@ interface Checks {
   version: 1;
   utf16MinLength?: number;
   utf16MaxLength?: number;
-  formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date')[];
+  formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration')[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
 }
 function admit(checks: readonly unknown[], metadata: readonly Metadata[]) {
@@ -27,7 +27,7 @@ export function projectStringChecks(
   const formats = checks
     .filter(
       (check) =>
-        ['email', 'uuid', 'url', 'cuid', 'cuid2', 'ulid', 'nanoid', 'base64', 'base64url', 'date'].includes(check.kind) &&
+        ['email', 'uuid', 'url', 'cuid', 'cuid2', 'ulid', 'nanoid', 'base64', 'base64url', 'date', 'duration'].includes(check.kind) &&
         !metadata.some((value) =>
           own(
             value,

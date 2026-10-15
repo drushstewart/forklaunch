@@ -10896,3 +10896,23 @@ before final live/artifact reruns. Final 12-source manifest:
 `/private/tmp/fl-subscription-creation-route-{live-final2,unit,artifacts-final,clippy-final,minimal}.log`.
 Default 66 routes remain unchanged. Managed creation, broader mutations and the
 full billing gate remain open; checklist stays 660/682 (96.8%).
+
+
+### 2026-10-15 — Raw Zod duration assertion
+
+Explicit `zodChecks` now preserves raw `.duration()` across ordinary/pure exports,
+owned/generated AJV and native validation. Native parsing performs a linear byte
+scan with no numeric conversion or backtracking: optional overall/component signs,
+ordered date/time units, integer components and terminal dot/comma fractions match
+the pinned actual Zod grammar. Metadata overrides and transform rejection remain;
+default export is unchanged. This is lexical validation, not duration arithmetic.
+
+Permanent `rust_zod_duration_checks.mjs` passes 34,626 actual Zod/AJV comparisons
+and 34,626 native observations, including component permutations, signs, fractions,
+control/Unicode inputs, deterministic mutations, nested schemas, overrides and
+million-digit inputs. Live owned HTTP responses pass17, generated TS/Rust socket
+checks pass68 with strict source compilation and feature-off rejection. Strict
+all-target/all-feature Clippy for five affected crates, configured TypeScript all
+12 roots/623 exports, and public API inventory623/1703 pass. Logs:
+`/private/tmp/fl-zod-duration-{js,native,consumers,types,clippy}.log`.
+Time/datetime options, regex and other format gaps remain; 660/682 unchanged.

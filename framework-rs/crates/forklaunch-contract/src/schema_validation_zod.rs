@@ -22,6 +22,7 @@ enum Format {
     Base64,
     Base64Url,
     Date,
+    Duration,
     #[cfg(feature = "zod-uri")]
     Uri,
 }
@@ -36,6 +37,7 @@ impl Format {
             Self::Nanoid => forklaunch_common::zod_string_format::nanoid(value),
             Self::Base64 => forklaunch_common::zod_string_format::base64(value),
             Self::Base64Url => forklaunch_common::zod_string_format::base64url(value),
+            Self::Duration => forklaunch_common::zod_string_format::duration(value),
             Self::Date => forklaunch_common::zod_string_format::date(value),
             #[cfg(feature = "zod-uri")]
             Self::Uri => ada_url::Url::can_parse(value, None),
@@ -112,6 +114,7 @@ pub(super) fn compile<'a>(
             Some("nanoid") => Format::Nanoid,
             Some("base64") => Format::Base64,
             Some("base64url") => Format::Base64Url,
+            Some("duration") => Format::Duration,
             Some("date") => Format::Date,
             #[cfg(feature = "zod-uri")]
             Some("uri") => Format::Uri,

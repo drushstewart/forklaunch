@@ -158,3 +158,67 @@ pub fn date(value: &str) -> bool {
     };
     (1..=days).contains(&pair(8))
 }
+
+/// Match Zod v3 duration syntax without numeric conversion or backtracking.
+/// Components may carry independent signs; a fraction must end the duration.
+#[must_use]
+pub fn duration(value: &str) -> bool {
+    let mut input = value.as_bytes();
+    if matches!(input.first(), Some(b'+' | b'-')) {
+        input = &input[1..];
+    }
+    let Some(mut input) = input.strip_prefix(b"P") else {
+        return false;
+    };
+    if input.is_empty() {
+        return false;
+    }
+    let mut time = false;
+    let mut previous = 0;
+    while !input.is_empty() {
+        if input[0] == b'T' {
+            if time {
+                return false;
+            }
+            time = true;
+            previous = 0;
+            input = &input[1..];
+            if input.is_empty() {
+                return false;
+            }
+        }
+        if matches!(input.first(), Some(b'+' | b'-')) {
+            input = &input[1..];
+        }
+        let digits = input.iter().take_while(|b| b.is_ascii_digit()).count();
+        if digits == 0 {
+            return false;
+        }
+        input = &input[digits..];
+        let fraction = matches!(input.first(), Some(b'.' | b','));
+        if fraction {
+            input = &input[1..];
+            let digits = input.iter().take_while(|b| b.is_ascii_digit()).count();
+            if digits == 0 {
+                return false;
+            }
+            input = &input[digits..];
+        }
+        let Some((&unit, rest)) = input.split_first() else {
+            return false;
+        };
+        let order = match (time, unit) {
+            (false, b'Y') | (true, b'H') => 1,
+            (_, b'M') => 2,
+            (false, b'W') | (true, b'S') => 3,
+            (false, b'D') => 4,
+            _ => return false,
+        };
+        if order <= previous || (fraction && !rest.is_empty()) {
+            return false;
+        }
+        previous = order;
+        input = rest;
+    }
+    true
+}

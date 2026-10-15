@@ -2709,3 +2709,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Raw Zod date assertions now pass 70,000 actual/AJV plus 70,000 native comparisons, 16 HTTP/64 socket checks, strict Clippy and configured TypeScript/inventory. Regex and remaining formats stay open; 660/682 unchanged.
 
 - 2026-10-15: Subscription creation HTTP/MCP/both SDKs pass real restricted PostgreSQL role separation, 12 unit tests, 136 rendered artifact cases and strict full/minimal Clippy. Explicit service tenant authority and separate publisher required; broader billing remains open, 660/682 unchanged.
+
+- 2026-10-15: Raw duration assertions validated with34,626 actual/AJV and34,626 native observations,17 HTTP/68 socket checks, strict Clippy and configured types/inventory. Other string formats and regex remain open;660/682 unchanged.

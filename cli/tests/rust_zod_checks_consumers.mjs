@@ -37,6 +37,7 @@ const source = z
     base64: z.string().base64(),
     base64url: z.string().base64url(),
     date: z.string().date(),
+    duration: z.string().duration(),
   })
   .strict();
 const schema = validator.openapi2020(source, {
@@ -61,6 +62,7 @@ const validFormats = {
   base64: "AB==",
   base64url: "_w",
   date: "0000-02-29",
+  duration: "-P1Y2DT3H4M5,5S",
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
@@ -75,6 +77,7 @@ for (const patch of [
   { base64: "AA" },
   { base64url: "/w==" },
   { date: "1900-02-29" },
+  { duration: "P1.5Y1M" },
 ])
   cases.push({ text: "😀", number: 0.3, ...validFormats, ...patch });
 assert.equal(
