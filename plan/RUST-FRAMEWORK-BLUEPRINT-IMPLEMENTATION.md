@@ -3274,3 +3274,25 @@ after clean status,8 source hashes and zero owned processes were verified;
 logical bytes. Branch/proof remain. Earlier discriminator cleanup likewise retains
 `/private/tmp/fl-discriminator-input-cleanup.json` (54,704 KiB logical). Broader
 route/error gates remain open; checklist660/682 unchanged.
+
+
+### 2026-10-15 — Exact opt-in numeric bound exports
+
+The zodChecks exporter now retains all finite inclusive/exclusive numeric bounds,
+treats NaN comparisons as inert and represents impossible finite-number domains
+without serializing nonfinite schema values as null. Impossible numeric assertions
+remain inert for non-number nullable branches. Baseline180 export hashes and own
+bound annotation overrides remain unchanged. No native sources/dependencies/locks
+changed.
+
+Final12060 comparisons across670 schemas pass in both native number modes;
+48 live SDK HTTP responses and192 generated TS/Rust codec/type-admission checks,
+strict12-root/625-export types,153972 prior bounds and2220 prior checks pass.
+An expanded wrapper audit caught an initial unconditional-false nullable bug;
+the retained failing proof precedes corrected native/consumer reruns. Final source
+was unchanged after validation. CI runs the oracle in both number modes.
+
+All3 hashes match `/private/tmp/fl-number-bound-export-source.json`, SHA256
+`9c8133dda255857a90617deb47e80b5b079bc9a7cb62865318c56066e95f1854`.
+Detailed receipt/log prefix: `/private/tmp/fl-number-bound-export-`. Broader
+schema/emitter/validation gates remain open; checklist660/682 unchanged.
