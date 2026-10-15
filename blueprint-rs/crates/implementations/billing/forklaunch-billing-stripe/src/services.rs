@@ -65,6 +65,7 @@ pub struct StripeBillingService<S> {
     base: BaseBillingService<S>,
     client: StripeBillingClient,
     configured_subscription_updates: bool,
+    configured_cached_reads: bool,
 }
 impl<S: BillingStore> StripeBillingService<S> {
     #[must_use]
@@ -73,6 +74,7 @@ impl<S: BillingStore> StripeBillingService<S> {
             base,
             client,
             configured_subscription_updates: false,
+            configured_cached_reads: false,
         }
     }
     /// Applies the generated application's configured Subscription mapper owner preflight.
@@ -80,6 +82,13 @@ impl<S: BillingStore> StripeBillingService<S> {
     #[must_use]
     pub const fn with_configured_subscription_updates(mut self, enabled: bool) -> Self {
         self.configured_subscription_updates = enabled;
+        self
+    }
+    /// Selects the configured application's cache-first Checkout/PaymentLink GET mappers.
+    /// Cached references are read targets, not provider account or mutation authority.
+    #[must_use]
+    pub const fn with_configured_cached_reads(mut self, enabled: bool) -> Self {
+        self.configured_cached_reads = enabled;
         self
     }
     #[must_use]
@@ -401,6 +410,9 @@ impl<S: BillingStore> CheckoutSessionService for StripeBillingService<S> {
         self.base.create_checkout_session(request).await
     }
     async fn get_checkout_session(&self, id: &str) -> BlueprintResult<CheckoutSessionDto> {
+        if self.configured_cached_reads {
+            return self.configured_get_checkout_session(id).await;
+        }
         let provider = self
             .client
             .retrieve(StripeResource::CheckoutSession, id, &json!({}))
@@ -480,6 +492,9 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
         self.base.update_payment_link(request).await
     }
     async fn get_payment_link(&self, id: &str) -> BlueprintResult<PaymentLinkDto> {
+        if self.configured_cached_reads {
+            return self.configured_get_payment_link(id).await;
+        }
         let provider = self
             .client
             .retrieve(StripeResource::PaymentLink, id, &json!({}))

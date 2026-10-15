@@ -102,6 +102,7 @@ pub struct BillingBackend {
     #[cfg(feature="bound-checkout")]
     bound_payment_link_expiration: Option<Arc<bound_payment_link_expiration::BoundPaymentLinkExpirationV1>>,
     configured_subscription_updates: bool,
+    configured_cached_reads: bool,
     request_dates: BillingRequestDateProfile,
     webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
     platform_key: Option<zeroize::Zeroizing<String>>,
@@ -134,6 +135,7 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
             configured_subscription_updates: false,
+            configured_cached_reads: false,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -166,6 +168,7 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
             configured_subscription_updates: false,
+            configured_cached_reads: false,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -178,6 +181,13 @@ impl BillingBackend {
         self.configured_subscription_updates = enabled;
         self
     }
+    /// Selects configured cache-first Checkout and `PaymentLink` read mappers.
+    #[must_use]
+    pub const fn with_configured_cached_reads(mut self, enabled: bool) -> Self {
+        self.configured_cached_reads = enabled;
+        self
+    }
+
     #[must_use]
     pub const fn with_database_backup(mut self, enabled: bool) -> Self {
         self.backup = enabled;
@@ -242,7 +252,8 @@ impl BillingBackend {
             Some(client) => {
                 execute(
                     &StripeBillingService::new(service, client.clone())
-                        .with_configured_subscription_updates(self.configured_subscription_updates),
+                        .with_configured_subscription_updates(self.configured_subscription_updates)
+                        .with_configured_cached_reads(self.configured_cached_reads),
                     &contract.operation_name,
                     input,
                 )
@@ -384,13 +395,32 @@ async fn dispatch_with_context(
     input: Value,
     context: forklaunch_axum::RequestContext,
 ) -> Response {
+    let configured_read = backend.configured_cached_reads
+        && matches!(
+            contract.operation_name.as_str(),
+            "getCheckoutSession" | "getPaymentLink"
+        );
     match backend.call(&session, &contract, input).await {
         Ok(result) => result.into_response(),
-        Err(error) if error.code == "billing_configured_mapper_error" => {
+        Err(error)
+            if error.code == "billing_configured_mapper_error"
+                || (configured_read && error.code != "billing_validation") =>
+        {
+            let status = if configured_read && error.code == "billing_configured_provider_error" {
+                error
+                    .details
+                    .get("status")
+                    .and_then(Value::as_u64)
+                    .filter(|status| (400..600).contains(status))
+                    .and_then(|status| u16::try_from(status).ok())
+                    .unwrap_or(500)
+            } else {
+                500
+            };
             let response =
-                forklaunch_http::typescript_parser_error_response(500, &context.correlation_id);
+                forklaunch_http::typescript_parser_error_response(status, &context.correlation_id);
             (
-                StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
                 response.body.as_text().unwrap_or_default().to_owned(),
             )
                 .into_response()
@@ -413,7 +443,14 @@ pub fn billing_router(
     let backend = Arc::new(backend);
     let auth = Arc::new(auth);
     let config = RouterConfig {
-        correlation_id_format: if backend.configured_subscription_updates {
+        response_status_error_format: if backend.configured_cached_reads {
+            forklaunch_axum::ResponseStatusErrorFormat::TypeScriptText
+        } else {
+            forklaunch_axum::ResponseStatusErrorFormat::Json
+        },
+        correlation_id_format: if backend.configured_subscription_updates
+            || backend.configured_cached_reads
+        {
             forklaunch_axum::CorrelationIdFormat::TypeScript
         } else {
             forklaunch_axum::CorrelationIdFormat::Native
@@ -536,12 +573,14 @@ pub fn billing_router(
             HttpMethod::Get => router.get(
                 contract,
                 move |Extension(session): Extension<AuthenticatedSession>,
-                      Path(id): Path<String>| {
-                    dispatch(
+                      Path(id): Path<String>,
+                      Extension(context): Extension<forklaunch_axum::RequestContext>| {
+                    dispatch_with_context(
                         Arc::clone(&backend),
                         session,
                         handler_contract.clone(),
                         json!({"id":id}),
+                        context,
                     )
                 },
             ),

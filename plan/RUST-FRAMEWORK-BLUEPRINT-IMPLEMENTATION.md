@@ -2773,3 +2773,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Trusted creator-role lifecycle passes actual14, native organization9, restricted PostgreSQL concurrency and strict full/minimal all-target checks. Exact role semantics, first100 counts and HTTP propagation covered; broader access-control/options/hooks remain open,660/682 unchanged.
 
 - 2026-10-15: Bounded enums/discriminated unions pass5,838 comparisons per numeric mode,12,096 intersection regressions per mode,90 full/85 minimal tests,327 HTTP/156 MCP and both SDKs. Strict checks pass; committed worktree cleaned with proof retained. Broader schema gates remain open,660/682 unchanged.
+
+- 2026-10-15: Configured cache-first Checkout/PaymentLink GET passes actual369 plus48 HTTP cases, native Stripe2/restricted-PG HTTP1, legacy170, artifacts186 and strict full/minimal checks. Provider429/status/text/correlation and read-only public identity behavior covered; cache date coercion/lists and broader billing remain open,660/682 unchanged.

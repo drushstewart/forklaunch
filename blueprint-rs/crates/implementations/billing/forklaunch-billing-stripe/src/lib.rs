@@ -13,6 +13,7 @@ pub mod bound_reads;
 #[cfg(feature = "postgres-reconciliation")]
 pub mod checkout_repair;
 pub mod client;
+mod configured_cached_reads;
 #[cfg(feature = "postgres-identity")]
 pub mod managed_creation;
 #[cfg(feature = "postgres-reconciliation")]

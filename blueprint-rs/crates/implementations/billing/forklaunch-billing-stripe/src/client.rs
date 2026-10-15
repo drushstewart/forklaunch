@@ -254,6 +254,33 @@ impl StripeBillingClient {
         action: Option<&str>,
         fields: &Value,
     ) -> BlueprintResult<Value> {
+        self.request_with_status(method, resource, id, action, fields, false)
+            .await
+    }
+    pub(crate) async fn retrieve_configured(
+        &self,
+        resource: StripeResource,
+        id: &str,
+    ) -> BlueprintResult<Value> {
+        self.request_with_status(
+            Method::GET,
+            resource,
+            Some(id),
+            None,
+            &serde_json::json!({}),
+            true,
+        )
+        .await
+    }
+    async fn request_with_status(
+        &self,
+        method: Method,
+        resource: StripeResource,
+        id: Option<&str>,
+        action: Option<&str>,
+        fields: &Value,
+        configured_status: bool,
+    ) -> BlueprintResult<Value> {
         let mut segments = resource.path().to_vec();
         if let Some(id) = id {
             validate_id(id)?;
@@ -285,6 +312,13 @@ impl StripeBillingClient {
             }
         };
         if !(200..300).contains(&response.status) {
+            if configured_status && (400..600).contains(&response.status) {
+                return Err(BlueprintError::new(
+                    "billing_configured_provider_error",
+                    "Billing provider request failed",
+                )
+                .with_detail("status", serde_json::json!(response.status)));
+            }
             return Err(provider_status_error("stripe", "billing", response.status));
         }
         if !response.body.is_object() {

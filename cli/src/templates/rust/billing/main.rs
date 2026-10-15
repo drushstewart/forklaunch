@@ -91,7 +91,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             StripeBillingClient::with_transport(secret, ProviderHttpClient::new(&base,Duration::from_secs(15),1024*1024)?)?
         } else {StripeBillingClient::new(secret)?}
     };
-    let mut backend = BillingBackend::stripe(store,client).with_configured_subscription_updates(true);
+    let mut backend = BillingBackend::stripe(store,client).with_configured_subscription_updates(true).with_configured_cached_reads(true);
     if let Some(secret) = env::var("STRIPE_WEBHOOK_SECRET").ok().filter(|value|!value.is_empty()) { backend = backend.with_webhook_secret(secret)?; }
     if let Some(secret) = instance_key { backend = backend.with_platform_event_key(secret)?; }
     {{/stripe}}{{^stripe}}let backend = BillingBackend::base(store);{{/stripe}}

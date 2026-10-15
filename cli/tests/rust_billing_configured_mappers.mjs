@@ -167,6 +167,13 @@ for(const variant of ['base','stripe']){
      assert.equal((await wrapper.getCheckoutSession({id:made.id})).customerId,made.customerId);cases++;
      cacheRows.set(ownKey,JSON.stringify({...JSON.parse(ownJson),stripeFields:{...fresh,customer:null}}));response=fresh;
      assert.equal((await wrapper.getCheckoutSession({id:made.id})).customerId,made.customerId);cases++;
+     for(const blank of ['', ' ', '\uFEFF', '\u2028']) {
+      const blankDto={...made,id:blank,stripeFields:fresh};
+      assert.equal((await mappers.CheckoutSessionMapper.readCachedDto(blankDto,async()=>fresh)).id,blank);cases++;
+      cacheRows.set('checkout_session:'+blank,JSON.stringify(blankDto));const count=calls.length;
+      await assert.rejects(wrapper.getCheckoutSession({id:blank}));assert.equal(calls.length,count);assert.equal(writes,writesBefore);cases++;
+      cacheRows.delete('checkout_session:'+blank);
+     }
      cacheRows.set(ownKey,ownJson);
      const legacyMappers={...mappers,CheckoutSessionMapper:{...mappers.CheckoutSessionMapper,readCachedDto:undefined}};
      const legacy=new StripeService(stripe,readOnlyEm,cache,{},actual.validator,legacyMappers,{enableDatabaseBackup});

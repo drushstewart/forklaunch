@@ -11899,3 +11899,34 @@ The clean committed worktree was removed after exact HEAD, all integrated hashes
 and zero open-path checks. `/private/tmp/fl-discriminated-cleanup.json` records
 4,198 regular files and44,987,559 logical bytes removed; its proof branch and
 external receipts remain. Native build caches are retained for active agents.
+
+
+### 2026-10-15: Configured Checkout and PaymentLink cache-first GET
+
+Generated Stripe services now select configured cache-first reads. Public IDs and
+local DTO fields remain local; retained provider references select the provider
+GET, and fresh identity/kind/mode/customer evidence must agree before return.
+Read paths perform no cache writes. Generic services retain historical behavior.
+Malformed or missing cached DTOs fail before provider I/O; native request-ID
+admission remains separate. A narrow configured client path retains provider
+status in structured details. Selected HTTP dispatch preserves sanitized TS
+404/429/500 text and correlation behavior, including storage and connection500.
+The existing TypeScript response-status policy prevents undocumented429 from
+being converted to500. Generic response formatting remains unchanged.
+
+Actual configured source369 cases and actual-source HTTP48 cases pass. The HTTP
+oracle executes real configured services/mappers, context and final Express error
+handler with real Stripe SDK error classes at an owned provider callback; it does
+not prove full SDK retry/redirect/wire or application-bootstrap behavior. Native
+Stripe2 tests and signed restricted-PostgreSQL HTTP1 pass; the final HTTP run took
+1.13s. Legacy170 comparisons and186 rendered-artifact cases, including compiled
+actual binary templates and selected-profile assertions, pass. Strict full/all-
+target Clippy7.33s and minimal Clippy37.61s pass; owned PG cleanup counts are0/0.
+Logs use `/private/tmp/fl-configured-cached-read-`. Frozen11 manifest
+`/private/tmp/fl-configured-cached-read-final.json` SHA256
+`864c8c1522ef534b57a86bb1c3a427b093aabe6149467ee029f4d271e4b06335`
+was verified. CI includes the new actual HTTP oracle and native read fixtures.
+
+Configured cache date coercion beyond typed native persisted dates, cache-selected
+PaymentLink lists, broader wire failure/retry behavior and remaining billing gates
+stay open. No framework, dependency or lock changes. Checklist660/682 unchanged.
