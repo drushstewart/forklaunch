@@ -25337,7 +25337,7 @@
               "name": "pureInputOptional",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/pureInput.ts",
-              "line": 62
+              "line": 76
             }
           ]
         },
@@ -25417,7 +25417,7 @@
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 929
+              "line": 950
             }
           ]
         },
