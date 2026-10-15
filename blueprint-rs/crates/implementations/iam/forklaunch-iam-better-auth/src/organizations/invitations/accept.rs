@@ -56,7 +56,7 @@ impl<S: AuthStore> OrganizationService<S> {
         tx.get(Model::Organization, &org)
             .await?
             .ok_or_else(missing)?;
-        if count >= 100 {
+        if count >= self.policy.member_limit() {
             return Err(BlueprintError::new(
                 "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED",
                 "Organization membership limit reached",

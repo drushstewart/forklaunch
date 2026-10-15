@@ -86,6 +86,12 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
         crate::http::credential_policy_tests::lifecycle(store.clone()).await;
         crate::http::clock_tests::lifecycle(store.clone()).await;
         crate::http::clock_tests::organization::lifecycle(store.clone()).await;
+        // A foreign-tenant membership with the exact future actor ID must not
+        // consume its one-organization allowance in the policy matrix.
+        let mut foreign_policy=foreign.begin(true).await.unwrap();
+        foreign_policy.insert(Model::Member,json!({"id":"foreign-policy-membership","userId":"org-policy-create-2-owner","organizationId":"foreign-policy-org","role":"owner"})).await.unwrap();
+        foreign_policy.commit().await.unwrap();
+        crate::organizations::tests::policy::exercise(store.clone()).await;
         let before_view_audit:i64=sqlx::query_scalar("SELECT count(*) FROM fl_better_auth.audit WHERE tenant_id=$1").bind(&tenant).fetch_one(&reader).await.unwrap();
         let viewer=TwoFactorService::new(store.clone(),vec![42;32],"Read".into()).unwrap();
         assert_eq!(viewer.view_backup_codes_for_user("view-legacy").await.unwrap().len(),4);

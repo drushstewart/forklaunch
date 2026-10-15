@@ -49,9 +49,9 @@ pub use rate::{
     AuthRateLimitStorageDecision,
 };
 #[cfg(test)]
-pub(crate) mod credential_policy_tests;
-#[cfg(test)]
 pub(crate) mod clock_tests;
+#[cfg(test)]
+pub(crate) mod credential_policy_tests;
 #[cfg(feature = "application-http")]
 pub mod relay;
 mod request;
@@ -72,6 +72,7 @@ pub struct AuthHttp<S> {
     credential_policy: crate::accounts::CredentialPolicy,
     token_lifetimes: crate::accounts::AuthTokenLifetimes,
     session_policy: crate::sessions::SessionPolicy,
+    organization_policy: crate::organizations::OrganizationPolicy,
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
@@ -108,6 +109,18 @@ pub struct AuthHttp<S> {
     clock: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Applies trusted scalar organization options to all organization routes.
+    /// HTTP bodies cannot override this policy; server-only member addition uses
+    /// the equivalent `OrganizationService` builder.
+    #[must_use]
+    pub fn with_organization_policy(
+        mut self,
+        policy: crate::organizations::OrganizationPolicy,
+    ) -> Self {
+        self.organization_policy = policy;
+        self
+    }
+
     /// Applies one trusted session policy to every built-in authentication route.
     /// JWT expiry and two-factor proof/trust lifetimes remain independent.
     #[must_use]
@@ -164,6 +177,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             credential_policy: crate::accounts::CredentialPolicy::default(),
             token_lifetimes: crate::accounts::AuthTokenLifetimes::default(),
             session_policy: crate::sessions::SessionPolicy::default(),
+            organization_policy: crate::organizations::OrganizationPolicy::default(),
             store,
             google: None,
             external_jwt: None,
@@ -930,7 +944,9 @@ fn failure_response(error: &BlueprintError) -> Response {
         | "LINKING_DIFFERENT_EMAILS_NOT_ALLOWED"
         | "INVALID_EMAIL_OR_PASSWORD"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER" => StatusCode::UNAUTHORIZED,
-        "YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION"
+        "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION"
+        | "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_ORGANIZATIONS"
+        | "YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_ACCESS_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_INVITE_USERS_TO_THIS_ORGANIZATION"
         | "YOU_ARE_NOT_ALLOWED_TO_CREATE_TEAMS_IN_THIS_ORGANIZATION"

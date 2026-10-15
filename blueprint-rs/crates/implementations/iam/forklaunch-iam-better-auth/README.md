@@ -1889,3 +1889,32 @@ without committing graph/selection changes. Exact session-expiry equality remain
 valid. These are authorization snapshots, not a guarantee that an authority cannot
 expire after the last read or during subsequent work/commit; unrelated organization
 record timestamps and invitation lifetime policies are unchanged.
+
+### Trusted scalar organization policy
+
+`OrganizationService::with_organization_policy(OrganizationPolicy::new(allow_create,
+organization_limit, membership_limit))` and the matching `AuthHttp` builder install
+server-owned policy. Defaults remain `true`, `None`, and `100`; request JSON cannot
+change the policy. This typed subset admits nonnegative whole `u32` limits, not
+JavaScript negative/fractional/nonfinite values or asynchronous policy callbacks.
+
+`Some(0)` organization limit forbids creation, whereas membership limit `0` falls
+back to `100`. Creation checks session authority, allow-create, the organization
+limit, then duplicate slug. As in the configured default adapter, the organization
+limit counts the first **100 matching membership rows**, including non-owner,
+duplicate and orphan memberships. It is not an unbounded owner-only quota; limits
+above 100 are never reached by that window. Disabling creation does not remove
+existing organizations. Trusted server creation using a supplied user ID without
+a session is not introduced by this builder.
+
+Membership limits apply to trusted server-only `add_member` and authenticated
+invitation acceptance after their existing user/duplicate/team/organization checks.
+The existing 4096-record scan bound still fails explicitly rather than truncating
+admission counts. Native write transactions serialize count-and-insert, providing a
+stronger concurrent admission boundary than arbitrary upstream adapter races.
+Existing members are retained when policy decreases. The upstream full-organization
+reader applies this option to **user hydration**, not to the member join limit;
+reading a pre-existing larger graph can therefore fail with the existing sanitized
+storage error unless the caller supplies a smaller `membersLimit`. No implicit
+member truncation or policy migration occurs. Session/clock and MFA builders retain
+the selected organization policy independently.

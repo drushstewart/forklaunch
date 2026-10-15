@@ -11226,3 +11226,32 @@ sparse-registry installation is still pending. No schema keyword or HTTP/MCP/WS
 consumer is enabled here: checked aggregate budgets and operational-error propagation
 remain active integration work. This foundation does not close the broad validator
 gate; checklist stays660/682(96.8%).
+
+
+### 2026-10-15 — Trusted scalar organization policy
+
+Typed `OrganizationPolicy` and matching HTTP/service builders now configure
+allow-create, organization count and membership limits. Defaults remain true,
+unlimited and100. Organization limit0 denies creation; membership limit0 falls
+back to100. Creation preserves allow/count/duplicate-slug error order. The pinned
+default adapter counts its first100 matching membership rows (including non-owner,
+duplicate/orphan rows); limits above100 are therefore not an unbounded quota.
+Membership checks cover server add-member and invitation acceptance. Full graph
+reads apply the configured limit to user hydration, preserving the upstream
+failure on a pre-existing larger graph rather than silently truncating members.
+Trusted policy cannot be overridden by HTTP request fields. Native transactions
+serialize count/insert; bounded storage scans still fail explicitly at their cap.
+Async policy callbacks and server-user impersonation remain separate work.
+
+Actual Better Auth24 cases, focused native matrix0.10s, full IAM221/3ignored165.81s,
+restricted PostgreSQL218.25s and strict full10.50s/minimal4.91s Clippy pass. Tests
+cover defaults/order/scope,100-row window, quotas and concurrent admissions,
+invitation status, hydration and HTTP policy spoofing. Owned PostgreSQL roles,
+records and audit rows are clean. Final Clippy changed only two test assertions
+from equivalent match to let-else after runtime tests; production stayed unchanged.
+
+Frozen13-source receipt `/private/tmp/fl-org-policy-freeze.json`, SHA256
+`b909f782cf64d75bd87776360254ab7be2f5782a76c54eb628b17b65e49a06e1`.
+Logs `/private/tmp/fl-org-policy-{actual,native,full,pg,clippy,minimal-clippy}.log`.
+CI includes the actual policy fixture and existing native/PG suites. Broader Better
+Auth options and invitation policy/delivery remain open;660/682(96.8%) unchanged.

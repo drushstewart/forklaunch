@@ -4,6 +4,7 @@ mod invitations;
 mod listing;
 mod members;
 mod permissions;
+pub(crate) mod policy;
 mod roles;
 mod team_members;
 mod team_mutations;

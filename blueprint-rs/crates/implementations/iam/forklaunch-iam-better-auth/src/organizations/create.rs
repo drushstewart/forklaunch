@@ -24,6 +24,30 @@ impl<S: AuthStore> OrganizationService<S> {
             .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
+        if !self.policy.allow_create {
+            return Err(BlueprintError::new(
+                "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION",
+                "You are not allowed to create a new organization",
+            ));
+        }
+        if let Some(limit) = self.policy.organization_limit {
+            // Match the configured default adapter's first 100 memberships,
+            // not owner-only organizations or an unbounded total count.
+            let user = text(&view.user, "id")?;
+            let count = tx
+                .find_page(Model::Member, "userId", user, None, 100)
+                .await?
+                .records
+                .into_iter()
+                .filter(|row| row["userId"] == user)
+                .count();
+            if u32::try_from(count).map_err(|_| internal())? >= limit {
+                return Err(BlueprintError::new(
+                    "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_ORGANIZATIONS",
+                    "You have reached the maximum number of organizations",
+                ));
+            }
+        }
         if find_slug(&mut tx, text(body, "slug")?).await?.is_some() {
             return Err(BlueprintError::new(
                 "ORGANIZATION_ALREADY_EXISTS",

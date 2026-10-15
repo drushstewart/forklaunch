@@ -70,7 +70,7 @@ impl<S: AuthStore> OrganizationService<S> {
         let organization = organization.ok_or_else(missing)?;
         let id = text(&organization, "id")?.to_owned();
         let body = if let Graph::Full(limit) = graph {
-            full_graph(&mut tx, organization, limit).await?
+            full_graph(&mut tx, organization, limit, self.policy.member_limit()).await?
         } else {
             organization
         };
@@ -87,6 +87,7 @@ async fn full_graph<T: AuthTransaction>(
     tx: &mut T,
     mut organization: Value,
     limit: Option<i64>,
+    user_limit: usize,
 ) -> BlueprintResult<Value> {
     let id = text(&organization, "id")?.to_owned();
     let mut members: Vec<_> = crate::store::find_all(tx, Model::Member, "organizationId", &id)
@@ -106,7 +107,11 @@ async fn full_graph<T: AuthTransaction>(
         .iter()
         .map(|member| text(member, "userId").map(str::to_owned))
         .collect::<BlueprintResult<Vec<_>>>()?;
-    let users = tx.get_many(Model::User, &user_ids, 100).await?;
+    // The plugin applies membershipLimit to user hydration, not the member
+    // join. A smaller cap can therefore fail on existing larger organizations.
+    let users = tx
+        .get_many(Model::User, &user_ids, user_limit.min(4096))
+        .await?;
     for member in &mut members {
         let user = users
             .iter()

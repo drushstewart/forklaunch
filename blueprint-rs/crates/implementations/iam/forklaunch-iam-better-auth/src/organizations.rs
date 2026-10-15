@@ -17,6 +17,8 @@ mod invitations;
 mod members;
 mod mutation;
 mod permission;
+mod policy;
+pub use policy::OrganizationPolicy;
 mod roles;
 mod selection;
 mod teams;
@@ -25,6 +27,7 @@ pub use members::{AddMemberInput, MemberRoles};
 pub(crate) mod tests;
 
 pub struct OrganizationService<S> {
+    policy: OrganizationPolicy,
     time_source: crate::time_source::TimeSource,
     session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
@@ -42,6 +45,13 @@ impl<S: AuthStore> OrganizationService<S> {
         self
     }
 
+    /// Installs trusted creation and membership policy independently of sessions.
+    #[must_use]
+    pub fn with_organization_policy(mut self, policy: OrganizationPolicy) -> Self {
+        self.policy = policy;
+        self
+    }
+
     /// Installs trusted session lifetime, refresh and freshness options.
     #[must_use]
     pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
@@ -52,6 +62,7 @@ impl<S: AuthStore> OrganizationService<S> {
     #[must_use]
     pub fn new(store: Arc<S>) -> Self {
         Self {
+            policy: OrganizationPolicy::default(),
             time_source: crate::time_source::TimeSource::default(),
             store,
             session_policy: crate::sessions::SessionPolicy::default(),
