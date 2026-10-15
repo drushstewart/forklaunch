@@ -115,6 +115,7 @@ on:
       - 'cli/tests/rust_zod_array_checks_parity.mjs'
       - 'cli/tests/rust_zod_array_cardinality_openapi.mjs'
       - 'cli/tests/rust_zod_record_pure_openapi.mjs'
+      - 'cli/tests/rust_zod_discriminator_input_openapi.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -583,6 +584,7 @@ on:
       - 'cli/tests/rust_zod_array_checks_parity.mjs'
       - 'cli/tests/rust_zod_array_cardinality_openapi.mjs'
       - 'cli/tests/rust_zod_record_pure_openapi.mjs'
+      - 'cli/tests/rust_zod_discriminator_input_openapi.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -1222,6 +1224,12 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - name: Pure discriminator dispatch conformance
+        run: node cli/tests/rust_zod_discriminator_input_openapi.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_DISCRIMINATOR_INPUT_NATIVE: '1'
       - name: Pure record key schema conformance
         run: node cli/tests/rust_zod_record_pure_openapi.mjs
         env:

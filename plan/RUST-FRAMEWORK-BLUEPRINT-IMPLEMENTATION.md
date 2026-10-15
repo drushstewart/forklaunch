@@ -3195,3 +3195,26 @@ all7 source hashes and zero owned processes were verified. Cleanup receipt
 `/private/tmp/fl-cors-delegate-cleanup.json`:4247 regular files,45,577,931 logical
 bytes. The branch, manifest and proof logs remain. Broader CORS/route/error gates
 remain open; checklist660/682 unchanged.
+
+
+### 2026-10-15 — Pure discriminator missing-tag dispatch
+
+Integratedc39ec43b4 makes explicit pureInput2020 branches require their discriminator
+unless Zod's existing undefined option selects that exact branch. Default callbacks
+are never invoked. Canonical JSON prototype-named discriminators require an own
+key; null/custom-prototype direct JavaScript objects remain outside that JSON
+representation. Explicit branch required annotations and final union annotations
+retain existing caller-owned semantics. Baseline/general exports stay unchanged.
+
+The initial140-case audit found12 mismatches. Final900 actual/native/injected
+comparisons across96 schemas pass; raw AJV has894 exact plus6 explicitly repaired
+prototype exceptions. Owned-engine648 admission controls preserve existing coercion
+policy without claiming blanket strict-Zod equivalence. Live SDK44 HTTP and176
+TS/Rust codec/type-admission checks pass, along with strict generated source,
+12-root/625-export TypeScript, pure577+246 and union11106/616exports plus162TypeBox
+and108liveSDK regressions. No native source/dependencies/locks changed.
+
+All3 hashes match `/private/tmp/fl-discriminator-input-source.json`, SHA256
+`8fb276edd04ce7fe92c8ae7b6b15df0994c607a937ca419de62cad4b5a3dafaf`.
+Receipt/log prefix `/private/tmp/fl-discriminator-input-`; CI adds the new native
+oracle. Broader schema/validation gates remain open; checklist660/682 unchanged.
