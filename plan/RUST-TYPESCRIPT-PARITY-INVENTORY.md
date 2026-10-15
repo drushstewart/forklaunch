@@ -10297,3 +10297,30 @@ Frozen2 /private/tmp/fl-string-bounds-source.json verified; logs
 /private/tmp/fl-string-bounds-{parity,types}.log plus named regression logs.
 Root regenerated inventory source locations and passed inventory checks; no
 new exports or dependencies. CI includes oracle.660/682(96.8%),22open unchanged.
+
+
+### Immutable tuple/billing checkpoint portable runtime (2026-10-14)
+
+Exact committed source4ff9e3958a5103c179dbb948cb7e8340437de5e0 packaged and
+installed offline/locked from git-free extracted source. Archive2799regularfiles,
+4914201bytes, SHA256db6cb114da0e7faabb74e01ceb1ae0da081020194764fbabbbc177171ca0033c,
+retained cli/target/parity-artifacts/forklaunch-4ff9e3958-db6cb114.crate.
+All regular source bytes verified before and after complete runtime. CLI ignored
+lock SHA256d66f3120b6fab6af185dfa4e22c614b4bf5324370aede8667c9807e3e5bc5110.
+Repackage/dotfile/symlink guards and intentional PEM fixtures preserved.
+Portable relocation, all4worker families, modules/12OpenAPI exports, strict native
+and TypeScript WebSocket/HTTP SDK consumers, contract/OpenAPI imports and native
+recursive generation pass. Actual generated service HTTP/MCP starts, shared and
+separate listeners, explicit/ephemeral ports, TypeScript+2000 fallback, atomic
+startup rejection and graceful shutdown pass. Five generated capability callbacks
+pass forgery/staleness/replay/event tests. PackagedIAM195pass/3PGignored111.77s;
+separate restrictedPG receipts remain required, no new MFA29 generated rerun claim.
+Metadata /private/tmp/fl-oct14-tuples-billing-checkpoint.json; runtime log
+/private/tmp/fl-oct14-tuples-billing-runtime.log. Runtime exited0/finalPASS marker;
+archive/hash/source verified independently by root verification script.
+This source predates pure-input/verification-required/Subscription reads/tuple
+collision/NativeEnum/stringbounds/auto-signin/CORS changes; their working-source
+receipts are separate. Known tuple public-name collision fixed later is not
+covered by this archive. Cleanup follows only after committing this receipt.
+Checklist660/682(96.8%),22broad gates remain open; startup evidence is local,
+not an AWS deployment or published-crate receipt.
