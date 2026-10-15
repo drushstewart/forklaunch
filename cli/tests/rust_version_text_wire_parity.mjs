@@ -93,9 +93,8 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
  for(const surface of ['native','local']) {
  const actual=await wire(rust,'/'+surface+path,input);const label=JSON.stringify({mode,optional,surface,input,expected,actual});
  assert.equal(actual.status,expected.status,label);assert.equal(actual.handlers,expected.handlers,label);assert.equal(actual.verifiers,expected.verifiers,label);
- if(expected.status===400&&String(expected.body).startsWith('Version first request')) {
- assert.ok(String(actual.body).includes('request does not match any declared API version'),label);diagnostics++;
- } else {assert.deepEqual(actual,expected,label);exact++;}
+ assert.deepEqual(actual,expected,label);exact++;
+ if(expected.status===400&&String(expected.body).startsWith('Version first request')) diagnostics++;
  assert.ok(!JSON.stringify(actual).includes('PRIVATE_VERIFY'));
  }
  }
@@ -107,7 +106,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
  const after=await(await fetch(rust+'/calls')).json();assert.equal(after.verifiers-before.verifiers,1);assert.equal(after.handlers-before.handlers,1);
  }
  console.log('PASS '+bodyTools.length+' real MCP tool calls preserve supplied text bodies with exactly one verifier and handler invocation');
- console.log('PASS '+requests+' actual TypeScript text request cases; '+exact+' exact native/local pairs, '+diagnostics+' explicit schema-diagnostic differences; all-mode status/verify/handler counts and unmatched parser projections match');
+ console.log('PASS '+requests+' actual TypeScript text request cases; '+exact+' exact native/local pairs, '+diagnostics+' exact schema-diagnostic pairs; all-mode status/verify/handler counts and unmatched parser projections match');
 }finally{
  for(const child of children){
   if(child.exitCode!==null||child.signalCode!==null)continue;

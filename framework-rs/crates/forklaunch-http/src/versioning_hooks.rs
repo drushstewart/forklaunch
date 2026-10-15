@@ -1,5 +1,8 @@
 //! Native body preprocessing/transformation around per-version schema checks.
-use super::{BodyParserHooks, VersionFieldHooks, VersionedRoutePlan};
+use super::{
+    BodyParserHooks, VersionFieldHooks, VersionRequestParser, VersionedRoutePlan,
+    request_parser::RegisteredRequestParsers,
+};
 use crate::ContractValidationLocation;
 use forklaunch_contract::RouteContract;
 use serde_json::Value;
@@ -22,6 +25,9 @@ impl std::fmt::Debug for VersionBodyHooks {
     }
 }
 impl VersionBodyHooks {
+    pub(super) fn is_empty(&self) -> bool {
+        self.preprocess.is_none() && self.transform.is_none()
+    }
     /// Run before this version's schema checks. Errors reject only this version.
     #[must_use]
     pub fn with_preprocess(
@@ -95,6 +101,7 @@ struct FieldHooks {
 /// Hooks are indexed by HTTP method and operation name, independent of mount prefixes.
 #[derive(Clone, Default, Debug)]
 pub struct VersionBodyHooksRegistry {
+    request_parsers: BTreeMap<String, RegisteredRequestParsers>,
     routes: BTreeMap<String, BTreeMap<String, VersionBodyHooks>>,
     parsers: BTreeMap<String, BodyParserHooks>,
     fields: BTreeMap<String, Vec<FieldHooks>>,
@@ -104,6 +111,38 @@ pub struct VersionBodyHooksRegistry {
     pre_authentication: BTreeMap<String, RouteContract>,
 }
 impl VersionBodyHooksRegistry {
+    /// Register a trusted whole-request parser for one version. All versions must
+    /// be registered before compilation; body/field hook combinations are rejected.
+    /// Parser hooks and explicit wire/query/pre-auth profiles remain available.
+    /// # Errors
+    /// Rejects unknown/duplicate versions, conflicting hooks and stale snapshots.
+    pub fn insert_request_parser(
+        &mut self,
+        route: &RouteContract,
+        version: &str,
+        parser: VersionRequestParser,
+    ) -> Result<(), String> {
+        if route.for_version(version).is_none()
+            || self.routes.contains_key(&route_key(route))
+            || self.fields.contains_key(&route_key(route))
+        {
+            return Err(
+                "Whole-request parser requires a known version and no body/field hooks".into(),
+            );
+        }
+        let entry = self
+            .request_parsers
+            .entry(route_key(route))
+            .or_insert_with(|| RegisteredRequestParsers {
+                route: route.clone(),
+                parsers: BTreeMap::new(),
+            });
+        if !request_snapshot_matches(&entry.route, route) || entry.parsers.contains_key(version) {
+            return Err("Stale or duplicate whole-request parser registration".into());
+        }
+        entry.parsers.insert(version.into(), parser);
+        Ok(())
+    }
     /// Use the bounded TypeScript JSON wire parser before version schema selection.
     /// The first declared version determines the exact JSON media type. Framing or
     /// media skips produce absence for body preprocessors/defaults. Unmatched
@@ -207,6 +246,9 @@ impl VersionBodyHooksRegistry {
         version: &str,
         hooks: VersionBodyHooks,
     ) -> Result<(), String> {
+        if self.request_parsers.contains_key(&route_key(route)) {
+            return Err("Whole-request parsers cannot combine with body/field hooks".into());
+        }
         let projected = route.for_version(version).ok_or("Unknown hook version")?;
         if projected.request.body.is_none() {
             return Err("Body hooks require a declared body".into());
@@ -228,6 +270,9 @@ impl VersionBodyHooksRegistry {
         name: &str,
         hooks: VersionFieldHooks,
     ) -> Result<(), String> {
+        if self.request_parsers.contains_key(&route_key(route)) {
+            return Err("Whole-request parsers cannot combine with body/field hooks".into());
+        }
         VersionedRoutePlan::compile(route)?.with_field_hooks(
             version,
             location,
@@ -273,6 +318,7 @@ impl VersionBodyHooksRegistry {
         for key in self
             .routes
             .keys()
+            .chain(self.request_parsers.keys())
             .chain(self.parsers.keys())
             .chain(self.fields.keys())
             .chain(self.simple_queries.keys())
@@ -292,6 +338,12 @@ impl VersionBodyHooksRegistry {
     /// # Panics
     /// Panics if both registries define hooks for the same method and operation.
     pub fn extend(&mut self, other: Self) {
+        for (key, value) in other.request_parsers {
+            assert!(
+                self.request_parsers.insert(key, value).is_none(),
+                "duplicate whole-request parser operation"
+            );
+        }
         for (key, route) in other.text_wire {
             assert!(
                 !self.json_wire.contains_key(&key),
@@ -347,6 +399,12 @@ impl VersionBodyHooksRegistry {
     /// Rejects invalid schemas or hooks referring to removed versions.
     pub fn compile(&self, route: &RouteContract) -> Result<VersionedRoutePlan, String> {
         let mut plan = VersionedRoutePlan::compile(route)?;
+        if self.request_parsers.contains_key(&route_key(route))
+            && (self.routes.contains_key(&route_key(route))
+                || self.fields.contains_key(&route_key(route)))
+        {
+            return Err("Whole-request parsers conflict with body/field hook registrations".into());
+        }
         if let Some(snapshot) = self.pre_authentication.get(&route_key(route))
             && (snapshot.versions != route.versions
                 || snapshot.request != route.request
@@ -398,8 +456,22 @@ impl VersionBodyHooksRegistry {
             }
             plan = plan.with_typescript_text_wire()?;
         }
+        if let Some(entry) = self.request_parsers.get(&route_key(route)) {
+            if !request_snapshot_matches(&entry.route, route) {
+                return Err("Stale whole-request parser registration".into());
+            }
+            plan = plan.with_request_parsers(entry.parsers.clone())?;
+        }
         Ok(plan)
     }
+}
+fn request_snapshot_matches(left: &RouteContract, right: &RouteContract) -> bool {
+    left.request == right.request
+        && left.versions == right.versions
+        && left.options == right.options
+        && left.auth == right.auth
+        && left.rbac == right.rbac
+        && left.access == right.access
 }
 fn route_key(route: &RouteContract) -> String {
     format!("{} {}", route.method.as_str(), route.operation_name)

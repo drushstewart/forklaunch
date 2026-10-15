@@ -11,6 +11,11 @@ use serde_json::Value;
 use std::{borrow::Cow, sync::Arc};
 #[path = "versioning_hooks.rs"]
 mod hooks;
+#[path = "versioning_request_parser.rs"]
+mod request_parser;
+pub use request_parser::{
+    VersionRequestInput, VersionRequestParseFailure, VersionRequestParser, VersionRequestProjection,
+};
 #[path = "versioning_parser_hooks.rs"]
 mod parser_hooks;
 pub use hooks::{VersionBodyHooks, VersionBodyHooksRegistry};
@@ -38,7 +43,9 @@ use wire_profile::VersionWireParser;
 mod prepared;
 pub use prepared::PreparedVersionSelection;
 
-/// First JSON/text parser output, independent of version schema matching.
+/// First parser output, independent of version schema matching. JSON/text wire
+/// profiles retain decompressed bytes; legacy parsers under a trusted whole-request
+/// parser retain only the parsed value, with no fabricated raw-byte projection.
 /// Original wire bytes remain on the request; this projection is read-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionParsedBody(ParsedJsonBody);
@@ -99,6 +106,7 @@ enum BodyValidator {
 #[derive(Default, Clone)]
 pub struct VersionedRoutePlan {
     variants: Vec<Variant>,
+    request_parsers: Option<Arc<std::collections::BTreeMap<String, VersionRequestParser>>>,
     identity: Arc<()>,
     typescript_simple_query: bool,
     typescript_wire_parser: Option<VersionWireParser>,
@@ -178,6 +186,7 @@ impl VersionedRoutePlan {
         Ok(Self {
             response_plan: crate::versioned_response::VersionResponsePlan::compile(route),
             variants,
+            request_parsers: None,
             identity: Arc::new(()),
             typescript_simple_query: false,
             typescript_wire_parser: None,
@@ -227,6 +236,9 @@ impl VersionedRoutePlan {
         version: &str,
         hooks: VersionBodyHooks,
     ) -> Result<Self, String> {
+        if self.request_parsers.is_some() {
+            return Err("Whole-request parsers cannot combine with body/field hooks".into());
+        }
         let variant = self
             .variants
             .iter_mut()
@@ -250,6 +262,9 @@ impl VersionedRoutePlan {
         name: &str,
         hooks: VersionFieldHooks,
     ) -> Result<Self, String> {
+        if self.request_parsers.is_some() {
+            return Err("Whole-request parsers cannot combine with body/field hooks".into());
+        }
         let variant = self
             .variants
             .iter_mut()
@@ -335,9 +350,23 @@ impl VersionedRoutePlan {
         } else {
             self.body_value(request, limits)
         };
-        let selection = body
-            .map_err(|error| vec![error])
-            .and_then(|body| self.select_body(request, body));
+        let selection = match body {
+            Err(error) => Err(vec![error]),
+            Ok(body) => {
+                if let Some(parsers) = &self.request_parsers {
+                    let selection = self.select_parsed_request(request, body.as_ref(), parsers);
+                    if parsed.is_none() {
+                        parsed = Some(VersionParsedBody(ParsedJsonBody::from_wire(
+                            body.map(Arc::new),
+                            None,
+                        )));
+                    }
+                    selection
+                } else {
+                    self.select_body(request, body)
+                }
+            }
+        };
         SelectionOutcome { selection, parsed }
     }
 

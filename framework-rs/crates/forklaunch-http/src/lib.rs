@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod parse_errors;
+pub use parse_errors::{ParseError, pretty_print_parse_errors};
+
 mod versioned_response;
 pub use versioned_response::{
     MatchedVersionResponses, VersionResponseBranch, VersionedResponseOutcome,
@@ -15,7 +18,8 @@ pub mod versioning;
 pub use versioning::{
     BodyParserHooks, JsonRequestParsers, MultipartLimits, ParsedJsonBody, PreparedVersionSelection,
     SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry, VersionFieldHooks,
-    VersionFieldValues, VersionParsedBody, VersionedRoutePlan,
+    VersionFieldValues, VersionParsedBody, VersionRequestInput, VersionRequestParseFailure,
+    VersionRequestParser, VersionRequestProjection, VersionedRoutePlan,
 };
 
 use std::{
@@ -417,6 +421,8 @@ pub enum ContractValidationLocation {
     BodyParserConfiguration,
     /// Operational schema evaluator failure; fatal in every validation mode.
     SchemaExecution,
+    /// Explicitly public, preformatted diagnostics from a registered version parser.
+    VersionRequestDiagnostic,
     ResponseStatus,
 }
 
@@ -1119,6 +1125,21 @@ pub fn validation_error_response_with_parser_format(
     correlation_id: &str,
     parser_error_format: ParserErrorFormat,
 ) -> FrameworkResponse {
+    if !errors.is_empty()
+        && errors
+            .iter()
+            .all(|error| error.location == ContractValidationLocation::VersionRequestDiagnostic)
+    {
+        let messages = errors
+            .iter()
+            .map(|error| error.message.as_str())
+            .collect::<String>();
+        return FrameworkResponse::text(
+            400,
+            format!("{messages}\n\nCorrelation id: {correlation_id}"),
+        )
+        .with_header("content-type", "text/plain; charset=utf-8");
+    }
     let kind = if errors.iter().any(|error| {
         matches!(
             error.location,

@@ -8,7 +8,8 @@ use forklaunch_contract::{
 use forklaunch_core::ServiceInfo;
 use forklaunch_http::{
     BodyParserHooks, FrameworkRequest, FrameworkResponse, LocalRouter, SelectedVersion,
-    VersionBodyHooks, VersionBodyHooksRegistry, VersionParsedBody,
+    VersionBodyHooksRegistry, VersionParsedBody, VersionRequestParseFailure, VersionRequestParser,
+    VersionRequestProjection,
 };
 use serde_json::{Value, json};
 use std::sync::{
@@ -74,18 +75,38 @@ fn configure(
             }),
         )
         .unwrap();
-    if optional {
-        for version in ["first", "last"] {
-            hooks
-                .insert(
-                    route,
-                    version,
-                    VersionBodyHooks::default().with_optional_preprocess(|value| {
-                        Ok(Some(value.cloned().unwrap_or_else(|| json!("ok"))))
-                    }),
-                )
-                .unwrap();
-        }
+    for version in ["first", "last"] {
+        hooks
+            .insert_request_parser(
+                route,
+                version,
+                VersionRequestParser::new(move |input| {
+                    use forklaunch_validation::typescript_coerce::{
+                        ZodJsonLiteral, ZodJsonOutcome, ZodJsonSchema, zod_json_at_path,
+                    };
+                    let default = json!("ok");
+                    let literal = ZodJsonSchema::Literal(ZodJsonLiteral::String("ok"));
+                    let schema = if optional {
+                        ZodJsonSchema::Default {
+                            schema: Box::new(ZodJsonSchema::Optional(Box::new(literal))),
+                            value: &default,
+                        }
+                    } else {
+                        literal
+                    };
+                    match zod_json_at_path(input.body, &schema, &["body"]) {
+                        Ok(ZodJsonOutcome::Valid(body)) => Ok(VersionRequestProjection {
+                            fields: input.fields.clone(),
+                            body,
+                        }),
+                        Ok(ZodJsonOutcome::Invalid(errors)) => {
+                            Err(VersionRequestParseFailure::Validation(errors))
+                        }
+                        Err(_) => Err(VersionRequestParseFailure::Operational),
+                    }
+                }),
+            )
+            .unwrap();
     }
 }
 #[tokio::main]
