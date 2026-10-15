@@ -18,6 +18,7 @@ pub(super) async fn login<S: AuthStore + 'static>(
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
     let mut service = CredentialService::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
         .with_credential_policy(app.credential_policy)
         .with_token_lifetimes(app.token_lifetimes)
         .with_session_policy(app.session_policy)
@@ -153,6 +154,7 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
     let service = CredentialService::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
         .with_credential_policy(app.credential_policy)
         .with_token_lifetimes(app.token_lifetimes)
         .with_session_policy(app.session_policy);
@@ -260,6 +262,7 @@ async fn reset<S: AuthStore + 'static>(
         .or_else(|| query.get("token").and_then(Value::as_str))
         .unwrap_or("");
     let mut service = CredentialService::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
         .with_credential_policy(app.credential_policy)
         .with_token_lifetimes(app.token_lifetimes)
         .with_session_policy(app.session_policy)
@@ -291,7 +294,9 @@ pub(super) async fn public<S: AuthStore + 'static>(
         return Some(match service {
             Err(error) => Err(error),
             Ok(mut service) => {
-                service = service.with_token_lifetimes(app.token_lifetimes);
+                service = service
+                    .with_token_lifetimes(app.token_lifetimes)
+                    .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()));
                 if let Some(dispatcher) = &app.background_dispatcher {
                     service = service.with_background_dispatcher(dispatcher.clone());
                 }

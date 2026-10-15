@@ -41,6 +41,7 @@ pub trait PasswordResetDelivery: Send + Sync {
 }
 /// Tenant-bound reset request service. No delivery is enabled by default on HTTP.
 pub struct PasswordResetService<S> {
+    time_source: crate::time_source::TimeSource,
     token_lifetimes: super::AuthTokenLifetimes,
     store: Arc<S>,
     base_url: String,
@@ -126,6 +127,12 @@ fn success() -> Value {
     json!({"status":true,"message":"If this email exists in our system, check your email for the reset link"})
 }
 impl<S: AuthStore> PasswordResetService<S> {
+    #[cfg(feature = "http")]
+    pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
+        self.time_source = source;
+        self
+    }
+
     #[must_use]
     pub fn with_token_lifetimes(mut self, lifetimes: super::AuthTokenLifetimes) -> Self {
         self.token_lifetimes = lifetimes;
@@ -151,6 +158,7 @@ impl<S: AuthStore> PasswordResetService<S> {
         }
         base_url.truncate(base_url.trim_end_matches('/').len());
         Ok(Self {
+            time_source: crate::time_source::TimeSource::default(),
             token_lifetimes: super::AuthTokenLifetimes::default(),
             store,
             base_url,
@@ -185,7 +193,7 @@ impl<S: AuthStore> PasswordResetService<S> {
                 "Invalid redirect URL",
             ));
         }
-        let expires = now
+        let _ = now
             .checked_add_signed(chrono::Duration::seconds(i64::from(
                 self.token_lifetimes.password_reset_seconds(),
             )))
@@ -209,6 +217,12 @@ impl<S: AuthStore> PasswordResetService<S> {
             return Ok(success());
         };
         let public = projection(&user)?;
+        let now = self.time_source.sample(now);
+        let expires = now
+            .checked_add_signed(chrono::Duration::seconds(i64::from(
+                self.token_lifetimes.password_reset_seconds(),
+            )))
+            .ok_or_else(invalid)?;
         let identifier = format!("reset-password:{}", proof.as_str());
         let stamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
         tx.insert(Model::Verification,json!({"id":uuid::Uuid::new_v4().to_string(),"identifier":identifier,"value":super::text(&user,"id")?,"expiresAt":expires.to_rfc3339_opts(SecondsFormat::Millis,true),"createdAt":stamp,"updatedAt":stamp})).await?;

@@ -1,7 +1,7 @@
 //! Authoritative profile updates and linked-account listing/removal.
 use super::{CredentialService, storage_error as internal, text};
 use crate::{
-    sessions::{SessionView, load},
+    sessions::{SessionView, load_with_time},
     store::{AuthStore, AuthTransaction, Model},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -14,9 +14,16 @@ impl<S: AuthStore> CredentialService<S> {
     /// Rejects absent sessions or corrupt storage.
     pub async fn list_accounts(&self, token: &str, now: DateTime<Utc>) -> BlueprintResult<Value> {
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
-            .await?
-            .ok_or_else(unauthorized)?;
+        let view = load_with_time(
+            &mut tx,
+            token,
+            true,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await?
+        .ok_or_else(unauthorized)?;
         let mut accounts = Vec::new();
         for row in
             crate::store::find_all(&mut tx, Model::Account, "userId", text(&view.user, "id")?)
@@ -68,11 +75,19 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
-            .await?
-            .ok_or_else(unauthorized)?;
+        let view = load_with_time(
+            &mut tx,
+            token,
+            true,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await?
+        .ok_or_else(unauthorized)?;
         let created = DateTime::parse_from_rfc3339(text(&view.session, "createdAt")?)
             .map_err(|_| internal())?;
+        let now = self.time_source.sample(now);
         if !self.session_policy.fresh(created.with_timezone(&Utc), now) {
             return Err(BlueprintError::new(
                 "SESSION_NOT_FRESH",
@@ -133,9 +148,16 @@ impl<S: AuthStore> CredentialService<S> {
             ));
         }
         let mut tx = self.store.begin(true).await?;
-        let mut view = load(&mut tx, token, true, now)
-            .await?
-            .ok_or_else(unauthorized)?;
+        let mut view = load_with_time(
+            &mut tx,
+            token,
+            true,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await?
+        .ok_or_else(unauthorized)?;
         let mut user = tx
             .get(Model::User, text(&view.user, "id")?)
             .await?

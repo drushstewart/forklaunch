@@ -1659,3 +1659,8 @@ Explicit internal service tenant authority is required; the route does not estab
 ### 2026-10-15 — Subscription recovery surface
 
 Recovery is independently selected with internal service tenant authority and a checked separate publisher. Existing pending actor-owned intent, authenticated exact request-key event evidence, current provider/local dependencies and atomic publication remain mandatory. No provider POST or implicit creation/retry authority is introduced. Recovery-only runtime lacks intent/claim INSERT grants. Concurrent recovery, malformed evidence, actor isolation and zero owned fixture residue pass restricted PostgreSQL and live HTTP/MCP; historical SDK replay does not claim fresh provider repair.
+
+
+### 2026-10-15 — Auth time-of-check and grant issuance
+
+Private HTTP clock propagation resamples after authoritative reads and awaited issuance work; direct supplied-time services remain deterministic. Password/MFA rotation and session refresh reject selected authority expiry races before commit, without replacing async proof lease guards or claiming a post-COMMIT deadline. Root review corrected the remaining active-session load for externally supplied change-email proofs; delayed writer regression proves no cookie/email mutation and transactional rollback. Secondary organization rechecks remain open. Original full218/PG215.96s precede that final email correction; final focused/email8 and both strict Clippy profiles pass.

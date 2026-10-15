@@ -33,6 +33,7 @@ pub(super) async fn link<S: AuthStore + 'static>(
             }
         }
         GoogleAccounts::new(app.store.clone())
+            .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
             .with_session_policy(app.session_policy)
             .link_direct_verified(&profile, &tokens, super::text(&view.user, "id")?, now)
             .await?;

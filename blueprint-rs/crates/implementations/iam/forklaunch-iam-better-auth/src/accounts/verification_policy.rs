@@ -108,6 +108,7 @@ impl<S: AuthStore> CredentialService<S> {
         route: &'static str,
     ) -> BlueprintResult<()> {
         if let Some(delivery) = &self.verification_delivery {
+            let now = self.time_source.sample(now);
             let future = super::email_delivery::prepare(
                 delivery.hook.as_ref(),
                 user,

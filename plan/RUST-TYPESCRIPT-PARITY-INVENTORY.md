@@ -11033,3 +11033,31 @@ TypeScript 12 roots/623 exports, and inventory 623/1703 pass. Initial generated
 integer-literal style diagnostics were fixed in the generator and final Clippy passed.
 Evidence: `/private/tmp/fl-zod-emoji-{native,js-final,consumers,types-final,clippy-final,package-list}.log`.
 Regex, JWT format and broader schema constraints remain open; 660/682 unchanged.
+
+
+### 2026-10-15 — Fresh HTTP clock sampling across auth grants
+
+A private optional time source now propagates the configured HTTP clock through
+credentials, sessions, Google, MFA and initial organization session checks. Direct
+service APIs retain their explicitly supplied timestamp. Both clock/factor builder
+orders bind the same clock. Session expiry/refresh checks sample after authoritative
+reads; grants sample after awaited hashing/delivery/provider/store work. Password
+and MFA grant rotation recheck authority before mint/commit, preserving the existing
+challenge/session equality rules and independent async OTP/backup lease clocks.
+Late writes cannot renew authority that crossed its old expiry during the wait.
+This strengthens selected native race boundaries; it does not promise a deadline
+after COMMIT or exact upstream race behavior.
+
+Actual delayed-work oracle: 3 cases passed. Pre-review focused clock test passed;
+full IAM 218 passed/3 ignored in 166.38s; restricted PostgreSQL passed in 215.96s
+with owned roles/records/audit rows zero. Root review then found an old supplied-time
+load in externally supplied change-email proof application. Corrected final source
+passes its dedicated delayed-writer test and all 8 affected email regressions, plus
+strict full/all-target and minimal Clippy. The earlier full/PG runs are retained as
+pre-correction evidence, not represented as reruns of the final source.
+
+Final 34-source manifest: `/private/tmp/fl-clock-final-freeze.json`. Original logs:
+`/private/tmp/fl-clock-{actual,native,full,pg,clippy,minimal-clippy}.log`; final review
+logs: `/private/tmp/fl-clock-review-{native,email,clippy,minimal-clippy}.log`.
+Secondary organization transaction rechecks remain a concrete follow-up, as do
+broader auth options/plugins. No broad gate closes; checklist remains 660/682.

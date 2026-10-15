@@ -1633,7 +1633,7 @@ Missing users receive the same status/message without delivery or a persisted
 token. A discarded random token and dummy verification lookup follow upstream's
 timing-mitigation shape, without a constant-time claim. Existing users, including
 those without a credential account, get a random 24-character ASCII base62 token
-with unbiased sampling and a one-hour expiry. Email lookup lowercases the input.
+with unbiased sampling and a configurable expiry (one hour by default). Email lookup lowercases the input.
 The Verification record uses the existing `reset-password:<token>` identifier
 and user-ID value. Configured PostgreSQL storage encrypts it; custom AuthStore
 implementations own their storage security. POST `/reset-password` consumes the
@@ -1837,13 +1837,11 @@ rejects unless freshness is zero, and disabled refresh still cleans expired rows
 JWT expiration and MFA challenge/trust/OTP lifetimes remain independent. Deferred
 GET/POST refresh, secondary storage and cookie-cache options remain separate work.
 
-Direct domain methods continue to use their caller-supplied `now`. The current
-HTTP adapter passes its request-time sample through credential hashing/provider
-work, so this profile proves supplied-time arithmetic and policy selection, not
-exact parity with upstream post-await wall-clock sampling. With very short TTLs,
-that can shorten the useful lifetime of a newly returned session. Resampling at
-HTTP creation/refresh boundaries, with delayed-work and authority tests, remains
-queued; explicit-time domain APIs retain their existing contract.
+Direct domain methods continue to use their caller-supplied `now`. HTTP services
+use the trusted request clock at authoritative read and session issuance/refresh
+boundaries, including after awaited hashing, provider work and delivery hooks.
+The clock propagation and stale-authority limits are described below; this does
+not promise a full TTL remaining when database commit or response delivery ends.
 
 
 ### Trusted credential and token options
@@ -1867,6 +1865,21 @@ remains unavailable; this group does not implement their upstream opt-in policie
 Existing change-email proof processing does not issue new change-email tokens. Generic
 JavaScript negative/fractional option values are outside these typed constructors.
 
-These options preserve the explicit caller-supplied timestamp contract. Fresh clock
-sampling after hashing/provider/callback waits remains a separate HTTP orchestration
-follow-up; configuration/expiry arithmetic tests do not prove latency equivalence.
+Direct services preserve the explicit caller-supplied timestamp contract. HTTP-driven
+services carry a private trusted clock and resample after hashing, delivery hooks and
+authoritative reads, and immediately before session construction/refresh. Both clock
+and MFA builder orders preserve this behavior. Manual reset/verification issuance also
+samples after its authoritative user lookup; existing codec lease clocks remain intact.
+
+Original session/challenge expiry is checked again after awaited replacement writes,
+before returning to commit. An expired authority cannot produce a replacement session;
+failed factor/password mutations roll back atomically. Refresh that crosses the original
+expiry during its write removes the expired session instead of reviving it. This is a
+stronger native stale-write boundary than arbitrary upstream adapter races. A database
+commit can itself take time: there is no post-commit rollback or exact response-time TTL
+guarantee. Authenticated OTP operations that do not issue a new session retain their
+existing single-sample clock behavior. Date sampling outside these issuance/refresh
+paths, third-party hooks and custom store isolation remain distinct contracts.
+Organization routes use the fresh clock for their initial session check/refresh;
+secondary organization transaction rechecks still use the supplied request timestamp
+and are separate from this grant-issuance timing profile.

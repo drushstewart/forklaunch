@@ -2721,3 +2721,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Independent subscription recovery passes restricted PostgreSQL, HTTP/MCP, both SDKs, creation regression, 13 units, 152 artifact cases and strict full/minimal Clippy. No recovery provider POST; broader billing gate remains open, 660/682 unchanged.
 
 - 2026-10-15: Pinned Unicode16 emoji assertions pass 2,224,436 actual/AJV and 2,224,436 native observations, 23 HTTP/92 socket checks, strict Clippy/types/inventory and licensed data package inclusion. Regex/JWT and broader constraints stay open; 660/682 unchanged.
+
+- 2026-10-15: Fresh HTTP auth clock propagation validated against actual3, pre-review full IAM218/restrictedPG, final delayed email proof and8 email regressions, strict full/minimal Clippy. Secondary organization rechecks remain queued;660/682 unchanged.

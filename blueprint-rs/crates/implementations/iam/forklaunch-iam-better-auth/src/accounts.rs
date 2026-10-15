@@ -90,6 +90,7 @@ impl AuthGrant {
     }
 }
 pub struct CredentialService<S> {
+    time_source: crate::time_source::TimeSource,
     credential_policy: CredentialPolicy,
     token_lifetimes: AuthTokenLifetimes,
     session_policy: crate::sessions::SessionPolicy,
@@ -103,6 +104,12 @@ pub struct CredentialService<S> {
     pub(crate) verification_delivery: Option<verification_policy::Delivery>,
 }
 impl<S: AuthStore> CredentialService<S> {
+    #[cfg(feature = "http")]
+    pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
+        self.time_source = source;
+        self
+    }
+
     #[must_use]
     pub fn with_credential_policy(mut self, policy: CredentialPolicy) -> Self {
         self.credential_policy = policy;
@@ -129,6 +136,7 @@ impl<S: AuthStore> CredentialService<S> {
             credential_policy: CredentialPolicy::default(),
             token_lifetimes: AuthTokenLifetimes::default(),
             session_policy: crate::sessions::SessionPolicy::default(),
+            time_source: crate::time_source::TimeSource::default(),
             store,
             verification_policy: EmailVerificationPolicy::default(),
             signup_auto_sign_in: true,
@@ -205,6 +213,7 @@ impl<S: AuthStore> CredentialService<S> {
         let hash = self
             .run_crypto(move || credentials::hash_password(&password))
             .await?;
+        let now = self.time_source.sample(now);
         let id = uuid::Uuid::new_v4().to_string();
         let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
         let mut user = json!({"id":id,"email":email,"name":input.name,"firstName":input.first_name,"lastName":input.last_name,"emailVerified":false,"createdAt":timestamp,"updatedAt":timestamp});
@@ -267,6 +276,7 @@ impl<S: AuthStore> CredentialService<S> {
                 self.verification_policy.require,
             ));
         }
+        let now = self.time_source.sample(now);
         let session = crate::sessions::new_session_with_policy(
             &id,
             ip,
@@ -381,6 +391,7 @@ impl<S: AuthStore> CredentialService<S> {
             .get(Model::User, text(&user, "id")?)
             .await?
             .ok_or_else(invalid_credentials)?;
+        let now = self.time_source.sample(now);
         if self.verification_policy.require && user["emailVerified"] != true {
             tx.commit().await?;
             if self.verification_policy.send_on_signin {
@@ -412,6 +423,7 @@ impl<S: AuthStore> CredentialService<S> {
                 crate::two_factor::signin::SigninGate::Trusted(value) => trust = Some(value),
             }
         }
+        let now = self.time_source.sample(now);
         let session = crate::sessions::new_session_with_policy(
             text(&user, "id")?,
             ip,

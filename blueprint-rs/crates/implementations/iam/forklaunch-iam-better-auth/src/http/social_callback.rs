@@ -164,7 +164,9 @@ async fn finish<S: AuthStore + 'static>(
     if callback.is_empty() {
         return with_error(error_url, "no_callback_url", None);
     }
-    let accounts = GoogleAccounts::new(app.store.clone()).with_session_policy(app.session_policy);
+    let accounts = GoogleAccounts::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
+        .with_session_policy(app.session_policy);
     if let Some(link) = data.get("link") {
         match accounts.link_verified(&profile, tokens, link, now).await {
             Ok(()) => return Ok(callback.to_owned()),

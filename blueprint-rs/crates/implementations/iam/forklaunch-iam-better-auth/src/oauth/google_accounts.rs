@@ -13,6 +13,7 @@ use std::sync::Arc;
 pub(crate) mod tests;
 
 pub struct GoogleAccounts<S> {
+    time_source: crate::time_source::TimeSource,
     session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
 }
@@ -21,6 +22,12 @@ pub struct GoogleGrant {
     pub registered: bool,
 }
 impl<S: AuthStore> GoogleAccounts<S> {
+    #[cfg(feature = "http")]
+    pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
+        self.time_source = source;
+        self
+    }
+
     /// Installs trusted session lifetime, refresh and freshness options.
     #[must_use]
     pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
@@ -31,6 +38,7 @@ impl<S: AuthStore> GoogleAccounts<S> {
     #[must_use]
     pub fn new(store: Arc<S>) -> Self {
         Self {
+            time_source: crate::time_source::TimeSource::default(),
             store,
             session_policy: crate::sessions::SessionPolicy::default(),
         }
@@ -224,6 +232,7 @@ impl<S: AuthStore> GoogleAccounts<S> {
             }
             tx.insert(Model::Account, account).await?;
         }
+        let now = self.time_source.sample(now);
         let session = crate::sessions::new_session_with_policy(
             text(&user, "id")?,
             ip,

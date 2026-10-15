@@ -1,7 +1,7 @@
 //! Server-only initial password assignment for an authoritative signed-in user.
 use super::{CredentialService, credentials, find_credential, text};
 use crate::{
-    sessions::{SessionService, load},
+    sessions::{SessionService, load_with_time},
     store::{AuthStore, AuthTransaction, Model},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -24,6 +24,7 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let view = SessionService::new(self.store.clone())
+            .with_time_source(self.time_source.clone())
             .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?
@@ -34,12 +35,21 @@ impl<S: AuthStore> CredentialService<S> {
             .run_crypto(move || credentials::hash_password(&password))
             .await?;
         let mut tx = self.store.begin(true).await?;
-        let current = load(&mut tx, token, true, now)
-            .await?
-            .ok_or_else(unauthorized)?;
+        let current = load_with_time(
+            &mut tx,
+            token,
+            true,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await?
+        .ok_or_else(unauthorized)?;
         if current.user["id"] != view.user["id"] {
             return Err(unauthorized());
         }
+        let now = self.time_source.sample(now);
+        crate::sessions::check_expiry(&current.session, now)?;
         let user_id = text(&current.user, "id")?;
         let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
         if let Some(mut account) = find_credential(&mut tx, user_id).await? {
@@ -55,6 +65,7 @@ impl<S: AuthStore> CredentialService<S> {
         } else {
             tx.insert(Model::Account, json!({"id":uuid::Uuid::new_v4().to_string(),"userId":user_id,"accountId":user_id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
         }
+        crate::sessions::check_expiry(&current.session, self.time_source.sample(now))?;
         tx.commit().await?;
         Ok(json!({"status":true}))
     }

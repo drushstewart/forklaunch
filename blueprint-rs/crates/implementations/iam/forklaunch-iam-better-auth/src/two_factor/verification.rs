@@ -241,6 +241,12 @@ impl<S: AuthStore> TwoFactorService<S> {
         disable_session: bool,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
+        let deadline = pending
+            .as_ref()
+            .map(|row| (row, true))
+            .or_else(|| session.as_ref().map(|row| (row, false)))
+            .map(|(row, challenge)| time(row, "expiresAt").map(|deadline| (deadline, challenge)))
+            .transpose()?;
         let mut factor_changed = recovery;
         let mut response = empty_response(
             json!({"token":session.as_ref().map(|row|row["token"].clone()),"user":output_user(&user)}),
@@ -261,6 +267,10 @@ impl<S: AuthStore> TwoFactorService<S> {
                     .remove("token");
                 tx.replace(Model::TwoFactor, row).await?;
                 return Ok(response);
+            }
+            let now = self.time_source.sample(now);
+            if time(&challenge_row, "expiresAt")? < now {
+                return Err(invalid_challenge());
             }
             let mut next = crate::sessions::new_session_with_policy(
                 text(&user, "id")?,
@@ -294,6 +304,7 @@ impl<S: AuthStore> TwoFactorService<S> {
                         session.as_ref().ok_or_else(unauthorized)?,
                         now,
                         self.session_policy,
+                        &self.time_source,
                     )
                     .await?,
                 );
@@ -305,6 +316,9 @@ impl<S: AuthStore> TwoFactorService<S> {
         }
         if factor_changed {
             tx.replace(Model::TwoFactor, row).await?;
+        }
+        if response.session.is_some() {
+            super::issuance_authority(&self.time_source, deadline, now)?;
         }
         Ok(response)
     }

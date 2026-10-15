@@ -1,6 +1,6 @@
 //! Authenticated password changes with authoritative rechecks after derivation.
 use super::{CredentialService, credentials, find_credential, text};
-use crate::sessions::{SessionService, load};
+use crate::sessions::{SessionService, load_with_time};
 use crate::store::{AuthStore, AuthTransaction, Model};
 use chrono::{DateTime, SecondsFormat, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
@@ -43,6 +43,7 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let view = SessionService::new(self.store.clone())
+            .with_time_source(self.time_source.clone())
             .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?
@@ -67,13 +68,21 @@ impl<S: AuthStore> CredentialService<S> {
             return Err(invalid_password());
         }
         let mut tx = self.store.begin(true).await?;
-        let current = load(&mut tx, token, true, now)
-            .await?
-            .ok_or_else(unauthorized)?;
+        let current = load_with_time(
+            &mut tx,
+            token,
+            true,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await?
+        .ok_or_else(unauthorized)?;
         if current.user["id"] != view.user["id"] {
             return Err(unauthorized());
         }
         recheck_account(&mut tx, &account, &expected).await?;
+        crate::sessions::check_expiry(&current.session, self.time_source.sample(now))?;
         tx.commit().await?;
         Ok(json!({"status":true}))
     }
@@ -97,6 +106,7 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<PasswordChange> {
         let view = SessionService::new(self.store.clone())
+            .with_time_source(self.time_source.clone())
             .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?
@@ -135,13 +145,22 @@ impl<S: AuthStore> CredentialService<S> {
             })
             .await?;
         let mut tx = self.store.begin(true).await?;
-        let current = load(&mut tx, token, true, now)
-            .await?
-            .ok_or_else(unauthorized)?;
+        let current = load_with_time(
+            &mut tx,
+            token,
+            true,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await?
+        .ok_or_else(unauthorized)?;
         if current.user["id"] != view.user["id"] {
             return Err(unauthorized());
         }
         let mut account = recheck_account(&mut tx, &account, &expected).await?;
+        let now = self.time_source.sample(now);
+        crate::sessions::check_expiry(&current.session, now)?;
         account["password"] = json!(password_hash.as_str());
         account["updatedAt"] = json!(now.to_rfc3339_opts(SecondsFormat::Millis, true));
         tx.replace(Model::Account, account).await?;
@@ -153,6 +172,8 @@ impl<S: AuthStore> CredentialService<S> {
                     tx.delete(Model::Session, text(&session, "id")?).await?;
                 }
             }
+            let now = self.time_source.sample(now);
+            crate::sessions::check_expiry(&current.session, now)?;
             let session = crate::sessions::new_session_with_policy(
                 user_id,
                 ip,
@@ -166,6 +187,7 @@ impl<S: AuthStore> CredentialService<S> {
         } else {
             None
         };
+        crate::sessions::check_expiry(&current.session, self.time_source.sample(now))?;
         tx.commit().await?;
         Ok(PasswordChange {
             user: current.user,

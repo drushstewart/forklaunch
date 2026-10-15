@@ -27,3 +27,5 @@ pub mod http;
 
 mod ecmascript;
 mod error_origin;
+
+mod time_source;

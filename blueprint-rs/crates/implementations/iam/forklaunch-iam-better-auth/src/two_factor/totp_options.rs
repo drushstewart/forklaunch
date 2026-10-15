@@ -90,6 +90,7 @@ impl<S> TwoFactorService<S> {
     pub(crate) fn copy_configuration(&self) -> Self {
         Self {
             credential_policy: self.credential_policy,
+            time_source: self.time_source.clone(),
             session_policy: self.session_policy,
             store: self.store.clone(),
             secret: self.secret.clone(),

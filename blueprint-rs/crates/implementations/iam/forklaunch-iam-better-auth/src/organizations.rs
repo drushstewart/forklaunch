@@ -25,6 +25,7 @@ pub use members::{AddMemberInput, MemberRoles};
 pub(crate) mod tests;
 
 pub struct OrganizationService<S> {
+    time_source: crate::time_source::TimeSource,
     session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
 }
@@ -35,6 +36,12 @@ pub struct OrganizationSelection {
     pub cookie: bool,
 }
 impl<S: AuthStore> OrganizationService<S> {
+    #[cfg(feature = "http")]
+    pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
+        self.time_source = source;
+        self
+    }
+
     /// Installs trusted session lifetime, refresh and freshness options.
     #[must_use]
     pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
@@ -45,6 +52,7 @@ impl<S: AuthStore> OrganizationService<S> {
     #[must_use]
     pub fn new(store: Arc<S>) -> Self {
         Self {
+            time_source: crate::time_source::TimeSource::default(),
             store,
             session_policy: crate::sessions::SessionPolicy::default(),
         }
@@ -108,6 +116,7 @@ impl<S: AuthStore> OrganizationService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<SessionView> {
         SessionService::new(self.store.clone())
+            .with_time_source(self.time_source.clone())
             .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?

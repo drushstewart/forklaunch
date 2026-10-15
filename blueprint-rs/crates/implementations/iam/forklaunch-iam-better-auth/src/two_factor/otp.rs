@@ -298,8 +298,15 @@ impl<S: AuthStore> TwoFactorService<S> {
         user["twoFactorEnabled"] = json!(true);
         user["updatedAt"] = json!(super::timestamp(now));
         tx.replace(Model::User, user.clone()).await?;
-        let replacement =
-            enrollment::rotate(&mut tx, &user, &session, now, self.session_policy).await?;
+        let replacement = enrollment::rotate(
+            &mut tx,
+            &user,
+            &session,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await?;
         tx.commit().await?;
         let mut response = empty_response(json!({"method":"otp"}));
         response.session = Some(replacement);
@@ -426,6 +433,15 @@ impl<S: AuthStore> TwoFactorService<S> {
         trust_device: bool,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
+        let deadline = bound
+            .challenge
+            .as_ref()
+            .map(|row| (row, true))
+            .or_else(|| bound.session.as_ref().map(|row| (row, false)))
+            .map(|(row, challenge)| {
+                super::time(row, "expiresAt").map(|deadline| (deadline, challenge))
+            })
+            .transpose()?;
         let mut user = bound.user;
         let mut response = empty_response(
             json!({"token":bound.session.as_ref().map(|session|session["token"].clone()),"user":output_user(&user)}),
@@ -435,8 +451,15 @@ impl<S: AuthStore> TwoFactorService<S> {
                 user["twoFactorEnabled"] = json!(true);
                 user["updatedAt"] = json!(super::timestamp(now));
                 tx.replace(Model::User, user.clone()).await?;
-                let replacement =
-                    enrollment::rotate(tx, &user, &session, now, self.session_policy).await?;
+                let replacement = enrollment::rotate(
+                    tx,
+                    &user,
+                    &session,
+                    now,
+                    self.session_policy,
+                    &self.time_source,
+                )
+                .await?;
                 response.body = json!({"token":replacement["token"],"user":output_user(&user)});
                 response.session = Some(replacement);
             }
@@ -444,6 +467,10 @@ impl<S: AuthStore> TwoFactorService<S> {
             let challenge = bound.challenge.ok_or_else(invalid_challenge)?;
             tx.delete(Model::Verification, text(&challenge, "id")?)
                 .await?;
+            let now = self.time_source.sample(now);
+            if super::time(&challenge, "expiresAt")? < now {
+                return Err(invalid_challenge());
+            }
             let session = crate::sessions::new_session_with_policy(
                 text(&user, "id")?,
                 challenge["ipAddress"].as_str().unwrap_or(""),
@@ -460,6 +487,9 @@ impl<S: AuthStore> TwoFactorService<S> {
             if trust_device {
                 response.trust = Some(self.create_trust(tx, &user, now).await?);
             }
+        }
+        if response.session.is_some() {
+            super::issuance_authority(&self.time_source, deadline, now)?;
         }
         Ok(response)
     }

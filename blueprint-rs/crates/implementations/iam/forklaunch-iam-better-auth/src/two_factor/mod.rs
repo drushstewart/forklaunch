@@ -70,6 +70,7 @@ use zeroize::Zeroizing;
 
 /// Trusted two-factor configuration. No Debug/Serialize: this holds signing secrets.
 pub struct TwoFactorService<S> {
+    time_source: crate::time_source::TimeSource,
     credential_policy: crate::accounts::CredentialPolicy,
     session_policy: crate::sessions::SessionPolicy,
     pub(crate) store: Arc<S>,
@@ -164,6 +165,12 @@ pub enum CredentialSigninOutcome {
     Challenge(TwoFactorChallenge),
 }
 impl<S: AuthStore> TwoFactorService<S> {
+    #[cfg(feature = "http")]
+    pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
+        self.time_source = source;
+        self
+    }
+
     /// The fixed profile protects password sign-in. Social callback behavior is
     /// independent, matching the upstream plugin's credential-hook scope.
     /// # Errors
@@ -178,6 +185,7 @@ impl<S: AuthStore> TwoFactorService<S> {
         Ok(Self {
             credential_policy: crate::accounts::CredentialPolicy::default(),
             session_policy: crate::sessions::SessionPolicy::default(),
+            time_source: crate::time_source::TimeSource::default(),
             store,
             secret: Zeroizing::new(secret),
             issuer,
@@ -322,4 +330,28 @@ impl<S: AuthStore> TwoFactorService<S> {
         self.session_policy = policy;
         self
     }
+}
+
+// Checks the original authority after awaited grant/trust/factor writes. The
+// following COMMIT can still take time; this is not a post-commit deadline guarantee.
+fn issuance_authority(
+    source: &crate::time_source::TimeSource,
+    deadline: Option<(DateTime<Utc>, bool)>,
+    now: DateTime<Utc>,
+) -> BlueprintResult<()> {
+    if let Some((deadline, challenge)) = deadline {
+        let current = source.sample(now);
+        if if challenge {
+            deadline < current
+        } else {
+            deadline <= current
+        } {
+            return Err(if challenge {
+                invalid_challenge()
+            } else {
+                unauthorized()
+            });
+        }
+    }
+    Ok(())
 }

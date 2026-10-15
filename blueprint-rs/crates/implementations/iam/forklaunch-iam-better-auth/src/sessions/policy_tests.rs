@@ -32,7 +32,10 @@ pub(crate) async fn exercise_policy<S: AuthStore>(store: Arc<S>) {
             _ => policy,
         };
         let service = SessionService::new(store.clone()).with_session_policy(selected);
-        let row = service.create("session-policy-test-user", "", "", now).await.unwrap();
+        let row = service
+            .create("session-policy-test-user", "", "", now)
+            .await
+            .unwrap();
         assert_eq!(
             field_time(&row, "expiresAt").unwrap(),
             now + Duration::seconds(120)
@@ -66,7 +69,10 @@ pub(crate) async fn exercise_policy<S: AuthStore>(store: Arc<S>) {
             .unwrap();
     }
     let service = SessionService::new(store.clone()).with_session_policy(policy);
-    let row = service.create("session-policy-test-user", "", "", now).await.unwrap();
+    let row = service
+        .create("session-policy-test-user", "", "", now)
+        .await
+        .unwrap();
     let token = row["token"].as_str().unwrap();
     assert!(
         service
@@ -110,7 +116,8 @@ pub(crate) async fn exercise_policy<S: AuthStore>(store: Arc<S>) {
         now + Duration::seconds(360)
     );
     service.sign_out(token).await.unwrap();
-    let transient = new_session_with_policy("session-policy-test-user", "", "", now, policy, false).unwrap();
+    let transient =
+        new_session_with_policy("session-policy-test-user", "", "", now, policy, false).unwrap();
     assert_eq!(
         field_time(&transient, "expiresAt").unwrap(),
         now + Duration::days(1)

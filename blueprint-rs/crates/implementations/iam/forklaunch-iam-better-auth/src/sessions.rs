@@ -15,6 +15,7 @@ mod policy;
 pub use policy::SessionPolicy;
 
 pub struct SessionService<S> {
+    time_source: crate::time_source::TimeSource,
     policy: SessionPolicy,
     store: Arc<S>,
 }
@@ -34,9 +35,15 @@ impl SessionView {
 }
 
 impl<S: AuthStore> SessionService<S> {
+    pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
+        self.time_source = source;
+        self
+    }
+
     #[must_use]
     pub fn new(store: Arc<S>) -> Self {
         Self {
+            time_source: crate::time_source::TimeSource::default(),
             store,
             policy: SessionPolicy::default(),
         }
@@ -65,6 +72,7 @@ impl<S: AuthStore> SessionService<S> {
         if tx.get(Model::User, user_id).await?.is_none() {
             return Err(unauthorized());
         }
+        let now = self.time_source.sample(now);
         let session =
             new_session_with_policy(user_id, ip_address, user_agent, now, self.policy, true)?;
         tx.insert(Model::Session, session.clone()).await?;
@@ -89,12 +97,13 @@ impl<S: AuthStore> SessionService<S> {
             .begin(true)
             .await
             .map_err(crate::error_origin::session_catch)?;
-        let result = load_with_policy(
+        let result = load_with_time(
             &mut tx,
             token,
             transient || disable_refresh,
             now,
             self.policy,
+            &self.time_source,
         )
         .await?;
         tx.commit()
@@ -114,11 +123,20 @@ impl<S: AuthStore> SessionService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let mut tx = self.store.begin(true).await?;
-        let Some(current) = load_with_policy(&mut tx, token, transient, now, self.policy).await?
+        let Some(current) = load_with_time(
+            &mut tx,
+            token,
+            transient,
+            now,
+            self.policy,
+            &self.time_source,
+        )
+        .await?
         else {
             tx.commit().await?;
             return Err(unauthorized());
         };
+        let now = self.time_source.sample(now);
         let created = field_time(&current.session, "createdAt")?;
         if !self.policy.fresh(created, now) {
             // The real middleware persists refresh before rejecting freshness.
@@ -201,11 +219,20 @@ impl<S: AuthStore> SessionService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let mut tx = self.store.begin(true).await?;
-        let Some(current) = load_with_policy(&mut tx, token, transient, now, self.policy).await?
+        let Some(current) = load_with_time(
+            &mut tx,
+            token,
+            transient,
+            now,
+            self.policy,
+            &self.time_source,
+        )
+        .await?
         else {
             tx.commit().await?;
             return Err(unauthorized());
         };
+        let now = self.time_source.sample(now);
         if let Revoke::One(target) = mode {
             if let Some(session) = find_token(&mut tx, target).await?
                 && session["userId"] == current.user["id"]
@@ -352,21 +379,42 @@ pub(crate) async fn load_with_policy<T: AuthTransaction>(
     now: DateTime<Utc>,
     policy: SessionPolicy,
 ) -> BlueprintResult<Option<SessionView>> {
-    load_inner(tx, token, skip_refresh, now, policy)
+    load_with_time(
+        tx,
+        token,
+        skip_refresh,
+        now,
+        policy,
+        &crate::time_source::TimeSource::default(),
+    )
+    .await
+}
+pub(crate) async fn load_with_time<T: AuthTransaction>(
+    tx: &mut T,
+    token: &str,
+    skip_refresh: bool,
+    now: DateTime<Utc>,
+    policy: SessionPolicy,
+    source: &crate::time_source::TimeSource,
+) -> BlueprintResult<Option<SessionView>> {
+    load_inner(tx, token, skip_refresh, now, policy, source)
         .await
         .map_err(crate::error_origin::session_catch)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn load_inner<T: AuthTransaction>(
     tx: &mut T,
     token: &str,
     skip_refresh: bool,
     now: DateTime<Utc>,
     policy: SessionPolicy,
+    source: &crate::time_source::TimeSource,
 ) -> BlueprintResult<Option<SessionView>> {
     let Some(mut session) = find_token(tx, token).await? else {
         return Ok(None);
     };
+    let now = source.sample(now);
     let expires = field_time(&session, "expiresAt")?;
     if expires < now {
         tx.delete(Model::Session, field_text(&session, "id")?)
@@ -376,6 +424,12 @@ async fn load_inner<T: AuthTransaction>(
     let Some(user) = tx.get(Model::User, field_text(&session, "userId")?).await? else {
         return Ok(None);
     };
+    let now = source.sample(now);
+    if expires < now {
+        tx.delete(Model::Session, field_text(&session, "id")?)
+            .await?;
+        return Ok(None);
+    }
     let threshold = expires
         .checked_add_signed(Duration::seconds(
             i64::from(policy.update_age) - i64::from(policy.expires_in),
@@ -389,12 +443,23 @@ async fn load_inner<T: AuthTransaction>(
         ));
         session["updatedAt"] = json!(timestamp(now));
         tx.replace(Model::Session, session.clone()).await?;
+        if expires < source.sample(now) {
+            tx.delete(Model::Session, field_text(&session, "id")?)
+                .await?;
+            return Ok(None);
+        }
     }
     Ok(Some(SessionView {
         session: public_session(&session),
         user: public_user(&user),
         refreshed,
     }))
+}
+pub(crate) fn check_expiry(session: &Value, now: DateTime<Utc>) -> BlueprintResult<()> {
+    if field_time(session, "expiresAt")? < now {
+        return Err(unauthorized());
+    }
+    Ok(())
 }
 fn public_session(row: &Value) -> Value {
     select(

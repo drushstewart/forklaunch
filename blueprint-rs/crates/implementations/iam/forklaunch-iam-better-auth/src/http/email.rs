@@ -2,7 +2,7 @@
 use super::{AuthHttp, callback, clear, failure, internal, request, set_cookie, text};
 use crate::{
     credentials::{EmailTokenError, VerifiedEmailToken, verify_email_token},
-    sessions::{SessionService, load, public_user},
+    sessions::{SessionService, public_user},
     store::{AuthStore, AuthTransaction, Model},
 };
 use axum::{
@@ -95,6 +95,7 @@ async fn handle<S: AuthStore + 'static>(
     let mut active = None;
     if changing {
         active = SessionService::new(app.store.clone())
+            .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
             .with_session_policy(app.session_policy)
             .get(&session_token, transient, false, now)
             .await?;
@@ -237,6 +238,7 @@ async fn auto_login<S: AuthStore + 'static>(
     // Expired-session cleanup/refresh commits independently before a new grant,
     // matching upstream's getSession-before-create partial-failure boundary.
     let view = SessionService::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
         .with_session_policy(app.session_policy)
         .get(&request.token, transient, false, (app.clock)())
         .await?;
@@ -267,14 +269,22 @@ async fn auto_login<S: AuthStore + 'static>(
             user["email"].as_str() == Some(request.email.as_str()) && user["emailVerified"] == true
         })
         .ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))?;
-    let current = load(&mut tx, &request.token, true, now)
-        .await
-        .map_err(|_| login_failure())?;
+    let current = crate::sessions::load_with_time(
+        &mut tx,
+        &request.token,
+        true,
+        now,
+        app.session_policy,
+        &crate::time_source::TimeSource::http(app.clock.clone()),
+    )
+    .await
+    .map_err(|_| login_failure())?;
     let session = if let Some(current) = current.filter(|current| {
         current.user["id"] == user["id"] && current.user["email"] == user["email"]
     }) {
         current.session
     } else {
+        let now = (app.clock)();
         let session = crate::sessions::new_session_with_policy(
             &request.user_id,
             &request.ip,
@@ -328,14 +338,22 @@ async fn apply<S: AuthStore + 'static>(
     let mut after = None;
     let body = if let Some(email) = claims.update_to.as_ref().filter(|email| !email.is_empty()) {
         let current = if let Some(token) = active_token {
-            let current = load(&mut tx, token, true, now)
-                .await?
-                .ok_or_else(|| BlueprintError::new("INVALID_USER", "Invalid user"))?;
+            let current = crate::sessions::load_with_time(
+                &mut tx,
+                token,
+                true,
+                now,
+                app.session_policy,
+                &crate::time_source::TimeSource::http(app.clock.clone()),
+            )
+            .await?
+            .ok_or_else(|| BlueprintError::new("INVALID_USER", "Invalid user"))?;
             if current.user["id"] != user["id"] || current.user["email"] != claims.email {
                 return Err(BlueprintError::new("INVALID_USER", "Invalid user"));
             }
             current.session
         } else {
+            let now = (app.clock)();
             let current = crate::sessions::new_session_with_policy(
                 text(&user, "id")?,
                 ip,
@@ -465,6 +483,7 @@ pub(super) async fn send<S: AuthStore + 'static>(
         ));
     }
     let view = SessionService::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
         .with_session_policy(app.session_policy)
         .get(credentials.0, credentials.1, false, now)
         .await?;
@@ -485,7 +504,7 @@ pub(super) async fn send<S: AuthStore + 'static>(
             &app.auth_base_url(),
             callback,
             &app.secret,
-            now,
+            (app.clock)(),
             app.token_lifetimes.email_verification_seconds(),
         )
         .await?;
@@ -504,7 +523,7 @@ pub(super) async fn send<S: AuthStore + 'static>(
                     &app.auth_base_url(),
                     callback,
                     &app.secret,
-                    now,
+                    (app.clock)(),
                     app.token_lifetimes.email_verification_seconds(),
                 )
                 .await
@@ -512,7 +531,7 @@ pub(super) async fn send<S: AuthStore + 'static>(
             None => crate::accounts::email_delivery::token_with_lifetime(
                 email,
                 &app.secret,
-                now,
+                (app.clock)(),
                 app.token_lifetimes.email_verification_seconds(),
             )
             .map(|_| ()),

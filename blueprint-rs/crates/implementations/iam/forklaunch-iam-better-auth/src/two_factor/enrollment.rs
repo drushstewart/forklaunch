@@ -37,6 +37,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             return Err(error("TOTP_NOT_CONFIGURED", "TOTP is not available"));
         }
         let mut tx = self.store.begin(true).await?;
+        let now = self.time_source.sample(now);
         let (mut user, old_session) = authenticated(&mut tx, token, now).await?;
         checked.check(&mut tx, &user).await?;
         let existing = tx
@@ -66,7 +67,17 @@ impl<S: AuthStore> TwoFactorService<S> {
             user["twoFactorEnabled"] = json!(true);
             user["updatedAt"] = json!(timestamp(now));
             tx.replace(Model::User, user.clone()).await?;
-            Some(rotate(&mut tx, &user, &old_session, now, self.session_policy).await?)
+            Some(
+                rotate(
+                    &mut tx,
+                    &user,
+                    &old_session,
+                    now,
+                    self.session_policy,
+                    &self.time_source,
+                )
+                .await?,
+            )
         } else {
             None
         };
@@ -150,6 +161,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             .password_snapshot(token, password, now, super::PasswordAction::General)
             .await?;
         let mut tx = self.store.begin(true).await?;
+        let now = self.time_source.sample(now);
         let (mut user, old_session) = authenticated(&mut tx, token, now).await?;
         checked.check(&mut tx, &user).await?;
         user["twoFactorEnabled"] = json!(false);
@@ -168,7 +180,15 @@ impl<S: AuthStore> TwoFactorService<S> {
         {
             tx.delete(Model::Verification, text(&row, "id")?).await?;
         }
-        let session = rotate(&mut tx, &user, &old_session, now, self.session_policy).await?;
+        let session = rotate(
+            &mut tx,
+            &user,
+            &old_session,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await?;
         tx.commit().await?;
         let mut response = empty_response(json!({"status":true}));
         response.session = Some(session);
@@ -182,7 +202,12 @@ pub(super) async fn rotate<T: AuthTransaction>(
     old: &Value,
     now: DateTime<Utc>,
     policy: crate::sessions::SessionPolicy,
+    source: &crate::time_source::TimeSource,
 ) -> BlueprintResult<Value> {
+    let now = source.sample(now);
+    if super::time(old, "expiresAt")? <= now {
+        return Err(super::unauthorized());
+    }
     let mut session = crate::sessions::new_session_with_policy(
         text(user, "id")?,
         old["ipAddress"].as_str().unwrap_or(""),
@@ -198,6 +223,7 @@ pub(super) async fn rotate<T: AuthTransaction>(
     }
     tx.insert(Model::Session, session.clone()).await?;
     tx.delete(Model::Session, text(old, "id")?).await?;
+    super::issuance_authority(source, Some((super::time(old, "expiresAt")?, false)), now)?;
     Ok(session)
 }
 pub(super) fn uri(issuer: &str, email: &str, secret: &[u8], options: super::TotpOptions) -> String {

@@ -502,6 +502,7 @@ async fn rotation_after_elapsed_time_resets_configured_session_dates() {
         &old,
         later,
         crate::sessions::SessionPolicy::default(),
+        &crate::time_source::TimeSource::default(),
     )
     .await
     .unwrap();

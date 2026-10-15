@@ -50,6 +50,8 @@ pub use rate::{
 };
 #[cfg(test)]
 pub(crate) mod credential_policy_tests;
+#[cfg(test)]
+pub(crate) mod clock_tests;
 #[cfg(feature = "application-http")]
 pub mod relay;
 mod request;
@@ -300,6 +302,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     #[must_use]
     pub fn with_clock(mut self, clock: impl Fn() -> DateTime<Utc> + Send + Sync + 'static) -> Self {
         self.clock = Arc::new(clock);
+        if let Some(factor) = &self.two_factor {
+            self.two_factor =
+                Some(Arc::new(factor.copy_configuration().with_time_source(
+                    crate::time_source::TimeSource::http(self.clock.clone()),
+                )));
+        }
         self
     }
     /// Trusted operator override of the configured default (enabled when
@@ -596,7 +604,9 @@ async fn handle<S: AuthStore + 'static>(
     if path == app.jwks_path {
         return app.jwks(now).await;
     }
-    let sessions = SessionService::new(app.store.clone()).with_session_policy(app.session_policy);
+    let sessions = SessionService::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
+        .with_session_policy(app.session_policy);
     if path == "/sign-out" {
         return sign_out(app, &token, pending).await;
     }
@@ -664,7 +674,9 @@ async fn session_operation<S: AuthStore + 'static>(
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
     let (token, transient, view) = session;
-    let sessions = SessionService::new(app.store.clone()).with_session_policy(app.session_policy);
+    let sessions = SessionService::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
+        .with_session_policy(app.session_policy);
     match path {
         "/verify-password" | "/change-password" | "/list-accounts" | "/unlink-account"
         | "/update-user" | "/change-email" | "/delete-user" => {
@@ -734,6 +746,7 @@ async fn sign_out<S: AuthStore + 'static>(
 ) -> BlueprintResult<Value> {
     if !token.is_empty()
         && let Err(error) = SessionService::new(app.store.clone())
+            .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
             .with_session_policy(app.session_policy)
             .sign_out(token)
             .await
