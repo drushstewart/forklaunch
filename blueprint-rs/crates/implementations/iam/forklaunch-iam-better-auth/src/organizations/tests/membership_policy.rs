@@ -106,6 +106,7 @@ async fn run<S: AuthStore>(
 }
 #[allow(clippy::too_many_lines)]
 pub(crate) async fn exercise<S: AuthStore + 'static>(store: Arc<S>) {
+    metadata_shapes(store.clone()).await;
     for flow in [Flow::Add, Flow::Accept] {
         for count in [0, 1] {
             for (i, limit) in [
@@ -574,5 +575,46 @@ async fn http<S: AuthStore + 'static>(store: Arc<S>) {
             to_bytes(out.into_body(), 65536).await.unwrap().is_empty(),
             [1, 2].contains(&mode)
         );
+    }
+}
+
+async fn metadata_shapes<S: AuthStore + 'static>(store: Arc<S>) {
+    for flow in [Flow::Add, Flow::Accept] {
+        for (index, metadata) in [
+            json!({"nested":{"enabled":true}}),
+            json!(42),
+            json!([true, null]),
+            json!("{\"stored\":true}"),
+            Value::Null,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let f = seed(
+                store.as_ref(),
+                &format!("metadata-{flow:?}-{index}"),
+                0,
+                false,
+            )
+            .await;
+            let mut tx = store.begin(true).await.unwrap();
+            let mut org = tx.get(Model::Organization, &f.org).await.unwrap().unwrap();
+            org["metadata"] = metadata.clone();
+            tx.replace(Model::Organization, org).await.unwrap();
+            tx.commit().await.unwrap();
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let capture = seen.clone();
+            let svc = OrganizationService::new(store.clone()).with_membership_limit_policy(
+                Arc::new(Hook(Box::new(move |ctx| {
+                    capture
+                        .lock()
+                        .unwrap()
+                        .push(ctx.organization()["metadata"].clone());
+                    Ok(Box::pin(async { Ok(100.0) }))
+                }))),
+            );
+            run(&svc, &f, flow, false).await.unwrap();
+            assert_eq!(*seen.lock().unwrap(), vec![metadata]);
+        }
     }
 }

@@ -48,21 +48,8 @@ async fn invoke(
     count: usize,
 ) -> BlueprintResult<()> {
     let user = crate::accounts::reset_request::projection(user).map_err(|_| failure())?;
-    let organization = super::delivery::projection(
-        organization,
-        &[
-            "id",
-            "name",
-            "slug",
-            "logo",
-            "createdAt",
-            "metadata",
-            "domain",
-            "subscription",
-            "status",
-        ],
-    )
-    .map_err(|_| failure())?;
+    let organization =
+        super::delivery::organization_projection(organization).map_err(|_| failure())?;
     let limit = hook
         .prepare(MembershipLimitContext { user, organization })
         .map_err(|_| failure())?

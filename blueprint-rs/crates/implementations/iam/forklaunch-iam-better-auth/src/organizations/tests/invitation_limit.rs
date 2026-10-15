@@ -61,6 +61,7 @@ pub(crate) async fn exercise<S: AuthStore + 'static>(store: Arc<S>) {
     mutations(store.clone()).await;
     windows(store.clone()).await;
     delivery_and_projection(store.clone()).await;
+    metadata_shapes(store.clone()).await;
     for clear in [false, true] {
         let f = seed(store.as_ref(), &format!("invitation-limit-builder-{clear}")).await;
         let svc = OrganizationService::new(store.clone());
@@ -474,7 +475,11 @@ async fn delivery_and_projection<S: AuthStore + 'static>(store: Arc<S>) {
             (Model::Organization, f.org.as_str(), "metadata")
         };
         let mut row = tx.get(model, id).await.unwrap().unwrap();
-        row[field] = json!({"nested":[{"secret":"not cloned recursively"}]});
+        row[field] = if user {
+            json!({"nested":[{"secret":"not cloned recursively"}]})
+        } else {
+            json!({"oversized": "x".repeat(4097)})
+        };
         tx.replace(model, row).await.unwrap();
         tx.commit().await.unwrap();
         let calls = Arc::new(AtomicUsize::new(0));
@@ -496,5 +501,51 @@ async fn delivery_and_projection<S: AuthStore + 'static>(store: Arc<S>) {
                 .await
                 .is_ok()
         );
+    }
+}
+
+async fn metadata_shapes<S: AuthStore + 'static>(store: Arc<S>) {
+    struct Capture(Arc<Mutex<Vec<Value>>>);
+    impl crate::organizations::InvitationEmailDelivery for Capture {
+        fn prepare(
+            &self,
+            ctx: crate::organizations::InvitationDeliveryContext,
+        ) -> BlueprintResult<crate::background::DeliveryFuture> {
+            self.0
+                .lock()
+                .unwrap()
+                .push(ctx.organization()["metadata"].clone());
+            Ok(Box::pin(async { Ok(()) }))
+        }
+    }
+    for (index, metadata) in [
+        json!({"nested":{"enabled":true},"count":3}),
+        json!("{\"nested\":{\"enabled\":true},\"count\":3}"),
+        Value::Null,
+        json!(42),
+        json!([true, null, {"label":"é"}]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let f = seed(store.as_ref(), &format!("invitation-metadata-{index}")).await;
+        let mut tx = store.begin(true).await.unwrap();
+        let mut org = tx.get(Model::Organization, &f.org).await.unwrap().unwrap();
+        org["metadata"] = metadata.clone();
+        tx.replace(Model::Organization, org).await.unwrap();
+        tx.commit().await.unwrap();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let quota = seen.clone();
+        let svc = OrganizationService::new(store.clone())
+            .with_invitation_limit_policy(Arc::new(Hook(Box::new(move |ctx| {
+                quota
+                    .lock()
+                    .unwrap()
+                    .push(ctx.organization()["metadata"].clone());
+                Ok(Box::pin(async { Ok(100.0) }))
+            }))))
+            .with_invitation_delivery(Arc::new(Capture(seen.clone())));
+        run(&svc, &f).await.unwrap();
+        assert_eq!(*seen.lock().unwrap(), vec![metadata.clone(), metadata]);
     }
 }

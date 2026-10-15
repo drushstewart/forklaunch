@@ -47,21 +47,7 @@ fn context(mut inviter: Value, organization: &Value) -> BlueprintResult<Invitati
         .as_object_mut()
         .and_then(|row| row.remove("user"))
         .ok_or_else(failure)?;
-    let organization = delivery::projection(
-        organization,
-        &[
-            "id",
-            "name",
-            "slug",
-            "logo",
-            "createdAt",
-            "metadata",
-            "domain",
-            "subscription",
-            "status",
-        ],
-    )
-    .map_err(|_| failure())?;
+    let organization = delivery::organization_projection(organization).map_err(|_| failure())?;
     Ok(InvitationLimitContext {
         user,
         organization,

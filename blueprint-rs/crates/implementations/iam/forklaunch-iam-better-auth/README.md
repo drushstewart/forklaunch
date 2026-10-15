@@ -2410,3 +2410,17 @@ Restricted PostgreSQL tests validate this native implementation's tenant scope,
 audit and transaction behavior; they do not establish equality with the configured
 MikroORM adapter's integer-column bindings for non-integral or non-finite quota
 results. That adapter-specific numeric behavior remains under separate audit.
+
+### Organization metadata in trusted callback contexts
+
+Invitation delivery, invitation quotas and membership quotas preserve the stored
+`metadata` JSON value. Adapter-seeded objects, arrays, booleans, numbers and null
+remain those values; stored JSON strings remain strings. Ordinary organization
+creation continues to serialize metadata for storage and return the parsed input
+to its caller. No other configured identity field gains arbitrary JSON support.
+
+Borrowed metadata is checked before cloning: at most 64 nesting levels, 4,096
+nodes and 4,096 aggregate UTF-8 bytes across keys and string values. These explicit
+native resource limits are not upstream rejection semantics. Missing metadata
+remains absent, and invalid metadata fails before the relevant callback; existing
+caller-specific persistence and error ordering remains unchanged.
