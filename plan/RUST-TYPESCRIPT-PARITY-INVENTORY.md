@@ -9941,3 +9941,17 @@ Metadata /private/tmp/fl-oct14-billing-sdk-checkpoint.json; package/install/runt
 logs /private/tmp/fl-oct14-billing-sdk-{driver,package,install,repackaged-files,runtime}.log.
 Owned source/install roots pending guarded cleanup; archive/logs retained.
 660/682 (96.8%),22open unchanged.
+
+
+### Immutable37b54 owned-workspace cleanup (2026-10-14)
+
+After committed70395cf5a runtime/byte receipt, exact owned source and extracted
+install/runtime roots were removed with prefix/no-symlink/process/open-file and
+retained archiveSHA guards.33480662+177077613=210558275logicalbytes removed.
+182nonexecutable rebuildable native cache files in80groups tied exclusively to
+removed roots were pruned,414381438logicalbytes, excluding current source and
+open files with stat/inode/hash guards. No executable/current-cache deletion or
+physical APFS-space claim. Retained4.87MB archive and logs remain. Metadata
+/private/tmp/fl-oct14-billing-sdk-checkpoint.json, cleanup log
+/private/tmp/fl-oct14-billing-sdk-cleanup.log, cache receipt
+/private/tmp/fl-oct14-billing-sdk-cache-cleanup.json.660/682 unchanged.
