@@ -142,6 +142,9 @@ pub struct RouterConfig {
     /// validator identity. Unselected routes retain `auth_error_format`.
     /// Rendering only: callers must declare matching response schemas for exports.
     pub auth_error_formats: HashMap<(String, String), AuthErrorFormat>,
+    /// Whole canonical paths whose registered methods also accept one final slash.
+    /// Empty by default. This does not rewrite the URI, add contracts or select auth.
+    pub optional_trailing_slash_paths: HashSet<String>,
     /// Format for errors returned by framework local handlers.
     pub handler_error_format: HandlerErrorFormat,
     /// Final wire representation for request-parser and transport-limit failures.
@@ -184,6 +187,7 @@ impl Default for RouterConfig {
             authorizer: None,
             auth_error_format: AuthErrorFormat::Json,
             auth_error_formats: HashMap::new(),
+            optional_trailing_slash_paths: HashSet::new(),
             handler_error_format: HandlerErrorFormat::Json,
             parser_error_format: ParserErrorFormat::Json,
             router_origin_format: RouterOriginFormat::Native,
@@ -228,6 +232,18 @@ impl RouterConfig {
         self.response_authenticator = Some(Arc::new(move |request, contract| {
             Box::pin(verifier(request, contract))
         }));
+        self
+    }
+
+    /// Accept exactly one trailing slash for all methods registered at this path.
+    /// The canonical root has no alternate spelling. Wildcard paths are unsupported.
+    /// Selection is path-wide, not an authentication or per-method policy.
+    #[must_use]
+    pub fn with_optional_trailing_slash_for_path(mut self, path: impl AsRef<str>) -> Self {
+        self.optional_trailing_slash_paths
+            .insert(forklaunch_common::route_open_api_path(
+                &normalize_route_path(path.as_ref()),
+            ));
         self
     }
 
@@ -577,6 +593,12 @@ impl ForkLaunchRouter {
         self.config
             .auth_error_formats
             .extend(config.auth_error_formats);
+        self.config.optional_trailing_slash_paths.extend(
+            config
+                .optional_trailing_slash_paths
+                .into_iter()
+                .map(|path| join_base_path(&prefix, &path)),
+        );
         self.config
             .json_request_parsers
             .extend(config.json_request_parsers)
@@ -718,6 +740,12 @@ impl ForkLaunchRouter {
 
         internal::validate(&internal_mounts, &registry, &config)
             .expect("invalid internal HTTP mount");
+        for path in &config.optional_trailing_slash_paths {
+            assert!(
+                routes.contains_key(path) && !path.contains("{*"),
+                "invalid optional trailing-slash path selection"
+            );
+        }
         let mut router = Router::new();
         for (path, mut method_router) in routes {
             if let Some(methods) = extended_routes.remove(&path) {
@@ -734,6 +762,9 @@ impl ForkLaunchRouter {
                 allowed.dedup();
                 let allow = allowed.join(", ");
                 method_router = origin::extended(method_router, methods, allow, &config);
+            }
+            if path != "/" && config.optional_trailing_slash_paths.contains(&path) {
+                router = router.route(&format!("{path}/"), method_router.clone());
             }
             router = router.route(&path, method_router);
         }
@@ -1028,11 +1059,23 @@ impl ValidationState {
         hooks
             .validate_routes(declared_registry.routes())
             .expect("invalid body hook registration");
-        let routes = registry
+        let mut routes: HashMap<_, _> = registry
             .routes()
             .iter()
             .map(|route| (route_key(route.method, &route.openapi_path), route.clone()))
             .collect();
+        for route in registry.routes() {
+            if route.openapi_path != "/"
+                && config
+                    .optional_trailing_slash_paths
+                    .contains(&route.openapi_path)
+            {
+                routes.insert(
+                    route_key(route.method, &format!("{}/", route.openapi_path)),
+                    route.clone(),
+                );
+            }
+        }
         // Runtime selection and callback schemas retain original declarations.
         // Effective response exports may add opt-in default error statuses.
         let versions = declared_registry

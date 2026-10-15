@@ -313,7 +313,7 @@ mod tests {
     #[tokio::test]
     async fn per_route_text_override_preserves_unselected_json_and_raw_path() {
         use forklaunch_axum::{AuthErrorFormat, ForkLaunchRouter, RouterConfig};
-        use forklaunch_blueprint_core::contract::{HmacAuth, HttpMethod};
+        use forklaunch_blueprint_core::contract::HmacAuth;
         use std::sync::Arc;
         let selected_route = RouteContract::get("Selected", "Selected", "/payment-link/:id")
             .with_auth(AuthConfig::Hmac(HmacAuth::new()))
@@ -323,6 +323,7 @@ mod tests {
             .with_response(200, None);
         let verifier = Arc::new(auth());
         let config = RouterConfig::default()
+            .with_optional_trailing_slash_for_path(&selected_route.openapi_path)
             .with_auth_error_format_for_route(&selected_route, AuthErrorFormat::TypeScriptText)
             .with_response_authenticator(move |request, route| {
                 let verifier = Arc::clone(&verifier);
@@ -364,6 +365,7 @@ mod tests {
         for (path, signed) in [
             ("/payment-link/owned?query=1", "/owned"),
             ("/payment-link/abc%2Fdef", "/abc%2Fdef"),
+            ("/payment-link/owned/", "/owned/"),
         ] {
             let stamp = "1900-01-01T00:00:00.000Z";
             let payload = format!("GET\n{signed}\nundefined{stamp}\nnonce");
@@ -379,14 +381,30 @@ mod tests {
                 .unwrap();
             assert_eq!(response.status(), 200, "{path}");
         }
-        // Actual Express accepts this route; current native matching is strict.
-        // Preserve this explicit remaining routing gap rather than claiming raw_path fixes admission.
+        // The admitted alias still authenticates; generic/bound paths stay strict.
         let response = http
             .get(format!("{url}/payment-link/owned/"))
             .send()
             .await
             .unwrap();
-        assert_eq!(response.status(), 404);
+        assert_eq!(response.status(), 401);
+        for path in ["/payment-link/owned//", "/bound-payment-links/owned/"] {
+            assert_eq!(
+                http.get(format!("{url}{path}"))
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                404
+            );
+        }
+        task.abort();
+        let _ = task.await;
+    }
+
+    #[test]
+    fn raw_path_preserves_signed_trailing_slash() {
+        use forklaunch_blueprint_core::contract::HttpMethod;
         // URI provenance survives normalization without changing the normalized route.
         let mut req = FrameworkRequest::new(
             HttpMethod::Get,
@@ -406,7 +424,5 @@ mod tests {
         let mut route = route();
         route.method = HttpMethod::Get;
         assert!(authenticate(&auth(), &req, &route).is_ok());
-        task.abort();
-        let _ = task.await;
     }
 }

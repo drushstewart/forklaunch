@@ -36,4 +36,8 @@ for(const kind of ['missing','invalid','full-path','old']) {
  const result=await call({params:{id},body,headers});assert.equal(result.status,kind==='missing'?401:kind==='old'?200:403);
  if(kind==='missing')assert.equal(result.response,'Authorization token required.');else if(kind!=='old')assert.equal(result.response,'Invalid Authorization signature.');else assert.equal(result.response.amount,34);
 }
-console.log('PASS eleven generated TypeScript SDK calls: seven amount coercions and four configured authentication controls');
+const aliasSdk=exports.createForkLaunchSdk({baseUrl:base,beforeRequest:meta=>({...meta,path:meta.path+'/'})});
+const alias=find(aliasSdk).call,aliasBody={id,amount:'12'},aliasStamp=new Date().toISOString(),aliasNonce=randomUUID();
+const aliasSignature=createHmac('sha256','billing-owner-fixture').update(`PUT\n/${id}/\n${JSON.stringify(aliasBody)}\n${aliasStamp}\n${aliasNonce}`).digest('base64');
+const aliasResult=await alias({params:{id},body:aliasBody,headers:{authorization:`HMAC keyId=default ts=${aliasStamp} nonce=${aliasNonce} signature=${aliasSignature}`}});assert.equal(aliasResult.status,200);assert.equal(aliasResult.response.amount,34);
+console.log('PASS twelve generated TypeScript SDK calls: coercion/authentication and selected trailing-slash transport alias');

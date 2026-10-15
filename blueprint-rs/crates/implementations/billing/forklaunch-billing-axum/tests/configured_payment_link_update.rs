@@ -517,10 +517,43 @@ async fn hmac_matrix(http: &reqwest::Client, url: &str, id: &str, state: &Provid
         .unwrap();
     assert_eq!(
         trailing.status(),
-        404,
-        "current native strict slash admission; actual Express accepts"
+        200,
+        "configured native alias matches Express and preserves signed slash"
     );
+    assert_eq!(state.calls.lock().await.len(), 1);
+    state.calls.lock().await.clear();
+    let wrong = http
+        .put(format!("{url}{path}/"))
+        .header("authorization", sign("PUT", &path, Some(&body), "default"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), 403);
     assert!(state.calls.lock().await.is_empty());
+    let invalid_body = http
+        .put(format!("{url}{path}/"))
+        .header("authorization", "bad")
+        .json(&json!({"amount":"bad"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(invalid_body.status(), 400);
+    assert!(state.calls.lock().await.is_empty());
+    for path in [
+        format!("{path}//"),
+        format!("/billing-portal/{id}/"),
+        format!("/PAYMENT-LINK/{id}"),
+    ] {
+        let rejected = http
+            .put(format!("{url}{path}"))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(rejected.status(), 404);
+        assert!(state.calls.lock().await.is_empty());
+    }
     println!(
         "PASS36 configured HMAC backend HTTP cases: exact public errors/correlation; old/future/repeated signatures; zero provider effects on rejection"
     );

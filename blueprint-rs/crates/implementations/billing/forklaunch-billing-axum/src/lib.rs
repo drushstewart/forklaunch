@@ -545,6 +545,15 @@ pub fn billing_router(
     {
         let mut contract = contract.clone();
         if backend.configured_hmac && configured_hmac::selected(&contract) {
+            assert!(
+                registry
+                    .routes()
+                    .iter()
+                    .filter(|other| other.openapi_path == contract.openapi_path)
+                    .all(configured_hmac::selected),
+                "configured billing slash aliases require a fully selected path"
+            );
+            config = config.with_optional_trailing_slash_for_path(&contract.openapi_path);
             project_configured_billing_hmac(&mut contract);
             config = config.with_auth_error_format_for_route(
                 &contract,

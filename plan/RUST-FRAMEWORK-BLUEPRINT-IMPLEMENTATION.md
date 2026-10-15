@@ -3339,3 +3339,31 @@ outputs and paths outside the repository. All 16 references pass. This is an
 index into existing conformance evidence, not a new runtime proof; no broad
 package/symbol gate is closed. Unlisted declarations remain under audit.
 Checklist remains 660/682 (96.8%).
+
+
+### 2026-10-15 — Selected billing trailing-slash routes
+
+Configured billing HMAC routes now accept exactly one optional final slash via
+an explicit whole-path router selection. Original URI bytes remain available for
+signing; canonical registry/contracts and per-method authentication stay intact.
+Nesting rebases selected paths. Root has no alternate spelling; wildcard/unknown
+selections fail at startup. Generic, bound and Portal paths retain their defaults.
+
+Actual Express oracle100, native HMAC4, nested/mixed-policy integration1,
+restricted PostgreSQL HTTP1 with12 generated TS SDK calls, and186 rendered
+base/Stripe artifact cases pass. Strict full/minimal billing Clippy passes in
+8.81s/7.22s; strict Axum passes in10.94s. A test-only function split corrected
+an initial length lint. Actual automatic OPTIONS200 versus native405,
+case-insensitive matching and legacy/offsetless date inputs remain measured gaps.
+
+Seven source hashes match `/private/tmp/fl-billing-trailing-slash-final.json`,
+SHA256 `e5c4ce0517510793b38550cafbb38a2a11def17271d167c5efb5ccb4f679a738`.
+Detailed receipt and logs: `/private/tmp/fl-billing-trailing-slash-receipt.md`.
+Existing CI exercises the expanded upstream/PG/artifact fixtures. Broader route,
+auth and configured billing gates remain open; checklist660/682 unchanged.
+
+Guarded cleanup removed197 generated cache files (565,967,508 logical bytes)
+whose dependency files referenced previously removed, owned package roots.
+Retained archive hashes, inactive target, no open files and unchanged inode,
+mtime and size were verified. Current sources and proof archives are preserved;
+`/private/tmp/fl-oct15-retired-package-cache-cleanup.json` records the guards.
