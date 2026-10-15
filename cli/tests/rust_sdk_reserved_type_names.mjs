@@ -124,7 +124,7 @@ for (const name of ["Self", "self", "SELF", "Self_", "ModelSelf", "Selfish"]) {
         )}export type Value=${item.typescript};${fixtures[i].valid.map((value, index) => `const valid${index}:Value=${JSON.stringify(value)};`).join("\n")}}`,
     );
     modules.push(
-      `pub mod case${modules.length}{${/\bSerialize\b/.test(item.source) ? "use serde::{Serialize,Deserialize};" : ""}#[allow(unused_imports)]use std::collections::BTreeMap;${item.source}\n#[test]fn roundtrip(){${checks}}}`,
+      `pub mod case${modules.length}{${item.source}\n#[test]fn roundtrip(){${checks}}}`,
     );
   }
 }

@@ -405,7 +405,7 @@ pub(crate) fn build_rust_type(
         .get(super::schema::REFERENCE)
         .and_then(JsonValue::as_str)
     {
-        return format!("Box<{name}>");
+        return format!("::std::boxed::Box<{name}>");
     }
     // An intersection can narrow its constituent type but cannot admit a
     // different value shape. Retain a concrete referenced/typed constituent
@@ -423,7 +423,7 @@ pub(crate) fn build_rust_type(
     }
     if let Some(variant) = non_null_schema(schema) {
         return format!(
-            "Option<{}>",
+            "::std::option::Option<{}>",
             build_rust_type(&format!("{type_name}Value"), &variant, models)
         );
     }
@@ -453,8 +453,8 @@ pub(crate) fn build_rust_type(
             JsonValue::Bool(_) => "bool",
             JsonValue::Number(number) if number.is_i64() => "i64",
             JsonValue::Number(_) => "f64",
-            JsonValue::String(_) => "String",
-            _ => "serde_json::Value",
+            JsonValue::String(_) => "::std::string::String",
+            _ => "::serde_json::Value",
         }
         .into();
     }
@@ -470,10 +470,10 @@ pub(crate) fn build_rust_type(
                 .get("additionalProperties")
                 .filter(|value| value.is_object())
                 .map_or_else(
-                    || "serde_json::Value".into(),
+                    || "::serde_json::Value".into(),
                     |value| build_rust_type(&format!("{type_name}Value"), value, models),
                 );
-            format!("BTreeMap<String, {value_type}>")
+            format!("::std::collections::BTreeMap<::std::string::String, {value_type}>")
         }
         Some("object") => rust_model_from_schema(type_name, schema, models),
         Some("array") => {
@@ -482,24 +482,24 @@ pub(crate) fn build_rust_type(
             }
             let item_type_name = format!("{}Item", rust_type_name(type_name));
             let item_type = schema.get("items").map_or_else(
-                || "serde_json::Value".to_string(),
+                || "::serde_json::Value".to_string(),
                 |items| build_rust_type(&item_type_name, items, models),
             );
             let item_type = item_type
-                .strip_prefix("Box<")
+                .strip_prefix("::std::boxed::Box<")
                 .and_then(|value| value.strip_suffix('>'))
                 .unwrap_or(&item_type);
-            format!("Vec<{item_type}>")
+            format!("::std::vec::Vec<{item_type}>")
         }
         Some("integer") => "i64".to_string(),
         Some("number") => "f64".to_string(),
-        Some("string") => "String".to_string(),
+        Some("string") => "::std::string::String".to_string(),
         Some("boolean") => "bool".to_string(),
         Some("null") => "()".to_string(),
         _ if schema.get("properties").is_some() => {
             rust_model_from_schema(type_name, schema, models)
         }
-        _ => "serde_json::Value".to_string(),
+        _ => "::serde_json::Value".to_string(),
     }
 }
 
@@ -509,7 +509,7 @@ pub(crate) fn build_rust_union(
     models: &mut BTreeMap<String, RustModelTemplate>,
 ) -> String {
     if alternatives.is_empty() {
-        return "serde_json::Value".into();
+        return "::serde_json::Value".into();
     }
     let base = rust_type_name(type_name);
     let mut name = base.clone();
@@ -604,7 +604,7 @@ pub(crate) fn rust_model_from_schema(
             let nested_type_name = format!("{}{}", model_name, field_name.to_case(Case::Pascal));
             let mut field_type = build_rust_type(&nested_type_name, property_schema, models);
             if !required.contains(name.as_str()) {
-                field_type = format!("Option<{field_type}>");
+                field_type = format!("::std::option::Option<{field_type}>");
             }
             fields.push(RustModelFieldTemplate {
                 optional: !required.contains(name.as_str()),
@@ -628,7 +628,7 @@ pub(crate) fn rust_model_from_schema(
             .get("additionalProperties")
             .filter(|value| value.is_object())
             .map_or_else(
-                || "serde_json::Value".into(),
+                || "::serde_json::Value".into(),
                 |value| build_rust_type(&format!("{model_name}AdditionalValue"), value, models),
             );
         fields.push(RustModelFieldTemplate {
@@ -637,7 +637,9 @@ pub(crate) fn rust_model_from_schema(
             flatten: true,
             wire_name_literal: "\"\"".into(),
             field_name,
-            field_type: format!("BTreeMap<String, {value_type}>"),
+            field_type: format!(
+                "::std::collections::BTreeMap<::std::string::String, {value_type}>"
+            ),
         });
     }
 
@@ -756,7 +758,7 @@ fn build_rust_sequence(
                 wire_name_literal: format!("\"{index}\""),
                 field_name: format!("item{index}"),
                 field_type: if optional {
-                    format!("Option<{value}>")
+                    format!("::std::option::Option<{value}>")
                 } else {
                     value
                 },
@@ -770,7 +772,7 @@ fn build_rust_sequence(
     model.fields = fields;
     model.sequence_rest_type = rest
         .map(|ty| {
-            ty.strip_prefix("Box<")
+            ty.strip_prefix("::std::boxed::Box<")
                 .and_then(|value| value.strip_suffix('>'))
                 .unwrap_or(&ty)
                 .to_owned()
@@ -932,7 +934,7 @@ fn can_default(
     };
     let result = fields.into_iter().all(|ty| {
         let ty = ty
-            .strip_prefix("Box<")
+            .strip_prefix("::std::boxed::Box<")
             .and_then(|value| value.strip_suffix('>'))
             .unwrap_or(ty);
         !models.contains_key(ty) || can_default(ty, models, active, memo)
@@ -951,7 +953,7 @@ struct ModelSourceTemplate<'a> {
 }
 
 /// Render Serde models, preserving wire field names and omission/null presence.
-/// The caller supplies `use serde::{Deserialize, Serialize};` when models exist.
+/// Generated builtins and Serde paths are absolute; no caller imports are required.
 ///
 /// # Errors
 /// Returns an error if the bundled model template is invalid.
@@ -1033,14 +1035,20 @@ mod sequence_tests {
         }
         let schema = json!({"type":"array","prefixItems":[{"type":["string","null"]},{"type":"boolean"}],"items":{"type":"integer"},"maxItems":4});
         let (models, _, _) = rust_types_from_schema("Tuple", &schema);
-        assert_eq!(models[0].fields[0].field_type, "Option<Option<String>>");
-        assert_eq!(models[0].fields[1].field_type, "Option<bool>");
+        assert_eq!(
+            models[0].fields[0].field_type,
+            "::std::option::Option<::std::option::Option<::std::string::String>>"
+        );
+        assert_eq!(
+            models[0].fields[1].field_type,
+            "::std::option::Option<bool>"
+        );
         assert_eq!(models[0].sequence_rest_type, "i64");
         assert!(models[0].has_default);
         let required_rest = json!({"type":"array","prefixItems":[true],"minItems":3,"items":true});
         let (models, _, _) = rust_types_from_schema("Tuple", &required_rest);
         assert!(!models[0].has_default);
-        assert_eq!(models[0].sequence_rest_type, "serde_json::Value");
+        assert_eq!(models[0].sequence_rest_type, "::serde_json::Value");
         assert!(
             sequence_shape(
                 &json!({"type":"array","prefixItems":[true],"items":false,"minItems":2})
@@ -1074,7 +1082,10 @@ mod sequence_tests {
         let (models, aliases, ty) = rust_types_from_schema("Legacy", &normalized);
         assert!(models.is_empty());
         assert_eq!(ty, "Legacy");
-        assert_eq!(aliases[0].target_type, "Vec<String>");
+        assert_eq!(
+            aliases[0].target_type,
+            "::std::vec::Vec<::std::string::String>"
+        );
     }
 
     #[test]
@@ -1084,7 +1095,11 @@ mod sequence_tests {
         let (models, aliases, _) = rust_types_from_schema("Recursive", &schema);
         let sequence = models.iter().find(|model| model.sequence).unwrap();
         assert!(!sequence.has_default);
-        assert!(sequence.fields[0].field_type.starts_with("Box<"));
+        assert!(
+            sequence.fields[0]
+                .field_type
+                .starts_with("::std::boxed::Box<")
+        );
         let source = render_rust_models(&models, &aliases).unwrap();
         assert!(source.contains("deserialize_seq"));
         assert!(source.contains("extra tuple element"));

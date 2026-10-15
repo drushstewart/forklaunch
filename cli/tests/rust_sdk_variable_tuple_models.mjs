@@ -68,7 +68,7 @@ try{
     }
     let value=TupleCase{item0:Some(None),item1:None,rest:vec![]};assert_eq!(serde_json::to_string(&value).unwrap(),"[null]");
    }`;
-  return `pub mod case${index} {use serde::{Serialize,Deserialize}; #[allow(unused_imports)] use std::collections::BTreeMap; ${item.source}\n#[test]fn conformance(){${checks}}${constructed}}`;
+  return `pub mod case${index} {${item.source}\n#[test]fn conformance(){${checks}}${constructed}}`;
  }).join('\n');
  writeFileSync(path.join(work,'src/lib.rs'),source);
  run('cargo',['rustc','--offline','--manifest-path',path.join(work,'Cargo.toml'),'--lib','--','-D','warnings']);

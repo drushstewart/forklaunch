@@ -118,7 +118,7 @@ grep -q 'serde = { version = "1.0", features = \["derive"\] }' rust-contracts/sd
 grep -q 'AccountsUsersListUsersRequest' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'AccountsUsersListUsersResponses' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub struct AccountsUsersListUsersResponse' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub records: Vec<AccountsUsersListUsersResponseRecordsItem>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'pub records: ::std::vec::Vec<AccountsUsersListUsersResponseRecordsItem>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q "fn encode_path_segment" rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'users_list_users_request' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'pub async fn users_list_users' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
@@ -224,7 +224,7 @@ fi
 run_cli sdk generate --path rust-contracts --target all --from openapi
 grep -q 'scanUsers:' rust-contracts/sdks/typescript/src/index.ts
 grep -q 'displayName?: string' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'pub display_name: Option<String>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
+grep -q 'pub display_name: ::std::option::Option<::std::string::String>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 grep -q 'serde(rename = "displayName")' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
 mv rust-contracts/.forklaunch/openapi/accounts/openapi.json rust-contracts/accounts-openapi.missing.json
 if run_cli sdk generate --path rust-contracts --target all --from openapi; then

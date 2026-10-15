@@ -418,7 +418,10 @@ mod tests {
             let plan = SocketSdkPlan::from_contract(&contract).unwrap();
             assert_eq!(plan.incoming.schema, schema);
             assert_eq!(plan.incoming.models.typescript_type, "string");
-            assert_eq!(plan.incoming.models.rust_aliases[0].target_type, "String");
+            assert_eq!(
+                plan.incoming.models.rust_aliases[0].target_type,
+                "::std::string::String"
+            );
         }
     }
 

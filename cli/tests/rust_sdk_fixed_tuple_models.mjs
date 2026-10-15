@@ -43,7 +43,7 @@ try{
  let count=0;
  const source=generated.map((item,index)=>{
   const checks=fixtures[index].cases.map(({value,valid})=>{count++;const json=JSON.stringify(value);return `{let wire=${JSON.stringify(json)};let decoded=serde_json::from_str::<${item.root}>(wire);assert_eq!(decoded.is_ok(),${valid},"case ${index}: {wire}");${valid?'assert_eq!(serde_json::to_value(decoded.unwrap()).unwrap(),serde_json::from_str::<serde_json::Value>(wire).unwrap());':''}}`;}).join('\n');
-  return `mod case${index} {use serde::{Serialize,Deserialize}; #[allow(unused_imports)] use std::collections::BTreeMap; ${item.source}\n#[test]fn conformance(){${checks}}}`;
+  return `mod case${index} {${item.source}\n#[test]fn conformance(){${checks}}}`;
  }).join('\n');
  writeFileSync(path.join(work,'src/lib.rs'),source);
  run('cargo',['test','--offline','--manifest-path',path.join(work,'Cargo.toml')]);

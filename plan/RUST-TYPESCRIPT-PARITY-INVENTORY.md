@@ -10557,3 +10557,19 @@ forklaunch-6f77f4eb6-e4a2d118.crate. Portable runtime validation is IN PROGRESS;
 this receipt does not claim its completion. This source excludes later verification
 hooks/admission and uncommitted builtin-name/auto-signin/list work.
 Checklist660/682(96.8%),22broad gates remain open.
+
+### 2026-10-14 — Rust model builtin-name compatibility
+
+Standalone model generation now qualifies standard-library and Serde references,
+so public names such as String, Vec, Option, Box, BTreeMap, Result, Default,
+Serialize/Deserialize and Some/None/Ok/Err no longer shadow generated dependencies.
+Model names and TypeScript outputs stay unchanged; Rust type-expression metadata
+now uses absolute paths resolving to the same types. Shared HTTP/socket consumers
+use qualified Serde derives, and textual generated-source assertions are updated.
+Existing transport reserved-name rejection remains unchanged.
+Strict generated models609cases/126models,5 prior TS byte-identical controls,
+real HTTP/socket consumers and optional-body example pass. Codegen49/SDK Rust5,
+fixed tuples79/variable920/Self144, strict all-feature/all-target Clippy and
+full CLI1128 pass. Fourteen-path manifest /private/tmp/fl-builtin-source.json
+verified; logs /private/tmp/fl-builtin-{models,units,fixed,variable,self,clippy,cli}.log.
+No dependency/lock changes. Broader schema gates remain open;660/682(96.8%),22open.

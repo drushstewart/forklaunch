@@ -369,7 +369,7 @@ mod tests {
         let source =
             generate_rust_http_sdk_source(&plan(vec![route]), &RustSdkOptions::new("test-sdk"))
                 .unwrap();
-        assert!(source.contains("pub type ReadResponse = String;"));
+        assert!(source.contains("pub type ReadResponse = ::std::string::String;"));
         assert!(source.contains("pub type ReadStatus201Response = ();"));
         assert!(source.contains("Status204(())"));
         assert!(source.contains("409 => Ok(ReadResponses::Status409(response.text().await?))"));

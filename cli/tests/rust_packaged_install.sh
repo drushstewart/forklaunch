@@ -207,7 +207,7 @@ for name in ['accounts','auth','postgres-jobs','redis-jobs','kafka-jobs','bullmq
 ts=Path('sdks/typescript/src/index.ts').read_text()
 rust=Path('sdks/rust/accounts-sdk/src/lib.rs').read_text()
 assert 'AccountsTreesReadTreeResponse' in ts and 'AccountsChoicesReadChoiceResponse' in ts
-assert 'pub children: Vec<AccountsSchema' in rust
+assert 'pub children: ::std::vec::Vec<AccountsSchema' in rust
 PYTHON
 # Invoke the native generator from portable sources shipped by the installed CLI.
 cargo run --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-sdk-rust --example recursive_client -- \

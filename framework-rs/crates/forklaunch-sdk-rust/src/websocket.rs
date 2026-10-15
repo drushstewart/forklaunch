@@ -30,7 +30,7 @@ pub fn generate_rust_websocket_sdk_source(
         &plan.close,
     ];
     let mut source = String::from(
-        "#![forbid(unsafe_code)]\n#[allow(unused_imports)]\nuse std::collections::BTreeMap;\n#[allow(unused_imports)]\nuse serde::{Serialize, Deserialize};\nuse forklaunch_ws::{codec::{PayloadCodec, PayloadError}, transport::{self, SocketSchemas, SocketEvent, SocketError, SocketOptions, IntoClientRequest, ClientHandshakeResponse}};\n",
+        "#![forbid(unsafe_code)]\nuse forklaunch_ws::{codec::{PayloadCodec, PayloadError}, transport::{self, SocketSchemas, SocketEvent, SocketError, SocketOptions, IntoClientRequest, ClientHandshakeResponse}};\n",
     );
     source.push_str(&model_source(plan, &options.client_struct)?);
     let _ = writeln!(source, "pub const SOCKET_PATH: &str = {:?};", plan.path);

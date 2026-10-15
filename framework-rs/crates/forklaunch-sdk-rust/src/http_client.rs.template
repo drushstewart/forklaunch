@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 
 type SdkRequestHook = Arc<dyn Fn(&mut SdkRequest) + Send + Sync>;
 
-{{#has_serde}}use serde::{Deserialize, Serialize};{{/has_serde}}
 
 {{#has_multipart}}pub use reqwest::multipart::{Form as MultipartForm, Part as MultipartPart};{{/has_multipart}}
 
@@ -124,7 +123,7 @@ pub enum SdkAuth {
 
 {{{model_source}}}
 {{#operations}}
-#[derive(Default{{^multipart_request}}, Clone, PartialEq, Eq, Serialize, Deserialize{{/multipart_request}})]
+#[derive(Default{{^multipart_request}}, Clone, PartialEq, Eq, ::serde::Serialize, ::serde::Deserialize{{/multipart_request}})]
 pub struct {{request_type}} {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
@@ -143,7 +142,7 @@ impl fmt::Debug for {{request_type}} {
     }
 }
 
-#[derive(Debug{{^streaming_response}}, Clone, PartialEq, Serialize, Deserialize{{/streaming_response}})]
+#[derive(Debug{{^streaming_response}}, Clone, PartialEq, ::serde::Serialize, ::serde::Deserialize{{/streaming_response}})]
 pub enum {{responses_type}} {
 {{#responses}}
     {{status_variant}}({{{rust_response_type}}}),
@@ -363,11 +362,11 @@ impl {{client_name}} {
 }
 {{#has_multipart_response}}
 /// Ordered multipart form parts; repeated names and file metadata are preserved.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct MultipartResponse {
     pub parts: Vec<MultipartResponsePart>,
 }
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct MultipartResponsePart {
     pub name: String,
     pub file_name: Option<String>,

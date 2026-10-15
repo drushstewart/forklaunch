@@ -1722,7 +1722,7 @@ mod multiple_response_tests {
         );
         let source = rust_sdk(&service).unwrap();
         assert!(source.contains("Status201(Box<ExampleItemGetItemStatus201Response>)"));
-        assert!(source.contains("pub created_at: Option<String>"));
+        assert!(source.contains("pub created_at: ::std::option::Option<::std::string::String>"));
         let source = typescript_sdk(&[service]).unwrap();
         assert!(source.contains("201: ExampleItemGetItemStatus201Response"));
         assert!(source.contains("204: ExampleItemGetItemStatus204Response"));
@@ -1780,7 +1780,7 @@ mod response_media_tests {
         assert!(operation.responses[2].text_response);
         let source = rust_sdk(&service).unwrap();
         assert!(source.contains("Vec<u8>"));
-        assert!(source.contains("pub error_code: String"));
+        assert!(source.contains("pub error_code: ::std::string::String"));
         assert!(source.contains("response.bytes().await?"));
         let source = typescript_sdk(&[service]).unwrap();
         assert!(source.contains("400: 'application/problem+json'"));
@@ -1820,7 +1820,7 @@ mod response_media_tests {
         let mut models = BTreeMap::new();
         assert_eq!(
             build_rust_type("Unknown", &json!({}), &mut models),
-            "serde_json::Value"
+            "::serde_json::Value"
         );
     }
 }
@@ -1891,7 +1891,7 @@ mod nullable_dictionary_tests {
         ] {
             assert_eq!(
                 build_rust_type("Value", &schema, &mut BTreeMap::new()),
-                "Option<String>"
+                "::std::option::Option<::std::string::String>"
             );
             assert!(ts_type_from_schema(&schema).contains("null"));
         }
@@ -1899,7 +1899,7 @@ mod nullable_dictionary_tests {
             json!({"type":"object","additionalProperties":{"type":["integer","null"]}});
         assert_eq!(
             build_rust_type("Map", &dictionary, &mut BTreeMap::new()),
-            "BTreeMap<String, Option<i64>>"
+            "::std::collections::BTreeMap<::std::string::String, ::std::option::Option<i64>>"
         );
         assert_eq!(
             ts_type_from_schema(&dictionary),
@@ -1907,7 +1907,7 @@ mod nullable_dictionary_tests {
         );
         assert_eq!(
             build_rust_type("List", &json!({"type":"array"}), &mut BTreeMap::new()),
-            "Vec<serde_json::Value>"
+            "::std::vec::Vec<::serde_json::Value>"
         );
         assert_eq!(
             build_rust_type(
@@ -1933,7 +1933,7 @@ mod nullable_dictionary_tests {
             .find(|field| field.flatten)
             .unwrap();
         assert_eq!(field.field_name, "additional_properties_2");
-        assert_eq!(field.field_type, "BTreeMap<String, i64>");
+        assert_eq!(field.field_type, "::std::collections::BTreeMap<::std::string::String, i64>");
         let closed = json!({"type":"object","properties":{"id":{"type":"string"}},"additionalProperties":false});
         rust_model_from_schema("Closed", &closed, &mut models);
         assert!(!models["Closed"].fields.iter().any(|field| field.flatten));
@@ -2169,7 +2169,7 @@ mod union_model_tests {
         )
         .unwrap();
         assert!(source.contains("#[serde(untagged)]"));
-        assert!(source.contains("impl Default for Choice"));
+        assert!(source.contains("impl ::std::default::Default for Choice"));
         assert!(source.contains("#[serde(deny_unknown_fields)]"));
     }
 }
@@ -2208,7 +2208,7 @@ mod recursive_model_tests {
                 .find(|field| field.field_name == "label")
                 .unwrap()
                 .field_type,
-            "String"
+            "::std::string::String"
         );
         let schema = super::super::schema::normalize(
             &json!({"type":"object","additionalProperties":{"$ref":"#"}}),

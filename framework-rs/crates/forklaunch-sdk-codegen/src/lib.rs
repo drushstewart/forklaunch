@@ -359,10 +359,11 @@ mod tests {
         assert!(variant.streaming_response);
         assert!(!compiled.typescript_definitions.is_empty());
         assert!(compiled.rust_models.iter().any(|model| {
-            model
-                .fields
-                .iter()
-                .any(|field| field.field_type.starts_with("Option<Vec<"))
+            model.fields.iter().any(|field| {
+                field
+                    .field_type
+                    .starts_with("::std::option::Option<::std::vec::Vec<")
+            })
         }));
     }
 
