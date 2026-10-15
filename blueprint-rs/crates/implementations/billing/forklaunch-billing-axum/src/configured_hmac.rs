@@ -6,9 +6,8 @@ use forklaunch_axum::{
 use forklaunch_blueprint_core::contract::{
     AuthConfig, BodyContract, BodyKind, ResponseContract, RouteContract, SchemaRef,
 };
+use forklaunch_common::javascript_date::parse_host;
 use forklaunch_http::{Body, ErrorKind, ErrorResponse, FrameworkRequest};
-use forklaunch_validation::typescript_coerce::date_epoch_millis;
-use serde_json::Value;
 
 fn mount(route: &RouteContract) -> Option<&'static str> {
     if !matches!(route.auth, Some(AuthConfig::Hmac(_))) {
@@ -96,8 +95,7 @@ pub(super) fn authenticate(
         .zip(["keyId", "ts", "nonce", "signature"])
         .map(|(value, name)| part(value.unwrap_or_default(), name).ok_or_else(format_error))
         .collect::<Result<Vec<_>, _>>()?;
-    let millis =
-        date_epoch_millis(Some(&Value::String(values[1].into()))).map_err(|_| internal(request))?;
+    let millis = parse_host(values[1]).map_err(|_| internal(request))?;
     let timestamp = iso_timestamp(millis);
     let wire_path = request.raw_path.as_deref().unwrap_or(&request.path);
     let prefix = mount(route).unwrap_or_default();

@@ -426,6 +426,9 @@ on:
       - 'cli/tests/typescript_billing_subscription_owner_http.mjs'
       - 'cli/tests/typescript_billing_payment_link_update_http.mjs'
       - 'cli/tests/typescript_billing_hmac_http.mjs'
+      - 'cli/tests/rust_billing_hmac_dates_http.mjs'
+      - 'cli/tests/rust_v8_date_parity.mjs'
+      - 'cli/tests/fixtures/rust_v8_date_grammar_reference.mjs'
       - 'cli/tests/rust_billing_payment_link_coercion_sdk.mjs'
       - 'cli/tests/typescript_billing_configured_get_http.mjs'
       - 'cli/tests/typescript_billing_cached_dates.mjs'
@@ -910,6 +913,9 @@ on:
       - 'cli/tests/typescript_billing_subscription_owner_http.mjs'
       - 'cli/tests/typescript_billing_payment_link_update_http.mjs'
       - 'cli/tests/typescript_billing_hmac_http.mjs'
+      - 'cli/tests/rust_billing_hmac_dates_http.mjs'
+      - 'cli/tests/rust_v8_date_parity.mjs'
+      - 'cli/tests/fixtures/rust_v8_date_grammar_reference.mjs'
       - 'cli/tests/rust_billing_payment_link_coercion_sdk.mjs'
       - 'cli/tests/typescript_billing_configured_get_http.mjs'
       - 'cli/tests/typescript_billing_cached_dates.mjs'
@@ -1229,6 +1235,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24.2.0'
+      - run: node cli/tests/rust_v8_date_parity.mjs
+        env:
+          CARGO_TARGET_DIR: framework-rs/target
       - run: npm install --prefix "$RUNNER_TEMP/fl-canonical-http" --no-save --package-lock=false --ignore-scripts punycode@2.3.1
       - run: node cli/tests/rust_zod_uri_parity.mjs
         env:
@@ -1958,6 +1967,15 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
+      - name: Pin Node for configured HMAC date comparisons
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.2.0'
+      - run: node cli/tests/rust_billing_hmac_dates_http.mjs
+      - name: Restore configured-module reference Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - run: node cli/tests/typescript_billing_hmac_http.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

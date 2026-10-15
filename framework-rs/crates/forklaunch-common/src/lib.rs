@@ -1,5 +1,9 @@
 #![forbid(unsafe_code)]
 
+/// V8 string-date grammar and pinned full-range local timezone resolution.
+#[cfg(feature = "javascript-date")]
+pub mod javascript_date;
+
 #[cfg(feature = "zod-checks")]
 pub mod zod_cardinality;
 

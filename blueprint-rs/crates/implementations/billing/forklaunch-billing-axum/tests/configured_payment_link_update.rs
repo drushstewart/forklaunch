@@ -460,6 +460,24 @@ async fn hmac_matrix(http: &reqwest::Client, url: &str, id: &str, state: &Provid
             "",
         ));
     }
+    if let Ok(reference) = std::env::var("FORKLAUNCH_HMAC_DATE_CASES") {
+        let reference: Vec<Value> = serde_json::from_str(&reference).unwrap();
+        for case in reference {
+            let stamp = case["timestamp"].as_str().unwrap();
+            let canonical = case["canonical"]
+                .as_str()
+                .unwrap_or("2000-01-01T00:00:00.000Z");
+            let payload = format!("PUT\n/{id}\n{body}\n{canonical}\nrepeat");
+            let signature = forklaunch_auth::hmac_sign(KEY, payload.as_bytes());
+            cases.push((
+                Some(format!(
+                    "HMAC keyId=default ts={stamp} nonce=repeat signature={signature}"
+                )),
+                u16::try_from(case["status"].as_u64().unwrap()).unwrap(),
+                "",
+            ));
+        }
+    }
     for (authorization, status, message) in cases {
         for correlation in [None, Some("hmac-correlation"), Some("")] {
             state.calls.lock().await.clear();
