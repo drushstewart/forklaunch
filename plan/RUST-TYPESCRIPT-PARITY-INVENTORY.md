@@ -9239,3 +9239,45 @@ all-target Clippy passes. Initial example too-many-lines lint was corrected by
 extracting unchanged string_schema; final oracle/Clippy reran. Logs:
 /private/tmp/fl-zod-absence-{default-tests,tests,parity,record-regression,live,clippy}.log.
 CI adds actual absence oracle. Broader schema gates remain open;660/682 unchanged.
+
+### 2026-10-14: direct bound BillingPortal creation (working source)
+
+Opt-in finite direct profile verifies Account/Balance, registered Customer and
+explicit active Portal configuration, then reserves immutable encrypted intent/
+idempotency key before a single sessions POST. Exact response scope/customer/
+configuration/return URL is checked; separate trusted publisher atomically writes
+local public UUID, durable record, provider binding, encrypted receipt and audits.
+Additive billing12/13 retain distinct Portal journals/claims/completion/release
+while reusing private Customer dependency counters. Ordinary runtime cannot
+complete/release; Subscription publication cannot release Portal claims. Current
+Customer body+xmin/full binding are checked with fresh context after locks and
+before COMMIT. Uncertain reserve/dispatch/final COMMIT remains inspectable, with
+no automatic POST retry or regenerated dispatch ticket. Historical completion
+returns IDs, not an expired bearer URL. Configuration can change remotely after
+GET; local5-minute expiry is not Stripe lifetime proof. Caller authorizes Party/
+Customer access; a session is not payment/entitlement evidence. Generic routes,
+provider-ID behavior and managed transport remain unchanged/separate.
+
+Frozen13 hashes: /private/tmp/fl-bound-portal-source-final.json. Shape unit1, final
+restrictedPG matrix1/6.33s, existing Subscription barrier/publication/race3, strict
+base+Stripe all-feature/all-target Clippy4.65s, actual legacy170 operations,
+official Stripe22.6.2 wire and configured creation186 comparisons pass. PG covers
+separate roles/cross-journal isolation,13 malformed post-effect states, lock
+deadline, audit rollback and true dropped reserve/final COMMIT acknowledgement.
+Only lint/style changes followed initial PG; finalPG reran exact source. Cleanup
+zero owned roles/databases. Logs /private/tmp/fl-bound-portal-{unit,pg-final,
+subscription-regression,clippy,legacy170,sdk,configured-uuid,cleanup}.log.
+CI tracks SDK fixture and restricted PG. Broader mapper/recovery gate remains
+open;660/682 unchanged. No live provider/generated/immutable receipt claimed.
+
+### 2026-10-14: CLI/package and added-dependency review
+
+Current coherent working sources pass1121 CLI unit tests
+(/private/tmp/fl-oct14-current-cli-tests.log) and1243 embedded Rust/template paths
+(/private/tmp/fl-oct14-latest-package-sources.log). Includes Portal drafts through
+its final13 and encryptedOTP vectors; this is package-list proof, not a newly
+installed immutable archive. Workflow YAML parses. New encryptedOTP lock edges
+were checked with cargo-audit against local1310-entry RustSec data
+(/private/tmp/fl-oct14-encrypted-dependency-audit.json). Audit exits1 for the
+existing exactly reviewed rsa0.9.10 RUSTSEC-2023-0071; no new package finding or
+warning was reported. No fresh-database/zero-advisory claim.

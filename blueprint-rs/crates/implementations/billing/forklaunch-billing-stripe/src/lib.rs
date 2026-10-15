@@ -207,3 +207,6 @@ pub mod customer_registration;
 
 #[cfg(feature = "postgres-identity")]
 pub mod bound_subscription_creation;
+
+#[cfg(feature = "postgres-identity")]
+pub mod bound_portal_creation;

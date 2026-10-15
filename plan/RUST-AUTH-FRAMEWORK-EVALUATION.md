@@ -304,13 +304,11 @@ security review, including working-tree versus immutable-archive provenance.
 
 ### Finite follow-up criteria for gate 918
 
-1. **Close the remaining declared signing extension contract.** Characterize and
-   implement algorithm-only pins and allowed extra key profiles, preserving one
-   source of key-selection truth, exact callback counts, no implicit algorithm
-   fallback to another stored algorithm, no replacement for expired explicit IDs,
-   explicit trusted callback return authority, and safe external signer
-   metadata. Use actual JOSE to verify signatures and exact selected algorithms;
-   absence of a requested profile must fail before unauthorized minting.
+1. **Completed bounded signing extension contract.** Algorithm-only pins and
+   advertised extra profiles, trusted callback algorithm authority, external
+   header/pin context and opaque resolved-key reuse have the actual JOSE/native
+   receipts listed above. Arbitrary raw resolved-key/header shapes remain outside
+   this typed capability; this does not close the broader adapter/options gate.
 2. **Finish the configured diagnostics/fault matrix.** Enumerate operation/catch
    boundaries for the currently configured auth endpoints, then compare status,
    body, cookie mutation, transaction outcome and observer dispatch. Record the

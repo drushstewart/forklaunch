@@ -1,9 +1,14 @@
 //! Explicit administrative identity provisioning. No provider verification,
 //! inferred key context or automatic backfill. Provider wrappers must separately
 //! authenticate scope before resolving and reading a binding.
+mod portal_creation;
 use super::{PostgresBillingStore, db_error, invalid, validate_id};
 use crate::services::{BillingKind, Scope};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
+pub use portal_creation::{
+    PortalCreationClaim, PortalCreationPending, PortalCreationReservation, PortalCreationStatus,
+    PortalDependencySnapshot, TrustedPortalPublisher,
+};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 mod customer_registration;

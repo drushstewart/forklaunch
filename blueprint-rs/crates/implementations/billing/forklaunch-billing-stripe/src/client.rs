@@ -451,3 +451,6 @@ mod customer_registration;
 
 #[cfg(feature = "postgres-identity")]
 mod subscription_creation;
+
+#[cfg(feature = "postgres-identity")]
+mod portal_creation;

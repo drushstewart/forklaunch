@@ -372,3 +372,11 @@ collisions; updates cannot resurrect deleted or expired sessions. The
 Generated IAM uses the service name as namespace and `__Host-iam` as cookie name,
 so a rename requires re-login. Cookie writes and IAM writes remain separate
 transactions; failed storage can leave an unreachable credential until expiry.
+
+Direct bound BillingPortal creation is available through the Stripe crate's
+`postgres-identity` profile. It verifies registered Customer/configuration
+evidence, retains a separate public UUID and uses durable dependency claims plus
+separate-role atomic publication. Historical inspection never refreshes a bearer
+URL; uncertain dispatch remains inspectable without automatic POST retry. See
+[the provider guide](crates/implementations/billing/forklaunch-billing-stripe/README.md#direct-bound-portal-creation)
+for migrations12/13, caller authorization and publication-role requirements.

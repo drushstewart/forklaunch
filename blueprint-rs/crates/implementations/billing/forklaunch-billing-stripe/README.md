@@ -97,3 +97,30 @@ evidence require manual review; no POST retry, refund or claim release occurs.
 receipt bound to the operation, public UUID and payload hash. It grants no new
 provider authority. General recovery, managed creation and ownership-aware
 mutations remain separate work.
+
+## Direct bound Portal creation
+
+With `postgres-identity`, `BoundPortalCreationProfile::trusted` fixes an explicit
+Portal configuration ID and HTTPS return URL. The trusted application separately
+authorizes its local Customer/Party to access that configuration.
+`create_bound_portal_session` verifies direct account/mode, registered Customer
+and active configuration before reserving one immutable encrypted intent and
+server idempotency key. It sends one exact session POST, verifies customer/config/
+mode/return URL and atomically publishes a local UUID record, provider binding and
+encrypted receipt through a separately credentialed `TrustedPortalPublisher`.
+
+Apply additive billing migrations12/13 with the same migration owner as the
+existing private dependency guards. Runtime must neither inherit the publisher
+role nor execute `publish_bound_portal`. Customer record/binding claims survive
+uncertain dispatch or COMMIT and block mutation until verified publication;
+Subscription completion cannot release Portal claims.
+`inspect_bound_portal_creation` returns pending/completed IDs without a bearer
+URL or reusable dispatch key. A completed duplicate never returns an old URL as
+fresh. Retain the operation ID and inspect uncertain outcomes; there is no
+automatic POST retry or operator force-release in this profile.
+
+Configuration GET is an observation, not a lock on remote configuration changes.
+The five-minute local expiry is application policy, not a Stripe URL lifetime
+guarantee. A Portal session grants access to configured features; it proves
+neither payment nor entitlement. Managed transport, arbitrary flow/delegation
+options and automatic default HTTP route wiring remain separate work.

@@ -2,6 +2,10 @@
 //! session URIs are encrypted; plaintext reads and actor audits commit together.
 mod checkout_repair;
 mod provider_bindings;
+pub use provider_bindings::{
+    PortalCreationClaim, PortalCreationPending, PortalCreationReservation, PortalCreationStatus,
+    PortalDependencySnapshot, TrustedPortalPublisher,
+};
 mod webhooks;
 pub use checkout_repair::CheckoutRepairSnapshot;
 pub use provider_bindings::{
