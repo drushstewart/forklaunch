@@ -1145,3 +1145,18 @@ envelope. Cleanup is explicit and bounded; no scheduler is promised. Final14
 focused tests, restrictedPG48.28s, actual10/fullfixture, defaultHTTP one-clock
 regression and strictClippy pass. Detailed/provenance-separated receipts are in
 the parity inventory; no generated/immutable async proof is claimed.
+
+
+### Backup field storage review (2026-10-14)
+
+Built-in backup field codecs use independent opaque keys and bounded JSON/XChaCha
+storage. First HTTP MFA opt-in selects encrypted storage; direct-service default
+stays legacy. Existing unmarked arrays remain readable and migrate only under an
+authorized successful mutation. Unknown marked versions and decrypt/key errors fail
+closed without factor/session/trust changes. Successful consumption removes all
+duplicate matching codes atomically. Retained-key reencoding, concurrent one-use
+and restricted PostgreSQL commit rollback pass. Bounds are derived from100 codes
+of128UTF8 bytes with maximal JSON escaping, independent of smaller OTP bounds.
+No secret Debug/Serde key accessors; derived keys zeroized. Four actual Node/Rust
+vectors, finalfocused5/affected54 and restrictedPG pass. Custom asynchronous backup
+codecs remain separate. See the dated inventory receipt and module migration guide.

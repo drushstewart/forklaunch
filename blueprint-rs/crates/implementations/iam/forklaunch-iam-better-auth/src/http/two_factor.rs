@@ -257,6 +257,41 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         }
         schema
     }
+    /// Selects trusted backup field storage. The first MFA opt-in otherwise uses
+    /// encrypted JSON; later builders preserve this explicit selection.
+    /// # Errors
+    /// Rejects invalid MFA configuration or conflicting route namespaces.
+    pub fn with_two_factor_backup_code_storage(
+        mut self,
+        storage: crate::two_factor::BackupCodeStorage,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_backup_code_storage(storage),
+        ));
+        Ok(self)
+    }
+    /// Selects encrypted backup fields with independent trusted keys.
+    /// # Errors
+    /// Rejects invalid MFA configuration or conflicting route namespaces.
+    pub fn with_two_factor_backup_code_encryption_keys(
+        mut self,
+        keys: Arc<crate::two_factor::BackupCodeEncryptionKeys>,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_backup_code_encryption_keys(keys),
+        ));
+        Ok(self)
+    }
     /// Enables the fixed default TOTP/backup/trusted-device profile for password
     /// sign-in. Social callbacks remain independently governed, as upstream.
     /// # Errors
@@ -269,11 +304,14 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             ));
         }
         if self.two_factor.is_none() {
-            self.two_factor = Some(Arc::new(TwoFactorService::new(
-                self.store.clone(),
-                self.secret.to_vec(),
-                "Better Auth".into(),
-            )?));
+            self.two_factor = Some(Arc::new(
+                TwoFactorService::new(
+                    self.store.clone(),
+                    self.secret.to_vec(),
+                    "Better Auth".into(),
+                )?
+                .with_backup_code_storage(crate::two_factor::BackupCodeStorage::Encrypted),
+            ));
         }
         Ok(self)
     }

@@ -5,6 +5,7 @@ use crate::{
 };
 // Reuse the fault adapter while permitting this domain suite without the HTTP feature.
 mod backup_options;
+mod backup_storage;
 #[allow(clippy::duplicate_mod)]
 #[path = "../http/observer/fault_store.rs"]
 mod fault_store;

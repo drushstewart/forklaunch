@@ -805,6 +805,7 @@ fn failure_response(error: &BlueprintError) -> Response {
             | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
             | "TWO_FACTOR_GENERATION_FAILED"
             | "TWO_FACTOR_STORAGE_DECODE_FAILED"
+            | "TWO_FACTOR_BACKUP_STORAGE_FAILED"
             | "TWO_FACTOR_CUSTOM_CODEC_FAILED"
     ) {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();

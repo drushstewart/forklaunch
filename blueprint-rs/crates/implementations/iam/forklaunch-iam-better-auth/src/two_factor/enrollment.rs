@@ -46,7 +46,8 @@ impl<S: AuthStore> TwoFactorService<S> {
             .map(|row| text(row, "id").map(str::to_owned))
             .transpose()?
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let row = json!({"id":id,"userId":user["id"],"secret":STANDARD.encode(secret.as_slice()),"backupCodes":codes,"verified":self.lifecycle_options.skip_verification_on_enable,"failedVerificationCount":0,"lockedUntil":null});
+        let mut row = json!({"id":id,"userId":user["id"],"secret":STANDARD.encode(secret.as_slice()),"backupCodes":codes,"verified":self.lifecycle_options.skip_verification_on_enable,"failedVerificationCount":0,"lockedUntil":null});
+        self.write_backup_codes(&mut row, &codes)?;
         if existing.is_some() {
             tx.replace(Model::TwoFactor, row).await?;
         } else {
@@ -112,7 +113,7 @@ impl<S: AuthStore> TwoFactorService<S> {
         }
         let mut row = factor(&mut tx, &user).await?;
         let codes = self.generate_backup_codes()?;
-        row["backupCodes"] = json!(codes);
+        self.write_backup_codes(&mut row, &codes)?;
         tx.replace(Model::TwoFactor, row).await?;
         tx.commit().await?;
         Ok(empty_response(json!({"status":true,"backupCodes":codes})))

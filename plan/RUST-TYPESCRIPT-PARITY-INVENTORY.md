@@ -9471,3 +9471,26 @@ responses and invalid-profile zero-output checks. Temporary source tree removed.
 Proof /private/tmp/fl-billing-date-artifacts.log; permanent fixture
 cli/tests/rust_billing_date_artifacts.mjs added to CI. No new live SDK claim beyond
 the preceding runtime-registry receipt; checklist remains660/682.
+
+
+### Built-in backup field storage (2026-10-14)
+
+BackupCodeStorage LegacyArray/PlainJson/Encrypted and independent opaque versioned
+keys preserve direct service compatibility. First AuthHttp MFA opt-in defaults
+encrypted, matching configured plugin; subsequent builders preserve explicit
+selection. Unmarked arrays read in all profiles, migrate only on successful
+consume/regenerate. Marked v1 strings decode under current policy; unknown marker
+fails closed. No read-time rewrite. JSON77101/hex154282/prefix48 bounds are
+separate from unchanged OTP32/192. Four deterministic Node/Rust vectors cover
+Unicode/empty/duplicates/maximum escapes; retained-key reencoding and malformed,
+wrong-policy/key/tag failures preserve original factor with transactional attempts,
+sessions/trust, concurrent one-use and commit rollback checks. PlainJson still
+requires tenant-record encryption. Native marker/envelope is not upstream DB
+interchange. No async custom backup claim.
+Frozen17 /private/tmp/fl-backup-storage-freeze.json SHA256
+c5dbc5bbd91c4267ef06d4fd95ce58afcd80dc2216268ef572fbea9bde7e7d5d.
+Finalfocused5/0.08s, affected54/58.23s(1PGignored), restrictedPG1/48.83s,
+allfeature/alltargetClippy9.20s/minimal5.38s and actual9groups pass; cleanup0/0/0.
+Logs /private/tmp/fl-backup-storage-{final,regression,postgres,clippy,minimal,actual,cleanup}.log.
+No manifests/locks/migrations changed; CI tracks actual fixture. No new immutable
+or generated MFA receipt. Broader plugin gate remains open;660/682 unchanged.

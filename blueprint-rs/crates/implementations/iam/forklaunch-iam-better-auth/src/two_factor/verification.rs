@@ -147,24 +147,20 @@ impl<S: AuthStore> TwoFactorService<S> {
                 ));
             }
         }
+        let backup_codes = if recovery {
+            self.read_backup_codes(&row)?
+        } else {
+            None
+        };
         let valid = if recovery {
-            let codes = row["backupCodes"].as_array().ok_or_else(corrupt)?;
-            if codes.len() > super::backup_options::MAX_CODES
-                || codes.iter().any(|value| {
-                    value
-                        .as_str()
-                        .is_none_or(|value| value.len() > super::backup_options::MAX_CODE_BYTES)
+            backup_codes.as_ref().is_some_and(|codes| {
+                codes.iter().fold(false, |matched, expected| {
+                    let difference = expected
+                        .bytes()
+                        .zip(code.bytes())
+                        .fold(0u8, |acc, (a, b)| acc | (a ^ b));
+                    matched | (code.len() == expected.len() && difference == 0)
                 })
-            {
-                return Err(corrupt());
-            }
-            codes.iter().fold(false, |matched, value| {
-                let expected = value.as_str().unwrap_or("");
-                let difference = expected
-                    .bytes()
-                    .zip(code.bytes())
-                    .fold(0u8, |acc, (a, b)| acc | (a ^ b));
-                matched | (code.len() == expected.len() && difference == 0)
             })
         } else {
             crypto::matches_with_options(
@@ -192,10 +188,12 @@ impl<S: AuthStore> TwoFactorService<S> {
         }
         let mut factor_changed = recovery;
         if recovery {
-            row["backupCodes"]
-                .as_array_mut()
+            let remaining: Vec<_> = backup_codes
                 .ok_or_else(corrupt)?
-                .retain(|value| value.as_str() != Some(code));
+                .into_iter()
+                .filter(|value| value != code)
+                .collect();
+            self.write_backup_codes(&mut row, &remaining)?;
         }
         let mut response = empty_response(
             json!({"token":session.as_ref().map(|row|row["token"].clone()),"user":output_user(&user)}),

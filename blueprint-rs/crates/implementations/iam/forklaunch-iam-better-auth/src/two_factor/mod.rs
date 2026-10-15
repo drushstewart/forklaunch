@@ -11,6 +11,8 @@
 //! six/eight-digit periods while preserving SHA-1 and the one-step window. Recovery values are authorized disclosures and
 //! must not be logged; this module intentionally provides no secret-bearing Debug.
 mod backup_options;
+mod backup_storage;
+pub use backup_storage::{BackupCodeEncryptionKeys, BackupCodeStorage};
 mod crypto;
 mod enrollment;
 mod lifecycle;
@@ -68,6 +70,8 @@ pub struct TwoFactorService<S> {
     account_lockout_options: AccountLockoutOptions,
     backup_code_options: BackupCodeOptions,
     backup_code_generator: Option<Arc<dyn BackupCodeGenerator>>,
+    backup_code_storage: BackupCodeStorage,
+    backup_code_encryption_keys: Option<Arc<BackupCodeEncryptionKeys>>,
 }
 /// A successful state transition. Explicit wire projection can contain recovery
 /// credentials and must only be returned to the authorized browser.
@@ -168,6 +172,8 @@ impl<S: AuthStore> TwoFactorService<S> {
             account_lockout_options: AccountLockoutOptions::default(),
             backup_code_options: BackupCodeOptions::default(),
             backup_code_generator: None,
+            backup_code_storage: BackupCodeStorage::default(),
+            backup_code_encryption_keys: None,
         })
     }
 }

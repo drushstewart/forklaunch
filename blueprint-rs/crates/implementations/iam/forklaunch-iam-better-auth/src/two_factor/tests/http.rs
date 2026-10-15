@@ -1369,3 +1369,106 @@ async fn http_otp_builtin_clock_is_sampled_once_and_custom_clock_stays_fresh() {
         }
     }
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn http_backup_storage_default_explicit_preservation_and_failure_projection() {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    for mode in 0..4 {
+        let store = Arc::new(MemoryAuthStore::default());
+        let session = new_session("backup-http-codec", "", "", now).unwrap();
+        let cookie = crate::cookies::sign_cookie_value(text(&session, "token").unwrap(), &[42; 32]);
+        let mut tx = store.begin(true).await.unwrap();
+        tx.insert(Model::User,json!({"id":"backup-http-codec","email":"backup-http-codec@example.test","twoFactorEnabled":false})).await.unwrap();
+        tx.insert(Model::Session, session).await.unwrap();
+        tx.commit().await.unwrap();
+        let app = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+            .unwrap()
+            .with_clock(move || now)
+            .with_rate_limiting(false);
+        let app = match mode {
+            1 => app
+                .with_two_factor_backup_code_storage(BackupCodeStorage::LegacyArray)
+                .unwrap(),
+            2 => app
+                .with_two_factor_backup_code_storage(BackupCodeStorage::PlainJson)
+                .unwrap(),
+            3 => app
+                .with_two_factor_backup_code_encryption_keys(Arc::new(
+                    BackupCodeEncryptionKeys::versioned(9, vec![(9, "z".repeat(32))], None)
+                        .unwrap(),
+                ))
+                .unwrap(),
+            _ => app.with_two_factor().unwrap(),
+        }
+        .with_two_factor_otp_storage(OtpStorage::Hashed)
+        .unwrap()
+        .with_two_factor_totp_options(TotpOptions::default())
+        .unwrap()
+        .with_two_factor_lifecycle_options(
+            TwoFactorLifecycleOptions::default()
+                .with_passwordless(true)
+                .with_skip_verification_on_enable(true),
+        )
+        .unwrap()
+        .with_two_factor_backup_code_generator(Arc::new(|| {
+            Ok(vec!["owned-code".into(), "second".into()])
+        }))
+        .unwrap()
+        .with_two_factor()
+        .unwrap();
+        let mut browser = Browser {
+            router: app.router(),
+            origin: origin.into(),
+            jar: BTreeMap::from([("better-auth.session_token".into(), cookie)]),
+        };
+        let (status, body, _) = browser
+            .call(
+                "/two-factor/enable",
+                Some(json!({"storeBackupCodes":"plain"})),
+            )
+            .await;
+        assert_eq!(status, 200);
+        assert_eq!(body["backupCodes"], json!(["owned-code", "second"]));
+        let row = rows(store.as_ref(), Model::TwoFactor).await.remove(0);
+        match mode {
+            1 => assert_eq!(row["backupCodes"], body["backupCodes"]),
+            2 => assert_eq!(row["backupCodes"], json!("[\"owned-code\",\"second\"]")),
+            3 => assert!(row["backupCodes"].as_str().unwrap().starts_with("$ba$9$")),
+            _ => {
+                assert!(row["backupCodes"].is_string());
+                assert!(!row["backupCodes"].as_str().unwrap().contains("owned-code"));
+            }
+        }
+        assert_eq!(
+            browser
+                .call(
+                    "/two-factor/verify-backup-code",
+                    Some(json!({"code":"owned-code"}))
+                )
+                .await
+                .0,
+            200
+        );
+        let saved = rows(store.as_ref(), Model::TwoFactor).await.remove(0);
+        let mut broken = saved.clone();
+        broken["backupCodesFormat"] = json!(999);
+        let mut tx = store.begin(true).await.unwrap();
+        tx.replace(Model::TwoFactor, broken.clone()).await.unwrap();
+        tx.commit().await.unwrap();
+        let sessions = rows(store.as_ref(), Model::Session).await;
+        let (status, body, headers) = browser
+            .call(
+                "/two-factor/verify-backup-code",
+                Some(json!({"code":"second"})),
+            )
+            .await;
+        assert_eq!(status, 500);
+        assert!(body.is_null());
+        assert!(headers.get("set-cookie").is_none());
+        assert!(headers.get("set-auth-jwt").is_none());
+        assert_eq!(rows(store.as_ref(), Model::TwoFactor).await, [broken]);
+        assert_eq!(rows(store.as_ref(), Model::Session).await, sessions);
+    }
+}

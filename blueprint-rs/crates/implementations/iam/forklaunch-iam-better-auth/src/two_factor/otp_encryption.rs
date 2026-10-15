@@ -83,7 +83,15 @@ impl OtpEncryptionKeys {
         self.encrypt_nonce(plaintext, &nonce)
     }
     fn encrypt_nonce(&self, plaintext: &str, nonce: &[u8]) -> BlueprintResult<Zeroizing<String>> {
-        if plaintext.len() > 32 || nonce.len() != 24 {
+        self.encrypt_nonce_bounded(plaintext, nonce, 32)
+    }
+    pub(super) fn encrypt_nonce_bounded(
+        &self,
+        plaintext: &str,
+        nonce: &[u8],
+        max_plaintext: usize,
+    ) -> BlueprintResult<Zeroizing<String>> {
+        if plaintext.len() > max_plaintext || nonce.len() != 24 {
             return Err(codec_failure());
         }
         let key = match self.current {
@@ -107,7 +115,16 @@ impl OtpEncryptionKeys {
         ))
     }
     pub(super) fn decrypt(&self, stored: &str) -> BlueprintResult<Zeroizing<String>> {
-        if stored.len() > 192 {
+        self.decrypt_bounded(stored, 192, 144, None)
+    }
+    pub(super) fn decrypt_bounded(
+        &self,
+        stored: &str,
+        max_stored: usize,
+        max_hex: usize,
+        max_prefix: Option<usize>,
+    ) -> BlueprintResult<Zeroizing<String>> {
+        if stored.len() > max_stored {
             return Err(codec_failure());
         }
         let (key, hex) = if self.current.is_none() {
@@ -117,7 +134,10 @@ impl OtpEncryptionKeys {
         } else {
             (self.legacy.as_ref().ok_or_else(codec_failure)?, stored)
         };
-        let bytes = hex_decode(hex)?;
+        if max_prefix.is_some_and(|max| stored.len() - hex.len() > max) {
+            return Err(codec_failure());
+        }
+        let bytes = hex_decode_bounded(hex, max_hex)?;
         let cipher =
             XChaCha20Poly1305::new_from_slice(key.as_ref()).map_err(|_| codec_failure())?;
         let plain = Zeroizing::new(
@@ -156,7 +176,10 @@ fn hex_encode(bytes: &[u8]) -> String {
         .collect()
 }
 fn hex_decode(value: &str) -> BlueprintResult<Vec<u8>> {
-    if !(80..=144).contains(&value.len()) || !value.len().is_multiple_of(2) {
+    hex_decode_bounded(value, 144)
+}
+fn hex_decode_bounded(value: &str, maximum: usize) -> BlueprintResult<Vec<u8>> {
+    if !(80..=maximum).contains(&value.len()) || !value.len().is_multiple_of(2) {
         return Err(codec_failure());
     }
     value

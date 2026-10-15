@@ -1334,9 +1334,61 @@ The callback owns proof strength. Empty lists, empty strings, duplicate strings
 and Unicode are preserved, matching the upstream custom-generator behavior. A
 successful verification consumes every exact duplicate of that proof atomically.
 Do not log generated proofs or callback error contents. Codes continue to use the
-existing encrypted tenant store; custom backup storage codecs are a separate,
-unimplemented extension. JavaScript negative/fractional generation sizes and
+existing encrypted tenant store; built-in backup field codecs are described below.
+Custom asynchronous backup codecs remain a separate, unimplemented extension. JavaScript negative/fractional generation sizes and
 positive amounts with zero length are outside this bounded typed profile.
+
+### Backup code field storage and migration
+
+`BackupCodeStorage::{LegacyArray, PlainJson, Encrypted}` selects a trusted service
+policy through `with_backup_code_storage`, or
+`AuthHttp::with_two_factor_backup_code_storage`. Direct `TwoFactorService::new`
+retains `LegacyArray` for existing callers. **The first HTTP MFA opt-in now selects
+`Encrypted`**, matching the configured Better Auth plugin; subsequent option
+builders preserve the selection. An explicit legacy/plain builder overrides it.
+HTTP request fields cannot choose a codec. Tenant record encryption remains
+required independently of this field policy.
+
+New string fields carry the private native marker `backupCodesFormat: 1` alongside
+`backupCodes`. Unmarked legacy arrays remain readable under every profile, with no
+read-time rewrite. Authorized regeneration or successful consumption writes the
+selected format. Unknown markers, unmarked strings, or incompatible shapes fail
+closed during verification; authorized regeneration replaces old proofs without
+decoding them. Older native binaries do not understand marked strings: upgrade all
+readers before enabling this writer. The marker is a native storage format, not
+an upstream database-row interchange format.
+
+The current selected policy decodes marked strings; it does not autodetect the
+old codec. Plain-to-encrypted produces a sanitized empty HTTP 500 and preserves
+codes/attempts; encrypted-to-plain rejects the proof and applies ordinary pending
+challenge attempts. Restoring the old policy allows the unchanged proof. Malformed
+plain JSON/null rejects the proof; malformed encrypted fields, unknown keys, and
+authentication-tag errors fail without consuming codes. Arbitrary JSON objects or
+non-string code arrays are outside the typed profile and fail closed. All success
+mutations (code removal, challenge, session, trust and counters) share the existing
+tenant transaction; failure to commit preserves all of them. Every duplicate of a
+successfully supplied code is removed. This stronger transaction composition is
+not a claim of identical upstream multi-adapter races.
+
+`BackupCodeEncryptionKeys::legacy(secret)` and `::versioned(current, keys, legacy)`
+provide independent keys through `with_backup_code_encryption_keys` or the HTTP
+`with_two_factor_backup_code_encryption_keys`. Keys have no Debug/Serialize or
+secret accessor; derived keys are zeroized. Without explicit keys, encrypted mode
+uses the service's signing-secret bytes. Secrets are 32..=4096 UTF-8 bytes; up to
+16 distinct u32 versions are supported. Encryption uses SHA-256 key derivation and
+XChaCha20-Poly1305 with a fresh 24-byte nonce, followed by hex. Versioned writes use
+canonical `$ba$version$hex`; retained read versions and optional legacy keys permit
+rotation. Permissive upstream version-read prefixes are bounded to 48 bytes.
+
+The admitted 100 codes × 128 UTF-8 bytes require up to 77,101 escaped JSON bytes,
+154,282 bare ciphertext hex bytes, or 154,330 bytes including the bounded read
+prefix (canonical u32 writes need at most 15 prefix bytes). Existing OTP limits
+remain 32 plaintext bytes and 192 stored bytes. Empty/Unicode codes and duplicates
+remain admitted, as with the trusted generator. Four fixed-nonce Node/Rust vectors,
+actual plugin policy/failure observations, HTTP defaults, and restricted PostgreSQL
+transaction/one-use tests cover this built-in subset. Custom asynchronous backup
+codecs still require a separate snapshot/CAS design; OTP consume-before-callback
+failure semantics must not be reused for them.
 
 ### OTP field storage policy
 
@@ -1356,9 +1408,9 @@ account lockout, expiry, atomic single use, and rollback retain their existing
 semantics. Invalid string inputs within the existing 128-byte limit count as failed
 proofs; malformed non-string bodies fail validation before consuming attempts.
 
-Asynchronous custom hash/encrypt/decrypt and backup field codecs remain separate
-extension work. Built-in encrypted OTP field encoding is described below. Their upstream callback failure/consumption rules differ and are not
-represented by this synchronous plain/hashed profile.
+Built-in encrypted OTP encoding and asynchronous custom OTP callbacks are described
+below. Their failure/consumption rules differ from this plain/hashed profile.
+Custom asynchronous backup codecs remain separate extension work.
 
 
 ### Encrypted OTP field representation
