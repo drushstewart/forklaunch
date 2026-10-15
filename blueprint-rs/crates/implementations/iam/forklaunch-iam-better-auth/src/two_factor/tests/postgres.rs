@@ -1,67 +1,11 @@
 use super::*;
-use crate::store::postgres::PostgresAuthStore;
-use forklaunch_blueprint_core::AuditContext;
-use forklaunch_core::persistence::{TenantContext, encryption::FieldEncryptor};
-use sqlx::postgres::PgPoolOptions;
 
 #[tokio::test]
 #[ignore = "requires FORKLAUNCH_TEST_POSTGRES_URL"]
 #[allow(clippy::too_many_lines)]
 async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
-    let url = std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap();
-    let owner = PgPoolOptions::new()
-        .max_connections(2)
-        .connect(&url)
-        .await
-        .unwrap();
-    PostgresAuthStore::migrate(&owner).await.unwrap();
-    let role = format!("fl_totp_{}", uuid::Uuid::new_v4().simple());
-    for query in [
-        format!("CREATE ROLE {role} NOLOGIN NOSUPERUSER NOBYPASSRLS"),
-        format!("GRANT USAGE ON SCHEMA fl_better_auth TO {role}"),
-        format!(
-            "GRANT SELECT,INSERT,UPDATE,DELETE ON fl_better_auth.records,fl_better_auth.unique_claims,fl_better_auth.lookup_claims,fl_better_auth.audit TO {role}"
-        ),
-        format!("GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_better_auth TO {role}"),
-    ] {
-        sqlx::query(&query).execute(&owner).await.unwrap();
-    }
-    let statement = format!("SET ROLE {role}");
-    let pool = PgPoolOptions::new()
-        .max_connections(4)
-        .after_connect(move |connection, _| {
-            let statement = statement.clone();
-            Box::pin(async move {
-                sqlx::query(&statement).execute(connection).await?;
-                Ok(())
-            })
-        })
-        .connect(&url)
-        .await
-        .unwrap();
-    let tenants = vec![format!("{role}-a"), format!("{role}-b")];
-    let key = Arc::new(FieldEncryptor::new("owned-totp-encryption-key").unwrap());
-    let store = Arc::new(
-        PostgresAuthStore::new(
-            pool.clone(),
-            TenantContext::new(&tenants[0]).unwrap(),
-            key.clone(),
-            AuditContext::actor("totp-operator", "totp-lifecycle"),
-        )
-        .await
-        .unwrap(),
-    );
-    let foreign = PostgresAuthStore::new(
-        pool.clone(),
-        TenantContext::new(&tenants[1]).unwrap(),
-        key,
-        AuditContext::system("totp-foreign"),
-    )
-    .await
-    .unwrap();
-    let reader = owner.clone();
-    let tenant = tenants[0].clone();
-    let proof=tokio::spawn(async move {
+    crate::restricted_postgres_test::exercise(|context| async move {
+        let crate::restricted_postgres_test::Context {store,foreign,owner:reader,tenant}=context;
         lifecycle(store.clone()).await;
         http::email_delivery_lifecycle(store.clone()).await;
         crate::accounts::verification_policy::tests::lifecycle(store.clone()).await;
@@ -85,20 +29,7 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
         crate::http::session_policy_tests::lifecycle(store.clone()).await;
         crate::http::credential_policy_tests::lifecycle(store.clone()).await;
         crate::http::clock_tests::lifecycle(store.clone()).await;
-        crate::http::clock_tests::organization::lifecycle(store.clone()).await;
-        // A foreign-tenant membership with the exact future actor ID must not
-        // consume its one-organization allowance in the policy matrix.
-        let mut foreign_policy=foreign.begin(true).await.unwrap();
-        foreign_policy.insert(Model::Member,json!({"id":"foreign-policy-membership","userId":"org-policy-create-2-owner","organizationId":"foreign-policy-org","role":"owner"})).await.unwrap();
-        foreign_policy.commit().await.unwrap();
-        crate::organizations::tests::policy::exercise(store.clone()).await;
-        crate::organizations::tests::invitation_policy::exercise(store.clone()).await;
-        crate::organizations::tests::invitation_cancel::exercise(store.clone()).await;
-        crate::organizations::tests::invitation_delivery::exercise(store.clone()).await;
-        crate::organizations::tests::team_policy::exercise(store.clone()).await;
-        crate::organizations::tests::controls::exercise(store.clone()).await;
-        crate::organizations::tests::creator_role::exercise(store.clone()).await;
-        crate::organizations::tests::access_control::exercise(store.clone()).await;
+        crate::organizations::tests::postgres::exercise(store.clone(), &foreign).await;
         let before_view_audit:i64=sqlx::query_scalar("SELECT count(*) FROM fl_better_auth.audit WHERE tenant_id=$1").bind(&tenant).fetch_one(&reader).await.unwrap();
         let viewer=TwoFactorService::new(store.clone(),vec![42;32],"Read".into()).unwrap();
         assert_eq!(viewer.view_backup_codes_for_user("view-legacy").await.unwrap().len(),4);
@@ -122,24 +53,4 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
         let mut tx=store.begin(true).await.unwrap();assert!(tx.insert(Model::TwoFactor,json!({"id":"duplicate-factor","userId":"private-factor-owner"})).await.is_err());drop(tx);
         let audits:i64=sqlx::query_scalar("SELECT count(*) FROM fl_better_auth.audit WHERE tenant_id=$1 AND model='twoFactor'").bind(&tenant).fetch_one(&reader).await.unwrap();assert!(audits>0);
     }).await;
-    for table in ["records", "audit"] {
-        sqlx::query(&format!(
-            "DELETE FROM fl_better_auth.{table} WHERE tenant_id=ANY($1)"
-        ))
-        .bind(&tenants)
-        .execute(&owner)
-        .await
-        .unwrap();
-    }
-    pool.close().await;
-    sqlx::query(&format!("DROP OWNED BY {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
-    sqlx::query(&format!("DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
-    owner.close().await;
-    proof.unwrap();
 }

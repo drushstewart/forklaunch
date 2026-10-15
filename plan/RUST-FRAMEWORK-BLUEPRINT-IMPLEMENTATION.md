@@ -2848,3 +2848,23 @@ The committed string-length worktree was removed after exact HEAD, six integrate
 hashes and zero open process/file references were checked. Receipt
 `/private/tmp/fl-string-float-length-cleanup.json` records4,219 regular files and
 45,247,323 logical bytes removed; the proof branch and native caches are retained.
+
+
+### 2026-10-15: Shared restricted PostgreSQL auth test harness
+
+A shared test-only lifecycle now gives focused organization tests the same
+restricted role, tenant separation, encryption and audit setup as the retained
+full auth integration. Both exercise the common organization suite, including
+baseline lifecycle, delayed HTTP clocks, foreign-tenant quota seed and eight
+policy families. Proof execution is spawned so proof panics still reach cleanup.
+An explicit committed-write/panic regression verifies cleanup of records, audit,
+unique/lookup claims and the temporary role. Production behavior is unchanged.
+
+Focused organization PostgreSQL passes15.98s, deliberate-panic cleanup0.27s and
+retained full auth PostgreSQL231.39s. Strict full/minimal all-target Clippy passes
+12.90s/13.44s. All5 paths match `/private/tmp/fl-org-pg-harness-freeze.json` SHA256
+`c2e4e2a37fa1f817f88f475645181bc1efb7f2e94f10fd09c0ce7e18f6ed5eec`.
+Logs use `/private/tmp/fl-org-pg-harness-`. CI retains the full suite and adds the
+focused and panic-cleanup tests. This reduces the cost of validating subsequent
+organization changes without reducing full integration coverage. Checklist660/682
+is unchanged.

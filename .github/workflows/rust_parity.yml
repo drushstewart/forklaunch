@@ -2245,6 +2245,8 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features provider_ -- --include-ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features postgres_auth_encryption -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features restricted_postgres_organization_lifecycle_policies_and_tenant_boundaries -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features restricted_postgres_proof_panic_still_cleans_owned_state -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features api_error_observer_preserves_only_structural_postgres_fields -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features encrypted_directory -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features directory_identity_binding -- --ignored

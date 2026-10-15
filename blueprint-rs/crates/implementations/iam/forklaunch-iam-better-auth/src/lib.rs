@@ -29,3 +29,6 @@ mod ecmascript;
 mod error_origin;
 
 mod time_source;
+
+#[cfg(all(test, feature = "postgres"))]
+mod restricted_postgres_test;
