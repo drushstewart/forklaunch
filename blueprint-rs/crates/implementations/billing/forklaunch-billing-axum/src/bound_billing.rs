@@ -35,6 +35,7 @@ pub(super) struct PaymentLinkReadConfig {
 pub struct BoundBillingConfig {
     checkout: Option<BoundCheckoutConfig>,
     portal: Option<BoundPortalConfig>,
+    portal_local_expiration: Option<BoundPortalConfig>,
     plan_read: Option<BoundPlanCreationProfile>,
     subscription_read: Option<BoundSubscriptionCreationProfile>,
     payment_link_read: Option<PaymentLinkReadConfig>,
@@ -42,6 +43,20 @@ pub struct BoundBillingConfig {
     plan: Option<BoundPlanCreationProfile>,
     subscription: Option<BoundSubscriptionCreationProfile>,
     subscription_recovery: Option<BoundSubscriptionCreationProfile>,
+}
+fn scope(value: &Value) -> BlueprintResult<StripeBindingScope> {
+    StripeBindingScope::administrative(
+        value["deploymentLabel"]
+            .as_str()
+            .ok_or_else(configuration)?
+            .to_owned(),
+        value["accountId"]
+            .as_str()
+            .ok_or_else(configuration)?
+            .to_owned(),
+        value["livemode"].as_bool().ok_or_else(configuration)?,
+    )
+    .map_err(|_| configuration())
 }
 fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult<()> {
     let object = value.as_object().ok_or_else(configuration)?;
@@ -168,6 +183,7 @@ impl BoundBillingConfig {
             &[
                 "checkout",
                 "portal",
+                "portalLocalExpiration",
                 "planRead",
                 "subscriptionRead",
                 "paymentLinkRead",
@@ -177,18 +193,7 @@ impl BoundBillingConfig {
                 "subscriptionRecovery",
             ],
         )?;
-        let scope = StripeBindingScope::administrative(
-            value["deploymentLabel"]
-                .as_str()
-                .ok_or_else(configuration)?
-                .to_owned(),
-            value["accountId"]
-                .as_str()
-                .ok_or_else(configuration)?
-                .to_owned(),
-            value["livemode"].as_bool().ok_or_else(configuration)?,
-        )
-        .map_err(|_| configuration())?;
+        let scope = scope(&value)?;
         let checkout = if let Some(part) = value.get("checkout") {
             exact(part, &["plans", "successUrl", "cancelUrl"], &[])?;
             let mut legacy = part.clone();
@@ -199,10 +204,14 @@ impl BoundBillingConfig {
         } else {
             None
         };
-        let portal = value
-            .get("portal")
-            .map(|part| portal_profile(&scope, part))
-            .transpose()?;
+        let portal_config = |key| {
+            value
+                .get(key)
+                .map(|part| portal_profile(&scope, part))
+                .transpose()
+        };
+        let portal = portal_config("portal")?;
+        let portal_local_expiration = portal_config("portalLocalExpiration")?;
         let plan_read = value
             .get("planRead")
             .map(|part| plan_profile(&scope, part))
@@ -233,6 +242,7 @@ impl BoundBillingConfig {
             .transpose()?;
         if checkout.is_none()
             && portal.is_none()
+            && portal_local_expiration.is_none()
             && plan_read.is_none()
             && subscription_read.is_none()
             && payment_link_read.is_none()
@@ -246,6 +256,7 @@ impl BoundBillingConfig {
         Ok(Self {
             checkout,
             portal,
+            portal_local_expiration,
             plan_read,
             subscription_read,
             payment_link_read,
@@ -329,6 +340,9 @@ impl BoundBillingConfig {
         if self.has_portal() {
             routes.extend(bound_portal_contracts());
         }
+        if self.portal_local_expiration.is_some() {
+            routes.extend(super::bound_portal_expiration::bound_portal_expiration_contracts());
+        }
         if self.has_plan_read() {
             routes.extend(bound_plan_read_contracts());
         }
@@ -347,6 +361,7 @@ impl BoundBillingConfig {
 pub struct BoundBillingV1 {
     checkout: Option<BoundCheckoutV1>,
     portal: Option<BoundPortalV1>,
+    portal_local_expiration: Option<BoundPortalConfig>,
     plan_read: Option<BoundPlanCreationProfile>,
     subscription_read: Option<BoundSubscriptionCreationProfile>,
     payment_link_read: Option<PaymentLinkReadConfig>,
@@ -382,6 +397,7 @@ impl BoundBillingV1 {
             return Err(self::configuration());
         }
         Ok(Self {
+            portal_local_expiration: configuration.portal_local_expiration,
             plan_read: configuration.plan_read,
             subscription_read: configuration.subscription_read,
             payment_link_read: configuration.payment_link_read,
@@ -412,6 +428,7 @@ impl BillingBackend {
     pub async fn with_bound_billing(mut self, profile: BoundBillingV1) -> BlueprintResult<Self> {
         if self.bound_checkout.is_some()
             || self.bound_portal.is_some()
+            || self.bound_portal_expiration.is_some()
             || self.bound_plan_read.is_some()
             || self.bound_subscription_read.is_some()
             || self.bound_payment_link_read.is_some()
@@ -435,6 +452,11 @@ impl BillingBackend {
         }
         if let Some(portal) = profile.portal {
             self = self.with_bound_portal(portal).await?;
+        }
+        if let Some(expiration) = profile.portal_local_expiration {
+            self = self
+                .with_bound_portal_expiration(expiration.profile)
+                .await?;
         }
         if let Some(plan_read) = profile.plan_read {
             self = self.with_bound_plan_read(plan_read).await?;
@@ -660,5 +682,30 @@ mod tests {
             assert_eq!(error.message, "Invalid bound billing configuration");
         }
         assert!(BoundBillingConfig::from_json(&" ".repeat(65_537)).is_err());
+    }
+    #[test]
+    fn portal_local_expiration_does_not_infer_publisher_or_creation() {
+        let value = json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portalLocalExpiration":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}});
+        let parsed = BoundBillingConfig::from_json(&value.to_string()).unwrap();
+        assert!(!parsed.requires_publisher());
+        assert!(!parsed.has_portal());
+        let routes = parsed.contracts();
+        assert_eq!(routes.len(), 2);
+        assert!(
+            routes
+                .iter()
+                .all(|r| r.operation_name != "createBoundPortalSession"
+                    && r.operation_name != "getStoredBoundPortalSession")
+        );
+        assert!(BoundBillingV1::trusted(parsed, None, None).is_ok());
+        for bad in [
+            Value::Null,
+            json!({}),
+            json!({"configurationId":"bpc_owned","returnUrl":"https://example.test/return","create":true}),
+        ] {
+            let mut value = value.clone();
+            value["portalLocalExpiration"] = bad;
+            assert!(BoundBillingConfig::from_json(&value.to_string()).is_err());
+        }
     }
 }

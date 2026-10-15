@@ -45,7 +45,12 @@ try {
   const readAggregate={deploymentLabel:'owned',accountId:'acct_private',livemode:false,subscriptionRead};
   const paymentLinkRead={trustedPrices:["price_owned"]};
   const linkReadAggregate={deploymentLabel:"owned",accountId:"acct_private",livemode:false,paymentLinkRead};
+  const expirationOnly={...aggregate,portal:undefined,portalLocalExpiration:aggregate.portal};
   const cases=[
+   {name:'portal-local-expiration-only',profile:'bound-billing-v1',aggregate:expirationOnly,fail:!stripe,count:2},
+   {name:'portal-local-expiration-mixed',profile:'bound-billing-v1',aggregate:{...aggregate,portalLocalExpiration:aggregate.portal},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:5},
+   {name:'portal-local-expiration-stray-publisher',profile:'bound-billing-v1',aggregate:expirationOnly,publisher:'postgres://publisher@localhost/db',fail:true},
+   ...[null,{}, {...aggregate.portal,create:true},{...aggregate.portal,returnUrl:null}].map((portalLocalExpiration,i)=>({name:'portal-local-expiration-invalid-'+i,profile:'bound-billing-v1',aggregate:{...expirationOnly,portalLocalExpiration},fail:true})),
    {name:'subscription-recovery-only',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:undefined,subscriptionRecovery:{...subscriptionRead,authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:2},
    {name:'subscription-create-recovery',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:undefined,subscription:{...subscriptionRead,authority:'internal_service_tenant_v1'},subscriptionRecovery:{...subscriptionRead,authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:3},
    {name:'subscription-recovery-missing-publisher',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRecovery:{...subscriptionRead,authority:'internal_service_tenant_v1'}},fail:true},
@@ -141,5 +146,5 @@ try {
   writeFileSync(path.join(temporary,'src/main.rs'),render(mainTemplate));
   run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
  }
- console.log('PASS actual rendered generated library: 152 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
+ console.log('PASS actual rendered generated library: 166 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
 } finally {rmSync(temporary,{recursive:true,force:true});}

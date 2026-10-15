@@ -15,6 +15,8 @@ mod bound_plan_read;
 #[cfg(feature = "bound-checkout")]
 mod bound_portal;
 #[cfg(feature = "bound-checkout")]
+mod bound_portal_expiration;
+#[cfg(feature = "bound-checkout")]
 mod bound_subscription;
 #[cfg(feature = "bound-checkout")]
 mod bound_subscription_read;
@@ -34,6 +36,8 @@ pub use bound_plan::bound_plan_contracts;
 pub use bound_plan_read::bound_plan_read_contracts;
 #[cfg(feature = "bound-checkout")]
 pub use bound_portal::{BoundPortalV1, bound_portal_contracts};
+#[cfg(feature = "bound-checkout")]
+pub use bound_portal_expiration::bound_portal_expiration_contracts;
 #[cfg(feature = "bound-checkout")]
 pub use bound_subscription::{bound_subscription_contracts, bound_subscription_recovery_contracts};
 #[cfg(feature = "bound-checkout")]
@@ -75,6 +79,8 @@ pub struct BillingBackend {
     #[cfg(feature = "bound-checkout")]
     bound_portal: Option<Arc<BoundPortalV1>>,
     #[cfg(feature = "bound-checkout")]
+    bound_portal_expiration: Option<Arc<forklaunch_billing_stripe::bound_portal_creation::BoundPortalCreationProfile>>,
+    #[cfg(feature = "bound-checkout")]
     bound_plan_read:
         Option<Arc<forklaunch_billing_stripe::bound_plan_creation::BoundPlanCreationProfile>>,
     #[cfg(feature = "bound-checkout")]
@@ -103,6 +109,8 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_portal: None,
             #[cfg(feature = "bound-checkout")]
+            bound_portal_expiration: None,
+            #[cfg(feature = "bound-checkout")]
             bound_plan_read: None,
             #[cfg(feature = "bound-checkout")]
             bound_subscription_read: None,
@@ -129,6 +137,8 @@ impl BillingBackend {
             bound_checkout: None,
             #[cfg(feature = "bound-checkout")]
             bound_portal: None,
+            #[cfg(feature = "bound-checkout")]
+            bound_portal_expiration: None,
             #[cfg(feature = "bound-checkout")]
             bound_plan_read: None,
             #[cfg(feature = "bound-checkout")]
@@ -501,6 +511,8 @@ pub fn billing_router(
     let router = bound_checkout::register(router, &backend);
     #[cfg(feature = "bound-checkout")]
     let router = bound_portal::register(router, &backend);
+    #[cfg(feature = "bound-checkout")]
+    let router = bound_portal_expiration::register(router, &backend);
     #[cfg(feature = "bound-checkout")]
     let router = bound_plan_read::register(router, &backend);
     #[cfg(feature = "bound-checkout")]

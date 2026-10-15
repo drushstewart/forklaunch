@@ -2727,3 +2727,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Raw JWT syntax/header assertions pass 83,494 actual/AJV and 83,494 native observations, 25 HTTP/100 socket checks, strict Clippy and configured types/inventory. Authentication verification is unchanged; arbitrary regex and broader validator constraints remain open, 660/682 unchanged.
 
 - 2026-10-15: All23 secondary organization session rechecks use fresh HTTP clock/policy;24 focused cases, full IAM220/3ignored, restricted PostgreSQL and strict full/minimal Clippy pass. Explicit-time APIs preserved; broader auth remains open,660/682 unchanged.
+
+- 2026-10-15: Explicit bound Portal local expiration passes immutable migration16 history, restricted PostgreSQL races/uncertain commit, HTTP/MCP/ten SDK calls,14 units,166 artifacts and strict full/minimal Clippy. No remote URL revocation claim; broader billing stays open,660/682 unchanged.

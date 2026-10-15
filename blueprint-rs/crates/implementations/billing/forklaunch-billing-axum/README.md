@@ -411,3 +411,37 @@ provider state. GET inspection is the same actor-owned IDs-only operation used b
 creation; neither endpoint returns an old URL or authorizes a financial retry.
 Default66 routes and generic TS behavior remain unchanged; this does not close
 all interrupted billing or provider mutation parity.
+
+### Explicit local Portal expiration
+
+`bound-billing-v1` accepts a separate `portalLocalExpiration` selector containing
+`configurationId` and `returnUrl` under the shared trusted account/mode/deployment.
+It enables `POST /bound-portal/sessions/:publicId/expire` and
+`GET /bound-portal/sessions/:publicId/expiration`. It requires no publisher and
+implies neither creation nor stored-read authority. Existing legacy routes remain.
+
+First expiration requires the completed actor-owned creation receipt, unchanged
+Customer and alias/record proof, and the original five-minute local lifetime.
+Migration 16 appends an immutable tombstone and audit in one transaction. Stored
+bound reads reject it even if the mutable record is restored. The original Stripe
+URL may remain usable remotely until the provider expires it: this capability
+makes no provider calls and cannot revoke a URL already given to a client.
+
+Confirmed writes and historical repeats return `localExpired`. Lost COMMIT
+acknowledgements return 202 `localExpirationUnknown`; inspect or repeat the same
+local operation. `notRecorded` does not prove rollback while an earlier transaction
+may still be finishing. Historical status/repeats require the same actor/profile
+but do not assert current Customer ownership or remote URL validity. Creation
+inspection remains IDs-only and unchanged.
+
+After migration 16, every existing stored Portal read deployment also needs SELECT
+on `portal_local_expirations`; selected Portal startup checks this grant. This
+adds no expiration/write permission.
+
+Before listening, the selected expiration runtime needs SELECT on the creation journal and
+expiration table, INSERT on the expiration table and sensitive-read audit, and
+SELECT/UPDATE on records, provider bindings and Customer bindings for proof locks.
+Use the existing distinct non-owner runtime role. Migration owners and privileged
+DB administrators remain trusted; no protection against stolen runtime write
+credentials is claimed. No expiration UPDATE/DELETE policy is granted, and mutation
+and TRUNCATE triggers reject history removal even with broader table grants.

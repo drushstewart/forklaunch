@@ -15,6 +15,7 @@ use forklaunch_auth::{
 use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_billing_axum::{
     BillingBackend, BoundBillingConfig, BoundBillingV1, billing_router, bound_portal_contracts,
+    bound_portal_expiration_contracts,
 };
 use forklaunch_billing_stripe::client::{STRIPE_API_VERSION, StripeBillingClient};
 use forklaunch_blueprint_core::{AuditContext, provider_http::ProviderHttpClient};
@@ -167,7 +168,7 @@ async fn serve(
 }
 
 fn config(f: &Fixture) -> BoundBillingConfig {
-    BoundBillingConfig::from_json(&json!({"deploymentLabel":"owned","accountId":f.scope.account_id(),"livemode":f.scope.livemode(),"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}}).to_string()).unwrap()
+    BoundBillingConfig::from_json(&json!({"deploymentLabel":"owned","accountId":f.scope.account_id(),"livemode":f.scope.livemode(),"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"},"portalLocalExpiration":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}}).to_string()).unwrap()
 }
 fn input(f: &Fixture) -> Value {
     json!({"localCustomerId":f.customer.to_string()})
@@ -179,7 +180,10 @@ fn authentication() -> HmacJwksAuth {
         Validation::new(Algorithm::RS256),
     )
     .unwrap();
-    for route in bound_portal_contracts() {
+    for route in bound_portal_contracts()
+        .into_iter()
+        .chain(bound_portal_expiration_contracts())
+    {
         auth = auth
             .with_hmac_keys_for_route(
                 &route,
@@ -315,6 +319,7 @@ async fn matrix(f: &Fixture) {
         );
         assert_eq!(p.posts.load(Ordering::SeqCst), 0);
     }
+    expiration_startup(f, &stripe, &publisher_pool).await;
     let publisher = f
         .store
         .trusted_portal_publisher(publisher_pool.clone())
@@ -347,7 +352,10 @@ async fn matrix(f: &Fixture) {
             route
         );
     }
-    for route in bound_portal_contracts() {
+    for route in bound_portal_contracts()
+        .into_iter()
+        .chain(bound_portal_expiration_contracts())
+    {
         assert_eq!(
             router
                 .registry()
@@ -526,6 +534,7 @@ async fn matrix(f: &Fixture) {
     p.pause.store(0, Ordering::SeqCst);
     p.resume.notify_one();
     assert_eq!(first.await.status(), 200);
+    expiration_routes(&client, &base, id).await;
     route_sdks(sdk_typescript, sdk_rust, &base, f).await;
     assert_eq!(p.posts.load(Ordering::SeqCst), 5);
     expired_read(f, &publisher_pool, &client, &base).await;
@@ -647,4 +656,127 @@ async fn expired_read(f: &Fixture, pool: &sqlx::PgPool, client: &Client, base: &
     .await;
     assert_eq!(inspection["state"], "completed");
     assert!(inspection.get("record").is_none());
+}
+
+async fn expiration_routes(client: &Client, base: &str, id: &str) {
+    let status = format!("/bound-portal/sessions/{id}/expiration");
+    let expire = format!("/bound-portal/sessions/{id}/expire");
+    assert_eq!(
+        value(call(client, base, Method::GET, &status, None).await).await["state"],
+        "notRecorded"
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            value(call(client, base, Method::POST, &expire, None).await).await["state"],
+            "localExpired"
+        );
+    }
+    assert_eq!(
+        call(
+            client,
+            base,
+            Method::GET,
+            &format!("/bound-portal/sessions/{id}"),
+            None
+        )
+        .await
+        .status(),
+        410
+    );
+    let result=rpc(client,base,"tools/call",json!({"name":"expireStoredBoundPortalSession","arguments":{"params":{"publicId":id},"headers":{"authorization":sign("POST",&expire,None)}}})).await;
+    assert_eq!(result["result"]["isError"], false, "{result}");
+    let result=rpc(client,base,"tools/call",json!({"name":"inspectStoredBoundPortalExpiration","arguments":{"params":{"publicId":id},"headers":{"authorization":sign("GET",&status,None)}}})).await;
+    assert_eq!(result["result"]["isError"], false, "{result}");
+}
+
+async fn expiration_startup(
+    f: &Fixture,
+    stripe: &StripeBillingClient,
+    publisher_pool: &sqlx::PgPool,
+) {
+    let configured = || {
+        BoundBillingConfig::from_json(&json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portalLocalExpiration":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}}).to_string()).unwrap()
+    };
+    for backend in [
+        BillingBackend::base((*f.store).clone()),
+        BillingBackend::stripe((*f.store).clone(), stripe.clone()).with_database_backup(true),
+        BillingBackend::stripe(
+            (*f.store).clone(),
+            StripeBillingClient::managed(
+                "https://gateway.example",
+                Uuid::new_v4().to_string(),
+                "fixture-key".into(),
+            )
+            .unwrap(),
+        ),
+    ] {
+        assert!(
+            backend
+                .with_bound_billing(BoundBillingV1::trusted(configured(), None, None).unwrap())
+                .await
+                .is_err()
+        );
+    }
+    let role = f.pool.connect_options().get_username().to_owned();
+    for (table, privilege) in [
+        ("portal_local_expirations", "SELECT"),
+        ("portal_local_expirations", "INSERT"),
+        ("records", "UPDATE"),
+        ("sensitive_read_audit", "INSERT"),
+    ] {
+        sqlx::raw_sql(&format!(
+            "REVOKE {privilege} ON fl_billing.{table} FROM {role}"
+        ))
+        .execute(&f.owner)
+        .await
+        .unwrap();
+        assert!(
+            BillingBackend::stripe((*f.store).clone(), stripe.clone())
+                .with_bound_billing(BoundBillingV1::trusted(configured(), None, None).unwrap())
+                .await
+                .is_err()
+        );
+        if table == "portal_local_expirations" && privilege == "SELECT" {
+            let old=BoundBillingConfig::from_json(&json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}}).to_string()).unwrap();
+            let publisher = f
+                .store
+                .trusted_portal_publisher(publisher_pool.clone())
+                .await
+                .unwrap();
+            assert!(
+                BillingBackend::stripe((*f.store).clone(), stripe.clone())
+                    .with_bound_billing(
+                        BoundBillingV1::trusted(old, None, Some(publisher)).unwrap()
+                    )
+                    .await
+                    .is_err()
+            );
+        }
+        sqlx::raw_sql(&format!(
+            "GRANT {privilege} ON fl_billing.{table} TO {role}"
+        ))
+        .execute(&f.owner)
+        .await
+        .unwrap();
+    }
+    let backend = BillingBackend::stripe((*f.store).clone(), stripe.clone())
+        .with_bound_billing(BoundBillingV1::trusted(configured(), None, None).unwrap())
+        .await
+        .unwrap();
+    let router = billing_router(backend, authentication(), ServiceInfo::new("billing", "1"));
+    assert_eq!(
+        router.registry().routes().len(),
+        forklaunch_billing_interface::module_contracts::module_registry(true)
+            .routes()
+            .len()
+            + 2
+    );
+    assert!(
+        !router
+            .registry()
+            .routes()
+            .iter()
+            .any(|r| r.operation_name == "createBoundPortalSession"
+                || r.operation_name == "getStoredBoundPortalSession")
+    );
 }

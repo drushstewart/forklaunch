@@ -20,6 +20,9 @@ const operationId=randomUUID(),body={localCustomerId:customer},route=`/bound-por
 const created=await create({params:{operationId},body,headers:{authorization:sign('POST',route,JSON.stringify(body))}});assert.equal(created.status,200);assert.equal(created.response.state,'created');const publicId=created.response.publicId;assert.equal(created.response.record.customerId,customer);
 const stored=await get({params:{publicId},headers:{authorization:sign('GET',`/bound-portal/sessions/${publicId}`)}});assert.equal(stored.status,200);assert.equal(stored.response.state,'stored');assert.deepEqual(stored.response.record,created.response.record);assert(Date.parse(stored.response.observedAt)>=Date.parse(created.response.record.createdAt));
 const historical=await inspect({params:{operationId},headers:{authorization:sign('GET',route)}});assert.equal(historical.status,200);assert.equal(historical.response.state,'completed');assert(!('record'in historical.response));
+const expire=find(sdk,'expireStoredBoundPortalSession'),expiry=find(sdk,'inspectStoredBoundPortalExpiration');assert(expire&&expiry);
+assert.equal((await expire({params:{publicId},headers:{authorization:sign('POST',`/bound-portal/sessions/${publicId}/expire`)}})).response.state,'localExpired');
+assert.equal((await expiry({params:{publicId},headers:{authorization:sign('GET',`/bound-portal/sessions/${publicId}/expiration`)}})).response.state,'localExpired');
 const scratch=mkdtempSync(path.join(tmpdir(),'fl-portal-route-sdk-'));
 try {
  mkdirSync(path.join(scratch,'src'));
@@ -32,13 +35,17 @@ try {
  "create"=>{let response=client.create_bound_portal_session(CreateBoundPortalSessionRequest{params:std::collections::BTreeMap::from([("operationId".into(),args[3].clone())]),headers,body:Some(args[5].clone()),..Default::default()}).await.unwrap();let CreateBoundPortalSessionResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  "get"=>{let response=client.get_stored_bound_portal_session(GetStoredBoundPortalSessionRequest{params:std::collections::BTreeMap::from([("publicId".into(),args[3].clone())]),headers,..Default::default()}).await.unwrap();let GetStoredBoundPortalSessionResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  "inspect"=>{let response=client.inspect_bound_portal_operation(InspectBoundPortalOperationRequest{params:std::collections::BTreeMap::from([("operationId".into(),args[3].clone())]),headers,..Default::default()}).await.unwrap();let InspectBoundPortalOperationResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
+ "expire"=>{let response=client.expire_stored_bound_portal_session(ExpireStoredBoundPortalSessionRequest{params:std::collections::BTreeMap::from([("publicId".into(),args[3].clone())]),headers,..Default::default()}).await.unwrap();let ExpireStoredBoundPortalSessionResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
+ "expiry"=>{let response=client.inspect_stored_bound_portal_expiration(InspectStoredBoundPortalExpirationRequest{params:std::collections::BTreeMap::from([("publicId".into(),args[3].clone())]),headers,..Default::default()}).await.unwrap();let InspectStoredBoundPortalExpirationResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  _=>panic!("unexpected operation")};println!("{}",result);
 }`);
  const target=process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target');
- run('cargo',['build','--quiet','--manifest-path',path.join(scratch,'Cargo.toml')],{env:{...process.env,CARGO_TARGET_DIR:target,CARGO_BUILD_JOBS:'2',CARGO_INCREMENTAL:'0'}});
+ run('cargo',['build','--quiet','--manifest-path',path.join(scratch,'Cargo.toml')],{env:{...process.env,CARGO_TARGET_DIR:target,CARGO_BUILD_JOBS:'1',CARGO_INCREMENTAL:'0'}});
  const binary=path.join(target,'debug/bound-portal-route-sdk-proof'),operation=randomUUID(),url=`/bound-portal/operations/${operation}`,raw=JSON.stringify(body);
  const created=JSON.parse(run(binary,[base,'create',operation,sign('POST',url,raw),raw]));assert.equal(created.state,'created');assert.equal(created.record.customerId,customer);
  const stored=JSON.parse(run(binary,[base,'get',created.publicId,sign('GET',`/bound-portal/sessions/${created.publicId}`)]));assert.equal(stored.state,'stored');assert.deepEqual(stored.record,created.record);
  const historical=JSON.parse(run(binary,[base,'inspect',operation,sign('GET',url)]));assert.equal(historical.state,'completed');assert(!('record'in historical));
- console.log('PASS generated TypeScript strict typecheck + three live calls; compiled Rust SDK + three live calls, shared BoundPortalV1 contracts');
+ assert.equal(JSON.parse(run(binary,[base,'expire',created.publicId,sign('POST',`/bound-portal/sessions/${created.publicId}/expire`)])).state,'localExpired');
+ assert.equal(JSON.parse(run(binary,[base,'expiry',created.publicId,sign('GET',`/bound-portal/sessions/${created.publicId}/expiration`)])).state,'localExpired');
+ console.log('PASS generated TypeScript strict typecheck + five live calls; compiled Rust SDK + five live calls, shared BoundPortalV1 contracts');
 } finally {rmSync(scratch,{recursive:true,force:true});}

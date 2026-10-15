@@ -11107,3 +11107,33 @@ Frozen 26-source receipt: `/private/tmp/fl-org-clock-freeze.json`, SHA256
 Logs: `/private/tmp/fl-org-clock-{native,full,pg,clippy,minimal-clippy}.log`.
 Existing IAM native/PostgreSQL CI runs these tests. Broader organization options
 and auth parity remain open; checklist remains 660/682 (96.8%).
+
+
+### 2026-10-15 — Bound Portal local expiration
+
+An explicit `portalLocalExpiration` selector adds actor/profile-bound expiration
+and historical status over HTTP/MCP and both generated SDKs. It grants no creation
+or provider authority. First expiration verifies the completed creation receipt,
+unchanged Customer/binding/record evidence and original five-minute lifetime.
+Migration16 appends an immutable local tombstone with audit in one transaction;
+all stored bound reads consult it, so restoring a mutable row cannot restore access.
+No provider call is made; an already issued Stripe URL may remain usable remotely.
+
+Confirmed commit/repeat returns `localExpired`; lost acknowledgement returns202
+`localExpirationUnknown`. Historical status/repeat remains actor/profile-bound;
+`notRecorded` is not rollback proof for an in-flight uncertain transaction. Existing
+Portal read deployments require the new table SELECT grant at startup, independently
+of expiration INSERT permission. The migration owner remains trusted.
+
+Restricted PostgreSQL domain matrix passes3.22s, including migration15-to16/rerun,
+immutable/RLS history, concurrency, audit rollback, stale evidence, blocked-audit
+expiry/Customer locks and actual dropped COMMIT acknowledgement. Stored-read
+regression passes2.88s. Final live HTTP/MCP wrapper passes3.82s with ten SDK calls
+and old-selector missing-SELECT startup rejection. Units14, artifacts166, strict
+full20.04s/minimal7.50s Clippy pass. Owned test databases/roles are clean. CI now
+runs the new domain matrix alongside the expanded existing Portal runtime wrapper.
+
+Frozen14-source manifest `/private/tmp/fl-portal-local-expiration-final.json`, SHA256
+`cb8d27b3559ad8c4f6a8ac8fd0b924851af48500afdab81654c2cfc26b4060d2`.
+Logs `/private/tmp/fl-portal-local-expiration-{pg2,read-regression,live-final,unit-final,artifacts-final,clippy4,minimal}.log`.
+Broader billing mutations/reconciliation remain open; checklist stays660/682(96.8%).

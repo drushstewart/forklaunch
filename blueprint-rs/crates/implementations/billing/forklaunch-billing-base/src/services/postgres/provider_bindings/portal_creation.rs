@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
+mod expiration;
 mod publication;
 mod read;
 pub use publication::{PortalCreationStatus, TrustedPortalPublisher};

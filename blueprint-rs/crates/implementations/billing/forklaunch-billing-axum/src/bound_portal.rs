@@ -52,6 +52,7 @@ impl BillingBackend {
         let client = self.client.as_ref().ok_or_else(configuration)?;
         let audit = AuditContext::actor("service:bound-portal-startup", Uuid::new_v4().to_string());
         let store = self.store.with_audit_context(audit.clone())?;
+        store.validate_portal_expiration_read_access().await?;
         let publisher = profile.publisher.with_audit_context(audit)?;
         let service =
             StripeBillingService::new(BaseBillingService::new(Arc::new(store)), client.clone());
