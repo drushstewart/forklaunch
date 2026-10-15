@@ -24,7 +24,9 @@ pub use payment_link_creation::{
     ManagedPaymentLinkPublication, PaymentLinkCreationClaim, PaymentLinkCreationReservation,
     PaymentLinkCreationStatus,
 };
-pub use plan_creation::{PlanCreationClaim, PlanCreationReservation, PlanCreationStatus};
+pub use plan_creation::{
+    PlanCreationClaim, PlanCreationReadSnapshot, PlanCreationReservation, PlanCreationStatus,
+};
 pub use subscription_creation::{
     SubscriptionCreationClaim, SubscriptionCreationPending, SubscriptionCreationRecovery,
     SubscriptionCreationReservation, SubscriptionCreationStatus, SubscriptionDependencySnapshot,

@@ -10071,3 +10071,34 @@ source including drafts, not immutable archive. No dependency/lock edits.
 Variable prefix/rest still use existing broad representation and need separate
 precise sequence/presence handling; this is not fulltuple or schemagate closure.
 660/682 (96.8%),22open unchanged.
+
+
+### Provenance-aware directly created Plan UUID reads (2026-10-14)
+
+Explicit get_bound_created_plan requires actor-owned completed creation journal,
+exact decrypted local DTO==sealedreceipt, current alias/scope/API/generation,
+canonicalrequest/hash and normalized trustedProducts equal current policy. No
+administrativealias/pendingjournal/mutableexternalId fallback or publication key.
+Opaque snapshot holds full record/binding/journal xmin+proof, repeated after read
+audit waits initially and after provider I/O; final matchingSELECT linearizes data.
+Fresh direct Account/Balance and expanded Plan/Product checks require exactprovider
+id/kind/mode/notdeleted/perunit terms from sealedrequest. Productpresentation alone
+refreshes providerFields, preserving all localUUID/name/price fields; matches actual
+configuredTS enrichment shape. This finite immutablecreation profile rejects changed
+terms/policy rather than claiming all general updated Plan semantics. Finalprovider
+context freshness after auditCOMMIT rejects expiry during lastDBwait. Later local/
+remote changes remain possible. No providerPOST/localmutation/payment/entitlement
+assertion, autoalias or historicalnever-rebound claim.
+Frozen10 /private/tmp/fl-bound-plan-read-final.json SHA256
+bb889a7864f36aa09a8d1a5fd85bdec42c18a5210e04ebb6ac1b5fa348b612a4.
+65actualTS cases pass (/private/tmp/fl-bound-plan-read-ts.log), including Product-only
+enrichment preserving localfields. RestrictedPG new read/provider/tenant/actor/API/
+policy/provenance/mutation/auditwait deadline matrix passes5.54s; existing Plan
+creation PGregression passes12.85s; strictbase+Stripe allfeature/alltargetClippy pass.
+Logs /private/tmp/fl-bound-plan-read-{pg-final,creation-regression,clippy-final}.log.
+Initial rawalias test copied incompleteDTO and was fixed to validDTO; two lintstyle
+fixes followed, no functional production correction. Completed-journal UPDATE
+immutability trigger prevents the proposed no-op journal mutation test; snapshot
+still records xmin. Ownedfl_bound_plan roles cleaned0.
+No manifest/lock/migration or default route/API change; aggregate route/config
+integration remains separate.660/682 (96.8%),22open unchanged.

@@ -201,6 +201,8 @@ mod tests {
 
 #[cfg(feature = "postgres-identity")]
 pub mod bound_plan_creation;
+#[cfg(feature = "postgres-identity")]
+mod bound_plan_reads;
 
 #[cfg(feature = "postgres-identity")]
 pub mod customer_registration;

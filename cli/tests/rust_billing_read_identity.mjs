@@ -47,6 +47,14 @@ let cases=0;
    for(const bad of invalid){provider=bad;const before=structuredClone(row);await assert.rejects(service[method]({id}),error=>error.message==='Invalid Stripe billing response');assert.deepEqual(row,before);assert.deepEqual(calls,['orm:read','provider:get']);calls.length=0;cases++;}
    provider=good;const result=await service[method]({id});assert.equal(result.id,id);assert.equal(result.externalId,externalId);assert.deepEqual(result.stripeFields,kind==='Plan'?good.product:good);assert.deepEqual(calls,['orm:read','provider:get']);calls.length=0;cases++;
   }
+  if(kind==='Plan'){
+   provider={...good,amount:999999,nickname:'Remote name',product:{...good.product,name:'Fresh product',metadata:{note:'new'}}};
+   const before=structuredClone(row),result=await service.getPlan({id});
+   assert.equal(result.id,id);assert.equal(result.name,row.name);assert.equal(result.price,row.price);
+   assert.equal(result.externalId,externalId);assert.deepEqual(result.stripeFields,provider.product);
+   assert.notDeepEqual(result.stripeFields,provider);assert.deepEqual(row,before);
+   assert.deepEqual(calls,['orm:read','provider:get']);calls.length=0;cases++;
+  }
   const list=kind==='Plan'?'listPlans':'listSubscriptions';
   for(const bad of invalid){provider=bad;assert.deepEqual(structuredClone(await service[list]()),[]);assert.deepEqual(calls,['orm:list','provider:get']);calls.length=0;cases++;}
   provider=good;assert.equal((await service[list]())[0].id,id);calls.length=0;cases++;

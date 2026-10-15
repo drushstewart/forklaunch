@@ -1268,3 +1268,15 @@ Prepare/dispatch/delivery failures do not revoke committedproof, cancellation sp
 explicit, and GETcallback never consumes. Sharedscheduler retains OTP aliases and
 explicitoverride precedence. DomainHTTP/actual/restrictedPG consume+replay/expiry
 checks andstrictClippy pass; no new session or durable delivery guarantee.
+
+
+### Completed Plan read authority review (2026-10-14)
+
+Actor-owned immutable creation receipt and current exact DTO/alias proof gate
+provider reads; mutable externalId/adminaliases cannot supply authority. Sealed
+request/normalizedproduct policy determine expected terms; expandedPlan/Product
+are freshly verified with direct account/mode/API scope. Currentproof/xmin rechecks
+after audit waits plus finalcontextdeadline afterCOMMIT prevent stale read release
+across tested races. No financial mutation, implicit publisher or entitlement
+capability. Product presentation refresh leaves localUUID/price/name intact.
+RestrictedPG provider mismatches/actor/tenant/policy/race/expiry andstrictClippy pass.

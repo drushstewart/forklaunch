@@ -16,7 +16,9 @@ pub use provider_bindings::{
     PausedSubscriptionEffectSnapshot, PaymentLinkCreationClaim, PaymentLinkCreationReservation,
     PaymentLinkCreationStatus, StripeBindingScope, StripeSubscriptionOwnership,
 };
-pub use provider_bindings::{PlanCreationClaim, PlanCreationReservation, PlanCreationStatus};
+pub use provider_bindings::{
+    PlanCreationClaim, PlanCreationReadSnapshot, PlanCreationReservation, PlanCreationStatus,
+};
 pub use provider_bindings::{
     SubscriptionCreationClaim, SubscriptionCreationPending, SubscriptionCreationRecovery,
     SubscriptionCreationReservation, SubscriptionCreationStatus, SubscriptionDependencySnapshot,

@@ -36,6 +36,7 @@ pub struct Provider {
     pub product: Arc<Mutex<Value>>,
     pub readback: Arc<Mutex<Option<Value>>>,
     pub pause: Arc<AtomicBool>,
+    pub pause_read: Arc<AtomicBool>,
     pub entered: Arc<Notify>,
     pub resume: Arc<Notify>,
     pub delay: Arc<AtomicU64>,
@@ -140,6 +141,7 @@ impl Fixture {
             product: Arc::new(Mutex::new(product())),
             readback: Arc::new(Mutex::new(None)),
             pause: Arc::new(AtomicBool::new(false)),
+            pause_read: Arc::new(AtomicBool::new(false)),
             entered: Arc::new(Notify::new()),
             resume: Arc::new(Notify::new()),
             delay: Arc::new(AtomicU64::new(0)),
@@ -174,6 +176,10 @@ impl Fixture {
                      axum::extract::Path(id): axum::extract::Path<String>,
                      h: HeaderMap| async move {
                         auth(&h);
+                        if state.pause_read.load(Ordering::SeqCst) {
+                            state.entered.notify_one();
+                            state.resume.notified().await;
+                        }
                         Json(
                             state
                                 .readback

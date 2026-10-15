@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 /// Server configuration, never inferred from public DTOs or mutable record fields.
 pub struct BoundPlanCreationProfile {
-    scope: StripeBindingScope,
-    products: BTreeSet<String>,
+    pub(crate) scope: StripeBindingScope,
+    pub(crate) products: BTreeSet<String>,
 }
 impl BoundPlanCreationProfile {
     /// # Errors
@@ -70,7 +70,7 @@ pub(crate) fn safe_reference(value: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
 }
-fn fields(
+pub(crate) fn fields(
     profile: &BoundPlanCreationProfile,
     request: &BoundPlanCreateRequest,
 ) -> BlueprintResult<Value> {
@@ -99,7 +99,7 @@ fn fields(
         json!({"product":request.product_id,"amount":request.unit_amount,"currency":request.currency.to_ascii_lowercase(),"interval":request.cadence,"interval_count":1,"billing_scheme":"per_unit","usage_type":"licensed","active":request.active}),
     )
 }
-fn product(value: &Value, expected: &str, mode: bool) -> BlueprintResult<()> {
+pub(crate) fn product(value: &Value, expected: &str, mode: bool) -> BlueprintResult<()> {
     if value["object"] != "product"
         || value["id"] != expected
         || value["livemode"].as_bool() != Some(mode)
@@ -111,7 +111,7 @@ fn product(value: &Value, expected: &str, mode: bool) -> BlueprintResult<()> {
     }
     Ok(())
 }
-fn plan(
+pub(crate) fn plan(
     value: &Value,
     expected: Option<&str>,
     request: &BoundPlanCreateRequest,

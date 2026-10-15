@@ -1,4 +1,7 @@
 //! Trusted adapter journal; never a public provider-evidence ingestion endpoint.
+mod read;
+pub use read::PlanCreationReadSnapshot;
+
 use super::super::{db_error, invalid, storage_error};
 use super::{DurableStripeBinding, PostgresBillingStore, StripeBindingScope, conflict};
 use crate::services::{BillingKind, Scope};
