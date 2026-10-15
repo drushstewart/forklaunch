@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import http from 'node:http';
+import {actualUniversalSdk} from './fixtures/rust_better_auth_frontend_client.mjs';
 import {createRequire} from 'node:module';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -61,3 +63,22 @@ let callbacks=0;const callback=()=>{callbacks++;throw Error('callback executed d
 for(const schema of [z.union([z.string().transform(callback),z.number()]),z.union([z.preprocess(callback,z.string()),z.number()]),z.union([z.string(),z.number()]).transform(callback)])validator.openapi(schema);
 assert.equal(callbacks,0);
 console.log(`PASS ${comparisons} actual Zod/AJV union comparisons over ${exports} OAS3.0/3.1 exports; overlap, finite enum duplicates/mixed/empty, annotation/discriminator controls and zero callbacks`);
+
+// Exercise the actual HTTP SDK's response validator with factory-produced schemas.
+const {universalSdk}=await actualUniversalSdk();
+let payload,requests=0;
+const server=http.createServer((_,response)=>{requests++;response.setHeader('content-type','application/json');response.end(JSON.stringify(payload));});
+try {
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const host=`http://127.0.0.1:${server.address().port}`;
+ for(const source of [validator.any,validator.unknown,validator.type()]){
+  const schema=validator.openapi(source);
+  const doc={openapi:'3.1.0',info:{title:'Unconstrained',version:'1'},paths:{'/value':{get:{operationId:'value',responses:{200:{content:{'application/json':{schema}}}}}}}};
+  const before=JSON.stringify(doc);
+  const sdk=await universalSdk({host,registryOptions:{raw:doc}});
+  for(const value of values){payload=value;assert.deepEqual((await sdk.value()).response,JSON.parse(JSON.stringify(value)));}
+  assert.equal(JSON.stringify(doc),before);
+ }
+ assert.equal(requests,values.length*3);
+ console.log(`PASS ${requests} actual Universal SDK HTTP factory-schema responses`);
+} finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

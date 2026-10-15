@@ -11583,5 +11583,9 @@ the old factory schema, then passed11,106 actual Zod/AJV comparisons over616
 OAS3.0/3.1 exports, including direct/optional/object/array wrappers and existing
 union/enum controls. Configured TypeScript7.0.2 passes12 roots and625 exports.
 Logs: `/private/tmp/fl-unconstrained-factory-{before,after,types}.log`. Native and
-SDK consumer revalidation for this annotation change remains queued behind the
+generated SDK consumer revalidation for this annotation change remains queued behind the
 immutable packaged-runtime run, which intentionally predates this source change.
+
+The factory regression also passes54 live HTTP responses through the actual
+Universal SDK across any/unknown/type factories and all18 JSON examples; source
+OpenAPI documents remain unchanged. Log: `/private/tmp/fl-unconstrained-factory-sdk.log`.
