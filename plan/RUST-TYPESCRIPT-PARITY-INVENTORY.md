@@ -12637,3 +12637,28 @@ Clippy20.50s/6.27s. Proofs use integrated UTF16 f7dff8dfd. Two source hashes mat
 Receipt `/private/tmp/fl-nested-local-alias-receipt.md` names every log. Existing
 Axum CI exercises the expanded regression. OPTIONS and case-insensitive routing
 remain separate measured gaps. Checklist remains660/682 (96.8%).
+
+
+### 2026-10-15 — Awaited invitation quota callbacks
+
+Trusted invitationLimit callbacks now receive owned configured user/organization/
+member projections and preserve full IEEE numeric comparisons. Existing duplicate
+rejection and resend bypass the callback. A prior invitation cancellation commits
+before the callback; preparation/future errors, quota failure and dropped futures
+retain that cancellation. Current pending-count window and team checks follow the
+await without repeating identity/duplicate admission. Expiry uses a fresh clock.
+Default scalar/resend/delivery behavior remains covered. Trusted native callbacks
+can capture services/store handles; arbitrary mutable JavaScript AuthContext and
+additional-field projection remain explicit boundaries. Final writes are atomic
+natively; arbitrary upstream adapter interleavings are not claimed equivalent.
+
+Actual upstream31, native organization19 (one separately exercised PG test),
+restricted PostgreSQL15.18s, strict full/minimal Clippy12.61s/12.39s all pass.
+All five database cleanup counts are zero. Initial visibility/doc/test-helper
+lint failures were corrected; final native/PG semantic source is unchanged by
+subsequent documentation/test-helper cleanup. Proof graph includes UTF16 f7dff8dfd
+and the nested-router correction. CI runs the permanent upstream callback oracle.
+Twelve source hashes match `/private/tmp/fl-invitation-limit-freeze.json`, SHA256
+`8f981d4fbb6c7e36b86865bfbfdde861a52d54140caac223858e7e1cfea00387`.
+Logs: `/private/tmp/fl-invitation-limit-{actual,native,pg,clippy,minimal-clippy,cleanup}.log`.
+Broader auth/ORM hooks coverage remains open; checklist660/682 (96.8%) unchanged.

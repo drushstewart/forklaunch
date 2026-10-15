@@ -20,7 +20,8 @@ pub(crate) async fn exercise<S: AuthStore + 'static>(store: Arc<S>, foreign: &S)
     authorizers::exercise(store.clone()).await;
     creation_policy::exercise(store.clone()).await;
     membership_policy::exercise(store.clone()).await;
-    role_limit::exercise(store).await;
+    role_limit::exercise(store.clone()).await;
+    invitation_limit::exercise(store).await;
 }
 
 #[tokio::test]

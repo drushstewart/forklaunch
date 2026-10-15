@@ -2129,7 +2129,7 @@ Remaining organization option families after these scalar/declarative profiles:
 | --- | --- | --- |
 | Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle, awaited creation allow/quota, membership and dynamic-role quota callbacks | Arbitrary JavaScript callback context/return coercion |
 | Teams | Default creation toggle, team/seat limits, last-team policy | Plugin route disabling, custom default-team creation, async limits |
-| Invitations | TTL, quota, verification, cancellation, trusted delivery/scheduler | Async quota callback and lifecycle hooks |
+| Invitations | TTL, scalar/awaited quota, verification, cancellation, trusted delivery/scheduler | Lifecycle hooks and arbitrary JS AuthContext mutation |
 | Access control | Declarative catalog/static roles, persisted dynamic grants and trusted synchronous authorizers | Plugin-disable topology and arbitrary JS receiver/return behavior |
 | Lifecycle hooks | Invitation delivery only | Before/after organization, member, invitation, team and team-member hooks |
 | Storage/schema | Fixed configured models and fields, encrypted tenant store | Arbitrary model/field remapping and additional-field schema definitions |
@@ -2321,3 +2321,38 @@ service its own scope. Applications must not share a handle across tenants.
 This intentionally does not reproduce the JavaScript module-global cache's
 cross-tenant/cross-application leakage. Scalar role creation keeps its existing
 behavior, and ordinary permission reads do not consume cached grants.
+
+
+### Awaited invitation quota
+
+`with_invitation_limit_policy` on `OrganizationService` or `AuthHttp` installs
+trusted `InvitationLimitPolicy`. Its owned context exposes configured public user,
+organization and member projections through immutable getters, without session
+tokens, Debug/Serde or arbitrary additional fields. Selected scalar strings are
+validated at 4096 UTF-8 bytes before cloning. Implementations can capture their
+trusted store, services and application configuration in the hook to perform
+reentrant work. This supplies server-owned service access without exposing the
+JavaScript `AuthContext` object; arbitrary mutation of that object or callback
+input, JavaScript receiver behavior and non-number result coercion are not claimed.
+
+Preparation returns an owned awaited `InvitationLimitFuture` with
+`BlueprintResult<f64>`, preserving fractions, signed zero, NaN and infinities.
+Installing scalar `with_invitation_policy` afterward clears this callback;
+installing it afterward overrides only quota. Defaults are unchanged. Existing
+pending duplicate rejection and resends bypass the callback. When cancellation
+on reinvite is enabled, the selected predecessor is committed canceled before
+projection/preparation/await. Errors or cancellation of the callback leave that
+cancellation intact and create no replacement. Both preparation and future errors
+are sanitized empty HTTP 500 responses; no background scheduler handles quota.
+
+After the callback, the writer counts the first 100 pending rows before filtering
+expired rows, then checks current teams and inserts. It does not repeat session,
+member, user, organization or duplicate admission: concurrent deletion, demotion,
+new membership or same-email invitation does not itself reject the admitted request.
+HTTP count expiry filtering and creation/expiry timestamps use the trusted clock
+after callback work; direct services retain explicit-now semantics. The final
+count/team/insertion transaction is native atomicity, not a claim of identical
+partial failures or all interleavings of upstream adapters. Commit uncertainty
+before the quota callback never invokes it; insertion commit uncertainty never
+invokes delivery. Successful persistence still uses the existing captured
+invitation-delivery context and preparation/future/scheduler error behavior.

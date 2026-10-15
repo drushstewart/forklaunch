@@ -4,6 +4,7 @@ pub(crate) mod controls;
 mod creation_policy;
 pub(crate) mod invitation_cancel;
 pub(crate) mod invitation_delivery;
+mod invitation_limit;
 pub(crate) mod invitation_policy;
 mod invitations;
 mod listing;

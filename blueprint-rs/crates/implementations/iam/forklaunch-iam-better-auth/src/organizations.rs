@@ -35,6 +35,9 @@ pub use controls::OrganizationControls;
 pub use team_policy::TeamPolicy;
 mod invitations;
 pub use invitation_policy::InvitationPolicy;
+pub use invitations::create::limit::{
+    InvitationLimitContext, InvitationLimitFuture, InvitationLimitPolicy,
+};
 mod members;
 mod membership_policy;
 pub use membership_policy::{MembershipLimitContext, MembershipLimitFuture, MembershipLimitPolicy};
@@ -58,6 +61,7 @@ pub struct OrganizationService<S> {
     membership_limit: Option<Arc<dyn MembershipLimitPolicy>>,
     role_limit: Option<Arc<dyn RoleLimitPolicy>>,
     invitation_policy: InvitationPolicy,
+    invitation_limit: Option<Arc<dyn InvitationLimitPolicy>>,
     team_policy: TeamPolicy,
     controls: OrganizationControls,
     creator_role: CreatorRole,
@@ -166,6 +170,15 @@ impl<S: AuthStore> OrganizationService<S> {
     #[must_use]
     pub fn with_invitation_policy(mut self, policy: InvitationPolicy) -> Self {
         self.invitation_policy = policy;
+        self.invitation_limit = None;
+        self
+    }
+
+    /// Installs trusted awaited invitation quota; resends bypass this callback.
+    /// A later `with_invitation_policy` restores its scalar quota.
+    #[must_use]
+    pub fn with_invitation_limit_policy(mut self, hook: Arc<dyn InvitationLimitPolicy>) -> Self {
+        self.invitation_limit = Some(hook);
         self
     }
 
@@ -220,6 +233,7 @@ impl<S: AuthStore> OrganizationService<S> {
             membership_limit: None,
             role_limit: None,
             invitation_policy: InvitationPolicy::default(),
+            invitation_limit: None,
             team_policy: TeamPolicy::default(),
             controls: OrganizationControls::default(),
             creator_role: CreatorRole::default(),

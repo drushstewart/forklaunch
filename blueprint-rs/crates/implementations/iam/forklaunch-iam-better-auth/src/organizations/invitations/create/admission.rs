@@ -9,6 +9,7 @@ pub(super) struct Admission {
     pub role: String,
     pub actor: String,
     pub inviter: Option<BlueprintResult<Value>>,
+    pub quota_inviter: Option<BlueprintResult<Value>>,
 }
 impl<S: AuthStore> OrganizationService<S> {
     pub(super) async fn invitation_admission<T: AuthTransaction>(
@@ -71,8 +72,13 @@ impl<S: AuthStore> OrganizationService<S> {
             .invitation_delivery
             .as_ref()
             .map(|_| super::super::super::delivery::inviter(&member, &view.user));
+        let quota_inviter = self
+            .invitation_limit
+            .as_ref()
+            .map(|_| super::super::super::delivery::inviter(&member, &view.user));
         Ok(Admission {
             inviter,
+            quota_inviter,
             org: org.to_owned(),
             email,
             role,

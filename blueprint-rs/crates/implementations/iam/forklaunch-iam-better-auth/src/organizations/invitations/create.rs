@@ -7,6 +7,7 @@ use super::super::{
 };
 mod admission;
 mod input;
+pub(in crate::organizations) mod limit;
 struct Canceled {
     row: Value,
     actor: String,
@@ -31,7 +32,13 @@ impl<S: AuthStore> OrganizationService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
-        let completed = match self.invitation_step(token, body, now, None).await? {
+        let first = if let Some(hook) = &self.invitation_limit {
+            self.invitation_with_limit(token, body, now, hook.as_ref())
+                .await?
+        } else {
+            self.invitation_step(token, body, now, None).await?
+        };
+        let completed = match first {
             Step::Complete(row, context) => (row, context),
             Step::Canceled(canceled) => match self
                 .invitation_step(token, body, now, Some(&canceled))
@@ -70,6 +77,7 @@ impl<S: AuthStore> OrganizationService<S> {
             role,
             actor,
             inviter,
+            quota_inviter: _,
         } = self.invitation_admission(&mut tx, token, body, now).await?;
         let org = org.as_str();
         let matching_rows =

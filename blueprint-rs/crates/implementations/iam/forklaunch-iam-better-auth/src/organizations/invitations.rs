@@ -1,6 +1,6 @@
 //! Configured invitation visibility and adapter joins.
 mod accept;
-mod create;
+pub(super) mod create;
 mod mutation;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
