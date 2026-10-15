@@ -15,7 +15,7 @@ const values=[' https://example.com ','https://example.com/a b','\0https://examp
 let count=0;
 for(const [name,schema,wrap] of variants){const exported=validator.openapi(schema),check=ajv.compile(exported);for(const value of values){const input=wrap(value);assert.equal(check(input),validator.parse(schema,input).ok,JSON.stringify({name,input,exported}));count++;}}
 assert.equal(validator.openapi(uri).format,'forklaunch-whatwg-url');assert.equal(validator.openapi(uri).pattern,undefined);
-assert.equal(validator.openapi(z.string().url()).format,'uri');assert.equal(validator.openapi(uri.min(1)).format,'uri');
+assert.equal(validator.openapi(z.string().url()).format,'uri');assert.equal(validator.openapi(uri.min(1)).format,'forklaunch-whatwg-url');assert.equal(validator.openapi(uri.email()).format,'email');
 const override=validator.openapi(uri.openapi({format:'uri',pattern:'^custom$'}));assert.equal(override.format,'uri');assert.equal(override.pattern,'^custom$');
 const tb=load(root+'/framework/validator/src/typebox/staticSchemaValidator.ts');assert.equal(tb.SchemaValidator().openapi(tb.uri).pattern,tb.uri.pattern);
 let calls=0;const callback=()=>{calls++;throw Error('unexpected callback');};for(const schema of [uri.transform(callback),uri.refine(callback),z.preprocess(callback,uri)])validator.openapi(schema);validator.openapiRequestBody(uri.default(callback));assert.equal(calls,0);

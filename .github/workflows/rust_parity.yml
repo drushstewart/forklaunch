@@ -79,6 +79,7 @@ on:
       - 'cli/tests/rust_zod_native_enum_openapi.mjs'
       - 'cli/tests/rust_zod_string_bounds_openapi.mjs'
       - 'cli/tests/rust_zod_string_literals_openapi.mjs'
+      - 'cli/tests/rust_zod_factory_string_composition.mjs'
       - 'cli/tests/rust_sdk_fixed_tuple_models.mjs'
       - 'cli/tests/rust_sdk_variable_tuple_models.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
@@ -475,6 +476,7 @@ on:
       - 'cli/tests/rust_zod_native_enum_openapi.mjs'
       - 'cli/tests/rust_zod_string_bounds_openapi.mjs'
       - 'cli/tests/rust_zod_string_literals_openapi.mjs'
+      - 'cli/tests/rust_zod_factory_string_composition.mjs'
       - 'cli/tests/rust_sdk_fixed_tuple_models.mjs'
       - 'cli/tests/rust_sdk_variable_tuple_models.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
@@ -1045,6 +1047,11 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_zod_factory_string_composition.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_FACTORY_STRING_NATIVE: '1'
       - run: node cli/tests/rust_zod_uri_sdk.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

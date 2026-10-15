@@ -2434,3 +2434,23 @@ Frozen10 /private/tmp/fl-reset-revocation-freeze.json verified (manifest SHA256
 Logs /private/tmp/fl-reset-revocation-{actual,native,regression,pg,clippy,
 minimal-clippy}.log. No schema/dependency changes. Further trusted hooks and
 provider lifecycle remain open;660/682(96.8%),22broad gates unchanged.
+
+
+### Factory email and URI scalar composition provenance (2026-10-14)
+
+Factory-only email/WHATWG URI grammar now survives added nontransform length or
+supported literal checks and repeated identical format checks. Private marker and
+original format must remain; strict check whitelist prevents inferring provenance
+from public metadata. Previously checks.length===1 silently downgraded email.min
+or uri.min to different RFC validators. Mixed formats, arbitrary regex/transform,
+unsupported literal positions, rawZod/TypeBox and explicit user overrides preserve
+prior boundaries; no general format conjunction or rawUUID equivalence claimed.
+6600actualZod/AJV comparisons across300exports+13controls and2200native comparisons
+across100schemas pass, including explicit featureoff rejection and pinnedAda3.2.4.
+StrictTS7.0.2 12roots/621exports; email1799,URI203261+90/injectedTS-only,pure577+246,
+literal92880+20,SDK20 regressions pass. Frozen5 manifest
+/private/tmp/fl-factory-string-source.json verified; logs /private/tmp/fl-factory-
+string-composition.log,/private/tmp/fl-factory-string-types.log and named regression
+logs. Root refreshed source locations/checked inventory621/1699; no exports/deps/
+locks/native source changes. CI native fixture runs within pinnedNode24.2 URI group.
+Broad schema/mapper/plugin/deployment gates remain open;660/682(96.8%),22open.

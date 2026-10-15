@@ -27,7 +27,8 @@ for(const [name,schema,wrap] of variants){
  for(const value of values){const input=wrap(value);assert.equal(validate(input),validator.parse(schema,input).ok,JSON.stringify({name,input,exported}));count++;}
 }
 assert.equal(validator.openapi(z.string().email()).format,'email');
-assert.equal(validator.openapi(email.min(1)).format,'email');
+assert.equal(validator.openapi(email.min(1)).format,undefined);
+assert.equal(validator.openapi(email.uuid()).format,'uuid');
 const overridden=validator.openapi(email.openapi({format:'email',pattern:'^custom$'}));
 assert.equal(overridden.format,'email');assert.equal(overridden.pattern,'^custom$');
 const typebox=load(path.join(root,'framework/validator/src/typebox/staticSchemaValidator.ts'));

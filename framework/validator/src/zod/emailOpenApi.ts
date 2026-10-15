@@ -1,4 +1,5 @@
 import { z } from 'zod/v3';
+import { stringLiteralPattern } from '../../shims/zod-v3-openapi/stringLiteral';
 
 // Kept on the definition so ordinary wrapper/export cloning preserves identity
 // without inspecting titles, user annotations, or executing schema callbacks.
@@ -18,7 +19,14 @@ export function hasFactoryEmailGrammar(schema: z.ZodString): boolean {
   };
   return (
     definition[factoryEmail] === true &&
-    definition.checks.length === 1 &&
-    definition.checks[0].kind === 'email'
+    definition.checks.some((check) => check.kind === 'email') &&
+    definition.checks.every(
+      (check) =>
+        check.kind === 'email' ||
+        check.kind === 'min' ||
+        check.kind === 'max' ||
+        check.kind === 'length' ||
+        stringLiteralPattern(check) !== undefined
+    )
   );
 }
