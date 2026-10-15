@@ -3483,3 +3483,27 @@ graph was held fixed during the run, including billing's coherent automatic-OPTI
 draft; no immutable/committed-only source claim is made for that draft.
 Log `/private/tmp/fl-iam-role-invitation-full.log` SHA256 `3270f6e78e1aecf48afaef5b40c58c82ba93870922942cdb1ce1d27bef5a3b5d`.
 Broad auth/ORM gates and checklist660/682 remain unchanged.
+
+
+### 2026-10-15 — Selected billing automatic OPTIONS
+
+Selected configured billing paths now answer automatic OPTIONS with the actual
+TypeScript sorted method list, implicit HEAD, identical Allow/body, text/plain,
+nosniff and byte Content-Length. The explicit path-wide selector rebases during
+nesting and shares optional slash aliases. An explicit OPTIONS contract retains
+its handler/authentication. CORS stays outermost; preflightContinue retains its
+existing behavior. Default generic/Portal/bound paths and SDK/MCP registries stay
+unchanged. Automatic responses perform no provider operations.
+
+Actual Express116, focused native2, restricted PostgreSQLHTTP1 with11 new OPTIONS
+cases and12 existing generatedTS SDK calls, all150 Axum tests, strict full Axum
+7.51s/billing18.14s/minimal Axum, and186 rendered generated artifact cases pass.
+Test-only import/configuration ordering corrections preceded green results;
+production source remained fixed during the final proof graph and full IAM237.
+Six hashes match `/private/tmp/fl-billing-options-final.json`, SHA256
+`a181313db00ad0838b2fd44d1386b158f94a211eed064d03fe5dd94189daa3b5`.
+Logs/receipt: `/private/tmp/fl-billing-options-receipt.md`; existing CI exercises
+the expanded tests. Selection counts exact canonical-pattern methods; Express
+union across overlapping patterns remains outside this profile. Case-insensitive
+routing and legacy date handling remain measured gaps. Broader route/auth gates
+and checklist660/682 remain open.

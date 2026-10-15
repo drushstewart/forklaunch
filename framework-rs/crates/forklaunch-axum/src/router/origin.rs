@@ -51,6 +51,37 @@ pub(super) fn extended(
     })
 }
 
+pub(super) fn selected_options(
+    router: axum::routing::MethodRouter,
+    path: &str,
+    registry: &forklaunch_contract::ContractRegistry,
+    config: &RouterConfig,
+) -> axum::routing::MethodRouter {
+    if !config.typescript_options_paths.contains(path) {
+        return router;
+    }
+    let mut methods: Vec<_> = registry
+        .routes()
+        .iter()
+        .filter(|route| route.openapi_path == path)
+        .map(|route| route.method.as_str())
+        .collect();
+    if methods.contains(&"OPTIONS") {
+        return router;
+    }
+    if methods.contains(&"GET") {
+        methods.push("HEAD");
+    }
+    methods.sort_unstable();
+    methods.dedup();
+    let allow = methods.join(", ");
+    let parser_format = config.parser_error_format;
+    router.options(move |request: Request| {
+        let allow = allow.clone();
+        async move { fallback(&request, parser_format, Some(&allow)) }
+    })
+}
+
 pub(super) fn install(
     mut router: Router,
     config: &RouterConfig,

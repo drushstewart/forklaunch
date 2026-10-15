@@ -554,7 +554,46 @@ async fn hmac_matrix(http: &reqwest::Client, url: &str, id: &str, state: &Provid
         assert_eq!(rejected.status(), 404);
         assert!(state.calls.lock().await.is_empty());
     }
+    configured_options(http, url, id, state).await;
     println!(
         "PASS36 configured HMAC backend HTTP cases: exact public errors/correlation; old/future/repeated signatures; zero provider effects on rejection"
+    );
+}
+
+async fn configured_options(http: &reqwest::Client, url: &str, id: &str, state: &Provider) {
+    for (path, allow) in [
+        (format!("/payment-link/{id}"), "DELETE, GET, HEAD, PUT"),
+        (format!("/plan/{id}"), "DELETE, GET, HEAD"),
+        (format!("/subscription/{id}"), "DELETE, GET, HEAD, PUT"),
+        (format!("/checkout-session/{id}"), "GET, HEAD"),
+        ("/payment-link".to_owned(), "GET, HEAD, POST"),
+    ] {
+        for suffix in ["", "/"] {
+            let response = http
+                .request(reqwest::Method::OPTIONS, format!("{url}{path}{suffix}"))
+                .header("authorization", "invalid")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 200, "{path}{suffix}");
+            assert_eq!(response.headers()["allow"], allow);
+            assert_eq!(response.headers()["content-type"], "text/plain");
+            assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+            assert_eq!(response.text().await.unwrap(), allow);
+            assert!(state.calls.lock().await.is_empty());
+        }
+    }
+    let response = http
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{url}/billing-portal/{id}"),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 405);
+    assert!(state.calls.lock().await.is_empty());
+    println!(
+        "PASS11 configured OPTIONS HTTP cases: all four HMAC families, aliases/root, no auth/provider effects; Portal stays native"
     );
 }

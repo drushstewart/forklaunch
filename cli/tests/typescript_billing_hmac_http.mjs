@@ -42,7 +42,7 @@ const app=express();app.use(express.json({verify(req,_res,buffer){req._rawBody=b
 let calls=0;app.use((req,res,next)=>{req.contractDetails={access:'internal',auth:{hmac:{secretKeys:{default:'owned-hmac-secret'}}}};context.createContext({})(req,res,next);});
 const guarded=async(req,res,next)=>{try{await auth.parseRequestAuth(req,res,next);}catch(error){next(error);}};
 app.put('/owned',guarded,(_req,res)=>{calls++;res.json({ok:true});});
-const mounted=express.Router();mounted.put(['/:id','/'],guarded,(_req,res)=>{calls++;res.json({ok:true});});mounted.get(['/:id','/'],guarded,(_req,res)=>{calls++;res.json({ok:true});});app.use('/payment-link',mounted);const outer=express.Router();outer.use('/payment-link',mounted);app.use('/outer',outer);app.use(box.exports.handler);
+const mounted=express.Router();mounted.put(['/:id','/'],guarded,(_req,res)=>{calls++;res.json({ok:true});});mounted.get(['/:id','/'],guarded,(_req,res)=>{calls++;res.json({ok:true});});mounted.options('/explicit/:id',guarded,(_req,res)=>{calls++;res.status(202).send('explicit');});app.use('/payment-link',mounted);const outer=express.Router();outer.use('/payment-link',mounted);app.use('/outer',outer);app.use(box.exports.handler);
 const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server));});
 function header(stamp=new Date(),nonce='repeat-nonce') {return `HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${hmac.createHmacToken({method:'PUT',path:'/owned',body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'})}`;}
 const valid=header();
@@ -78,8 +78,14 @@ try {
   const signature=hmac.createHmacToken({method:'HEAD',path:signedPath,timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}${wirePath}`,{method:'HEAD',headers:{authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`}});assert.equal(response.status,200);assert.equal(calls,1);assert.equal(await response.text(),'');count++;
  }
- for(const wirePath of ['/payment-link/owned','/payment-link/owned/']) {
-  calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}${wirePath}`,{method:'OPTIONS'});assert.equal(response.status,200);assert.deepEqual(response.headers.get('allow').split(',').map(x=>x.trim()).sort(),['GET','HEAD','PUT']);assert.equal(calls,0);await response.text();count++;
+ for(const wirePath of ['/payment-link/owned','/payment-link/owned/','/payment-link','/payment-link/','/outer/payment-link/owned/'])for(const authorization of [undefined,'invalid','HMAC keyId=missing ts=invalid nonce=x signature=bad']) {
+  calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}${wirePath}`,{method:'OPTIONS',headers:authorization===undefined?{}:{authorization}});assert.equal(response.status,200);assert.equal(response.headers.get('allow'),'GET, HEAD, PUT');assert.equal(response.headers.get('content-type'),'text/plain');assert.equal(response.headers.get('x-content-type-options'),'nosniff');assert.equal(response.headers.get('content-length'),String(Buffer.byteLength('GET, HEAD, PUT')));assert.equal(calls,0);assert.equal(await response.text(),'GET, HEAD, PUT');count++;
  }
+ for(const authorization of [undefined,'invalid','valid']) {
+  const stamp=new Date(),nonce='explicit';const signature=hmac.createHmacToken({method:'OPTIONS',path:'/explicit/owned',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
+  const value=authorization==='valid'?`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`:authorization;
+  calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}/payment-link/explicit/owned`,{method:'OPTIONS',headers:value===undefined?{}:{authorization:value}});assert.equal(response.status,authorization==='valid'?202:401);assert.equal(calls,authorization==='valid'?1:0);assert.equal(response.headers.get('allow'),null);await response.text();count++;
+ }
+
  console.log(`PASS ${count} actual HMAC HTTP context/auth/final-error cases: missing/empty/format/signature/key/date, accepted repeated/old/future/extra-part; raw Buffer signing. Server registry and protected handler are owned; no live provider.`);
 }finally{await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}

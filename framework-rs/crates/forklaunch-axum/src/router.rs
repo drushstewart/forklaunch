@@ -145,6 +145,10 @@ pub struct RouterConfig {
     /// Whole canonical paths whose registered methods also accept one final slash.
     /// Empty by default. This does not rewrite the URI, add contracts or select auth.
     pub optional_trailing_slash_paths: HashSet<String>,
+    /// Paths with implicit Express-style OPTIONS, only absent an explicit handler.
+    /// Uses methods on the exact canonical pattern, not unions of overlapping patterns.
+    /// Empty by default; selection neither creates a contract nor bypasses explicit auth.
+    pub typescript_options_paths: HashSet<String>,
     /// Format for errors returned by framework local handlers.
     pub handler_error_format: HandlerErrorFormat,
     /// Final wire representation for request-parser and transport-limit failures.
@@ -188,6 +192,7 @@ impl Default for RouterConfig {
             auth_error_format: AuthErrorFormat::Json,
             auth_error_formats: HashMap::new(),
             optional_trailing_slash_paths: HashSet::new(),
+            typescript_options_paths: HashSet::new(),
             handler_error_format: HandlerErrorFormat::Json,
             parser_error_format: ParserErrorFormat::Json,
             router_origin_format: RouterOriginFormat::Native,
@@ -241,6 +246,19 @@ impl RouterConfig {
     #[must_use]
     pub fn with_optional_trailing_slash_for_path(mut self, path: impl AsRef<str>) -> Self {
         self.optional_trailing_slash_paths
+            .insert(forklaunch_common::route_open_api_path(
+                &normalize_route_path(path.as_ref()),
+            ));
+        self
+    }
+
+    /// Answer undeclared OPTIONS with sorted registered verbs and implicit HEAD.
+    /// The selection covers one canonical path pattern and all its registered methods.
+    /// Unlike Express traversal, overlapping patterns are not unioned. Explicit OPTIONS
+    /// retains its own handler and authentication; other method failures are unchanged.
+    #[must_use]
+    pub fn with_typescript_options_for_path(mut self, path: impl AsRef<str>) -> Self {
+        self.typescript_options_paths
             .insert(forklaunch_common::route_open_api_path(
                 &normalize_route_path(path.as_ref()),
             ));
@@ -599,6 +617,12 @@ impl ForkLaunchRouter {
         self.config
             .auth_error_formats
             .extend(config.auth_error_formats);
+        self.config.typescript_options_paths.extend(
+            config
+                .typescript_options_paths
+                .into_iter()
+                .map(|path| join_base_path(&prefix, &path)),
+        );
         self.config.optional_trailing_slash_paths.extend(
             config
                 .optional_trailing_slash_paths
@@ -752,6 +776,12 @@ impl ForkLaunchRouter {
                 "invalid optional trailing-slash path selection"
             );
         }
+        for path in &config.typescript_options_paths {
+            assert!(
+                routes.contains_key(path) && !path.contains("{*"),
+                "invalid automatic OPTIONS path selection"
+            );
+        }
         let mut router = Router::new();
         for (path, mut method_router) in routes {
             if let Some(methods) = extended_routes.remove(&path) {
@@ -769,6 +799,7 @@ impl ForkLaunchRouter {
                 let allow = allowed.join(", ");
                 method_router = origin::extended(method_router, methods, allow, &config);
             }
+            method_router = origin::selected_options(method_router, &path, &registry, &config);
             if path != "/" && config.optional_trailing_slash_paths.contains(&path) {
                 router = router.route(&format!("{path}/"), method_router.clone());
             }
