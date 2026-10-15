@@ -61,3 +61,21 @@ pub fn bound_subscription_contracts() -> Vec<RouteContract> {
         .with_param(parameter).with_response(200,Some(body("BoundSubscriptionOperation",&json!({"anyOf":[operation("pending"),operation("completed")]}))));
     vec![create, inspect]
 }
+
+/// Explicit GET-only-provider recovery; local publication still requires a separate publisher.
+/// # Panics
+/// Only invalid package-owned static metadata can panic.
+#[must_use]
+pub fn bound_subscription_recovery_contracts() -> Vec<RouteContract> {
+    let mut parameter = FieldContract::required("operationId", "String");
+    parameter.schema.json_schema = Some(uuid().to_string());
+    let recovery=auth(RouteContract::post("Recover Bound Subscription Operation","Publish only an existing same-actor pending intent from exact authenticated creation Event request-key linkage and current Customer/Plan/Subscription evidence. No provider POST, retry or process-origin/payment proof. Restricted reservation window and rendering API version apply. Completed returns historical IDs only;202 requires receipt inspection.","/bound-subscription-operations/:operationId/recover"))
+        .with_param(parameter)
+        .with_request_body(body("BoundSubscriptionRecoveryRequest",&json!({"type":"object","additionalProperties":false,"properties":{"eventId":{"type":"string","pattern":"^evt_[A-Za-z0-9_-]*$","maxLength":128}},"required":["eventId"]})))
+        .with_response(200,Some(body("BoundSubscriptionCompleted",&operation("completed"))))
+        .with_response(202,Some(body("BoundSubscriptionUncertain",&json!({"anyOf":[operation("unresolved"),operation("recordedEvidenceNoLongerCurrent")]}))));
+    let inspection = bound_subscription_contracts()
+        .pop()
+        .expect("static inspection contract");
+    vec![recovery, inspection]
+}

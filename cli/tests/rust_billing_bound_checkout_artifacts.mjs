@@ -46,6 +46,10 @@ try {
   const paymentLinkRead={trustedPrices:["price_owned"]};
   const linkReadAggregate={deploymentLabel:"owned",accountId:"acct_private",livemode:false,paymentLinkRead};
   const cases=[
+   {name:'subscription-recovery-only',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:undefined,subscriptionRecovery:{...subscriptionRead,authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:2},
+   {name:'subscription-create-recovery',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:undefined,subscription:{...subscriptionRead,authority:'internal_service_tenant_v1'},subscriptionRecovery:{...subscriptionRead,authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:3},
+   {name:'subscription-recovery-missing-publisher',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRecovery:{...subscriptionRead,authority:'internal_service_tenant_v1'}},fail:true},
+   ...[null,{}, {...subscriptionRead},{...subscriptionRead,authority:'end_user'},{...subscriptionRead,authority:'internal_service_tenant_v1',retry:true}].map((subscriptionRecovery,i)=>({name:'subscription-recovery-invalid-'+i,profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRecovery},publisher:'postgres://publisher@localhost/db',fail:true})),
    {name:'subscription-create-only',profile:'bound-billing-v1',aggregate:{...readAggregate,subscription:{...subscriptionRead,authority:'internal_service_tenant_v1'},subscriptionRead:undefined},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:2},
    {name:'subscription-create-read',profile:'bound-billing-v1',aggregate:{...readAggregate,subscription:{...subscriptionRead,authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:3},
    {name:'subscription-create-missing-publisher',profile:'bound-billing-v1',aggregate:{...readAggregate,subscription:{...subscriptionRead,authority:'internal_service_tenant_v1'}},fail:true},
@@ -137,5 +141,5 @@ try {
   writeFileSync(path.join(temporary,'src/main.rs'),render(mainTemplate));
   run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
  }
- console.log('PASS actual rendered generated library: 136 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
+ console.log('PASS actual rendered generated library: 152 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
 } finally {rmSync(temporary,{recursive:true,force:true});}

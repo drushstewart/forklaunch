@@ -50,6 +50,18 @@ fn uuid(value: &Value, field: &str) -> BlueprintResult<Uuid> {
 }
 type Extra = (String, String, i64);
 impl PostgresBillingStore {
+    /// Checks recovery/inspection grants without granting reservation or dispatch authority.
+    /// # Errors
+    /// Rejects missing dependency-lock, intent/claims SELECT or audit INSERT privileges.
+    pub async fn validate_subscription_recovery_access(&self) -> BlueprintResult<()> {
+        self.subscription_dependency_access().await?;
+        let allowed:bool=sqlx::query_scalar("SELECT has_table_privilege(current_user,'fl_billing.subscription_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.subscription_dependency_claims','SELECT') AND has_table_privilege(current_user,'fl_billing.subscription_creation_audit','INSERT')").fetch_one(&self.pool).await.map_err(db_error)?;
+        if !allowed {
+            return Err(conflict());
+        }
+        Ok(())
+    }
+
     /// Restores only publication authority from an immutable pending journal.
     /// Locks exact current dependencies and checks all four persistent claims.
     /// No provider verification is performed here; the trusted adapter does that.

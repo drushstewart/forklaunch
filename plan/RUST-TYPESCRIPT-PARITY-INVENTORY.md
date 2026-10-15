@@ -10985,3 +10985,28 @@ iterator compile error was corrected; Clippy then required extracting the unchan
 format-list parser, followed by a passing final native differential rerun. Logs:
 `/private/tmp/fl-zod-ip-{js,native-final,consumers,types,clippy-final}.log`.
 Regex, JWT/emoji formats and broader constraints remain open; 660/682 unchanged.
+
+
+### 2026-10-15 — Subscription recovery HTTP, MCP and SDK surfaces
+
+An independent `subscriptionRecovery` selector exposes POST
+`/bound-subscription-operations/:operationId/recover` with exact `{eventId}` and
+actor-owned historical IDs inspection. It requires explicit internal service tenant
+authority and a checked separate publisher. Recovery-only configuration exposes no
+create route and requires journal/claim SELECT, audit and dependency locking grants
+without runtime journal/claim INSERT. Combined explicit selectors share the publisher
+and deduplicate inspection. Exact authenticated creation-event request-key, API
+version, account/mode, time window and current Customer/Plan/Subscription evidence
+feed the existing atomic recovery library. Recovery never issues a provider POST.
+
+Live restricted PostgreSQL, HTTP/MCP and four SDK calls pass in 3.55 seconds; SDK
+calls exercise completed historical replay/inspection, not four new recoveries.
+Malformed event evidence retains four claims; concurrent valid recovery publishes
+once and leaves zero claims. Creation regression passes in 3.58 seconds. Thirteen
+unit tests, 152 rendered artifact cases, strict billing all-feature/all-target and
+minimal Clippy pass. Owned fixture roles/databases return to zero. An initial fixture
+actor mismatch was corrected to the real HMAC principal; production was unchanged.
+Frozen 12-source manifest: `/private/tmp/fl-subscription-recovery-route-final.json`.
+Logs: `/private/tmp/fl-subscription-recovery-route-{live4,unit,artifacts,clippy,minimal}.log`
+and `/private/tmp/fl-subscription-recovery-creation-regression.log`. Managed recovery
+and broader billing mutation semantics remain open; 660/682 is unchanged.

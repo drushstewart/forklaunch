@@ -7,7 +7,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-pub use contracts::bound_subscription_contracts;
+pub use contracts::{bound_subscription_contracts, bound_subscription_recovery_contracts};
 use forklaunch_axum::{ForkLaunchRouter, session::AuthenticatedSession};
 use forklaunch_billing_base::services::{
     BaseBillingService, postgres::TrustedSubscriptionPublisher,
@@ -47,7 +47,8 @@ fn quantity<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D:
     Ok(number as u64)
 }
 pub(super) struct BoundSubscriptionV1 {
-    pub(super) profile: BoundSubscriptionCreationProfile,
+    pub(super) creation: Option<BoundSubscriptionCreationProfile>,
+    pub(super) recovery: Option<BoundSubscriptionCreationProfile>,
     pub(super) publisher: TrustedSubscriptionPublisher,
 }
 fn id(value: &str) -> BlueprintResult<Uuid> {
@@ -74,9 +75,16 @@ impl BillingBackend {
             BaseBillingService::new(Arc::new(store)),
             self.client.as_ref().ok_or_else(configuration)?.clone(),
         );
-        service
-            .validate_bound_subscription_configuration(&publisher)
-            .await?;
+        if profile.creation.is_some() {
+            service
+                .validate_bound_subscription_configuration(&publisher)
+                .await?;
+        }
+        if profile.recovery.is_some() {
+            service
+                .validate_bound_subscription_recovery_configuration(&publisher)
+                .await?;
+        }
         self.bound_subscription = Some(Arc::new(profile));
         Ok(self)
     }
@@ -129,7 +137,7 @@ async fn execute(
         let publisher = profile.publisher.with_audit_context(audit)?;
         let result = service
             .create_bound_subscription(
-                &profile.profile,
+                profile.creation.as_ref().ok_or_else(configuration)?,
                 &publisher,
                 operation,
                 BoundSubscriptionCreateRequest {
@@ -151,6 +159,41 @@ async fn execute(
             None => Ok((StatusCode::NOT_FOUND, json!(null))),
         }
     }
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RecoveryRequest {
+    event_id: String,
+}
+async fn recover(
+    backend: Arc<BillingBackend>,
+    session: AuthenticatedSession,
+    operation: String,
+    input: Value,
+) -> BlueprintResult<(StatusCode, Value)> {
+    if backend.backup {
+        return Err(configuration());
+    }
+    let selected = backend
+        .bound_subscription
+        .as_ref()
+        .ok_or_else(configuration)?;
+    let profile = selected.recovery.as_ref().ok_or_else(configuration)?;
+    let request: RecoveryRequest = serde_json::from_value(input).map_err(|_| invalid())?;
+    let operation = id(&operation)?;
+    let audit = AuditContext::actor(&session.principal.subject, Uuid::new_v4().to_string());
+    let store = backend.store.with_audit_context(audit.clone())?;
+    let publisher = selected.publisher.with_audit_context(audit)?;
+    let service = StripeBillingService::new(
+        BaseBillingService::new(Arc::new(store)),
+        backend.client.as_ref().ok_or_else(configuration)?.clone(),
+    );
+    Ok(response(
+        service
+            .recover_bound_subscription(profile, &publisher, operation, &request.event_id)
+            .await?,
+        false,
+    ))
 }
 fn dispatch(result: BlueprintResult<(StatusCode, Value)>) -> Response {
     match result {
@@ -179,10 +222,25 @@ pub(super) fn register(
     mut router: ForkLaunchRouter,
     backend: &Arc<BillingBackend>,
 ) -> ForkLaunchRouter {
-    if backend.bound_subscription.is_none() {
+    let Some(selected) = backend.bound_subscription.as_ref() else {
         return router;
+    };
+    let mut contracts = if selected.creation.is_some() {
+        bound_subscription_contracts()
+    } else {
+        vec![]
+    };
+    if selected.recovery.is_some() {
+        contracts.extend(
+            bound_subscription_recovery_contracts()
+                .into_iter()
+                .filter(|r| {
+                    selected.creation.is_none()
+                        || r.operation_name != "inspectBoundSubscriptionOperation"
+                }),
+        );
     }
-    for contract in bound_subscription_contracts() {
+    for contract in contracts {
         let backend = Arc::clone(backend);
         if contract.operation_name == "createBoundSubscription" {
             router = router.post(
@@ -191,6 +249,16 @@ pub(super) fn register(
                       Json(input): Json<Value>| {
                     let backend = Arc::clone(&backend);
                     async move { dispatch(execute(backend, session, Some(input), None).await) }
+                },
+            );
+        } else if contract.operation_name == "recoverBoundSubscriptionOperation" {
+            router = router.post(
+                contract,
+                move |Extension(session): Extension<AuthenticatedSession>,
+                      Path(operation): Path<String>,
+                      Json(input): Json<Value>| {
+                    let backend = Arc::clone(&backend);
+                    async move { dispatch(recover(backend, session, operation, input).await) }
                 },
             );
         } else {

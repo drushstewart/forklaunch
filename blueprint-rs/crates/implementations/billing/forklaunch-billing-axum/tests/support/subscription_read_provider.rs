@@ -25,7 +25,7 @@ pub struct Provider {
     pub requests: Arc<AtomicUsize>,
     customer_response: Arc<Mutex<Option<Value>>>,
     plan_response: Arc<Mutex<Option<Value>>>,
-    event: Arc<Mutex<Value>>,
+    pub event: Arc<Mutex<Value>>,
     event_reads: Arc<AtomicUsize>,
     response: Arc<Mutex<Option<Value>>>,
     pub readback: Arc<Mutex<Option<Value>>>,

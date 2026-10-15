@@ -35,7 +35,7 @@ pub use bound_plan_read::bound_plan_read_contracts;
 #[cfg(feature = "bound-checkout")]
 pub use bound_portal::{BoundPortalV1, bound_portal_contracts};
 #[cfg(feature = "bound-checkout")]
-pub use bound_subscription::bound_subscription_contracts;
+pub use bound_subscription::{bound_subscription_contracts, bound_subscription_recovery_contracts};
 #[cfg(feature = "bound-checkout")]
 pub use bound_subscription_read::bound_subscription_read_contracts;
 mod request_dates;

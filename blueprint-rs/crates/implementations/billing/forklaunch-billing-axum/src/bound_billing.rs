@@ -41,6 +41,7 @@ pub struct BoundBillingConfig {
     payment_link: Option<BoundPaymentLinkCreationProfile>,
     plan: Option<BoundPlanCreationProfile>,
     subscription: Option<BoundSubscriptionCreationProfile>,
+    subscription_recovery: Option<BoundSubscriptionCreationProfile>,
 }
 fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult<()> {
     let object = value.as_object().ok_or_else(configuration)?;
@@ -173,6 +174,7 @@ impl BoundBillingConfig {
                 "paymentLink",
                 "plan",
                 "subscription",
+                "subscriptionRecovery",
             ],
         )?;
         let scope = StripeBindingScope::administrative(
@@ -209,6 +211,10 @@ impl BoundBillingConfig {
             .get("subscriptionRead")
             .map(|part| subscription_profile(&scope, part))
             .transpose()?;
+        let subscription_recovery = value
+            .get("subscriptionRecovery")
+            .map(|part| subscription_creation_profile(&scope, part))
+            .transpose()?;
         let subscription = value
             .get("subscription")
             .map(|part| subscription_creation_profile(&scope, part))
@@ -233,6 +239,7 @@ impl BoundBillingConfig {
             && payment_link.is_none()
             && plan.is_none()
             && subscription.is_none()
+            && subscription_recovery.is_none()
         {
             return Err(configuration());
         }
@@ -245,6 +252,7 @@ impl BoundBillingConfig {
             payment_link,
             plan,
             subscription,
+            subscription_recovery,
         })
     }
     #[must_use]
@@ -268,6 +276,10 @@ impl BoundBillingConfig {
         self.payment_link_read.is_some()
     }
     #[must_use]
+    pub const fn has_subscription_recovery(&self) -> bool {
+        self.subscription_recovery.is_some()
+    }
+    #[must_use]
     pub const fn has_subscription(&self) -> bool {
         self.subscription.is_some()
     }
@@ -283,7 +295,10 @@ impl BoundBillingConfig {
     /// `PaymentLink` uses its existing ordinary-role immutable journal authority.
     #[must_use]
     pub const fn requires_publisher(&self) -> bool {
-        self.has_checkout() || self.has_portal() || self.has_subscription()
+        self.has_checkout()
+            || self.has_portal()
+            || self.has_subscription()
+            || self.has_subscription_recovery()
     }
     /// Shared runtime/artifact contracts, with no server configuration embedded.
     #[must_use]
@@ -291,6 +306,16 @@ impl BoundBillingConfig {
         let mut routes = Vec::new();
         if self.has_subscription() {
             routes.extend(super::bound_subscription::bound_subscription_contracts());
+        }
+        if self.has_subscription_recovery() {
+            routes.extend(
+                super::bound_subscription::bound_subscription_recovery_contracts()
+                    .into_iter()
+                    .filter(|r| {
+                        !self.has_subscription()
+                            || r.operation_name != "inspectBoundSubscriptionOperation"
+                    }),
+            );
         }
         if self.has_plan() {
             routes.extend(super::bound_plan::bound_plan_contracts());
@@ -351,7 +376,8 @@ impl BoundBillingV1 {
     ) -> BlueprintResult<Self> {
         if configuration.has_checkout() != checkout.is_some()
             || configuration.has_portal() != portal.is_some()
-            || configuration.has_subscription() != subscription.is_some()
+            || (configuration.has_subscription() || configuration.has_subscription_recovery())
+                != subscription.is_some()
         {
             return Err(self::configuration());
         }
@@ -361,12 +387,13 @@ impl BoundBillingV1 {
             payment_link_read: configuration.payment_link_read,
             payment_link: configuration.payment_link,
             plan: configuration.plan,
-            subscription: configuration.subscription.zip(subscription).map(
-                |(profile, publisher)| super::bound_subscription::BoundSubscriptionV1 {
-                    profile,
+            subscription: subscription.map(|publisher| {
+                super::bound_subscription::BoundSubscriptionV1 {
+                    creation: configuration.subscription,
+                    recovery: configuration.subscription_recovery,
                     publisher,
-                },
-            ),
+                }
+            }),
             checkout: configuration
                 .checkout
                 .zip(checkout)
@@ -428,6 +455,37 @@ mod tests {
     use serde_json::json;
     fn valid() -> Value {
         json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}})
+    }
+    #[test]
+    fn subscription_recovery_is_distinct_and_inspection_is_not_duplicated() {
+        let selected = serde_json::json!({"plans":[{"localPlanId":Uuid::new_v4(),"creationOperationId":Uuid::new_v4()}],"collectionPolicy":"automatic_default_incomplete_v1","authority":"internal_service_tenant_v1"});
+        let mut raw = serde_json::json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"subscriptionRecovery":selected});
+        let config = BoundBillingConfig::from_json(&raw.to_string()).unwrap();
+        assert!(config.has_subscription_recovery());
+        assert!(!config.has_subscription());
+        assert!(config.requires_publisher());
+        assert_eq!(
+            config.contracts(),
+            super::super::bound_subscription_recovery_contracts()
+        );
+        assert!(BoundBillingV1::trusted_with_subscription(config, None, None, None).is_err());
+        raw["subscription"] = selected;
+        let config = BoundBillingConfig::from_json(&raw.to_string()).unwrap();
+        assert_eq!(config.contracts().len(), 3);
+        assert_eq!(
+            config
+                .contracts()
+                .iter()
+                .filter(|r| r.operation_name == "inspectBoundSubscriptionOperation")
+                .count(),
+            1
+        );
+        assert!(
+            config
+                .contracts()
+                .iter()
+                .any(|r| r.operation_name == "createBoundSubscription")
+        );
     }
     #[test]
     fn subscription_creation_requires_explicit_authority_and_publisher() {

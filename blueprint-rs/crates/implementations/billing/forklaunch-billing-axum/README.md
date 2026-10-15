@@ -378,3 +378,36 @@ provider/local effects. GET `/bound-subscription-operations/:operationId`
 and IDs, or404; it supplies neither current ownership evidence nor redispatch
 capability. Pending operations retain their dependency claims until trusted
 validated publication. Existing 66 legacy routes remain unchanged and available.
+
+### Explicit interrupted Subscription recovery
+
+`subscriptionRecovery` is a separate aggregate selector with the same trusted
+plans, fixed collectionPolicy and explicit `authority: "internal_service_tenant_v1"`.
+It requires a separate Subscription publisher but does not enable creation. If
+creation and recovery are both selected, their one supplied publisher is used for
+both capabilities and the common inspection route appears once. Recovery-only
+runtime grants require dependency SELECT/UPDATE locks, intent and claims SELECT,
+and read/creation audit INSERT; neither intent nor claims INSERT is needed.
+The publisher's existing role separation and dependency grants remain mandatory.
+Startup checks local configuration/grants without contacting the provider.
+
+POST `/bound-subscription-operations/:operationId/recover`
+(`recoverBoundSubscriptionOperation`) accepts exactly `{ "eventId": "evt_..." }`.
+It uses the existing same-actor pending journal, its four unchanged dependency
+claims, an authenticated `customer.subscription.created` Event with the exact
+server idempotency request key, and fresh Customer/Plan/Subscription reads.
+The event must match the recorded rendering API version and restricted reservation
+window (-5seconds..+5minutes), with current evidence and final deadline checks.
+This is request-key linkage, not proof of process origin, payment or entitlement.
+Metadata alone, absent request keys and broader ambiguous events are unsupported.
+
+Recovery performs no provider POST and never reconstructs a dispatch ticket.
+Only the separately trusted publisher can atomically publish the local UUID,
+receipt/binding and release claims. HTTP200 returns IDs only; HTTP202 requires
+receipt inspection because commit outcome or freshness can be uncertain.
+Concurrent attempts can return a conflict/uncertainty while the one publication
+succeeds. Completed repeats return historical IDs without asserting current
+provider state. GET inspection is the same actor-owned IDs-only operation used by
+creation; neither endpoint returns an old URL or authorizes a financial retry.
+Default66 routes and generic TS behavior remain unchanged; this does not close
+all interrupted billing or provider mutation parity.

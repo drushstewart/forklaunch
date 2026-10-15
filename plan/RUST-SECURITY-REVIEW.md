@@ -1654,3 +1654,8 @@ Trusted builders alone configure bounded UTF-16 password limits, signup disable 
 ### 2026-10-15 — Subscription creation surfaces
 
 Explicit internal service tenant authority is required; the route does not establish end-user Customer ownership. Independent checked publisher credentials preserve tenant/runtime identity and authenticated actor. Startup rejects absent individual runtime/publisher grants and role/actor mismatches before provider I/O. Existing provenance, claim retention, provider readback and atomic publication remain enforced. Real restricted PostgreSQL HTTP/MCP and SDK checks pass; uncertain operations retain claims with no automatic redispatch. Read selectors remain separate; managed/base/backup reject creation.
+
+
+### 2026-10-15 — Subscription recovery surface
+
+Recovery is independently selected with internal service tenant authority and a checked separate publisher. Existing pending actor-owned intent, authenticated exact request-key event evidence, current provider/local dependencies and atomic publication remain mandatory. No provider POST or implicit creation/retry authority is introduced. Recovery-only runtime lacks intent/claim INSERT grants. Concurrent recovery, malformed evidence, actor isolation and zero owned fixture residue pass restricted PostgreSQL and live HTTP/MCP; historical SDK replay does not claim fresh provider repair.
