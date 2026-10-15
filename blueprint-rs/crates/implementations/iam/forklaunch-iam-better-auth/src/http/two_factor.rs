@@ -49,6 +49,24 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(self)
     }
 
+    /// Selects trusted OTP field encoding without changing delivery or row encryption.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted auth configuration.
+    pub fn with_two_factor_otp_storage(
+        mut self,
+        storage: crate::two_factor::OtpStorage,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_otp_storage(storage),
+        ));
+        Ok(self)
+    }
+
     /// Enables TOTP using validated trusted parameters, preserving any configured
     /// delivered-OTP hook and policy. This does not enable passwordless enrollment.
     /// # Errors

@@ -1337,3 +1337,26 @@ Do not log generated proofs or callback error contents. Codes continue to use th
 existing encrypted tenant store; custom backup storage codecs are a separate,
 unimplemented extension. JavaScript negative/fractional generation sizes and
 positive amounts with zero length are outside this bounded typed profile.
+
+### OTP field storage policy
+
+`TwoFactorService::with_otp_storage(OtpStorage::Hashed)` or
+`AuthHttp::with_two_factor_otp_storage(OtpStorage::Hashed)` selects SHA-256 over
+UTF-8 followed by unpadded base64url. `Plain` remains the default. Both modes still
+use the existing encrypted tenant record: field hashing is separate from storage
+encryption and is not a replacement for rate limits on low-entropy OTPs. Delivery
+receives the original code; the stored representation and diagnostics never expose
+it through these builders.
+
+Current policy controls verification, including previously issued codes. Switching
+plain/hashed modes causes an ordinary invalid-code attempt; restoring the original
+mode allows the remaining unexpired proof. Current digit settings do not infer or
+validate an old code's width from the hash's 43-character encoding. Attempts,
+account lockout, expiry, atomic single use, and rollback retain their existing
+semantics. Invalid string inputs within the existing 128-byte limit count as failed
+proofs; malformed non-string bodies fail validation before consuming attempts.
+
+Built-in encrypted OTP field encoding, asynchronous custom hash/encrypt/decrypt,
+versioned encryption secrets, and backup field codecs remain separate extension
+work. Their upstream callback failure/consumption rules differ and are not
+represented by this synchronous plain/hashed profile.

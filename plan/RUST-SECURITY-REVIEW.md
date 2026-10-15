@@ -1108,3 +1108,12 @@ Custom empty/Unicode/weak proofs remain caller policy, as upstream; callbacks
 must not reenter their store. Generic encrypted record storage remains unchanged;
 field-codec compatibility is a separate open capability. Restricted PG covers
 concurrent consumption and session-insert failure after enrollment writes.
+
+
+OTP field policy (2026-10-14): Plain/Hashed representation is server-owned and
+independent of encrypted tenant records. Current-policy mismatch spends normal
+proof attempts; restoring policy preserves the remaining old code. Persisted
+representation validation does not derive digit width from a hash. Restricted
+PG verifies one-use/rollback/lockout and expiry. Async/encrypted field codecs
+remain separate; their destructive-consume versus CAS failure semantics must
+be implemented explicitly, not inferred from at-rest encryption.

@@ -9106,3 +9106,30 @@ minimal-clippy,legacy,cleanup}.log. Cargo.lock adds only3 PayPal dev-dependency
 edges, no version updates. README is embedded with matching relative template
 link. CI runs schema/wire and isolated PG. Working-source proof, not dda838
 archive scope.
+
+
+## Trusted plain/hashed OTP field storage (2026-10-14)
+
+OtpStorage::{Plain,Hashed} is trusted service/AuthHttp policy, preserving Plain
+default and existing delivery/digit/attempt/lifetime/lockout configuration. Hashed
+uses source SHA256(UTF8)→base64url without padding through existing ring/base64;
+no dependency change. Whole-record tenant encryption remains independent.
+Persisted plain digits or canonical43byte hash are admitted independently of
+CURRENT comparison policy. Plain↔hashed switches yield INVALID_CODE+attempt,
+not corrupt-store500; restoring policy verifies the same remaining proof. Old
+digit widths1/32 remain valid after generation policy changes. Request bodies
+cannot choose storeOTP.
+
+Actual full fixture plus11 storage/error/callback groups pass. Focused native3,
+affected two-factor29/1ignored56.24s, restrictedPG1/47.49s, strict all-feature/
+all-target Clippy9.05s and minimal2.33s pass. Tests cover canonical hash vectors,
+Unicode/empty401 versus nonstring400/no attempt, policy restoration, expiry
+equality/+1ms, commit rollback, one-use race and pending account lockout. Owned
+roles/records/audits0. Final13 hashes /private/tmp/fl-otp-storage-freeze.json;
+logs /private/tmp/fl-otp-storage-{native,regression,postgres,clippy,minimal,
+full-actual,actual,cleanup}.log. CI tracks imported helper and expanded PG.
+Encrypted/custom OTP and backup field codecs in the oracle are audit-only
+follow-ons, not implemented by these two modes. Actual custom callbacks are
+awaited Promise<string>; OTP callback failure after destructive consume differs
+from backup codec failure/CAS preservation and requires separate transaction
+design. Working-source proof, not immutable/generated-service receipt.

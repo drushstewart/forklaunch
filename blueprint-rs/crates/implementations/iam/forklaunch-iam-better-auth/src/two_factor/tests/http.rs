@@ -1030,3 +1030,79 @@ async fn http_backup_generation_server_policy_and_sanitized_failure() {
         json!(["duplicate", "duplicate", "", "é🔑"])
     );
 }
+
+#[tokio::test]
+async fn http_otp_storage_policy_preserved_and_invalid_inputs_counted() {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    let store = Arc::new(MemoryAuthStore::default());
+    let session = new_session("otp-codec-http", "", "", now).unwrap();
+    let cookie = crate::cookies::sign_cookie_value(text(&session, "token").unwrap(), &[42; 32]);
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(
+        Model::User,
+        json!({"id":"otp-codec-http","email":"codec@example.test","twoFactorEnabled":true}),
+    )
+    .await
+    .unwrap();
+    tx.insert(Model::Session, session).await.unwrap();
+    tx.commit().await.unwrap();
+    let delivery = Arc::new(otp::Delivery::default());
+    let router = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+        .unwrap()
+        .with_clock(move || now)
+        .with_rate_limiting(false)
+        .with_two_factor_otp_storage(OtpStorage::Hashed)
+        .unwrap()
+        .with_two_factor_otp(delivery.clone())
+        .unwrap()
+        .with_two_factor_totp_options(TotpOptions::default())
+        .unwrap()
+        .with_two_factor_backup_code_options(BackupCodeOptions::default())
+        .unwrap()
+        .with_two_factor_lifecycle_options(TwoFactorLifecycleOptions::default())
+        .unwrap()
+        .router();
+    let mut browser = Browser {
+        router,
+        origin: origin.into(),
+        jar: BTreeMap::from([("better-auth.session_token".into(), cookie)]),
+    };
+    assert_eq!(
+        browser
+            .call("/two-factor/send-otp", Some(json!({"storeOTP":"plain"})))
+            .await
+            .0,
+        200
+    );
+    let code = delivery.last();
+    let saved = rows(store.as_ref(), Model::Verification).await;
+    assert_eq!(
+        saved[0]["value"],
+        json!(OtpStorage::Hashed.encode(&code).as_str())
+    );
+    for supplied in ["", "é🔑", "not-digits"] {
+        let (status, body, _) = browser
+            .call("/two-factor/verify-otp", Some(json!({"code":supplied})))
+            .await;
+        assert_eq!(status, 401);
+        assert_eq!(body["code"], "INVALID_CODE");
+    }
+    let before = rows(store.as_ref(), Model::Verification).await;
+    assert_eq!(before[0]["attempts"], 3);
+    assert_eq!(
+        browser
+            .call("/two-factor/verify-otp", Some(json!({"code":123})))
+            .await
+            .0,
+        400
+    );
+    assert_eq!(rows(store.as_ref(), Model::Verification).await, before);
+    assert_eq!(
+        browser
+            .call("/two-factor/verify-otp", Some(json!({"code":code})))
+            .await
+            .0,
+        200
+    );
+}

@@ -225,7 +225,8 @@ impl<S: AuthStore> TwoFactorService<S> {
             .map(|row| text(row, "id").map(str::to_owned))
             .transpose()?
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let row = json!({"id":id,"identifier":bound.identifier,"value":code.as_str(),"attempts":0,"expiresAt":expires});
+        let stored = self.otp_storage.encode(&code);
+        let row = json!({"id":id,"identifier":bound.identifier,"value":stored.as_str(),"attempts":0,"expiresAt":expires});
         if previous.is_some() {
             tx.replace(Model::Verification, row).await?;
         } else {
@@ -335,11 +336,11 @@ impl<S: AuthStore> TwoFactorService<S> {
             ));
         }
         let expected = text(&otp, "value")?;
-        if !(1..=32).contains(&expected.len())
-            || !expected.bytes().all(|byte| byte.is_ascii_digit())
-        {
+        if !super::otp_storage::valid_stored(expected) {
             return Err(corrupt());
         }
+        let comparison = self.otp_storage.encode(supplied);
+        let supplied = comparison.as_str();
         let difference = expected
             .bytes()
             .zip(supplied.bytes())

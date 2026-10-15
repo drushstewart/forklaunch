@@ -573,3 +573,5 @@ await import('./fixtures/rust_better_auth_lifetime_options.mjs');
 await import('./fixtures/rust_better_auth_lockout_options.mjs');
 
 await import('./fixtures/rust_better_auth_backup_options.mjs');
+
+await import('./fixtures/rust_better_auth_otp_storage.mjs');
