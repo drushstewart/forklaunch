@@ -1,6 +1,6 @@
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationService, Utc, Value, add_team_member, allowed, joined_member, json, load, missing,
+    OrganizationService, Utc, Value, add_team_member, allowed, joined_member, json, missing,
     no_active, no_team_member, public_member, text, unauthorized,
 };
 use crate::sessions::SessionView;
@@ -19,7 +19,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let team = authorized_team(&mut tx, &view, body, false).await?;
@@ -40,7 +41,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let mut team = authorized_team(&mut tx, &view, body, true).await?;

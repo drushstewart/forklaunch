@@ -1,8 +1,8 @@
 //! Atomic organization, owner, default team and session creation.
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Engine, Model,
-    OrganizationService, URL_SAFE_NO_PAD, Utc, Value, find_slug, internal, json, load, text,
-    timestamp, unauthorized, update_active,
+    OrganizationService, URL_SAFE_NO_PAD, Utc, Value, find_slug, internal, json, text, timestamp,
+    unauthorized, update_active,
 };
 
 impl<S: AuthStore> OrganizationService<S> {
@@ -20,7 +20,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         if find_slug(&mut tx, text(body, "slug")?).await?.is_some() {

@@ -1,8 +1,8 @@
 //! Organization membership checks and active session selection.
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, Model, OrganizationSelection,
-    OrganizationService, Utc, Value, find_slug, load, member, missing, not_member, text,
-    unauthorized, update_active,
+    OrganizationService, Utc, Value, find_slug, member, missing, not_member, text, unauthorized,
+    update_active,
 };
 impl<S: AuthStore> OrganizationService<S> {
     /// Selects/unsets an organization and preserves the active team exactly as
@@ -18,7 +18,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<OrganizationSelection> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         if body.get("organizationId") == Some(&Value::Null) {

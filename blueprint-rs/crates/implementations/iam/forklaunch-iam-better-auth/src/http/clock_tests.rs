@@ -4,6 +4,7 @@ use axum::body::to_bytes;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::sync::atomic::{AtomicI64, Ordering};
 use tower::ServiceExt;
+pub(crate) mod organization;
 mod store;
 use store::{Advance, Event, Store};
 struct Delivery {

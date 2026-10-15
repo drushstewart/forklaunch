@@ -1,6 +1,6 @@
 //! Configured organization lifecycle over tenant-bound authoritative records.
 use crate::{
-    sessions::{SessionService, SessionView, load},
+    sessions::{SessionService, SessionView},
     store::{AuthStore, AuthTransaction, Model},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -107,6 +107,25 @@ impl<S: AuthStore> OrganizationService<S> {
             ));
         }
         Ok(json!({"status":true}))
+    }
+
+    // Recheck the session inside the operation's own transaction. HTTP callers
+    // resample after awaited session/user reads; direct callers retain explicit now.
+    async fn recheck<T: AuthTransaction>(
+        &self,
+        tx: &mut T,
+        token: &str,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<Option<SessionView>> {
+        crate::sessions::load_with_time(
+            tx,
+            token,
+            true,
+            now,
+            self.session_policy,
+            &self.time_source,
+        )
+        .await
     }
 
     async fn session(

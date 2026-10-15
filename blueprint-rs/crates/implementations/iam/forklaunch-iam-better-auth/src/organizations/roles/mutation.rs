@@ -2,8 +2,7 @@
 use super::create::{check_permissions, check_predefined, denied, taken};
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationService, Utc, Value, allowed, json, load, not_found, public, scope, text,
-    unauthorized,
+    OrganizationService, Utc, Value, allowed, json, not_found, public, scope, text, unauthorized,
 };
 impl<S: AuthStore> OrganizationService<S> {
     /// Updates all matching stored roles while leaving existing member role names intact.
@@ -18,7 +17,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(body["organizationId"].as_str(), &view.session)?;
@@ -104,7 +104,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(body["organizationId"].as_str(), &view.session)?;

@@ -1,6 +1,6 @@
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, Model, OrganizationSelection,
-    OrganizationService, Utc, Value, json, load, missing, no_active, no_team_member, public_team,
+    OrganizationService, Utc, Value, json, missing, no_active, no_team_member, public_team,
     team_member, text, timestamp, unauthorized,
 };
 impl<S: AuthStore> OrganizationService<S> {
@@ -17,7 +17,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<OrganizationSelection> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let current = view.session["activeTeamId"]

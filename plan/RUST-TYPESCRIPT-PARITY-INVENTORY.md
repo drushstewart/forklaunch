@@ -11085,3 +11085,25 @@ exports, and public API inventory 623/1703 pass. No dependencies changed. Logs:
 `/private/tmp/fl-zod-jwt-{native-final,consumers,types,clippy}.log`.
 Arbitrary regex, broader transforms/configuration and schema constraints remain open;
 this does not close the validator gate. Checklist remains 660/682.
+
+
+### 2026-10-15 — Organization transaction clock rechecks
+
+All 23 secondary organization session loads now use the configured HTTP clock
+and session policy after awaited authority reads. Direct explicit-time APIs retain
+their supplied timestamp. This covers existing organization, member, invitation,
+team, role and active-selection rechecks. Exact expiry equality remains valid;
+this is an authorization snapshot, with no post-commit expiry guarantee.
+
+The focused delay matrix passes 24 cases, including unchanged graph/selection
+state on rejection, explicit-time behavior and real HTTP dispatch. Full IAM passes
+220 tests (3 ignored); the separate restricted PostgreSQL test passes in 218.44s.
+Strict all-feature/all-target and minimal Clippy pass. Owned PostgreSQL test roles,
+records and audit rows were cleaned. The full suite also covers the preceding
+email clock correction. No dependencies or locks changed.
+
+Frozen 26-source receipt: `/private/tmp/fl-org-clock-freeze.json`, SHA256
+`43479e6f5d3280240173edcacd413c7acb265ce03ab75f4ffc56ce5ec01a14ed`.
+Logs: `/private/tmp/fl-org-clock-{native,full,pg,clippy,minimal-clippy}.log`.
+Existing IAM native/PostgreSQL CI runs these tests. Broader organization options
+and auth parity remain open; checklist remains 660/682 (96.8%).

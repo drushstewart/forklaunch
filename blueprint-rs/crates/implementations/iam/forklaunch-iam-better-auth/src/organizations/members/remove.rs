@@ -1,9 +1,8 @@
 use super::super::permission::allowed;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationService, Utc, Value, delete_member, find_member, joined, json, load,
-    member_missing, missing, no_active, only_owner, owner_count, owns, text, trim, unauthorized,
-    update_active,
+    OrganizationService, Utc, Value, delete_member, find_member, joined, json, member_missing,
+    missing, no_active, only_owner, owner_count, owns, text, trim, unauthorized, update_active,
 };
 impl<S: AuthStore> OrganizationService<S> {
     /// Removes a scoped member and team memberships with the configured owner
@@ -19,7 +18,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let id = body["organizationId"]

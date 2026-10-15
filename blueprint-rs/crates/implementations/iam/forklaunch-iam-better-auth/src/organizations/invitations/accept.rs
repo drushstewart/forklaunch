@@ -2,8 +2,8 @@
 use super::super::teams::add_team_member;
 use super::super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationSelection, OrganizationService, Utc, json, load, missing, text, timestamp,
-    unauthorized, update_active,
+    OrganizationSelection, OrganizationService, Utc, json, missing, text, timestamp, unauthorized,
+    update_active,
 };
 impl<S: AuthStore> OrganizationService<S> {
     /// Accepts a pending unexpired invitation for a verified recipient.
@@ -20,7 +20,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<OrganizationSelection> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let mut invitation = tx

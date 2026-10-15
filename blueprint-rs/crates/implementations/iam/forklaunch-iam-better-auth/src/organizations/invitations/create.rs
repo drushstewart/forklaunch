@@ -2,7 +2,7 @@
 use super::super::permission::allowed;
 use super::super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationService, Utc, Value, json, load, missing, text, timestamp, unauthorized,
+    OrganizationService, Utc, Value, json, missing, text, timestamp, unauthorized,
 };
 mod input;
 impl<S: AuthStore> OrganizationService<S> {
@@ -18,7 +18,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let org = body["organizationId"]

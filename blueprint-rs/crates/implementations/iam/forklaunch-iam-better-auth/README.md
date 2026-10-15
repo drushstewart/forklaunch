@@ -1880,6 +1880,12 @@ commit can itself take time: there is no post-commit rollback or exact response-
 guarantee. Authenticated OTP operations that do not issue a new session retain their
 existing single-sample clock behavior. Date sampling outside these issuance/refresh
 paths, third-party hooks and custom store isolation remain distinct contracts.
-Organization routes use the fresh clock for their initial session check/refresh;
-secondary organization transaction rechecks still use the supplied request timestamp
-and are separate from this grant-issuance timing profile.
+Organization routes also use the fresh clock for their secondary transaction-local
+session/user rechecks, after acquiring the operation transaction. This covers the
+existing organization, active selection, dynamic role, member, team and invitation
+recheck paths; it preserves the initial refresh and direct explicit-time API behavior.
+A session that expires during those awaited authority reads rejects the operation
+without committing graph/selection changes. Exact session-expiry equality remains
+valid. These are authorization snapshots, not a guarantee that an authority cannot
+expire after the last read or during subsequent work/commit; unrelated organization
+record timestamps and invitation lifetime policies are unchanged.

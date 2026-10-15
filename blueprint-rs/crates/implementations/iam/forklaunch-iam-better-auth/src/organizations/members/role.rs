@@ -1,8 +1,8 @@
 use super::super::permission::allowed_with_creator;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationService, Utc, Value, find_member, load, member_missing, missing, no_active,
-    owner_count, owns, text, trim, unauthorized,
+    OrganizationService, Utc, Value, find_member, member_missing, missing, no_active, owner_count,
+    owns, text, trim, unauthorized,
 };
 impl<S: AuthStore> OrganizationService<S> {
     /// Changes member roles while preserving creator/last-owner protections.
@@ -21,7 +21,8 @@ impl<S: AuthStore> OrganizationService<S> {
             return Err(empty());
         }
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let id = body["organizationId"]

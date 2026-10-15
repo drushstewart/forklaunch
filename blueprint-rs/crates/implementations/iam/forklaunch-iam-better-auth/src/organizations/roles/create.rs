@@ -1,7 +1,7 @@
 //! Atomic dynamic-role admission, resource and per-action grant checks.
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationService, Utc, Value, allowed, json, load, scope, text, unauthorized,
+    OrganizationService, Utc, Value, allowed, json, scope, text, unauthorized,
 };
 impl<S: AuthStore> OrganizationService<S> {
     /// Creates a lowercased stored role with the configured platform permissions.
@@ -16,7 +16,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(body["organizationId"].as_str(), &view.session).map_err(|_| {

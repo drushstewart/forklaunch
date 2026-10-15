@@ -2,7 +2,7 @@
 use super::permission::allowed;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationService, Utc, Value, find_slug, internal, json, load, missing, not_member, text,
+    OrganizationService, Utc, Value, find_slug, internal, json, missing, not_member, text,
     unauthorized, update_active,
 };
 impl<S: AuthStore> OrganizationService<S> {
@@ -48,7 +48,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let id = body["organizationId"]
@@ -132,7 +133,8 @@ impl<S: AuthStore> OrganizationService<S> {
             return Err(missing());
         }
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let member = find_member(&mut tx, text(&view.user, "id")?, id)

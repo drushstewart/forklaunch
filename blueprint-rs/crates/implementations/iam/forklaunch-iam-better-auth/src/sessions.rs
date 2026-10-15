@@ -364,31 +364,6 @@ async fn find_token<T: AuthTransaction>(tx: &mut T, token: &str) -> BlueprintRes
 }
 // The configured Better Auth getSession boundary converts internal failures
 // into handled API errors. Preserve that origin separately from wire formatting.
-pub(crate) async fn load<T: AuthTransaction>(
-    tx: &mut T,
-    token: &str,
-    skip_refresh: bool,
-    now: DateTime<Utc>,
-) -> BlueprintResult<Option<SessionView>> {
-    load_with_policy(tx, token, skip_refresh, now, SessionPolicy::default()).await
-}
-pub(crate) async fn load_with_policy<T: AuthTransaction>(
-    tx: &mut T,
-    token: &str,
-    skip_refresh: bool,
-    now: DateTime<Utc>,
-    policy: SessionPolicy,
-) -> BlueprintResult<Option<SessionView>> {
-    load_with_time(
-        tx,
-        token,
-        skip_refresh,
-        now,
-        policy,
-        &crate::time_source::TimeSource::default(),
-    )
-    .await
-}
 pub(crate) async fn load_with_time<T: AuthTransaction>(
     tx: &mut T,
     token: &str,

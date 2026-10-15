@@ -1,8 +1,7 @@
 //! Full organization graph, scoped membership and configured joins.
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, Model, OrganizationService, Utc, Value,
-    find_slug, internal, json, load, member, missing, not_member, text, unauthorized,
-    update_active,
+    find_slug, internal, json, member, missing, not_member, text, unauthorized, update_active,
 };
 enum Graph {
     Metadata,
@@ -50,7 +49,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let slug = slug.filter(|slug| !slug.is_empty());

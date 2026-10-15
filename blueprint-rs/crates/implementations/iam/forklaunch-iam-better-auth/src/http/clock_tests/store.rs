@@ -7,6 +7,7 @@ use std::sync::{
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Event {
+    Begin(bool),
     Get(Model),
     Find(Model),
     Insert(Model),
@@ -53,8 +54,10 @@ impl<S: AuthStore> AuthStore for Store<S> {
     where
         Self: 'a;
     async fn begin(&self, write: bool) -> BlueprintResult<Self::Transaction<'_>> {
+        let inner = self.inner.begin(write).await?;
+        self.advance.apply(Event::Begin(write));
         Ok(Transaction {
-            inner: self.inner.begin(write).await?,
+            inner,
             advance: self.advance.clone(),
         })
     }

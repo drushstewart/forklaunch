@@ -4,7 +4,7 @@ mod mutation;
 use super::permission::allowed;
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
-    OrganizationService, Utc, Value, json, load, text, unauthorized,
+    OrganizationService, Utc, Value, json, text, unauthorized,
 };
 impl<S: AuthStore> OrganizationService<S> {
     /// Lists the first 100 stored dynamic roles, parsing permission JSON.
@@ -19,7 +19,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(org, &view.session)?;
@@ -47,7 +48,8 @@ impl<S: AuthStore> OrganizationService<S> {
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
-        let view = load(&mut tx, token, true, now)
+        let view = self
+            .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(query["organizationId"].as_str(), &view.session)?;
