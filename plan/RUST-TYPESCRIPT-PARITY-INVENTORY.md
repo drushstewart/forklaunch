@@ -11736,3 +11736,11 @@ annotation corrections and recovery-route/configured-owner changes. Those retain
 their own later source receipts. After verifying archive integrity and zero active/
 open paths, both owned source/install/generated roots were removed:265,596,389
 logical bytes, with the retained archive hash unchanged. Broader gates remain open.
+
+The unconstrained-factory follow-up is now validated in generated consumers too:
+`rust_zod_checks_consumers.mjs` includes factory-produced any/unknown/type fields
+and ten scalar/aggregate payload variants. The final run passes35 live actual
+Universal SDK responses and140 generated TypeScript/Rust socket codec checks,
+strict generated source checks and feature-off rejection before output. Log:
+`/private/tmp/fl-unconstrained-factories-generated-consumers.log`. This closes the
+queued factory-specific generated-consumer follow-up; broader schema gates remain.

@@ -24,6 +24,9 @@ const { z } = require("zod/v3");
 const { validator } = actualValidator(root);
 const source = z
   .object({
+    anyPayload: validator.any,
+    unknownPayload: validator.unknown,
+    typedPayload: validator.type(),
     text: z.string().length(2),
     number: z.number().multipleOf(0.1),
     email: z.string().email().email(),
@@ -102,6 +105,12 @@ for (const patch of [
   { jwt: Buffer.from(JSON.stringify({alg:"RS256"})).toString("base64url")+".x." },
 ])
   cases.push({ text: "😀", number: 0.3, ...validFormats, ...patch });
+// Factory-generated unconstrained schemas must preserve scalar and aggregate values
+// through both generated socket codecs, as well as the actual HTTP SDK.
+for (const value of cases) Object.assign(value, {anyPayload: null, unknownPayload: false, typedPayload: 0});
+for (const value of [null, false, true, 0, 1.5, "scalar", [], [null, 1, "x"], {}, {nested: [false, {value: "x"}]}]) {
+  cases.push({text: "😀", number: 0.3, ...validFormats, anyPayload: value, unknownPayload: value, typedPayload: value});
+}
 assert.equal(
   process.versions.node,
   "24.2.0",
