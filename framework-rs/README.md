@@ -1271,4 +1271,7 @@ requires every position and rejects extras, including correct `[]` handling for
 empty tuples. Required recursive positions retain boxed edges without recursive
 Default derivation. Shared CLI/native generation supports arities beyond Serde's
 native tuple limit; tests include128 positions. Variable prefixes and typed rest
-items retain broad models pending separate presence-aware support.
+items use presence-aware sequence models: optional positions preserve absence
+separately from JSON null, and serialization checks contiguity/length before writing.
+Homogeneous arrays retain their existing Vec models; other schema constraints remain
+the runtime codec’s responsibility.

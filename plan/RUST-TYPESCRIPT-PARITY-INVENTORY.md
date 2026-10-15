@@ -10131,3 +10131,31 @@ resetmodule docmarkdown and gates HTTPimplementation out ofminimallib.
 No manifests/locks/migrations/templates, no immutablearchive deliveryprofile claim.
 Signup/signin/change-email callbacks, verified before/afterhooks andexpiryoptions
 remain separate;660/682 (96.8%),22open unchanged.
+
+
+### Precise variable-prefix and rest Rust tuple models (2026-10-14)
+
+Shared sequence models now preserve optional positions and typedrest: required
+prefixfields T, laterfields Option<T>, nullableoptional Option<Option<T>> keeps
+None absent versusSome(None) null. Fixedexistingfields/types unchanged. Serializer
+validates contiguity, completeprefix before nonemptyrest, checkedlength/min/max
+before firstwriter call. Decoder stopsoptionalpolling afterNone, validatesrequired
+positions/totalbounds and checksmax before retainingrest. Open/true tail uses
+Vec<Value>, typedtail usesVec<T>; unreachableprefix positions truncate atmax.
+Requiredrest suppressesDefault; optionalprefix/Vec terminate recursive default
+edges. Homogeneous/nonpositional/unsupportedbound schemas retain prior broad
+behavior; runtimecodecs own other schema constraints beyond positional shapes.
+ActualgeneratedTS proof caught existingrecursive rest Array<T> compiler rejection;
+scoped rest rendering `(T)[]` resolves recursivealias and nullable/union cases,
+homogeneous arrays unchanged. No generalized staticconstraint equivalence claim.
+Frozen3 /private/tmp/fl-variable-tuple-source.json.892generatedRust acceptance/
+exactJSON roundtrips across51schemas (19actualZod+873AJV7/2020), strictgenerated
+TS assignments/recursion and constructedgap/rest/max pre-write denial pass.
+GeneratedRust publicmodules compile via cargo rustc --lib -- -Dwarnings before
+tests; fixed79 regression rerunpasses. Logs /private/tmp/fl-variable-tuple-{models,
+fixed}.log. Codegen46allfeature/46minimal+nativeSDKRust5, strictallfeature/alltarget
+Clippy, finalfullCLI1125 pass (/private/tmp/fl-variable-tuple-{native,minimal,
+clippy,cli-full}.log). Lastsource changes were lint extraction/methodpointer
+cleanup followedfinalminimal/SDK/fullCLI; finalfixture-only warningproof passed.
+No lock/dependency/newexample edits. Broader callback/emitter/constraint gate
+remainsopen;660/682 (96.8%),22open unchanged.

@@ -14,8 +14,12 @@ pub struct RustModelTemplate {
     pub union: bool,
     /// Fixed-length JSON sequence, rendered with an explicit Serde visitor.
     pub sequence: bool,
-    /// Exact element count, emitted as a literal rather than a nested expression.
+    /// Reachable prefix element count, used for required-rest/default analysis.
     pub sequence_len: usize,
+    pub sequence_min: u64,
+    pub sequence_max: u64,
+    pub sequence_rest: bool,
+    pub sequence_rest_type: String,
     pub deny_unknown_fields: bool,
     pub transparent: bool,
     pub has_default: bool,
@@ -164,7 +168,7 @@ fn ts_array_type(schema: &JsonValue) -> String {
             .collect::<Vec<_>>();
         if maximum > prefix.len() as u64 && tail != Some(&JsonValue::Bool(false)) {
             fields.push(format!(
-                "...rest: Array<{}>",
+                "...rest: ({})[]",
                 tail.map_or_else(|| "unknown".into(), ts_type_from_schema)
             ));
         }
@@ -317,6 +321,10 @@ pub(crate) fn rust_types_from_schema(
                         union: false,
                         sequence: false,
                         sequence_len: 0,
+                        sequence_min: 0,
+                        sequence_max: 0,
+                        sequence_rest: false,
+                        sequence_rest_type: String::new(),
                         deny_unknown_fields: false,
                         transparent: true,
                         has_default: true,
@@ -469,8 +477,8 @@ pub(crate) fn build_rust_type(
         }
         Some("object") => rust_model_from_schema(type_name, schema, models),
         Some("array") => {
-            if let Some(items) = fixed_sequence_items(schema) {
-                return build_rust_sequence(type_name, items, models);
+            if let Some(shape) = sequence_shape(schema) {
+                return build_rust_sequence(type_name, &shape, models);
             }
             let item_type_name = format!("{}Item", rust_type_name(type_name));
             let item_type = schema.get("items").map_or_else(
@@ -518,6 +526,10 @@ pub(crate) fn build_rust_union(
             union: true,
             sequence: false,
             sequence_len: 0,
+            sequence_min: 0,
+            sequence_max: 0,
+            sequence_rest: false,
+            sequence_rest_type: String::new(),
             deny_unknown_fields: false,
             transparent: false,
             has_default: true,
@@ -537,6 +549,24 @@ pub(crate) fn build_rust_union(
     name
 }
 
+fn empty_model(model_name: &str) -> RustModelTemplate {
+    RustModelTemplate {
+        name: model_name.to_owned(),
+        fields: vec![],
+        union: false,
+        sequence: false,
+        sequence_len: 0,
+        sequence_min: 0,
+        sequence_max: 0,
+        sequence_rest: false,
+        sequence_rest_type: String::new(),
+        deny_unknown_fields: false,
+        transparent: false,
+        has_default: true,
+        variants: vec![],
+    }
+}
+
 pub(crate) fn rust_model_from_schema(
     type_name: &str,
     schema: &JsonValue,
@@ -550,20 +580,7 @@ pub(crate) fn rust_model_from_schema(
         suffix += 1;
     }
     // Reserve the name before nested fields allocate their own models.
-    models.insert(
-        model_name.clone(),
-        RustModelTemplate {
-            name: model_name.clone(),
-            fields: vec![],
-            union: false,
-            sequence: false,
-            sequence_len: 0,
-            deny_unknown_fields: false,
-            transparent: false,
-            has_default: true,
-            variants: vec![],
-        },
-    );
+    models.insert(model_name.clone(), empty_model(&model_name));
 
     let required = schema
         .get("required")
@@ -632,6 +649,10 @@ pub(crate) fn rust_model_from_schema(
             union: false,
             sequence: false,
             sequence_len: 0,
+            sequence_min: 0,
+            sequence_max: 0,
+            sequence_rest: false,
+            sequence_rest_type: String::new(),
             deny_unknown_fields: schema.get("additionalProperties")
                 == Some(&JsonValue::Bool(false)),
             transparent: false,
@@ -642,9 +663,17 @@ pub(crate) fn rust_model_from_schema(
     model_name
 }
 
-// Only exact dense positional shapes receive a precise Rust sequence model.
-// Variable-length prefixes/rest retain their existing broad representation.
-fn fixed_sequence_items(schema: &JsonValue) -> Option<&[JsonValue]> {
+static ANY_SEQUENCE_ITEM: JsonValue = JsonValue::Bool(true);
+
+struct SequenceShape<'a> {
+    prefix: &'a [JsonValue],
+    minimum: u64,
+    maximum: u64,
+    // Some(true) is an unrestricted JSON rest; None means no rest is admitted.
+    rest: Option<&'a JsonValue>,
+}
+
+fn sequence_shape(schema: &JsonValue) -> Option<SequenceShape<'_>> {
     let prefix = schema
         .get("prefixItems")
         .or_else(|| schema.get("items").filter(|items| items.is_array()))
@@ -656,30 +685,36 @@ fn fixed_sequence_items(schema: &JsonValue) -> Option<&[JsonValue]> {
     } else {
         schema.get("items")
     };
-    let prefix = prefix.map_or(&[][..], Vec::as_slice);
-    let minimum = schema
-        .get("minItems")
-        .and_then(JsonValue::as_u64)
-        .unwrap_or(0);
-    let maximum = schema
-        .get("maxItems")
-        .and_then(JsonValue::as_u64)
-        .unwrap_or(u64::MAX);
-    let maximum = if tail == Some(&JsonValue::Bool(false)) {
-        maximum.min(prefix.len() as u64)
-    } else {
-        maximum
+    let minimum = match schema.get("minItems") {
+        Some(value) => value.as_u64()?,
+        None => 0,
     };
-    // Truncated prefixes are valid: later positions are unreachable under maxItems.
-    if minimum == maximum && maximum <= prefix.len() as u64 {
-        return Some(&prefix[..usize::try_from(maximum).ok()?]);
+    let mut maximum = match schema.get("maxItems") {
+        Some(value) => value.as_u64()?,
+        None => u64::MAX,
+    };
+    if tail == Some(&JsonValue::Bool(false)) {
+        maximum = maximum.min(prefix.map_or(0, Vec::len) as u64);
     }
-    None
+    if minimum > maximum || (prefix.is_none() && maximum != 0) {
+        return None;
+    }
+    let prefix = prefix.map_or(&[][..], Vec::as_slice);
+    let reachable = prefix
+        .len()
+        .min(usize::try_from(maximum).unwrap_or(usize::MAX));
+    let rest = (maximum > prefix.len() as u64).then(|| tail.unwrap_or(&ANY_SEQUENCE_ITEM));
+    Some(SequenceShape {
+        prefix: &prefix[..reachable],
+        minimum,
+        maximum,
+        rest,
+    })
 }
 
 fn build_rust_sequence(
     type_name: &str,
-    items: &[JsonValue],
+    shape: &SequenceShape<'_>,
     models: &mut BTreeMap<String, RustModelTemplate>,
 ) -> String {
     let base = rust_type_name(type_name);
@@ -696,26 +731,51 @@ fn build_rust_sequence(
             fields: vec![],
             union: false,
             sequence: true,
-            sequence_len: items.len(),
+            sequence_len: shape.prefix.len(),
+            sequence_min: shape.minimum,
+            sequence_max: shape.maximum,
+            sequence_rest: shape.rest.is_some(),
+            sequence_rest_type: String::new(),
             deny_unknown_fields: false,
             transparent: false,
             has_default: true,
             variants: vec![],
         },
     );
-    let fields = items
+    let fields = shape
+        .prefix
         .iter()
         .enumerate()
-        .map(|(index, item)| RustModelFieldTemplate {
-            optional: false,
-            required: false,
-            flatten: false,
-            wire_name_literal: format!("\"{index}\""),
-            field_name: format!("item{index}"),
-            field_type: build_rust_type(&format!("{name}Item{index}"), item, models),
+        .map(|(index, item)| {
+            let optional = index as u64 >= shape.minimum;
+            let value = build_rust_type(&format!("{name}Item{index}"), item, models);
+            RustModelFieldTemplate {
+                optional,
+                required: false,
+                flatten: false,
+                wire_name_literal: format!("\"{index}\""),
+                field_name: format!("item{index}"),
+                field_type: if optional {
+                    format!("Option<{value}>")
+                } else {
+                    value
+                },
+            }
         })
         .collect();
-    models.get_mut(&name).unwrap().fields = fields;
+    let rest = shape
+        .rest
+        .map(|schema| build_rust_type(&format!("{name}Rest"), schema, models));
+    let model = models.get_mut(&name).unwrap();
+    model.fields = fields;
+    model.sequence_rest_type = rest
+        .map(|ty| {
+            ty.strip_prefix("Box<")
+                .and_then(|value| value.strip_suffix('>'))
+                .unwrap_or(&ty)
+                .to_owned()
+        })
+        .unwrap_or_default();
     name
 }
 
@@ -845,6 +905,11 @@ fn can_default(
         return false;
     }
     let model = &models[name];
+    if model.sequence && model.sequence_min > model.sequence_len as u64 {
+        active.remove(name);
+        memo.insert(name.into(), false);
+        return false;
+    }
     let fields = if model.union {
         model
             .variants
@@ -891,10 +956,12 @@ pub fn render_rust_models(
     let data = ModelSourceTemplate {
         has_optional_fields: models
             .iter()
+            .filter(|model| !model.sequence)
             .flat_map(|model| &model.fields)
             .any(|field| field.optional),
         has_required_fields: models
             .iter()
+            .filter(|model| !model.sequence)
             .flat_map(|model| &model.fields)
             .any(|field| field.required),
         models,
@@ -909,7 +976,7 @@ mod sequence_tests {
     use serde_json::json;
 
     #[test]
-    fn fixed_shapes_use_sequences_and_keep_variable_shapes_broad() {
+    fn positional_shapes_preserve_presence_rest_and_bounds() {
         for count in [0, 1, 16, 17, 128] {
             let schema = json!({"type":"array", "prefixItems":vec![json!({"type":"string"});count], "items":false, "minItems":count});
             let (models, _, name) = rust_types_from_schema("Tuple", &schema);
@@ -917,32 +984,38 @@ mod sequence_tests {
             assert!(model.sequence);
             assert_eq!(model.fields.len(), count);
             assert!(model.has_default);
+            assert!(!model.sequence_rest);
         }
-        for schema in [
-            json!({"type":"array", "prefixItems":[{"type":"string"}], "items":false}),
-            json!({"type":"array", "prefixItems":[{"type":"string"}], "minItems":1}),
-            json!({"type":"array", "prefixItems":[{"type":"string"}], "minItems":2, "items":false}),
-        ] {
-            let (models, _, _) = rust_types_from_schema("Tuple", &schema);
-            assert!(models.iter().all(|model| !model.sequence));
-        }
+        let schema = json!({"type":"array","prefixItems":[{"type":["string","null"]},{"type":"boolean"}],"items":{"type":"integer"},"maxItems":4});
+        let (models, _, _) = rust_types_from_schema("Tuple", &schema);
+        assert_eq!(models[0].fields[0].field_type, "Option<Option<String>>");
+        assert_eq!(models[0].fields[1].field_type, "Option<bool>");
+        assert_eq!(models[0].sequence_rest_type, "i64");
+        assert!(models[0].has_default);
+        let required_rest = json!({"type":"array","prefixItems":[true],"minItems":3,"items":true});
+        let (models, _, _) = rust_types_from_schema("Tuple", &required_rest);
+        assert!(!models[0].has_default);
+        assert_eq!(models[0].sequence_rest_type, "serde_json::Value");
+        assert!(
+            sequence_shape(
+                &json!({"type":"array","prefixItems":[true],"items":false,"minItems":2})
+            )
+            .is_none()
+        );
+        assert!(sequence_shape(&json!({"type":"array","items":{"type":"string"}})).is_none());
         assert_eq!(
-            fixed_sequence_items(&json!({"type":"array", "maxItems":0})),
-            Some(&[][..])
+            sequence_shape(&json!({"type":"array","maxItems":0}))
+                .unwrap()
+                .prefix
+                .len(),
+            0
         );
         assert_eq!(
-            fixed_sequence_items(
-                &json!({"type":"array", "prefixItems":[true,true], "minItems":1,"maxItems":1})
+            sequence_shape(
+                &json!({"type":"array","prefixItems":[true,true],"minItems":1,"maxItems":1})
             )
             .unwrap()
-            .len(),
-            1
-        );
-        assert_eq!(
-            fixed_sequence_items(
-                &json!({"type":"array", "items":[true], "minItems":1,"additionalItems":false})
-            )
-            .unwrap()
+            .prefix
             .len(),
             1
         );

@@ -52,16 +52,51 @@ pub struct {{name}} {
 {{#fields}}
     pub {{field_name}}: {{{field_type}}},
 {{/fields}}
+{{#sequence_rest}}
+    pub rest: Vec<{{{sequence_rest_type}}}>,
+{{/sequence_rest}}
 }
 
 impl Serialize for {{name}} {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeSeq as _;
         #[allow(unused_mut)]
-        let mut sequence = serializer.serialize_seq(Some({{sequence_len}}))?;
+        let mut length = 0usize;
+        #[allow(unused_mut, unused_variables)]
+        let mut missing = false;
 {{#fields}}
-        sequence.serialize_element(&self.{{field_name}})?;
+{{#optional}}
+        if self.{{field_name}}.is_some() {
+            if missing { return Err(<S::Error as serde::ser::Error>::custom("tuple positions must be contiguous")); }
+            length = length.checked_add(1).ok_or_else(|| <S::Error as serde::ser::Error>::custom("tuple length overflow"))?;
+        } else { missing = true; }
+{{/optional}}
+{{^optional}}
+        length = length.checked_add(1).ok_or_else(|| <S::Error as serde::ser::Error>::custom("tuple length overflow"))?;
+{{/optional}}
 {{/fields}}
+{{#sequence_rest}}
+        if missing && !self.rest.is_empty() { return Err(<S::Error as serde::ser::Error>::custom("tuple rest requires every prefix position")); }
+        length = length.checked_add(self.rest.len()).ok_or_else(|| <S::Error as serde::ser::Error>::custom("tuple length overflow"))?;
+{{/sequence_rest}}
+        let _ = missing;
+        let wire_length = u64::try_from(length).map_err(|_| <S::Error as serde::ser::Error>::custom("tuple length overflow"))?;
+        if !({{sequence_min}}..={{sequence_max}}).contains(&wire_length) {
+            return Err(<S::Error as serde::ser::Error>::custom("tuple length outside declared bounds"));
+        }
+        #[allow(unused_mut)]
+        let mut sequence = serializer.serialize_seq(Some(length))?;
+{{#fields}}
+{{#optional}}
+        if let Some(value) = &self.{{field_name}} { sequence.serialize_element(value)?; }
+{{/optional}}
+{{^optional}}
+        sequence.serialize_element(&self.{{field_name}})?;
+{{/optional}}
+{{/fields}}
+{{#sequence_rest}}
+        for value in &self.rest { sequence.serialize_element(value)?; }
+{{/sequence_rest}}
         sequence.end()
     }
 }
@@ -72,16 +107,49 @@ impl<'de> Deserialize<'de> for {{name}} {
         impl<'de> serde::de::Visitor<'de> for SequenceVisitor {
             type Value = {{name}};
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("the fixed-length {{name}} sequence")
+                formatter.write_str("the {{name}} tuple sequence")
             }
             fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+                #[allow(unused_mut)]
+                let mut length = 0u64;
+                #[allow(unused_mut)]
+                let mut ended = false;
 {{#fields}}
+{{#optional}}
+                let {{field_name}}: {{{field_type}}} = if ended { None } else {
+                    let value = sequence.next_element()?;
+                    ended = value.is_none();
+                    value
+                };
+                if {{field_name}}.is_some() { length = length.checked_add(1).ok_or_else(|| serde::de::Error::custom("tuple length overflow"))?; }
+{{/optional}}
+{{^optional}}
                 let {{field_name}} = sequence.next_element()?.ok_or_else(|| serde::de::Error::custom("missing tuple element {{field_name}}"))?;
+                length = length.checked_add(1).ok_or_else(|| serde::de::Error::custom("tuple length overflow"))?;
+{{/optional}}
 {{/fields}}
-                if sequence.next_element::<serde::de::IgnoredAny>()?.is_some() {
+{{#sequence_rest}}
+                let mut rest = Vec::new();
+                while !ended {
+                    if length == {{sequence_max}} {
+                        if sequence.next_element::<serde::de::IgnoredAny>()?.is_some() {
+                            return Err(serde::de::Error::custom("tuple length exceeds declared maximum"));
+                        }
+                        break;
+                    }
+                    if let Some(value) = sequence.next_element()? {
+                        length = length.checked_add(1).ok_or_else(|| serde::de::Error::custom("tuple length overflow"))?;
+                        rest.push(value);
+                    } else { ended = true; }
+                }
+{{/sequence_rest}}
+{{^sequence_rest}}
+                if !ended && sequence.next_element::<serde::de::IgnoredAny>()?.is_some() {
                     return Err(serde::de::Error::custom("extra tuple element"));
                 }
-                Ok({{name}} { {{#fields}}{{field_name}}, {{/fields}} })
+{{/sequence_rest}}
+                if !({{sequence_min}}..={{sequence_max}}).contains(&length) { return Err(serde::de::Error::custom("tuple length outside declared bounds")); }
+                Ok({{name}} { {{#fields}}{{field_name}}, {{/fields}}{{#sequence_rest}}rest,{{/sequence_rest}} })
             }
         }
         deserializer.deserialize_seq(SequenceVisitor)
