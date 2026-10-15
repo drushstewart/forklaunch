@@ -191,13 +191,17 @@ its own suppression list (hard bounces and complaints).
 | sends from | `no-reply@<instance>.<sending domain>` | `no-reply@<app>-<6 hex>.<sending domain>` in `production`/`prod`/`main`; `no-reply@<app>-<env>-<6 hex>.<sending domain>` elsewhere |
 | `INSTANCE_ID` / `INSTANCE_HMAC_KEY` | the instance's, from its provisioner | the environment's gateway principal, minted on its first deploy that declares email, the same on every redeploy |
 | limits | the product's (template), then the instance's override | the platform's application defaults (`EMAIL_GATEWAY_APP_*`), then the environment's override |
-| events | the service that declared email | the HTTP service that declared email, at `https://<service>.<app DNS subzone>`; a worker binding records them (suppression still applies) but has no route to relay to |
+| events | the service that declared email | the HTTP service that declared email, at `https://<service>.<app DNS subzone>/platform-events/email`; for a worker, its server component receives them there through `api/platformEvents/email.ts` (the worker process does not). With no public DNS for the app they are recorded (suppression still applies) but not relayed |
 
 For a regular deployment the deploy stores `PLATFORM_GATEWAY_URL`,
-`INSTANCE_ID` and `INSTANCE_HMAC_KEY` as platform-owned, application-scope
-variables of the environment × region, so every service and worker gets them;
-nobody is asked for them, and a value a person set on one component is left
-alone (that component then cannot send). An application that backs a managed
+`INSTANCE_ID` and `INSTANCE_HMAC_KEY` as platform-owned variables of the
+environment × region **only on the services and workers the release binds
+email to** (component scope). Other components never get them: the framework
+reads those three variables as "this is a managed instance", and a billing
+service that saw them would route Stripe through the gateway. Run
+`infra remove <component> email` and the next deploy removes them again.
+Nobody is asked for them; a value a person set on a component is left alone
+(that component then cannot send). An application that backs a managed
 instance is skipped: its instance's own values stay.
 
 ### 1. What the CLI writes

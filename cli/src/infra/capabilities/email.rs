@@ -210,6 +210,88 @@ const serviceDependencies = runtimeDependencies.chain({});
         let _ = fs::remove_dir_all(&root);
     }
 
+    fn events_route(root: &std::path::Path) -> Option<String> {
+        let parsed: crate::core::docker::DockerCompose =
+            serde_yml::from_str(&fs::read_to_string(root.join("docker-compose.yaml")).unwrap())
+                .unwrap();
+        parsed
+            .services
+            .get(super::super::GATEWAY_MOCK_SERVICE)?
+            .environment
+            .as_ref()?
+            .get("MOCK_EVENTS_URL_EMAIL")
+            .cloned()
+    }
+
+    #[test]
+    fn a_service_and_a_worker_with_email_both_keep_their_event_route() {
+        let (root, billing) = service("service-and-worker");
+        fs::write(
+            root.join("docker-compose.yaml"),
+            "volumes: {}\nnetworks:\n  demo-network:\n    name: demo-network\nservices:\n  billing:\n    image: node:22\n    networks: [demo-network]\n    environment:\n      PORT: '8001'\n  jobs-server:\n    image: node:22\n    networks: [demo-network]\n    environment:\n      PORT: '8002'\n  jobs-worker:\n    image: node:22\n    networks: [demo-network]\n",
+        )
+        .unwrap();
+        let jobs = root.join("src/modules/jobs");
+        fs::create_dir_all(&jobs).unwrap();
+        fs::write(jobs.join("registrations.ts"), REGISTRATIONS).unwrap();
+        fs::write(jobs.join("server.ts"), SERVER).unwrap();
+        let caps = |c: &[&str]| c.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+
+        // The service has email first.
+        let mut e = edit(&root, &billing, &["email"]);
+        super::super::apply(&mut e, &EMAIL, true).unwrap();
+        e.commit().unwrap();
+        assert_eq!(events_route(&root).as_deref(), Some("http://billing:8001"));
+
+        // Then a worker gets it: the service's route stays, the worker's
+        // server is added beside it.
+        let mut e = CapabilityEdit::new(
+            &root,
+            "demo",
+            "jobs",
+            &jobs,
+            caps(&["email"]),
+            caps(&["email", "email"]),
+        )
+        .for_worker();
+        super::super::apply(&mut e, &EMAIL, true).unwrap();
+        e.commit().unwrap();
+        assert_eq!(
+            events_route(&root).as_deref(),
+            Some("http://billing:8001,http://jobs-server:8002")
+        );
+        for module in [&billing, &jobs] {
+            assert!(module.join("api/platformEvents/email.ts").exists());
+            assert!(fs::read_to_string(module.join("server.ts"))
+                .unwrap()
+                .contains("platformEventsRouter"));
+        }
+
+        // Taking it off the worker leaves the service's route alone.
+        let mut e = CapabilityEdit::new(&root, "demo", "jobs", &jobs, caps(&[]), caps(&["email"]))
+            .for_worker();
+        super::super::apply(&mut e, &EMAIL, false).unwrap();
+        e.remove_platform_events("email").unwrap();
+        e.commit().unwrap();
+        assert_eq!(events_route(&root).as_deref(), Some("http://billing:8001"));
+        assert!(billing.join("api/platformEvents/email.ts").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_worker_needs_both_its_containers_in_compose() {
+        let (root, service) = service("worker-half");
+        fs::write(
+            root.join("docker-compose.yaml"),
+            "volumes: {}\nnetworks:\n  demo-network:\n    name: demo-network\nservices:\n  billing-server:\n    image: node:22\n    networks: [demo-network]\n",
+        )
+        .unwrap();
+        let mut e = edit(&root, &service, &["email"]).for_worker();
+        let error = super::super::apply(&mut e, &EMAIL, true).unwrap_err().to_string();
+        assert!(error.contains("'billing-worker'"), "{error}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn only_email_may_be_added_to_a_worker() {
         assert!(EMAIL.workers);

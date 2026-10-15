@@ -538,7 +538,9 @@ forklaunch score --offline                    # afterwards: the wiring checks sh
 ```
 
 Run it from the app root (or pass `-p <app-root>`). It refuses a type the
-service already has, a type it lacks on remove, and projects that aren't services.
+project already has, a type it lacks on remove, and projects that aren't
+services — except `email`, which a worker may also hold (its worker and server
+containers both get the gateway settings; the server receives the events).
 
 `voice` is a platform-held capability: it registers `VoiceClient`
 (`createVoiceClient()`, keyless), writes `api/platformEvents/voice.ts` for call
