@@ -68,10 +68,38 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(self)
     }
 
+    /// Enables trusted lifecycle policy while preserving OTP/TOTP configuration.
+    /// Passwordless never skips an existing credential password, and policy is not
+    /// accepted from HTTP. Skip-verification deliberately enables protection immediately.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted authentication configuration.
+    pub fn with_two_factor_lifecycle_options(
+        mut self,
+        options: crate::two_factor::TwoFactorLifecycleOptions,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_lifecycle_options(options),
+        ));
+        Ok(self)
+    }
+
     pub(super) fn configured_schema(&self) -> Value {
         let mut schema = super::public::openapi_schema(&self.auth_base_url(), self.jwks_path());
         if self.two_factor.is_some() {
             augment_schema(&mut schema);
+            if let Some(service) = &self.two_factor {
+                for path in PATHS {
+                    if service.lifecycle_options().password_optional(path) {
+                        schema["paths"][path]["post"]["requestBody"]["content"]["application/json"]
+                            ["schema"]["required"] = json!([]);
+                    }
+                }
+            }
             if self
                 .two_factor
                 .as_ref()
@@ -116,7 +144,11 @@ pub(super) fn routes<S: AuthStore + 'static>(enabled: bool) -> Router<Arc<AuthHt
     }
     router
 }
-pub(super) fn validate(path: &str, body: Option<&Value>) -> BlueprintResult<()> {
+pub(super) fn validate(
+    path: &str,
+    body: Option<&Value>,
+    password_optional: bool,
+) -> BlueprintResult<()> {
     if path == "/two-factor/send-otp" {
         if body.is_none() {
             return Ok(());
@@ -146,7 +178,9 @@ pub(super) fn validate(path: &str, body: Option<&Value>) -> BlueprintResult<()> 
     } else {
         "password"
     };
-    if !body[field].is_string() {
+    if !(body[field].is_string()
+        || field == "password" && password_optional && body.get(field).is_none())
+    {
         return Err(BlueprintError::new(
             "VALIDATION_ERROR",
             format!("[body.{field}] Invalid input: expected string"),
@@ -380,10 +414,7 @@ pub(super) fn augment_schema(schema: &mut Value) {
             properties.insert("trustDevice".into(), json!({"type":"boolean"}));
         }
         if path == "/two-factor/enable" {
-            properties.insert(
-                "issuer".into(),
-                json!({"type":"string","minLength":1,"maxLength":256}),
-            );
+            properties.insert("issuer".into(), json!({"type":"string","maxLength":256}));
             properties.insert("method".into(), json!({"type":"string","enum":["totp"]}));
         }
         let response = match path {

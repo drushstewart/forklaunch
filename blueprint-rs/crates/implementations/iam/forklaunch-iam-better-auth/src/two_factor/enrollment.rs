@@ -4,7 +4,8 @@ use super::{
     json, new_session, secret, text, timestamp, verification_row,
 };
 impl<S: AuthStore> TwoFactorService<S> {
-    /// Begins or replaces unverified enrollment; does not enable protection yet.
+    /// Begins or replaces enrollment. Default policy requires verification; trusted
+    /// skip-verification policy enables protection and rotates the current session.
     /// # Errors
     /// Requires authoritative session/password and rejects verified enrollment.
     pub async fn enable(
@@ -14,13 +15,20 @@ impl<S: AuthStore> TwoFactorService<S> {
         issuer: Option<&str>,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
-        let issuer = issuer.unwrap_or(&self.issuer);
-        if issuer.is_empty() || issuer.len() > 256 {
+        let issuer = self
+            .lifecycle_options
+            .enrollment_issuer(issuer, &self.issuer);
+        if issuer.len() > 256 {
             return Err(error("VALIDATION_ERROR", "Invalid issuer"));
         }
-        let checked = self.password_snapshot(token, password, now).await?;
+        let checked = self
+            .password_snapshot(token, password, now, super::PasswordAction::General)
+            .await?;
+        if self.lifecycle_options.disable_totp {
+            return Err(error("TOTP_NOT_CONFIGURED", "TOTP is not available"));
+        }
         let mut tx = self.store.begin(true).await?;
-        let (user, _) = authenticated(&mut tx, token, now).await?;
+        let (mut user, old_session) = authenticated(&mut tx, token, now).await?;
         checked.check(&mut tx, &user).await?;
         let existing = tx
             .find_unique(Model::TwoFactor, "userId", text(&user, "id")?)
@@ -38,16 +46,26 @@ impl<S: AuthStore> TwoFactorService<S> {
             .map(|row| text(row, "id").map(str::to_owned))
             .transpose()?
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let row = json!({"id":id,"userId":user["id"],"secret":STANDARD.encode(secret.as_slice()),"backupCodes":codes,"verified":false,"failedVerificationCount":0,"lockedUntil":null});
+        let row = json!({"id":id,"userId":user["id"],"secret":STANDARD.encode(secret.as_slice()),"backupCodes":codes,"verified":self.lifecycle_options.skip_verification_on_enable,"failedVerificationCount":0,"lockedUntil":null});
         if existing.is_some() {
             tx.replace(Model::TwoFactor, row).await?;
         } else {
             tx.insert(Model::TwoFactor, row).await?;
         }
+        let replacement = if self.lifecycle_options.skip_verification_on_enable {
+            user["twoFactorEnabled"] = json!(true);
+            user["updatedAt"] = json!(timestamp(now));
+            tx.replace(Model::User, user.clone()).await?;
+            Some(rotate(&mut tx, &user, &old_session, now).await?)
+        } else {
+            None
+        };
         tx.commit().await?;
-        Ok(empty_response(
+        let mut response = empty_response(
             json!({"method":"totp","totpURI":uri(issuer,text(&user,"email")?,&secret,self.totp_options),"backupCodes":codes}),
-        ))
+        );
+        response.session = replacement;
+        Ok(response)
     }
     /// Returns an enrollment URI after checking the current password and session.
     /// # Errors
@@ -58,13 +76,15 @@ impl<S: AuthStore> TwoFactorService<S> {
         password: String,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
-        let checked = self.password_snapshot(token, password, now).await?;
+        let checked = self
+            .password_snapshot(token, password, now, super::PasswordAction::Uri)
+            .await?;
         let mut tx = self.store.begin(true).await?;
         let (user, _) = authenticated(&mut tx, token, now).await?;
         checked.check(&mut tx, &user).await?;
         let row = factor(&mut tx, &user).await?;
         let result = uri(
-            &self.issuer,
+            self.lifecycle_options.uri_issuer(&self.issuer),
             text(&user, "email")?,
             &secret(&row)?,
             self.totp_options,
@@ -81,7 +101,9 @@ impl<S: AuthStore> TwoFactorService<S> {
         password: String,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
-        let checked = self.password_snapshot(token, password, now).await?;
+        let checked = self
+            .password_snapshot(token, password, now, super::PasswordAction::Backup)
+            .await?;
         let mut tx = self.store.begin(true).await?;
         let (user, _) = authenticated(&mut tx, token, now).await?;
         checked.check(&mut tx, &user).await?;
@@ -105,7 +127,9 @@ impl<S: AuthStore> TwoFactorService<S> {
         trust: Option<&str>,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
-        let checked = self.password_snapshot(token, password, now).await?;
+        let checked = self
+            .password_snapshot(token, password, now, super::PasswordAction::General)
+            .await?;
         let mut tx = self.store.begin(true).await?;
         let (mut user, old_session) = authenticated(&mut tx, token, now).await?;
         checked.check(&mut tx, &user).await?;

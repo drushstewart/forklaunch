@@ -263,7 +263,9 @@ impl<S: AuthStore> TwoFactorService<S> {
         password: String,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
-        let snapshot = self.password_snapshot(token, password, now).await?;
+        let snapshot = self
+            .password_snapshot(token, password, now, super::PasswordAction::General)
+            .await?;
         if self.otp_delivery.is_none() {
             return Err(error("OTP_NOT_CONFIGURED", "OTP is not available"));
         }

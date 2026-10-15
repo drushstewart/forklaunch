@@ -9,6 +9,7 @@ use crate::{
 mod fault_store;
 #[cfg(feature = "http")]
 mod http;
+mod lifecycle_options;
 mod otp;
 mod otp_options;
 #[cfg(feature = "postgres")]

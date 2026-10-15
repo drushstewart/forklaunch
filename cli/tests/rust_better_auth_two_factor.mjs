@@ -565,3 +565,5 @@ console.log(
 globalThis.Date = RealDate;
 
 await import('./fixtures/rust_better_auth_totp_options.mjs');
+
+await import('./fixtures/rust_better_auth_lifecycle_options.mjs');

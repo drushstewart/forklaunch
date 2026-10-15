@@ -132,9 +132,24 @@ pub(super) fn session_credentials<S: AuthStore>(
     )
 }
 
+pub(super) fn validate_configured_body<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    path: &str,
+    payload: Option<&Value>,
+) -> BlueprintResult<()> {
+    if path.starts_with("/two-factor/") {
+        let optional = app
+            .two_factor
+            .as_ref()
+            .is_some_and(|service| service.lifecycle_options().password_optional(path));
+        return super::two_factor::validate(path, payload, optional);
+    }
+    validate_body(path, payload)
+}
+
 pub(super) fn validate_body(path: &str, payload: Option<&Value>) -> BlueprintResult<()> {
     if path.starts_with("/two-factor/") {
-        return super::two_factor::validate(path, payload);
+        return super::two_factor::validate(path, payload, false);
     }
     if matches!(path, "/get-access-token" | "/refresh-token") {
         return super::account_tokens::validate(payload, "body");

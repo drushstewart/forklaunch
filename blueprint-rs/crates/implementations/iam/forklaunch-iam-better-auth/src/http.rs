@@ -516,7 +516,7 @@ async fn handle<S: AuthStore + 'static>(
             false,
         )?;
     }
-    request::validate_body(path, payload.as_ref())?;
+    request::validate_configured_body(app, path, payload.as_ref())?;
     organization::validate_query(path, &query)?;
     if path == "/account-info" {
         account_tokens::validate(Some(&json!(query)), "query")?;

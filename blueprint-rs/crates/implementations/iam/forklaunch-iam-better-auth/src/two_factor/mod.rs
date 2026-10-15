@@ -12,6 +12,9 @@
 //! must not be logged; this module intentionally provides no secret-bearing Debug.
 mod crypto;
 mod enrollment;
+mod lifecycle;
+use lifecycle::PasswordAction;
+pub use lifecycle::TwoFactorLifecycleOptions;
 mod otp;
 pub use otp::{OtpDelivery, OtpDeliveryContext, OtpDeliveryFuture, OtpOptions};
 pub(crate) mod signin;
@@ -40,6 +43,7 @@ pub struct TwoFactorService<S> {
     otp_delivery: Option<Arc<dyn OtpDelivery>>,
     otp_options: OtpOptions,
     totp_options: TotpOptions,
+    lifecycle_options: TwoFactorLifecycleOptions,
 }
 /// A successful state transition. Explicit wire projection can contain recovery
 /// credentials and must only be returned to the authorized browser.
@@ -132,55 +136,8 @@ impl<S: AuthStore> TwoFactorService<S> {
             otp_delivery: None,
             otp_options: OtpOptions::default(),
             totp_options: TotpOptions::default(),
+            lifecycle_options: TwoFactorLifecycleOptions::default(),
         })
-    }
-    async fn password_snapshot(
-        &self,
-        token: &str,
-        password: String,
-        now: DateTime<Utc>,
-    ) -> BlueprintResult<PasswordSnapshot> {
-        crate::accounts::validate_length(&password, false)?;
-        let mut tx = self.store.begin(true).await?;
-        let (user, _) = authenticated(&mut tx, token, now).await?;
-        let account = crate::accounts::find_credential(&mut tx, text(&user, "id")?)
-            .await?
-            .ok_or_else(invalid_password)?;
-        let expected = Zeroizing::new(text(&account, "password")?.to_owned());
-        tx.commit().await?;
-        let supplied = Zeroizing::new(password);
-        let hash = expected.clone();
-        if !CredentialService::new(self.store.clone())
-            .run_crypto(move || Ok(credentials::verify_password(&supplied, &hash)))
-            .await?
-        {
-            return Err(invalid_password());
-        }
-        Ok(PasswordSnapshot {
-            account_id: text(&account, "id")?.to_owned(),
-            user_id: text(&user, "id")?.to_owned(),
-            expected,
-        })
-    }
-}
-struct PasswordSnapshot {
-    account_id: String,
-    user_id: String,
-    expected: Zeroizing<String>,
-}
-impl PasswordSnapshot {
-    async fn check<T: AuthTransaction>(&self, tx: &mut T, user: &Value) -> BlueprintResult<()> {
-        let current = tx
-            .get(Model::Account, &self.account_id)
-            .await?
-            .ok_or_else(invalid_password)?;
-        if current["password"].as_str() != Some(self.expected.as_str())
-            || current["userId"] != self.user_id
-            || user["id"] != self.user_id
-        {
-            return Err(invalid_password());
-        }
-        Ok(())
     }
 }
 async fn authenticated<T: AuthTransaction>(

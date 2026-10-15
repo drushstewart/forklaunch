@@ -1069,3 +1069,13 @@ binary64 counter behavior and explicitly excludes negative/epoch-wrap difference
 These profiles do not imply passkeys, universal/social MFA or browser delivery.
 Exact source/hash/native/PG/client receipts are in the parity inventory; immutable
 d835 packaging predates the later OTP/TOTP option drafts and is scoped separately.
+
+
+Trusted MFA lifecycle options (2026-10-14): passwordless policy is server-only,
+requires authoritative sessions, and is permitted only without an existing
+credential password. Mutation transactions recheck absent/present password
+snapshots. Skip enrollment atomically enables the factor/user and rotates only
+the current session; other sessions/trust remain independent. Disabled TOTP
+challenges issue no session/JWT and can still use backup recovery. Restricted
+PostgreSQL race/rollback tests and actual-source option ordering pass; see the
+lifecycle receipt in RUST-TYPESCRIPT-PARITY-INVENTORY.md.

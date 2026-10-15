@@ -1214,8 +1214,45 @@ wraps that negative counter to unsigned64, while native retains its historical
 fail-closed boundary. Negative clocks, sub-millisecond/zero/negative periods,
 periods over 24h, and other digit widths are outside this typed subset.
 
-TOTP disable, skip-verification enrollment, separate URI issuer configuration and
-passwordless policies remain separate parity work. No configurable hash algorithm
+TOTP lifecycle policies are described below. No configurable hash algorithm
 is exposed by the upstream plugin; this profile continues to use SHA-1. The actual
-source fixture additionally characterizes those pending lifecycle policies without
-claiming their native implementation.
+source fixture also characterizes these lifecycle policies independently of the
+cryptographic parameter vectors.
+
+## Trusted two-factor lifecycle policy
+
+`TwoFactorLifecycleOptions::default()` preserves required passwords, enabled TOTP,
+and verification before enrollment enables protection. Apply it through
+`TwoFactorService::with_lifecycle_options` or
+`AuthHttp::with_two_factor_lifecycle_options`. These builders preserve the installed
+OTP delivery hook and both OTP/TOTP parameter sets. Request fields never set policy.
+
+- `with_totp_disabled(true)` blocks TOTP verification before authority lookup;
+  URI retrieval first requires a session, and enrollment first checks its password.
+  Existing trusted-device authentication remains valid. Otherwise a password login
+  can issue an empty-method challenge: it grants no session/JWT, but recovery codes
+  remain available. Disabling the method does not delete factor data or backup codes.
+- `with_skip_verification_on_enable(true)` atomically marks enrollment verified,
+  enables protection and rotates the current session without waiting for a TOTP.
+  Other sessions and trust records remain intact. Failure during rotation rolls back
+  the factor, user flag and session writes together. Defaults still require a code.
+- `with_issuers(enrollment, uri)` accepts independent optional issuer strings of at
+  most 256 UTF-8 bytes. Empty strings mean fallback. Enrollment chooses a nonempty
+  request issuer, then its configured issuer, then the application's issuer. Later
+  URI retrieval chooses its independent issuer or the application issuer.
+- `with_passwordless(true)` permits an omitted password only if the persisted
+  credential account has no password. An existing password still requires proof.
+  `with_uri_passwordless(Some(false))` and `with_backup_passwordless(Some(false))`
+  override that setting for URI retrieval and backup generation; `None` inherits.
+  HTTP validation/OpenAPI reflect only these trusted per-route settings. Direct
+  domain callers pass an empty password string when omitting it.
+
+Passwordless authorization always begins with a persisted, unexpired session.
+The native implementation additionally rechecks credential-password absence inside
+its mutation transaction: a password added after the initial snapshot rejects the
+operation. This stronger atomic race guarantee is tested separately from upstream
+stable-state ordering. Missing, null and empty credential-password strings count as
+absent; malformed non-string values fail closed. Existing required-password paths
+retain the hash snapshot and mutation-time comparison. No email linking or new
+social-sign-in protection is implied. Custom trust/challenge TTLs and backup-code
+format/storage options remain separate parity work.

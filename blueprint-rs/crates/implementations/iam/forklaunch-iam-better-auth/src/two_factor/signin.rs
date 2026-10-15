@@ -42,13 +42,15 @@ impl<S: AuthStore> TwoFactorService<S> {
             .find_unique(Model::TwoFactor, "userId", text(user, "id")?)
             .await?;
         let mut methods = Vec::new();
-        if row.as_ref().is_some_and(|row| row["verified"] != false) {
+        if !self.lifecycle_options.disable_totp
+            && row.as_ref().is_some_and(|row| row["verified"] != false)
+        {
             methods.push("totp");
         }
         if self.otp_delivery.is_some() {
             methods.push("otp");
         }
-        if methods.is_empty() {
+        if methods.is_empty() && !self.lifecycle_options.disable_totp {
             return Err(error("TOTP_NOT_ENABLED", "TOTP is not enabled"));
         }
         let identifier = format!("2fa-{}", crypto::opaque(20)?);

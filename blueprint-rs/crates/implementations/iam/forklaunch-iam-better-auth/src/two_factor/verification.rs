@@ -80,6 +80,9 @@ impl<S: AuthStore> TwoFactorService<S> {
         disable_session: bool,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
+        if !recovery && self.lifecycle_options.disable_totp {
+            return Err(error("TOTP_NOT_CONFIGURED", "totp isn't configured"));
+        }
         if code.len() > 128 {
             return Err(error("INVALID_CODE", "Invalid code"));
         }

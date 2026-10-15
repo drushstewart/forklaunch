@@ -533,7 +533,12 @@ async fn http_totp_options_preserve_otp_in_both_builder_orders() {
                 .unwrap()
         };
         let mut browser = Browser {
-            router: app.with_two_factor().unwrap().router(),
+            router: app
+                .with_two_factor_lifecycle_options(TwoFactorLifecycleOptions::default())
+                .unwrap()
+                .with_two_factor()
+                .unwrap()
+                .router(),
             jar: BTreeMap::new(),
             origin: origin.into(),
         };
@@ -566,7 +571,7 @@ async fn http_totp_options_preserve_otp_in_both_builder_orders() {
         let enrollment = browser
             .call(
                 "/two-factor/enable",
-                Some(json!({"password":PASSWORD,"digits":6,"period":30})),
+                Some(json!({"password":PASSWORD,"digits":6,"period":30,"skipVerificationOnEnable":true})),
             )
             .await;
         assert_eq!(enrollment.0, 200);
@@ -583,6 +588,8 @@ async fn http_totp_options_preserve_otp_in_both_builder_orders() {
         assert_eq!(get.0, 200);
         assert_eq!(get.1["totpURI"], enrollment.1["totpURI"]);
         let row = rows(store.as_ref(), Model::TwoFactor).await.remove(0);
+        assert_eq!(row["verified"], false);
+        assert!(!enabled(&rows(store.as_ref(), Model::User).await[0]).unwrap());
         let code = crypto::code(
             &secret(&row).unwrap(),
             totp.counter(now.timestamp_millis()).unwrap(),
@@ -597,4 +604,152 @@ async fn http_totp_options_preserve_otp_in_both_builder_orders() {
         );
         assert!(rows(store.as_ref(), Model::User).await[0]["twoFactorEnabled"] == true);
     }
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn http_lifecycle_policy_password_order_skip_issuers_and_disabled_recovery() {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    let store = Arc::new(MemoryAuthStore::default());
+    let policy = TwoFactorLifecycleOptions::default()
+        .with_passwordless(true)
+        .with_skip_verification_on_enable(true)
+        .with_issuers(Some("Global issuer".into()), Some("URI issuer".into()))
+        .unwrap();
+    let build = |policy: TwoFactorLifecycleOptions| {
+        AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+            .unwrap()
+            .with_clock(move || now)
+            .with_rate_limiting(false)
+            .with_two_factor_lifecycle_options(policy)
+            .unwrap()
+    };
+    let mut browser = Browser {
+        router: build(policy.clone()).router(),
+        jar: BTreeMap::new(),
+        origin: origin.into(),
+    };
+    assert_eq!(
+        browser.call("/two-factor/enable", Some(json!({}))).await.1["code"],
+        "UNAUTHORIZED"
+    );
+    let signup=browser.call("/sign-up/email",Some(json!({"name":"Policy","firstName":"Policy","lastName":"User","email":"policy@example.test","password":PASSWORD}))).await;
+    assert_eq!(signup.0, 200);
+    assert_eq!(
+        browser.call("/two-factor/enable", Some(json!({}))).await.1["code"],
+        "INVALID_PASSWORD"
+    );
+    assert_eq!(
+        browser
+            .call("/two-factor/enable", Some(json!({"password":"wrong"})))
+            .await
+            .1["code"],
+        "INVALID_PASSWORD"
+    );
+    let old = browser.jar["better-auth.session_token"].clone();
+    let enrollment = browser
+        .call(
+            "/two-factor/enable",
+            Some(json!({"password":PASSWORD,"issuer":""})),
+        )
+        .await;
+    assert_eq!(enrollment.0, 200);
+    assert!(
+        enrollment.1["totpURI"]
+            .as_str()
+            .unwrap()
+            .contains("Global+issuer")
+    );
+    assert_ne!(browser.jar["better-auth.session_token"], old);
+    let view = browser.call("/get-session", None).await;
+    assert_eq!(view.1["user"]["twoFactorEnabled"], true);
+    let uri = browser
+        .call(
+            "/two-factor/get-totp-uri",
+            Some(json!({"password":PASSWORD})),
+        )
+        .await;
+    assert_eq!(uri.0, 200);
+    assert!(uri.1["totpURI"].as_str().unwrap().contains("URI+issuer"));
+    // Removing the credential is owned fixture setup, not a public bypass API.
+    let mut tx = store.begin(true).await.unwrap();
+    let account = crate::accounts::find_credential(&mut tx, view.1["user"]["id"].as_str().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    tx.delete(Model::Account, text(&account, "id").unwrap())
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        browser
+            .call("/two-factor/get-totp-uri", Some(json!({})))
+            .await
+            .0,
+        200
+    );
+    let schema = browser.call("/open-api/generate-schema", None).await.1;
+    assert_eq!(
+        schema["paths"]["/two-factor/enable"]["post"]["requestBody"]["content"]["application/json"]
+            ["schema"]["required"],
+        json!([])
+    );
+    browser.router = build(
+        policy
+            .clone()
+            .with_uri_passwordless(Some(false))
+            .with_backup_passwordless(Some(false)),
+    )
+    .router();
+    assert_eq!(
+        browser
+            .call("/two-factor/get-totp-uri", Some(json!({})))
+            .await
+            .1["code"],
+        "VALIDATION_ERROR"
+    );
+    assert_eq!(
+        browser
+            .call("/two-factor/generate-backup-codes", Some(json!({})))
+            .await
+            .1["code"],
+        "VALIDATION_ERROR"
+    );
+    browser.router = build(policy.with_totp_disabled(true)).router();
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/get-totp-uri",
+                Some(json!({"password":"wrong"}))
+            )
+            .await
+            .1["code"],
+        "TOTP_NOT_CONFIGURED"
+    );
+    let jar = std::mem::take(&mut browser.jar);
+    let disabled = browser
+        .call("/two-factor/verify-totp", Some(json!({"code":"123456"})))
+        .await;
+    assert_eq!(
+        disabled.1,
+        json!({"code":"TOTP_NOT_CONFIGURED","message":"totp isn't configured"})
+    );
+    assert!(disabled.2.get("set-cookie").is_none());
+    assert_eq!(
+        browser
+            .call("/two-factor/get-totp-uri", Some(json!({})))
+            .await
+            .1["code"],
+        "UNAUTHORIZED"
+    );
+    browser.jar = jar;
+    assert_eq!(
+        browser.call("/two-factor/disable", Some(json!({}))).await.0,
+        200
+    );
+    assert_eq!(
+        browser.call("/get-session", None).await.1["user"]["twoFactorEnabled"],
+        false
+    );
 }

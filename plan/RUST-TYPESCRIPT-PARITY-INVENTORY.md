@@ -8682,10 +8682,35 @@ adapters and managed Subscription creation remain open.
 
 All1121 CLI unit tests pass with locked dependencies and incremental compilation
 disabled (/private/tmp/fl-oct14-cli-full-tests.log). This is the current source
-build, including coherently staged source drafts during active integration; it
+build, including coherent working source drafts during active integration; it
 is not relabelled an immutable archive proof. The separate d835 archive receipt
 retains exact source/lock/package hashes. Four existing CLI compiler warnings
 remain visible. Completed owned d835 source/archive/generated roots were removed
 after committed receipts and process/open-file/checksum guards; retained crate,
 logs/metadata and build caches remain. Missing old owned worktree registration
 fl-rust-full-checkpoint-xk4xb_by was pruned; unrelated worktrees/watchers retained.
+
+
+## Trusted two-factor lifecycle options (2026-10-14)
+
+Trusted typed lifecycle options now support disabling TOTP, skip-verification
+enrollment, independent enrollment/URI issuers, and passwordless policy with
+optional URI/backup overrides. Defaults remain unchanged. Passwordless operation
+requires an authoritative session and an absent/null/empty credential password;
+existing passwords remain mandatory. A transactional snapshot check rejects a
+credential created or changed during mutation. This native atomic guard is not
+a claim about upstream race handling. Skip enrollment atomically verifies the
+factor, enables the user and rotates only the current session. Disabled TOTP
+sign-in retains an empty-method challenge usable by backup codes; it grants no
+session/JWT. Existing trusted-device renewal remains independent. Request bodies
+cannot override trusted configuration.
+
+All19 native two-factor tests, restricted PostgreSQL lifecycle47.30s, final
+focused3 and HTTP helper1, actual Better Auth lifecycle oracle, all-feature/all-
+target and minimal-library strict Clippy pass. PostgreSQL owned roles/records/
+audits are zero. Exact17 hashes: /private/tmp/fl-lifecycle-options-freeze.json;
+logs /private/tmp/fl-lifecycle-options-{native,postgres,final-focused,final-helper,
+actual-final,clippy-final,minimal-clippy}.log. Evidence is working-tree source
+with the frozen checked-transform dependency, not an immutable package receipt.
+CI tracks the imported lifecycle oracle helper and existing PostgreSQL test.
+Custom storage, backup generators, trust TTL and broader plugins remain open.
