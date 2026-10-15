@@ -1,10 +1,10 @@
 //! Direct and generation-scoped managed account verification.
 use super::{BillingTransport, StripeBillingClient};
 use forklaunch_blueprint_core::{
-    provider_http::provider_status_error, BlueprintError, BlueprintResult,
+    BlueprintError, BlueprintResult, provider_http::provider_status_error,
 };
 use reqwest::Method;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -368,16 +368,16 @@ impl StripeBillingClient {
 mod tests {
     use super::*;
     use axum::{
+        Json, Router,
         extract::State,
         http::{HeaderMap, StatusCode},
         routing::get,
-        Json, Router,
     };
     use forklaunch_blueprint_core::provider_http::ProviderHttpClient;
     use serde_json::json;
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Mutex,
+        atomic::{AtomicUsize, Ordering},
     };
 
     #[derive(Clone)]
@@ -462,14 +462,16 @@ mod tests {
         )
         .unwrap();
         assert!(context.ensure_current(&other).is_err());
-        assert!(context
-            .ensure_current(
-                &client
-                    .clone()
-                    .with_api_version("2026-08-26.dahlia".into())
-                    .unwrap()
-            )
-            .is_err());
+        assert!(
+            context
+                .ensure_current(
+                    &client
+                        .clone()
+                        .with_api_version("2026-08-26.dahlia".into())
+                        .unwrap()
+                )
+                .is_err()
+        );
         context.started_at = Instant::now().checked_sub(CONTEXT_LIFETIME).unwrap();
         assert!(context.ensure_current(&client).is_err());
         *state.account.lock().unwrap() = json!({"id":"acct_changed","object":"account"});
@@ -477,11 +479,13 @@ mod tests {
         *state.account.lock().unwrap() = json!({"id":"acct_owned","object":"account"});
         *state.balance.lock().unwrap() = json!({"object":"balance","livemode":true});
         assert!(client.verify_context("acct_owned", false).await.is_err());
-        assert!(client
-            .verify_context("acct_owned", true)
-            .await
-            .unwrap()
-            .livemode());
+        assert!(
+            client
+                .verify_context("acct_owned", true)
+                .await
+                .unwrap()
+                .livemode()
+        );
         let calls = state.calls.load(Ordering::SeqCst);
         let managed =
             StripeBillingClient::managed(&base, "instance-owned".into(), "owned-hmac-key".into())

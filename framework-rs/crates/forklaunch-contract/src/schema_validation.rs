@@ -61,7 +61,10 @@ fn compile_profile(schema: &Value, multipart: bool) -> Result<Arc<JsonValidator>
     options = options.with_schema_rewriter(move |schema| {
         #[cfg(not(feature = "zod-checks"))]
         if schema.get("x-forklaunch-zod-checks").is_some() {
-            return Err("x-forklaunch-zod-checks requires the forklaunch-contract zod-checks feature".to_owned());
+            return Err(
+                "x-forklaunch-zod-checks requires the forklaunch-contract zod-checks feature"
+                    .to_owned(),
+            );
         }
         #[cfg(not(feature = "zod-uri"))]
         if schema.get("format").and_then(Value::as_str) == Some("forklaunch-whatwg-url") {

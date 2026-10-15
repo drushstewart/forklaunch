@@ -87,6 +87,7 @@ on:
       - 'cli/tests/rust_zod_regex_kernel_parity.mjs'
       - 'cli/tests/rust_zod_emoji_checks.mjs'
       - 'scripts/rust_zod_emoji_table.py'
+      - 'scripts/rust_format.py'
       - 'cli/tests/rust_zod_format_checks.mjs'
       - 'cli/tests/rust_zod_checks_consumers.mjs'
       - 'cli/tests/rust_zod_native_enum_openapi.mjs'
@@ -519,6 +520,7 @@ on:
       - 'cli/tests/rust_zod_regex_kernel_parity.mjs'
       - 'cli/tests/rust_zod_emoji_checks.mjs'
       - 'scripts/rust_zod_emoji_table.py'
+      - 'scripts/rust_format.py'
       - 'cli/tests/rust_zod_format_checks.mjs'
       - 'cli/tests/rust_zod_checks_consumers.mjs'
       - 'cli/tests/rust_zod_native_enum_openapi.mjs'
@@ -902,7 +904,7 @@ jobs:
           done
           docker logs forklaunch-rust-s3
           exit 1
-      - run: cargo fmt --manifest-path framework-rs/Cargo.toml --all -- --check
+      - run: python3 scripts/rust_format.py framework-rs/Cargo.toml
       - run: cargo clippy --manifest-path framework-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - run: cargo doc --manifest-path framework-rs/Cargo.toml --workspace --all-features --no-deps
         env:
@@ -2064,7 +2066,7 @@ jobs:
             sleep 1
           done
           exit 1
-      - run: cargo fmt --manifest-path blueprint-rs/Cargo.toml --all -- --check
+      - run: python3 scripts/rust_format.py blueprint-rs/Cargo.toml
       - run: cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
       - run: cargo doc --manifest-path blueprint-rs/Cargo.toml --workspace --all-features --no-deps
         env:

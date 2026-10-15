@@ -11345,3 +11345,16 @@ That check exposed an implicit compiler lookup in12 Better Auth CI fixture steps
 all now select CI's installed TypeScript5.9.3. The updated workflow parses and all
 12 compiler settings were checked. Cancellation-on-reinvite, delivery callbacks,
 custom generators and broader Better Auth parity remain open;660/682 unchanged.
+
+
+### 2026-10-15 — Reproducible workspace formatting checks
+
+CI now derives every workspace member from locked offline Cargo metadata and
+passes those packages explicitly to rustfmt. The old --all option also traversed
+excluded local vendor dependencies, including preserved upstream/generated regex
+sources. All19 framework and30 blueprint members are checked; excluded archives
+and generated Unicode source bytes remain unchanged. Three existing first-party
+formatting discrepancies were corrected without behavior changes. Both complete
+member checks pass; workflow YAML parses. Logs:
+/private/tmp/fl-oct15-{framework,blueprint}-member-format.log.
+This is CI reliability work, not a closed feature gate;660/682 unchanged.
