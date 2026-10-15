@@ -222,6 +222,47 @@ function parseNumber({
         break;
     }
   });
+  // Zod runs every numeric bound check. Preserve their conjunction rather than
+  // whichever check happened to be declared last. Non-finite registrations
+  // retain the existing exporter boundary; they are not JSON numeric bounds.
+  const bounds = checks.filter(
+    (item) => item.kind === 'min' || item.kind === 'max'
+  );
+  if (bounds.every((item) => Number.isFinite(item.value))) {
+    delete baseSchema.minimum;
+    delete baseSchema.maximum;
+    delete baseSchema.exclusiveMinimum;
+    delete baseSchema.exclusiveMaximum;
+    for (const kind of ['min', 'max'] as const) {
+      const strongest = bounds
+        .filter((item) => item.kind === kind)
+        .reduce<{ value: number; inclusive: boolean } | undefined>(
+          (selected, item) => {
+            if (
+              !selected ||
+              (kind === 'min'
+                ? item.value > selected.value
+                : item.value < selected.value)
+            )
+              return item;
+            if (item.value === selected.value && !item.inclusive) return item;
+            return selected;
+          },
+          undefined
+        );
+      if (!strongest) continue;
+      const bound = kind === 'min' ? 'minimum' : 'maximum';
+      const exclusive =
+        kind === 'min' ? 'exclusiveMinimum' : 'exclusiveMaximum';
+      if (strongest.inclusive || openApiVersion === '3.0')
+        baseSchema[bound] = strongest.value;
+      if (!strongest.inclusive)
+        baseSchema[exclusive] =
+          openApiVersion === '3.0'
+            ? (true as unknown as number)
+            : strongest.value;
+    }
+  }
   return merge(
     baseSchema,
     zodRef.description ? { description: zodRef.description } : {},
@@ -448,6 +489,28 @@ function parseArray({
     constraints.minItems = zodRef._def.minLength.value;
   if (zodRef._def.maxLength != null)
     constraints.maxItems = zodRef._def.maxLength.value;
+
+  // Exact length and the retained min/max checks all run independently in Zod.
+  // Keep contradictory bounds contradictory; invalid registrations remain an
+  // explicit exporter boundary rather than being silently rounded or clamped.
+  const lengths = [
+    zodRef._def.exactLength,
+    zodRef._def.minLength,
+    zodRef._def.maxLength
+  ]
+    .filter((item) => item != null)
+    .map((item) => item.value);
+  if (lengths.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    const exact = zodRef._def.exactLength?.value;
+    const minimum = zodRef._def.minLength?.value;
+    const maximum = zodRef._def.maxLength?.value;
+    if (exact !== undefined) {
+      constraints.minItems =
+        minimum === undefined ? exact : Math.max(exact, minimum);
+      constraints.maxItems =
+        maximum === undefined ? exact : Math.min(exact, maximum);
+    }
+  }
 
   return merge(
     {

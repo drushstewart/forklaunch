@@ -9585,3 +9585,21 @@ Metadata /private/tmp/fl-oct14-uri-checkpoint.json; driver/package/install/
 repackaged-files logs use /private/tmp/fl-oct14-uri- prefix. Portable runtime
 HTTP/MCP/SDK verification awaits native queue; no new runtime claim yet. Owned
 source/install roots retained only until that verification and cleanup.
+
+
+### Conjunctive numeric and array bound emission (2026-10-14)
+
+TypeScript exporter previously overwrote stronger numeric min/max with later
+weaker checks, and exact array length with weaker retained min/max. Finite bound
+reduction now retains strongest minimum/maximum and exclusive ties, preserving
+contradictions and OAS3.0 boolean versus3.1 numeric exclusive syntax. Array exact,
+retained min/max conjunction applies to nonnegative safe-integer lengths. Explicit
+OpenAPI overrides remain final; ordered source runtime diagnostics unchanged.
+Nonfinite registrations, invalid lengths, multipleOf/string rules unchanged.
+Frozen2 /private/tmp/fl-zod-bounds-source.json;153972 actual runtime/AJV comparisons
+across9108 exports, six shapes, both dialects, repeated/tied/contradictory bounds,
+overrides and zero schema-export callbacks pass. Strict12roots/614exports types
+pass (actualTS7.0.2). Logs /private/tmp/fl-zod-bounds-{openapi,types}.log.
+CI adds permanent fixture with explicit draft04 dependency fallback. No Rust,
+Cargo/lock/dependency changes or new canonical-native receipt. Remaining tuple,
+UTF16length and record-key export gaps keep broad schema gate open;660/682.

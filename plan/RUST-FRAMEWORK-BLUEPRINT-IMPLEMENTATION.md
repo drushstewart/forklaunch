@@ -44,6 +44,7 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: built-in backup field storage (legacy/plain/encrypted), independent versioned keys and authorized legacy migration; actual9, final5/affected54, restricted PG and strict Clippy pass. First HTTP MFA opt-in defaults encrypted; direct services retain legacy compatibility.
 - Completed: direct bound Checkout creation→read through explicit provenance-aware getter, preserving local Customer UUID with exact receipt/current Customer generation checks. New/legacy restricted PG and strict Clippy pass; default routes unchanged.
 - Completed: factory-only WHATWG URI schema format with explicit native capability, AJV/injected-engine/generated socket validation, canonical366 and strict native/CLI/type checks.
+- Completed: conjunctive finite numeric/array OpenAPI bounds with153972 actual runtime/AJV comparisons across OAS3.0/3.1 and strict types. Tuple/string/record emitter gaps remain open.
 - Active: configured bound Checkout HTTP/MCP/SDK wiring and custom async backup-codec implementation. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.

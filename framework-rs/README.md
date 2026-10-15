@@ -1181,7 +1181,8 @@ requires a C++20 compiler; default builds exclude it. The
 inputs plus ordered errors and composition against the actual TypeScript factory,
 with pinned source hashes.
 
-The marked TypeScript URI factory now exports `format: forklaunch-whatwg-url`
+The marked TypeScript URI factory, with its single URL check and optional/nullable
+wrappers, now exports `format: forklaunch-whatwg-url`
 without the conflicting RFC regex. UniversalSdk and generated TypeScript sockets
 register that format with the JavaScript URL parser. Native contract, HTTP, MCP,
 WebSocket and SDK generator crates forward the optional `zod-uri` feature; without
@@ -1197,3 +1198,10 @@ admit different Unicode hostnames. HTTP SDK clients retain their existing typed
 transport behavior. The [schema fixture](../cli/tests/rust_zod_uri_openapi.mjs)
 checks 203,261 native/AJV admissions; the
 [SDK fixture](../cli/tests/rust_zod_uri_sdk.mjs) checks both socket clients.
+
+TypeScript OpenAPI export preserves the strongest finite numeric min/max bound,
+including exclusive ties, and the conjunction of exact/min/max array lengths.
+Explicit `.openapi` overrides remain authoritative. The
+[bounds fixture](../cli/tests/rust_zod_bounds_openapi.mjs) compares 153,972 runtime
+and schema admissions for OpenAPI 3.0 and 3.1. Nonfinite registrations, multipleOf,
+UTF-16 string length and tuple schema semantics remain separate boundaries.
