@@ -11441,3 +11441,35 @@ the isolated version. Integrated39 manifest /private/tmp/fl-regex-integrated-sou
 SHA2560ebd2dbc1281bffa03b7c50b82d69cde95b5db5a55d0ea9e3c5661b09fdf0572.
 The integrated19-member framework formatting check passes. No behavior change was
 introduced by this merge; billing recovery validates against this combined source.
+
+
+### 2026-10-15 — Cancellation-on-reinvite ordering and concurrency
+
+Trusted default-false cancellation builders on OrganizationService/AuthHttp now
+match cancelPendingInvitationsOnReInvite. Explicit resend retains precedence.
+Role/recipient checks precede a separately committed cancellation; quota/team or
+replacement failure leaves the old invitation canceled, preserving upstream's
+observable boundary. A second tenant writer rechecks current session/roles and
+the exact canceled predecessor before replacement. No user callbacks run inside
+transactions and no automatic cancellation retry occurs.
+
+Stable ID/value snapshots of already-returned bounded matching rows permit
+unchanged existing duplicates, including100/101-window shifts, without changing
+selection/quota first100 windows. Newly observed/changed pending rows deny through
+the existing duplicate error; missing/changed predecessor yields static409.
+These are explicit stronger concurrency guards than independent upstream calls.
+Both cancellation and replacement COMMIT acknowledgement failures are tested:
+persisted state can outlive the error response and callers must inspect it.
+
+Actual Better Auth10, focused native1(0.12s), organization5(0.32s), restricted
+PostgreSQL225.37s and strict full17.86s/minimal3.99s pass. After only explicit-import
+and equivalent let-chain lint fixes, exact final organization5 reran successfully
+in0.28s. The PG receipt predates those style-only fixes; no repeat is claimed.
+Owned fixture roles/records/audits0. Validation used the pre-integration framework;
+regex was integrated after the lease was released, leaving these IAM bytes intact.
+
+Frozen12 manifest /private/tmp/fl-invitation-cancel-freeze.json SHA256
+b8a33d9426563b38596444be4e25872e5204e7a967b68646b5c83ec1ce3adcc3.
+Logs /private/tmp/fl-invitation-cancel-{actual,native,organizations,pg,clippy,minimal-clippy,final-organizations}.log.
+CI includes the actual fixture with explicit compiler configuration. Invitation
+delivery and broader Better Auth options remain open;660/682(96.8%) unchanged.

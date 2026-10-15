@@ -1946,3 +1946,41 @@ changes do not rewrite old expiration values; resend does. Cancellation on
 reinvite and invitation delivery hooks remain separate options: upstream can
 persist cancellation before a later admission error and persists invitations
 before invoking delivery. This policy slice does not claim those behaviors.
+
+### Cancellation on reinvite
+
+`with_cancel_pending_invitations_on_reinvite(true)` on `OrganizationService` or
+`AuthHttp` enables the trusted `cancelPendingInvitationsOnReInvite` option;
+its default is false. Explicit `resend: true` takes precedence, renewing the same
+pending invitation without cancellation or quota/team admission checks.
+Otherwise, role/recipient/organization checks precede cancellation. The exact
+selected pending invitation is marked canceled and committed before quota/team
+checks and replacement insertion, matching upstream's observable partial-failure
+boundary. A failed replacement does **not** restore the canceled invitation.
+Failure to commit cancellation leaves the original pending invitation intact.
+
+The replacement uses a second tenant writer transaction with fresh session and
+role authorization. The canceled predecessor must still match, including actor
+and organization. An ID/value snapshot of the already bounded store-read matching unexpired
+pending rows permits unchanged preexisting duplicate pending invitations; only the
+first is canceled, then a replacement is created as upstream does. Newly observed
+or changed pending rows deny admission, and an intervening invitation is never canceled by an
+automatic retry. Missing/changed predecessor yields `INVITATION_STATE_CHANGED`
+(HTTP 409); revoked authority or a concurrent replacement denies admission through
+its existing error. These are stronger concurrency safeguards than upstream's
+independent adapter calls, not a claim of reproducing unsafe stale races. No user
+callback runs inside either transaction. This option does not send invitation
+email; delivery remains a separate capability. A caller canceled after the first
+commit can leave a canceled predecessor without a replacement, as with any
+interruption at this explicit partial-commit boundary.
+
+A storage error after a successful cancellation COMMIT can leave the predecessor
+canceled despite the error response. An error acknowledging the second COMMIT can
+leave both canceled predecessor and pending replacement persisted. These outcomes
+are not rolled back or automatically retried; callers must inspect current state.
+
+Snapshot comparison includes the matching rows already returned by the bounded
+store scan (maximum4096); it does not expand the existing first100 selection or
+quota windows. Thus a known101st pending row shifting into the lookup window is
+accepted, while a newly inserted row is rejected. Stable ID/value sets, rather
+than row order alone, determine whether preexisting duplicates remain unchanged.

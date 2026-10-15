@@ -74,6 +74,7 @@ pub struct AuthHttp<S> {
     session_policy: crate::sessions::SessionPolicy,
     organization_policy: crate::organizations::OrganizationPolicy,
     invitation_policy: crate::organizations::InvitationPolicy,
+    cancel_pending_invitations_on_reinvite: bool,
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
@@ -110,6 +111,13 @@ pub struct AuthHttp<S> {
     clock: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Enables trusted cancellation-on-reinvite with a separate committed cancellation.
+    #[must_use]
+    pub fn with_cancel_pending_invitations_on_reinvite(mut self, enabled: bool) -> Self {
+        self.cancel_pending_invitations_on_reinvite = enabled;
+        self
+    }
+
     /// Installs server-owned invitation expiry, quota and recipient verification options.
     #[must_use]
     pub fn with_invitation_policy(
@@ -190,6 +198,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             session_policy: crate::sessions::SessionPolicy::default(),
             organization_policy: crate::organizations::OrganizationPolicy::default(),
             invitation_policy: crate::organizations::InvitationPolicy::default(),
+            cancel_pending_invitations_on_reinvite: false,
             store,
             google: None,
             external_jwt: None,
@@ -940,9 +949,9 @@ fn failure_response(error: &BlueprintError) -> Response {
         | "OTP_NOT_CONFIGURED"
         | "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE" => StatusCode::BAD_REQUEST,
         "PROVIDER_NOT_FOUND" => StatusCode::NOT_FOUND,
-        "SOCIAL_ACCOUNT_ALREADY_LINKED" | "TWO_FACTOR_BACKUP_CODEC_CONFLICT" => {
-            StatusCode::CONFLICT
-        }
+        "SOCIAL_ACCOUNT_ALREADY_LINKED"
+        | "TWO_FACTOR_BACKUP_CODEC_CONFLICT"
+        | "INVITATION_STATE_CHANGED" => StatusCode::CONFLICT,
         "INVALID_CODE"
         | "INVALID_BACKUP_CODE"
         | "INVALID_TWO_FACTOR_COOKIE"

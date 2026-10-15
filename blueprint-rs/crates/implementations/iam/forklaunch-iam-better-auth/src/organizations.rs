@@ -31,6 +31,7 @@ pub(crate) mod tests;
 pub struct OrganizationService<S> {
     policy: OrganizationPolicy,
     invitation_policy: InvitationPolicy,
+    cancel_pending_invitations_on_reinvite: bool,
     time_source: crate::time_source::TimeSource,
     session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
@@ -45,6 +46,14 @@ impl<S: AuthStore> OrganizationService<S> {
     #[cfg(feature = "http")]
     pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
         self.time_source = source;
+        self
+    }
+
+    /// Cancels an existing pending invitation before admitting its replacement.
+    /// Cancellation is committed independently and survives subsequent admission failure.
+    #[must_use]
+    pub fn with_cancel_pending_invitations_on_reinvite(mut self, enabled: bool) -> Self {
+        self.cancel_pending_invitations_on_reinvite = enabled;
         self
     }
 
@@ -74,6 +83,7 @@ impl<S: AuthStore> OrganizationService<S> {
         Self {
             policy: OrganizationPolicy::default(),
             invitation_policy: InvitationPolicy::default(),
+            cancel_pending_invitations_on_reinvite: false,
             time_source: crate::time_source::TimeSource::default(),
             store,
             session_policy: crate::sessions::SessionPolicy::default(),

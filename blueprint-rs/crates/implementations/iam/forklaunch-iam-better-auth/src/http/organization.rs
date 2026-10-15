@@ -28,7 +28,8 @@ pub(super) async fn handle<S: AuthStore + 'static>(
         .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
         .with_session_policy(app.session_policy)
         .with_organization_policy(app.organization_policy)
-        .with_invitation_policy(app.invitation_policy);
+        .with_invitation_policy(app.invitation_policy)
+        .with_cancel_pending_invitations_on_reinvite(app.cancel_pending_invitations_on_reinvite);
     let (token, transient) = session;
     if let Some(body) = roles::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);

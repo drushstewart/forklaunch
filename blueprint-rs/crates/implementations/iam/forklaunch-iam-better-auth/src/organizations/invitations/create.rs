@@ -4,7 +4,17 @@ use super::super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
     OrganizationService, Utc, Value, json, missing, text, timestamp, unauthorized,
 };
+mod admission;
 mod input;
+struct Canceled {
+    row: Value,
+    actor: String,
+    pending: Vec<Value>,
+}
+enum Step {
+    Complete(Value),
+    Canceled(Canceled),
+}
 impl<S: AuthStore> OrganizationService<S> {
     /// Creates or resends an invitation using configured grants and limits.
     /// # Errors
@@ -17,63 +27,57 @@ impl<S: AuthStore> OrganizationService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
+        match self.invitation_step(token, body, now, None).await? {
+            Step::Complete(row) => Ok(row),
+            Step::Canceled(canceled) => match self
+                .invitation_step(token, body, now, Some(&canceled))
+                .await?
+            {
+                Step::Complete(row) => Ok(row),
+                Step::Canceled(_) => Err(state_changed()),
+            },
+        }
+    }
+    async fn invitation_step(
+        &self,
+        token: &str,
+        body: &Value,
+        now: DateTime<Utc>,
+        canceled: Option<&Canceled>,
+    ) -> BlueprintResult<Step> {
         let mut tx = self.store.begin(true).await?;
-        let view = self
-            .recheck(&mut tx, token, now)
-            .await?
-            .ok_or_else(unauthorized)?;
-        let org = body["organizationId"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                view.session["activeOrganizationId"]
-                    .as_str()
-                    .filter(|s| !s.is_empty())
-            })
-            .ok_or_else(missing)?;
-        let email = text(body, "email")?.to_lowercase();
-        crate::accounts::validate_email(&email)?;
-        let member = crate::store::find_all(&mut tx, Model::Member, "organizationId", org)
-            .await?
-            .into_iter()
-            .find(|row| row["organizationId"] == org && row["userId"] == view.user["id"])
-            .ok_or_else(|| error("MEMBER_NOT_FOUND", "Member not found"))?;
-        if !allowed(
-            &mut tx,
+        let admitted = self.invitation_admission(&mut tx, token, body, now).await?;
+        let admission::Admission {
             org,
-            text(&member, "role")?,
-            Some(&json!({"invitation":["create"]})),
-        )
-        .await?
-        {
-            return Err(error(
-                "YOU_ARE_NOT_ALLOWED_TO_INVITE_USERS_TO_THIS_ORGANIZATION",
-                "You are not allowed to invite users to this organization",
-            ));
-        }
-        let role = input::roles(&body["role"]);
-        input::validate_roles(&mut tx, org, &role).await?;
-        if !text(&member, "role")?
-            .split(',')
-            .any(|role| input::trim(role) == "owner")
-            && role.split(',').any(|role| role == "owner")
-        {
-            return Err(error(
-                "YOU_ARE_NOT_ALLOWED_TO_INVITE_USER_WITH_THIS_ROLE",
-                "You are not allowed to invite a user with this role",
-            ));
-        }
-        input::ensure_not_member(&mut tx, org, &email).await?;
-        let pending = crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
-            .await?
-            .into_iter()
-            .filter(|row| {
-                row["organizationId"] == org && row["email"] == email && row["status"] == "pending"
-            })
+            email,
+            role,
+            actor,
+        } = admitted;
+        let org = org.as_str();
+        let matching_rows =
+            crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
+                .await?
+                .into_iter()
+                .filter(|row| {
+                    row["organizationId"] == org
+                        && row["email"] == email
+                        && row["status"] == "pending"
+                })
+                .collect::<Vec<_>>();
+        let pending = matching_rows
+            .iter()
             .take(100)
-            .find(|row| unexpired(row, now));
+            .find(|row| unexpired(row, now))
+            .cloned();
+        let pending_rows = matching_rows
+            .into_iter()
+            .filter(|row| unexpired(row, now))
+            .collect::<Vec<_>>();
         let resend = body["resend"] == true;
-        if pending.is_some() && !resend {
+        let cancel = self.cancel_pending_invitations_on_reinvite && canceled.is_none() && !resend;
+        let unchanged_pending =
+            canceled.is_some_and(|expected| same_pending(&expected.pending, &pending_rows));
+        if pending.is_some() && !resend && !cancel && !unchanged_pending {
             return Err(error(
                 "USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION",
                 "User is already invited to this organization",
@@ -82,12 +86,40 @@ impl<S: AuthStore> OrganizationService<S> {
         tx.get(Model::Organization, org)
             .await?
             .ok_or_else(missing)?;
+        if let Some(expected) = canceled
+            && (!unchanged_pending
+                || expected.actor != actor
+                || expected.row["organizationId"] != org
+                || tx
+                    .get(Model::Invitation, text(&expected.row, "id")?)
+                    .await?
+                    .as_ref()
+                    != Some(&expected.row))
+        {
+            return Err(state_changed());
+        }
+        if cancel && let Some(mut pending) = pending.clone() {
+            pending["status"] = json!("canceled");
+            tx.replace(Model::Invitation, pending.clone()).await?;
+            tx.commit().await?;
+            let others = pending_rows
+                .into_iter()
+                .filter(|row| row["id"] != pending["id"])
+                .collect();
+            return Ok(Step::Canceled(Canceled {
+                row: pending,
+                actor,
+                pending: others,
+            }));
+        }
         let expiry = timestamp(self.invitation_policy.expiry(now)?);
-        if let Some(mut pending) = pending {
+        if canceled.is_none()
+            && let Some(mut pending) = pending
+        {
             pending["expiresAt"] = json!(expiry);
             tx.replace(Model::Invitation, pending.clone()).await?;
             tx.commit().await?;
-            return Ok(pending);
+            return Ok(Step::Complete(pending));
         }
         if crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
             .await?
@@ -104,10 +136,10 @@ impl<S: AuthStore> OrganizationService<S> {
             ));
         }
         let teams = input::teams(&mut tx, org, body.get("teamId")).await?;
-        let invitation = json!({"id":uuid::Uuid::new_v4().to_string(),"email":email,"role":role,"organizationId":org,"inviterId":view.user["id"],"status":"pending","expiresAt":expiry,"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
+        let invitation = json!({"id":uuid::Uuid::new_v4().to_string(),"email":email,"role":role,"organizationId":org,"inviterId":actor,"status":"pending","expiresAt":expiry,"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
         tx.insert(Model::Invitation, invitation.clone()).await?;
         tx.commit().await?;
-        Ok(invitation)
+        Ok(Step::Complete(invitation))
     }
 }
 fn error(code: &str, message: &str) -> BlueprintError {
@@ -118,4 +150,23 @@ fn unexpired(row: &Value, now: DateTime<Utc>) -> bool {
         .as_str()
         .and_then(|text| DateTime::parse_from_rfc3339(text).ok())
         .is_some_and(|expiry| expiry > now)
+}
+
+fn state_changed() -> BlueprintError {
+    error("INVITATION_STATE_CHANGED", "Invitation state changed")
+}
+
+fn same_pending(expected: &[Value], current: &[Value]) -> bool {
+    fn index(rows: &[Value]) -> Option<std::collections::BTreeMap<&str, &Value>> {
+        rows.iter()
+            .map(|row| Some((row["id"].as_str()?, row)))
+            .collect()
+    }
+    if expected.len() != current.len() {
+        return false;
+    }
+    match (index(expected), index(current)) {
+        (Some(a), Some(b)) => a.len() == expected.len() && a == b,
+        _ => false,
+    }
 }

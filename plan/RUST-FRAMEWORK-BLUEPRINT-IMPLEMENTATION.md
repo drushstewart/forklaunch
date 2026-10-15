@@ -2745,3 +2745,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Explicit PaymentLink expiration HTTP/MCP/both SDKs pass restricted PostgreSQL role/startup matrices, concurrent single dispatch and pending inspection;15 units,166 generated artifacts and strict full/minimal Clippy pass. Event-linked recovery and broader billing remain open;660/682 unchanged.
 
 - 2026-10-15: Checked regex exporter/contract/HTTP/MCP/WebSocket/composition and generated SDK integration passes376 native tests, strict nine-crate Clippy, actual2720 comparisons, generated consumers and canonical366 with zero normalized OpenAPI differences. Explicit host-JS policy and bounded native Operational errors remain distinct; inventory625/1708. Broader schema parity remains open;660/682 unchanged.
+
+- 2026-10-15: Trusted cancellation-on-reinvite preserves committed cancellation before later admission errors, resend precedence and existing100/101 duplicate windows. Actual10, native organization5, restricted PostgreSQL and strict full/minimal checks pass; both commit-acknowledgement boundaries are covered. Delivery remains next;660/682 unchanged.

@@ -1,15 +1,15 @@
 use super::*;
 use crate::organizations::InvitationPolicy;
 
-struct Fixture {
-    org: String,
-    owner: String,
-    recipient: String,
-    owner_token: String,
-    recipient_token: String,
-    now: DateTime<Utc>,
+pub(super) struct Fixture {
+    pub(super) org: String,
+    pub(super) owner: String,
+    pub(super) recipient: String,
+    pub(super) owner_token: String,
+    pub(super) recipient_token: String,
+    pub(super) now: DateTime<Utc>,
 }
-async fn seed<S: AuthStore>(store: &S, label: &str) -> Fixture {
+pub(super) async fn seed<S: AuthStore>(store: &S, label: &str) -> Fixture {
     let org = format!("invite-policy-{label}");
     let owner = format!("{org}-owner");
     let recipient = format!("{org}-recipient");
@@ -42,10 +42,10 @@ async fn seed<S: AuthStore>(store: &S, label: &str) -> Fixture {
         now,
     }
 }
-fn request(f: &Fixture) -> Value {
+pub(super) fn request(f: &Fixture) -> Value {
     json!({"email":format!("{}@example.test",f.recipient),"organizationId":f.org,"role":"member"})
 }
-async fn rows<S: AuthStore>(store: &S, org: &str) -> Vec<Value> {
+pub(super) async fn rows<S: AuthStore>(store: &S, org: &str) -> Vec<Value> {
     let mut tx = store.begin(false).await.unwrap();
     let rows = crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
         .await
