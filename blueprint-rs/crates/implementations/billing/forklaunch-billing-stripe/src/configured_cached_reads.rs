@@ -122,6 +122,24 @@ fn checkout(value: &Value) -> BlueprintResult<(&str, bool, Option<&str>)> {
     }
     Ok((id, live, customer))
 }
+fn validate_link(local: &PaymentLinkDto, expected: &str) -> BlueprintResult<()> {
+    local_fields(
+        &local.id,
+        expected,
+        &local.currency,
+        &local.payment_methods,
+        &local.status,
+    )?;
+    if !local.amount.is_finite() {
+        return Err(invalid());
+    }
+    reference(
+        local.provider_fields.as_ref().ok_or_else(invalid)?,
+        "plink_",
+        "payment_link",
+    )?;
+    Ok(())
+}
 impl<S: BillingStore> StripeBillingService<S> {
     async fn configured_cached_dto<T: serde::de::DeserializeOwned>(
         &self,
@@ -176,19 +194,16 @@ impl<S: BillingStore> StripeBillingService<S> {
         &self,
         id: &str,
     ) -> BlueprintResult<PaymentLinkDto> {
-        let mut local: PaymentLinkDto = self
+        let local: PaymentLinkDto = self
             .configured_cached_dto(BillingKind::PaymentLink, id)
             .await?;
-        local_fields(
-            &local.id,
-            id,
-            &local.currency,
-            &local.payment_methods,
-            &local.status,
-        )?;
-        if !local.amount.is_finite() {
-            return Err(invalid());
-        }
+        validate_link(&local, id)?;
+        self.enrich_payment_link(local).await
+    }
+    async fn enrich_payment_link(
+        &self,
+        mut local: PaymentLinkDto,
+    ) -> BlueprintResult<PaymentLinkDto> {
         let before = reference(
             local.provider_fields.as_ref().ok_or_else(invalid)?,
             "plink_",
@@ -205,5 +220,37 @@ impl<S: BillingStore> StripeBillingService<S> {
         }
         local.provider_fields = Some(provider);
         Ok(local)
+    }
+    pub(crate) async fn configured_list_payment_links(
+        &self,
+        ids: Option<&[String]>,
+    ) -> BlueprintResult<Vec<PaymentLinkDto>> {
+        // The store admits the complete key selection before reading/decrypting
+        // concrete-store values. Validate every local DTO before the first GET.
+        let selected = self
+            .base()
+            .store()
+            .list_configured_cached(ids, self.max_configured_list_records)
+            .await?;
+        let mut locals = Vec::with_capacity(selected.len());
+        for (id, raw) in selected {
+            let local: PaymentLinkDto = serde_json::from_value(raw).map_err(|_| invalid())?;
+            validate_link(&local, &id)?;
+            locals.push(local);
+        }
+        let mut result = Vec::new();
+        for local in locals {
+            let fresh = self.enrich_payment_link(local).await?;
+            let active = fresh
+                .provider_fields
+                .as_ref()
+                .and_then(|fields| fields.get("active"))
+                .and_then(Value::as_bool)
+                .ok_or_else(invalid)?;
+            if active {
+                result.push(fresh);
+            }
+        }
+        Ok(result)
     }
 }

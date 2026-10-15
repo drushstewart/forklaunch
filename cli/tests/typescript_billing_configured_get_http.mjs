@@ -74,14 +74,15 @@ for(const [family,serviceName,method] of [['checkoutSession','StripeCheckoutSess
  const cache={async readRecord(){if(scenario==='store')throw Error('private store failure');if(scenario==='missing')return null;return {value:{...dto,...(scenario==='decode'?{createdAt:'not-a-date'}:{})}};}};
  const retrieve=async()=>{providerCalls++;if(scenario==='malformed')return {};if(scenario==='timeout')throw new Stripe.errors.StripeConnectionError({message:'private timeout'});throw new Stripe.errors.StripeInvalidRequestError({message:'private provider detail',statusCode:Number(scenario)});};
  const client={checkout:{sessions:{retrieve}},paymentLinks:{retrieve}};
- const service=new Service(client,{},cache,{},actual.validator,mappers);
+ const service=new Service(client,{},cache,{log(){}},actual.validator,mappers);
  app.get(`/${family}/:id`,async(req,res,next)=>{try{res.json(await service[method]({id:req.params.id}));}catch(error){next(error);}});
+ if(family==='paymentLink')app.get('/paymentLinkList/:id',async(req,res,next)=>{try{res.json(await service.listPaymentLinks({ids:[req.params.id]}));}catch(error){next(error);}});
 }
 app.use(box.exports.handler);
 const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server));});
 try {
  let cases=0;
- for(const family of ['checkoutSession','paymentLink'])for(const failure of ['missing','store','decode','malformed','timeout','404','429','500'])for(const correlation of [undefined,'read-correlation','']) {
+ for(const family of ['checkoutSession','paymentLink','paymentLinkList'])for(const failure of ['missing','store','decode','malformed','timeout','404','429','500'])for(const correlation of [undefined,'read-correlation','']) {
   scenario=failure;const before=providerCalls;const headers={'x-owned-context':'yes'};if(correlation!==undefined)headers['x-correlation-id']=correlation;
   const response=await fetch(`http://127.0.0.1:${server.address().port}/${family}/${id}`,{headers});
   const expected=['404','429','500'].includes(failure)?Number(failure):500;assert.equal(response.status,expected);assert.match(response.headers.get('content-type'),/^text\/plain/);
@@ -89,5 +90,5 @@ try {
   assert.equal(await response.text(),`${expected>=500?'Internal server error':'Request could not be processed'}:\n\nCorrelation id: ${observed}`);
   assert.equal(providerCalls-before,['missing','store','decode'].includes(failure)?0:1);cases++;
  }
- console.log(`PASS ${cases} actual configured GET services/mappers + actual createContext/final Express handler: missing/decode/store/SDK provider404/429/500/connection/malformed response sanitized text with actual provider status retention; no full controller/auth/bootstrap claim.`);
+ console.log(`PASS ${cases} actual configured GET/list services/mappers + actual createContext/final Express handler: missing/decode/store/SDK provider404/429/500/connection/malformed response sanitized text with actual provider status retention; no full controller/auth/bootstrap claim.`);
 }finally{await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}

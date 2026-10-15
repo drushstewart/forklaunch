@@ -421,3 +421,187 @@ async fn configured_cached_dates_match_actual_source_subset() {
     }
     server.abort();
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn configured_list_selects_whole_cache_before_provider_and_preserves_order() {
+    let state = Provider::default();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let app = Router::new().fallback(provider).with_state(state.clone());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let store = Arc::new(MemoryBillingStore::new());
+    let client = StripeBillingClient::with_transport(
+        "sk_fixture".into(),
+        ProviderHttpClient::new(&url, Duration::from_secs(2), 4096).unwrap(),
+    )
+    .unwrap();
+    let normal = StripeBillingService::new(BaseBillingService::new(store.clone()), client.clone())
+        .with_configured_cached_reads(true);
+    for limit in [0, 1001, usize::MAX] {
+        assert!(
+            StripeBillingService::new(BaseBillingService::new(store.clone()), client.clone())
+                .with_max_configured_list_records(limit)
+                .is_err()
+        );
+    }
+    for ids in [None, Some(&[][..])] {
+        assert!(normal.list_payment_links(ids).await.unwrap().is_empty());
+    }
+    assert!(state.calls.lock().await.is_empty());
+    let originals = (0..150)
+        .map(|i| {
+            let mut value = record(false);
+            value["id"] = json!(format!("local-{i}"));
+            value
+        })
+        .collect::<Vec<_>>();
+    for value in &originals {
+        store
+            .insert(
+                Scope::Cache,
+                BillingKind::PaymentLink,
+                value.clone(),
+                Duration::from_secs(60),
+            )
+            .await
+            .unwrap();
+    }
+    let all = originals
+        .iter()
+        .map(|value| value["id"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    for ids in [None, Some(&[][..]), Some(&all[..101])] {
+        assert_eq!(
+            normal.list_payment_links(ids).await.unwrap_err().code,
+            "billing_configured_mapper_error"
+        );
+        assert!(state.calls.lock().await.is_empty());
+    }
+    for id in ["", " ", "\u{feff}", "\u{2028}"] {
+        assert_eq!(
+            normal
+                .list_payment_links(Some(&[id.into()]))
+                .await
+                .unwrap_err()
+                .code,
+            "billing_configured_mapper_error"
+        );
+        assert!(state.calls.lock().await.is_empty());
+    }
+    let configured =
+        StripeBillingService::new(BaseBillingService::new(store.clone()), client.clone())
+            .with_configured_cached_reads(true)
+            .with_max_configured_list_records(150)
+            .unwrap();
+    let mut response = evidence(false);
+    response["active"] = json!(true);
+    *state.result.lock().await = response.clone();
+    for ids in [None, Some(&[][..])] {
+        state.calls.lock().await.clear();
+        let result = configured.list_payment_links(ids).await.unwrap();
+        assert_eq!(
+            result
+                .iter()
+                .map(|value| value.id.clone())
+                .collect::<Vec<_>>(),
+            all
+        );
+        assert_eq!(state.calls.lock().await.len(), 150);
+        assert!(
+            state
+                .calls
+                .lock()
+                .await
+                .iter()
+                .all(|call| call == "GET /v1/payment_links/plink_owned")
+        );
+    }
+    let selected = vec![all[1].clone(), all[0].clone(), all[1].clone()];
+    let result = normal.list_payment_links(Some(&selected)).await.unwrap();
+    assert_eq!(
+        result
+            .iter()
+            .map(|value| value.id.clone())
+            .collect::<Vec<_>>(),
+        selected
+    );
+    assert!(
+        result
+            .iter()
+            .all(|value| value.status == "PENDING" && value.amount.to_bits() == 12.0_f64.to_bits())
+    );
+    for bad in [
+        json!({"id":"plink_owned","object":"wrong","livemode":false}),
+        json!({"id":"plink_owned","object":"payment_link","livemode":null}),
+    ] {
+        store
+            .patch(
+                Scope::Cache,
+                BillingKind::PaymentLink,
+                &all[1],
+                json!({"providerFields":bad}),
+                Duration::from_secs(60),
+            )
+            .await
+            .unwrap();
+        state.calls.lock().await.clear();
+        assert!(
+            normal
+                .list_payment_links(Some(&[all[0].clone(), all[1].clone()]))
+                .await
+                .is_err()
+        );
+        assert!(state.calls.lock().await.is_empty());
+    }
+    store
+        .insert(
+            Scope::Cache,
+            BillingKind::PaymentLink,
+            originals[1].clone(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+    state.calls.lock().await.clear();
+    assert!(
+        normal
+            .list_payment_links(Some(&[all[0].clone(), "missing".into()]))
+            .await
+            .is_err()
+    );
+    assert!(state.calls.lock().await.is_empty());
+    response["active"] = json!(false);
+    *state.result.lock().await = response.clone();
+    assert!(
+        normal
+            .list_payment_links(Some(&selected))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    for active in [Value::Null, json!("true"), json!(1)] {
+        response["active"] = active;
+        *state.result.lock().await = response.clone();
+        state.calls.lock().await.clear();
+        assert!(normal.list_payment_links(Some(&selected)).await.is_err());
+        assert_eq!(state.calls.lock().await.len(), 1);
+    }
+    response.as_object_mut().unwrap().remove("active");
+    *state.result.lock().await = response;
+    assert!(normal.list_payment_links(Some(&selected)).await.is_err());
+    for value in originals {
+        assert_eq!(
+            store
+                .get(
+                    Scope::Cache,
+                    BillingKind::PaymentLink,
+                    value["id"].as_str().unwrap()
+                )
+                .await
+                .unwrap(),
+            Some(value)
+        );
+    }
+    server.abort();
+}

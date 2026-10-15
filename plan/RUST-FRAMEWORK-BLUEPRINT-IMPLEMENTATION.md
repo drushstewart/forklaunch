@@ -2868,3 +2868,31 @@ Logs use `/private/tmp/fl-org-pg-harness-`. CI retains the full suite and adds t
 focused and panic-cleanup tests. This reduces the cost of validating subsequent
 organization changes without reducing full integration coverage. Checklist660/682
 is unchanged.
+
+
+### 2026-10-15: Configured cache-selected PaymentLink lists
+
+Selected configured lists now enumerate local cache keys for absent/empty IDs,
+preserve explicit order and duplicates, reject missing/malformed rows, validate
+the complete local selection before provider reads, retrieve retained references
+sequentially and filter explicit boolean active values. The trusted default limit
+is100 with a hard maximum1000. Concrete Memory/PostgreSQL stores bound key selection
+before cloning/decryption/audit and never silently truncate. The compatible custom
+store fallback must use its existing list API to enumerate; it does not claim the
+concrete stores' bounded enumeration cost. No provider account-wide scan, cache
+rewrite, alias provisioning or new monetary authority is introduced.
+
+The signed PostgreSQL HTTP/MCP proof found and fixed an actual integration gap:
+no-parameter GET/list dispatch must use the existing request context and selected
+TypeScript error formatter. Request admission remains unchanged. Actual source373
+and Express-error72 cases, native4 tests, PostgreSQL HTTP/MCP1 (1.42s), legacy170,
+artifact186 and full/minimal strict Clippy5.88s/3.54s pass. Existing CI fixtures
+cover the expanded cases. Owned database/role cleanup is0. No dependency changes.
+
+All11 paths match `/private/tmp/fl-billing-configured-list-final.json` SHA256
+`180b7f8a887aed31910bcccedb6d42101479e035daa8e717cde5e087b59a01bd`.
+Logs use `/private/tmp/fl-billing-configured-list-`. Initial failing rolling logs
+were overwritten during repair; `initial-failures.txt` explicitly records excerpts
+and root cause, not an original full log. Remaining configured mutation preflight,
+provider reconciliation and broader billing gates stay open. Checklist660/682 is
+unchanged.

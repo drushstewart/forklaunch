@@ -88,6 +88,47 @@ pub trait BillingStore: Send + Sync {
                 .transpose()
         }
     }
+    /// Configured cache selection. None/empty enumerates cache in store order;
+    /// explicit IDs preserve order/duplicates and missing rows fail. Concrete
+    /// stores bound key enumeration before decoding. This compatible fallback
+    /// must first call a custom store's existing list implementation to enumerate.
+    fn list_configured_cached(
+        &self,
+        ids: Option<&[String]>,
+        limit: usize,
+    ) -> impl Future<Output = BlueprintResult<Vec<(String, Value)>>> + Send {
+        async move {
+            cached_dates::selection(ids, limit)?;
+            let selected = if let Some(ids) = ids.filter(|ids| !ids.is_empty()) {
+                ids.to_vec()
+            } else {
+                let rows = self
+                    .list(Scope::Cache, BillingKind::PaymentLink, None)
+                    .await?;
+                if rows.len() > limit {
+                    return Err(cached_dates::list_invalid());
+                }
+                rows.iter()
+                    .map(|row| {
+                        row["id"]
+                            .as_str()
+                            .map(str::to_owned)
+                            .ok_or_else(cached_dates::list_invalid)
+                    })
+                    .collect::<BlueprintResult<Vec<_>>>()?
+            };
+            cached_dates::selection(Some(&selected), limit)?;
+            let mut result = Vec::with_capacity(selected.len());
+            for id in selected {
+                let value = self
+                    .get_configured_cached(BillingKind::PaymentLink, &id)
+                    .await?
+                    .ok_or_else(cached_dates::list_invalid)?;
+                result.push((id, value));
+            }
+            Ok(result)
+        }
+    }
     fn patch(
         &self,
         scope: Scope,

@@ -93,6 +93,53 @@ impl BillingStore for MemoryBillingStore {
             .filter(|row| row.expires.is_none_or(|expires| expires > Instant::now()))
             .map(|row| row.data.clone()))
     }
+    async fn list_configured_cached(
+        &self,
+        ids: Option<&[String]>,
+        limit: usize,
+    ) -> BlueprintResult<Vec<(String, Value)>> {
+        super::cached_dates::selection(ids, limit)?;
+        let state = self.state.lock().map_err(|_| storage_error())?;
+        let now = Instant::now();
+        let selected = if let Some(ids) = ids.filter(|ids| !ids.is_empty()) {
+            ids.iter()
+                .map(|id| {
+                    let row = state
+                        .rows
+                        .get(&(Scope::Cache, BillingKind::PaymentLink, id.clone()))
+                        .filter(|row| row.expires.is_none_or(|expiry| expiry > now))
+                        .ok_or_else(super::cached_dates::list_invalid)?;
+                    Ok((id.as_str(), row))
+                })
+                .collect::<BlueprintResult<Vec<_>>>()?
+        } else {
+            let mut rows = state
+                .rows
+                .iter()
+                .filter(|((scope, kind, _), row)| {
+                    *scope == Scope::Cache
+                        && *kind == BillingKind::PaymentLink
+                        && row.expires.is_none_or(|expiry| expiry > now)
+                })
+                .take(limit + 1)
+                .map(|((_, _, id), row)| (id.as_str(), row))
+                .collect::<Vec<_>>();
+            if rows.len() > limit {
+                return Err(super::cached_dates::list_invalid());
+            }
+            rows.sort_by_key(|(_, row)| row.sequence);
+            rows
+        };
+        selected
+            .into_iter()
+            .map(|(id, row)| {
+                Ok((
+                    id.to_owned(),
+                    super::cached_dates::normalize(BillingKind::PaymentLink, row.data.clone())?,
+                ))
+            })
+            .collect()
+    }
     async fn patch(
         &self,
         scope: Scope,

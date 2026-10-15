@@ -112,6 +112,11 @@ for(const variant of ['base','stripe']){
    change=x=>x;const fallback=new Service(client,{},cache,telemetry,actual.validator,{...mappers,PaymentLinkMapper:{...read,readCachedDto:undefined}});
    gets=[];assert.equal((await fallback.listPaymentLinks({ids:[values[0].id]}))[0].id,values[0].id);assert.equal(lists,1);assert.deepEqual(gets,[]);assert.equal(writes,0);cases++;
    for(const value of values)assert.equal(rows.get('payment_link:'+value.id),JSON.stringify(value));
+   // Empty and omitted ID selections enumerate the same cache keys, not Stripe.
+   rows.clear();for(const value of values.slice(0,2))rows.set('payment_link:'+value.id,JSON.stringify(value));gets=[];lists=0;change=x=>x;
+   for(const request of [undefined,{ids:[]}]){assert.deepEqual(Array.from(await normal.listPaymentLinks(request),v=>v.id),values.slice(0,2).map(v=>v.id));assert.equal(lists,0);cases++;}
+   rows.clear();gets=[];for(const request of [undefined,{ids:[]}]){assert.deepEqual(Array.from(await normal.listPaymentLinks(request)),[]);assert.deepEqual(gets,[]);cases++;}
+
   }
   if(['checkoutSession','billingPortal'].includes(family)){
    const Service=actual.load(path.join(root,`blueprint/implementations/billing/base/services/${family}.service.ts`))[`Base${name}Service`];

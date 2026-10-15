@@ -103,6 +103,7 @@ pub struct BillingBackend {
     bound_payment_link_expiration: Option<Arc<bound_payment_link_expiration::BoundPaymentLinkExpirationV1>>,
     configured_subscription_updates: bool,
     configured_cached_reads: bool,
+    max_configured_list_records: usize,
     request_dates: BillingRequestDateProfile,
     webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
     platform_key: Option<zeroize::Zeroizing<String>>,
@@ -136,6 +137,7 @@ impl BillingBackend {
             bound_subscription: None,
             configured_subscription_updates: false,
             configured_cached_reads: false,
+            max_configured_list_records: 100,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -169,6 +171,7 @@ impl BillingBackend {
             bound_subscription: None,
             configured_subscription_updates: false,
             configured_cached_reads: false,
+            max_configured_list_records: 100,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -186,6 +189,21 @@ impl BillingBackend {
     pub const fn with_configured_cached_reads(mut self, enabled: bool) -> Self {
         self.configured_cached_reads = enabled;
         self
+    }
+
+    /// Trusted configured `PaymentLink` list limit; never taken from request data.
+    ///
+    /// # Errors
+    /// Returns a configuration error unless the limit is between 1 and 1000.
+    pub fn with_max_configured_list_records(mut self, limit: usize) -> BlueprintResult<Self> {
+        if !(1..=1000).contains(&limit) {
+            return Err(BlueprintError::new(
+                "billing_configuration",
+                "Invalid configured list limit",
+            ));
+        }
+        self.max_configured_list_records = limit;
+        Ok(self)
     }
 
     #[must_use]
@@ -253,7 +271,8 @@ impl BillingBackend {
                 execute(
                     &StripeBillingService::new(service, client.clone())
                         .with_configured_subscription_updates(self.configured_subscription_updates)
-                        .with_configured_cached_reads(self.configured_cached_reads),
+                        .with_configured_cached_reads(self.configured_cached_reads)
+                        .with_max_configured_list_records(self.max_configured_list_records)?,
                     &contract.operation_name,
                     input,
                 )
@@ -398,7 +417,7 @@ async fn dispatch_with_context(
     let configured_read = backend.configured_cached_reads
         && matches!(
             contract.operation_name.as_str(),
-            "getCheckoutSession" | "getPaymentLink"
+            "getCheckoutSession" | "getPaymentLink" | "listPaymentLinks"
         );
     match backend.call(&session, &contract, input).await {
         Ok(result) => result.into_response(),
@@ -559,12 +578,13 @@ pub fn billing_router(
             HttpMethod::Get if contract.request.params.is_empty() => router.get(
                 contract,
                 move |Extension(session): Extension<AuthenticatedSession>,
-                      RawQuery(query): RawQuery| {
+                      RawQuery(query): RawQuery,
+                      Extension(context): Extension<forklaunch_axum::RequestContext>| {
                     let backend = Arc::clone(&backend);
                     let contract = handler_contract.clone();
                     async move {
                         match list_input(query.as_deref()) {
-                            Ok(input) => dispatch(backend, session, contract, input).await,
+                            Ok(input) => dispatch_with_context(backend, session, contract, input, context).await,
                             Err(error) => failure(&error),
                         }
                     }

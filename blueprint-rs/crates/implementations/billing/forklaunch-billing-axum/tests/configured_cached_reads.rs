@@ -31,7 +31,7 @@ fn sign(method: &str, path: &str, body: Option<&Value>, actor: &str) -> String {
         KEY,
         actor,
         method,
-        path,
+        path.split('?').next().unwrap(),
         encoded
             .as_deref()
             .map_or(SignedBody::Absent, SignedBody::Text),
@@ -218,6 +218,9 @@ async fn matrix(f: &Fixture) {
                 tx.commit().await.unwrap();
             }
         }
+        if !checkout {
+            configured_list_matrix(f, &state, &http, &url, &id, &cached).await;
+        }
         for status in [404, 429, 500, 599] {
             *state.status.lock().await = Some(status);
             for correlation in [None, Some("cache-status"), Some("")] {
@@ -330,4 +333,230 @@ async fn matrix(f: &Fixture) {
     }
     server.abort();
     provider_task.abort();
+}
+
+async fn list_response(http: &reqwest::Client, url: &str, ids: Option<Value>) -> reqwest::Response {
+    let mut target = reqwest::Url::parse(&format!("{url}/payment-link")).unwrap();
+    if let Some(ids) = ids {
+        target
+            .query_pairs_mut()
+            .append_pair("ids", &ids.to_string());
+    }
+    let path = target.as_str()[url.len()..].to_owned();
+    http.get(target)
+        .header("authorization", sign("GET", &path, None, "default"))
+        .header("x-correlation-id", "list-test")
+        .send()
+        .await
+        .unwrap()
+}
+#[allow(clippy::too_many_lines)]
+async fn configured_list_matrix(
+    f: &Fixture,
+    state: &Provider,
+    http: &reqwest::Client,
+    url: &str,
+    id: &str,
+    cached: &Value,
+) {
+    let second = Uuid::new_v4().to_string();
+    let mut other = cached.clone();
+    other["id"] = json!(second);
+    f.store
+        .insert(
+            Scope::Cache,
+            BillingKind::PaymentLink,
+            other.clone(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+    let mut evidence = cached["providerFields"].clone();
+    evidence["active"] = json!(true);
+    *state.response.lock().await = evidence.clone();
+    for ids in [None, Some(json!([])), Some(json!([second, id, second]))] {
+        state.calls.lock().await.clear();
+        let expected = if ids
+            .as_ref()
+            .is_some_and(|ids| ids.as_array().unwrap().len() == 3)
+        {
+            vec![second.as_str(), id, second.as_str()]
+        } else {
+            vec![id, second.as_str()]
+        };
+        let response = list_response(http, url, ids).await;
+        assert_eq!(response.status(), 200);
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(
+            body.as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(
+            body.as_array()
+                .unwrap()
+                .iter()
+                .all(|value| value["status"] == "PENDING" && value["amount"] == 12.0)
+        );
+        assert_eq!(state.calls.lock().await.len(), expected.len());
+        assert!(
+            state
+                .calls
+                .lock()
+                .await
+                .iter()
+                .all(|call| call == "GET /v1/payment_links/plink_owned")
+        );
+    }
+    let mut mcp_url = reqwest::Url::parse(&format!("{url}/payment-link")).unwrap();
+    mcp_url
+        .query_pairs_mut()
+        .append_pair("ids", &json!([second, id, second]).to_string());
+    let mcp_path = &mcp_url.as_str()[url.len()..];
+    state.calls.lock().await.clear();
+    let response=http.post(format!("{url}/mcp")).header("accept","application/json, text/event-stream")
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"listPaymentLinks","arguments":{"query":{"ids":[second,id,second]},"headers":{"authorization":sign("GET",mcp_path,None,"default")}}}})).send().await.unwrap();
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["result"]["isError"], false, "{body}");
+    assert_eq!(state.calls.lock().await.len(), 3);
+    for ids in [
+        json!([id, Uuid::new_v4().to_string()]),
+        json!([" "]),
+        json!(vec![id; 101]),
+    ] {
+        state.calls.lock().await.clear();
+        let response = list_response(http, url, Some(ids)).await;
+        assert_eq!(response.status(), 500);
+        assert_eq!(
+            response.text().await.unwrap(),
+            "Internal server error:\n\nCorrelation id: list-test"
+        );
+        assert!(state.calls.lock().await.is_empty());
+    }
+    other["providerFields"] = json!({"id":"plink_owned","object":"wrong","livemode":false});
+    f.store
+        .insert(
+            Scope::Cache,
+            BillingKind::PaymentLink,
+            other.clone(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+    state.calls.lock().await.clear();
+    assert_eq!(
+        list_response(http, url, Some(json!([id, second])))
+            .await
+            .status(),
+        500
+    );
+    assert!(state.calls.lock().await.is_empty());
+    other["providerFields"] = cached["providerFields"].clone();
+    f.store
+        .insert(
+            Scope::Cache,
+            BillingKind::PaymentLink,
+            other.clone(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+    evidence["active"] = json!(false);
+    *state.response.lock().await = evidence.clone();
+    assert_eq!(
+        list_response(http, url, Some(json!([id, second])))
+            .await
+            .json::<Value>()
+            .await
+            .unwrap(),
+        json!([])
+    );
+    for active in [Value::Null, json!("true"), json!(1)] {
+        evidence["active"] = active;
+        *state.response.lock().await = evidence.clone();
+        state.calls.lock().await.clear();
+        assert_eq!(
+            list_response(http, url, Some(json!([id, second])))
+                .await
+                .status(),
+            500
+        );
+        assert_eq!(state.calls.lock().await.len(), 1);
+    }
+    for status in [404, 429, 500] {
+        *state.status.lock().await = Some(status);
+        let response = list_response(http, url, Some(json!([id]))).await;
+        assert_eq!(response.status().as_u16(), status);
+        assert_eq!(
+            response.text().await.unwrap(),
+            format!(
+                "{}:\n\nCorrelation id: list-test",
+                if status == 500 {
+                    "Internal server error"
+                } else {
+                    "Request could not be processed"
+                }
+            )
+        );
+    }
+    *state.status.lock().await = None;
+    // Enumerated count admission must happen before decrypt/read-audit: revoke
+    // INSERT, proving a within-limit read fails while excess keys return the
+    // configured bound error without trying to audit either row.
+    let role: String = sqlx::query_scalar("SELECT current_user")
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    sqlx::query(&format!(
+        "REVOKE INSERT ON fl_billing.sensitive_read_audit FROM {role}"
+    ))
+    .execute(&f.owner)
+    .await
+    .unwrap();
+    for ids in [None, Some(&[][..])] {
+        assert_eq!(
+            f.store
+                .list_configured_cached(ids, 1)
+                .await
+                .unwrap_err()
+                .code,
+            "billing_configured_mapper_error"
+        );
+    }
+    assert_eq!(
+        f.store
+            .list_configured_cached(None, 2)
+            .await
+            .unwrap_err()
+            .code,
+        "billing_storage"
+    );
+    sqlx::query(&format!(
+        "GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}"
+    ))
+    .execute(&f.owner)
+    .await
+    .unwrap();
+    assert_eq!(
+        f.store
+            .get(Scope::Cache, BillingKind::PaymentLink, id)
+            .await
+            .unwrap(),
+        Some(cached.clone())
+    );
+    assert_eq!(
+        f.store
+            .get(Scope::Cache, BillingKind::PaymentLink, &second)
+            .await
+            .unwrap(),
+        Some(other)
+    );
+    f.store
+        .delete(Scope::Cache, BillingKind::PaymentLink, &second)
+        .await
+        .unwrap();
+    *state.response.lock().await = cached["providerFields"].clone();
 }

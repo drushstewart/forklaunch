@@ -307,6 +307,46 @@ impl BillingStore for PostgresBillingStore {
         tx.commit().await.map_err(db_error)?;
         Ok(value)
     }
+    async fn list_configured_cached(
+        &self,
+        ids: Option<&[String]>,
+        limit: usize,
+    ) -> BlueprintResult<Vec<(String, Value)>> {
+        super::cached_dates::selection(ids, limit)?;
+        let mut tx = self.transaction().await?;
+        let selected = if let Some(ids) = ids.filter(|ids| !ids.is_empty()) {
+            ids.to_vec()
+        } else {
+            let bound =
+                i64::try_from(limit + 1).map_err(|_| super::cached_dates::list_invalid())?;
+            let keys: Vec<String> = sqlx::query_scalar("SELECT id FROM fl_billing.records WHERE tenant_id=$1 AND scope='cache' AND kind='payment_link' AND (expires_at IS NULL OR expires_at>now()) ORDER BY created_at,id LIMIT $2")
+                .bind(self.tenant.id()).bind(bound).fetch_all(&mut *tx).await.map_err(db_error)?;
+            if keys.len() > limit {
+                return Err(super::cached_dates::list_invalid());
+            }
+            keys
+        };
+        super::cached_dates::selection(Some(&selected), limit)?;
+        let mut result = Vec::with_capacity(selected.len());
+        for id in selected {
+            let raw: Option<sqlx::types::Json<Value>> = sqlx::query_scalar("SELECT data FROM fl_billing.records WHERE tenant_id=$1 AND scope='cache' AND kind='payment_link' AND id=$2 AND (expires_at IS NULL OR expires_at>now())")
+                .bind(self.tenant.id()).bind(&id).fetch_optional(&mut *tx).await.map_err(db_error)?;
+            let raw = raw.ok_or_else(super::cached_dates::list_invalid)?;
+            let value = self
+                .decode_profile(
+                    &mut tx,
+                    Scope::Cache,
+                    BillingKind::PaymentLink,
+                    &id,
+                    raw.0,
+                    DecodeProfile::ConfiguredCached,
+                )
+                .await?;
+            result.push((id, value));
+        }
+        tx.commit().await.map_err(db_error)?;
+        Ok(result)
+    }
     async fn patch(
         &self,
         scope: Scope,

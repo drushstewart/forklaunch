@@ -66,6 +66,7 @@ pub struct StripeBillingService<S> {
     client: StripeBillingClient,
     configured_subscription_updates: bool,
     configured_cached_reads: bool,
+    pub(crate) max_configured_list_records: usize,
 }
 impl<S: BillingStore> StripeBillingService<S> {
     #[must_use]
@@ -75,6 +76,7 @@ impl<S: BillingStore> StripeBillingService<S> {
             client,
             configured_subscription_updates: false,
             configured_cached_reads: false,
+            max_configured_list_records: 100,
         }
     }
     /// Applies the generated application's configured Subscription mapper owner preflight.
@@ -84,12 +86,26 @@ impl<S: BillingStore> StripeBillingService<S> {
         self.configured_subscription_updates = enabled;
         self
     }
-    /// Selects the configured application's cache-first Checkout/PaymentLink GET mappers.
+    /// Selects the configured application's cache-first Checkout GET and `PaymentLink` GET/list mappers.
     /// Cached references are read targets, not provider account or mutation authority.
     #[must_use]
     pub const fn with_configured_cached_reads(mut self, enabled: bool) -> Self {
         self.configured_cached_reads = enabled;
         self
+    }
+    /// Trusted configured-list bound, independent of caller DTO fields.
+    ///
+    /// # Errors
+    /// Returns a configuration error unless the limit is between 1 and 1000.
+    pub fn with_max_configured_list_records(mut self, limit: usize) -> BlueprintResult<Self> {
+        if !(1..=1000).contains(&limit) {
+            return Err(BlueprintError::new(
+                "billing_configuration",
+                "Invalid configured list limit",
+            ));
+        }
+        self.max_configured_list_records = limit;
+        Ok(self)
     }
     #[must_use]
     pub const fn base(&self) -> &BaseBillingService<S> {
@@ -519,6 +535,9 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
         &self,
         ids: Option<&[String]>,
     ) -> BlueprintResult<Vec<PaymentLinkDto>> {
+        if self.configured_cached_reads {
+            return self.configured_list_payment_links(ids).await;
+        }
         let provider = self
             .client
             .list(StripeResource::PaymentLink, &json!({"active":true}))
