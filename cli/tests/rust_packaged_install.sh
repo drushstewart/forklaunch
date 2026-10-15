@@ -127,6 +127,11 @@ for workspace in ['framework-rs','blueprint-rs']:
         for name, digest in [('emoji-data.txt', 'f1365a5173eee18e1f98b240cdc492e84a25f1ce7e0c9d1094eb29c41a22696a'), ('LICENSE.txt', 'e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96')]:
             data = root.joinpath('crates/forklaunch-common/data/unicode-16.0.0', name)
             assert hashlib.sha256(data.read_bytes()).hexdigest() == digest, f'Packaged Unicode provenance changed: {name}'
+        for source in ['src/zod_string_case.rs', 'src/zod_string_case_tables.rs', 'data/unicode-16.0.0/README.md', 'data/unicode-16.0.0/generate.py']:
+            assert root.joinpath('crates/forklaunch-validation', source).is_file(), f'Packaged case-transform provenance missing: {source}'
+        for name, digest in [('SpecialCasing.txt', '8d5de354eef79f2395a54c9c7dcebbaf3d30fc962d0f85611ea97aa973a0c451'), ('LICENSE.txt', 'e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96')]:
+            data = root.joinpath('crates/forklaunch-validation/data/unicode-16.0.0', name)
+            assert hashlib.sha256(data.read_bytes()).hexdigest() == digest, f'Packaged case-transform source changed: {name}'
         for source in ['src/zod_binary.rs', 'src/zod_string_format.rs', 'examples/zod_binary_parity.rs', 'examples/zod_string_formats_parity.rs']:
             assert root.joinpath('crates/forklaunch-validation', source).is_file(), f'Packaged scalar validation source missing: {source}'
     else:

@@ -51,7 +51,6 @@ pub(super) fn own_schema_bytes(schema: &ZodJsonSchema<'_>) -> usize {
         }),
         ZodJsonSchema::DiscriminatedUnion { discriminator, .. } => discriminator.len(),
         ZodJsonSchema::Literal(literal) => literal.bytes(),
-        #[cfg(feature = "zod-regex")]
         ZodJsonSchema::CheckedString(checks) => checks
             .iter()
             .fold(0usize, |bytes, check| bytes.saturating_add(check.bytes())),
@@ -98,9 +97,7 @@ pub(super) fn evaluation_bytes(
             .saturating_mul(3)
             .saturating_add(literal.bytes().saturating_mul(12))
             .saturating_add(128),
-        #[cfg(feature = "zod-regex")]
         ZodJsonSchema::CheckedString(checks) => input_bytes()?
-            .saturating_mul(checks.len().saturating_add(2))
             .saturating_add(own_schema_bytes(schema))
             .saturating_add(checks.len().saturating_add(1).saturating_mul(128)),
         ZodJsonSchema::String(checks) => input_bytes()?

@@ -168,6 +168,32 @@ fn discriminated_field() -> typescript_coerce::ZodJsonField<'static> {
         })),
     }
 }
+fn case_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
+    use typescript_coerce::{
+        ZodJsonField as Field, ZodJsonSchema as Schema, ZodJsonStringCheck as Check,
+        ZodStringCheck, ZodStringRule, ZodStringStep,
+    };
+    vec![
+        Field {
+            name: "caseText",
+            schema: Schema::Optional(Box::new(Schema::CheckedString(vec![
+                Check::Uppercase,
+                Check::Scalar(ZodStringCheck {
+                    rule: ZodStringRule::Step(ZodStringStep::Trim),
+                    message: None,
+                }),
+                Check::Scalar(ZodStringCheck {
+                    rule: ZodStringRule::Step(ZodStringStep::Max(2)),
+                    message: None,
+                }),
+            ]))),
+        },
+        Field {
+            name: "lowerText",
+            schema: Schema::Optional(Box::new(Schema::CheckedString(vec![Check::Lowercase]))),
+        },
+    ]
+}
 fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> {
     use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
     let mut fields = vec![
@@ -252,6 +278,7 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
             })),
         },
     ];
+    fields.extend(case_fields());
     fields.push(discriminated_field());
     fields.extend(tuple_fields());
     fields.push(runtime_format_field());
