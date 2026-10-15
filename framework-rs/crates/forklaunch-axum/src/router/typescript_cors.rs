@@ -1,4 +1,4 @@
-//! Static, opt-in compatibility with the TypeScript application's cors middleware.
+//! Opt-in compatibility with the TypeScript application's cors middleware.
 use axum::{
     Router,
     extract::{Request, State},
@@ -8,7 +8,12 @@ use axum::{
 };
 use tower::{Layer, ServiceExt};
 
-/// Static origin policies supported by the TypeScript CORS profile.
+mod delegate;
+pub use delegate::{
+    TypeScriptCorsOriginDecision, TypeScriptCorsOriginDelegate, TypeScriptCorsOriginError,
+};
+
+/// Origin policies supported by the TypeScript CORS profile.
 #[derive(Debug, Clone, Default)]
 pub enum TypeScriptCorsOrigin {
     /// Emit `*`, including requests without Origin.
@@ -22,10 +27,12 @@ pub enum TypeScriptCorsOrigin {
     AllowList(Vec<HeaderValue>),
     /// Bypass CORS entirely, including OPTIONS interception.
     Disabled,
+    /// Await a trusted origin callback before CORS and route dispatch.
+    Delegate(TypeScriptCorsOriginDelegate),
 }
 
-/// Static TypeScript cors options. Function/regular-expression origin delegates
-/// and arbitrary JavaScript coercion are outside this profile.
+/// TypeScript cors options. Trusted origin delegates are supported; regular
+/// expressions and arbitrary JavaScript coercion are separate capabilities.
 #[derive(Debug, Clone)]
 pub struct TypeScriptCors {
     pub origin: TypeScriptCorsOrigin,
@@ -105,7 +112,7 @@ impl TypeScriptCors {
                 }
                 vary.push("Origin");
             }
-            TypeScriptCorsOrigin::Disabled => return headers,
+            TypeScriptCorsOrigin::Disabled | TypeScriptCorsOrigin::Delegate(_) => return headers,
         }
         if self.credentials {
             headers.insert(
@@ -215,7 +222,25 @@ fn wrap_typescript(router: Router, config: TypeScriptCors) -> Router {
         .layer(middleware::from_fn_with_state(config, apply))
 }
 
-async fn apply(State(config): State<TypeScriptCors>, mut request: Request, next: Next) -> Response {
+async fn apply(
+    State(mut config): State<TypeScriptCors>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    if let TypeScriptCorsOrigin::Delegate(callback) = &config.origin {
+        config.origin = match callback
+            .resolve(joined(request.headers(), header::ORIGIN))
+            .await
+        {
+            Ok(origin) => origin,
+            Err(_) => {
+                return super::framework_response_to_axum(super::local_handler_failure_response(
+                    super::HandlerErrorFormat::TypeScriptText,
+                    "No correlation ID",
+                ));
+            }
+        };
+    }
     if config.disabled() {
         return next.run(request).await;
     }

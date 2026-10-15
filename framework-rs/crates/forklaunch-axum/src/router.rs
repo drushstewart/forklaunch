@@ -50,7 +50,10 @@ use tower_http::{
 
 mod correlation;
 mod typescript_cors;
-pub use typescript_cors::{TypeScriptCors, TypeScriptCorsHeaders, TypeScriptCorsOrigin};
+pub use typescript_cors::{
+    TypeScriptCors, TypeScriptCorsHeaders, TypeScriptCorsOrigin, TypeScriptCorsOriginDecision,
+    TypeScriptCorsOriginDelegate, TypeScriptCorsOriginError,
+};
 mod default_errors;
 mod origin;
 pub use correlation::CorrelationIdFormat;
@@ -125,7 +128,7 @@ pub struct RouterConfig {
     pub servers: Vec<OpenApiServer>,
     /// CORS policy; defaults to a permissive policy when unset.
     pub cors: Option<CorsLayer>,
-    /// Static TypeScript CORS profile; mutually exclusive with `cors`.
+    /// TypeScript CORS profile; mutually exclusive with `cors`.
     pub typescript_cors: Option<TypeScriptCors>,
     /// Credential verifier for routes requiring authentication. Missing verifiers fail closed.
     pub authenticator: Option<Authenticator>,

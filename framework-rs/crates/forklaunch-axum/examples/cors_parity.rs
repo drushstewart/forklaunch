@@ -1,8 +1,9 @@
-//! Static CORS HTTP target for actual TypeScript source comparisons.
+//! CORS HTTP target for actual TypeScript source comparisons.
 use axum::http::{HeaderValue, StatusCode};
 use forklaunch_axum::{
     CorrelationIdFormat, ForkLaunchRouter, HandlerErrorFormat, ParserErrorFormat, RouterConfig,
-    RouterOriginFormat, TypeScriptCors, TypeScriptCorsOrigin,
+    RouterOriginFormat, TypeScriptCors, TypeScriptCorsOrigin, TypeScriptCorsOriginDecision,
+    TypeScriptCorsOriginDelegate, TypeScriptCorsOriginError,
 };
 use forklaunch_contract::{HttpMethod, RouteContract};
 use forklaunch_core::ServiceInfo;
@@ -23,10 +24,8 @@ fn header(value: &Value) -> HeaderValue {
     HeaderValue::from_str(&value).unwrap()
 }
 
-#[tokio::main]
-async fn main() {
-    let input: Value = serde_json::from_str(&std::env::args().nth(1).unwrap()).unwrap();
-    let origin = match input.get("origin") {
+fn origin_policy(input: &Value) -> TypeScriptCorsOrigin {
+    let mut origin = match input.get("origin") {
         None => TypeScriptCorsOrigin::Any,
         Some(Value::Bool(false)) => TypeScriptCorsOrigin::Disabled,
         Some(Value::Bool(true)) => TypeScriptCorsOrigin::Reflect,
@@ -35,6 +34,40 @@ async fn main() {
         }
         Some(value) => TypeScriptCorsOrigin::Fixed(header(value)),
     };
+    if let Some(mode) = input["delegate"].as_str() {
+        let mode = mode.to_owned();
+        origin =
+            TypeScriptCorsOrigin::Delegate(TypeScriptCorsOriginDelegate::new(move |_origin| {
+                let mode = mode.clone();
+                async move {
+                    if mode.starts_with("async") {
+                        tokio::task::yield_now().await;
+                    }
+                    if mode.contains("error") {
+                        return Err(TypeScriptCorsOriginError);
+                    }
+                    Ok(match mode.as_str() {
+                        "true" | "async-true" => TypeScriptCorsOriginDecision::Reflect,
+                        "fixed" => TypeScriptCorsOriginDecision::Fixed(HeaderValue::from_static(
+                            "https://fixed.example",
+                        )),
+                        "list" => {
+                            TypeScriptCorsOriginDecision::AllowList(vec![HeaderValue::from_static(
+                                "https://allowed.example",
+                            )])
+                        }
+                        _ => TypeScriptCorsOriginDecision::Disabled,
+                    })
+                }
+            }));
+    }
+    origin
+}
+
+#[tokio::main]
+async fn main() {
+    let input: Value = serde_json::from_str(&std::env::args().nth(1).unwrap()).unwrap();
+    let origin = origin_policy(&input);
     let cors = TypeScriptCors {
         origin,
         methods: input

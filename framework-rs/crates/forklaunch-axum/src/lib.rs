@@ -38,7 +38,8 @@ pub use router::{
     AuthErrorFormat, CorrelationIdFormat, DEFAULT_BODY_LIMIT_BYTES, ForkLaunchRouter,
     HandlerErrorFormat, JsonTransformFailure, RequestValidationStage, RequestValidators,
     ResponseValidators, RouterConfig, RouterOriginFormat, TypeScriptCors, TypeScriptCorsHeaders,
-    TypeScriptCorsOrigin,
+    TypeScriptCorsOrigin, TypeScriptCorsOriginDecision, TypeScriptCorsOriginDelegate,
+    TypeScriptCorsOriginError,
 };
 
 pub use forklaunch_http::{

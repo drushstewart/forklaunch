@@ -191,3 +191,95 @@ fn max_age_that_javascript_would_round_is_rejected() {
         }),
     );
 }
+
+#[tokio::test]
+async fn origin_delegate_receives_joined_bytes_once_before_dispatch() {
+    use std::sync::{Arc, Mutex};
+    let observed = Arc::new(Mutex::new(Vec::new()));
+    let calls = observed.clone();
+    let callback = TypeScriptCorsOriginDelegate::new(move |origin| {
+        calls.lock().unwrap().push(origin);
+        async { Ok(TypeScriptCorsOriginDecision::Reflect) }
+    });
+    let app = wrap(
+        Router::new().route("/", axum::routing::get(|| async { "ok" })),
+        None,
+        Some(TypeScriptCors {
+            origin: TypeScriptCorsOrigin::Delegate(callback),
+            ..TypeScriptCors::default()
+        }),
+    );
+    for method in ["GET", "OPTIONS"] {
+        let request = Request::builder()
+            .method(method)
+            .uri("/")
+            .header(header::ORIGIN, "https://first.example")
+            .header(header::ORIGIN, "https://second.example")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(
+            response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "https://first.example, https://second.example"
+        );
+        assert_eq!(
+            response.status().as_u16(),
+            if method == "GET" { 200 } else { 204 }
+        );
+    }
+    let calls = observed.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert!(calls.iter().all(|value| value.as_ref().unwrap() == "https://first.example, https://second.example"));
+}
+
+#[tokio::test]
+async fn canceled_origin_delegate_drops_pending_work_without_dispatch() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    struct Dropped(Arc<AtomicUsize>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    let drops = Arc::new(AtomicUsize::new(0));
+    let callback_drops = drops.clone();
+    let dispatched = Arc::new(AtomicUsize::new(0));
+    let handlers = dispatched.clone();
+    let app = wrap(
+        Router::new().route(
+            "/",
+            axum::routing::get(move || {
+                let handlers = handlers.clone();
+                async move {
+                    handlers.fetch_add(1, Ordering::SeqCst);
+                    "ok"
+                }
+            }),
+        ),
+        None,
+        Some(TypeScriptCors {
+            origin: TypeScriptCorsOrigin::Delegate(TypeScriptCorsOriginDelegate::new(
+                move |origin| {
+                    assert!(origin.is_none());
+                    let guard = Dropped(callback_drops.clone());
+                    async move {
+                        let _guard = guard;
+                        std::future::pending().await
+                    }
+                },
+            )),
+            ..TypeScriptCors::default()
+        }),
+    );
+    let response = tokio::time::timeout(
+        std::time::Duration::from_millis(10),
+        app.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()),
+    )
+    .await;
+    assert!(response.is_err());
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    assert_eq!(dispatched.load(Ordering::SeqCst), 0);
+}
