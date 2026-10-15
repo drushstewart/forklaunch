@@ -11,6 +11,7 @@ pub enum BillingIdentityProfile {
     #[default]
     Legacy,
     BoundCheckoutV1,
+    BoundBillingV1,
 }
 impl std::str::FromStr for BillingIdentityProfile {
     type Err = BlueprintError;
@@ -18,6 +19,7 @@ impl std::str::FromStr for BillingIdentityProfile {
         match value {
             "legacy" => Ok(Self::Legacy),
             "bound-checkout-v1" => Ok(Self::BoundCheckoutV1),
+            "bound-billing-v1" => Ok(Self::BoundBillingV1),
             _ => Err(configuration()),
         }
     }

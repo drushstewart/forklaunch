@@ -1219,3 +1219,16 @@ PostgreSQL tenant advisory locks coordinate managed writers; ordinary post-final
 races and post-return revocation remain application limitations. No public route,
 proof consumption or implicit User/session/password authorization added.26backup,
 14actual and restrictedPG read-only/tenant checks pass; strict Clippy passes.
+
+
+### Aggregate Portal authority review (2026-10-14)
+
+Each selected family validates its own publisher grants on the explicit pool;
+actor wrappers retain role/database validation. Service authentication supplies
+audit actor, with end-user ownership left to application policy. Portal accepts
+only localCustomerId plus operationUUID; fixed configuration/scope/redirects
+cannot be caller provider fields. Fresh creation can disclose URL once; historical
+inspection returns IDs/state and uncertain effects do not redispatch. Startup
+fails before listening for missing/mixed/base/managed/backup authority. Restricted
+PG, actor/concurrency/current-customer and both SDK HTTP/MCP checks pass; no remote
+URL validity, general financial operations or automatic alias provisioning claim.

@@ -10,7 +10,7 @@ const temporary=mkdtempSync(path.join(tmpdir(),'fl-billing-bound-checkout-artifa
 const target=process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target');
 const template=readFileSync(path.join(root,'cli/src/templates/rust/billing/lib.rs'),'utf8');
 function run(command,args,env={}) {
- const result=spawnSync(command,args,{cwd:temporary,env:{...Object.fromEntries(Object.entries(process.env).filter(([key])=>!['BILLING_BOUND_CHECKOUT_CONFIG','BILLING_PUBLISHER_DATABASE_URL'].includes(key))),CARGO_TARGET_DIR:target,CARGO_INCREMENTAL:'0',...env},encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
+ const result=spawnSync(command,args,{cwd:temporary,env:{...Object.fromEntries(Object.entries(process.env).filter(([key])=>!['BILLING_BOUND_CHECKOUT_CONFIG','BILLING_BOUND_BILLING_CONFIG','BILLING_PUBLISHER_DATABASE_URL'].includes(key))),CARGO_TARGET_DIR:target,CARGO_INCREMENTAL:'0',...env},encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
  assert.equal(result.status,0,result.stderr);return result.stdout;
 }
 try {
@@ -40,7 +40,17 @@ try {
   assert.ok(!rendered.includes('{{'));writeFileSync(path.join(temporary,'src/lib.rs'),rendered);
   run('cargo',['build','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
   const configured={deploymentLabel:'owned',accountId:'acct_private',livemode:false,plans:[{localPlanId:'11111111-1111-4111-8111-111111111111',creationOperationId:'22222222-2222-4222-8222-222222222222'}],successUrl:'https://private.example/success',cancelUrl:'https://private.example/cancel'};
+  const aggregate={deploymentLabel:'owned',accountId:'acct_private',livemode:false,portal:{configurationId:'bpc_private',returnUrl:'https://private.example/return'}};
   const cases=[
+   {name:'aggregate-portal',profile:'bound-billing-v1',aggregate,publisher:'postgres://publisher@localhost/db',fail:!stripe,count:2},
+   {name:'aggregate-both',profile:'bound-billing-v1',aggregate:{...aggregate,checkout:{plans:configured.plans,successUrl:configured.successUrl,cancelUrl:configured.cancelUrl}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:5},
+   {name:'aggregate-checkout',profile:'bound-billing-v1',aggregate:{deploymentLabel:aggregate.deploymentLabel,accountId:aggregate.accountId,livemode:false,checkout:{plans:configured.plans,successUrl:configured.successUrl,cancelUrl:configured.cancelUrl}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:3},
+   {name:'aggregate-mixed',profile:'bound-billing-v1',aggregate,config:configured,publisher:'postgres://publisher@localhost/db',fail:true},
+   {name:'aggregate-missing-publisher',profile:'bound-billing-v1',aggregate,fail:true},
+   {name:'aggregate-missing-config',profile:'bound-billing-v1',publisher:'postgres://publisher@localhost/db',fail:true},
+   {name:'aggregate-null',profile:'bound-billing-v1',aggregate:{...aggregate,portal:null},publisher:'postgres://publisher@localhost/db',fail:true},
+   {name:'old-mixed',profile:'bound-checkout-v1',aggregate,config:configured,publisher:'postgres://publisher@localhost/db',fail:true},
+   {name:'legacy-mixed',profile:'legacy',aggregate,fail:true},
    {name:'legacy',profile:'legacy',config:null,publisher:null,fail:false},
    {name:'bound',profile:'bound-checkout-v1',config:configured,publisher:'postgres://publisher:private-password@localhost/db',fail:!stripe},
    {name:'missing-publisher',profile:'bound-checkout-v1',config:configured,publisher:null,fail:true},
@@ -49,20 +59,22 @@ try {
    {name:'unknown',profile:'unknown',config:null,publisher:null,fail:true},
    {name:'unknown-config-field',profile:'bound-checkout-v1',config:{...configured,stripeFields:{}},publisher:'postgres://publisher@localhost/db',fail:true}
   ];
+  cases.sort((a,b)=>(a.name==='legacy'?-1:b.name==='legacy'?1:0));
   let legacy;
   for(const test of cases){
    const directory=path.join(temporary,`${stripe}-${test.name}`);
    const env={ARTIFACT_DIR:directory,BILLING_REQUEST_DATE_PROFILE:'utc-iso-and-epoch',BILLING_IDENTITY_PROFILE:test.profile,EXPECT_FAILURE:test.fail?'1':'0'};
    if(test.config)env.BILLING_BOUND_CHECKOUT_CONFIG=JSON.stringify(test.config);
+   if(test.aggregate)env.BILLING_BOUND_BILLING_CONFIG=JSON.stringify(test.aggregate);
    if(test.publisher)env.BILLING_PUBLISHER_DATABASE_URL=test.publisher;
    run(path.join(target,'debug/fl-billing-bound-checkout-artifacts'),[],env);
    if(test.fail)continue;
    const contract=JSON.parse(readFileSync(path.join(directory,'contract.json'))),openapi=JSON.parse(readFileSync(path.join(directory,'openapi.json')));
    const text=JSON.stringify({contract,openapi});assert(text.includes('x-forklaunch-date-profile'));
    for(const secret of ['acct_private','private-password','private.example'])assert(!text.includes(secret));
-   const bound=contract.routes.filter(r=>r.path.startsWith('/bound-checkout/'));
+   const bound=contract.routes.filter(r=>(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')));
    if(test.profile==='legacy'){assert.equal(bound.length,0);legacy=contract.routes;}
-   else {assert.equal(bound.length,3);assert.deepEqual(contract.routes.filter(r=>!r.path.startsWith('/bound-checkout/')),legacy);assert(bound.some(r=>r.responses.some(v=>v.statusCode===202)));}
+   else {assert.equal(bound.length,test.count??3);assert.deepEqual(contract.routes.filter(r=>!(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/'))),legacy);assert(bound.some(r=>r.responses.some(v=>v.statusCode===202)));}
   }
 
  }
@@ -81,5 +93,5 @@ try {
   writeFileSync(path.join(temporary,'src/main.rs'),render(mainTemplate));
   run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
  }
- console.log('PASS actual rendered generated library: 14 base/Stripe identity startup/export cases, shared three-route registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
+ console.log('PASS actual rendered generated library: 32 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
 } finally {rmSync(temporary,{recursive:true,force:true});}

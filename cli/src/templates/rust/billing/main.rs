@@ -4,14 +4,14 @@ use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_blueprint_core::AuditContext;
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
 use forklaunch_billing_base::services::postgres::PostgresBillingStore;
-use forklaunch_billing_axum::{BillingBackend,BoundCheckoutV1,billing_router};
+use forklaunch_billing_axum::{BillingBackend,BoundCheckoutV1,BoundBillingV1,billing_router};
 {{#stripe}}use forklaunch_billing_stripe::client::StripeBillingClient;
 use forklaunch_blueprint_core::provider_http::ProviderHttpClient;
 use std::time::Duration;{{/stripe}}
 use sqlx::postgres::PgPoolOptions;
 use forklaunch_core::telemetry::otlp::TelemetryRuntime;
 use jsonwebtoken::{Algorithm, Validation};
-use {{crate_module}}::{service_info, write_contract_artifacts, request_date_profile_from_env, bound_checkout_config_from_env};
+use {{crate_module}}::{service_info, write_contract_artifacts, request_date_profile_from_env, bound_checkout_config_from_env, bound_billing_config_from_env};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,6 +42,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let bound_checkout_config = bound_checkout_config_from_env()?;
+    let bound_billing_config = bound_billing_config_from_env()?;
     let store = PostgresBillingStore::new(pool.clone(),
         TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?,
         Arc::new(FieldEncryptor::from_env()?),AuditContext::system("billing-startup"),
@@ -59,11 +60,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(issuer) = env::var("JWT_ISSUER") { validation.set_issuer(&[issuer]); }
     if let Ok(audience) = env::var("JWT_AUDIENCE") { validation.validate_aud = true; validation.set_audience(&[audience]); }
     let auth = HmacJwksAuth::new(secret.into_bytes(), jwks, validation)?;
-    let publisher_pool = if bound_checkout_config.is_some() {
+    let publisher_pool = if bound_checkout_config.is_some() || bound_billing_config.is_some() {
         Some(PgPoolOptions::new().max_connections(4).connect(&env::var("BILLING_PUBLISHER_DATABASE_URL").map_err(|_| "Bound Checkout requires a publisher database")?).await.map_err(|_| "Unable to connect to billing publisher database")?)
     } else { None };
-    let publisher = if let Some(pool) = &publisher_pool {
-        Some(store.with_audit_context(AuditContext::actor("service:bound-checkout-startup", "billing-startup"))?.trusted_checkout_publisher(pool.clone()).await?)
+    let checkout_selected=bound_checkout_config.is_some() || bound_billing_config.as_ref().is_some_and(|c|c.has_checkout());
+    let portal_selected=bound_billing_config.as_ref().is_some_and(|c|c.has_portal());
+    let startup_store=store.with_audit_context(AuditContext::actor("service:bound-billing-startup", "billing-startup"))?;
+    let publisher = if checkout_selected {
+        Some(startup_store.trusted_checkout_publisher(publisher_pool.as_ref().ok_or("Missing publisher")?.clone()).await?)
+    } else { None };
+    let portal_publisher = if portal_selected {
+        Some(startup_store.trusted_portal_publisher(publisher_pool.as_ref().ok_or("Missing publisher")?.clone()).await?)
     } else { None };
     {{#stripe}}
     let gateway = env::var("PLATFORM_GATEWAY_URL").ok().filter(|value|!value.is_empty());
@@ -84,10 +91,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     {{/stripe}}{{^stripe}}let backend = BillingBackend::base(store);{{/stripe}}
     let backend = backend.with_database_backup(env::var("BILLING_DATABASE_BACKUP").unwrap_or_else(|_|"false".into()).parse()?);
     let backend = backend.with_request_dates(request_date_profile_from_env()?);
-    let backend = match (bound_checkout_config, publisher) {
-        (Some(config), Some(publisher)) => backend.with_bound_checkout(BoundCheckoutV1::trusted(config, publisher)).await?,
-        (None, None) => backend,
-        _ => return Err("Incomplete bound Checkout configuration".into()),
+    let backend = if let Some(config)=bound_billing_config {
+        backend.with_bound_billing(BoundBillingV1::trusted(config,publisher,portal_publisher)?).await?
+    } else {
+        match (bound_checkout_config,publisher) {
+            (Some(config),Some(publisher)) => backend.with_bound_checkout(BoundCheckoutV1::trusted(config,publisher)).await?,
+            (None,None) => backend,
+            _ => return Err("Incomplete bound billing configuration".into()),
+        }
     };
     let host = env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned());
     let port: u16 = env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?;

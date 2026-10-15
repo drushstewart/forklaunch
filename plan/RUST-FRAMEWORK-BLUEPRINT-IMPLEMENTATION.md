@@ -2111,3 +2111,11 @@ strict full/minimal Clippy green. No public HTTP/MCP route. See inventory/securi
 receipt. Latest CLI1122 tests pass, production CLI builds24.07s (four existing
 warnings), and1285 embedded source/template package entries pass; working-source
 checks include current drafts, not an immutable checkpoint.660/682 (96.8%),22open.
+
+
+Aggregate bound billing/Portal checkpoint (2026-10-14): one explicit selector
+chooses Checkout/Portal independently, preserving legacy/Checkout-only profiles.
+Portal create and IDs-only inspection pass restrictedPG/HTTP/MCP and4generated
+SDKcalls;32config/artifact cases and actual base/Stripe main compile,6units,
+Date/default66routes28schemas and strictClippy pass. Root CI wrapper passes3.49s.
+Cached Portal reread and other families remain open; see inventory.660/682 (96.8%).

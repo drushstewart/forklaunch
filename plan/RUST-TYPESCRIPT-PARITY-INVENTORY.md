@@ -9810,3 +9810,34 @@ Clippy pass. Owned roles/records/audit cleaned to0. Logs
 /private/tmp/fl-backup-view-{regression,pg,clippy,minimal-clippy,actual}.log.
 No lock/template/dependency changes; no immutable archive runtime claim. Broad
 MFA/library and parity gates remain open;660/682 (96.8%),22open unchanged.
+
+
+### Aggregate bound billing and Portal operation routes (2026-10-14)
+
+Explicit bound-billing-v1 selector admits shared trusted scope plus independently
+selected checkout/portal configuration; at least one known family is required.
+Legacy and bound-checkout-v1 remain compatible; mixed/partial/null/unknown config
+rejects. Selected families share artifact/runtime contracts and one explicit
+publisher database URL, with independent grants and role/database validation.
+No provider startup I/O, no credentials/private configuration in metadata.
+Startup rejects base/managed/backup/partial authority before listening.
+Portal POST /bound-portal/operations/:operationId accepts only localCustomerId;
+GET on the same operation path inspects IDs/state only. Fresh created200 may
+return sealed DTO/URL, previous completion suppresses URL, uncertain202 never
+automatically redispatches. Calling service derives audit/publisher actor;
+application owns individual user/Party authorization. No Portal URL reread is
+implemented in this checkpoint; original unextended5min local cache policy and
+provenance-aware current customer/binding checks are a separate follow-through,
+not evidence of remote URL validity. Other billing families remain separate.
+Frozen13 /private/tmp/fl-bound-billing-portal-final.json SHA256
+0dfbee680475505b70b562cf94fe112a70a6510fef8b9b0fb3476279572b6489.
+RestrictedPG/HTTP/MCP and generated TS/Rust SDK2calls each (4total) pass4.03s;
+6units,32base/Stripe config/artifact cases and actual binary-template compilation,
+Date composition, default66routes28schemas, strict3billing allfeature/alltarget
+and featureoff Axum Clippy pass. Separate Checkout regression6SDKcalls passes.
+Root direct-executable Portal CI wrapper independently passes3.49s, avoiding
+nested Cargo build-lock deadlock; logs /private/tmp/fl-bound-billing-portal-ci-wrapper.log
+and /private/tmp/fl-bound-billing-{portal-live,aggregate-unit,aggregate-artifacts,
+checkout-regression,date-regression,contracts-regression,aggregate-clippy,default-clippy}.log.
+Owned roles/databases cleaned0. No manifests/locks/migrations/framework changes;
+no latest immutable archive-installed profile claim.660/682 (96.8%),22open unchanged.

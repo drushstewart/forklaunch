@@ -1,11 +1,19 @@
 //! Persistent billing HTTP handlers shared with authenticated MCP dispatch.
 #![forbid(unsafe_code)]
 #[cfg(feature = "bound-checkout")]
+mod bound_billing;
+#[cfg(feature = "bound-checkout")]
 mod bound_checkout;
+#[cfg(feature = "bound-checkout")]
+mod bound_portal;
+#[cfg(feature = "bound-checkout")]
+pub use bound_billing::{BoundBillingConfig, BoundBillingV1, BoundPortalConfig};
 #[cfg(feature = "bound-checkout")]
 pub use bound_checkout::{
     BillingIdentityProfile, BoundCheckoutConfig, BoundCheckoutV1, bound_checkout_contracts,
 };
+#[cfg(feature = "bound-checkout")]
+pub use bound_portal::{BoundPortalV1, bound_portal_contracts};
 mod request_dates;
 mod webhook;
 use axum::{
@@ -40,6 +48,8 @@ pub struct BillingBackend {
     backup: bool,
     #[cfg(feature = "bound-checkout")]
     bound_checkout: Option<Arc<BoundCheckoutV1>>,
+    #[cfg(feature = "bound-checkout")]
+    bound_portal: Option<Arc<BoundPortalV1>>,
     request_dates: BillingRequestDateProfile,
     webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
     platform_key: Option<zeroize::Zeroizing<String>>,
@@ -53,6 +63,8 @@ impl BillingBackend {
             backup: false,
             #[cfg(feature = "bound-checkout")]
             bound_checkout: None,
+            #[cfg(feature = "bound-checkout")]
+            bound_portal: None,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -66,6 +78,8 @@ impl BillingBackend {
             backup: false,
             #[cfg(feature = "bound-checkout")]
             bound_checkout: None,
+            #[cfg(feature = "bound-checkout")]
+            bound_portal: None,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -424,6 +438,8 @@ pub fn billing_router(
     }
     #[cfg(feature = "bound-checkout")]
     let router = bound_checkout::register(router, &backend);
+    #[cfg(feature = "bound-checkout")]
+    let router = bound_portal::register(router, &backend);
     router
         .get(module_contracts::health_contract(), move || {
             let name = service.name.clone();

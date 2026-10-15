@@ -289,6 +289,8 @@ on:
       - 'cli/tests/rust_billing_bound_checkout_artifacts.mjs'
       - 'cli/tests/rust_billing_bound_checkout_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_checkout_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_portal_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_portal_route_sdks.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
@@ -659,6 +661,8 @@ on:
       - 'cli/tests/rust_billing_bound_checkout_artifacts.mjs'
       - 'cli/tests/rust_billing_bound_checkout_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_checkout_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_portal_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_portal_route_sdks.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
@@ -1340,6 +1344,8 @@ jobs:
       - run: node cli/tests/rust_billing_bound_checkout_artifacts.mjs
       - name: Bound Checkout live HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_checkout_runtime.mjs
+      - name: Bound Portal live HTTP, MCP and both SDKs
+        run: node cli/tests/rust_billing_bound_portal_runtime.mjs
       - name: Billing date HTTP, MCP and generated SDK profile
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --test request_dates -- --ignored
       - run: node cli/tests/rust_billing_dto_types.mjs

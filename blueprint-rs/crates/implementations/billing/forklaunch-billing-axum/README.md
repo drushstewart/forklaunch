@@ -88,3 +88,58 @@ creation profile and its separate publisher transaction retain their existing
 ambiguity/recovery boundaries. This namespace does not switch all five billing
 families to configured TypeScript parity and adds no financial mutation alias
 resolution, account-wide list scanning, or automatic legacy data migration.
+
+## BoundBillingV1 aggregate
+
+Select `BILLING_IDENTITY_PROFILE=bound-billing-v1` and supply
+`BILLING_BOUND_BILLING_CONFIG` with one shared scope and explicitly selected domains:
+
+```json
+{
+  "deploymentLabel": "production",
+  "accountId": "acct_CONFIGURED",
+  "livemode": true,
+  "checkout": {
+    "plans": [{"localPlanId": "LOCAL-PLAN-UUID", "creationOperationId": "COMPLETED-PLAN-OPERATION-UUID"}],
+    "successUrl": "https://your-app.example/success",
+    "cancelUrl": "https://your-app.example/cancel"
+  },
+  "portal": {
+    "configurationId": "bpc_CONFIGURED",
+    "returnUrl": "https://your-app.example/account"
+  }
+}
+```
+
+At least one of `checkout` and `portal` is required; omit an unselected domain.
+Null, empty, unknown, or partial sections fail. The shared scope is server-owned;
+no DTO may override it. `BILLING_PUBLISHER_DATABASE_URL` remains the single
+explicit separate publisher connection. Its role must have each selected
+publication function grant, independently validated before listening. Mixed old
+`BILLING_BOUND_CHECKOUT_CONFIG` and aggregate configuration fail. The existing
+`bound-checkout-v1` spelling, its configuration, and legacy registry APIs remain
+supported; they do not select Portal implicitly.
+
+Library callers construct `BoundBillingConfig` and `BoundBillingV1::trusted`
+with exactly the selected independent publisher capabilities, then call
+`with_bound_billing`. Artifact callers use `contract_registry_with_bound_billing`
+with the same configuration; a selector alone cannot guess selected families.
+The existing optional `bound-checkout` Cargo feature also enables this additive
+aggregate. No new dependency, migration, or automatic publisher grant is needed.
+
+Portal adds `createBoundPortalSession` (POST) and `inspectBoundPortalOperation`
+(GET), both at `/bound-portal/operations/:operationId`. The body contains exactly
+`localCustomerId`, a registered local Customer UUID. The server pins configuration
+and return URL. HTTP, MCP, and generated SDKs share these two contracts and the
+same trusted service-key/tenant authority boundary described above. Creation uses
+the existing Portal journal, customer claims, direct provider validation, and
+separate trusted publisher. Fresh creation may return a URL; completed duplicates
+and inspection return IDs only. Uncertain effects remain pending, without retry
+or claim release. These routes confer no payment or entitlement proof.
+
+There is deliberately no Portal session URL GET in this aggregate. Configured
+TypeScript currently rereads its cached DTO; matching that behavior safely would
+require an explicit historical-read policy, immutable receipt/current Customer
+checks, and the original unextended local expiry. This slice neither reissues a
+URL nor claims that its original five-minute local policy proves remote validity.
+Plan, Subscription, and PaymentLink route integration remain separate gaps.

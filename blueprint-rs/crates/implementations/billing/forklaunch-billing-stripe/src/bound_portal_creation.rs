@@ -110,6 +110,17 @@ fn session(
     Ok(())
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Validates a selected direct profile and separate publisher before provider I/O.
+    /// # Errors
+    /// Rejects managed transport or incompatible actor/tenant/database/role authority.
+    pub async fn validate_bound_portal_configuration(
+        &self,
+        publisher: &TrustedPortalPublisher,
+    ) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        publisher.validate_for(self.base().store()).await
+    }
+
     /// Trusted caller separately authorizes this local Customer/Party to access
     /// this Portal configuration. One POST only after confirmed reservation.
     /// Uncertain dispatch/COMMIT retains claims; inspect operation, never retry.
