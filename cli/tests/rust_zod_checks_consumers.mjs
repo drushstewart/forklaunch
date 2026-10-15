@@ -28,6 +28,7 @@ const source = z
     unknownPayload: validator.unknown,
     typedPayload: validator.type(),
     text: z.string().length(2),
+    dispatch: z.discriminatedUnion("tag", [z.object({tag:z.literal("a").default("a")}),z.object({tag:z.literal("b")})]),
     keyed: z.record(z.string().min(2).max(3), z.string()),
     cardinality: z.array(z.string()).min(1.5).max(2.5).length(NaN),
     number: z.number().multipleOf(0.1),
@@ -64,6 +65,7 @@ const cases = [
   { text: "😀", number: 0.1 + 0.2 },
 ];
 const validFormats = {
+  dispatch: {tag:"a"},
   keyed: {"😀": "value", "ab": "value"},
   cardinality:["a","b"],
   email: "a'b@b-.co",
@@ -87,6 +89,9 @@ const validFormats = {
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
+  {dispatch:{}},
+  {dispatch:{tag:"b"}},
+  {dispatch:{tag:"unknown"}},
   {keyed: {a:"value"}},
   {keyed: {"😀😀":"value"}},
   {keyed: {}},

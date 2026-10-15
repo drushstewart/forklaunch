@@ -896,6 +896,7 @@ function parseUnion({
 
 function parseDiscriminatedUnion({
   generateSchema,
+  pureInput,
   schemas,
   zodRef,
   useOutput,
@@ -903,25 +904,34 @@ function parseDiscriminatedUnion({
 }: ParsingArgs<
   z.ZodDiscriminatedUnion<string, z.ZodDiscriminatedUnionOption<string>[]>
 >): SchemaObject {
+  const discriminator = zodRef.discriminator;
+  const oneOf = zodRef.options.map((option) => {
+    const schema = generateSchema(option, useOutput, openApiVersion);
+    const metadata = (option as OpenApiZodAny).metaOpenApi ?? {};
+    const annotations = Array.isArray(metadata) ? metadata : [metadata];
+    // Dispatch happens before defaults. Only the already-registered undefined
+    // branch may receive absent tags; never execute a default to infer a tag.
+    // Canonical JSON objects inherit Object.prototype; those names cannot
+    // dispatch an absent own property as undefined. Null-prototype direct JS
+    // inputs have distinct semantics outside this JSON representation.
+    // An explicit branch required annotation remains caller-owned.
+    if (
+      pureInput &&
+      (zodRef.optionsMap.get(undefined) !== option ||
+        Object.prototype.hasOwnProperty.call(Object.prototype, discriminator)) &&
+      !annotations.some((value) =>
+        Object.prototype.hasOwnProperty.call(value, 'required')
+      )
+    ) {
+      return {
+        ...schema,
+        required: [...new Set([...(schema.required ?? []), discriminator])]
+      };
+    }
+    return schema;
+  });
   return merge(
-    {
-      discriminator: {
-        propertyName: (
-          zodRef as z.ZodDiscriminatedUnion<
-            string,
-            z.ZodDiscriminatedUnionOption<string>[]
-          >
-        )._def.discriminator
-      },
-      oneOf: Array.from(
-        (
-          zodRef as z.ZodDiscriminatedUnion<
-            string,
-            z.ZodDiscriminatedUnionOption<string>[]
-          >
-        )._def.options.values()
-      ).map((schema) => generateSchema(schema, useOutput, openApiVersion))
-    },
+    { discriminator: { propertyName: discriminator }, oneOf },
     zodRef.description ? { description: zodRef.description } : {},
     ...schemas
   );
