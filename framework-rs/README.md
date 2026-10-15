@@ -579,6 +579,22 @@ import. Draft 4 message discrimination requires `enum` tags because its `const`
 keyword is only an annotation. `rust_asyncapi_dialects_runtime.mjs` compiles both
 SDKs for all five dialects, tests live roundtrips and rejects invalid numeric bounds.
 
+`forklaunch_asyncapi::RuntimeExpression::parse` checks message header/payload
+locations and RFC6901 URI-fragment pointers with4096-byte/64-segment limits.
+`resolve(headers, payload)` borrows the referenced value with its original type,
+including present null; a missing source/path returns None. URI percent escapes
+are decoded once, then JSON Pointer escapes are applied. Applications retain
+responsibility for matching correlation values and enforcing reply deadlines.
+`MessageContract::with_correlation_id` exports a checked location in event
+AsyncAPI documents. `import_server_websocket_asyncapi_with_metadata` retains
+resolved message correlations alongside the unchanged socket contracts, including
+local references and ordered trait precedence. The raw WebSocket profile accepts
+JSON payload locations; application-header and binary-payload correlations are
+rejected. Upgrade headers are separate from application message headers. The
+ordinary importer validates the same profile and returns only socket contracts.
+Dynamic reply addresses and broader event imports remain open. See the
+[AsyncAPI runtime expression grammar](https://www.asyncapi.com/docs/reference/specification/v3.0.0#runtimeExpression).
+
 Checked SDK schemas, raw socket AsyncAPI exports and imported AsyncAPI payloads require literal `/` JSON-pointer separators; use `~1` for a slash within a name. Percent-encoded names, escaped tokens and literal percent names remain supported. Encoded separators fail before artifact writes, matching the checked validator profile. Generic OpenAPI reference-object resolution and resource-preserving relocation retain URI decoding independently. Native raw JSON Schema codecs and actual AJV still differ for encoded interior separators outside this checked profile; broader resolver parity remains tracked.
 
 See the [Rust/TypeScript compatibility baseline](../docs/adding-projects/rust-compatibility.md) for source package versions, artifact formats and implementation choices.

@@ -3,9 +3,14 @@
 #[cfg(feature = "import")]
 mod import;
 #[cfg(feature = "import")]
-pub use import::import_server_websocket_asyncapi;
+pub use import::{
+    ImportedWebSocketAsyncApi, import_server_websocket_asyncapi,
+    import_server_websocket_asyncapi_with_metadata,
+};
 
+mod expression;
 mod raw;
+pub use expression::{MessageSource, RuntimeExpression};
 pub use raw::{
     SocketAsyncApiOptions, generate_raw_socket_asyncapi_json,
     generate_raw_socket_asyncapi_json_with_options,
@@ -81,6 +86,7 @@ pub struct MessageContract {
     pub title: String,
     pub payload: SchemaRef,
     pub headers: BTreeMap<String, SchemaRef>,
+    pub correlation_id: Option<RuntimeExpression>,
 }
 
 impl MessageContract {
@@ -95,12 +101,21 @@ impl MessageContract {
             title: title.into(),
             payload: SchemaRef::named(payload),
             headers: BTreeMap::new(),
+            correlation_id: None,
         }
     }
 
     #[must_use]
     pub fn with_header(mut self, name: impl Into<String>, schema: impl Into<String>) -> Self {
         self.headers.insert(name.into(), SchemaRef::named(schema));
+        self
+    }
+
+    /// Declare a checked message correlation location; consumers own matching
+    /// and deadlines. The expression preserves the referenced value's type.
+    #[must_use]
+    pub fn with_correlation_id(mut self, location: RuntimeExpression) -> Self {
+        self.correlation_id = Some(location);
         self
     }
 
@@ -119,12 +134,22 @@ impl MessageContract {
             .collect::<Vec<_>>()
             .join(",");
 
+        let correlation = self
+            .correlation_id
+            .as_ref()
+            .map_or_else(String::new, |expression| {
+                format!(
+                    ",\"correlationId\":{{\"location\":{}}}",
+                    json_string(expression.location())
+                )
+            });
         format!(
-            "{{\"name\":{},\"title\":{},\"payload\":{},\"headers\":[{}]}}",
+            "{{\"name\":{},\"title\":{},\"payload\":{},\"headers\":[{}]{}}}",
             json_string(&self.name),
             json_string(&self.title),
             self.payload.to_json(),
-            headers
+            headers,
+            correlation
         )
     }
 }
@@ -245,6 +270,9 @@ impl AsyncApiDocument {
             });
             if !headers.is_empty() {
                 message["headers"] = json!({"type": "object", "properties": headers});
+            }
+            if let Some(expression) = &contract.message.correlation_id {
+                message["correlationId"] = json!({"location":expression.location()});
             }
             if messages
                 .get(&contract.message.name)
@@ -568,6 +596,42 @@ fn channel_name_from_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn message_correlation_exports_checked_locations_and_conflict_guards() {
+        let message = MessageContract::new("Created", "Created", "String")
+            .with_correlation_id(RuntimeExpression::parse("$message.payload#/id").unwrap());
+        let contract: Value = serde_json::from_str(&message.to_json()).unwrap();
+        assert_eq!(
+            contract["correlationId"]["location"],
+            "$message.payload#/id"
+        );
+        let channel = ChannelContract::new(
+            "events",
+            "events",
+            MessageProtocol::Kafka,
+            MessageDirection::Publish,
+            message,
+        );
+        let document =
+            AsyncApiDocument::new(AsyncApiInfo::new("Events", "1")).with_channel(channel.clone());
+        let encoded: Value = serde_json::from_str(&document.to_json().unwrap()).unwrap();
+        assert_eq!(
+            encoded["channels"]["events"]["messages"]["Created"]["correlationId"]["location"],
+            "$message.payload#/id"
+        );
+        let mut changed = channel;
+        changed.message.correlation_id =
+            Some(RuntimeExpression::parse("$message.header#/id").unwrap());
+        assert!(document.with_channel(changed).to_json().is_err());
+        let plain: Value =
+            serde_json::from_str(&MessageContract::new("Plain", "Plain", "String").to_json())
+                .unwrap();
+        assert!(plain.get("correlationId").is_none());
+        if let Ok(path) = std::env::var("FORKLAUNCH_TEST_ASYNCAPI_CORRELATION_EXPORT") {
+            std::fs::write(path, serde_json::to_vec(&encoded).unwrap()).unwrap();
+        }
+    }
 
     #[test]
     fn asyncapi_document_serializes_channels() {

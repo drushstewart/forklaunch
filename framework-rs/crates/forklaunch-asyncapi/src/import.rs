@@ -5,6 +5,7 @@
 // Distributed under the adjacent ASYNCAPI_SPEC_LICENSE (Apache-2.0).
 // Upstream attribution is retained in ASYNCAPI_SPEC_NOTICE.
 mod traits;
+use super::{MessageSource, RuntimeExpression};
 use std::collections::{BTreeMap, BTreeSet};
 
 use forklaunch_common::{FrameworkError, FrameworkResult};
@@ -18,6 +19,16 @@ struct Channel {
     binary: BTreeSet<String>,
     receive: BTreeSet<String>,
     send: BTreeSet<String>,
+    correlations: BTreeMap<String, RuntimeExpression>,
+}
+
+/// Checked socket contracts and application-owned correlation expressions.
+/// Keys are channel-message JSON Pointers after resolving channel references
+/// (without the leading `#`); message references retain their channel identity.
+/// These expressions do not start a request manager or introduce wire envelopes.
+pub struct ImportedWebSocketAsyncApi {
+    pub contracts: SocketContractArtifact,
+    pub correlations: BTreeMap<String, RuntimeExpression>,
 }
 
 /// Import an `AsyncAPI` 3.0 document explicitly describing a WebSocket server.
@@ -37,6 +48,17 @@ struct Channel {
 pub fn import_server_websocket_asyncapi(
     document: &Value,
 ) -> FrameworkResult<SocketContractArtifact> {
+    Ok(import_server_websocket_asyncapi_with_metadata(document)?.contracts)
+}
+
+/// Import the same checked server-view profile, retaining declared correlation
+/// expressions for applications that route responses themselves. Only JSON
+/// payload locations are supported: raw sockets have no application headers.
+/// # Errors
+/// Returns socket import errors, plus malformed or unsupported correlation sources.
+pub fn import_server_websocket_asyncapi_with_metadata(
+    document: &Value,
+) -> FrameworkResult<ImportedWebSocketAsyncApi> {
     validate_document(document)?;
     if document.get("asyncapi").and_then(Value::as_str) != Some("3.0.0") {
         return Err(invalid("WebSocket import requires AsyncAPI 3.0.0"));
@@ -49,7 +71,9 @@ pub fn import_server_websocket_asyncapi(
     let mut budget = OutputBudget(32 * 1024 * 1024);
     let mut channels = read_channels(document, &mut budget)?;
     read_operations(document, &mut channels, &mut budget)?;
-    for channel in channels.into_values() {
+    let mut correlations = BTreeMap::new();
+    for mut channel in channels.into_values() {
+        correlations.append(&mut channel.correlations);
         let used: BTreeSet<_> = channel.receive.union(&channel.send).cloned().collect();
         if used.len() != channel.messages.len() {
             return Err(invalid(
@@ -84,7 +108,10 @@ pub fn import_server_websocket_asyncapi(
             );
         artifact.sockets.insert(channel.name, socket);
     }
-    Ok(artifact)
+    Ok(ImportedWebSocketAsyncApi {
+        contracts: artifact,
+        correlations,
+    })
 }
 
 fn validate_document(document: &Value) -> FrameworkResult<()> {
@@ -214,9 +241,18 @@ fn read_channels(
         }
         let mut schemas = BTreeMap::new();
         let mut binary = BTreeSet::new();
+        let mut correlations = BTreeMap::new();
         for message in messages.keys() {
             let pointer = format!("{location}/messages/{}", token(message));
-            let schema = message_schema(document, &pointer, budget)?;
+            let (schema, correlation) = message_schema(document, &pointer, budget)?;
+            if let Some(correlation) = correlation {
+                // Retained location and decoded pointer each consume bounded
+                // output space; decoded UTF-8 is never longer than URI bytes.
+                let encoded = Value::String(correlation.location().to_owned());
+                budget.reserve(&encoded)?;
+                budget.reserve(&encoded)?;
+                correlations.insert(pointer.clone(), correlation);
+            }
             budget.reserve(&schema.shape)?;
             if schema.binary {
                 binary.insert(pointer.clone());
@@ -232,6 +268,7 @@ fn read_channels(
                 binary,
                 receive: BTreeSet::new(),
                 send: BTreeSet::new(),
+                correlations,
             },
         );
     }
@@ -324,10 +361,24 @@ fn message_schema(
     document: &Value,
     pointer: &str,
     budget: &mut OutputBudget,
-) -> FrameworkResult<SocketSchemaEntry> {
+) -> FrameworkResult<(SocketSchemaEntry, Option<RuntimeExpression>)> {
     let (location, message) = object_at(document, pointer)?;
     let message = traits::apply(document, &location, message, true, budget)?;
     reject_fields(&message, &["headers"])?;
+    let correlation = message
+        .get("correlationId")
+        .map(|value| {
+            let object = referenced_object(document, value)?;
+            let expression = RuntimeExpression::parse(text(object, "location")?)
+                .map_err(|_| invalid("Invalid message correlation runtime expression"))?;
+            if expression.source() != MessageSource::Payload {
+                return Err(invalid(
+                    "Raw WebSocket correlations require payload locations",
+                ));
+            }
+            Ok(expression)
+        })
+        .transpose()?;
     check_bindings(document, &message)?;
     let media = message
         .get("contentType")
@@ -335,6 +386,11 @@ fn message_schema(
         .and_then(Value::as_str)
         .ok_or_else(|| invalid("Explicit message content type is required"))?;
     if media == "application/octet-stream" {
+        if correlation.is_some() {
+            return Err(invalid(
+                "Binary WebSocket payload correlations are unsupported",
+            ));
+        }
         // Only canonical byte schemas are supported: never discard assertions
         // such as minLength or enum while converting to an unchecked byte codec.
         let (_, payload) = object_at(document, &format!("{location}/payload"))?;
@@ -343,7 +399,7 @@ fn message_schema(
                 "Binary messages require the canonical string/binary payload schema",
             ));
         }
-        return Ok(SocketSchemaEntry::binary());
+        return Ok((SocketSchemaEntry::binary(), None));
     }
     if media != "application/json"
         && !(media.starts_with("application/") && media.ends_with("+json"))
@@ -377,7 +433,7 @@ fn message_schema(
         forklaunch_sdk_codegen::bundle_document_schema_resources(document, &schema_location)
             .map_err(|error| invalid(&format!("Imported schema resources: {error}")))?;
     validate_payload_profile(&schema)?;
-    Ok(SocketSchemaEntry::json(schema))
+    Ok((SocketSchemaEntry::json(schema), correlation))
 }
 
 fn check_servers(document: &Value, channel: &Map<String, Value>) -> FrameworkResult<()> {
@@ -747,6 +803,67 @@ fn invalid(message: &str) -> FrameworkError {
 mod tests {
     use super::*;
     use forklaunch_ws::codec::PayloadCodec;
+
+    #[test]
+    fn correlation_metadata_resolves_references_and_trait_precedence() {
+        let mut doc = document();
+        doc["components"]["correlationIds"] =
+            json!({"id":{"location":"$message.payload#/message"}});
+        doc["components"]["messageTraits"] =
+            json!({"trace":{"correlationId":{"location":"$message.payload#/kind"}}});
+        doc["components"]["messages"]["Request"]["traits"] =
+            json!([{"$ref":"#/components/messageTraits/trace"}]);
+        doc["components"]["messages"]["Request"]["correlationId"] =
+            json!({"$ref":"#/components/correlationIds/id"});
+        doc["components"]["messages"]["Reply"]["traits"] =
+            json!([{"$ref":"#/components/messageTraits/trace"}]);
+        let imported = import_server_websocket_asyncapi_with_metadata(&doc).unwrap();
+        assert_eq!(imported.correlations.len(), 2);
+        let request = &imported.correlations["/channels/chat/messages/request"];
+        assert_eq!(request.location(), "$message.payload#/message");
+        assert_eq!(
+            request.resolve(None, Some(&json!({"kind":"request","message":17}))),
+            Some(&json!(17))
+        );
+        assert_eq!(
+            imported.correlations["/channels/chat/messages/reply"].location(),
+            "$message.payload#/kind"
+        );
+        let ordinary = import_server_websocket_asyncapi(&doc).unwrap();
+        assert_eq!(ordinary, imported.contracts);
+        if let Ok(path) = std::env::var("FORKLAUNCH_TEST_ASYNCAPI_CORRELATION_DOCUMENT") {
+            std::fs::write(path, serde_json::to_vec(&doc).unwrap()).unwrap();
+        }
+    }
+
+    #[test]
+    fn correlation_metadata_rejects_unrepresentable_or_malformed_sources() {
+        for location in [
+            "$message.header#/id",
+            "$message.payload#/bad~2",
+            "$message.payload#/%FF",
+            "$message.payload.extra",
+        ] {
+            let mut doc = document();
+            doc["components"]["messages"]["Request"]["correlationId"] =
+                json!({"location":location});
+            assert!(
+                import_server_websocket_asyncapi_with_metadata(&doc).is_err(),
+                "{location}"
+            );
+        }
+        let mut doc = document();
+        doc["components"]["messages"]["Request"]["correlationId"] =
+            json!({"$ref":"#/components/correlationIds/missing"});
+        assert!(import_server_websocket_asyncapi_with_metadata(&doc).is_err());
+        let mut doc = document();
+        doc["components"]["messages"]["Request"]["contentType"] = json!("application/octet-stream");
+        doc["components"]["messages"]["Request"]["payload"] =
+            json!({"type":"string","format":"binary"});
+        doc["components"]["messages"]["Request"]["correlationId"] =
+            json!({"location":"$message.payload"});
+        assert!(import_server_websocket_asyncapi_with_metadata(&doc).is_err());
+    }
 
     fn document() -> Value {
         json!({

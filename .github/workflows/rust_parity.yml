@@ -40,6 +40,7 @@ on:
       - 'cli/tests/rust_bullmq_scheduler_parity.mjs'
       - 'cli/tests/rust_bullmq_protocol_unit.sh'
       - 'cli/tests/rust_asyncapi_parity.mjs'
+      - 'cli/tests/rust_asyncapi_correlation.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
@@ -237,6 +238,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_lockout_options.mjs'
       - 'cli/tests/fixtures/rust_better_auth_backup_options.mjs'
       - 'cli/tests/fixtures/rust_better_auth_otp_storage.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_otp_encryption.mjs'
       - 'cli/tests/fixtures/rust_better_auth_seed.rs'
       - 'cli/tests/rust_better_auth_runtime.mjs'
       - 'cli/tests/rust_better_auth_frontend_composition.mjs'
@@ -379,6 +381,7 @@ on:
       - 'cli/tests/rust_bullmq_scheduler_parity.mjs'
       - 'cli/tests/rust_bullmq_protocol_unit.sh'
       - 'cli/tests/rust_asyncapi_parity.mjs'
+      - 'cli/tests/rust_asyncapi_correlation.mjs'
       - 'cli/tests/rust_native_sdk_parity.mjs'
       - 'cli/tests/rust_tanstack_query_parity.mjs'
       - 'cli/tests/rust_canonical_http_parity.mjs'
@@ -576,6 +579,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_lockout_options.mjs'
       - 'cli/tests/fixtures/rust_better_auth_backup_options.mjs'
       - 'cli/tests/fixtures/rust_better_auth_otp_storage.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_otp_encryption.mjs'
       - 'cli/tests/fixtures/rust_better_auth_seed.rs'
       - 'cli/tests/rust_better_auth_runtime.mjs'
       - 'cli/tests/rust_better_auth_frontend_composition.mjs'
@@ -791,6 +795,9 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_otlp_runtime.mjs
       - run: node cli/tests/rust_asyncapi_parity.mjs
+        env:
+          ASYNCAPI_PARSER_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/@asyncapi/parser
+      - run: node cli/tests/rust_asyncapi_correlation.mjs
         env:
           ASYNCAPI_PARSER_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/@asyncapi/parser
       - run: node cli/tests/rust_mcp_body_parity.mjs

@@ -31,7 +31,9 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: direct scoped captured-payment adoption with atomic receipt/rollback/lost-COMMIT proof; configurable MFA account lockout with disabled zero-write success; strict JSON literals/ordered enum lowering with118,132 actual/native and117 HTTP/54 MCP/both-SDK checks.
 - Completed: explicit Connected captured-payment adoption; immutable dda838 archive installs offline/locked with2666 byte-verified files and passes portable services/workers/modules/SDKs, generated HTTP/MCP listener/capability checks and packaged IAM137 tests.
 - Completed: backup generation policy, plain/hashed OTP storage, ordered strict objects/records, scoped PayPal ORDER reads and VOIDED failure repair. Actual-source/native, HTTP/MCP and restricted PostgreSQL receipts cover their respective boundaries.
-- Active: encrypted OTP storage and next schema/provider gap audits. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: built-in encrypted OTP field storage and bounded versioned key policy, with5 Node/Rust vectors, native35 and restricted PG.
+- Completed: checked AsyncAPI correlation expressions and metadata import/export, including referenced trait precedence; native38, minimal22, official parser and strict Clippy pass.
+- Active: JSON absence factories, direct bound BillingPortal creation and async custom OTP codec design. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
 - Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.

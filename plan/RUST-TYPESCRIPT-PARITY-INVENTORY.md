@@ -9196,3 +9196,30 @@ all-feature/all-target Clippy7.50s and minimal3.36s pass. Cleanup0/0/0. Logs:
 full-actual,cleanup}.log. Pinned RustCrypto chacha20poly1305 0.11.0 and additive
 lock edges are included; owned fake-secret JSON vectors are source assets. No
 new generated-TCP or immutable archive claim;660/682 stays unchanged.
+
+### 2026-10-14: checked AsyncAPI correlation locations (working source)
+
+RuntimeExpression parses bounded message.header/message.payload locations and
+RFC6901 URI-fragment pointers (4096bytes/64segments), decodes percentUTF8 once,
+validates pointer escapes and resolves borrowed values without coercion. Missing
+source/path differs from present null. MessageContract exports optional checked
+correlationId metadata; differing correlation declarations fail message conflict
+checks. The metadata importer retains expressions keyed by channel-message
+pointers alongside identical SocketContractArtifact values. JSON payload locations
+are supported; application-header and binary-payload correlations fail checked
+import rather than silently disappear. Ordinary import validates the same profile
+and returns contracts only; applications own matching/deadlines/connections.
+
+The new referenced-correlation plus trait test initially failed: merging before
+resolving created forbidden $ref+location siblings. Official @asyncapi/parser
+confirmed reference targets are resolved before target precedence. Correlation
+references are now resolved before trait merge within existing bounded local
+reference/output budgets. Native38 all-feature tests, official parser import/
+export/trait precedence, existing official trait/envelope regression, minimal22
+tests and strict all-feature/all-target Clippy5.13s pass. No dependency/vendor/
+lock changes. Frozen5 source hashes: /private/tmp/fl-asyncapi-correlation-source.json;
+logs /private/tmp/fl-asyncapi-correlation{,-legacy,-minimal,-clippy}.log. CI adds
+the parser fixture and encryptedOTP helper path filters. No new live HTTP/MCP
+or generated/immutable receipt is implied by this metadata change. Dynamic reply
+addresses, broader event imports and overall AsyncAPI gate remain open;660/682
+unchanged. Primary grammar: https://www.asyncapi.com/docs/reference/specification/v3.0.0#runtimeExpression.

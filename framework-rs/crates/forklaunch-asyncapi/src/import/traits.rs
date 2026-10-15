@@ -1,5 +1,5 @@
 //! `AsyncAPI` 3 traits use ordered JSON Merge Patch, with the target applied last.
-use super::{FrameworkResult, Map, OutputBudget, Value, invalid, object_at};
+use super::{FrameworkResult, Map, OutputBudget, Value, invalid, object_at, referenced_object};
 use std::borrow::Cow;
 
 pub(super) fn apply<'a>(
@@ -40,18 +40,43 @@ pub(super) fn apply<'a>(
                 "Unsupported field in AsyncAPI trait reference target",
             ));
         }
-        let patch = Value::Object(value.clone());
+        let mut patch = value.clone();
+        if message {
+            resolve_correlation(document, &mut patch, budget)?;
+        }
+        let patch = Value::Object(patch);
         budget.reserve(&patch)?;
         merge_patch(&mut merged, &patch);
     }
     let mut target = target.clone();
     target.remove("traits");
+    if message {
+        resolve_correlation(document, &mut target, budget)?;
+    }
     merge_patch(&mut merged, &Value::Object(target));
     budget.reserve(&merged)?;
     let Value::Object(merged) = merged else {
         unreachable!()
     };
     Ok(Cow::Owned(merged))
+}
+
+// Correlation references designate objects, not merge-patch members. Resolve
+// before merging to avoid manufacturing a forbidden `$ref`+`location` sibling.
+// This follows the official parser's reference/trait precedence.
+fn resolve_correlation(
+    document: &Value,
+    object: &mut Map<String, Value>,
+    budget: &mut OutputBudget,
+) -> FrameworkResult<()> {
+    if let Some(value) = object.get_mut("correlationId")
+        && value.get("$ref").is_some()
+    {
+        let resolved = Value::Object(referenced_object(document, value)?.clone());
+        budget.reserve(&resolved)?;
+        *value = resolved;
+    }
+    Ok(())
 }
 
 fn merge_patch(target: &mut Value, patch: &Value) {
