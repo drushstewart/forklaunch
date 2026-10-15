@@ -176,6 +176,9 @@ async fn unsupported_provenance(f: &Fixture, record: &Value) {
             .await
             .is_ok()
     );
+    historical_provenance(f, record).await;
+}
+async fn historical_provenance(f: &Fixture, record: &Value) {
     // These are trusted-store adapter fixtures, not provider creation evidence.
     // Neither a sealed managed envelope nor excessive legacy evidence qualifies.
     let mut nested = json!(true);
@@ -183,6 +186,7 @@ async fn unsupported_provenance(f: &Fixture, record: &Value) {
         nested = json!([nested]);
     }
     for (index, extra) in [
+        json!({}),
         json!({"managed":{"kind":"payment_link_creation_v1"}}),
         json!({"extra":nested}),
         json!({"extra":"x".repeat(55_000)}),
@@ -194,9 +198,28 @@ async fn unsupported_provenance(f: &Fixture, record: &Value) {
         for (k, v) in extra.as_object().unwrap() {
             payload[k] = v.clone();
         }
+        if index == 2 {
+            assert!(
+                f.store
+                    .reserve_payment_link_creation(
+                        &f.scope,
+                        Uuid::new_v4(),
+                        STRIPE_API_VERSION,
+                        &payload
+                    )
+                    .await
+                    .is_err()
+            );
+        }
+        let operation = Uuid::new_v4();
         let PaymentLinkCreationClaim::Reserved(ticket) = f
             .store
-            .reserve_payment_link_creation(&f.scope, Uuid::new_v4(), STRIPE_API_VERSION, &payload)
+            .reserve_payment_link_creation(
+                &f.scope,
+                operation,
+                STRIPE_API_VERSION,
+                &fixture::payload(),
+            )
             .await
             .unwrap()
         else {
@@ -210,14 +233,22 @@ async fn unsupported_provenance(f: &Fixture, record: &Value) {
             .complete_payment_link_creation(ticket, record, || Ok(()))
             .await
             .unwrap();
+        seed_historical_intent(f, operation, id, payload).await;
         let before = f.provider.requests.load(Ordering::SeqCst);
-        assert!(
-            f.service
-                .get_bound_created_payment_link(&f.profile, id)
-                .await
-                .is_err()
-        );
-        assert_eq!(before, f.provider.requests.load(Ordering::SeqCst));
+        let result = f
+            .service
+            .get_bound_created_payment_link(&f.profile, id)
+            .await;
+        if index == 0 {
+            assert!(
+                result.is_ok(),
+                "valid historical seed must pass canonical hash and scope"
+            );
+            assert!(f.provider.requests.load(Ordering::SeqCst) > before);
+        } else {
+            assert!(result.is_err());
+            assert_eq!(before, f.provider.requests.load(Ordering::SeqCst));
+        }
     }
 }
 async fn denied_profiles(f: &Fixture, id: Uuid) {
@@ -380,4 +411,43 @@ async fn audit_expiry(f: &Fixture, id: Uuid) {
     tx.commit().await.unwrap();
     assert!(read.await.unwrap().is_err());
     f.provider.pause_read.store(false, Ordering::SeqCst);
+}
+
+// Owned migration-owner fixture creates historical data that today's reservation
+// admission intentionally rejects. This never uses the runtime publication API.
+async fn seed_historical_intent(f: &Fixture, operation: Uuid, public_id: Uuid, payload: Value) {
+    use sha2::{Digest, Sha256};
+    let canonical=historical_canonical(&json!({"tenant":f.tenant.id(),"operation":operation.to_string(),"deployment":"owned-deployment","account":"acct_owned","livemode":false,"apiVersion":STRIPE_API_VERSION,"payload":payload})).to_string();
+    let mut hash = Sha256::new();
+    hash.update(b"forklaunch/payment-link-creation/v1\0");
+    hash.update(public_id.to_string().as_bytes());
+    hash.update(b"\0");
+    hash.update(canonical.as_bytes());
+    let hash = format!("{:x}", hash.finalize());
+    let encryptor = forklaunch_core::persistence::encryption::FieldEncryptor::new(
+        "owned-bound-create-encryption-key",
+    )
+    .unwrap();
+    let sealed=encryptor.seal(&json!({"kind":"payment_link_creation","operationId":operation.to_string(),"field":"intent","value":{"publicId":public_id.to_string(),"canonical":canonical}}).to_string(),f.tenant.id(),"[Owned historical fixture]").unwrap();
+    let mut tx = f.owner.begin().await.unwrap();
+    sqlx::query("ALTER TABLE fl_billing.payment_link_creation_intents DISABLE TRIGGER payment_link_creation_immutable").execute(&mut *tx).await.unwrap();
+    sqlx::query("UPDATE fl_billing.payment_link_creation_intents SET intent_ciphertext=$1,payload_hash=$2 WHERE tenant_id=$3 AND operation_id=$4::uuid").bind(sealed).bind(hash).bind(f.tenant.id()).bind(operation.to_string()).execute(&mut *tx).await.unwrap();
+    sqlx::query("ALTER TABLE fl_billing.payment_link_creation_intents ENABLE TRIGGER payment_link_creation_immutable").execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+}
+
+fn historical_canonical(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let sorted: std::collections::BTreeMap<_, _> = map.iter().collect();
+            Value::Object(
+                sorted
+                    .into_iter()
+                    .map(|(key, value)| (key.clone(), historical_canonical(value)))
+                    .collect(),
+            )
+        }
+        Value::Array(values) => Value::Array(values.iter().map(historical_canonical).collect()),
+        value => value.clone(),
+    }
 }

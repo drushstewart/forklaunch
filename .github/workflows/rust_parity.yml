@@ -1471,6 +1471,8 @@ jobs:
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_reads -- --ignored --nocapture
       - name: Bound Plan read provenance, provider and race PostgreSQL checks
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_plan_reads -- --ignored --nocapture
+      - name: Created PaymentLink bounded list PostgreSQL checks
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_created_payment_link_list -- --ignored --nocapture
       - name: Created PaymentLink read provenance and provider PostgreSQL checks
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_created_payment_link_reads -- --ignored --nocapture
       - name: Bound Subscription read provenance and provider PostgreSQL checks

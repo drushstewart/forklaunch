@@ -33,6 +33,7 @@ pub struct Provider {
     pub requests: Arc<AtomicUsize>,
     pub response: Arc<Mutex<Option<Value>>>,
     pub readback: Arc<Mutex<Option<Value>>>,
+    pub readbacks: Arc<Mutex<std::collections::HashMap<String, Value>>>,
     pub pause_read: Arc<AtomicBool>,
     pub keys: Arc<Mutex<Vec<String>>>,
     pub pause: Arc<AtomicBool>,
@@ -72,7 +73,7 @@ async fn read(
         state.entered.notify_one();
         state.resume.notified().await;
     }
-    Json(state.readback.lock().unwrap().clone().unwrap_or_else(||json!({"id":id,"object":"payment_link","livemode":false,"active":false,"metadata":{"presentation":"fresh"}})))
+    Json(state.readbacks.lock().unwrap().get(&id).cloned().or_else(||state.readback.lock().unwrap().clone()).unwrap_or_else(||json!({"id":id,"object":"payment_link","livemode":false,"active":false,"metadata":{"presentation":"fresh"}})))
 }
 pub struct Fixture {
     pub owner: PgPool,
@@ -126,6 +127,7 @@ impl Fixture {
             requests: Arc::new(AtomicUsize::new(0)),
             response: Arc::new(Mutex::new(None)),
             readback: Arc::new(Mutex::new(None)),
+            readbacks: Arc::new(Mutex::new(std::collections::HashMap::new())),
             pause_read: Arc::new(AtomicBool::new(false)),
             keys: Arc::new(Mutex::new(vec![])),
             pause: Arc::new(AtomicBool::new(false)),

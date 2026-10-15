@@ -51,5 +51,22 @@ for(const variant of ['base','stripe']){
  value=structuredClone(good);const Base=actual.load(path.join(root,'blueprint/implementations/billing/base/services/paymentLink.service.ts')).BasePaymentLinkService;
  assert.equal(typeof (await new Base(em,cache,{},actual.validator,legacyMappers).getPaymentLink({id})).createdAt,'string');cases++;
  const badHook=new Base(em,cache,{},actual.validator,{...mappers,PaymentLinkMapper:{...mappers.PaymentLinkMapper,normalizeCachedDto:value=>({...value,id:randomUUID()})}});await assert.rejects(badHook.getPaymentLink({id}));assert.equal(writes,0);cases++;
+ if(variant==='stripe'){
+  const a=randomUUID(),b=randomUUID(),c=randomUUID();
+  const rows=new Map([[a,{...good,id:a,stripeFields:{...provider,id:'plink_a'}}],[b,{...good,id:b,stripeFields:{...provider,id:'plink_b'}}],[c,{...good,id:c,stripeFields:{...provider,id:'plink_c'}}]]);
+  const providers=new Map([...rows.values()].map(v=>[v.stripeFields.id,{...v.stripeFields,active:v.id!==b}]));
+  let reads=0; const fetched=[];
+  const listCache={...cache,async readRecord(key){reads++;const row=rows.get(key.slice('payment_link:'.length));return row?{value:structuredClone(row)}:undefined;}};
+  const listClient={paymentLinks:{async retrieve(id){fetched.push(id);return structuredClone(providers.get(id));},async list(){throw Error('account scan forbidden');}}};
+  const make=options=>new Service(listClient,em,listCache,{log(){}},actual.validator,mappers,options);
+  const listService=make();
+  const got=await listService.listPaymentLinks({ids:[c,b,a,c]});assert.deepEqual(Array.from(got,v=>v.id),[c,a,c]);assert.deepEqual(fetched,['plink_c','plink_b','plink_a','plink_c']);assert.ok(got.every(v=>v.amount===good.amount&&v.status===good.status));cases++;
+  for(const ids of [[a,randomUUID()],Array(101).fill(a),[a,' ']]){const n=fetched.length;await assert.rejects(listService.listPaymentLinks({ids}));assert.equal(fetched.length,n);cases++;}
+  const selected=await make({maxConfiguredListRecords:150}).listPaymentLinks({ids:Array(150).fill(a)});assert.equal(selected.length,150);cases++;
+  for(const active of [undefined,null,'true',1,{}]){providers.get('plink_a').active=active;await assert.rejects(listService.listPaymentLinks({ids:[a]}));cases++;}
+  for(const maxConfiguredListRecords of [0,1001,1.5]){assert.throws(()=>make({maxConfiguredListRecords}));cases++;}
+  assert.ok(reads>0);assert.equal(writes,0);
+ }
+
 }
 console.log(`PASS ${cases} configured PaymentLink JSON cache DTO reads/lists: Date restoration, exact payloads, zero ORM/writes, pre-provider denial and custom fallback`);

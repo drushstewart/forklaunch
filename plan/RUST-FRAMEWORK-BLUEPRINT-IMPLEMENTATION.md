@@ -2652,3 +2652,25 @@ exact owned roots, no symlink/open-file/active-process use, current-source cache
 exclusion and retained archive SHA256 before/after. Executables, live workspaces
 and active agent caches preserved. Evidence /private/tmp/fl-oct14-payment-link-
 cleanup.log and /private/tmp/fl-oct14-payment-link-cache-cleanup.{json,log}.
+
+### 2026-10-15 — Bounded completed-PaymentLink listing
+
+list_bound_created_payment_links validates the whole explicit UUID selection
+before provider I/O, retains original provenance snapshots for final reobservation,
+preserves order/duplicates and filters only actual boolean provider active=true.
+No account-wide provider scan, cache-derived authority, writes or lifecycle
+synchronization. The trusted limit defaults100/max1000; nonempty/non-nil IDs,
+8MiB evidence/result budgets and one shared5s provider context bound the request.
+No-ID/empty enumeration is outside this supported subset. Per-item reads are not
+an atomic multi-record/provider snapshot.
+
+Actual TS37 comparisons (13new list cases), budget unit1, restricted PostgreSQL
+list6.27s (including150 records, missing/foreign/profile denial, ordered duplicates,
+inactive filtering, alias race and expiry), historical getter5.55s and strict
+base/Stripe Clippy9.16s pass. The older deep-intent fixture now seeds historical
+encrypted data via owned migration-owner SQL with atomic trigger restoration,
+explicitly sorted canonical hashes and a successful positive control; new deep
+reservations remain rejected. Frozen7 /private/tmp/fl-payment-link-list-final.json
+verified SHA25688e805997d17acdefd3135403b32e22707980f6c3dc2ffd9dfa13705d35adc5e.
+Logs /private/tmp/fl-payment-link-list-{ts,unit,pg-final,clippy-final}.log.
+Owned fixture roles0. HTTP/MCP list wiring remains next;660/682(96.8%),22open.

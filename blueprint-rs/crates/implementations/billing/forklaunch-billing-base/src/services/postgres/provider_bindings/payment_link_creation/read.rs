@@ -16,6 +16,28 @@ pub struct PaymentLinkCreationReadSnapshot {
     record: Value,
 }
 impl PaymentLinkCreationReadSnapshot {
+    /// Serialized size of retained bounded proof, payload and record; no proof exposure.
+    /// # Errors
+    /// Rejects serialization or size overflow.
+    pub fn evidence_size(&self) -> BlueprintResult<usize> {
+        struct Count(usize);
+        impl std::io::Write for Count {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 = self
+                    .0
+                    .checked_add(bytes.len())
+                    .ok_or_else(|| std::io::Error::other("size overflow"))?;
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut count = Count(0);
+        serde_json::to_writer(&mut count, &(&self.proof, &self.payload, &self.record))
+            .map_err(|_| storage_error())?;
+        Ok(count.0)
+    }
     /// Immutable creation request/profile, not mutable local provider fields.
     #[must_use]
     pub fn payload(&self) -> &Value {
