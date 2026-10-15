@@ -101,6 +101,7 @@ pub struct BillingBackend {
     bound_subscription: Option<Arc<bound_subscription::BoundSubscriptionV1>>,
     #[cfg(feature="bound-checkout")]
     bound_payment_link_expiration: Option<Arc<bound_payment_link_expiration::BoundPaymentLinkExpirationV1>>,
+    configured_subscription_updates: bool,
     request_dates: BillingRequestDateProfile,
     webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
     platform_key: Option<zeroize::Zeroizing<String>>,
@@ -132,6 +133,7 @@ impl BillingBackend {
             bound_plan: None,
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
+            configured_subscription_updates: false,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
@@ -163,10 +165,18 @@ impl BillingBackend {
             bound_plan: None,
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
+            configured_subscription_updates: false,
             request_dates: BillingRequestDateProfile::Legacy,
             webhook: None,
             platform_key: None,
         }
+    }
+    /// Selects the generated TS application's Subscription owner-update preflight.
+    /// Does not grant provider ownership or alter the generic default.
+    #[must_use]
+    pub const fn with_configured_subscription_updates(mut self, enabled: bool) -> Self {
+        self.configured_subscription_updates = enabled;
+        self
     }
     #[must_use]
     pub const fn with_database_backup(mut self, enabled: bool) -> Self {
@@ -231,7 +241,8 @@ impl BillingBackend {
         let mut response = match &self.client {
             Some(client) => {
                 execute(
-                    &StripeBillingService::new(service, client.clone()),
+                    &StripeBillingService::new(service, client.clone())
+                        .with_configured_subscription_updates(self.configured_subscription_updates),
                     &contract.operation_name,
                     input,
                 )

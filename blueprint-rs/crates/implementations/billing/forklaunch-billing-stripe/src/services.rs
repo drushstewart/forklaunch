@@ -16,14 +16,71 @@ use forklaunch_billing_interface::services::{
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Map, Value, json};
 
+fn validate_configured_subscription_update(
+    request: &UpdateSubscriptionDto,
+    original: &SubscriptionDto,
+) -> BlueprintResult<()> {
+    external_id(&original.external_id)?;
+    let blank = |value: &str| {
+        value
+            .trim_matches(|c| matches!(c, '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}'))
+            .is_empty()
+    };
+    if original.id != request.id
+        || blank(&original.id)
+        || blank(&original.party_id)
+        || request
+            .party_id
+            .as_ref()
+            .is_some_and(|id| id != &original.party_id)
+        || request
+            .party_type
+            .as_ref()
+            .is_some_and(|kind| kind != &original.party_type)
+    {
+        return Err(BlueprintError::new(
+            "billing_validation",
+            "Subscription ownership cannot change during an update",
+        ));
+    }
+    if request
+        .billing_provider
+        .as_deref()
+        .is_some_and(|value| value != "stripe")
+        || request
+            .party_type
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "user" | "organization"))
+    {
+        return Err(BlueprintError::new(
+            "billing_validation",
+            "Invalid subscription update",
+        ));
+    }
+
+    Ok(())
+}
+
 pub struct StripeBillingService<S> {
     base: BaseBillingService<S>,
     client: StripeBillingClient,
+    configured_subscription_updates: bool,
 }
 impl<S: BillingStore> StripeBillingService<S> {
     #[must_use]
     pub const fn new(base: BaseBillingService<S>, client: StripeBillingClient) -> Self {
-        Self { base, client }
+        Self {
+            base,
+            client,
+            configured_subscription_updates: false,
+        }
+    }
+    /// Applies the generated application's configured Subscription mapper owner preflight.
+    /// Generic/custom service behavior remains unchanged unless explicitly selected.
+    #[must_use]
+    pub const fn with_configured_subscription_updates(mut self, enabled: bool) -> Self {
+        self.configured_subscription_updates = enabled;
+        self
     }
     #[must_use]
     pub const fn base(&self) -> &BaseBillingService<S> {
@@ -214,6 +271,11 @@ impl<S: BillingStore> SubscriptionService for StripeBillingService<S> {
         mut request: UpdateSubscriptionDto,
     ) -> BlueprintResult<SubscriptionDto> {
         let original = self.base.get_subscription(&request.id).await?;
+        // Match the configured TS mapper before any provider read or mutation.
+        // This does not establish provider ownership or resolve public aliases.
+        if self.configured_subscription_updates {
+            validate_configured_subscription_update(&request, &original)?;
+        }
         let existing = self
             .client
             .retrieve(

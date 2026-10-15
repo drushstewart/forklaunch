@@ -393,6 +393,7 @@ on:
       - 'cli/tests/rust_billing_subscription_target_gap.mjs'
       - 'cli/tests/rust_billing_managed_creation.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
+      - 'cli/tests/rust_billing_checkout_expiration_source.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_cached_session_identity.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
@@ -840,6 +841,7 @@ on:
       - 'cli/tests/rust_billing_subscription_target_gap.mjs'
       - 'cli/tests/rust_billing_managed_creation.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
+      - 'cli/tests/rust_billing_checkout_expiration_source.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_cached_session_identity.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
@@ -1641,6 +1643,10 @@ jobs:
         run: node cli/tests/rust_billing_bound_plan_creation_runtime.mjs
       - name: Bound Subscription recovery HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_subscription_recovery_runtime.mjs
+      - name: Configured Subscription update preflight and HTTP dispatch
+        run: |
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_subscription_update
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --features bound-checkout --test configured_subscription_update -- --ignored --nocapture
       - name: Bound PaymentLink expiration recovery HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_payment_link_expiration_recovery_runtime.mjs
       - name: Bound PaymentLink expiration HTTP, MCP and both SDKs
@@ -1742,6 +1748,9 @@ jobs:
         env:
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_billing_consumed_references.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_checkout_expiration_source.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_subscription_update_preflight.mjs

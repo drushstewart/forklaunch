@@ -154,7 +154,9 @@ try {
  for(const stripe of [false,true]) {
   const render=text=>text.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body).replaceAll('{{{name}}}','billing-checkout-artifacts').replaceAll('{{crate_module}}','fl_billing_bound_checkout_artifacts');
   writeFileSync(path.join(temporary,'src/lib.rs'),render(template));
-  writeFileSync(path.join(temporary,'src/main.rs'),render(mainTemplate));
+  const renderedMain=render(mainTemplate);
+  assert.equal(renderedMain.includes('BillingBackend::stripe(store,client).with_configured_subscription_updates(true)'),stripe,'generated Stripe backend selects configured owner preflight; base template does not');
+  writeFileSync(path.join(temporary,'src/main.rs'),renderedMain);
   run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
  }
  console.log(`PASS actual rendered generated library: ${testedCases} base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile`);

@@ -11672,3 +11672,31 @@ example; its required feature is explicit. Log:
 identified a missing test-command feature flag, corrected before the final pass.
 This closes the native validation follow-up for factory annotations; generated
 Rust/TypeScript SDK-specific consumer expansion remains separate.
+
+### 2026-10-15: Configured Subscription update preflight
+
+Generated Stripe services now select configured update preflight before provider
+GET/POST, preserving generic/custom constructors' prior behavior. Retained owner
+identity, supplied owner equality and configured party/provider enums are checked;
+blank checks use exact ECMAScript whitespace, including FEFF while excluding0085.
+Non-UUID IDs remain admitted because the actual configured update schema uses a
+plain string. Missing records/provider IDs preserve preflight ordering. The generated
+backend propagates selection through its real HTTP dispatch; base templates do
+not enable Stripe configuration. No extra financial capability/journal was added.
+
+Frozen9-source manifest `/private/tmp/fl-subscription-configured-owner-final.json`
+has SHA256 `ccaa63bd0791210499f05ea041bcd163daa00d4360010f67919e73c5e6854f31`.
+Actual TypeScript84 cases, native2 tests, real HMAC HTTP/restricted PostgreSQL
+0.53s, legacy170 comparisons,186 generated artifact cases and compiled actual
+mains pass. Strict all-feature/all-target Clippy21.56s and minimal1.44s pass;
+owned database/role cleanup is0/0. Logs use `/private/tmp/fl-subscription-configured-owner-`
+with suffixes source,native-final,http-final,legacy170,artifacts,clippy-final,minimal,cleanup.
+Native HTTP400/status/sanitization is tested, but actual TS ordinary-Error HTTP
+envelopes were not compared. Explicit JS undefined reaches provider and local
+persistence before response-mapper failure; JSON cannot express that state.
+
+[RUST-BILLING-REMAINING-BEHAVIOR-AUDIT.md](RUST-BILLING-REMAINING-BEHAVIOR-AUDIT.md)
+separates confirmed configured gaps, already-matching baseline operations, explicit
+reconciliation requirements and extra authority hardening. Raw-ID dispatch shared
+by both languages is not itself a missing Rust operation. Broader billing and
+transport error gates remain open;660/682 unchanged.

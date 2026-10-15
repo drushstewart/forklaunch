@@ -33,14 +33,14 @@ let cases=0;
 
  const configured=actual.load(path.join(root,'blueprint/billing-stripe/domain/mappers/subscription.mappers.ts'));
  const Service=actual.load(path.join(root,'blueprint/implementations/billing/stripe/services/subscription.service.ts')).StripeSubscriptionService;
- for(const partyType of ['user','organization']) {
-  const id=randomUUID(),calls=[];
+ for(const partyType of ['user','organization']) for(const id of [randomUUID(),'legacy-local-id']) {
+  const calls=[],missing=new Error('Missing subscription');
   const good={id,partyId:'local-owner',partyType,productId:'local-product',active:true,externalId:'sub_owned',startDate:new Date('2026-01-01'),status:'active',billingProvider:'stripe',providerFields:{id:'sub_owned',customer:'cus_provider',nested:{date:'2026-01-01'}}};
   let row=structuredClone(good);
-  const em={async findOneOrFail(_e,where){calls.push('orm:read');assert.equal(where.id,id);return row;},assign(entity,fields){calls.push('orm:assign');Object.assign(entity,fields);},async upsert(entity){calls.push('orm:upsert');return entity;},async transactional(fn){calls.push('orm:transaction');return fn(em);},async persist(){calls.push('orm:persist');}};
+  const em={async findOneOrFail(_e,where){calls.push('orm:read');if(where.id==='missing')throw missing;assert.equal(where.id,id);return row;},assign(entity,fields){calls.push('orm:assign');Object.assign(entity,fields);},async upsert(entity){calls.push('orm:upsert');return entity;},async transactional(fn){calls.push('orm:transaction');return fn(em);},async persist(){calls.push('orm:persist');}};
   const client={subscriptions:{async retrieve(target){calls.push('stripe:retrieve:'+target);return {id:target,object:'subscription',items:{data:[{id:'si_owned',plan:{id:'plan_owned'}}]}};},async update(target,options){calls.push('stripe:update:'+target);assert.equal(target,'sub_owned');assert.equal(JSON.stringify(options),JSON.stringify({metadata:{note:'kept'},items:[{id:'si_owned',plan:'plan_owned'}]}));return {id:target,object:'subscription',customer:'cus_provider'};}}};
   const service=new Service(client,em,{},actual.validator,configured);
-  for(const patch of [{partyId:'other-owner'},{partyType:partyType==='user'?'organization':'user'},{partyId:''},{startDate:'invalid-date'},{endDate:'invalid-date'},{active:{}},{productId:{}},{billingProvider:'invalid'}]) {
+  for(const patch of [{partyId:null},{partyType:null},{partyId:'other-owner'},{partyType:partyType==='user'?'organization':'user'},{partyId:''},{startDate:'invalid-date'},{endDate:'invalid-date'},{active:{}},{productId:{}},{billingProvider:'invalid'}]) {
    calls.length=0;const input={id,...patch},before=structuredClone(input);await assert.rejects(service.updateSubscription(input));assert.deepEqual(input,before);assert.deepEqual(row,good);assert.deepEqual(calls,['orm:read']);cases++;
   }
   for(const change of [{id:randomUUID()},{id:' '},{partyId:' '}]) {
@@ -50,6 +50,19 @@ let cases=0;
    row=structuredClone(good);calls.length=0;const input={id,...ownership,stripeFields:{metadata:{note:'kept'}}},before=structuredClone(input);
    const result=await service.updateSubscription(input);assert.equal(result.id,id);assert.equal(result.partyId,'local-owner');assert.equal(result.partyType,partyType);assert.equal(result.externalId,'sub_owned');assert.equal(result.stripeFields.customer,'cus_provider');assert.deepEqual(input,before);assert.deepEqual(calls,['orm:read','stripe:retrieve:sub_owned','stripe:update:sub_owned','orm:read','orm:assign','orm:upsert','orm:transaction','orm:persist']);cases++;
   }
+  for(const partyId of ['\u0085','\ufeff','\u2028']) {
+   row={...structuredClone(good),partyId};calls.length=0;
+   if(partyId==='\u0085') {const value=await service.updateSubscription({id,stripeFields:{metadata:{note:'kept'}}});assert.equal(value.partyId,partyId);assert.ok(calls.includes('stripe:update:sub_owned'));}
+   else {await assert.rejects(service.updateSubscription({id}));assert.deepEqual(calls,['orm:read']);}
+   cases++;
+  }
+  // Explicit JS undefined passes preflight, but actual response mapper validation
+  // fails after the provider effect and local assignment/persistence.
+  // JSON HTTP/MCP cannot represent this distinct own-property state.
+  row=structuredClone(good);calls.length=0;
+  await assert.rejects(service.updateSubscription({id,partyId:undefined,partyType:undefined,stripeFields:{metadata:{note:'kept'}}}));
+  assert.ok(calls.includes('stripe:update:sub_owned'));assert.ok(calls.includes('orm:assign'));assert.ok(calls.includes('orm:persist'));cases++;
+  calls.length=0;row=structuredClone(good);await assert.rejects(service.updateSubscription({id:'missing',partyId:'other'}),error=>error===missing);assert.deepEqual(calls,['orm:read']);cases++;
   calls.length=0;row=structuredClone(good);const stop=new Error('legacy provider seam');
   const fallback=new Service({subscriptions:{async retrieve(target){calls.push('stripe:retrieve:'+target);throw stop;}}},em,{},actual.validator,{...configured,UpdateSubscriptionMapper:{...configured.UpdateSubscriptionMapper,validateUpdate:undefined}});
   await assert.rejects(fallback.updateSubscription({id,partyId:'other'}),error=>error===stop);assert.deepEqual(calls,['orm:read','stripe:retrieve:sub_owned']);cases++;
