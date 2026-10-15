@@ -2120,7 +2120,8 @@ resource iteration. The finite Role-object prototype introduced by a dynamic
 `__proto__` row is modeled explicitly: repeated merges, inherited
 `authorize`/`statements` faults, later own-role shadowing, and statement-array
 spread into string-valued index resources. No JavaScript is evaluated.
-No upstream in-memory role cache or arbitrary JavaScript receiver behavior is claimed.
+The scoped active role-creation permission cache is described below; arbitrary
+JavaScript receiver behavior is not claimed.
 
 Remaining organization option families after these scalar/declarative profiles:
 
