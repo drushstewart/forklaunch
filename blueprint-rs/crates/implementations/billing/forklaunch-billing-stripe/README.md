@@ -23,7 +23,7 @@ The same immutable client context has a five-second verification window checked 
 
 ## Verified direct creation
 
-The explicit PostgreSQL creation APIs retain public UUIDs separately from Stripe
+Enable `postgres-identity` for the explicit creation APIs. They retain public UUIDs separately from Stripe
 references. `create_bound_plan` verifies an approved Product and journals one Plan
 creation. `register_verified_stripe_customer` verifies Customer existence/account/
 mode and records a separately server-authorized local Customer/Party association.
@@ -34,6 +34,11 @@ Party authorization and lifecycle in another service remain application-owned.
 unchanged bound Plan creation, an explicit operation UUID and a trusted profile:
 
 ```rust,ignore
+use forklaunch_billing_stripe::bound_subscription_creation::{
+    BoundSubscriptionCreateRequest, BoundSubscriptionCreationProfile,
+    SubscriptionCollectionPolicy,
+};
+
 let profile = BoundSubscriptionCreationProfile::trusted(
     scope,
     vec![(local_plan_id, completed_plan_operation_id)],

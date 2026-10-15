@@ -8676,3 +8676,16 @@ and /private/tmp/fl-bound-subscription-sdk.log;14 exact hashes
 /private/tmp/fl-bound-subscription-stage-b-source.json. CI runs SDK and PG.
 General interrupted-effect recovery, mutation ownership, generated operation
 adapters and managed Subscription creation remain open.
+
+
+## Working-tree CLI regression (2026-10-14)
+
+All1121 CLI unit tests pass with locked dependencies and incremental compilation
+disabled (/private/tmp/fl-oct14-cli-full-tests.log). This is the current source
+build, including coherently staged source drafts during active integration; it
+is not relabelled an immutable archive proof. The separate d835 archive receipt
+retains exact source/lock/package hashes. Four existing CLI compiler warnings
+remain visible. Completed owned d835 source/archive/generated roots were removed
+after committed receipts and process/open-file/checksum guards; retained crate,
+logs/metadata and build caches remain. Missing old owned worktree registration
+fl-rust-full-checkpoint-xk4xb_by was pruned; unrelated worktrees/watchers retained.
