@@ -63,6 +63,7 @@ pub struct AuthHttp<S> {
     two_factor: Option<Arc<crate::two_factor::TwoFactorService<S>>>,
     background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     otp_background_override: bool,
+    email_verification_policy: crate::accounts::EmailVerificationPolicy,
     email_verification_delivery: Option<Arc<dyn crate::accounts::EmailVerificationDelivery>>,
     password_reset_delivery: Option<Arc<dyn crate::accounts::PasswordResetDelivery>>,
     jwks_adapter: Option<crate::keyring::adapter::JwksAdapter>,
@@ -132,6 +133,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             two_factor: None,
             background_dispatcher: None,
             otp_background_override: false,
+            email_verification_policy: crate::accounts::EmailVerificationPolicy::default(),
             email_verification_delivery: None,
             password_reset_delivery: None,
             jwks_adapter: None,
@@ -893,6 +895,7 @@ fn failure_response(error: &BlueprintError) -> Response {
         | "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE"
         | "YOU_ARE_NOT_ALLOWED_TO_UPDATE_A_ROLE"
         | "YOU_ARE_NOT_ALLOWED_TO_DELETE_A_ROLE"
+        | "EMAIL_NOT_VERIFIED"
         | "SESSION_NOT_FRESH"
         | "MISSING_OR_NULL_ORIGIN"
         | "INVALID_ORIGIN"

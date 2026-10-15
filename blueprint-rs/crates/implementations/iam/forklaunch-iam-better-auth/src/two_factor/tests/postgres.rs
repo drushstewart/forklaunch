@@ -64,6 +64,8 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
     let proof=tokio::spawn(async move {
         lifecycle(store.clone()).await;
         http::email_delivery_lifecycle(store.clone()).await;
+        crate::accounts::verification_policy::tests::lifecycle(store.clone()).await;
+        crate::accounts::verification_policy::tests_async::lifecycle(store.clone()).await;
         otp::lifecycle(store.clone()).await;
         lifecycle_options::lifecycle(store.clone()).await;
         lifetime_options::lifecycle(store.clone()).await;

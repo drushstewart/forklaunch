@@ -2212,3 +2212,8 @@ preserves nullable false schemas and enforces finite budgets.577 actual/AJV and
 138 controls plus existing tuple/SDK/union/Never regressions pass. Default API
 unchanged; NativeEnum/getter sandbox remain outside profile. Public inventory
 620/1698 refreshed. Broad checklist660/682(96.8%),22open unchanged.
+
+
+### Trusted signup/signin verification policy (2026-10-14)
+
+Trusted required signup/signin policy now has actual13/focusedHTTP/restrictedPG/fullIAM198 evidence; callback transaction-visibility boundary remains explicit. Checklist660/682(96.8%),22open unchanged.

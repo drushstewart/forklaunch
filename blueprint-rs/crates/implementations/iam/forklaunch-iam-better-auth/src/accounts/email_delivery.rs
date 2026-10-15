@@ -36,11 +36,12 @@ impl EmailVerificationDeliveryContext {
         &self.url
     }
 }
-/// Trusted explicit-send callback. Its future is always awaited, independently
-/// of application background scheduling. Blocking code/panics are not intercepted.
+/// Trusted verification delivery. Explicit send always awaits; automatic credential
+/// callsites use shared scheduling. Blocking code/panics are not intercepted.
 pub trait EmailVerificationDelivery: Send + Sync {
     /// # Errors
-    /// Preparation and future errors become sanitized empty HTTP500 responses.
+    /// Preparation errors become sanitized empty HTTP500 responses. Explicit send
+    /// also propagates future errors; automatic credential delivery handles them.
     fn prepare(&self, context: EmailVerificationDeliveryContext)
     -> BlueprintResult<DeliveryFuture>;
 }
@@ -83,6 +84,19 @@ pub(crate) async fn deliver(
     secret: &[u8],
     now: DateTime<Utc>,
 ) -> BlueprintResult<()> {
+    prepare(hook, user, base, callback, secret, now)?
+        .await
+        .map_err(|_| failure())
+}
+#[cfg(feature = "http")]
+pub(crate) fn prepare(
+    hook: &dyn EmailVerificationDelivery,
+    user: &Value,
+    base: &str,
+    callback: &str,
+    secret: &[u8],
+    now: DateTime<Utc>,
+) -> BlueprintResult<DeliveryFuture> {
     let public = super::reset_request::projection(user)?;
     let token = token(super::text(user, "email")?, secret, now)?;
     let url = Zeroizing::new(format!(
@@ -95,8 +109,6 @@ pub(crate) async fn deliver(
         token,
         url,
     })
-    .map_err(|_| failure())?
-    .await
     .map_err(|_| failure())
 }
 

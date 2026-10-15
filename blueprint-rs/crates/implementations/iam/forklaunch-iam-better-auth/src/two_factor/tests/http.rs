@@ -1974,3 +1974,174 @@ async fn http_email_delivery_failure_floor_and_authenticated_errors() {
     assert_eq!((status, body), (500, Value::Null));
     assert!(start.elapsed() >= std::time::Duration::from_millis(500));
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // Explicit policy/failure combinations share one fixture.
+async fn http_verification_policy_signup_signin_delivery_matrix() {
+    use crate::accounts::{
+        EmailVerificationDelivery, EmailVerificationDeliveryContext, EmailVerificationPolicy,
+    };
+    struct Delivery {
+        calls: std::sync::atomic::AtomicUsize,
+        mode: u8,
+    }
+    impl EmailVerificationDelivery for Delivery {
+        fn prepare(
+            &self,
+            _: EmailVerificationDeliveryContext,
+        ) -> BlueprintResult<crate::background::DeliveryFuture> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if self.mode == 1 {
+                return Err(BlueprintError::new("private", "secret"));
+            }
+            let mode = self.mode;
+            Ok(Box::pin(async move {
+                if mode == 2 {
+                    Err(BlueprintError::new("private", "secret"))
+                } else {
+                    Ok(())
+                }
+            }))
+        }
+    }
+    for (policy, mode, hook, background, signup_status, signin_status, calls) in [
+        (
+            EmailVerificationPolicy::default(),
+            0,
+            true,
+            false,
+            200,
+            200,
+            0,
+        ),
+        (
+            EmailVerificationPolicy {
+                send_on_signup: Some(true),
+                ..Default::default()
+            },
+            0,
+            true,
+            false,
+            200,
+            200,
+            1,
+        ),
+        (
+            EmailVerificationPolicy {
+                require: true,
+                ..Default::default()
+            },
+            0,
+            true,
+            false,
+            200,
+            403,
+            1,
+        ),
+        (
+            EmailVerificationPolicy {
+                require: true,
+                send_on_signup: Some(false),
+                send_on_signin: true,
+            },
+            0,
+            true,
+            false,
+            200,
+            403,
+            1,
+        ),
+        (
+            EmailVerificationPolicy {
+                require: true,
+                ..Default::default()
+            },
+            0,
+            false,
+            false,
+            200,
+            403,
+            0,
+        ),
+        (
+            EmailVerificationPolicy {
+                send_on_signup: Some(true),
+                ..Default::default()
+            },
+            1,
+            true,
+            false,
+            500,
+            401,
+            1,
+        ),
+        (
+            EmailVerificationPolicy {
+                send_on_signup: Some(true),
+                ..Default::default()
+            },
+            2,
+            true,
+            false,
+            200,
+            200,
+            1,
+        ),
+        (
+            EmailVerificationPolicy {
+                send_on_signup: Some(true),
+                ..Default::default()
+            },
+            0,
+            true,
+            true,
+            200,
+            200,
+            1,
+        ),
+    ] {
+        let store = Arc::new(MemoryAuthStore::default());
+        let delivery = Arc::new(Delivery {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            mode,
+        });
+        let mut app = AuthHttp::new(
+            store.clone(),
+            "http://auth.fixture.test".into(),
+            vec![42; 32],
+            vec![],
+        )
+        .unwrap()
+        .with_rate_limiting(false)
+        .with_email_verification_policy(policy);
+        if hook {
+            app = app.with_email_verification_delivery(delivery.clone());
+        }
+        if background {
+            app = app.with_background_dispatcher(Arc::new(otp_background::Queue::default()));
+        }
+        let mut browser = Browser {
+            router: app.router(),
+            jar: BTreeMap::new(),
+            origin: "http://auth.fixture.test".into(),
+        };
+        let input = json!({"name":"Owned","firstName":"Owned","lastName":"User","email":"policy-http@example.test","password":"owned-policy-password"});
+        let (status, body, headers) = browser.call("/sign-up/email", Some(input.clone())).await;
+        assert_eq!(status, signup_status);
+        if policy.require {
+            assert!(body["token"].is_null());
+            assert!(!headers.contains_key("set-cookie"));
+            assert!(!headers.contains_key("set-auth-jwt"));
+        }
+        let (status, body, headers) = browser.call("/sign-in/email", Some(input)).await;
+        assert_eq!(status, signin_status);
+        if policy.require {
+            assert_eq!(body["code"], "EMAIL_NOT_VERIFIED");
+            assert!(!headers.contains_key("set-cookie"));
+        }
+        assert_eq!(
+            delivery.calls.load(std::sync::atomic::Ordering::SeqCst),
+            calls
+        );
+    }
+}

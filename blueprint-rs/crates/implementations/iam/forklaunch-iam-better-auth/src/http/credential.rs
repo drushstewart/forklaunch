@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Value, json};
 
+#[allow(clippy::too_many_lines)] // One credential dispatch preserves cookie/MFA ordering.
 pub(super) async fn login<S: AuthStore + 'static>(
     app: &AuthHttp<S>,
     path: &str,
@@ -16,7 +17,16 @@ pub(super) async fn login<S: AuthStore + 'static>(
     pending: &mut HeaderMap,
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
-    let service = CredentialService::new(app.store.clone());
+    let mut service = CredentialService::new(app.store.clone())
+        .with_email_verification_policy(app.email_verification_policy);
+    if let Some(hook) = &app.email_verification_delivery {
+        service.verification_delivery = Some(crate::accounts::verification_policy::Delivery {
+            hook: hook.clone(),
+            dispatcher: app.background_dispatcher.clone(),
+            base: app.auth_base_url(),
+            secret: app.secret.clone(),
+        });
+    }
     let (ip, agent) = super::request::client_metadata(headers);
     let grant = if path == "/sign-up/email" {
         validate_length(payload["password"].as_str().ok_or_else(internal)?, true)?;
@@ -34,10 +44,21 @@ pub(super) async fn login<S: AuthStore + 'static>(
         }
         object.insert("firstName".into(), json!(""));
         object.insert("lastName".into(), json!(""));
+        let callback = payload["callbackURL"].as_str().unwrap_or("").to_owned();
         let input: SignupInput = serde_json::from_value(payload).map_err(|_| internal())?;
-        service
-            .sign_up_with_fields(input, profile, &ip, &agent, now)
+        match service
+            .signup_outcome_with_fields(input, profile, &ip, &agent, now, &callback)
             .await?
+        {
+            crate::accounts::SignupOutcome::Authenticated(grant) => grant,
+            outcome @ crate::accounts::SignupOutcome::VerificationRequired { .. } => {
+                let mut body = outcome.body();
+                if app.two_factor.is_some() {
+                    super::two_factor::user_default(&mut body);
+                }
+                return Ok(body);
+            }
+        }
     } else {
         let input: SigninInput = serde_json::from_value(payload).map_err(|_| internal())?;
         if let Some(factor) = &app.two_factor {
@@ -265,6 +286,15 @@ pub(super) async fn public<S: AuthStore + 'static>(
 }
 
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Installs trusted email/password verification policy, independent of manual delivery.
+    #[must_use]
+    pub fn with_email_verification_policy(
+        mut self,
+        policy: crate::accounts::EmailVerificationPolicy,
+    ) -> Self {
+        self.email_verification_policy = policy;
+        self
+    }
     /// Enables trusted reset-link delivery; without this hook the route stays disabled.
     #[must_use]
     pub fn with_password_reset_delivery(

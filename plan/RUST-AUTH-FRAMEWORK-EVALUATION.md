@@ -336,3 +336,25 @@ explicitly requested Better Auth features are implemented and validated, or the
 user explicitly approves a narrower scope. This table does not convert
 unsupported behavior into completed work and introduces no new percentage or
 checklist closure.
+
+
+### Trusted signup/signin verification policy (2026-10-14)
+
+Optional EmailVerificationPolicy controls require/sendOnSignup/sendOnSignin;
+manual delivery hook alone does not enable automatic sending. Required signup
+returns token:null and no session, with generic submitted-profile duplicate
+responses; required signin gates correct-password unverified users before MFA,
+trust and session creation. Require without hook is supported. Default atomic
+signup behavior remains unchanged. SignupOutcome is additive; legacy sign_up
+fails closed before effects when required policy cannot return an AuthGrant.
+Delivery preparation/scheduling runs outside DB transactions. Callback receives a
+prospective user before persistence, unlike upstream transaction visibility;
+mail can precede failed commit and concurrent duplicates can send before a winner.
+Writer rechecks and atomic persistence prevent partial account/session state.
+No claim of complete callback equivalence, autoSignIn, social or all hooks parity.
+Actual13, focused3 including8HTTP configs, restrictedPG rollback/reentry/races,
+fullIAM198pass/3ignored and strict full/minimal Clippy pass. Frozen11 manifest
+/private/tmp/fl-email-policy-freeze.json verified. Logs /private/tmp/fl-email-policy-
+{actual,native,pg,full,clippy,minimal-clippy}.log. Existing metadata already admits
+nullable signup token and403; no new Cookie/JWT on denied paths. Broad660/682
+(96.8%),22open unchanged.

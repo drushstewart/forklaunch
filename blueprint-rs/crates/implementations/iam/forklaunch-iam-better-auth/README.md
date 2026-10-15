@@ -1686,3 +1686,33 @@ owner to whom a token applies. No purpose, single-use record or email-change aut
 is added by this issuance API. Expiry equality rejects the proof. Delivery remains
 disabled unless installed. Automatic signup/signin delivery, configurable expiry,
 email-change forwarding, before/after hooks and auto-sign-in remain separate options.
+
+`AuthHttp::with_email_verification_policy(EmailVerificationPolicy { require,
+send_on_signup, send_on_signin })` separately enables automatic email/password
+verification policy. Defaults preserve authenticated signup/signin and send no mail,
+even if the manual delivery hook is installed. `send_on_signup: None` follows
+`require`; explicit false overrides it. `send_on_signin` sends only for a correct
+password when required verification is still incomplete. Required signup returns
+`token:null` without cookies/JWT/session; signin returns 403 `EMAIL_NOT_VERIFIED`
+before creating an MFA challenge or consuming device trust. A missing hook is valid:
+the application may verify addresses through another trusted path.
+
+Automatic delivery uses the shared background dispatcher (or awaits by default),
+handles asynchronous delivery errors, and propagates preparation errors as empty 500.
+Signup constructs a prospective public user before delivery, then checks uniqueness
+again and atomically inserts the user/account and optional session. No database
+transaction spans callback code. Unlike upstream callback transaction visibility,
+that prospective user is not yet persisted; callbacks cannot rely on reading it.
+Cancellation or final commit failure can therefore leave delivered mail without an
+account. A concurrent winner is never overwritten. Required duplicate signup hashes
+the supplied password and returns a fresh synthetic profile from submitted fields,
+not the existing user's data. These boundaries preserve atomic native persistence,
+not arbitrary callback side-effect rollback.
+
+For direct services, install the same policy with
+`CredentialService::with_email_verification_policy` and use `sign_up_outcome` to
+handle `SignupOutcome::VerificationRequired`. Legacy `sign_up` rejects required
+policy before side effects because its return type requires an authenticated grant.
+Email verification is a service configuration, not a global user login prohibition.
+Independent `autoSignIn:false`, custom synthetic-user/existing-user hooks, social
+policy and verification before/after hooks remain separate capabilities.

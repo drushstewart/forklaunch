@@ -15,6 +15,8 @@ use zeroize::Zeroizing;
 
 pub(crate) mod email_delivery;
 pub use email_delivery::{EmailVerificationDelivery, EmailVerificationDeliveryContext};
+pub(crate) mod verification_policy;
+pub use verification_policy::{EmailVerificationPolicy, SignupOutcome};
 mod password;
 mod profile;
 mod reset;
@@ -82,6 +84,9 @@ impl AuthGrant {
 pub struct CredentialService<S> {
     store: Arc<S>,
     workers: Arc<Semaphore>,
+    verification_policy: EmailVerificationPolicy,
+    #[cfg(feature = "http")]
+    pub(crate) verification_delivery: Option<verification_policy::Delivery>,
 }
 impl<S: AuthStore> CredentialService<S> {
     #[must_use]
@@ -91,6 +96,9 @@ impl<S: AuthStore> CredentialService<S> {
         static WORKERS: OnceLock<Arc<Semaphore>> = OnceLock::new();
         Self {
             store,
+            verification_policy: EmailVerificationPolicy::default(),
+            #[cfg(feature = "http")]
+            verification_delivery: None,
             workers: WORKERS.get_or_init(|| Arc::new(Semaphore::new(4))).clone(),
         }
     }
@@ -119,23 +127,41 @@ impl<S: AuthStore> CredentialService<S> {
         agent: &str,
         now: DateTime<Utc>,
     ) -> BlueprintResult<AuthGrant> {
+        if self.verification_policy.require {
+            return Err(verification_policy::required());
+        }
+        match self
+            .signup_outcome_with_fields(input, fields, ip, agent, now, "")
+            .await?
+        {
+            SignupOutcome::Authenticated(grant) => Ok(grant),
+            SignupOutcome::VerificationRequired { .. } => Err(verification_policy::required()),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    pub(crate) async fn signup_outcome_with_fields(
+        &self,
+        input: SignupInput,
+        fields: serde_json::Map<String, Value>,
+        ip: &str,
+        agent: &str,
+        now: DateTime<Utc>,
+        callback: &str,
+    ) -> BlueprintResult<SignupOutcome> {
         validate_email(&input.email)?;
         validate_length(&input.password, true)?;
         let email = input.email.to_lowercase();
         let mut tx = self.store.begin(false).await?;
         let exists = find_email(&mut tx, &email).await?.is_some();
         tx.commit().await?;
-        if exists {
+        if exists && !self.verification_policy.require {
             return Err(duplicate());
         }
         let password = Zeroizing::new(input.password);
         let hash = self
             .run_crypto(move || credentials::hash_password(&password))
             .await?;
-        let mut tx = self.store.begin(true).await?;
-        if find_email(&mut tx, &email).await?.is_some() {
-            return Err(duplicate());
-        }
         let id = uuid::Uuid::new_v4().to_string();
         let timestamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
         let mut user = json!({"id":id,"email":email,"name":input.name,"firstName":input.first_name,"lastName":input.last_name,"emailVerified":false,"createdAt":timestamp,"updatedAt":timestamp});
@@ -153,6 +179,25 @@ impl<S: AuthStore> CredentialService<S> {
                 user[field] = value.clone();
             }
         }
+        if exists {
+            return Ok(verification_policy::synthetic(&user));
+        }
+        if self
+            .verification_policy
+            .send_on_signup
+            .unwrap_or(self.verification_policy.require)
+        {
+            self.deliver_verification(&user, callback, now, "/sign-up/email")
+                .await?;
+        }
+        let mut tx = self.store.begin(true).await?;
+        if find_email(&mut tx, &email).await?.is_some() {
+            return if self.verification_policy.require {
+                Ok(verification_policy::synthetic(&user))
+            } else {
+                Err(duplicate())
+            };
+        }
         tx.insert(Model::User, user.clone())
             .await
             .map_err(|error| {
@@ -166,15 +211,21 @@ impl<S: AuthStore> CredentialService<S> {
                 ))
             })?;
         tx.insert(Model::Account,json!({"id":uuid::Uuid::new_v4().to_string(),"userId":id,"accountId":id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
+        if self.verification_policy.require {
+            tx.commit().await?;
+            return Ok(SignupOutcome::VerificationRequired {
+                user: public_user(&user),
+            });
+        }
         let session = new_session(&id, ip, agent, now)?;
         tx.insert(Model::Session, session.clone()).await?;
         tx.commit().await?;
-        Ok(AuthGrant {
+        Ok(SignupOutcome::Authenticated(AuthGrant {
             user: public_user(&user),
             session,
             persistent: input.remember_me,
             callback_url: None,
-        })
+        }))
     }
 
     /// Verifies a credential and issues a new session. A second authoritative
@@ -273,6 +324,19 @@ impl<S: AuthStore> CredentialService<S> {
             .get(Model::User, text(&user, "id")?)
             .await?
             .ok_or_else(invalid_credentials)?;
+        if self.verification_policy.require && user["emailVerified"] != true {
+            tx.commit().await?;
+            if self.verification_policy.send_on_signin {
+                self.deliver_verification(
+                    &user,
+                    input.callback_url.as_deref().unwrap_or(""),
+                    now,
+                    "/sign-in/email",
+                )
+                .await?;
+            }
+            return Err(verification_policy::required());
+        }
         let mut trust = None;
         if crate::two_factor::enabled(&user)? {
             let (factor, supplied) = factor.ok_or_else(|| {
