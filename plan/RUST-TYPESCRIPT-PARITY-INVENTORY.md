@@ -8961,3 +8961,38 @@ logs /private/tmp/fl-connected-capture-{ts-sdk,pg,unit,clippy,cleanup}.log. Exis
 CI fixture/PG entries run both profiles. No new schema/default route/provider
 write/order transition/reference clearing. Broader ambiguous/managed/PayPal
 reconciliation remains open.
+
+
+## Immutable dda838 archive and portable HTTP/MCP checkpoint (2026-10-14)
+
+Exact source dda838bd156db9bd692cabcc411868af27ba5d24 plus recorded CLI lock
+59f7db815712b329afa16484d18c79c127862170af830cb2cd3abc572a36afa7 packages2666 regular
+files into4,683,521bytes. Retained archive
+cli/target/parity-artifacts/forklaunch-dda838bd1-503464bf.crate, SHA256
+503464bf966940d6466edbbb9c8a1b3176a8d2516d7a56525aa715068dd1dca8.
+Git-free extraction, offline locked debug installation, repackaged dotfile list
+and all2666 extracted file bytes pass before/after runtime. Three intentional
+public/test PEM fixtures match the earlier416d archive byte-for-byte; two
+baseline absolute source key symlinks were not followed/read. No node_modules,
+target or output files enter the package.
+
+Relocated generated services, all four worker families, modules, infrastructure
+feature checks, recursive/shared SDKs, CLI/native generation from contract and
+OpenAPI, strict TypeScript/WebSocket clients and Rust consumer checks pass. Live
+generic-service HTTP/MCP passes initialization/discovery/health/Origin checks,
+enabled/disabled/custom endpoints, shared/separate listeners, explicit/ephemeral
+ports, fallback ports, atomic startup rejection and graceful shutdown. All five
+capability callbacks pass signature/freshness/replay/redelivery checks. Packaged
+IAM passes137 tests/3PGignored, including live auth HTTP/MCP. Separate restricted
+PG receipts remain distinct. This does not relabel prior generated actual-client
+MFA29 as rerun here; that exact earlier source receipt remains recorded.
+
+This archive includes committed lifecycle/lifetime/lockout, ordered unions and
+literals, checked live composition, direct Subscription publication/recovery,
+direct/Connected captured-payment adoption and MCP example packaging correction.
+It excludes active backup generation, ordered strict objects and scoped PayPal
+read drafts. Generated app Cargo lock SHA256
+045644641c3220b165d7c48db55c5f07527ddbb1bf419063b2d7ee61fde5f118.
+Logs /private/tmp/fl-oct14-options-{package,install,repackaged-files,runtime}.log;
+metadata /private/tmp/fl-oct14-options-checkpoint.json. Four existing CLI warnings
+remain visible. No hosted deployment/public registry validation is inferred.
