@@ -10341,3 +10341,19 @@ transforms-{parity,types,zod_native_enum_openapi,zod_tuple_openapi,sdk_tuple_coe
 Root regenerated inventory source locations and checks pass. This supported
 profile rejects transformed strings rather than claiming exact transformed input
 projection; callback/Unicode/general schema gates remain open.660/682(96.8%).
+
+
+### Completed immutable4ff checkpoint cleanup (2026-10-14)
+
+After committing runtime receipt71828f01c, root removed only the two exact owned
+checkpoint/archive-install workspaces:211507581logicalbytes across9103regular
+files. Prefix/resolve/symlink/process/open-file guards and retained archive hash
+checks passed. Then182nonexecutable cache files across80groups exclusively
+referencing those removed roots were removed:416205458logicalbytes. Current
+framework/blueprint/CLI sources, executables, symlinks, open files and changed
+inode/mtime/size were excluded. Retained crate SHA256 unchanged; logs and receipts
+retained. Total627713039logicalbytes removed; physical APFS free space is not
+claimed. Otherjobs' worktrees/caches/PG/watcher were preserved. Metadata and logs:
+/private/tmp/fl-oct14-tuples-billing-checkpoint.json,
+/private/tmp/fl-oct14-tuples-billing-cleanup.log,
+/private/tmp/fl-oct14-tuples-billing-cache-cleanup.json. Broad660/682(96.8%).
