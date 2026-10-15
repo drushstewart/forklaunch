@@ -2019,3 +2019,29 @@ interrupted after commit can leave a persisted invitation without completed emai
 this is not durable email delivery. The disabled/default path performs no callback
 projection and retains its prior response behavior. Policy builders preserve the
 installed delivery hook and shared dispatcher.
+
+### Trusted scalar team policy
+
+`OrganizationService::with_team_policy` and `AuthHttp::with_team_policy` accept
+`TeamPolicy::new(default_team, maximum_teams, maximum_members, allow_removing_all)`.
+Defaults are `true, None, None, false`; the typed limits admit nonnegative `u32`
+values. `Some(0)` teams means unlimited, whereas `Some(0)` members denies new
+pairs and still permits reusing an existing membership. These are server options,
+not request fields. Other builders preserve them.
+
+The policy applies to organization default-team creation, team creation/removal,
+team membership addition, server-only organization-member addition, invitation
+admission, and invitation acceptance. Default-team creation bypasses both limits,
+matching the plugin; disabling it preserves the prior active team while selecting
+the newly created organization. Team quotas and invitation hydrated-member checks
+retain upstream first-100 windows, so they are not unbounded quotas. Actual seat
+admission retains the existing stored overcount and bounded actual member scan.
+It atomically admits one new pair per available seat and leaves existing pairs
+unchanged. Invitation resend bypasses the new-invitation team checks.
+
+Native writer transactions serialize last-team deletion, quotas, and seat admission.
+Rejected seat admission also rolls back counter synchronization; upstream can
+persist an undercount correction before returning the same limit error.
+Failures roll back their operation, unlike upstream compensating cleanup whose
+intermediate effects can be visible. No arbitrary asynchronous policy/default-team
+creator callbacks, additional schemas, or cleanup-failure equivalence is implied.

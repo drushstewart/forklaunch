@@ -11,6 +11,7 @@ pub(crate) mod policy;
 mod roles;
 mod team_members;
 mod team_mutations;
+pub(crate) mod team_policy;
 mod teams;
 mod window;
 

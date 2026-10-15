@@ -74,7 +74,14 @@ impl<S: AuthStore> OrganizationService<S> {
                 .await?
                 .filter(|row| row["organizationId"] == org)
                 .ok_or_else(|| BlueprintError::new("TEAM_NOT_FOUND", "Team not found"))?;
-            add_team_member(&mut tx, team, text(&view.user, "id")?, now).await?;
+            add_team_member(
+                &mut tx,
+                team,
+                text(&view.user, "id")?,
+                now,
+                self.team_policy.maximum_members,
+            )
+            .await?;
         }
         let member = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":org,"userId":view.user["id"],"role":invitation["role"],"createdAt":timestamp(now)});
         tx.insert(Model::Member, member.clone()).await?;

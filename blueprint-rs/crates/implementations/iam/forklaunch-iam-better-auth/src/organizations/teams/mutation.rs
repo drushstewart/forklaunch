@@ -110,6 +110,20 @@ impl<S: AuthStore> OrganizationService<S> {
             .ok_or_else(unauthorized)?;
         let id = scope(body, &view)?;
         authorize(&mut tx, &view, id, Mutation::Create, None).await?;
+        if let Some(limit) = self.team_policy.maximum_teams.filter(|limit| *limit != 0) {
+            let count = crate::store::find_all(&mut tx, Model::Team, "organizationId", id)
+                .await?
+                .iter()
+                .filter(|row| row["organizationId"] == id)
+                .take(100)
+                .count();
+            if u64::try_from(count).unwrap_or(u64::MAX) >= u64::from(limit) {
+                return Err(BlueprintError::new(
+                    "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_TEAMS",
+                    "You have reached the maximum number of teams",
+                ));
+            }
+        }
         organization(&mut tx, id).await?;
         let team = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":id,"name":text(body,"name")?,"memberCount":0,"createdAt":timestamp(now),"updatedAt":timestamp(now)});
         tx.insert(Model::Team, team.clone()).await?;

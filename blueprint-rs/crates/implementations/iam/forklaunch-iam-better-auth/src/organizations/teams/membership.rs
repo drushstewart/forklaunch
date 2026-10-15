@@ -6,6 +6,7 @@ pub(in crate::organizations) async fn add<T: AuthTransaction>(
     mut team: Value,
     user: &str,
     now: DateTime<Utc>,
+    limit: Option<u32>,
 ) -> BlueprintResult<Value> {
     let id = text(&team, "id")?.to_owned();
     let pair = serde_json::to_vec(&json!([id, user])).map_err(|_| super::super::internal())?;
@@ -32,7 +33,10 @@ pub(in crate::organizations) async fn add<T: AuthTransaction>(
         team["updatedAt"] = json!(super::super::timestamp(now));
     }
     let count = stored.max(actual);
-    team["memberCount"] = json!(count + 1);
+    if limit.is_some_and(|limit| count >= i64::from(limit)) {
+        return Err(super::super::team_policy::member_limit());
+    }
+    team["memberCount"] = json!(count.checked_add(1).ok_or_else(super::super::internal)?);
     let membership = json!({"id":uuid::Uuid::new_v4().to_string(),"teamId":id,"userId":user,"membershipKey":key,"createdAt":super::super::timestamp(now)});
     tx.insert(Model::TeamMember, membership.clone()).await?;
     tx.replace(Model::Team, team).await?;

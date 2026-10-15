@@ -56,6 +56,7 @@ pub(super) async fn teams<T: AuthTransaction>(
     tx: &mut T,
     org: &str,
     value: Option<&Value>,
+    limit: Option<u32>,
 ) -> BlueprintResult<Vec<String>> {
     let teams = match value {
         Some(Value::String(value)) => vec![value.clone()],
@@ -81,6 +82,22 @@ pub(super) async fn teams<T: AuthTransaction>(
                 .is_some_and(|row| row["organizationId"] == org)
             {
                 return Err(error("TEAM_NOT_FOUND", "Team not found"));
+            }
+        }
+    }
+    if let Some(limit) = limit
+        && value
+            .is_some_and(|value| value.is_array() || value.as_str().is_some_and(|s| !s.is_empty()))
+    {
+        for id in &teams {
+            let count = crate::store::find_all(tx, Model::TeamMember, "teamId", id)
+                .await?
+                .iter()
+                .filter(|row| row["teamId"] == *id)
+                .take(100)
+                .count();
+            if u64::try_from(count).unwrap_or(u64::MAX) >= u64::from(limit) {
+                return Err(super::super::super::team_policy::member_limit());
             }
         }
     }

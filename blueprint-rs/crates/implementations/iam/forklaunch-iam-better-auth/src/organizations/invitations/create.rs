@@ -141,21 +141,14 @@ impl<S: AuthStore> OrganizationService<S> {
             tx.commit().await?;
             return Ok(completed);
         }
-        if crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
-            .await?
-            .iter()
-            .filter(|row| row["organizationId"] == org && row["status"] == "pending")
-            .take(100)
-            .filter(|row| unexpired(row, now))
-            .count()
-            >= usize::try_from(self.invitation_policy.limit).unwrap_or(usize::MAX)
-        {
-            return Err(error(
-                "INVITATION_LIMIT_REACHED",
-                "Invitation limit reached",
-            ));
-        }
-        let teams = input::teams(&mut tx, org, body.get("teamId")).await?;
+        ensure_invitation_quota(&mut tx, org, now, self.invitation_policy.limit).await?;
+        let teams = input::teams(
+            &mut tx,
+            org,
+            body.get("teamId"),
+            self.team_policy.maximum_members,
+        )
+        .await?;
         let invitation = json!({"id":uuid::Uuid::new_v4().to_string(),"email":email,"role":role,"organizationId":org,"inviterId":actor,"status":"pending","expiresAt":expiry,"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
         tx.insert(Model::Invitation, invitation.clone()).await?;
         let completed = complete(invitation, inviter, &organization);
@@ -196,4 +189,27 @@ fn complete(row: Value, inviter: Option<BlueprintResult<Value>>, organization: &
     let context = inviter
         .map(|inviter| inviter.and_then(|inviter| delivery::context(inviter, organization, &row)));
     Step::Complete(row, context.map(Box::new))
+}
+
+async fn ensure_invitation_quota<T: AuthTransaction>(
+    tx: &mut T,
+    org: &str,
+    now: DateTime<Utc>,
+    limit: u32,
+) -> BlueprintResult<()> {
+    if crate::store::find_all(tx, Model::Invitation, "organizationId", org)
+        .await?
+        .iter()
+        .filter(|row| row["organizationId"] == org && row["status"] == "pending")
+        .take(100)
+        .filter(|row| unexpired(row, now))
+        .count()
+        >= usize::try_from(limit).unwrap_or(usize::MAX)
+    {
+        return Err(error(
+            "INVITATION_LIMIT_REACHED",
+            "Invitation limit reached",
+        ));
+    }
+    Ok(())
 }

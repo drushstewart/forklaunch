@@ -74,6 +74,7 @@ pub struct AuthHttp<S> {
     session_policy: crate::sessions::SessionPolicy,
     organization_policy: crate::organizations::OrganizationPolicy,
     invitation_policy: crate::organizations::InvitationPolicy,
+    team_policy: crate::organizations::TeamPolicy,
     invitation_delivery: Option<Arc<dyn crate::organizations::InvitationEmailDelivery>>,
     cancel_pending_invitations_on_reinvite: bool,
     store: Arc<S>,
@@ -129,6 +130,12 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self
     }
 
+    /// Installs server-owned scalar team admission policy.
+    #[must_use]
+    pub fn with_team_policy(mut self, policy: crate::organizations::TeamPolicy) -> Self {
+        self.team_policy = policy;
+        self
+    }
     /// Installs server-owned invitation expiry, quota and recipient verification options.
     #[must_use]
     pub fn with_invitation_policy(
@@ -209,6 +216,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             session_policy: crate::sessions::SessionPolicy::default(),
             organization_policy: crate::organizations::OrganizationPolicy::default(),
             invitation_policy: crate::organizations::InvitationPolicy::default(),
+            team_policy: crate::organizations::TeamPolicy::default(),
             invitation_delivery: None,
             cancel_pending_invitations_on_reinvite: false,
             store,
@@ -1000,6 +1008,7 @@ fn failure_response(error: &BlueprintError) -> Response {
         | "YOU_ARE_NOT_ALLOWED_TO_INVITE_USER_WITH_THIS_ROLE"
         | "INVITATION_LIMIT_REACHED"
         | "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED"
+        | "TEAM_MEMBER_LIMIT_REACHED"
         | "YOU_ARE_NOT_ALLOWED_TO_LIST_A_ROLE"
         | "YOU_ARE_NOT_ALLOWED_TO_READ_A_ROLE"
         | "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE"

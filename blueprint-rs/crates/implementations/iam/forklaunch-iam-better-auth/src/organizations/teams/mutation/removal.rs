@@ -32,12 +32,13 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             return Err(missing());
         }
-        if crate::store::find_all(&mut tx, Model::Team, "organizationId", org)
-            .await?
-            .iter()
-            .filter(|row| row["organizationId"] == org)
-            .count()
-            <= 1
+        if !self.team_policy.allow_removing_all
+            && crate::store::find_all(&mut tx, Model::Team, "organizationId", org)
+                .await?
+                .iter()
+                .filter(|row| row["organizationId"] == org)
+                .count()
+                <= 1
         {
             return Err(BlueprintError::new(
                 "UNABLE_TO_REMOVE_LAST_TEAM",

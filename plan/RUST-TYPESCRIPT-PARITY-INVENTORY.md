@@ -11631,3 +11631,32 @@ The committed runtime-format worktree was removed after confirming its exact
 HEAD, clean state, nine integrated source hashes and zero active/open paths.
 Proof branch and external logs/manifests remain;4,176 regular files totaling
 44,720,196 logical bytes were removed. Receipt: `/private/tmp/fl-runtime-formats-cleanup.json`.
+
+### 2026-10-15: Trusted scalar team policy
+
+`TeamPolicy` configures default-team creation, maximum teams, maximum members per
+team and last-team removal. The service and HTTP builder propagate the same
+trusted options across organization creation, direct team membership, server-side
+member addition, invitation admission/acceptance and deletion. Requests cannot
+override policy. Zero team maximum is unlimited; zero member maximum denies new
+pairs but preserves existing memberships. Default-team creation bypasses limits,
+matching the reference. Team counts and invitation member hydration retain their
+first100 windows; duplicate reuse and empty teamId behavior are covered.
+
+Frozen18-source manifest `/private/tmp/fl-team-policy-freeze.json` has SHA256
+`1940dbf87ed1b4e0480e357678a5d10b7db97ee4c904129f83ebd510c1201eee`.
+Actual Better Auth27 cases pass; focused native1 passes0.06s and final exact-source
+organization7 pass0.28s. Restricted PostgreSQL lifecycle passes225.49s, including
+concurrent final seats/team quotas/last-team deletion and tenant isolation; owned
+roles/data/audits are cleaned. Strict full/all-target Clippy passes10.96s and
+minimal33.33s (including build-lock wait). Logs use `/private/tmp/fl-team-policy-`.
+Native rejected operations roll back bookkeeping atomically; upstream can persist
+an undercount correction before rejecting a seat. That failure-side difference
+and arbitrary async policies remain explicit, rather than claimed equivalent.
+No live TCP/browser receipt is asserted here. Broader auth remains open.
+
+After the native lease released,1,095 project rlibs older than24h were removed
+after checking no native target process or candidate open file remained.
+8,486,436,936 logical bytes were removed, retaining third-party dependencies,
+source and proof archives. Exact paths/sizes/mtimes and completion are recorded in
+`/private/tmp/fl-oct15-old-blueprint-project-rlibs{,-cleanup}.json`.

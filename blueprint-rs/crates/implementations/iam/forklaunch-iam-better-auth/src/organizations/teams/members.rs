@@ -24,7 +24,14 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let team = authorized_team(&mut tx, &view, body, false).await?;
-        let row = add_team_member(&mut tx, team, text(body, "userId")?, now).await?;
+        let row = add_team_member(
+            &mut tx,
+            team,
+            text(body, "userId")?,
+            now,
+            self.team_policy.maximum_members,
+        )
+        .await?;
         tx.commit().await?;
         Ok(public_member(row))
     }

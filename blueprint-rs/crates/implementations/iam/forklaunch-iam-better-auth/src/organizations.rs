@@ -16,6 +16,8 @@ mod delivery;
 pub use delivery::{InvitationDeliveryContext, InvitationEmailDelivery};
 mod full;
 mod invitation_policy;
+mod team_policy;
+pub use team_policy::TeamPolicy;
 mod invitations;
 pub use invitation_policy::InvitationPolicy;
 mod members;
@@ -33,6 +35,7 @@ pub(crate) mod tests;
 pub struct OrganizationService<S> {
     policy: OrganizationPolicy,
     invitation_policy: InvitationPolicy,
+    team_policy: TeamPolicy,
     invitation_delivery: Option<Arc<dyn InvitationEmailDelivery>>,
     background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     cancel_pending_invitations_on_reinvite: bool,
@@ -77,6 +80,12 @@ impl<S: AuthStore> OrganizationService<S> {
         self
     }
 
+    /// Installs trusted scalar team options without changing other policies.
+    #[must_use]
+    pub fn with_team_policy(mut self, policy: TeamPolicy) -> Self {
+        self.team_policy = policy;
+        self
+    }
     /// Installs trusted invitation expiry, quota and recipient verification options.
     #[must_use]
     pub fn with_invitation_policy(mut self, policy: InvitationPolicy) -> Self {
@@ -103,6 +112,7 @@ impl<S: AuthStore> OrganizationService<S> {
         Self {
             policy: OrganizationPolicy::default(),
             invitation_policy: InvitationPolicy::default(),
+            team_policy: TeamPolicy::default(),
             invitation_delivery: None,
             background_dispatcher: None,
             cancel_pending_invitations_on_reinvite: false,

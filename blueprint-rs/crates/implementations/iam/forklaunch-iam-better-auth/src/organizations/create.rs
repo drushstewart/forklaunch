@@ -69,14 +69,19 @@ impl<S: AuthStore> OrganizationService<S> {
         let user = text(&view.user, "id")?;
         let owner = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":id,"userId":user,"role":"owner","createdAt":created});
         tx.insert(Model::Member, owner.clone()).await?;
-        let team_id = uuid::Uuid::new_v4().to_string();
-        tx.insert(Model::Team,json!({"id":team_id,"organizationId":id,"name":organization["name"],"memberCount":1,"createdAt":created})).await?;
-        let pair = serde_json::to_vec(&json!([team_id, user])).map_err(|_| internal())?;
-        let membership =
-            URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &pair).as_ref());
-        tx.insert(Model::TeamMember,json!({"id":uuid::Uuid::new_v4().to_string(),"teamId":team_id,"userId":user,"membershipKey":membership,"createdAt":created})).await?;
+        let team_id = if self.team_policy.default_team {
+            let team_id = uuid::Uuid::new_v4().to_string();
+            tx.insert(Model::Team,json!({"id":team_id,"organizationId":id,"name":organization["name"],"memberCount":1,"createdAt":created})).await?;
+            let pair = serde_json::to_vec(&json!([team_id, user])).map_err(|_| internal())?;
+            let membership =
+                URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &pair).as_ref());
+            tx.insert(Model::TeamMember,json!({"id":uuid::Uuid::new_v4().to_string(),"teamId":team_id,"userId":user,"membershipKey":membership,"createdAt":created})).await?;
+            Some(team_id)
+        } else {
+            None
+        };
         if body["keepCurrentActiveOrganization"] != true {
-            update_active(&mut tx, &view, Some(&id), Some(&team_id), now).await?;
+            update_active(&mut tx, &view, Some(&id), team_id.as_deref(), now).await?;
         }
         tx.commit().await?;
         if let Some(metadata) = body.get("metadata") {

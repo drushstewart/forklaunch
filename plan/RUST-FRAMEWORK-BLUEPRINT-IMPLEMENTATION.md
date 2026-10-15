@@ -2757,3 +2757,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Unconstrained Zod factory exports no longer falsely require objects; actual/AJV11,106 comparisons and strict12-root TypeScript pass. Explicit overrides preserved; native/SDK follow-up queued,660/682 unchanged.
 
 - 2026-10-15: Independent PaymentLink expiration recovery passes restricted PostgreSQL HTTP/MCP/both SDKs, expiration regression,16 units,186 actual artifacts and strict full/minimal Clippy. No provider POST or reservation INSERT authority required; broader billing stays open,660/682 unchanged.
+
+- 2026-10-15: Trusted scalar team policies pass actual27, final organization7, restricted PostgreSQL concurrency and strict full/minimal checks. Default-team/zero/window/last-team behaviors covered; stronger native failure rollback remains explicit. Broader auth remains open,660/682 unchanged.
