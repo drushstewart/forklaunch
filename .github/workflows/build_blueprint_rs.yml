@@ -8,10 +8,14 @@ on:
     paths:
       - 'blueprint-rs/**'
       - 'framework-rs/**'
+      - 'scripts/rust_format.py'
+      - '.github/workflows/build_blueprint_rs.yml'
   pull_request:
     paths:
       - 'blueprint-rs/**'
       - 'framework-rs/**'
+      - 'scripts/rust_format.py'
+      - '.github/workflows/build_blueprint_rs.yml'
 
 jobs:
   build:
@@ -25,8 +29,7 @@ jobs:
         run: rustup toolchain install stable --profile minimal && rustup default stable
 
       - name: Check formatting
-        working-directory: ./blueprint-rs
-        run: cargo fmt --all --check
+        run: python3 scripts/rust_format.py blueprint-rs/Cargo.toml
 
       - name: Run clippy
         working-directory: ./blueprint-rs

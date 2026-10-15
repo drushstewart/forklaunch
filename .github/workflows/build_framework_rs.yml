@@ -7,9 +7,13 @@ on:
       - main
     paths:
       - 'framework-rs/**'
+      - 'scripts/rust_format.py'
+      - '.github/workflows/build_framework_rs.yml'
   pull_request:
     paths:
       - 'framework-rs/**'
+      - 'scripts/rust_format.py'
+      - '.github/workflows/build_framework_rs.yml'
 
 jobs:
   build:
@@ -23,8 +27,7 @@ jobs:
         run: rustup toolchain install stable --profile minimal && rustup default stable
 
       - name: Check formatting
-        working-directory: ./framework-rs
-        run: cargo fmt --all --check
+        run: python3 scripts/rust_format.py framework-rs/Cargo.toml
 
       - name: Run clippy
         working-directory: ./framework-rs
