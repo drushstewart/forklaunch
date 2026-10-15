@@ -539,10 +539,14 @@ export class ZodSchemaValidator implements SV<
    * Explicit default annotations are retained; wrapper optionality is structural.
    * Purity covers named validation/default callbacks on ordinary Zod schemas,
    * not arbitrary getters, Proxies or shape thunks. Date keeps its wire projection.
+   * zodChecks emits a reserved consumer capability for UTF-16 length and ordered
+   * Zod remainder checks. Native consumers require the zod-checks Cargo feature;
+   * native String admission excludes lone UTF-16 surrogates. Explicit ordinary
+   * length/multipleOf annotations suppress corresponding synthesized assertions.
    */
   openapi2020(
     schema: unknown,
-    options?: { pureInput?: boolean }
+    options?: { pureInput?: boolean; zodChecks?: boolean }
   ): SchemaObject & {
     $schema: 'https://json-schema.org/draft/2020-12/schema';
   } {
@@ -552,7 +556,8 @@ export class ZodSchemaValidator implements SV<
       // Cloning before those guards would recurse through cyclic schema graphs.
       return generateSchema(schemified, false, '3.1', {
         jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
-        pureInput: true
+        pureInput: true,
+        zodChecks: options.zodChecks
       }) as SchemaObject & {
         $schema: 'https://json-schema.org/draft/2020-12/schema';
       };
@@ -591,8 +596,9 @@ export class ZodSchemaValidator implements SV<
       else break;
     }
     return requestBodyOpenApi(schemified, (value) =>
-      generateSchema(deepCloneWithoutUndefined(value), false, '3.1', {
-        jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema'
+      generateSchema(options?.zodChecks ? value : deepCloneWithoutUndefined(value), false, '3.1', {
+        jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
+        zodChecks: options?.zodChecks
       })
     ).schema as SchemaObject & {
       $schema: 'https://json-schema.org/draft/2020-12/schema';

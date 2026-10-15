@@ -1590,6 +1590,9 @@ dependencies = [
 [[package]]
 name = "forklaunch-common"
 version = "0.1.0"
+dependencies = [
+ "ryu-js",
+]
 
 [[package]]
 name = "forklaunch-contract"

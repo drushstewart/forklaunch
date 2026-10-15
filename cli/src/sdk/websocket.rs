@@ -29,6 +29,7 @@ pub(crate) fn generate_from(
         "Invalid socket SDK source"
     );
     let _ = zod_uri_enabled(std::env::var_os("FORKLAUNCH_SDK_ZOD_URI").as_deref())?;
+    let _ = zod_checks_enabled(std::env::var_os("FORKLAUNCH_SDK_ZOD_CHECKS").as_deref())?;
     let imported = source == "asyncapi";
     let root = root.canonicalize()?;
     let manifest: toml::Value =
@@ -297,6 +298,20 @@ fn configure_uri_feature(command: &mut Command, value: Option<&std::ffi::OsStr>)
     }
     Ok(())
 }
+fn zod_checks_enabled(value: Option<&std::ffi::OsStr>) -> Result<bool> {
+    match value {
+        None => Ok(false),
+        Some(value) if value == "0" => Ok(false),
+        Some(value) if value == "1" => Ok(true),
+        Some(_) => bail!("FORKLAUNCH_SDK_ZOD_CHECKS must be unset, 0 or 1"),
+    }
+}
+fn configure_checks_feature(command: &mut Command, value: Option<&std::ffi::OsStr>) -> Result<()> {
+    if zod_checks_enabled(value)? {
+        command.args(["--features", "zod-checks"]);
+    }
+    Ok(())
+}
 fn compile(root: &Path, artifact: &Path, target: &str, source: &str) -> Result<Value> {
     let manifest = root.join(".forklaunch/framework-rs/Cargo.toml").canonicalize().context("Bundled Rust framework missing; generate or upgrade the application's bundled framework first")?;
     if !manifest.starts_with(root) {
@@ -312,6 +327,10 @@ fn compile(root: &Path, artifact: &Path, target: &str, source: &str) -> Result<V
     configure_uri_feature(
         &mut command,
         std::env::var_os("FORKLAUNCH_SDK_ZOD_URI").as_deref(),
+    )?;
+    configure_checks_feature(
+        &mut command,
+        std::env::var_os("FORKLAUNCH_SDK_ZOD_CHECKS").as_deref(),
     )?;
     let mut child = command
         .args(["--example", "socket_artifacts", "--"])
@@ -466,6 +485,7 @@ edition = "2024"
 [features]
 default = []
 zod-uri = ["forklaunch-ws/zod-uri"]
+zod-checks = ["forklaunch-ws/zod-checks"]
 
 [dependencies]
 forklaunch-ws = {{ path = "../../../.forklaunch/framework-rs/crates/forklaunch-ws", features = ["transport", "json-schema"] }}
@@ -746,6 +766,20 @@ mod tests {
             );
             assert!(!root.path().join("package.json").exists());
         }
+    }
+
+    #[test]
+    fn explicit_zod_checks_compiler_feature_is_bounded_and_additive() {
+        for (input, expected) in [(None, false), (Some("0"), false), (Some("1"), true)] {
+            let value = input.map(std::ffi::OsStr::new);
+            assert_eq!(zod_checks_enabled(value).unwrap(), expected);
+            let mut command = Command::new("cargo");
+            configure_checks_feature(&mut command, value).unwrap();
+            let arguments: Vec<_> = command.get_args().collect();
+            assert_eq!(arguments.is_empty(), !expected);
+            if expected { assert_eq!(arguments, ["--features", "zod-checks"]); }
+        }
+        for value in ["", "true", "2"] { assert!(zod_checks_enabled(Some(std::ffi::OsStr::new(value))).is_err()); }
     }
 
     #[test]

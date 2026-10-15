@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
+zod-checks = ["schema-validation", "forklaunch-common/zod-checks"]
 default = []
 zod-uri = ["schema-validation", "dep:ada-url"]
 json-schema = ["dep:serde_json", "dep:serde", "dep:percent-encoding"]

@@ -138,6 +138,7 @@ function socketValidator(schema: AnySchema): ValidateFunction {
   // CJS package declarations are exposed as a namespace under NodeNext ESM.
   const addFormats = addFormatsModule as unknown as FormatsPlugin;
   addFormats(engine);
+  registerZodChecks(engine);
   engine.addFormat('forklaunch-whatwg-url', {
     type: 'string',
     validate: (value: string) => {

@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 621 resolved declaration entry points and 1,699 declaration/re-export
+It records 623 resolved declaration entry points and 1,703 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -10606,3 +10606,34 @@ exact owned roots, no symlink/open-file/active-process use, current-source cache
 exclusion and retained archive SHA256 before/after. Executables, live workspaces
 and active agent caches preserved. Evidence /private/tmp/fl-oct14-payment-link-
 cleanup.log and /private/tmp/fl-oct14-payment-link-cache-cleanup.{json,log}.
+
+
+### 2026-10-15 — explicit Zod length and numeric-check profile
+
+`openapi2020(schema, { zodChecks: true })` emits the versioned reserved
+`x-forklaunch-zod-checks` capability. UTF-16 length and ordered Zod numeric
+remainder checks now retain their actual source semantics in native validators,
+UniversalSdk and generated socket clients. Ordinary explicit length/multipleOf
+annotations override the corresponding synthesized assertions; the reserved
+keyword cannot be supplied through annotations. Default schema export is unchanged.
+Native consumers opt into the `zod-checks` Cargo feature; socket CLI compilation
+uses `FORKLAUNCH_SDK_ZOD_CHECKS=1`. Feature-off compilation rejects the capability
+in schema positions, including referenced targets, while preserving literal data.
+
+The source fixture passed 2,304 baseline observations, 2,220 exact opted-in
+Zod/AJV comparisons and 3,332 native observations. The moved shared numeric kernel
+passed 192,816 actual-Zod comparisons. Generated consumer checks cover five real
+HTTP responses and twenty TS/Rust socket encode/decode outcomes, strict generated
+compilation and feature-off rejection without output. Native tests, strict Clippy,
+1,129 CLI tests and both workspace lock checks passed. Only the shared common
+crate dependency edge to the existing pinned `ryu-js` changed in tracked locks.
+
+This profile does not close the schema gate: regex and mixed-format conjunctions
+remain open. Native strings cover representable Unicode, excluding lone UTF-16
+surrogates. Numeric comparisons use finite IEEE-754 values. Rules are capped at
+10,000; length bounds must be nonnegative safe integers. Unprojectable combinations
+of string transformations and synthesized length checks fail explicitly. AJV
+registration preserves supplied engine options; a shared engine is reusable within
+one helper module instance, while separately bundled helpers require separate
+engines. CI runs both permanent fixtures, `rust_zod_checks.mjs` and
+`rust_zod_checks_consumers.mjs`. The checklist remains 660/682 (96.8%).

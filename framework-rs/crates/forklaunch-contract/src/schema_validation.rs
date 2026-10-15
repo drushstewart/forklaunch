@@ -2,6 +2,10 @@
 use serde_json::Value;
 use std::sync::Arc;
 
+#[cfg(feature = "zod-checks")]
+#[path = "schema_validation_zod.rs"]
+mod zod;
+
 #[path = "schema_validation_file.rs"]
 mod file;
 pub use file::opaque_binary_schema;
@@ -50,7 +54,15 @@ fn compile_profile(schema: &Value, multipart: bool) -> Result<Arc<JsonValidator>
             ada_url::Url::can_parse(value, None)
         });
     }
+    #[cfg(feature = "zod-checks")]
+    {
+        options = options.with_keyword(zod::KEYWORD, zod::compile);
+    }
     options = options.with_schema_rewriter(move |schema| {
+        #[cfg(not(feature = "zod-checks"))]
+        if schema.get("x-forklaunch-zod-checks").is_some() {
+            return Err("x-forklaunch-zod-checks requires the forklaunch-contract zod-checks feature".to_owned());
+        }
         #[cfg(not(feature = "zod-uri"))]
         if schema.get("format").and_then(Value::as_str) == Some("forklaunch-whatwg-url") {
             return Err(
@@ -128,3 +140,7 @@ impl std::io::Write for SchemaBytes {
 #[cfg(test)]
 #[path = "schema_validation_uri_tests.rs"]
 mod uri_tests;
+
+#[cfg(test)]
+#[path = "schema_validation_zod_tests.rs"]
+mod zod_tests;

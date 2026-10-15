@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
+zod-checks = ["forklaunch-ws/zod-checks"]
 default = []
 zod-uri = ["forklaunch-ws/zod-uri"]
 

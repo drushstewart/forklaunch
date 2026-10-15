@@ -112,6 +112,7 @@ pub fn generate_typescript_websocket_sdk_source(
 
 fn runtime_source() -> String {
     let mut source = String::from(include_str!("websocket-runtime.ts"));
+    source.push_str(&include_str!("zod-checks.ts").replace("import type Ajv from 'ajv';", ""));
     // Official Draft 6 meta-schema, embedded to keep both module formats self-contained.
     let schema = forklaunch_common::json_string(include_str!("draft6-schema.json"));
     let _ = writeln!(

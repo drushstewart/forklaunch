@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
+zod-checks = ["forklaunch-contract/zod-checks"]
 default = []
 zod-uri = ["forklaunch-contract/zod-uri"]
 rmcp-server = ["dep:rmcp", "dep:axum", "dep:tokio", "dep:tower", "dep:percent-encoding", "dep:form_urlencoded", "dep:base64", "dep:serde", "dep:forklaunch-validation"]

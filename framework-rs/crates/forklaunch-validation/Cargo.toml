@@ -13,7 +13,7 @@ zod-uri = ["dep:ada-url"]
 
 [dependencies]
 ada-url = { version = "=3.2.4", optional = true }
-forklaunch-common = { version = "0.1.0", path = "../forklaunch-common" }
+forklaunch-common = { version = "0.1.0", path = "../forklaunch-common", features = ["zod-checks"] }
 forklaunch-contract = { version = "0.1.0", path = "../forklaunch-contract" }
 forklaunch-http = { version = "0.1.0", path = "../forklaunch-http" }
 

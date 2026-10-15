@@ -2,6 +2,7 @@ import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
 import { merge } from './schemaMerge';
 import { assertPureInputSchema, pureInputOptional } from './pureInput';
 import { stringLiteralPattern } from './stringLiteral';
+import { projectStringChecks, projectNumberChecks, zodChecksKeyword } from './zodChecks';
 import { AnyZodObject, z, ZodTypeAny } from 'zod/v3';
 import {
   factoryEmailPattern,
@@ -32,8 +33,11 @@ export interface SchemaGenerationOptions {
   readonly jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema';
   /** Reject callback-dependent schemas and omit computed defaults recursively. */
   readonly pureInput?: boolean;
+  /** Emit reserved exact UTF-16 length and Zod remainder checks. Consumers must support this profile. */
+  readonly zodChecks?: boolean;
 }
 interface ParsingArgs<T> {
+  zodChecks?: boolean;
   pureInput?: { isOptional: (schema: ZodTypeAny) => boolean };
   generateSchema: (
     schema: OpenApiZodAny,
@@ -143,6 +147,7 @@ function parseTransformation({
 }
 
 function parseString({
+  zodChecks,
   zodRef,
   schemas,
   openApiVersion
@@ -151,6 +156,7 @@ function parseString({
     type: typeFormat('string', openApiVersion)
   };
   const { checks = [] } = zodRef._def;
+  const exact = zodChecks ? projectStringChecks(checks, schemas as Record<string, unknown>[]) : undefined;
   checks.forEach((item) => {
     switch (item.kind) {
       case 'email':
@@ -215,6 +221,11 @@ function parseString({
       }
     }
   }
+  if (zodChecks) {
+    if (exact?.utf16MinLength !== undefined) delete baseSchema.minLength;
+    if (exact?.utf16MaxLength !== undefined) delete baseSchema.maxLength;
+    if (exact) Object.assign(baseSchema, { [zodChecksKeyword]: exact });
+  }
   return merge(
     baseSchema,
     zodRef.description ? { description: zodRef.description } : {},
@@ -223,6 +234,7 @@ function parseString({
 }
 
 function parseNumber({
+  zodChecks,
   zodRef,
   schemas,
   openApiVersion
@@ -231,6 +243,7 @@ function parseNumber({
     type: typeFormat('number', openApiVersion)
   };
   const { checks = [] } = zodRef._def;
+  const exact = zodChecks ? projectNumberChecks(checks, schemas as Record<string, unknown>[]) : undefined;
   checks.forEach((item) => {
     switch (item.kind) {
       case 'max':
@@ -306,6 +319,12 @@ function parseNumber({
           openApiVersion === '3.0'
             ? (true as unknown as number)
             : strongest.value;
+    }
+  }
+  if (zodChecks) {
+    if (exact) {
+      delete baseSchema.multipleOf;
+      Object.assign(baseSchema, { [zodChecksKeyword]: exact });
     }
   }
   return merge(
@@ -1040,12 +1059,15 @@ export function generateSchema(
         'Schema annotation dialect conflicts with explicit JSON Schema export'
       );
     }
+    if (context?.zodChecks && schemas.some(metadata => Object.prototype.hasOwnProperty.call(metadata, zodChecksKeyword)))
+      throw new Error('The reserved Zod check keyword cannot be overridden');
     const args = {
       zodRef: schema as never,
       schemas,
       useOutput: output,
       openApiVersion: version,
       jsonSchemaDialect: context?.jsonSchemaDialect,
+      zodChecks: context?.zodChecks,
       pureInput: context?.pureInput
         ? {
             isOptional: (child: ZodTypeAny) =>

@@ -1,5 +1,9 @@
 #![forbid(unsafe_code)]
 
+/// Exact Zod v3 numeric remainder semantics for explicitly enabled consumers.
+#[cfg(feature = "zod-checks")]
+pub mod zod_multiple_of;
+
 use std::{error::Error, fmt};
 
 mod naming;

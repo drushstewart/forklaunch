@@ -1593,3 +1593,17 @@ Logs /private/tmp/fl-payment-link-list-route-{live,artifacts,units-final,clippy-
 Existing CI direct-executable payment_link_read wrapper runs this expanded test
 without holding Cargo's lock across SDK compilation; no extra wrapper needed.
 Checklist660/682(96.8%),22broad gates remain open.
+
+
+### 2026-10-15 — reserved Zod assertion admission
+
+The opt-in `x-forklaunch-zod-checks` profile admits only version 1, known fields,
+nonnegative safe-integer UTF-16 bounds and at most 10,000 numeric divisors. Native
+feature-off compilation rejects schema-position capability use, including refs;
+values in literal data are not mistaken for schemas. AJV rejects conflicting
+reserved handlers and captures admitted configuration instead of retaining mutable
+arrays. Schema annotations cannot overwrite the reserved keyword. Existing
+ordinary annotation overrides retain their documented precedence. No schema
+callbacks execute in the pure-input profile. Native Unicode and finite-number
+representation limits remain explicit; arbitrary regex equivalence is not claimed.
+Both workspace locks add only the shared numeric-kernel edge to pinned `ryu-js`.

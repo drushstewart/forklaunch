@@ -1291,3 +1291,19 @@ their compatibility behavior.
 The static TypeScript CORS profile accepts explicit preflight final statuses
 200–599. Express sends zero Content-Length on204/304; Hyper omits it. Tests
 assert this wire difference explicitly. Dynamic origin delegates remain separate.
+
+
+### Explicit Zod constraint profile
+
+TypeScript schema export can opt into `openapi2020(schema, { zodChecks: true })`
+for exact UTF-16 string lengths and ordered Zod numeric remainder checks. Enable
+`zod-checks` on native contract/HTTP/MCP/socket or SDK crates that consume these
+schemas; socket CLI generation uses `FORKLAUNCH_SDK_ZOD_CHECKS=1`. Unsupported
+native consumers reject the reserved `x-forklaunch-zod-checks` capability.
+UniversalSdk and generated TypeScript socket clients register its AJV handler.
+Separately bundled helper instances need separate AJV engines.
+
+Ordinary explicit schema annotations keep their override semantics. This option
+does not imply general Zod schema equivalence: regex/format conjunction work remains
+open, native strings exclude lone UTF-16 surrogates, and transformations combined
+with synthesized length checks are rejected. Default schema export is unchanged.
