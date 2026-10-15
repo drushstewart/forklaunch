@@ -36,6 +36,10 @@ pub use constrained_number::{
     ZodIntegerBound, ZodNumberCheck, ZodNumberStep, zod_number, zod_number_checks,
 };
 
+#[path = "zod_json.rs"]
+mod json;
+pub use json::{ZodJsonField, ZodJsonOutcome, ZodJsonSchema, ZodJsonUnsupported, zod_json};
+
 /// Coerce a JSON value with the actual `ForkLaunch` Zod number preprocessing.
 /// `None` represents JavaScript undefined. Infinities and signed zero are
 /// preserved, as accepted by Zod v3's unconstrained number schema.

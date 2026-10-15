@@ -1,0 +1,129 @@
+use super::super::ZodStringRule;
+use super::{MAX_NODES, ZodJsonSchema, ZodJsonUnsupported};
+use serde_json::Value;
+
+pub(super) const MAX_ADMISSION_BYTES: usize = 16 * 1024 * 1024;
+const MAX_WORK_BYTES: usize = 32 * 1024 * 1024;
+
+pub(super) struct Budget {
+    pub nodes: usize,
+    bytes: usize,
+}
+impl Budget {
+    pub fn new() -> Self {
+        Self {
+            nodes: MAX_NODES,
+            bytes: MAX_WORK_BYTES,
+        }
+    }
+    pub fn charge(&mut self, nodes: usize, bytes: usize) -> Result<(), ZodJsonUnsupported> {
+        let next_nodes = self
+            .nodes
+            .checked_sub(nodes)
+            .ok_or(ZodJsonUnsupported::EvaluationNodes)?;
+        let next_bytes = self
+            .bytes
+            .checked_sub(bytes)
+            .ok_or(ZodJsonUnsupported::EvaluationBytes)?;
+        self.nodes = next_nodes;
+        self.bytes = next_bytes;
+        Ok(())
+    }
+}
+
+pub(super) fn own_schema_bytes(schema: &ZodJsonSchema<'_>) -> usize {
+    match schema {
+        ZodJsonSchema::String(checks) => checks.iter().fold(0usize, |bytes, check| {
+            bytes
+                .saturating_add(check.message.map_or(0, str::len))
+                .saturating_add(match check.rule {
+                    ZodStringRule::StartsWith(value)
+                    | ZodStringRule::EndsWith(value)
+                    | ZodStringRule::Includes { needle: value, .. } => value.len(),
+                    _ => 0,
+                })
+        }),
+        ZodJsonSchema::Number(checks) => checks.iter().fold(0usize, |bytes, check| {
+            bytes.saturating_add(check.message.map_or(0, str::len))
+        }),
+        ZodJsonSchema::Object(fields) => fields.iter().fold(0usize, |bytes, field| {
+            bytes.saturating_add(field.name.len())
+        }),
+        _ => 0,
+    }
+}
+
+pub(super) fn evaluation_bytes(
+    input: Option<&Value>,
+    schema: &ZodJsonSchema<'_>,
+) -> Result<usize, ZodJsonUnsupported> {
+    let input_bytes = || {
+        input
+            .map(super::admit_value)
+            .transpose()
+            .map(|size| size.map_or(0, |(_, bytes)| bytes))
+    };
+    Ok(match schema {
+        ZodJsonSchema::String(checks) => input_bytes()?
+            .saturating_mul(checks.len().saturating_add(2))
+            .saturating_add(own_schema_bytes(schema))
+            .saturating_add(checks.len().saturating_add(1).saturating_mul(128)),
+        ZodJsonSchema::Number(checks) => input_bytes()?
+            .saturating_mul(3)
+            .saturating_add(own_schema_bytes(schema))
+            .saturating_add(checks.len().saturating_add(1).saturating_mul(128)),
+        ZodJsonSchema::Boolean => input_bytes()?.saturating_mul(4).saturating_add(128),
+        ZodJsonSchema::Unknown => input_bytes()?.saturating_mul(3),
+        ZodJsonSchema::Array { checks, .. } => checks.len().saturating_add(1).saturating_mul(128),
+        ZodJsonSchema::Object(fields) => own_schema_bytes(schema).saturating_mul(
+            usize::try_from(fields.len().max(1).ilog2())
+                .unwrap_or(usize::MAX)
+                .saturating_add(2),
+        ),
+        _ => 0,
+    })
+}
+
+pub(super) fn number_bytes(number: &serde_json::Number) -> Result<usize, ZodJsonUnsupported> {
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            let next = self.0.saturating_add(bytes.len());
+            if next > MAX_ADMISSION_BYTES {
+                return Err(std::io::Error::other("numeric admission byte limit"));
+            }
+            self.0 = next;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter(0);
+    serde_json::to_writer(&mut counter, number).map_err(|_| ZodJsonUnsupported::InputBytes)?;
+    if !number.as_f64().is_some_and(f64::is_finite) {
+        return Err(ZodJsonUnsupported::NonFiniteNumber);
+    }
+    Ok(counter.0)
+}
+
+pub(super) fn clone_json(value: &Value) -> Result<Value, ZodJsonUnsupported> {
+    Ok(match value {
+        Value::Number(number) => Value::Number(
+            serde_json::Number::from_f64(
+                number.as_f64().ok_or(ZodJsonUnsupported::NonFiniteNumber)?,
+            )
+            .ok_or(ZodJsonUnsupported::NonFiniteNumber)?,
+        ),
+        Value::Array(values) => {
+            Value::Array(values.iter().map(clone_json).collect::<Result<_, _>>()?)
+        }
+        Value::Object(values) => Value::Object(
+            values
+                .iter()
+                .map(|(key, value)| Ok((key.clone(), clone_json(value)?)))
+                .collect::<Result<_, ZodJsonUnsupported>>()?,
+        ),
+        other => other.clone(),
+    })
+}

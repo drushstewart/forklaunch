@@ -1,0 +1,428 @@
+//! Bounded, opt-in composition of the supported Zod JSON value operations.
+use super::{
+    ZodNumberCheck, ZodStringCheck, boolean, number, zod_number_checks, zod_string_checks,
+};
+use crate::ParseError;
+use crate::zod_array::{ZodArrayStep, zod_array_shape};
+use serde_json::{Map, Value};
+
+#[path = "zod_json_resources.rs"]
+mod resources;
+use resources::{
+    Budget, MAX_ADMISSION_BYTES, clone_json, evaluation_bytes, number_bytes, own_schema_bytes,
+};
+
+const MAX_DEPTH: usize = 64;
+const MAX_NODES: usize = 100_000;
+
+/// Programmatic schema composition; this does not interpret JSON Schema or Zod.
+/// Objects strip unknown fields. Literal defaults apply only to absent input.
+/// Union, record, arbitrary callbacks and non-JSON outputs are not supported.
+#[derive(Debug, Clone)]
+pub enum ZodJsonSchema<'a> {
+    String(Vec<ZodStringCheck<'a>>),
+    Boolean,
+    Number(Vec<ZodNumberCheck<'a>>),
+    Unknown,
+    Optional(Box<Self>),
+    Nullable(Box<Self>),
+    Default {
+        schema: Box<Self>,
+        value: &'a Value,
+    },
+    Array {
+        element: Box<Self>,
+        checks: Vec<ZodArrayStep>,
+    },
+    Object(Vec<ZodJsonField<'a>>),
+}
+
+/// A declared object property; duplicates and prototype-sensitive names are
+/// rejected before evaluation. Integer-index names follow ECMAScript key order.
+#[derive(Debug, Clone)]
+pub struct ZodJsonField<'a> {
+    pub name: &'a str,
+    pub schema: ZodJsonSchema<'a>,
+}
+
+/// An explicit boundary failure, never disguised as a source validation error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZodJsonUnsupported {
+    SchemaDepth,
+    SchemaNodes,
+    InputDepth,
+    InputNodes,
+    EvaluationNodes,
+    SchemaBytes,
+    InputBytes,
+    EvaluationBytes,
+    DuplicateField,
+    PrototypeField,
+    NonFiniteNumber,
+}
+
+/// Successful absent input remains distinct from JSON null. Invalid results
+/// never expose partially transformed values, including nested defaults.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ZodJsonOutcome {
+    Valid(Option<Value>),
+    Invalid(Vec<ParseError>),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Status {
+    Valid,
+    Dirty,
+    Aborted,
+}
+struct Parsed {
+    value: Option<Value>,
+    errors: Vec<ParseError>,
+    status: Status,
+}
+impl Parsed {
+    fn valid(value: Option<Value>) -> Self {
+        Self {
+            value,
+            errors: Vec::new(),
+            status: Status::Valid,
+        }
+    }
+    fn invalid(errors: Vec<ParseError>, status: Status) -> Self {
+        Self {
+            value: None,
+            errors,
+            status,
+        }
+    }
+    fn absorb(
+        &mut self,
+        child: &mut Self,
+        key: &str,
+        budget: &mut Budget,
+    ) -> Result<(), ZodJsonUnsupported> {
+        budget.charge(0, child.errors.len().saturating_mul(key.len()))?;
+        if child.status == Status::Aborted {
+            self.status = Status::Aborted;
+        } else if child.status == Status::Dirty && self.status == Status::Valid {
+            self.status = Status::Dirty;
+        }
+        for error in &mut child.errors {
+            error.path.insert(0, key.to_owned());
+        }
+        self.errors.append(&mut child.errors);
+        Ok(())
+    }
+}
+
+/// Evaluate the finite schema over JSON, with atomic transformed output.
+/// Schema and input admission precede evaluation: maximum depth 64 and 100,000
+/// nodes (including checks/default values), plus at most 100,000 schema-node
+/// and check applications during evaluation. Aggregate input/schema strings,
+/// keys, messages and defaults are admitted up to 16 MiB. Evaluation debits a
+/// conservative 32 MiB byte-work allowance before clones, scalar transforms,
+/// repeated checks, output keys and diagnostic path/message allocations.
+/// These logical budgets do not measure allocator overhead or replace transport
+/// body limits. This avoids recursive evaluation of
+/// unbounded structures. Unknown fields are checked for resource bounds too.
+/// Objects are ordinary JSON own-property values; prototype-sensitive declared
+/// names are explicitly unsupported. Missing values can occur at roots/fields,
+/// not as sparse array elements. All input/default numbers must project to finite
+/// IEEE-754 values, including when arbitrary-precision serde features are unified.
+/// Unknown outputs normalize numeric values to f64, matching JavaScript rounding;
+/// raw spelling and Rust exact-integer accessors are not preserved in that output.
+/// Numeric negative zero retains its IEEE sign (unlike JSON.stringify's text
+/// projection); the string "-0" remains a string under Unknown.
+/// Original input remains unchanged. Modes remain the enclosing route's policy.
+/// # Errors
+/// Returns an explicit unsupported boundary, distinct from `Invalid` diagnostics.
+pub fn zod_json(
+    input: Option<&Value>,
+    schema: &ZodJsonSchema<'_>,
+) -> Result<ZodJsonOutcome, ZodJsonUnsupported> {
+    let schema_bytes = admit_schema(schema)?;
+    if let Some(input) = input
+        && schema_bytes.saturating_add(admit_value(input)?.1) > MAX_ADMISSION_BYTES
+    {
+        return Err(ZodJsonUnsupported::InputBytes);
+    }
+    let mut remaining = Budget::new();
+    let parsed = evaluate(input, schema, &mut remaining)?;
+    if let Some(value) = &parsed.value {
+        admit_value(value)?;
+    }
+    Ok(if parsed.status == Status::Valid {
+        ZodJsonOutcome::Valid(parsed.value)
+    } else {
+        ZodJsonOutcome::Invalid(parsed.errors)
+    })
+}
+
+fn admit_value(value: &Value) -> Result<(usize, usize), ZodJsonUnsupported> {
+    let mut stack = vec![(value, 0)];
+    let mut nodes = 0;
+    let mut bytes = 0usize;
+    while let Some((value, depth)) = stack.pop() {
+        if depth > MAX_DEPTH {
+            return Err(ZodJsonUnsupported::InputDepth);
+        }
+        nodes += 1;
+        bytes = bytes.saturating_add(match value {
+            Value::String(value) => value.len(),
+            Value::Number(value) => number_bytes(value)?,
+            Value::Object(values) => values
+                .keys()
+                .fold(0usize, |sum, key| sum.saturating_add(key.len())),
+            _ => 0,
+        });
+        if bytes > MAX_ADMISSION_BYTES {
+            return Err(ZodJsonUnsupported::InputBytes);
+        }
+        let children = match value {
+            Value::Array(v) => v.len(),
+            Value::Object(v) => v.len(),
+            _ => 0,
+        };
+        if nodes + stack.len() + children > MAX_NODES {
+            return Err(ZodJsonUnsupported::InputNodes);
+        }
+        match value {
+            Value::Array(values) => stack.extend(values.iter().map(|v| (v, depth + 1))),
+            Value::Object(values) => stack.extend(values.values().map(|v| (v, depth + 1))),
+            _ => {}
+        }
+    }
+    Ok((nodes, bytes))
+}
+
+fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported> {
+    let mut stack = vec![(schema, 0)];
+    let mut nodes = 0;
+    let mut bytes = 0usize;
+    while let Some((schema, depth)) = stack.pop() {
+        if depth > MAX_DEPTH {
+            return Err(ZodJsonUnsupported::SchemaDepth);
+        }
+        nodes += 1;
+        bytes = bytes.saturating_add(own_schema_bytes(schema));
+        if bytes > MAX_ADMISSION_BYTES {
+            return Err(ZodJsonUnsupported::SchemaBytes);
+        }
+        let extra = match schema {
+            ZodJsonSchema::String(checks) => checks.len(),
+            ZodJsonSchema::Number(checks) => checks.len(),
+            ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
+            ZodJsonSchema::Object(fields) => fields.len(),
+            ZodJsonSchema::Optional(_)
+            | ZodJsonSchema::Nullable(_)
+            | ZodJsonSchema::Default { .. } => 1,
+            _ => 0,
+        };
+        if nodes + stack.len() + extra > MAX_NODES {
+            return Err(ZodJsonUnsupported::SchemaNodes);
+        }
+        match schema {
+            ZodJsonSchema::String(checks) => nodes += checks.len(),
+            ZodJsonSchema::Number(checks) => nodes += checks.len(),
+            ZodJsonSchema::Optional(inner) | ZodJsonSchema::Nullable(inner) => {
+                stack.push((inner, depth + 1));
+            }
+            ZodJsonSchema::Default { schema, value } => {
+                let size = admit_value(value)?;
+                nodes += size.0;
+                bytes = bytes.saturating_add(size.1);
+                if bytes > MAX_ADMISSION_BYTES {
+                    return Err(ZodJsonUnsupported::SchemaBytes);
+                }
+                if nodes > MAX_NODES {
+                    return Err(ZodJsonUnsupported::SchemaNodes);
+                }
+                stack.push((schema, depth + 1));
+            }
+            ZodJsonSchema::Array { element, checks } => {
+                nodes += checks.len();
+                stack.push((element, depth + 1));
+            }
+            ZodJsonSchema::Object(fields) => {
+                let mut names = std::collections::BTreeSet::new();
+                for field in fields {
+                    if !names.insert(field.name) {
+                        return Err(ZodJsonUnsupported::DuplicateField);
+                    }
+                    if prototype_name(field.name) {
+                        return Err(ZodJsonUnsupported::PrototypeField);
+                    }
+                    stack.push((&field.schema, depth + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(bytes)
+}
+
+fn prototype_name(name: &str) -> bool {
+    matches!(
+        name,
+        "__proto__"
+            | "constructor"
+            | "toString"
+            | "toLocaleString"
+            | "valueOf"
+            | "hasOwnProperty"
+            | "isPrototypeOf"
+            | "propertyIsEnumerable"
+            | "__defineGetter__"
+            | "__defineSetter__"
+            | "__lookupGetter__"
+            | "__lookupSetter__"
+    )
+}
+
+fn evaluate(
+    input: Option<&Value>,
+    schema: &ZodJsonSchema<'_>,
+    remaining: &mut Budget,
+) -> Result<Parsed, ZodJsonUnsupported> {
+    let checks = match schema {
+        ZodJsonSchema::String(checks) => checks.len(),
+        ZodJsonSchema::Number(checks) => checks.len(),
+        ZodJsonSchema::Array { checks, .. } => checks.len(),
+        _ => 0,
+    };
+    remaining.charge(1 + checks, evaluation_bytes(input, schema)?)?;
+    Ok(match schema {
+        ZodJsonSchema::Unknown => {
+            if let Some(value) = input {
+                remaining.charge(admit_value(value)?.0.saturating_sub(1), 0)?;
+            }
+            Parsed::valid(input.map(clone_json).transpose()?)
+        }
+        ZodJsonSchema::Optional(_) if input.is_none() => Parsed::valid(None),
+        ZodJsonSchema::Nullable(_) if input == Some(&Value::Null) => {
+            Parsed::valid(Some(Value::Null))
+        }
+        ZodJsonSchema::Optional(inner) | ZodJsonSchema::Nullable(inner) => {
+            evaluate(input, inner, remaining)?
+        }
+        ZodJsonSchema::Default { schema, value } => {
+            evaluate(input.or(Some(value)), schema, remaining)?
+        }
+        ZodJsonSchema::String(checks) => match zod_string_checks(input, checks) {
+            Ok(value) => Parsed::valid(Some(Value::String(value.to_owned()))),
+            Err(errors) => Parsed::invalid(
+                errors,
+                if matches!(input, Some(Value::String(_))) {
+                    Status::Dirty
+                } else {
+                    Status::Aborted
+                },
+            ),
+        },
+        ZodJsonSchema::Boolean => match boolean(input) {
+            Ok(value) => Parsed::valid(Some(Value::Bool(value))),
+            Err(error) => Parsed::invalid(vec![error], Status::Aborted),
+        },
+        ZodJsonSchema::Number(checks) => match zod_number_checks(input, checks) {
+            Ok(value) => Parsed::valid(Some(Value::Number(
+                serde_json::Number::from_f64(value).ok_or(ZodJsonUnsupported::NonFiniteNumber)?,
+            ))),
+            Err(errors) => Parsed::invalid(
+                errors,
+                if number(input).is_ok() {
+                    Status::Dirty
+                } else {
+                    Status::Aborted
+                },
+            ),
+        },
+        ZodJsonSchema::Array { element, checks } => array(input, element, checks, remaining)?,
+        ZodJsonSchema::Object(fields) => object(input, fields, remaining)?,
+    })
+}
+
+fn array(
+    input: Option<&Value>,
+    element: &ZodJsonSchema<'_>,
+    checks: &[ZodArrayStep],
+    remaining: &mut Budget,
+) -> Result<Parsed, ZodJsonUnsupported> {
+    let errors = zod_array_shape(input, checks).err().unwrap_or_default();
+    let Some(Value::Array(values)) = input else {
+        return Ok(Parsed::invalid(errors, Status::Aborted));
+    };
+    let mut parsed = Parsed::invalid(errors, Status::Valid);
+    if !parsed.errors.is_empty() {
+        parsed.status = Status::Dirty;
+    }
+    let mut output = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        let mut child = evaluate(Some(value), element, remaining)?;
+        parsed.absorb(&mut child, &index.to_string(), remaining)?;
+        if let Some(value) = child.value {
+            output.push(value);
+        }
+    }
+    if parsed.status == Status::Valid {
+        parsed.value = Some(Value::Array(output));
+    }
+    Ok(parsed)
+}
+
+fn object(
+    input: Option<&Value>,
+    fields: &[ZodJsonField<'_>],
+    remaining: &mut Budget,
+) -> Result<Parsed, ZodJsonUnsupported> {
+    let Some(Value::Object(values)) = input else {
+        return Ok(Parsed::invalid(
+            vec![ParseError {
+                path: Vec::new(),
+                message: input.map_or_else(
+                    || "Required".to_owned(),
+                    |value| {
+                        format!(
+                            "Expected object, received {}",
+                            match value {
+                                Value::Null => "null",
+                                Value::Bool(_) => "boolean",
+                                Value::Number(_) => "number",
+                                Value::String(_) => "string",
+                                Value::Array(_) => "array",
+                                Value::Object(_) => "object",
+                            }
+                        )
+                    },
+                ),
+            }],
+            Status::Aborted,
+        ));
+    };
+    let mut ordered: Vec<_> = fields.iter().collect();
+    ordered.sort_by_key(|field| index_key(field.name));
+    let mut parsed = Parsed::valid(None);
+    let mut output = Map::new();
+    for field in ordered {
+        let mut child = evaluate(values.get(field.name), &field.schema, remaining)?;
+        parsed.absorb(&mut child, field.name, remaining)?;
+        if let Some(value) = child.value {
+            remaining.charge(0, field.name.len())?;
+            output.insert(field.name.to_owned(), value);
+        }
+    }
+    if parsed.status == Status::Valid {
+        parsed.value = Some(Value::Object(output));
+    }
+    Ok(parsed)
+}
+
+fn index_key(name: &str) -> (bool, u32) {
+    match name.parse::<u32>() {
+        Ok(value) if value < u32::MAX && value.to_string() == name => (false, value),
+        _ => (true, 0),
+    }
+}
+
+#[cfg(test)]
+#[path = "zod_json_tests.rs"]
+mod tests;

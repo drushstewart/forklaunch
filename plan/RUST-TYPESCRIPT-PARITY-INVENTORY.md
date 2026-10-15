@@ -8573,3 +8573,36 @@ proof is not rerun/relabelled for this configuration-only change. Logs
 /private/tmp/fl-totp-options-{native-final,clippy,minimal-clippy,actual-full}.log;
 13 hashes /private/tmp/fl-totp-options-freeze.json. Existing CI oracle imports
 new helper/vectors. Disable, skip-verification, issuer and passwordless flags remain open.
+
+
+## Bounded reusable Zod JSON schema composition (2026-10-14)
+
+ZodJsonSchema composes exact scalar operations with Unknown, optional, nullable,
+static defaults, arrays and ordered strip-mode objects. Missing values remain
+distinct from null; field/index diagnostics and transformed output are atomic.
+Integer-index keys follow ECMAScript order. Private dirty/aborted status is retained
+for future unions. This is a programmatic evaluator, not a Zod/JSON Schema
+interpreter, arbitrary callback engine or new live route-mode adapter.
+
+Admission bounds schema/input/default depth64,100000 nodes/checks and aggregate
+logical16MiB bytes. Evaluation debits repeated checks and32MiB conservative byte
+work before transformations/defaults/Unknown clones, messages and diagnostic paths;
+returned output is admitted too. Review caught product-sized repeated checks and
+large repeated defaults/diagnostics; regression cases now reject them boundedly.
+Logical byte bounds exclude allocator overhead. Duplicate/prototype-sensitive
+schema fields and nonfinite numeric inputs/defaults anywhere are explicit typed
+Unsupported boundaries, never disguised validation failures. Finite Unknown
+number clones normalize to IEEE values (including unsafe integer rounding and
+preserved negative-zero bits), with raw input untouched. This does not claim
+native exact-integer accessors or literal JSON numeric spelling equality.
+
+3486 actual-source/native comparisons plus2 explicit nonfinite boundaries,
+validation35 tests both normally and with unified arbitrary_precision, and strict
+all-feature/all-target Clippy pass. Scalar6498/array117963/custom-message2352
+regressions also passed before final resource/numeric additions. Tests cover
+wrapper order, default/null/absence, unknown stripping, field/index ordering,
+atomicity, depth/width/check/byte/default/message bounds, precision and raw input.
+Logs /private/tmp/fl-zod-json-{final-parity,resource-tests,arbitrary-tests,
+final-clippy}.log; six exact hashes /private/tmp/fl-zod-json-source-sha256.json.
+CI runs the evaluator oracle. Union/record/strict/callbacks, live composition
+integration and broader schema/emitter gates remain open.
