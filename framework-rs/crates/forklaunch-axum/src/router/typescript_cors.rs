@@ -39,8 +39,9 @@ pub struct TypeScriptCors {
     pub max_age: Option<u64>,
     /// Continue OPTIONS through routing, including explicit OPTIONS handlers.
     pub preflight_continue: bool,
-    /// Must be a successful (2xx) status; default204 matches TypeScript.
-    /// Hyper omits Content-Length on204; Express cors sends zero explicitly.
+    /// Must be a final HTTP status (200–599); default204 matches TypeScript.
+    /// Redirect and error statuses end preflight with an empty body as configured.
+    /// Hyper omits zero Content-Length on204/304; Express cors sends it explicitly.
     pub options_success_status: StatusCode,
 }
 
@@ -206,8 +207,8 @@ fn wrap_typescript(router: Router, config: TypeScriptCors) -> Router {
         "TypeScript CORS max age must be a JavaScript-safe integer"
     );
     assert!(
-        config.options_success_status.is_success(),
-        "TypeScript CORS options success status must be 2xx"
+        (200..=599).contains(&config.options_success_status.as_u16()),
+        "TypeScript CORS options success status must be a final HTTP status (200–599)"
     );
     Router::new()
         .fallback_service(router)

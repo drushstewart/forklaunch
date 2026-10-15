@@ -11,13 +11,13 @@ fn conflicting_native_profile_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "must be 2xx")]
+#[should_panic(expected = "must be a final HTTP status")]
 fn invalid_preflight_status_rejected() {
     let _ = wrap(
         Router::new(),
         None,
         Some(TypeScriptCors {
-            options_success_status: StatusCode::BAD_REQUEST,
+            options_success_status: StatusCode::CONTINUE,
             ..TypeScriptCors::default()
         }),
     );
@@ -27,6 +27,38 @@ use crate::{ForkLaunchRouter, ParserErrorFormat, RouterConfig, RouterOriginForma
 use axum::body::{Body, to_bytes};
 use forklaunch_contract::{HttpMethod, RouteContract};
 use tower::ServiceExt;
+
+#[tokio::test]
+async fn configured_final_preflight_statuses_keep_empty_cors_response() {
+    for status in [200, 205, 299, 300, 304, 400, 418, 500, 599] {
+        let app = wrap(
+            Router::new(),
+            None,
+            Some(TypeScriptCors {
+                options_success_status: StatusCode::from_u16(status).unwrap(),
+                ..TypeScriptCors::default()
+            }),
+        );
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("OPTIONS")
+                    .uri("/missing")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), status);
+        assert_eq!(response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+        assert!(
+            to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
 
 #[tokio::test]
 async fn preflight_interception_disabled_continue_and_options_routing_are_explicit() {

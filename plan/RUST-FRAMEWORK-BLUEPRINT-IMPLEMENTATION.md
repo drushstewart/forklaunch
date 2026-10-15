@@ -2373,3 +2373,21 @@ syntax checked, same executable validated by agent. Independent wrapper rerun
 queued behind focused CORS check. Corrected copied getter before native compile,
 boxed test DTO/path classifier/format lints; no manifest/migration/template edits.
 Broader mapper/mutation/recovery gates remain open;660/682(96.8%),22open.
+
+
+### Static CORS configured final statuses and Subscription wrapper (2026-10-14)
+
+TypeScript CORS optionsSuccessStatus now accepts explicitly configured final
+HTTP200–599, including redirect/error preflight responses with empty body, rather
+than incorrectly requiring2xx. Informational statuses reject at construction.
+Default204 and downstream handlers/disabled/preflightContinue behavior preserved.
+Focused6native tests,810actualTypeScript/native HTTP comparisons and strict
+allfeature/alltarget Axum Clippy pass.650pairs exact;160explicitly assert Express
+zero Content-Length versus Hyper omission on204/304. The304 transport difference
+was discovered by expanded tests, recorded precisely, and remains unclosed.
+Dynamic origin delegates/arbitraryJS coercions remain outside static profile.
+Logs /private/tmp/fl-cors-final-status-{native,parity,clippy}.log.
+Independent new Subscription CI direct-executable wrapper passes restrictedPG/
+HTTP/MCP/oneTS+oneRust SDK3.01s (/private/tmp/fl-subscription-route-root-wrapper.log),
+confirming Cargo lock is released before SDK subprocess builds. This supersedes
+the queued wrapper status in preceding receipt. No deps/locks.660/682(96.8%).

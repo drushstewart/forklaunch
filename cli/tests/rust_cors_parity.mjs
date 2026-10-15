@@ -61,7 +61,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','cors_parity']);
  let comparisons=0;let noContentLengthDifferences=0;
- const configs=[{}, {origin:'https://fixed.example'}, {origin:true}, {origin:['https://allowed.example']}, {origin:false}, {credentials:true}, {origin:['https://allowed.example'],credentials:true}, {methods:['GET','PATCH'],allowedHeaders:['X-One','X-Two'],exposedHeaders:['X-Result'],maxAge:0}, {preflightContinue:true}, {optionsSuccessStatus:200}];
+ const configs=[{}, {origin:'https://fixed.example'}, {origin:true}, {origin:['https://allowed.example']}, {origin:false}, {credentials:true}, {origin:['https://allowed.example'],credentials:true}, {methods:['GET','PATCH'],allowedHeaders:['X-One','X-Two'],exposedHeaders:['X-Result'],maxAge:0}, {preflightContinue:true}, ...[200,205,299,300,304,400,418,500,599].map(optionsSuccessStatus=>({optionsSuccessStatus}))];
  for(const config of configs){
   const ts=await start(process.execPath,['service.mjs',JSON.stringify(config)]);
   const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/cors_parity'),[JSON.stringify(config)]);
@@ -71,16 +71,16 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     const response=await fetch(url+path,{method,headers:{...input,'x-correlation-id':'cors-fixture'}});
     results.push({status:response.status,headers:Object.fromEntries([...response.headers].filter(([key])=>key.startsWith('access-control')||['vary','x-handler','content-length','allow'].includes(key))),body:await response.text()});
    }
-   if(results[0].status===204){
+   if([204,304].includes(results[0].status)){
     assert.equal(results[0].headers['content-length'],'0','Express cors explicitly sends zero');
-    assert.equal(results[1].headers['content-length'],undefined,'Hyper removes Content-Length on204');
+    assert.equal(results[1].headers['content-length'],undefined,'Hyper removes zero Content-Length on204/304');
     delete results[0].headers['content-length'];noContentLengthDifferences++;
    }
    assert.deepEqual(results[1],results[0],JSON.stringify({config,input,method,path}));comparisons++;
 
   }
  }
- console.log(`PASS ${comparisons} actual TypeScript/native static CORS comparisons (${comparisons*2} HTTP observations); ${comparisons-noContentLengthDifferences} exact pairs, ${noContentLengthDifferences} pairs with explicitly asserted 204 Content-Length transport difference`);
+ console.log(`PASS ${comparisons} actual TypeScript/native static CORS comparisons (${comparisons*2} HTTP observations); ${comparisons-noContentLengthDifferences} exact pairs, ${noContentLengthDifferences} pairs with explicitly asserted 204/304 zero Content-Length transport difference`);
 }finally{
  for(const child of children){
   if(child.exitCode!==null||child.signalCode!==null)continue;

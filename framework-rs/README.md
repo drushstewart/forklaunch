@@ -1287,3 +1287,7 @@ reverse maps and mixed enums; non-JSON effective values reject. The default expo
 Pure input also rejects built-in string trim/case transforms: ordered constraints
 and Unicode expansion require a separate input projection. Default exports retain
 their compatibility behavior.
+
+The static TypeScript CORS profile accepts explicit preflight final statuses
+200–599. Express sends zero Content-Length on204/304; Hyper omits it. Tests
+assert this wire difference explicitly. Dynamic origin delegates remain separate.
