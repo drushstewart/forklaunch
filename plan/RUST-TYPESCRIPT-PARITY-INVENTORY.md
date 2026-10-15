@@ -8996,3 +8996,12 @@ read drafts. Generated app Cargo lock SHA256
 Logs /private/tmp/fl-oct14-options-{package,install,repackaged-files,runtime}.log;
 metadata /private/tmp/fl-oct14-options-checkpoint.json. Four existing CLI warnings
 remain visible. No hosted deployment/public registry validation is inferred.
+
+
+Owned dda838 checkpoint cleanup (2026-10-14): after the committed immutable
+receipt, final retained-archive checksum, process and open-file guards, removed
+/private/tmp/fl-rust-options-checkpoint-2_20rhaa (32,361,353 logical bytes) and
+/private/tmp/fl-rust-options-archive-4segrwr2 (173,576,426 logical bytes). Retained
+crate/logs/metadata and shared build caches remain. Cleanup is recorded in
+/private/tmp/fl-oct14-options-checkpoint.json; unrelated worktrees/watchers and
+the owned reusable PostgreSQL fixture were retained.
