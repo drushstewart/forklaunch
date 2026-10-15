@@ -11318,3 +11318,30 @@ Only a transaction-ownership documentation correction followed the agent's final
 native checks; executable code matches its tested freeze. Logs:
 /private/tmp/fl-payment-link-expiration-{source,sdk,final-pg,clippy-final2,minimal}.log.
 Surface wiring and event-linked recovery remain open;660/682(96.8%) unchanged.
+
+
+### 2026-10-15 — Trusted scalar invitation policy
+
+Additive InvitationPolicy configures whole-second TTL, pending count and recipient
+verification through trusted service/HTTP builders. Defaults remain48h/100/true;
+TTL0 uses48h while count0 denies new invitations but permits resend. Counting takes
+the first100 matching pending records before filtering expiration. Resend order
+is preserved. Checked timestamp overflow returns a storage error. The verification
+option affects get/accept/reject by ID; list-user invitations independently require
+verified email. Request JSON cannot override this configuration.
+
+Actual Better Auth fixture19 passes, including three cancellation observations
+that remain reference-only for the next slice. Native focused1 and affected
+organization regressions4 pass0.15s/0.27s. Restricted PostgreSQL passes222.95s,
+including concurrency and recipient/expiry boundaries; owned roles/records/audits0.
+Strict all-feature/all-target Clippy20.04s and minimal3.04s pass. Only trailing fixture whitespace was trimmed after native validation. No full unrelated IAM suite rerun is
+claimed; the immediately preceding organization policy checkpoint ran221 tests.
+
+Frozen13-source manifest /private/tmp/fl-invitation-policy-reviewed.json, SHA256
+c102db80403426b2810609a266e0c07d500f00c637651f64f0e1182432ae42e3.
+Logs /private/tmp/fl-invitation-policy-{actual,native,organizations,pg,clippy,minimal-clippy}.log.
+Root independently reran the19-case oracle with explicit compiler/dependency paths.
+That check exposed an implicit compiler lookup in12 Better Auth CI fixture steps;
+all now select CI's installed TypeScript5.9.3. The updated workflow parses and all
+12 compiler settings were checked. Cancellation-on-reinvite, delivery callbacks,
+custom generators and broader Better Auth parity remain open;660/682 unchanged.

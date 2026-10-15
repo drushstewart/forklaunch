@@ -73,6 +73,7 @@ pub struct AuthHttp<S> {
     token_lifetimes: crate::accounts::AuthTokenLifetimes,
     session_policy: crate::sessions::SessionPolicy,
     organization_policy: crate::organizations::OrganizationPolicy,
+    invitation_policy: crate::organizations::InvitationPolicy,
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
@@ -109,6 +110,16 @@ pub struct AuthHttp<S> {
     clock: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Installs server-owned invitation expiry, quota and recipient verification options.
+    #[must_use]
+    pub fn with_invitation_policy(
+        mut self,
+        policy: crate::organizations::InvitationPolicy,
+    ) -> Self {
+        self.invitation_policy = policy;
+        self
+    }
+
     /// Applies trusted scalar organization options to all organization routes.
     /// HTTP bodies cannot override this policy; server-only member addition uses
     /// the equivalent `OrganizationService` builder.
@@ -178,6 +189,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             token_lifetimes: crate::accounts::AuthTokenLifetimes::default(),
             session_policy: crate::sessions::SessionPolicy::default(),
             organization_policy: crate::organizations::OrganizationPolicy::default(),
+            invitation_policy: crate::organizations::InvitationPolicy::default(),
             store,
             google: None,
             external_jwt: None,

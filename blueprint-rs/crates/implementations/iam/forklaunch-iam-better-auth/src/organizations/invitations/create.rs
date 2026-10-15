@@ -82,7 +82,7 @@ impl<S: AuthStore> OrganizationService<S> {
         tx.get(Model::Organization, org)
             .await?
             .ok_or_else(missing)?;
-        let expiry = timestamp(now + chrono::Duration::hours(48));
+        let expiry = timestamp(self.invitation_policy.expiry(now)?);
         if let Some(mut pending) = pending {
             pending["expiresAt"] = json!(expiry);
             tx.replace(Model::Invitation, pending.clone()).await?;
@@ -96,7 +96,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .take(100)
             .filter(|row| unexpired(row, now))
             .count()
-            >= 100
+            >= usize::try_from(self.invitation_policy.limit).unwrap_or(usize::MAX)
         {
             return Err(error(
                 "INVITATION_LIMIT_REACHED",

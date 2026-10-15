@@ -1918,3 +1918,31 @@ reading a pre-existing larger graph can therefore fail with the existing sanitiz
 storage error unless the caller supplies a smaller `membersLimit`. No implicit
 member truncation or policy migration occurs. Session/clock and MFA builders retain
 the selected organization policy independently.
+
+### Trusted invitation policy
+
+`InvitationPolicy::new(expires_in_seconds, invitation_limit, require_verified_email)`
+configures `OrganizationService::with_invitation_policy` and
+`AuthHttp::with_invitation_policy`. Defaults remain 172800 seconds, 100 pending
+invitations and verified recipients. Expiration and count admit whole nonnegative
+`u32` values: zero expiration falls back to 48 hours, while zero quota rejects new
+invitations. Resending an existing unexpired invitation bypasses quota and renews
+its expiration using the current policy. Time addition is checked before writes.
+The count examines the first 100 matching pending rows before excluding expired
+rows, matching the configured upstream adapter window; limits above 100 are not
+an unbounded organization quota. Existing bounded scans remain fail-closed.
+
+The verification flag applies only to invitation-by-ID get, accept and reject.
+Listing invitations for the session email still requires verification, even when
+this flag is false. Recipient email matching and tenant/organization authorization
+remain mandatory. The default `true` preserves the configured reference's custom
+ID-generator behavior; this API does not infer upstream defaults for arbitrary
+ID generators. Configuration is server-owned; HTTP request fields cannot alter it.
+Other organization and session policy builders retain this independent policy.
+
+New-invitation admission and writes remain one tenant transaction, including
+concurrent quota checks. Failures leave existing invitations unchanged. Policy
+changes do not rewrite old expiration values; resend does. Cancellation on
+reinvite and invitation delivery hooks remain separate options: upstream can
+persist cancellation before a later admission error and persists invitations
+before invoking delivery. This policy slice does not claim those behaviors.

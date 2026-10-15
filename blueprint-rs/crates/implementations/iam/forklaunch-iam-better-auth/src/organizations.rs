@@ -13,7 +13,9 @@ use std::sync::Arc;
 
 mod create;
 mod full;
+mod invitation_policy;
 mod invitations;
+pub use invitation_policy::InvitationPolicy;
 mod members;
 mod mutation;
 mod permission;
@@ -28,6 +30,7 @@ pub(crate) mod tests;
 
 pub struct OrganizationService<S> {
     policy: OrganizationPolicy,
+    invitation_policy: InvitationPolicy,
     time_source: crate::time_source::TimeSource,
     session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
@@ -42,6 +45,13 @@ impl<S: AuthStore> OrganizationService<S> {
     #[cfg(feature = "http")]
     pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
         self.time_source = source;
+        self
+    }
+
+    /// Installs trusted invitation expiry, quota and recipient verification options.
+    #[must_use]
+    pub fn with_invitation_policy(mut self, policy: InvitationPolicy) -> Self {
+        self.invitation_policy = policy;
         self
     }
 
@@ -63,6 +73,7 @@ impl<S: AuthStore> OrganizationService<S> {
     pub fn new(store: Arc<S>) -> Self {
         Self {
             policy: OrganizationPolicy::default(),
+            invitation_policy: InvitationPolicy::default(),
             time_source: crate::time_source::TimeSource::default(),
             store,
             session_policy: crate::sessions::SessionPolicy::default(),

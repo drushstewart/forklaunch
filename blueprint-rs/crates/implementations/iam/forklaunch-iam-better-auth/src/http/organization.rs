@@ -27,7 +27,8 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     let service = OrganizationService::new(app.store.clone())
         .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
         .with_session_policy(app.session_policy)
-        .with_organization_policy(app.organization_policy);
+        .with_organization_policy(app.organization_policy)
+        .with_invitation_policy(app.invitation_policy);
     let (token, transient) = session;
     if let Some(body) = roles::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);

@@ -31,7 +31,7 @@ impl<S: AuthStore> OrganizationService<S> {
                 "You are not the recipient of the invitation",
             ));
         }
-        if view.user["emailVerified"] != true {
+        if self.invitation_policy.require_verified_email && view.user["emailVerified"] != true {
             return Err(BlueprintError::new(
                 "EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION",
                 "Email verification required before accepting or rejecting invitation",

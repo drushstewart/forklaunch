@@ -2739,3 +2739,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Immutable c045e5814 packages/installs all50 crates through local sparse registry, verifies optional bounded regex outcomes and HTTP/MCP startup/shutdown. Release tests10 pass, exact worktree cleaned and artifacts retained. Public publication and broader parity remain open;660/682 unchanged.
 
 - 2026-10-15: PaymentLink metadata-only expiration library passes actual TS6, official Stripe SDK wire, two restricted PostgreSQL tests, existing read/list regressions and strict full/minimal Clippy. Migration17 journals one dispatch and retains unresolved claims; separate publisher completes local tombstone. HTTP/MCP/SDK exposure and recovery remain open;660/682 unchanged.
+
+- 2026-10-15: Trusted invitation expiration/count/recipient-verification policy passes19 actual reference cases (including explicitly pending cancellation observations), focused/organization native checks, restricted PostgreSQL and strict full/minimal Clippy. CI compiler paths corrected for12 auth fixtures. Cancellation/delivery and broader auth remain open;660/682 unchanged.
