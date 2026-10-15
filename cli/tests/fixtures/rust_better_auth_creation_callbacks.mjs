@@ -57,7 +57,7 @@ for(const stage of ['allow','limit']) for(const mutation of ['token','session-id
 }
 for(const allowed of [false,true]){
  const original=ref.config.database;const calls=[];
- ref.config.database=(config)=>{const adapter=original(config);return {...adapter,findMany:async(args)=>{if(args.model==='member'){calls.push('read');throw Error('owned list failure');}return adapter.findMany(args);}};}; 
+ ref.config.database=(config)=>{const adapter=original(config);return {...adapter,findMany:async(args)=>{if(args.model==='member'){calls.push('read');throw Error('owned list failure');}return adapter.findMany(args);}};};
  const auth=setup({allowUserToCreateOrganization:async()=>{calls.push('allow');return allowed;},organizationLimit:async()=>{calls.push('limit');return false;}},0);
  const out=await call(auth,'/organization/create',{name:'Next',slug:'next'},cookie);ref.config.database=original;
  assert.equal(out.status,allowed?500:403);assert.deepEqual(calls,allowed?['allow','read']:['allow']);assert.equal(ref.database.organization.length,1);rows.push({mode:'membership-read-failure',allowed,status:out.status,calls});

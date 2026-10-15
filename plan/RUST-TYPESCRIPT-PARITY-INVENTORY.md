@@ -12255,3 +12255,12 @@ The initial compile missed one existing helper import; final coherent proof foll
 its restoration and includes a2a50e304 shared cardinality integration. CI adds the
 actual oracle; the existing focused PG job includes the new cases. Broader auth
 options/hooks remain open. Checklist660/682 is unchanged.
+
+
+Creation-callback follow-up: removed one trailing space in the committed upstream
+fixture after diff-check reported it. This whitespace-only change does not alter
+the ca673b4e1 frozen-source proof; no native source changed. The cardinality export
+worktree was also removed after exact fd02a44e4 HEAD, clean status, all13 source
+hashes and zero owned processes were verified. Cleanup receipt:
+`/private/tmp/fl-cardinality-cleanup.json` (54,516 KiB logical; no physical disk
+reclamation claim). Branch, source manifest and logs are retained.
