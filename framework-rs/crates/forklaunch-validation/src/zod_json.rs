@@ -3,7 +3,7 @@ use super::{
     ZodNumberCheck, ZodStringCheck, boolean, number, zod_number_checks, zod_string_checks,
 };
 use crate::ParseError;
-use crate::zod_array::{ZodArrayStep, zod_array_shape};
+use crate::zod_array::{ZodArrayCheck, ZodArrayStep, zod_array_checks, zod_array_shape};
 use serde_json::{Map, Value};
 
 #[path = "zod_json_issues.rs"]
@@ -90,6 +90,13 @@ pub enum ZodJsonSchema<'a> {
     Array {
         element: Box<Self>,
         checks: Vec<ZodArrayStep>,
+    },
+    /// Array checks with general numeric bounds and per-registration messages.
+    /// Last registration of each kind wins; element evaluation still runs after
+    /// dirty container checks and output is committed atomically.
+    CheckedArray {
+        element: Box<Self>,
+        checks: Vec<ZodArrayCheck<'a>>,
     },
     /// Ordered dense JSON tuple. Every declared slot counts toward minimum
     /// length, including optional/default schemas. An optional rest validates
@@ -471,6 +478,10 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<(usize, bool, bool), ZodJs
                 nodes += checks.len();
                 stack.push((element, depth + 1));
             }
+            ZodJsonSchema::CheckedArray { element, checks } => {
+                nodes += checks.len();
+                stack.push((element, depth + 1));
+            }
             ZodJsonSchema::Object(fields)
             | ZodJsonSchema::StrictObject(fields)
             | ZodJsonSchema::ObjectWithPolicy { fields, .. } => {
@@ -504,6 +515,7 @@ fn schema_children(schema: &ZodJsonSchema<'_>) -> usize {
         ZodJsonSchema::CheckedString(checks) => checks.len(),
         ZodJsonSchema::Number(checks) => checks.len(),
         ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
+        ZodJsonSchema::CheckedArray { checks, .. } => checks.len() + 1,
         ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => fields.len(),
         ZodJsonSchema::ObjectWithPolicy {
             fields, catchall, ..
@@ -550,19 +562,24 @@ fn evaluate(
     evaluate_ordered(input, schema, remaining, None)
 }
 
+fn schema_check_count(schema: &ZodJsonSchema<'_>) -> usize {
+    match schema {
+        ZodJsonSchema::String(checks) => checks.len(),
+        ZodJsonSchema::CheckedString(checks) => checks.len(),
+        ZodJsonSchema::Number(checks) => checks.len(),
+        ZodJsonSchema::Array { checks, .. } => checks.len(),
+        ZodJsonSchema::CheckedArray { checks, .. } => checks.len(),
+        _ => 0,
+    }
+}
+
 fn evaluate_ordered(
     input: Option<&Value>,
     schema: &ZodJsonSchema<'_>,
     remaining: &mut Budget,
     order: Option<&Order>,
 ) -> Result<Parsed, ZodJsonUnsupported> {
-    let checks = match schema {
-        ZodJsonSchema::String(checks) => checks.len(),
-        ZodJsonSchema::CheckedString(checks) => checks.len(),
-        ZodJsonSchema::Number(checks) => checks.len(),
-        ZodJsonSchema::Array { checks, .. } => checks.len(),
-        _ => 0,
-    };
+    let checks = schema_check_count(schema);
     remaining.charge(1 + checks, 0)?;
     let bytes = evaluation_bytes(input, schema, remaining)?;
     remaining.charge(0, bytes)?;
@@ -623,9 +640,20 @@ fn evaluate_ordered(
                 Err(_) => Parsed::invalid(errors, Status::Aborted),
             },
         },
-        ZodJsonSchema::Array { element, checks } => {
-            array(input, element, checks, remaining, order)?
-        }
+        ZodJsonSchema::Array { element, checks } => array(
+            input,
+            element,
+            zod_array_shape(input, checks).err().unwrap_or_default(),
+            remaining,
+            order,
+        )?,
+        ZodJsonSchema::CheckedArray { element, checks } => array(
+            input,
+            element,
+            zod_array_checks(input, checks).err().unwrap_or_default(),
+            remaining,
+            order,
+        )?,
         ZodJsonSchema::Tuple { items, rest } => {
             tuple::evaluate(input, items, rest.as_deref(), remaining, order)?
         }
@@ -815,11 +843,10 @@ fn union(
 fn array(
     input: Option<&Value>,
     element: &ZodJsonSchema<'_>,
-    checks: &[ZodArrayStep],
+    errors: Vec<ParseError>,
     remaining: &mut Budget,
     order: Option<&Order>,
 ) -> Result<Parsed, ZodJsonUnsupported> {
-    let errors = zod_array_shape(input, checks).err().unwrap_or_default();
     let Some(Value::Array(values)) = input else {
         return Ok(Parsed::invalid(errors, Status::Aborted));
     };

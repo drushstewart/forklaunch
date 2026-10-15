@@ -623,3 +623,96 @@ fn repeated_scalar_metric_scans_charge_zero_byte_input_descendants() {
         Err(ZodJsonUnsupported::EvaluationNodes)
     );
 }
+
+#[test]
+fn checked_array_errors_preserve_element_order_atomicity_and_limits() {
+    use crate::zod_array::{ZodArrayCheck, ZodArrayRule};
+    let check = |rule, message| ZodArrayCheck { rule, message };
+    let schema = ZodJsonSchema::CheckedArray {
+        element: Box::new(ZodJsonSchema::String(vec![ZodStringCheck {
+            rule: super::super::ZodStringRule::Step(super::super::ZodStringStep::Trim),
+            message: None,
+        }])),
+        checks: vec![
+            check(
+                ZodArrayRule::Max(super::super::ZodFloatBound::new(0.5)),
+                Some("max"),
+            ),
+            check(
+                ZodArrayRule::Min(super::super::ZodFloatBound::new(3.0)),
+                Some("min"),
+            ),
+            check(
+                ZodArrayRule::Length(super::super::ZodFloatBound::new(1.0)),
+                Some(""),
+            ),
+        ],
+    };
+    let input = json!([" a ", false]);
+    let original = input.clone();
+    let ZodJsonOutcome::Invalid(errors) = zod_json(Some(&input), &schema).unwrap() else {
+        panic!("invalid")
+    };
+    assert_eq!(
+        errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>(),
+        ["", "min", "max", "Expected string, received boolean"]
+    );
+    assert_eq!(errors[3].path, ["1"]);
+    assert_eq!(input, original);
+    assert_eq!(
+        zod_json(
+            Some(&input),
+            &ZodJsonSchema::Union(vec![schema, ZodJsonSchema::Unknown])
+        ),
+        Ok(ZodJsonOutcome::Valid(Some(original)))
+    );
+
+    let message = "x".repeat(1024 * 1024);
+    let nested = ZodJsonSchema::CheckedArray {
+        element: Box::new(ZodJsonSchema::Unknown),
+        checks: vec![check(ZodArrayRule::Nonempty, Some(&message))],
+    };
+    let schema = ZodJsonSchema::Array {
+        element: Box::new(nested),
+        checks: vec![],
+    };
+    let input = json!(vec![Vec::<Value>::new(); 40]);
+    assert_eq!(
+        zod_json(Some(&input), &schema),
+        Err(ZodJsonUnsupported::EvaluationBytes)
+    );
+    let huge = "x".repeat(MAX_ADMISSION_BYTES + 1);
+    let schema = ZodJsonSchema::CheckedArray {
+        element: Box::new(ZodJsonSchema::Unknown),
+        checks: vec![check(ZodArrayRule::Nonempty, Some(&huge))],
+    };
+    assert_eq!(
+        zod_json(None, &schema),
+        Err(ZodJsonUnsupported::SchemaBytes)
+    );
+}
+
+#[test]
+fn checked_array_repeated_rule_work_is_charged_before_application() {
+    use crate::zod_array::{ZodArrayCheck, ZodArrayRule};
+    let schema = ZodJsonSchema::Array {
+        checks: vec![],
+        element: Box::new(ZodJsonSchema::CheckedArray {
+            element: Box::new(ZodJsonSchema::Unknown),
+            checks: vec![
+                ZodArrayCheck {
+                    rule: ZodArrayRule::Nonempty,
+                    message: None
+                };
+                1000
+            ],
+        }),
+    };
+    assert_eq!(
+        zod_json(Some(&json!(vec![vec![0]; 200])), &schema),
+        Err(ZodJsonUnsupported::EvaluationNodes)
+    );
+}

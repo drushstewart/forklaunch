@@ -1,5 +1,5 @@
 //! Opt-in Zod v3 array container checks, independent of element schemas.
-use crate::ParseError;
+use crate::{ParseError, typescript_coerce::ZodFloatBound};
 use serde_json::Value;
 
 /// Array schema operations in declaration order. The last operation of each
@@ -10,6 +10,52 @@ pub enum ZodArrayStep {
     Max(u32),
     Length(u32),
     Nonempty,
+}
+
+/// Array registrations accepting the full JavaScript numeric bound domain.
+/// The last registration of each kind wins; `Nonempty` replaces minimum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZodArrayRule {
+    Min(ZodFloatBound),
+    Max(ZodFloatBound),
+    Length(ZodFloatBound),
+    Nonempty,
+}
+
+/// A borrowed per-registration diagnostic override, including empty messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZodArrayCheck<'a> {
+    pub rule: ZodArrayRule,
+    pub message: Option<&'a str>,
+}
+
+impl From<ZodArrayStep> for ZodArrayCheck<'_> {
+    fn from(step: ZodArrayStep) -> Self {
+        Self {
+            rule: match step {
+                ZodArrayStep::Min(value) => ZodArrayRule::Min(ZodFloatBound::new(f64::from(value))),
+                ZodArrayStep::Max(value) => ZodArrayRule::Max(ZodFloatBound::new(f64::from(value))),
+                ZodArrayStep::Length(value) => {
+                    ZodArrayRule::Length(ZodFloatBound::new(f64::from(value)))
+                }
+                ZodArrayStep::Nonempty => ZodArrayRule::Nonempty,
+            },
+            message: None,
+        }
+    }
+}
+
+/// Check dense JSON arrays with IEEE bounds and borrowed custom diagnostics.
+/// Missing/type failures ignore custom messages. NaN bounds never reject.
+/// Constraints report exact, minimum, maximum before any caller element checks.
+/// This runtime profile does not export JSON Schema or represent sparse arrays.
+/// # Errors
+/// Returns root-level type or container length diagnostics.
+pub fn zod_array_checks<'a>(
+    input: Option<&'a Value>,
+    checks: &[ZodArrayCheck<'_>],
+) -> Result<&'a [Value], Vec<ParseError>> {
+    evaluate(input, checks.iter().copied())
 }
 
 /// Check a strict JSON array's type and length using default Zod v3 diagnostics.
@@ -28,6 +74,13 @@ pub enum ZodArrayStep {
 pub fn zod_array_shape<'a>(
     input: Option<&'a Value>,
     steps: &[ZodArrayStep],
+) -> Result<&'a [Value], Vec<ParseError>> {
+    evaluate(input, steps.iter().copied().map(ZodArrayCheck::from))
+}
+
+fn evaluate<'a, 'm>(
+    input: Option<&'a Value>,
+    checks: impl Iterator<Item = ZodArrayCheck<'m>>,
 ) -> Result<&'a [Value], Vec<ParseError>> {
     let values = match input {
         Some(Value::Array(values)) => values.as_slice(),
@@ -51,33 +104,27 @@ pub fn zod_array_shape<'a>(
         }
     };
     let (mut minimum, mut maximum, mut exact) = (None, None, None);
-    for step in steps {
-        match *step {
-            ZodArrayStep::Min(value) => minimum = Some(value),
-            ZodArrayStep::Max(value) => maximum = Some(value),
-            ZodArrayStep::Length(value) => exact = Some(value),
-            ZodArrayStep::Nonempty => minimum = Some(1),
+    for check in checks {
+        let entry = |bound| (bound, check.message);
+        match check.rule {
+            ZodArrayRule::Min(value) => minimum = Some(entry(value)),
+            ZodArrayRule::Max(value) => maximum = Some(entry(value)),
+            ZodArrayRule::Length(value) => exact = Some(entry(value)),
+            ZodArrayRule::Nonempty => minimum = Some(entry(ZodFloatBound::new(1.0))),
         }
     }
     let count = values.len() as u64;
     let errors: Vec<_> = [
-        (exact, "exactly"),
-        (minimum, "at least"),
-        (maximum, "at most"),
+        (exact, std::cmp::Ordering::Equal),
+        (minimum, std::cmp::Ordering::Less),
+        (maximum, std::cmp::Ordering::Greater),
     ]
     .into_iter()
-    .filter_map(|(bound, comparison)| {
-        let bound = bound?;
-        let fails = match comparison {
-            "exactly" => count != u64::from(bound),
-            "at least" => count < u64::from(bound),
-            _ => count > u64::from(bound),
-        };
-        fails.then(|| {
-            error(format!(
-                "Array must contain {comparison} {bound} element(s)"
-            ))
-        })
+    .filter_map(|(entry, comparison)| {
+        let (bound, message) = entry?;
+        bound
+            .array_length_rejection(count, comparison)
+            .map(|default| error(message.map_or(default, str::to_owned)))
     })
     .collect();
     if errors.is_empty() {

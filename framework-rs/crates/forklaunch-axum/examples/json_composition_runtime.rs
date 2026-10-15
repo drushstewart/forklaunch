@@ -194,6 +194,40 @@ fn case_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
         },
     ]
 }
+fn array_length_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
+    use forklaunch_validation::zod_array::{ZodArrayCheck, ZodArrayRule};
+    use typescript_coerce::{
+        ZodFloatBound, ZodJsonField, ZodJsonSchema, ZodStringCheck, ZodStringRule, ZodStringStep,
+    };
+    vec![ZodJsonField {
+        name: "boundedItems",
+        schema: ZodJsonSchema::Optional(Box::new(ZodJsonSchema::CheckedArray {
+            element: Box::new(ZodJsonSchema::String(vec![ZodStringCheck {
+                rule: ZodStringRule::Step(ZodStringStep::Trim),
+                message: None,
+            }])),
+            checks: vec![
+                ZodArrayCheck {
+                    rule: ZodArrayRule::Min(ZodFloatBound::new(4.0)),
+                    message: Some("replaced"),
+                },
+                ZodArrayCheck {
+                    rule: ZodArrayRule::Min(ZodFloatBound::new(1.5)),
+                    message: Some("array minimum"),
+                },
+                ZodArrayCheck {
+                    rule: ZodArrayRule::Max(ZodFloatBound::new(2.5)),
+                    message: Some(""),
+                },
+                ZodArrayCheck {
+                    rule: ZodArrayRule::Length(ZodFloatBound::new(f64::NAN)),
+                    message: Some("inert"),
+                },
+            ],
+        })),
+    }]
+}
+
 fn float_length_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
     use typescript_coerce::{
         ZodFloatBound as Bound, ZodJsonField as Field, ZodJsonSchema as Schema,
@@ -309,6 +343,7 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
         },
     ];
     fields.extend(float_length_fields());
+    fields.extend(array_length_fields());
     fields.extend(case_fields());
     fields.push(discriminated_field());
     fields.extend(tuple_fields());

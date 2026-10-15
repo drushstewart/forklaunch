@@ -192,7 +192,8 @@ pub(super) fn admit(
         ZodJsonSchema::Optional(inner)
         | ZodJsonSchema::Nullable(inner)
         | ZodJsonSchema::Default { schema: inner, .. }
-        | ZodJsonSchema::Array { element: inner, .. } => admit(inner, budget)?,
+        | ZodJsonSchema::Array { element: inner, .. }
+        | ZodJsonSchema::CheckedArray { element: inner, .. } => admit(inner, budget)?,
         ZodJsonSchema::Tuple { items, rest } => {
             for item in items {
                 admit(item, budget)?;

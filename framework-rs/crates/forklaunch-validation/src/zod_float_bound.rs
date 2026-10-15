@@ -14,11 +14,29 @@ impl ZodFloatBound {
 
     /// String lengths are JavaScript Numbers. The explicit cast intentionally
     /// uses IEEE rounding; admitted evaluator strings are far below 2^53.
-    #[allow(clippy::cast_precision_loss)]
     pub(super) fn string_length_rejection(
         self,
         length: u64,
         comparison: std::cmp::Ordering,
+    ) -> Option<String> {
+        self.length_rejection(length, comparison, "String", "character")
+    }
+
+    pub(crate) fn array_length_rejection(
+        self,
+        length: u64,
+        comparison: std::cmp::Ordering,
+    ) -> Option<String> {
+        self.length_rejection(length, comparison, "Array", "element")
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn length_rejection(
+        self,
+        length: u64,
+        comparison: std::cmp::Ordering,
+        kind: &str,
+        unit: &str,
     ) -> Option<String> {
         let length = length as f64;
         let bound = f64::from_bits(self.0);
@@ -36,7 +54,7 @@ impl ZodFloatBound {
         };
         rejected.then(|| {
             format!(
-                "String must contain {label} {} character(s)",
+                "{kind} must contain {label} {} {unit}(s)",
                 ryu_js::Buffer::new().format(bound)
             )
         })
