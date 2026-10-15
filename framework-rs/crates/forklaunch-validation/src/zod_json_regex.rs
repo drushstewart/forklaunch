@@ -28,6 +28,7 @@ impl ZodJsonStringCheck<'_> {
                         ZodStringRule::StartsWith(value)
                         | ZodStringRule::EndsWith(value)
                         | ZodStringRule::Includes { needle: value, .. } => value.len(),
+                        ZodStringRule::Jwt { algorithm } => algorithm.map_or(0, str::len),
                         _ => 0,
                     })
             }

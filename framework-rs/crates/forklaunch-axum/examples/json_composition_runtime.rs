@@ -38,6 +38,54 @@ fn tuple_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
         })
         .collect()
 }
+fn runtime_format_field() -> typescript_coerce::ZodJsonField<'static> {
+    use typescript_coerce::{
+        ZodJsonField as Field, ZodJsonSchema as Schema, ZodStringCheck as Check,
+        ZodStringFormat as Format, ZodStringRule as Rule,
+    };
+    let fields = [
+        (
+            "time",
+            vec![
+                Rule::Step(typescript_coerce::ZodStringStep::Trim),
+                Rule::Format(Format::Time {
+                    precision: typescript_coerce::ZodTimePrecision::new(Some(3)).unwrap(),
+                }),
+            ],
+        ),
+        (
+            "jwt",
+            vec![Rule::Jwt {
+                algorithm: Some("HS256"),
+            }],
+        ),
+        (
+            "ip",
+            vec![Rule::Format(Format::Ip(Some(
+                typescript_coerce::ZodIpVersion::V6,
+            )))],
+        ),
+        ("emoji", vec![Rule::Format(Format::Emoji)]),
+    ]
+    .into_iter()
+    .map(|(name, rules)| Field {
+        name,
+        schema: Schema::String(
+            rules
+                .into_iter()
+                .map(|rule| Check {
+                    rule,
+                    message: None,
+                })
+                .collect(),
+        ),
+    })
+    .collect();
+    Field {
+        name: "formats",
+        schema: Schema::Optional(Box::new(Schema::Object(fields))),
+    }
+}
 fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> {
     use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
     let mut fields = vec![
@@ -123,6 +171,7 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
         },
     ];
     fields.extend(tuple_fields());
+    fields.push(runtime_format_field());
     fields.extend(absence_fields());
     fields.extend(object_policy_fields());
     #[cfg(feature = "zod-uri")]

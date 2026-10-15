@@ -19,8 +19,8 @@ pub use binary::zod_binary;
 #[path = "zod_string.rs"]
 mod strict_string;
 pub use strict_string::{
-    ZodStringCheck, ZodStringFormat, ZodStringRule, ZodStringStep, zod_string, zod_string_checks,
-    zod_string_rules,
+    ZodIpVersion, ZodStringCheck, ZodStringFormat, ZodStringFormatParameterError, ZodStringRule,
+    ZodStringStep, ZodTimePrecision, zod_string, zod_string_checks, zod_string_rules,
 };
 
 #[path = "zod_multiple_of.rs"]

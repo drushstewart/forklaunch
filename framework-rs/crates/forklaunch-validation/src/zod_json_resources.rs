@@ -49,6 +49,7 @@ pub(super) fn own_schema_bytes(schema: &ZodJsonSchema<'_>) -> usize {
                     ZodStringRule::StartsWith(value)
                     | ZodStringRule::EndsWith(value)
                     | ZodStringRule::Includes { needle: value, .. } => value.len(),
+                    ZodStringRule::Jwt { algorithm } => algorithm.map_or(0, str::len),
                     _ => 0,
                 })
         }),

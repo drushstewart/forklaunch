@@ -3,7 +3,7 @@ use crate::ParseError;
 use serde_json::Value;
 #[path = "zod_string_format.rs"]
 mod format;
-pub use format::ZodStringFormat;
+pub use format::{ZodIpVersion, ZodStringFormat, ZodStringFormatParameterError, ZodTimePrecision};
 
 /// Ordered operations for `ForkLaunch`'s Zod v3 strict string schema.
 /// Length bounds are exact unsigned 32-bit integers; they count UTF-16 code
@@ -23,6 +23,11 @@ pub enum ZodStringStep {
 pub enum ZodStringRule<'a> {
     Step(ZodStringStep),
     Format(ZodStringFormat),
+    /// Zod JWT header structure, not signature verification. A nonempty algorithm
+    /// must match exactly; absent/empty algorithms preserve Zod's no-filter behavior.
+    Jwt {
+        algorithm: Option<&'a str>,
+    },
     StartsWith(&'a str),
     EndsWith(&'a str),
     Includes {
@@ -182,6 +187,11 @@ pub(super) fn apply_check(
 fn literal_error(value: &str, rule: ZodStringRule<'_>) -> Option<String> {
     match rule {
         ZodStringRule::Format(format) => format.rejection(value),
+        ZodStringRule::Jwt { algorithm }
+            if !forklaunch_common::zod_string_format::jwt(value, algorithm) =>
+        {
+            Some("Invalid jwt".to_owned())
+        }
         ZodStringRule::StartsWith(needle) if !value.starts_with(needle) => {
             Some(format!("Invalid input: must start with \"{needle}\""))
         }
