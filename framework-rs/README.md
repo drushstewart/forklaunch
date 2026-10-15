@@ -1171,3 +1171,13 @@ for zero counts. Both profiles authenticate before filtering, retain FIFO order
 and propagate decoding errors. Dequeue failures do not requeue removed messages.
 Select `with_typescript_safe_values` on the codec as well when TS producers write
 unquoted string values. These typed APIs accept nonnegative integer counts.
+
+The optional `zod-uri` feature on validation (or its Axum feature forwarder) adds
+`ZodStringFormat::Uri`. It matches the WHATWG URL admission used by Node 24.2.0 /
+Ada 3.2.4 and retains the original input string. Enable it for explicit Zod URL
+checks; it does not redefine RFC JSON Schema `format: uri`. The pinned Ada dependency
+requires a C++20 compiler; default builds exclude it. The
+[URI differential fixture](../cli/tests/rust_zod_uri_parity.mjs) checks 205,676
+inputs plus ordered errors and composition against the actual TypeScript factory,
+with pinned source hashes. TypeScript URI schema emission remains a separate
+conformance task because its current RFC format/regex can reject runtime-valid URLs.

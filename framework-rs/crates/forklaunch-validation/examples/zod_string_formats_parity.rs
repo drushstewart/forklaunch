@@ -9,6 +9,8 @@ fn main() {
         let format = match input["format"].as_str().unwrap() {
             "uuid" => ZodStringFormat::Uuid,
             "email" => ZodStringFormat::Email,
+            #[cfg(feature = "zod-uri")]
+            "uri" => ZodStringFormat::Uri,
             _ => panic!("unknown format"),
         };
         let plain = |rule| ZodStringCheck {

@@ -9421,3 +9421,19 @@ full-actual,cleanup}.log and fl-otp-async-http-clock{,-clippy,-minimal}.log.
 Only existing Tokio time feature added; no lock/migration change. CI tracks helper.
 No new generated/immutable async claim; backup field codecs remain open,660/682
 unchanged.
+
+
+### Pinned WHATWG URI validation (2026-10-14)
+
+Optional zod-uri uses exact ada-url3.2.4 with embedded C++/header hashes matching
+Node24.2.0. No normalization: returned strings retain original whitespace and
+encoding. Default dependency graph excludes Ada/C++; feature builds need C++20.
+205676 exact admission comparisons,162 ordered/message and54 composition checks
+pass;69 allfeature and67 minimal validation tests pass. Live255HTTP/120MCP,
+3safe500 and6 calls per SDK pass, as do strict allfeature/minimal Clippy and81036
+UUID/email regressions. Frozen11 manifest /private/tmp/fl-zod-uri-source.json;
+logs /private/tmp/fl-zod-uri-{parity,live,clippy,minimal-clippy,formats-regression}.log.
+CI explicitly pins Node24.2 for these checks then restores its existing Node22.
+This fixes the97 observed parser admission discrepancies; it does not claim
+exhaustive URL equivalence, cross-platform/MSRV proof or corrected RFC URI schema
+emission. Broader schema gate stays open; checklist remains660/682 (96.8%),22open.

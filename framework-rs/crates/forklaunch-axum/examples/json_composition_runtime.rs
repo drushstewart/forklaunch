@@ -103,6 +103,18 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
     ];
     fields.extend(absence_fields());
     fields.extend(object_policy_fields());
+    #[cfg(feature = "zod-uri")]
+    fields.push(Field {
+        name: "uri",
+        schema: Schema::Optional(Box::new(Schema::String(vec![
+            typescript_coerce::ZodStringCheck {
+                rule: typescript_coerce::ZodStringRule::Format(
+                    typescript_coerce::ZodStringFormat::Uri,
+                ),
+                message: None,
+            },
+        ]))),
+    });
     Schema::Object(fields)
 }
 fn absence_fields<'a>() -> Vec<typescript_coerce::ZodJsonField<'a>> {

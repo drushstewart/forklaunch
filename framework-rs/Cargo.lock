@@ -3,6 +3,18 @@
 version = 4
 
 [[package]]
+name = "ada-url"
+version = "3.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b81cc7d6c05c6ca86ee1f5f0dba62348ac706aeebb190f42143c1a2a43f50e7a"
+dependencies = [
+ "cc",
+ "derive_more",
+ "link_args",
+ "regex",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -945,6 +957,15 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "convert_case"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "convert_case"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baaaa0ecca5b51987b9423ccdc971514dd8b0bb7b4060b983d3664dad3f1f89f"
@@ -1211,6 +1232,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "derive_more"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
+dependencies = [
+ "derive_more-impl",
+]
+
+[[package]]
+name = "derive_more-impl"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
+dependencies = [
+ "convert_case 0.6.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -1734,7 +1777,7 @@ name = "forklaunch-sdk-codegen"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "convert_case",
+ "convert_case 0.8.0",
  "forklaunch-contract",
  "forklaunch-ws",
  "percent-encoding",
@@ -1760,7 +1803,7 @@ name = "forklaunch-sdk-typescript"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "convert_case",
+ "convert_case 0.8.0",
  "forklaunch-asyncapi",
  "forklaunch-common",
  "forklaunch-contract",
@@ -1799,6 +1842,7 @@ dependencies = [
 name = "forklaunch-validation"
 version = "0.1.0"
 dependencies = [
+ "ada-url",
  "chrono",
  "forklaunch-common",
  "forklaunch-contract",
@@ -2647,6 +2691,12 @@ dependencies = [
  "plain",
  "redox_syscall 0.9.4",
 ]
+
+[[package]]
+name = "link_args"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c7721e472624c9aaad27a5eb6b7c9c6045c7a396f2efb6dabaec1b640d5e89b"
 
 [[package]]
 name = "linux-raw-sys"

@@ -64,6 +64,9 @@ on:
       - 'cli/tests/rust_zod_record_json_parity.mjs'
       - 'cli/tests/rust_zod_absence_json_parity.mjs'
       - 'cli/tests/rust_zod_object_policy_parity.mjs'
+      - 'cli/tests/rust_zod_uri_parity.mjs'
+      - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
+      - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
@@ -410,6 +413,9 @@ on:
       - 'cli/tests/rust_zod_record_json_parity.mjs'
       - 'cli/tests/rust_zod_absence_json_parity.mjs'
       - 'cli/tests/rust_zod_object_policy_parity.mjs'
+      - 'cli/tests/rust_zod_uri_parity.mjs'
+      - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
+      - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
@@ -928,6 +934,24 @@ jobs:
       - run: node cli/tests/rust_json_composition_runtime.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - name: Pin Node and Ada for WHATWG URL compatibility checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.2.0'
+      - run: npm install --prefix "$RUNNER_TEMP/fl-canonical-http" --no-save --package-lock=false --ignore-scripts punycode@2.3.1
+      - run: node cli/tests/rust_zod_uri_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - name: Live HTTP, MCP and SDK URL compatibility
+        run: node cli/tests/rust_json_composition_runtime.mjs
+        env:
+          FORKLAUNCH_COMPOSITION_URI: '1'
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - name: Restore Node for remaining framework checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - run: node cli/tests/rust_zod_email_openapi.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

@@ -30,6 +30,10 @@ fn string_schema(spec: &Value) -> ZodJsonSchema<'_> {
                 message: check["message"].as_str(),
                 rule: match check["name"].as_str().unwrap() {
                     "trim" => ZodStringRule::Step(ZodStringStep::Trim),
+                    #[cfg(feature = "zod-uri")]
+                    "url" => ZodStringRule::Format(
+                        forklaunch_validation::typescript_coerce::ZodStringFormat::Uri,
+                    ),
                     "min" => ZodStringRule::Step(ZodStringStep::Min(
                         check["argument"].as_u64().unwrap().try_into().unwrap(),
                     )),
