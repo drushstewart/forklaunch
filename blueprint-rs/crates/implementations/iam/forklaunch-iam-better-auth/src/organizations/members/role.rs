@@ -73,6 +73,7 @@ impl<S: AuthStore> OrganizationService<S> {
             ));
         }
         if !allowed_with_creator(
+            &self.access_control,
             &mut tx,
             id,
             text(&actor, "role")?,
@@ -83,7 +84,7 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             return Err(forbidden());
         }
-        validate_roles(&mut tx, id, &roles).await?;
+        validate_roles(&self.access_control, &mut tx, id, &roles).await?;
         if tx.get(Model::Organization, id).await?.is_none() {
             return Err(missing());
         }
@@ -119,18 +120,14 @@ fn parse_roles(value: &Value) -> BlueprintResult<Vec<String>> {
     Ok(roles)
 }
 async fn validate_roles<T: AuthTransaction>(
+    config: &crate::organizations::OrganizationAccessControl,
     tx: &mut T,
     organization: &str,
     roles: &[String],
 ) -> BlueprintResult<()> {
     let unknown: Vec<_> = roles
         .iter()
-        .filter(|role| {
-            !matches!(
-                role.as_str(),
-                "owner" | "admin" | "member" | "editor" | "viewer" | "system"
-            )
-        })
+        .filter(|role| !config.admitted_role(role))
         .collect();
     if unknown.is_empty() {
         return Ok(());

@@ -72,6 +72,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .find(|row| row["organizationId"] == org && row["userId"] == view.user["id"])
             .ok_or_else(|| BlueprintError::new("MEMBER_NOT_FOUND", "Member not found"))?;
         if !allowed(
+            &self.access_control,
             &mut tx,
             org,
             text(&member, "role")?,

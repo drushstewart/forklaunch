@@ -77,6 +77,7 @@ pub struct AuthHttp<S> {
     team_policy: crate::organizations::TeamPolicy,
     organization_controls: crate::organizations::OrganizationControls,
     creator_role: crate::organizations::CreatorRole,
+    access_control: crate::organizations::OrganizationAccessControl,
     invitation_delivery: Option<Arc<dyn crate::organizations::InvitationEmailDelivery>>,
     cancel_pending_invitations_on_reinvite: bool,
     store: Arc<S>,
@@ -132,6 +133,15 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self
     }
 
+    /// Replaces the trusted organization resource catalog and static roles.
+    #[must_use]
+    pub fn with_access_control(
+        mut self,
+        policy: crate::organizations::OrganizationAccessControl,
+    ) -> Self {
+        self.access_control = policy;
+        self
+    }
     /// Installs trusted creator identity without declaring permission roles.
     #[must_use]
     pub fn with_creator_role(mut self, role: crate::organizations::CreatorRole) -> Self {
@@ -236,6 +246,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             team_policy: crate::organizations::TeamPolicy::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),
             creator_role: crate::organizations::CreatorRole::default(),
+            access_control: crate::organizations::OrganizationAccessControl::default(),
             invitation_delivery: None,
             cancel_pending_invitations_on_reinvite: false,
             store,

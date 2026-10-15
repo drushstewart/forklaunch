@@ -2083,3 +2083,56 @@ checks and writer-transaction serialization, including concurrent last-creator
 changes. HTTP body fields cannot override this server-owned setting. Async
 organization policy callbacks and general custom role definitions are separate
 capabilities.
+
+### Declarative organization access control
+
+`OrganizationAccessControl::new(statements, roles)` accepts owned
+`OrganizationStatements` and `OrganizationRoles` maps. Install it with
+`with_access_control` on `OrganizationService` or `AuthHttp`. Omitting this builder
+retains the configured platform resource and owner/admin/editor/system/viewer
+roles. An explicitly supplied role map replaces that preset, including when it is
+empty; names and action strings are not trimmed or normalized. The bounded typed
+profile permits 128 roles, 128 resources per map, 4096 total role/resource/action
+entries, 4096 UTF-8 bytes per string, and 1 MiB aggregate string bytes.
+
+Stored dynamic statements extend the selected static role with unique actions,
+using the existing tenant-scoped first-100 role window. Different member roles
+are alternatives: a request must be satisfied by one role, not a union of grants
+from several roles. Dynamic-role creation/update validates resource names against
+the catalog and requested actions against the actor's grants; the catalog's
+listed actions are not an extra runtime restriction on static role statements.
+Static names protect dynamic-role creation, renaming, and name-based deletion.
+Invitation and member-role admission recognizes upstream owner/admin/member plus
+the supplied static names, then checks the existing dynamic-role profile. All
+organization/team/member/invitation permission checks share the same immutable
+configuration. HTTP bodies cannot install policy. The separate ForkLaunch
+scoped permission-surfacing service retains its explicit TS platform mapping.
+
+This implements declarative `createAccessControl`/`newRole` statements, not
+arbitrary JavaScript `Role.authorize` overrides. The upstream override is
+synchronous and a stored dynamic row for the same role replaces it with
+`ac.newRole`; a bounded trusted custom-authorizer extension remains separate.
+Explicit own role/resource keys, including `__proto__`, `constructor`, and
+`toString`, are retained. Permission-record admission strips `__proto__` without
+validating its value, as the pinned Zod record parser does. Absent inherited
+role/resource lookup and dynamic-merge faults return sanitized empty 500s,
+including role-list short-circuit ordering and JavaScript integer-index-first
+resource iteration. The finite Role-object prototype introduced by a dynamic
+`__proto__` row is modeled explicitly: repeated merges, inherited
+`authorize`/`statements` faults, later own-role shadowing, and statement-array
+spread into string-valued index resources. No JavaScript is evaluated.
+No upstream in-memory role cache or arbitrary JavaScript receiver behavior is claimed.
+
+Remaining organization option families after these scalar/declarative profiles:
+
+| Family | Implemented scope | Remaining scope |
+| --- | --- | --- |
+| Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle | Async policy callbacks |
+| Teams | Default creation toggle, team/seat limits, last-team policy | Plugin route disabling, custom default-team creation, async limits |
+| Invitations | TTL, quota, verification, cancellation, trusted delivery/scheduler | Async quota callback and lifecycle hooks |
+| Access control | Declarative catalog/static roles and persisted dynamic grants | Custom synchronous authorizers and plugin-disable topology |
+| Lifecycle hooks | Invitation delivery only | Before/after organization, member, invitation, team and team-member hooks |
+| Storage/schema | Fixed configured models and fields, encrypted tenant store | Arbitrary model/field remapping and additional-field schema definitions |
+
+These are remaining capabilities, not exclusions from the requested broader
+Better Auth parity scope.

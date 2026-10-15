@@ -33,6 +33,7 @@ impl<S: AuthStore> OrganizationService<S> {
                 .await?
                 .ok_or_else(nonmember)?;
             if !allowed(
+                &self.access_control,
                 &mut tx,
                 org,
                 text(&actor, "role")?,

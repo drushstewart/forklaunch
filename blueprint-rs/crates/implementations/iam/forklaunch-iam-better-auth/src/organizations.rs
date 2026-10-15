@@ -11,7 +11,9 @@ pub(crate) use members::query_number;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+mod access_control;
 mod create;
+pub use access_control::{OrganizationAccessControl, OrganizationRoles, OrganizationStatements};
 mod delivery;
 pub use delivery::{InvitationDeliveryContext, InvitationEmailDelivery};
 mod controls;
@@ -42,6 +44,7 @@ pub struct OrganizationService<S> {
     team_policy: TeamPolicy,
     controls: OrganizationControls,
     creator_role: CreatorRole,
+    access_control: OrganizationAccessControl,
     invitation_delivery: Option<Arc<dyn InvitationEmailDelivery>>,
     background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     cancel_pending_invitations_on_reinvite: bool,
@@ -86,6 +89,12 @@ impl<S: AuthStore> OrganizationService<S> {
         self
     }
 
+    /// Replaces the trusted resource catalog and static role map.
+    #[must_use]
+    pub fn with_access_control(mut self, policy: OrganizationAccessControl) -> Self {
+        self.access_control = policy;
+        self
+    }
     /// Installs the trusted creator identity across creation and member safeguards.
     #[must_use]
     pub fn with_creator_role(mut self, role: CreatorRole) -> Self {
@@ -133,6 +142,7 @@ impl<S: AuthStore> OrganizationService<S> {
             team_policy: TeamPolicy::default(),
             controls: OrganizationControls::default(),
             creator_role: CreatorRole::default(),
+            access_control: OrganizationAccessControl::default(),
             invitation_delivery: None,
             background_dispatcher: None,
             cancel_pending_invitations_on_reinvite: false,

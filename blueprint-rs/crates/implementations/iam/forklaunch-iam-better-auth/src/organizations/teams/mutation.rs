@@ -47,6 +47,7 @@ impl Mutation {
     }
 }
 async fn authorize<T: AuthTransaction>(
+    config: &crate::organizations::OrganizationAccessControl,
     tx: &mut T,
     view: &SessionView,
     id: &str,
@@ -62,6 +63,7 @@ async fn authorize<T: AuthTransaction>(
         return Err(action.denied(true));
     }
     if !allowed(
+        config,
         tx,
         id,
         text(&actor, "role")?,
@@ -109,7 +111,15 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let id = scope(body, &view)?;
-        authorize(&mut tx, &view, id, Mutation::Create, None).await?;
+        authorize(
+            &self.access_control,
+            &mut tx,
+            &view,
+            id,
+            Mutation::Create,
+            None,
+        )
+        .await?;
         if let Some(limit) = self.team_policy.maximum_teams.filter(|limit| *limit != 0) {
             let count = crate::store::find_all(&mut tx, Model::Team, "organizationId", id)
                 .await?
@@ -147,7 +157,15 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let id = scope(&body["data"], &view)?;
-        authorize(&mut tx, &view, id, Mutation::Update, None).await?;
+        authorize(
+            &self.access_control,
+            &mut tx,
+            &view,
+            id,
+            Mutation::Update,
+            None,
+        )
+        .await?;
         let mut team = tx
             .get(Model::Team, text(body, "teamId")?)
             .await?

@@ -27,7 +27,7 @@ impl<S: AuthStore> OrganizationService<S> {
             )
         })?;
         let name = text(body, "role")?.to_lowercase();
-        check_predefined(&name)?;
+        check_predefined(&self.access_control, &name)?;
         let member = crate::store::find_all(&mut tx, Model::Member, "organizationId", &org)
             .await?
             .into_iter()
@@ -39,7 +39,15 @@ impl<S: AuthStore> OrganizationService<S> {
                 )
             })?;
         let role = text(&member, "role")?;
-        if !allowed(&mut tx, &org, role, Some(&json!({"ac":["create"]}))).await? {
+        if !allowed(
+            &self.access_control,
+            &mut tx,
+            &org,
+            role,
+            Some(&json!({"ac":["create"]})),
+        )
+        .await?
+        {
             return Err(denied("create"));
         }
         if let Some(limit) = self.controls.maximum_roles {
@@ -55,7 +63,16 @@ impl<S: AuthStore> OrganizationService<S> {
             }
         }
         let permission = &body["permission"];
-        check_permissions(&mut tx, &org, role, permission, "create").await?;
+        check_permissions(
+            &self.access_control,
+            &mut tx,
+            &org,
+            role,
+            permission,
+            "create",
+        )
+        .await?;
+        let permission = super::super::permission::admitted_record(permission);
         if crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
             .await?
             .iter()
@@ -63,7 +80,7 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             return Err(taken());
         }
-        let mut row = json!({"id":uuid::Uuid::new_v4().to_string(), "organizationId":org, "role":name, "permission":crate::ecmascript::stringify(permission), "createdAt":super::super::timestamp(now)});
+        let mut row = json!({"id":uuid::Uuid::new_v4().to_string(), "organizationId":org, "role":name, "permission":crate::ecmascript::stringify(&permission), "createdAt":super::super::timestamp(now)});
         tx.insert(Model::OrganizationRole, row.clone()).await?;
         tx.commit().await?;
         row["permission"] = permission.clone();
@@ -82,14 +99,18 @@ pub(super) fn taken() -> BlueprintError {
         "That role name is already taken",
     )
 }
-pub(super) fn check_predefined(name: &str) -> BlueprintResult<()> {
-    if ["owner", "admin", "editor", "viewer", "system"].contains(&name) {
+pub(super) fn check_predefined(
+    config: &crate::organizations::OrganizationAccessControl,
+    name: &str,
+) -> BlueprintResult<()> {
+    if config.predefined(name) {
         Err(taken())
     } else {
         Ok(())
     }
 }
 pub(super) async fn check_permissions<T: AuthTransaction>(
+    config: &crate::organizations::OrganizationAccessControl,
     tx: &mut T,
     org: &str,
     role: &str,
@@ -97,16 +118,22 @@ pub(super) async fn check_permissions<T: AuthTransaction>(
     action: &str,
 ) -> BlueprintResult<()> {
     let fields = permission.as_object().ok_or_else(super::super::internal)?;
-    if fields.keys().any(|key| key != "platform") {
+    if fields
+        .keys()
+        .any(|key| key != "__proto__" && !config.resource(key))
+    {
         return Err(BlueprintError::new(
             "INVALID_RESOURCE",
             "The provided permission includes an invalid resource",
         ));
     }
     let mut missing = Vec::new();
-    for (resource, actions) in fields {
+    for (resource, actions) in super::super::permission::own_entries(fields)
+        .into_iter()
+        .filter(|(key, _)| key.as_str() != "__proto__")
+    {
         for action in actions.as_array().ok_or_else(super::super::internal)? {
-            if !allowed(tx, org, role, Some(&json!({resource:[action]}))).await? {
+            if !allowed(config, tx, org, role, Some(&json!({resource:[action]}))).await? {
                 missing.push(format!(
                     "{resource}:{}",
                     action.as_str().ok_or_else(super::super::internal)?

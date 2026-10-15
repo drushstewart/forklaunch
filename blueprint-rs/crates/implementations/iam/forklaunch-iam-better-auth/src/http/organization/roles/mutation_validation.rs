@@ -54,7 +54,8 @@ pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult
 fn data_errors(data: &Value, errors: &mut Vec<String>) {
     if let Some(permission) = data.get("permission") {
         if let Some(fields) = permission.as_object() {
-            for (resource, actions) in fields {
+            for (resource, actions) in fields.iter().filter(|(key, _)| key.as_str() != "__proto__")
+            {
                 if let Some(actions) = actions.as_array() {
                     for (i, action) in actions.iter().enumerate() {
                         if !action.is_string() {

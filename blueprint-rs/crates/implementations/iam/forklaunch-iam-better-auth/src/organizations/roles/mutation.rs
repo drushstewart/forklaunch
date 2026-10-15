@@ -22,7 +22,14 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(body["organizationId"].as_str(), &view.session)?;
-        let member_role = authorize(&mut tx, &org, text(&view.user, "id")?, "update").await?;
+        let member_role = authorize(
+            &self.access_control,
+            &mut tx,
+            &org,
+            text(&view.user, "id")?,
+            "update",
+        )
+        .await?;
         let (field, key) = selector(body)?;
         let rows: Vec<_> =
             crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
@@ -47,14 +54,22 @@ impl<S: AuthStore> OrganizationService<S> {
         };
         let data = &body["data"];
         if let Some(permission) = data.get("permission") {
-            check_permissions(&mut tx, &org, &member_role, permission, "update").await?;
+            check_permissions(
+                &self.access_control,
+                &mut tx,
+                &org,
+                &member_role,
+                permission,
+                "update",
+            )
+            .await?;
         }
         let name = data["roleName"]
             .as_str()
             .filter(|name| !name.is_empty())
             .map(str::to_lowercase);
         if let Some(name) = &name {
-            check_predefined(name)?;
+            check_predefined(&self.access_control, name)?;
             if crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
                 .await?
                 .iter()
@@ -67,24 +82,29 @@ impl<S: AuthStore> OrganizationService<S> {
         if let Some(name) = &name {
             result["role"] = json!(name);
         }
-        result["permission"] = data.get("permission").cloned().unwrap_or_else(|| {
-            if matches!(old_permission, Value::Null | Value::Bool(false))
-                || old_permission == ""
-                || old_permission
-                    .as_number()
-                    .is_some_and(|number| number.as_f64().is_some_and(|value| value == 0.0))
-            {
-                Value::Null
-            } else {
-                old_permission
-            }
-        });
+        result["permission"] = data.get("permission").map_or_else(
+            || {
+                if matches!(old_permission, Value::Null | Value::Bool(false))
+                    || old_permission == ""
+                    || old_permission
+                        .as_number()
+                        .is_some_and(|number| number.as_f64().is_some_and(|value| value == 0.0))
+                {
+                    Value::Null
+                } else {
+                    old_permission
+                }
+            },
+            super::super::permission::admitted_record,
+        );
         for mut row in rows {
             if let Some(name) = &name {
                 row["role"] = json!(name);
             }
             if let Some(permission) = data.get("permission") {
-                row["permission"] = json!(crate::ecmascript::stringify(permission));
+                row["permission"] = json!(crate::ecmascript::stringify(
+                    &super::super::permission::admitted_record(permission)
+                ));
             }
             row["updatedAt"] = json!(super::super::timestamp(now));
             tx.replace(Model::OrganizationRole, row).await?;
@@ -109,9 +129,16 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(body["organizationId"].as_str(), &view.session)?;
-        authorize(&mut tx, &org, text(&view.user, "id")?, "delete").await?;
+        authorize(
+            &self.access_control,
+            &mut tx,
+            &org,
+            text(&view.user, "id")?,
+            "delete",
+        )
+        .await?;
         let (field, key) = selector(body)?;
-        if field == "role" && check_predefined(key).is_err() {
+        if field == "role" && check_predefined(&self.access_control, key).is_err() {
             return Err(BlueprintError::new(
                 "CANNOT_DELETE_A_PRE_DEFINED_ROLE",
                 "Cannot delete a pre-defined role",
@@ -169,6 +196,7 @@ fn trim(value: &str) -> &str {
     value.trim_matches(|c: char| c == '\u{feff}' || c.is_whitespace() && c != '\u{85}')
 }
 async fn authorize<T: AuthTransaction>(
+    config: &crate::organizations::OrganizationAccessControl,
     tx: &mut T,
     org: &str,
     user: &str,
@@ -185,7 +213,7 @@ async fn authorize<T: AuthTransaction>(
             )
         })?;
     let role = text(&member, "role")?;
-    if !allowed(tx, org, role, Some(&json!({"ac":[action]}))).await? {
+    if !allowed(config, tx, org, role, Some(&json!({"ac":[action]}))).await? {
         return Err(denied(action));
     }
     Ok(role.to_owned())

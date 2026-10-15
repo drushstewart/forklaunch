@@ -14,6 +14,7 @@ pub(super) fn trim(value: &str) -> &str {
     value.trim_matches(|c: char| c == '\u{feff}' || c.is_whitespace() && c != '\u{85}')
 }
 pub(super) async fn validate_roles<T: AuthTransaction>(
+    config: &crate::organizations::OrganizationAccessControl,
     tx: &mut T,
     org: &str,
     role: &str,
@@ -21,13 +22,7 @@ pub(super) async fn validate_roles<T: AuthTransaction>(
     let unknown = role
         .split(',')
         .map(trim)
-        .filter(|role| {
-            !role.is_empty()
-                && !matches!(
-                    *role,
-                    "owner" | "admin" | "member" | "editor" | "viewer" | "system"
-                )
-        })
+        .filter(|role| !role.is_empty() && !config.admitted_role(role))
         .collect::<Vec<_>>();
     let found = crate::store::find_all(tx, Model::OrganizationRole, "organizationId", org)
         .await?

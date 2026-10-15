@@ -124,7 +124,12 @@ pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult
                 received(value)
             ));
         } else if field == "permission" {
-            for (resource, actions) in value.and_then(Value::as_object).expect("validated record") {
+            for (resource, actions) in value
+                .and_then(Value::as_object)
+                .expect("validated record")
+                .iter()
+                .filter(|(key, _)| key.as_str() != "__proto__")
+            {
                 if let Some(actions) = actions.as_array() {
                     for (i, action) in actions.iter().enumerate() {
                         if !action.is_string() {

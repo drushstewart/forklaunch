@@ -2799,3 +2799,27 @@ Logs use `/private/tmp/fl-billing-cached-dates-`. All10 frozen paths match
 `715f1416cf521da7625526f9f555c97b00662f27f5afd96299e5ed7bb084d818`.
 CI includes the actual date oracle and existing native read suites. Cache-selected
 lists and broader billing gates remain open. Checklist660/682 is unchanged.
+
+
+### 2026-10-15: Configurable organization access control
+
+Trusted immutable OrganizationAccessControl adds bounded resource catalogs and
+explicit static role maps across organization, member, invitation, team and
+dynamic-role permission paths. An explicit map replaces default roles. Exact
+names, role OR/short-circuit order, same-role dynamic merges and creator-role
+bypass boundaries follow the actual source. Finite Object.prototype-name cases,
+Zod __proto__ stripping, inherited lookup faults and JavaScript own-key order are
+covered without arbitrary JavaScript execution. Existing scoped-service mapping
+remains separate. Configurations are bounded before I/O.
+
+Actual-source59 observations pass:57 declarative cases and2 explicitly residual
+custom-authorizer cases. Final organization11 tests pass0.30s; strict full and
+minimal all-target Clippy pass12.13s/24.03s. The final restricted PostgreSQL
+integration passes226.37s after all prototype changes; owned roles/records/audit
+cleanup is0/0/0. All27 frozen paths match
+`/private/tmp/fl-org-access-freeze.json` SHA256
+`3fc4661f44b26693c916c0f6c384b944fc8c276d7e878ecebce4179980d0d225`.
+Logs use `/private/tmp/fl-org-access-`; CI includes the new actual fixture.
+Custom Role.authorize callbacks, remaining asynchronous options, custom default
+teams, topology/schema extensions and hooks remain open. No dependencies changed.
+Checklist660/682 remains unchanged.

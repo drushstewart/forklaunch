@@ -23,7 +23,15 @@ impl<S: AuthStore> OrganizationService<S> {
             .ok_or_else(unauthorized)?;
         let org = scope(body, &view)?;
         let id = text(body, "teamId")?;
-        authorize(&mut tx, &view, org, Mutation::Delete, Some(id)).await?;
+        authorize(
+            &self.access_control,
+            &mut tx,
+            &view,
+            org,
+            Mutation::Delete,
+            Some(id),
+        )
+        .await?;
         if tx
             .get(Model::Team, id)
             .await?

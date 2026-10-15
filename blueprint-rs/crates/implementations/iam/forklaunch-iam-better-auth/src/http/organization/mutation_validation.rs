@@ -45,11 +45,14 @@ pub(super) fn validate_body(path: &str, body: Option<&Value>) -> BlueprintResult
 }
 fn permissions(value: &Value) -> bool {
     value.as_object().is_some_and(|object| {
-        object.values().all(|value| {
-            value
-                .as_array()
-                .is_some_and(|array| array.iter().all(Value::is_string))
-        })
+        object
+            .iter()
+            .filter(|(key, _)| key.as_str() != "__proto__")
+            .all(|(_, value)| {
+                value
+                    .as_array()
+                    .is_some_and(|array| array.iter().all(Value::is_string))
+            })
     })
 }
 fn update(body: &Value, errors: &mut Vec<String>) {

@@ -47,6 +47,7 @@ impl<S: AuthStore> OrganizationService<S> {
             return Err(only_owner());
         }
         if !allowed(
+            &self.access_control,
             &mut tx,
             id,
             text(&actor, "role")?,

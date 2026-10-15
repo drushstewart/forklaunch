@@ -39,6 +39,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .find(|row| row["organizationId"] == org && row["userId"] == view.user["id"])
             .ok_or_else(|| error("MEMBER_NOT_FOUND", "Member not found"))?;
         if !allowed(
+            &self.access_control,
             tx,
             org,
             text(&member, "role")?,
@@ -52,7 +53,7 @@ impl<S: AuthStore> OrganizationService<S> {
             ));
         }
         let role = input::roles(&body["role"]);
-        input::validate_roles(tx, org, &role).await?;
+        input::validate_roles(&self.access_control, tx, org, &role).await?;
         if !text(&member, "role")?
             .split(',')
             .any(|role| input::trim(role) == self.creator_role.as_str())

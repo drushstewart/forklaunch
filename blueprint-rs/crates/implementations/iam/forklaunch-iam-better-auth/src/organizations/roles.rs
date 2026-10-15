@@ -24,7 +24,14 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(org, &view.session)?;
-        authorize(&mut tx, &org, text(&view.user, "id")?, true).await?;
+        authorize(
+            &self.access_control,
+            &mut tx,
+            &org,
+            text(&view.user, "id")?,
+            true,
+        )
+        .await?;
         let roles =
             crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)
                 .await?
@@ -53,7 +60,14 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(unauthorized)?;
         let org = scope(query["organizationId"].as_str(), &view.session)?;
-        authorize(&mut tx, &org, text(&view.user, "id")?, false).await?;
+        authorize(
+            &self.access_control,
+            &mut tx,
+            &org,
+            text(&view.user, "id")?,
+            false,
+        )
+        .await?;
         let (field, key) = if let Some(name) = query["roleName"].as_str().filter(|s| !s.is_empty())
         {
             ("role", name)
@@ -84,6 +98,7 @@ fn scope(explicit: Option<&str>, session: &Value) -> BlueprintResult<String> {
         .ok_or_else(|| BlueprintError::new("NO_ACTIVE_ORGANIZATION", "No active organization"))
 }
 async fn authorize<T: AuthTransaction>(
+    config: &crate::organizations::OrganizationAccessControl,
     tx: &mut T,
     org: &str,
     user: &str,
@@ -100,6 +115,7 @@ async fn authorize<T: AuthTransaction>(
             )
         })?;
     if !allowed(
+        config,
         tx,
         org,
         text(&member, "role")?,

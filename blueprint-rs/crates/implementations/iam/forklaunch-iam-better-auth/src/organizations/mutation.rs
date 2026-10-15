@@ -32,7 +32,14 @@ impl<S: AuthStore> OrganizationService<S> {
         let member = find_member(&mut tx, text(&view.user, "id")?, id)
             .await?
             .ok_or_else(not_member)?;
-        let success = allowed(&mut tx, id, text(&member, "role")?, body.get("permissions")).await?;
+        let success = allowed(
+            &self.access_control,
+            &mut tx,
+            id,
+            text(&member, "role")?,
+            body.get("permissions"),
+        )
+        .await?;
         tx.commit().await?;
         Ok(json!({"error":null,"success":success}))
     }
@@ -65,6 +72,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(not_member)?;
         if !allowed(
+            &self.access_control,
             &mut tx,
             id,
             text(&member, "role")?,
@@ -142,6 +150,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?
             .ok_or_else(not_member)?;
         if !allowed(
+            &self.access_control,
             &mut tx,
             id,
             text(&member, "role")?,

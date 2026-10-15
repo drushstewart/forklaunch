@@ -23,7 +23,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
-        let team = authorized_team(&mut tx, &view, body, false).await?;
+        let team = authorized_team(&self.access_control, &mut tx, &view, body, false).await?;
         let row = add_team_member(
             &mut tx,
             team,
@@ -52,7 +52,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .recheck(&mut tx, token, now)
             .await?
             .ok_or_else(unauthorized)?;
-        let mut team = authorized_team(&mut tx, &view, body, true).await?;
+        let mut team = authorized_team(&self.access_control, &mut tx, &view, body, true).await?;
         let rows: Vec<_> =
             crate::store::find_all(&mut tx, Model::TeamMember, "teamId", text(body, "teamId")?)
                 .await?
@@ -78,6 +78,7 @@ impl<S: AuthStore> OrganizationService<S> {
     }
 }
 async fn authorized_team<T: AuthTransaction>(
+    config: &crate::organizations::OrganizationAccessControl,
     tx: &mut T,
     view: &SessionView,
     body: &Value,
@@ -97,6 +98,7 @@ async fn authorized_team<T: AuthTransaction>(
         .ok_or_else(nonmember)?;
     let action = if remove { "delete" } else { "update" };
     if !allowed(
+        config,
         tx,
         id,
         text(&actor, "role")?,
