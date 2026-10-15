@@ -39,6 +39,17 @@ impl Budget {
 
 pub(super) fn own_schema_bytes(schema: &ZodJsonSchema<'_>) -> usize {
     match schema {
+        ZodJsonSchema::Enum(values) => values
+            .iter()
+            .fold(0usize, |sum, value| sum.saturating_add(value.len())),
+        ZodJsonSchema::NativeEnum(entries) => entries.iter().fold(0usize, |sum, entry| {
+            sum.saturating_add(entry.name.len())
+                .saturating_add(match entry.value {
+                    super::ZodJsonEnumValue::String(value) => value.len(),
+                    super::ZodJsonEnumValue::Number(_) => 32,
+                })
+        }),
+        ZodJsonSchema::DiscriminatedUnion { discriminator, .. } => discriminator.len(),
         ZodJsonSchema::Literal(literal) => literal.bytes(),
         #[cfg(feature = "zod-regex")]
         ZodJsonSchema::CheckedString(checks) => checks

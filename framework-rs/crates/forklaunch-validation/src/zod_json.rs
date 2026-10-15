@@ -11,6 +11,11 @@ mod issues;
 #[path = "zod_json_resources.rs"]
 mod resources;
 use issues::Issue;
+#[path = "zod_json_enum.rs"]
+mod enum_leaf;
+pub use enum_leaf::{ZodJsonEnumValue, ZodJsonNativeEnumEntry};
+#[path = "zod_json_discriminated.rs"]
+mod discriminated;
 #[path = "zod_json_intersection.rs"]
 mod intersection;
 use intersection::Origin;
@@ -68,6 +73,16 @@ pub enum ZodJsonSchema<'a> {
     /// Reject every input, including absence.
     Never,
     Literal(ZodJsonLiteral<'a>),
+    /// Raw Zod string enum, distinct from factory enum_ literal-union lowering.
+    Enum(Vec<&'a str>),
+    /// Own enum entries with source reverse-mapping filtering at parse time.
+    NativeEnum(Vec<ZodJsonNativeEnumEntry<'a>>),
+    /// Structurally register literal/enum/absence discriminator values and
+    /// evaluate only the selected object. Registration never invokes callbacks.
+    DiscriminatedUnion {
+        discriminator: &'a str,
+        options: Vec<Self>,
+    },
     Optional(Box<Self>),
     Nullable(Box<Self>),
     Default {
@@ -144,6 +159,9 @@ pub enum ZodJsonUnsupported {
     DiagnosticPath,
     ObjectOrderUnavailable,
     RecordKeyOutput,
+    DuplicateEnumKey,
+    DiscriminatorSchema,
+    DuplicateDiscriminator,
     #[cfg(feature = "zod-regex")]
     RegexResource,
 }
@@ -302,7 +320,7 @@ fn evaluate_document(
     if path_bytes > MAX_ADMISSION_BYTES {
         return Err(ZodJsonUnsupported::DiagnosticPath);
     }
-    let (schema_bytes, track_origins) = admit_schema(schema)?;
+    let (schema_bytes, track_origins, registrations) = admit_schema(schema)?;
     let schema_bytes = schema_bytes.saturating_add(path_bytes);
     if schema_bytes > MAX_ADMISSION_BYTES {
         return Err(ZodJsonUnsupported::SchemaBytes);
@@ -316,6 +334,9 @@ fn evaluate_document(
     let mut remaining = Budget::new();
     remaining.track_origins = track_origins;
     remaining.charge(path.len(), path_bytes)?;
+    if registrations {
+        discriminated::admit(schema, &mut remaining)?;
+    }
     let mut parsed = evaluate_ordered(input, schema, &mut remaining, order)?;
     if let Some(value) = &parsed.value {
         admit_value(value)?;
@@ -383,8 +404,9 @@ fn admit_value_counted(
     Ok((nodes, bytes))
 }
 
-fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<(usize, bool), ZodJsonUnsupported> {
+fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<(usize, bool, bool), ZodJsonUnsupported> {
     let mut intersections = false;
+    let mut registrations = false;
     let mut stack = vec![(schema, 0)];
     let mut nodes = 0;
     let mut bytes = 0usize;
@@ -393,6 +415,10 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<(usize, bool), ZodJsonUnsu
             return Err(ZodJsonUnsupported::SchemaDepth);
         }
         nodes += 1;
+        registrations |= matches!(
+            schema,
+            ZodJsonSchema::NativeEnum(_) | ZodJsonSchema::DiscriminatedUnion { .. }
+        );
         bytes = bytes.saturating_add(own_schema_bytes(schema));
         if bytes > MAX_ADMISSION_BYTES {
             return Err(ZodJsonUnsupported::SchemaBytes);
@@ -417,9 +443,14 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<(usize, bool), ZodJsonUnsu
                 stack.push((key, depth + 1));
                 stack.push((value, depth + 1));
             }
-            ZodJsonSchema::Union(branches) => {
+            ZodJsonSchema::Union(branches)
+            | ZodJsonSchema::DiscriminatedUnion {
+                options: branches, ..
+            } => {
                 stack.extend(branches.iter().map(|branch| (branch, depth + 1)));
             }
+            ZodJsonSchema::Enum(values) => nodes += values.len(),
+            ZodJsonSchema::NativeEnum(values) => nodes += values.len(),
             ZodJsonSchema::String(checks) => nodes += checks.len(),
             #[cfg(feature = "zod-regex")]
             ZodJsonSchema::CheckedString(checks) => nodes += checks.len(),
@@ -467,7 +498,7 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<(usize, bool), ZodJsonUnsu
             _ => {}
         }
     }
-    Ok((bytes, intersections))
+    Ok((bytes, intersections, registrations))
 }
 
 fn schema_children(schema: &ZodJsonSchema<'_>) -> usize {
@@ -481,7 +512,12 @@ fn schema_children(schema: &ZodJsonSchema<'_>) -> usize {
         ZodJsonSchema::ObjectWithPolicy {
             fields, catchall, ..
         } => fields.len() + usize::from(catchall.is_some()),
-        ZodJsonSchema::Union(branches) => branches.len(),
+        ZodJsonSchema::Union(branches)
+        | ZodJsonSchema::DiscriminatedUnion {
+            options: branches, ..
+        } => branches.len(),
+        ZodJsonSchema::Enum(values) => values.len(),
+        ZodJsonSchema::NativeEnum(values) => values.len(),
         ZodJsonSchema::Tuple { items, rest } => items.len() + usize::from(rest.is_some()),
         ZodJsonSchema::Record { .. } | ZodJsonSchema::Intersection { .. } => 2,
         ZodJsonSchema::Optional(_) | ZodJsonSchema::Nullable(_) | ZodJsonSchema::Default { .. } => {
@@ -536,19 +572,16 @@ fn evaluate_ordered(
     let bytes = evaluation_bytes(input, schema, remaining)?;
     remaining.charge(0, bytes)?;
     Ok(match schema {
-        ZodJsonSchema::Literal(literal) => {
-            if literal.matches(input) {
-                Parsed::valid(input.map(clone_json).transpose()?)
-            } else {
-                Parsed::invalid(
-                    vec![ParseError {
-                        path: Vec::new(),
-                        message: literal.diagnostic(),
-                    }],
-                    Status::Aborted,
-                )
-            }
+        ZodJsonSchema::Enum(values) => enum_leaf::strings(input, values, remaining)?,
+        ZodJsonSchema::NativeEnum(entries) => {
+            let values = enum_leaf::native_values(entries, true, remaining)?;
+            enum_leaf::evaluate(input, &values, true, remaining)?
         }
+        ZodJsonSchema::DiscriminatedUnion {
+            discriminator,
+            options,
+        } => discriminated::evaluate(input, discriminator, options, order, remaining)?,
+        ZodJsonSchema::Literal(literal) => parsed_literal(input, literal)?,
         ZodJsonSchema::Null => terminal(input, "null"),
         ZodJsonSchema::Undefined => terminal(input, "undefined"),
         ZodJsonSchema::Void => terminal(input, "void"),
@@ -620,6 +653,23 @@ fn evaluate_ordered(
         ZodJsonSchema::Record { key, value } => {
             record::evaluate(input, key, value, remaining, order)?
         }
+    })
+}
+
+fn parsed_literal(
+    input: Option<&Value>,
+    literal: &ZodJsonLiteral<'_>,
+) -> Result<Parsed, ZodJsonUnsupported> {
+    Ok(if literal.matches(input) {
+        Parsed::valid(input.map(clone_json).transpose()?)
+    } else {
+        Parsed::invalid(
+            vec![ParseError {
+                path: Vec::new(),
+                message: literal.diagnostic(),
+            }],
+            Status::Aborted,
+        )
     })
 }
 

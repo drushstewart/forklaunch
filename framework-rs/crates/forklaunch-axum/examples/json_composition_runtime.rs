@@ -120,6 +120,54 @@ fn intersection_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
         },
     ]
 }
+fn discriminated_field() -> typescript_coerce::ZodJsonField<'static> {
+    use typescript_coerce::{
+        ZodJsonEnumValue as EnumValue, ZodJsonField as Field, ZodJsonNativeEnumEntry as Entry,
+        ZodJsonSchema as Schema,
+    };
+    Field {
+        name: "event",
+        schema: Schema::Optional(Box::new(Schema::DiscriminatedUnion {
+            discriminator: "kind",
+            options: vec![
+                Schema::Object(vec![
+                    Field {
+                        name: "kind",
+                        schema: Schema::Enum(vec!["create", "update"]),
+                    },
+                    Field {
+                        name: "label",
+                        schema: Schema::String(vec![typescript_coerce::ZodStringCheck {
+                            rule: typescript_coerce::ZodStringRule::Step(
+                                typescript_coerce::ZodStringStep::Trim,
+                            ),
+                            message: None,
+                        }]),
+                    },
+                ]),
+                Schema::Object(vec![
+                    Field {
+                        name: "kind",
+                        schema: Schema::NativeEnum(vec![
+                            Entry {
+                                name: "0",
+                                value: EnumValue::String("A"),
+                            },
+                            Entry {
+                                name: "A",
+                                value: EnumValue::Number(0.0),
+                            },
+                        ]),
+                    },
+                    Field {
+                        name: "count",
+                        schema: Schema::Number(vec![]),
+                    },
+                ]),
+            ],
+        })),
+    }
+}
 fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> {
     use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
     let mut fields = vec![
@@ -204,6 +252,7 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
             })),
         },
     ];
+    fields.push(discriminated_field());
     fields.extend(tuple_fields());
     fields.push(runtime_format_field());
     fields.extend(intersection_fields());

@@ -69,29 +69,78 @@ fn object_policy(spec: &Value) -> ZodJsonSchema<'_> {
         catchall: spec.get("catchall").map(|value| Box::new(schema(value))),
     }
 }
+fn registered_schema(spec: &Value) -> ZodJsonSchema<'_> {
+    match spec["kind"].as_str().unwrap() {
+        "enum" => ZodJsonSchema::Enum(
+            spec["values"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.as_str().unwrap())
+                .collect(),
+        ),
+        "nativeEnum" => ZodJsonSchema::NativeEnum(
+            spec["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(
+                    |entry| forklaunch_validation::typescript_coerce::ZodJsonNativeEnumEntry {
+                        name: entry[0].as_str().unwrap(),
+                        value: if entry[1]["kind"] == "string" {
+                            forklaunch_validation::typescript_coerce::ZodJsonEnumValue::String(
+                                entry[1]["value"].as_str().unwrap(),
+                            )
+                        } else {
+                            forklaunch_validation::typescript_coerce::ZodJsonEnumValue::Number(
+                                entry[1]["value"].as_f64().unwrap_or_else(|| {
+                                    entry[1]["value"].as_str().unwrap().parse().unwrap()
+                                }),
+                            )
+                        },
+                    },
+                )
+                .collect(),
+        ),
+        "discriminated" => ZodJsonSchema::DiscriminatedUnion {
+            discriminator: spec["discriminator"].as_str().unwrap(),
+            options: spec["options"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(schema)
+                .collect(),
+        },
+        _ => unreachable!(),
+    }
+}
+fn number_schema(spec: &Value) -> ZodJsonSchema<'_> {
+    ZodJsonSchema::Number(
+        spec["checks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|check| ZodNumberCheck {
+                message: check["message"].as_str(),
+                step: match check["name"].as_str().unwrap() {
+                    "int" => ZodNumberStep::Int,
+                    "finite" => ZodNumberStep::Finite,
+                    "min" => ZodNumberStep::MinFloat(ZodFloatBound::new(
+                        check["argument"].as_f64().unwrap(),
+                    )),
+                    _ => panic!("unknown number check"),
+                },
+            })
+            .collect(),
+    )
+}
 fn schema(spec: &Value) -> ZodJsonSchema<'_> {
     let inner = || Box::new(schema(&spec["inner"]));
     match spec["kind"].as_str().unwrap() {
+        "enum" | "nativeEnum" | "discriminated" => registered_schema(spec),
         "string" => string_schema(spec),
         "policy" => object_policy(spec),
-        "number" => ZodJsonSchema::Number(
-            spec["checks"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|check| ZodNumberCheck {
-                    message: check["message"].as_str(),
-                    step: match check["name"].as_str().unwrap() {
-                        "int" => ZodNumberStep::Int,
-                        "finite" => ZodNumberStep::Finite,
-                        "min" => ZodNumberStep::MinFloat(ZodFloatBound::new(
-                            check["argument"].as_f64().unwrap(),
-                        )),
-                        _ => panic!("unknown number check"),
-                    },
-                })
-                .collect(),
-        ),
+        "number" => number_schema(spec),
         "record" => ZodJsonSchema::Record {
             key: Box::new(schema(&spec["key"])),
             value: Box::new(schema(&spec["valueSchema"])),
