@@ -791,6 +791,12 @@ pub(crate) fn rust_type_name(input: &str) -> String {
     if name.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
         name.insert_str(0, "Model");
     }
+    // Pascal casing can still produce the reserved `Self` type keyword.
+    // A trailing suffix is stable under repeated normalization and cannot
+    // collide with an ordinary alphanumeric normalized model name.
+    if is_rust_keyword(&name) {
+        name.push('_');
+    }
     name
 }
 
@@ -988,10 +994,29 @@ mod sequence_tests {
             "__ForklaunchSeqAccess",
             "",
             "12 _ A",
+            "Self",
+            "Self_",
         ] {
             let generated = rust_type_name(name);
-            assert!(generated.chars().all(|ch| ch.is_ascii_alphanumeric()));
+            assert!(
+                generated
+                    .trim_end_matches('_')
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric())
+            );
             assert!(!generated.starts_with('_'));
+        }
+    }
+
+    #[test]
+    fn reserved_type_keyword_normalization_is_idempotent() {
+        for name in ["Self", "self", "SELF", "Self_"] {
+            let normalized = rust_type_name(name);
+            assert_eq!(normalized, "Self_");
+            assert_eq!(rust_type_name(&normalized), normalized);
+        }
+        for name in ["ModelSelf", "Selfish", "A", "SequenceVisitor"] {
+            assert_eq!(rust_type_name(name), name);
         }
     }
 

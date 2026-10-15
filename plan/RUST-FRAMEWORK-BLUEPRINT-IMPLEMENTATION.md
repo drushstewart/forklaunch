@@ -67,7 +67,7 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: signup/signin verification-required policy with no-session signup, duplicate privacy and correct-password gate; actual13/restrictedPG/fullIAM198 and strictClippy pass. Prospective-user callback visibility differs from upstream transactions.
 - Completed: completed Subscription UUID library reads with sealed Customer/Plan provenance and fresh finite provider evidence; actualTS66/restrictedPG and strictClippy pass. Local lifecycle fields remain unchanged.
 - Completed: reserved Rust tuple visitor/generic names, recursive SequenceVisitor/A/D/S collision proofs;920variable/79fixed/47codegen/1126CLI and strictgeneratedRust pass.
-- Active: independent signup auto-signin option, explicit aggregate Subscription read HTTP/MCP/SDK selection, and remaining schema/SDK conformance. Broader plugin/mapper/schema/deployment gates remain open.
+- Active: aggregate PaymentLink read HTTP/MCP/SDK integration, trusted before/after email-verification hooks, and generated Rust model namespace compatibility. Signup auto-signin, Subscription read selection, password-reset revocation/observer, and bounded string-schema fixes have landed. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable4ff9e3958 package/install passed2799 files with SHA256db6cb114da0e7faabb74e01ceb1ae0da081020194764fbabbbc177171ca0033c. Portable runtime/HTTP/MCP/SDK checks now pass with195IAM tests and3PGignored; all2799bytes verified after. Current policy/pure/Subscription/collision fixes are excluded by exact source commit.
 - Validation: immutable37b54 archive package/install/portable services/workers/SDK/HTTP/MCP runtime passes with2775 before/after byte-verified files and packagedIAM184 (3PGignored). Later OTPdispatcher/tupleconsumer/new drafts are excluded by source commit; owned roots and414MB exclusive nonexecutable cache cleaned with guards.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
@@ -2507,3 +2507,13 @@ Logs /private/tmp/fl-reset-hook-actual.log and /private/tmp/fl-reset-observer-
 {native,pg,regression,clippy,minimal-clippy}.log. Final source-only rustfmt reexport
 ordering followed green checks; no deps/locks. Broader auth hooks/provider/plugin
 gates remain open;660/682(96.8%),22open unchanged.
+
+### 2026-10-14 — Reserved Rust model names
+
+Reserved Self/self/SELF model names now normalize idempotently to Self_. Shared
+and CLI graph seeds preserve existing TypeScript SelfSchemaRef1/SelfSchema1Ref1
+names. Generated strict Rust and TypeScript fixture: 144 cases across 30 models;
+variable tuples: 920; codegen: 49; full CLI: 1,128; strict Clippy passed.
+Frozen four-path manifest /private/tmp/fl-reserved-type-source.json verified.
+Builtin/prelude shadowing remains a separate audit. Checklist: 660/682 (96.8%),
+22 broader gates open.

@@ -61,7 +61,11 @@ pub struct SchemaModels {
 pub fn compile_schema(root_name: &str, value: &serde_json::Value) -> anyhow::Result<SchemaModels> {
     let value = schema::normalize(
         value,
-        &format!("{}Schema", models::rust_type_name(root_name)),
+        // Keep cross-language graph names stable when Rust escapes `Self`.
+        &format!(
+            "{}Schema",
+            models::rust_type_name(root_name).trim_end_matches('_')
+        ),
     )?;
     let (rust_models, rust_aliases, rust_type) = models::rust_types_from_schema(root_name, &value);
     let typescript_definitions = value
@@ -252,6 +256,36 @@ mod tests {
     use forklaunch_contract::{BodyContract, FieldContract, HttpMethod, RouteContract};
 
     use super::*;
+
+    #[test]
+    fn reserved_rust_root_preserves_typescript_graph_names() {
+        use serde_json::json;
+        let compiled = crate::compile_schema(
+            "Self",
+            &json!({
+                "$schema":"https://json-schema.org/draft/2020-12/schema",
+                "$defs":{"Self":{"type":"object","properties":{"next":{"$ref":"#/$defs/Self"}}}},
+                "$ref":"#/$defs/Self"
+            }),
+        )
+        .unwrap();
+        assert_eq!(compiled.rust_type, "Self_");
+        assert_eq!(
+            compiled.typescript_type,
+            "{ next?: SelfSchemaRef1 } & Record<string, unknown>"
+        );
+        assert!(
+            compiled
+                .typescript_definitions
+                .contains_key("SelfSchemaRef1")
+        );
+        assert!(
+            compiled
+                .typescript_definitions
+                .keys()
+                .all(|name| !name.starts_with("Self_"))
+        );
+    }
 
     #[test]
     fn versioned_plans_include_every_request_and_response() {

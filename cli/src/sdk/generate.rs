@@ -556,7 +556,11 @@ fn sdk_service_from_contract(service_name: &str, contract: &JsonValue) -> Result
         *index += 1;
         *schema = super::schema::normalize(
             schema,
-            &format!("{}Schema{}", rust_type_name(service_name), index),
+            &format!(
+                "{}Schema{}",
+                rust_type_name(service_name).trim_end_matches('_'),
+                index
+            ),
         )?;
         if let Some(definitions) = schema
             .get(super::schema::DEFINITIONS)
@@ -2217,3 +2221,31 @@ mod recursive_model_tests {
 
 #[cfg(test)]
 mod mixed_tests;
+
+#[cfg(test)]
+mod reserved_service_name_tests {
+    use super::*;
+
+    #[test]
+    fn reserved_rust_name_preserves_typescript_reference_labels() {
+        let service = sdk_service_from_contract("Self", &json!({"routes":[{
+            "method":"GET", "path":"/item", "operationName":"getItem",
+            "responses":[{"statusCode":200,"body":{"schema":{"jsonSchema":{
+                "$defs":{"Node":{"type":"object","properties":{"next":{"$ref":"#/$defs/Node"}}}},
+                "$ref":"#/$defs/Node"
+            }}}}]
+        }]})).unwrap();
+        assert!(
+            service
+                .ts_models
+                .iter()
+                .any(|model| model.name == "SelfSchema1Ref1")
+        );
+        assert!(
+            service
+                .ts_models
+                .iter()
+                .all(|model| !model.name.starts_with("Self_"))
+        );
+    }
+}

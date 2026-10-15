@@ -82,6 +82,7 @@ on:
       - 'cli/tests/rust_zod_factory_string_composition.mjs'
       - 'cli/tests/rust_sdk_fixed_tuple_models.mjs'
       - 'cli/tests/rust_sdk_variable_tuple_models.mjs'
+      - 'cli/tests/rust_sdk_reserved_type_names.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -480,6 +481,7 @@ on:
       - 'cli/tests/rust_zod_factory_string_composition.mjs'
       - 'cli/tests/rust_sdk_fixed_tuple_models.mjs'
       - 'cli/tests/rust_sdk_variable_tuple_models.mjs'
+      - 'cli/tests/rust_sdk_reserved_type_names.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -1126,6 +1128,9 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
           FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_sdk_reserved_type_names.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_sdk_variable_tuple_models.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
