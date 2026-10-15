@@ -12295,3 +12295,27 @@ All9 source hashes match `/private/tmp/fl-payment-link-coercion-final.json`, SHA
 `79fe81394684a8c715235e9f1bea03455e3136328b6da7aeb1f6368dab9d7d00`.
 Evidence uses `/private/tmp/fl-payment-link-coercion-*.log`. Broader configured
 billing/auth gates remain open. Checklist660/682 is unchanged.
+
+
+### 2026-10-15 — Pure-input record key schema conformance
+
+Integrated5025496c1 retains admitted record key constraints as propertyNames in
+explicit pureInput2020 output. String-domain specialization avoids coercing AJV
+attempts to mutate immutable property-name variables. Baseline OAS/general2020
+exports stay unchanged; explicit final metadata keeps existing override semantics.
+Unresolved key-schema references reject explicitly. Key transformations/coercion/
+effects and native lone-surrogate boundaries remain separate work.
+
+The initial350-case audit exposed88 mismatches. Final coverage passes2400 exact
+actual/AJV/native/injected-consumer comparisons across96 schemas,41 live SDK HTTP
+responses and164 generated TS/Rust codec/type-admission checks. Legacy1744 cases
+across160 exports retain16 explicitly asserted raw OAS3.0 AJV prototype exceptions;
+pure577+246 regressions and strict12-root/625-export types pass. No Rust sources,
+dependencies or locks changed. Final fixture-only controls follow the native run;
+production changes afterward were formatting only.
+
+All3 integrated hashes match `/private/tmp/fl-record-pure-source.json` SHA256
+`a1024ee0ca02dfa3b198af4be75d8d85bbc7bad4bb06ef208cd138636481a8eb`.
+Receipt and logs: `/private/tmp/fl-record-pure-receipt.md` and matching prefix.
+CI runs the new oracle with native checks. Broad schema/emitter/validation gates
+remain open; checklist660/682 unchanged.
