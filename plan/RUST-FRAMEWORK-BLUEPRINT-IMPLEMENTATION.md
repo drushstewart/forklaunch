@@ -2896,3 +2896,36 @@ were overwritten during repair; `initial-failures.txt` explicitly records excerp
 and root cause, not an original full log. Remaining configured mutation preflight,
 provider reconciliation and broader billing gates stay open. Checklist660/682 is
 unchanged.
+
+
+### 2026-10-15: Fresh immutable packaged CLI, services and HTTP/MCP proof
+
+Exact source commitd3b63b39dea72b5b4f34567d3f8ab5b24c94a993 was archived without
+Git state, packaged and installed offline/locked using the recorded CLI lock.
+The retained archive contains3,052 regular files (6,982,095 compressed bytes), SHA256
+`25ba44f70c047c58ddf58e01beeee1b5d64a12bf7681d0bc8f75f60a84142244`, at
+`cli/target/parity-artifacts/forklaunch-d3b63b39d-25ba44f7.crate`.
+All extracted regular source bytes were checked against the archive after runtime
+validation. Dotfiles, portable source/data/license guards, Unicode casing data,
+regex feature forwarding and the three intentional PEM fixtures passed checks.
+
+The installed CLI generated and relocated the application, portable services and
+all four worker variants; workspace/infra feature checks, OpenAPI/AsyncAPI export,
+contract/OpenAPI/socket/imported-AsyncAPI SDK generation/check, strict TypeScript
+consumers, Rust SDKs and direct native generators pass. Packaged IAM tests pass229
+with3 database tests explicitly ignored, in166.30s; this is not a database proof.
+AsyncAPI22, WebSocket and MCP integration checks pass. Fresh generated service
+HTTP/MCP startup passes five configurations, including shared/separate listeners,
+disabled/custom endpoints, explicit/ephemeral/fallback ports, initialization,
+discovery, health, Origin rejection, atomic startup rejection and graceful shutdown.
+All five capability callbacks pass actual TypeScript signature and invalid/replay/
+redelivery checks. This remains local validation, not AWS or public publication.
+
+Driver43282 and runtime65918 exited0. Receipt and logs use
+`/private/tmp/fl-oct15-case-package-`; the metadata records exact source/archive/
+lock/log hashes. This includes Unicode and string numeric bounds, declarative auth
+access control and cached billing dates; later auth-harness/list/array/authorizer
+changes are excluded from this immutable checkpoint. Owned extraction/install/
+generated roots were removed after no-open-file/process checks and retained archive
+hash verification:4,226+5,579 files,267,976,298 logical bytes. Native caches and the
+archive remain. Checklist660/682 is unchanged.
