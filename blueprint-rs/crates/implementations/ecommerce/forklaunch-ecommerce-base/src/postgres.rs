@@ -18,9 +18,10 @@ mod payment_resume;
 mod payment_review;
 mod provider_bindings;
 pub use provider_bindings::{
-    CancelledOrderPaymentSnapshot, CapturedPaymentSnapshot, PaymentProviderBinding,
-    PaymentProviderScope, ScopedCancellationOutcome, ScopedCancellationReceipt,
-    ScopedCaptureOutcome, ScopedCaptureReceipt,
+    CancelledOrderPaymentSnapshot, CancelledPaypalOrderPaymentSnapshot, CapturedPaymentSnapshot,
+    PaymentProviderBinding, PaymentProviderScope, ScopedCancellationOutcome,
+    ScopedCancellationReceipt, ScopedCaptureOutcome, ScopedCaptureReceipt,
+    ScopedPaypalCancellationOutcome, ScopedPaypalCancellationReceipt,
 };
 mod reconciliation;
 mod retention;

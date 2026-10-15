@@ -204,3 +204,67 @@ fn fixed_origins_and_primary_merchant_format() {
         );
     }
 }
+
+#[test]
+fn voided_history_is_explicit_private_and_does_not_change_status_observation() {
+    let mut valid = order();
+    valid["status"] = serde_json::json!("VOIDED");
+    valid["purchase_units"][0]["payments"] =
+        serde_json::json!({"captures":[],"authorizations":[],"refunds":[]});
+    assert!(voided_empty_history(&valid));
+    for key in ["captures", "authorizations", "refunds"] {
+        for value in [
+            Value::Null,
+            serde_json::json!({}),
+            serde_json::json!([{"id":"prior"}]),
+        ] {
+            let mut bad = valid.clone();
+            bad["purchase_units"][0]["payments"][key] = value;
+            assert!(!voided_empty_history(&bad));
+            assert!(
+                verify_order(
+                    &bad,
+                    PaypalEnvironment::Sandbox,
+                    "Q7C9N6S4YRQXG",
+                    "ORDER_owned"
+                )
+                .is_ok()
+            );
+        }
+        let mut bad = valid.clone();
+        bad["purchase_units"][0]["payments"]
+            .as_object_mut()
+            .unwrap()
+            .remove(key);
+        assert!(!voided_empty_history(&bad));
+        assert!(
+            verify_order(
+                &bad,
+                PaypalEnvironment::Sandbox,
+                "Q7C9N6S4YRQXG",
+                "ORDER_owned"
+            )
+            .is_ok()
+        );
+    }
+    for status in [
+        "COMPLETED",
+        "APPROVED",
+        "CREATED",
+        "SAVED",
+        "PAYER_ACTION_REQUIRED",
+    ] {
+        let mut other = valid.clone();
+        other["status"] = serde_json::json!(status);
+        assert!(!voided_empty_history(&other));
+        assert!(
+            verify_order(
+                &other,
+                PaypalEnvironment::Sandbox,
+                "Q7C9N6S4YRQXG",
+                "ORDER_owned"
+            )
+            .is_ok()
+        );
+    }
+}

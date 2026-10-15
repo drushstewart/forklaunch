@@ -9149,3 +9149,26 @@ per mode and legacy118132+2 pass. Live159 HTTP/72 MCP/3 safe500 and6 calls throu
 each SDK pass; strict validation/Axum all-feature/all-target Clippy passes. Logs:
 /private/tmp/fl-zod-record-{tests,default-tests,parity,ordered-regression,legacy,live,clippy}.log.
 CI includes the record oracle. Broader schema gate remains open;660/682 unchanged.
+
+### 2026-10-14: scoped PayPal VOIDED operator repair (working source)
+
+Authenticated exact order/payee/environment evidence with explicitly empty
+captures/authorizations/refunds histories now permits atomic Failed bookkeeping
+for a nonsucceeded payment on an already-cancelled local order. Exact payment,
+order xmin and full binding generation are rechecked under ordered locks; prior
+capture audit denies repair. Migration12 adds a scope-unique tenant receipt,
+preventing repeated publication even after binding ABA or an already-Failed
+snapshot. Freshness is checked after waits/writes and before COMMIT; expired
+post-COMMIT evidence has a recorded outcome, and lost acknowledgement requires
+receipt inspection. References/orders stay unchanged, canceled_at stays None,
+and provider I/O remains OAuth authentication plus GET, without financial writes.
+
+Frozen12 hashes: /private/tmp/fl-paypal-void-source.json. Unit3, restricted PG
+matrix1/5.62s, bound-read regression1/5.47s, primary-schema/native wire152, actual
+TS legacy22 client+19 wrapper comparisons and strict base/PayPal all-feature/
+all-target plus minimal-lib Clippy pass. Matrix covers7 CAS/deadline races,
+concurrent one-publication, rollback and true lost-COMMIT acknowledgement.
+Owned roles/records0. Logs /private/tmp/fl-paypal-void-{unit,pg,read-regression,
+schema-wire,legacy,clippy,minimal-clippy,cleanup}.log. CI runs restricted PG and
+tracks the history schema fixture. No live provider/deployment or immutable
+package claim; broader reconciliation remains open and660/682 unchanged.

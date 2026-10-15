@@ -49,6 +49,8 @@ pub struct BoundPaypalOrderObservation {
 /// not prove the OAuth application itself owns that merchant account.
 pub struct VerifiedPaypalOrderContext {
     generation: Arc<()>,
+    #[cfg_attr(not(feature = "postgres"), allow(dead_code))]
+    voided_empty_history: bool,
     started_at: Instant,
     merchant_id: String,
     reference_id: String,
@@ -74,6 +76,13 @@ impl VerifiedPaypalOrderContext {
             || client.scoped_environment != Some(self.observation.environment)
             || self.started_at.elapsed() >= Duration::from_secs(5)
         {
+            return Err(mismatch());
+        }
+        Ok(())
+    }
+    #[cfg(feature = "postgres")]
+    pub(crate) fn require_voided_empty_history(&self) -> BlueprintResult<()> {
+        if !self.voided_empty_history {
             return Err(mismatch());
         }
         Ok(())
@@ -182,6 +191,7 @@ impl PaypalClient {
             verify_order(&response.body, environment, expected_merchant, id)?;
         let context = VerifiedPaypalOrderContext {
             generation: self.generation.clone(),
+            voided_empty_history: voided_empty_history(&response.body),
             started_at,
             merchant_id: expected_merchant.into(),
             reference_id,
@@ -271,3 +281,15 @@ fn verify_order(
 #[cfg(test)]
 #[path = "context_tests.rs"]
 mod tests;
+
+// Primary Orders schema describes payments as comprehensive history. Optional
+// omitted projections are not empty history. This private flag retains no payer data.
+fn voided_empty_history(order: &Value) -> bool {
+    order["status"] == "VOIDED"
+        && ["captures", "authorizations", "refunds"].iter().all(|key| {
+            order["purchase_units"][0]["payments"]
+                .get(key)
+                .and_then(Value::as_array)
+                .is_some_and(Vec::is_empty)
+        })
+}

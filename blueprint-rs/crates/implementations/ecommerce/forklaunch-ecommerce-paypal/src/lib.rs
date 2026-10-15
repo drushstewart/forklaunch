@@ -5,6 +5,8 @@
 pub mod bound_reads;
 pub mod context;
 pub mod reconciliation;
+#[cfg(feature = "postgres")]
+pub mod scoped_cancellation;
 use forklaunch_blueprint_core::{
     BlueprintError, BlueprintResult,
     provider_http::{ProviderHttpClient, provider_status_error},

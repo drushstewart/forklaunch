@@ -318,6 +318,7 @@ on:
       - 'cli/tests/rust_ecommerce_paypal_parity.mjs'
       - 'cli/tests/rust_ecommerce_paypal_scoped_context.mjs'
       - 'cli/tests/fixtures/paypal_scoped_payee_schema.json'
+      - 'cli/tests/fixtures/paypal_void_history_schema.json'
       - 'cli/tests/rust_ecommerce_pricing_parity.mjs'
       - 'cli/tests/rust_ecommerce_import_parity.mjs'
       - 'cli/tests/rust_ecommerce_webhook_ledger_parity.mjs'
@@ -656,6 +657,7 @@ on:
       - 'cli/tests/rust_ecommerce_paypal_parity.mjs'
       - 'cli/tests/rust_ecommerce_paypal_scoped_context.mjs'
       - 'cli/tests/fixtures/paypal_scoped_payee_schema.json'
+      - 'cli/tests/fixtures/paypal_void_history_schema.json'
       - 'cli/tests/rust_ecommerce_pricing_parity.mjs'
       - 'cli/tests/rust_ecommerce_import_parity.mjs'
       - 'cli/tests/rust_ecommerce_webhook_ledger_parity.mjs'
@@ -1623,6 +1625,7 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test scoped_cancellation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test scoped_capture -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-paypal --all-features --test bound_reads -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-paypal --all-features --test scoped_cancellation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test reconciliation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-axum --all-features --test http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-messaging-base --all-features --test postgres_sms -- --ignored

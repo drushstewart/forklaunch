@@ -8,11 +8,21 @@ import {spawn} from 'node:child_process';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const fixture=JSON.parse(readFileSync(path.join(root,'cli/tests/fixtures/paypal_scoped_payee_schema.json')));
 assert.equal(fixture.payeeMerchantId.allOf[0].$ref,'#/components/schemas/account_id');
+const history=JSON.parse(readFileSync(path.join(root,'cli/tests/fixtures/paypal_void_history_schema.json')));
+assert.match(history.purchase_unit_payments.allOf[1].description,/comprehensive history/);
+assert.equal(history.order_status.oneOf.find(v=>v.enum[0]==='VOIDED').description,'All purchase units in the order are voided.');
+for(const key of ['captures','authorizations','refunds']){
+ assert.equal(history.payment_collection.properties[key].type,'array');
+ assert.equal(history.payment_collection.properties[key].minItems,0);
+ assert(!history.payment_collection.required?.includes(key)); // Missing is not explicit empty evidence.
+}
 const schema=fixture.account_id,pattern=new RegExp(schema.pattern);
 const valid=value=>value.length>=schema.minLength&&value.length<=schema.maxLength&&pattern.test(value);
 const cases=Array.from({length:128},(_,byte)=>({merchant:String.fromCharCode(byte)+'7C9N6S4YRQXG'}));
 cases.push(...['Q7C9N6S4YRQXG','J8NCBBULP5JH2','','Q7C9N6S4YRQXG0','merchant@example.invalid','Ｑ7C9N6S4YRQXG'].map(merchant=>({merchant})));
 for(const fault of ['missing-payee','email-only','wrong-payee','multiunit','wrong-id','bad-token','wrong-token-type','token-denied','read-denied'])cases.push({merchant:'Q7C9N6S4YRQXG',fault});
+for(const status of history.order_status.enum)cases.push({merchant:'Q7C9N6S4YRQXG',status});
+for(const history of [{captures:[],authorizations:[],refunds:[]},{captures:null},{refunds:[{id:'prior'}]}])cases.push({merchant:'Q7C9N6S4YRQXG',status:'VOIDED',history});
 const calls=[];
 const server=http.createServer(async(req,res)=>{
  const [,prefix,indexText,...parts]=req.url.split('/');assert.equal(prefix,'case');const index=Number(indexText),c=cases[index],route='/'+parts.join('/');
@@ -27,6 +37,8 @@ const server=http.createServer(async(req,res)=>{
  assert.equal(route,'/v2/checkout/orders/ORDER_owned');assert.equal(req.method,'GET');assert.equal(req.headers.authorization,'Bearer owned-token');assert.equal(body,'');
  if(c.fault==='read-denied')res.statusCode=403;
  const order={id:'ORDER_owned',status:'COMPLETED',intent:'CAPTURE',purchase_units:[{reference_id:'local-order',payee:{merchant_id:c.merchant,email_address:'private@example.invalid'},amount:{currency_code:'USD',value:'1.05'}}],payer:{private:'never-return'}};
+ if(c.status)order.status=c.status;
+ if(c.history)order.purchase_units[0].payments=c.history;
  if(c.fault==='missing-payee')delete order.purchase_units[0].payee;
  if(c.fault==='email-only')delete order.purchase_units[0].payee.merchant_id;
  if(c.fault==='wrong-payee')order.purchase_units[0].payee.merchant_id='J8NCBBULP5JH2';
@@ -46,7 +58,7 @@ try{
   if(!valid(c.merchant)){assert.deepEqual(wire,[]);continue;}
   const tokenFailure=['bad-token','wrong-token-type','token-denied'].includes(c.fault);
   assert.deepEqual(wire.map(({method,path})=>({method,path})),[{method:'POST',path:'/v1/oauth2/token'},...tokenFailure?[]:[{method:'GET',path:'/v2/checkout/orders/ORDER_owned'}]]);
-  if(expected)assert.deepEqual(result.ok,{providerRef:'ORDER_owned',status:'COMPLETED',amountCents:105,currency:'USD',environment:'sandbox'});
+  if(expected)assert.deepEqual(result.ok,{providerRef:'ORDER_owned',status:c.status??'COMPLETED',amountCents:105,currency:'USD',environment:'sandbox'});
  }
  assert(!output.includes('never-return'));assert(!output.includes('private@example.invalid'));
  console.log(`PASS ${cases.length} primary-schema/native PayPal merchant cases plus exact OAuth/order wire, zero-I/O invalid identities, redaction and denied/malformed resource checks`);

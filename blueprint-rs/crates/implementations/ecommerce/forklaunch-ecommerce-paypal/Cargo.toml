@@ -9,9 +9,10 @@ repository.workspace = true
 
 [features]
 default = []
-postgres = ["forklaunch-ecommerce-base/postgres"]
+postgres = ["forklaunch-ecommerce-base/postgres", "dep:uuid"]
 
 [dependencies]
+uuid = { version = "1", features = ["v4"], optional = true }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core", features = ["provider-http"] }
 forklaunch-ecommerce-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-ecommerce-interface" }
 forklaunch-ecommerce-base = { version = "0.1.0", path = "../forklaunch-ecommerce-base" }

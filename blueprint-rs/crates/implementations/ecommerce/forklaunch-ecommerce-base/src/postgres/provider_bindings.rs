@@ -1,5 +1,10 @@
 //! Durable administrative scope assertions; never provider ownership proof.
+mod paypal_cancellation;
 mod scoped_cancellation;
+pub use paypal_cancellation::{
+    CancelledPaypalOrderPaymentSnapshot, ScopedPaypalCancellationOutcome,
+    ScopedPaypalCancellationReceipt,
+};
 mod scoped_capture;
 use super::{PostgresEcommerceStore, storage_error};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};

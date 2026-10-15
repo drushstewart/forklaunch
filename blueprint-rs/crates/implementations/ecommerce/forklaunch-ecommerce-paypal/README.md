@@ -1,4 +1,4 @@
-# PayPal scoped order inspection
+# PayPal scoped order inspection and reconciliation
 
 `PaypalClient::for_environment(client_id, secret, environment)` pins PayPal's
 fixed Sandbox/Live HTTPS origin. Legacy `new`/`with_transport` remain unprofiled
@@ -31,3 +31,14 @@ Primary contracts: [authentication](https://developer.paypal.com/api/rest/authen
 [pinned Orders schema](https://developer.paypal.com/api/orders/v2/schema.json).
 Owned schema/wire and restricted PostgreSQL fixtures validate this boundary;
 no live PayPal deployment is claimed.
+
+With `postgres`, `reconcile_bound_voided_order_payment` offers explicit operator
+repair for a nonsucceeded payment whose local order is already cancelled. It
+requires the authenticated exact order/payee and explicitly present empty
+captures, authorizations and refunds arrays; omitted or nonempty histories stay
+manual. Payment, order version and full binding generation are checked under
+locks. Migration12 adds tenant-scoped, unique provider-scope receipts; payment
+failure, cancellation audit and receipt commit atomically. Retain the receipt ID
+before calling and inspect it after an ambiguous commit. References and order
+state are preserved; no provider financial request or cancellation timestamp is
+invented. This is operator bookkeeping from fresh evidence, not settlement proof.
