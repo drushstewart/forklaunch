@@ -7,6 +7,10 @@ on:
       - 'blueprint/**'
       - 'plan/RUST-TYPESCRIPT-PARITY-INVENTORY.md'
       - 'plan/rust-typescript-public-api.json'
+      - 'plan/rust-typescript-symbol-map.json'
+      - 'scripts/check_rust_symbol_map.mjs'
+      - 'framework-rs/crates/forklaunch-common/**'
+      - 'cli/tests/rust_common_naming.mjs'
       - 'scripts/*rust_api_inventory.mjs'
       - '.github/workflows/rust_api_inventory.yml'
   push:
@@ -16,6 +20,10 @@ on:
       - 'blueprint/**'
       - 'plan/RUST-TYPESCRIPT-PARITY-INVENTORY.md'
       - 'plan/rust-typescript-public-api.json'
+      - 'plan/rust-typescript-symbol-map.json'
+      - 'scripts/check_rust_symbol_map.mjs'
+      - 'framework-rs/crates/forklaunch-common/**'
+      - 'cli/tests/rust_common_naming.mjs'
       - 'scripts/*rust_api_inventory.mjs'
       - '.github/workflows/rust_api_inventory.yml'
   workflow_dispatch:
@@ -35,3 +43,4 @@ jobs:
       - run: node scripts/test_rust_api_inventory.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-api-inventory/node_modules/.bin/tsc
+      - run: node scripts/check_rust_symbol_map.mjs

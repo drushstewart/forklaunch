@@ -3327,3 +3327,15 @@ The completed numeric-bound worktree was removed only after exact commit,
 three source hashes, clean status and zero owned processes were verified.
 `/private/tmp/fl-number-bound-export-cleanup.json` retains the receipt for
 54,804 KiB logical data; branch, source commit and proofs remain available.
+
+
+### 2026-10-15 — Reviewed public symbol evidence map
+
+Added a machine-readable map for 16 common naming/hash/path declarations to
+native public functions and actual-source/native consumer fixtures, with explicit
+Unicode string and runtime-coercion boundaries. A CI pointer check rejects stale
+source declarations, missing native functions, duplicate entries, absent fixture
+outputs and paths outside the repository. All 16 references pass. This is an
+index into existing conformance evidence, not a new runtime proof; no broad
+package/symbol gate is closed. Unlisted declarations remain under audit.
+Checklist remains 660/682 (96.8%).

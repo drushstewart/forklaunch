@@ -32,10 +32,18 @@ still need semantic review. Private application source lists and binary paths ar
 capability leads, not public npm exports. Detailed Rust symbol/fixture mappings
 remain open under checklist item 849; this inventory does not close that item.
 
+The [reviewed symbol map](rust-typescript-symbol-map.json) now records 16 common
+string/naming/hash/path declarations with exact native symbols, actual-source
+fixtures and explicit input-domain boundaries. `node scripts/check_rust_symbol_map.mjs`
+checks declaration, public native function and fixture references in CI. This
+checks evidence pointers; it does not execute conformance tests or certify
+unlisted exports. The existing `rust_common_naming.mjs` fixture executes the
+linked TypeScript/Rust comparisons. Detailed mapping remains open.
+
 | Source package | Rust implementation | Remaining scope / evidence |
 | --- | --- | --- |
 | [`@forklaunch/bunrun`](../framework/bunrun/package.json) | CLI Cargo/watch and mixed orchestration | Native builds and mixed Node/Bun Compose orchestration pass live HTTP/MCP, source reload and shutdown fixtures; automatic contract/SDK refresh remains. |
-| [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Fifteen public naming/hash/slash exports now have direct Rust equivalents and 10,455 actual-source comparisons; operation naming uses the TypeScript separator, cleanup, prefix and fallback semantics. Path normalization, other utilities and JavaScript-only value/type boundaries remain under symbol audit. |
+| [`@forklaunch/common`](../framework/common/package.json) | forklaunch-common | Sixteen public naming/hash/path exports now have direct Rust equivalents and 10,455 actual-source comparisons; operation naming uses the TypeScript separator, cleanup, prefix and fallback semantics. Path normalization, other utilities and JavaScript-only value/type boundaries remain under symbol audit. |
 | [`@forklaunch/core`](../framework/core/package.json) | forklaunch-core, forklaunch-core-macros, forklaunch-http, forklaunch-auth, forklaunch-contract, forklaunch-mcp | HTTP/contracts/config/DI/cache/object store/telemetry/encryption, explicit compliance metadata derives and an optional MCP HTTP server exist; Bounded tenant-scoped retention hooks exist; generic SQL entity/compliance/retention adapters and full auth/streaming conformance remain. |
 | [`@forklaunch/e2e-tests`](../framework/e2e-tests/package.json) (generated/private) | Rust wire/runtime suites | Actual TypeScript framework service conformance remains beyond the plain Node wire fixtures. |
 | [`@forklaunch/express`](../framework/express/package.json) | forklaunch-axum | Equivalent HTTP behavior is the target; multipart/SSE and full validation/auth/error fixtures remain. |
@@ -12518,3 +12526,15 @@ The completed numeric-bound worktree was removed only after exact commit,
 three source hashes, clean status and zero owned processes were verified.
 `/private/tmp/fl-number-bound-export-cleanup.json` retains the receipt for
 54,804 KiB logical data; branch, source commit and proofs remain available.
+
+
+### 2026-10-15 — Reviewed public symbol evidence map
+
+Added a machine-readable map for 16 common naming/hash/path declarations to
+native public functions and actual-source/native consumer fixtures, with explicit
+Unicode string and runtime-coercion boundaries. A CI pointer check rejects stale
+source declarations, missing native functions, duplicate entries, absent fixture
+outputs and paths outside the repository. All 16 references pass. This is an
+index into existing conformance evidence, not a new runtime proof; no broad
+package/symbol gate is closed. Unlisted declarations remain under audit.
+Checklist remains 660/682 (96.8%).
