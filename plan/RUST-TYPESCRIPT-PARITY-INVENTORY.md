@@ -9302,3 +9302,38 @@ nested -0 serialization and separated Infinity coercion from finite-domain
 controls. Logs /private/tmp/fl-zod-object-policy-{tests,default-tests,parity,live,
 clippy,absence,record}.log. CI adds object-policy oracle. Broader schema gates
 remain open;660/682 unchanged.
+
+### 2026-10-14: immutable8403 packaged runtime and HTTP/MCP checkpoint
+
+Exact committed source 8403cae5b708b48ee86b865ab8046bbbb5534eae plus ignored CLI lock SHA256
+59f7db815712b329afa16484d18c79c127862170af830cb2cd3abc572a36afa7 was extracted without Git metadata; uncommitted
+asyncOTP/Checkout/URI drafts are excluded. Archive contains2711 regular
+files/4754002 bytes, SHA256 dfc9a7699bc441f6c098d7015f8a7b7660433ab373c93580aa4c6547a024ae94.
+Retained artifact: /Users/rohinbhargava/forklaunch-js-rust-port/cli/target/parity-artifacts/forklaunch-8403cae5b-dfc9a769.crate.
+All2711 extracted regular-file bytes match the retained archive before AND
+after runtime; retained checksum is unchanged. Three intentional public/test PEM
+fixtures match immutable416d bytes; two baseline absolute TS private/public PEM
+symlinks were preserved without following or reading their targets. No node_modules,
+target or generated output is packaged.
+
+Git-free package, locked/offline debug CLI install22.77s and repackaged dotfile list
+pass. Relocated app generates/checks services, four worker families and modules,
+provider/infra features, recursive/shared CLI/native contract/OpenAPI SDKs, strict
+TypeScript/WebSocket consumers and Rust consumers. Live generated accounts passes
+five HTTP/MCP listener configurations: startup, initialization/discovery/health,
+Origin denial, enabled/disabled/custom endpoints, shared/separate/explicit/ephemeral/
+fallback ports, atomic startup rejection and graceful shutdown. All five capability
+callbacks pass actual TS signatures, freshness/forgery/replay and redelivery checks.
+Packaged IAM147 PASS/3 deliberately ignored PG tests87.69s includes library
+auth HTTP/MCP tests; standalone restricted PG receipts remain separate. No newly
+rerun generated actual-client MFA29 claim. Generated Cargo.lock SHA256
+f344050c72a9f0b34f7c223630dbb4d33034a060994247aa042b9796f9f7d188.
+
+This checkpoint includes encryptedOTP/backup generation/plain-hashed policy,
+ordered record/absence/object policies, AsyncAPI correlations, scoped PayPal reads/
+VOIDED repair and direct Portal creation. Their specialized provider fixtures are
+separate source receipts; archive startup does not create live provider objects.
+Logs /private/tmp/fl-oct14-parity-{driver,package,install,repackaged-files,runtime}.log;
+metadata /private/tmp/fl-oct14-parity-checkpoint.json. Owned source/install/generated
+roots are queued for guarded cleanup after this receipt; archive/logs stay retained.
+Full parity remains660/682,22open.
