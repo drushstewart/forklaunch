@@ -118,6 +118,12 @@ for workspace in ['framework-rs','blueprint-rs']:
         for source in ['src/zod_string_format.rs', 'src/zod_string_format/jwt.rs', 'src/zod_string_format/emoji_table.rs', 'data/unicode-16.0.0/README.md']:
             assert root.joinpath('crates/forklaunch-common', source).is_file(), f'Packaged raw format source missing: {source}'
         import hashlib
+        for source in ['Cargo.toml', 'Cargo.lock', 'LICENSE-APACHE', 'LICENSE-MIT', 'FORKLAUNCH.md', 'src/lib.rs', 'src/unicode.rs', 'tests/forklaunch_budget.rs', 'gen-unicode/Cargo.toml.generator', 'gen-unicode/src/main.rs', 'unicode-16.0.0/LICENSE.txt', 'unicode-16.0.0/SHA256SUMS', 'provenance/bounded-engine.patch', 'provenance/unicode16.patch']:
+            assert root.joinpath('crates/vendor/regress', source).is_file(), f'Packaged bounded regex provenance/source missing: {source}'
+        archive = root.joinpath('crates/vendor/regress/provenance/regress-0.11.1.crate')
+        assert hashlib.sha256(archive.read_bytes()).hexdigest() == '158a764437582235e3501f683b93a0a6f8d825d04a789dbe5ed30b8799b8908a', 'Packaged regex upstream archive changed'
+        for source in ['forklaunch-common/src/zod_regex.rs', 'forklaunch-contract/src/schema_validation_regex.rs', 'forklaunch-contract/src/schema_validation_regex_tests.rs', 'forklaunch-validation/src/zod_json_regex.rs', 'forklaunch-sdk-typescript/src/zod-regex.ts']:
+            assert root.joinpath('crates', source).is_file(), f'Packaged checked regex consumer missing: {source}'
         for name, digest in [('emoji-data.txt', 'f1365a5173eee18e1f98b240cdc492e84a25f1ce7e0c9d1094eb29c41a22696a'), ('LICENSE.txt', 'e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96')]:
             data = root.joinpath('crates/forklaunch-common/data/unicode-16.0.0', name)
             assert hashlib.sha256(data.read_bytes()).hexdigest() == digest, f'Packaged Unicode provenance changed: {name}'
@@ -173,6 +179,12 @@ PYTHON
 cargo rustc -p accounts-websocket-sdk --lib -- -D warnings
 ln -s "$RUN_ROOT/websocket-consumer/node_modules" sdks/typescript-websocket/accounts/node_modules
 "${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript-websocket/accounts/tsconfig.json
+# Exercise optional feature forwarding using the installed, archived CLI.
+FORKLAUNCH_SDK_ZOD_REGEX=1 "$CLI" sdk generate --path . --service accounts --target all --from socket-contract
+FORKLAUNCH_SDK_ZOD_REGEX=1 "$CLI" sdk generate --path . --service accounts --target all --from socket-contract --check
+cargo rustc -p accounts-websocket-sdk --lib -- -D warnings
+"${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript-websocket/accounts/tsconfig.json
+cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-contract --features zod-regex --lib regex
 cp "$REPO_ROOT/cli/tests/fixtures/rust_asyncapi_socket.json" .forklaunch/asyncapi/accounts/asyncapi.json
 "$CLI" sdk generate --path . --service accounts --target all --from asyncapi
 "$CLI" sdk generate --path . --service accounts --target all --from asyncapi --check
