@@ -19,3 +19,61 @@ With `postgres-reconciliation`, `acknowledge_already_paused_effect` is an explic
 Authenticated GET evidence is not verification of the original webhook HMAC. Stripe exposes no pause-generation token: matching old-event/current paused state does not prove an uninterrupted pause or that the interrupted callback caused the local state. This API only acknowledges an already-satisfied effect. Event creation must precede the stored attempt and inspection time. [Stripe event retrieval](https://docs.stripe.com/api/events/retrieve) supports events created within the last 30 days; older/unavailable events, missing bindings, changed customers and contradictory state remain manual review. Paused status is distinct from merely pausing collection.
 
 The same immutable client context has a five-second verification window checked after provider and database awaits, including immediately before COMMIT. A late post-COMMIT check returns `RecordedEvidenceNoLongerCurrent`, explicitly recording that a receipt was committed. Actual COMMIT timing is not guaranteed; timeout/cancellation/COMMIT errors require the store's read-only receipt query. See the base persistence guide for additional explicit trusted-operator locking/audit permissions.
+
+
+## Verified direct creation
+
+The explicit PostgreSQL creation APIs retain public UUIDs separately from Stripe
+references. `create_bound_plan` verifies an approved Product and journals one Plan
+creation. `register_verified_stripe_customer` verifies Customer existence/account/
+mode and records a separately server-authorized local Customer/Party association.
+Neither email equality nor provider metadata proves the business association.
+Party authorization and lifecycle in another service remain application-owned.
+
+`create_bound_subscription` requires that Customer registration, a completed
+unchanged bound Plan creation, an explicit operation UUID and a trusted profile:
+
+```rust,ignore
+let profile = BoundSubscriptionCreationProfile::trusted(
+    scope,
+    vec![(local_plan_id, completed_plan_operation_id)],
+    SubscriptionCollectionPolicy::AutomaticDefaultIncomplete,
+)?;
+let publisher = store.trusted_subscription_publisher(publisher_pool).await?;
+let outcome = service.create_bound_subscription(
+    &profile,
+    &publisher,
+    operation_id,
+    BoundSubscriptionCreateRequest {
+        local_customer_id,
+        local_plan_id,
+        quantity: 1,
+        description: None,
+    },
+).await?;
+```
+
+Apply the billing migrations through11 using the migration owner. Provision
+separate non-owner/non-BYPASSRLS runtime and publisher credentials; runtime must
+not inherit publisher or migration owner. Explicitly grant the publisher the
+publication-function permission and required base-store access. The constructor
+checks role separation and matching configured/observed database identity; it
+never falls back to runtime credentials. Publisher credentials are trusted server
+authority and must stay outside request data. The SQL function and native caller
+share one transaction, including post-await freshness checks before COMMIT.
+
+The finite collection policy selects `charge_automatically` and
+`default_incomplete`, with one verified licensed/per-unit Plan. Fresh exact
+Customer/Plan and Subscription evidence must match. `active` means observed
+subscription service state; it does not establish a paid invoice or charged total.
+The profile rejects unsupported trial, discount, tax, delegation and ambiguous
+item/evidence states. It adds no default HTTP route or managed creation support.
+
+Confirmed reservation holds durable claims on Customer/Plan bodies and binding
+generations before the single provider POST. Successful publication writes UUID,
+ownership binding, audit and encrypted receipt before releasing those claims.
+`Unresolved` retains the operation for explicit inspection and never retries the
+provider write. `RecordedEvidenceNoLongerCurrent` means a receipt was committed
+before evidence expired. `inspect_bound_subscription_creation` returns historical
+pending/completed state without dispatch authority or a current-payment claim.
+General recovery and ownership-aware mutations remain separate work.
