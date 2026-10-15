@@ -84,6 +84,7 @@ on:
       - 'cli/tests/rust_zod_datetime_checks.mjs'
       - 'cli/tests/rust_zod_ip_checks.mjs'
       - 'cli/tests/rust_zod_jwt_checks.mjs'
+      - 'cli/tests/rust_zod_regex_kernel_parity.mjs'
       - 'cli/tests/rust_zod_emoji_checks.mjs'
       - 'scripts/rust_zod_emoji_table.py'
       - 'cli/tests/rust_zod_format_checks.mjs'
@@ -511,6 +512,7 @@ on:
       - 'cli/tests/rust_zod_datetime_checks.mjs'
       - 'cli/tests/rust_zod_ip_checks.mjs'
       - 'cli/tests/rust_zod_jwt_checks.mjs'
+      - 'cli/tests/rust_zod_regex_kernel_parity.mjs'
       - 'cli/tests/rust_zod_emoji_checks.mjs'
       - 'scripts/rust_zod_emoji_table.py'
       - 'cli/tests/rust_zod_format_checks.mjs'
@@ -1117,6 +1119,13 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
           FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: cargo test --locked --manifest-path framework-rs/Cargo.toml -p forklaunch-common --all-features
+      - run: cargo test --locked --manifest-path framework-rs/crates/vendor/regress/Cargo.toml --features utf16
+      - run: cargo test --locked --manifest-path framework-rs/crates/vendor/regress/Cargo.toml --no-default-features --features std,utf16 --lib --test forklaunch_budget
+      - run: node cli/tests/rust_zod_regex_kernel_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_zod_emoji_checks.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

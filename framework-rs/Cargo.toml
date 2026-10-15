@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-exclude = ["crates/vendor/jsonschema", "crates/vendor/referencing", "crates/vendor/serde_json"]
+exclude = ["crates/vendor/jsonschema", "crates/vendor/referencing", "crates/vendor/serde_json", "crates/vendor/regress"]
 members = [
     "crates/forklaunch-common",
     "crates/forklaunch-contract",

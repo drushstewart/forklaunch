@@ -2731,3 +2731,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Explicit bound Portal local expiration passes immutable migration16 history, restricted PostgreSQL races/uncertain commit, HTTP/MCP/ten SDK calls,14 units,166 artifacts and strict full/minimal Clippy. No remote URL revocation claim; broader billing stays open,660/682 unchanged.
 
 - 2026-10-15: Immutable69cee runtime passes portable services/four workers, HTTP/MCP startup/shutdown, five capability callbacks, IAM220/3ignored and both SDK regeneration/strict consumers. All2,889 source files verified; Unicode packaging omission separately fixed/validated in f2b306269. Owned workspaces cleaned;660/682 unchanged.
+
+- 2026-10-15: Default-off bounded regex kernel passes178,182 semantic/1,717 constructor comparisons,540 upstream tests, bounded resource tests, strict common checks and74-entry licensed source package. Checked schema/HTTP/MCP/WS integration remains open;660/682 unchanged.

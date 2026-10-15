@@ -4,6 +4,10 @@
 #[cfg(feature = "zod-checks")]
 pub mod zod_multiple_of;
 
+/// Bounded, checked ECMAScript regex operations.
+#[cfg(feature = "zod-regex")]
+pub mod zod_regex;
+
 use std::{error::Error, fmt};
 
 mod naming;

@@ -1591,6 +1591,7 @@ dependencies = [
 name = "forklaunch-common"
 version = "0.1.0"
 dependencies = [
+ "forklaunch-regress",
  "ryu-js",
 ]
 
@@ -1774,6 +1775,14 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "serde_json",
+]
+
+[[package]]
+name = "forklaunch-regress"
+version = "0.11.1"
+dependencies = [
+ "hashbrown 0.16.1",
+ "memchr",
 ]
 
 [[package]]

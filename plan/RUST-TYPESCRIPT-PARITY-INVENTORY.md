@@ -11193,3 +11193,36 @@ all-offline/locked claim. Exact owned workspaces were cleaned after active-proce
 open-file and archive-integrity checks:215,137,127 logical file bytes removed,
 without a physical APFS space claim. No public registry or cloud deployment ran.
 No broad gate closes; checklist remains660/682(96.8%).
+
+
+### 2026-10-15 — Bounded ECMAScript regex foundation
+
+Default-off common feature `zod-regex` now exposes only checked compile/match
+operations over a reviewed fork of regress0.11.1, pinned to Node24.2/Unicode16.
+Pattern/input UTF16 APIs preserve lone surrogates; Rust str retains its narrower
+representation domain. Invalid flags/syntax, resource exhaustion and ordinary
+no-match remain distinct. Bounded pre-admission scanning, actual requested-storage
+and logical-work accounting, recursive depth guards and shared lookaround work
+limits prevent budget exhaustion from becoming false. These counters are not RSS,
+wall-clock or process-OOM guarantees; valid patterns may exceed a selected quota.
+
+Production vendor upstream540 tests/1 ignored, intended std+utf16-only34 library
+and10 adversarial tests, common14 tests, strict all-feature/all-target Clippy and
+feature-off check pass. Permanent reference fixture passes178,182 semantic and
+1,717 constructor comparisons using actual ForkLaunch/Node and native behavior.
+Measured16MiB compile requested-storage/10million work admits the semantic corpus.
+Original MIT/Apache licenses, Unicode license/inputs/generator, original archive,
+patches and hashes are retained. Offline vendor packaging passes74 entries and
+required-member checks after correcting Cargo's omission of a nested generator
+package by retaining its manifest as `Cargo.toml.generator` with instructions.
+CLI templates include all provenance through explicit source links.
+
+Frozen90-path receipt `/private/tmp/fl-regex-foundation-source.json`, validation
+commands `/private/tmp/fl-regex-foundation-receipt.md`; logs
+`/private/tmp/fl-regex-{vendor-production-tests,vendor-bounded-tests,common-production-clippy,kernel-production-parity,vendor-package}.log`.
+CI runs both vendor feature profiles, common tests and the pinned reference fixture.
+Release metadata discovery passes50 packages in dependency order; optional-feature
+sparse-registry installation is still pending. No schema keyword or HTTP/MCP/WS
+consumer is enabled here: checked aggregate budgets and operational-error propagation
+remain active integration work. This foundation does not close the broad validator
+gate; checklist stays660/682(96.8%).
