@@ -25417,7 +25417,7 @@
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 950
+              "line": 970
             }
           ]
         },

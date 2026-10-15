@@ -10280,3 +10280,20 @@ tuple1620,SDK20,Record1744+16rawAJV exceptions,Never224 and strictTS7.0.2
 12roots/620exports pass. No public export/dependency/Cargo changes. CI includes
 oracle. Logs /private/tmp/fl-native-enum-{parity,types}.log and named regression
 logs. This finite correction does not close the broad schema gate;660/682(96.8%).
+
+
+### Repeated finite string bounds (2026-10-14)
+
+For strings without trim/case transforms, safe nonnegative integer min/max/length
+registrations now export the conjunction's strongest lower/upper bound rather
+than its last declaration. Contradictions stay rejecting; explicit annotation
+merge remains unchanged. Unsupported registrations/ordered transforms retain
+baseline behavior.196800 BMP/JSON actualZod/AJV comparisons across12300exports
+and10controls pass. Six nonBMP UTF16-versus-code-point discrepancies remain
+explicitly asserted; this does not close string-length semantic equivalence.
+Pure577+132,NativeEnum16080+41,numeric/array153972,union10674,Record1744+16,
+tuple1620,SDK20,URI203261TS-only and strictTS7.0.2 12roots/620exports pass.
+Frozen2 /private/tmp/fl-string-bounds-source.json verified; logs
+/private/tmp/fl-string-bounds-{parity,types}.log plus named regression logs.
+Root regenerated inventory source locations and passed inventory checks; no
+new exports or dependencies. CI includes oracle.660/682(96.8%),22open unchanged.

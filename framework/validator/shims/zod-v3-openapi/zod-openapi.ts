@@ -188,6 +188,26 @@ function parseString({
         break;
     }
   });
+  // Zod applies every declared length rule. Collapse only the non-transforming
+  // finite registration profile; UTF-16 versus JSON Schema code-point counting
+  // remains a separate wire-schema limitation, even for a single constraint.
+  const bounds = checks.filter(item =>
+    item.kind === 'min' || item.kind === 'max' || item.kind === 'length'
+  );
+  if (!checks.some(item =>
+    item.kind === 'trim' || item.kind === 'toLowerCase' || item.kind === 'toUpperCase'
+  ) && bounds.every(item => Number.isSafeInteger(item.value) && item.value >= 0)) {
+    delete baseSchema.minLength;
+    delete baseSchema.maxLength;
+    for (const item of bounds) {
+      if (item.kind === 'min' || item.kind === 'length') {
+        baseSchema.minLength = Math.max(baseSchema.minLength ?? 0, item.value);
+      }
+      if (item.kind === 'max' || item.kind === 'length') {
+        baseSchema.maxLength = Math.min(baseSchema.maxLength ?? item.value, item.value);
+      }
+    }
+  }
   return merge(
     baseSchema,
     zodRef.description ? { description: zodRef.description } : {},
