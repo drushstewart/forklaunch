@@ -28,6 +28,7 @@ const source = z
     unknownPayload: validator.unknown,
     typedPayload: validator.type(),
     text: z.string().length(2),
+    keyed: z.record(z.string().min(2).max(3), z.string()),
     cardinality: z.array(z.string()).min(1.5).max(2.5).length(NaN),
     number: z.number().multipleOf(0.1),
     email: z.string().email().email(),
@@ -63,6 +64,7 @@ const cases = [
   { text: "😀", number: 0.1 + 0.2 },
 ];
 const validFormats = {
+  keyed: {"😀": "value", "ab": "value"},
   cardinality:["a","b"],
   email: "a'b@b-.co",
   uuid: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
@@ -85,6 +87,9 @@ const validFormats = {
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
+  {keyed: {a:"value"}},
+  {keyed: {"😀😀":"value"}},
+  {keyed: {}},
   {cardinality:[]},
   {cardinality:["a","b","c"]},
   {cardinality:[{},"b"]},

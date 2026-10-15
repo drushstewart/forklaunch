@@ -466,6 +466,58 @@ function recordStringKeys(schema: ZodTypeAny): string[] | undefined {
   return keys === undefined ? undefined : [...new Set(keys)];
 }
 
+// Property names are always strings. Restrict the generated schema to that
+// domain before handing it to coercing engines (AJV cannot safely coerce its
+// immutable property-name loop variable). Annotation data is not traversed.
+function recordInputKeySchema(schema: SchemaObject): SchemaObject {
+  let remaining = 10000;
+  const visit = (input: unknown, depth: number): unknown => {
+    if (depth > 64 || --remaining < 0)
+      throw new Error('Pure record key projection budget exceeded');
+    if (typeof input !== 'object' || input === null) return input;
+    const node = input as Record<string, unknown>;
+    if ('$ref' in node || '$dynamicRef' in node || '$recursiveRef' in node)
+      throw new Error(
+        'Pure record key references require resolved string-domain schemas'
+      );
+    const output = { ...node };
+    if (node.type !== undefined) {
+      const types = Array.isArray(node.type) ? node.type : [node.type];
+      if (
+        !types.length ||
+        types.some((type) =>
+          !['null', 'boolean', 'object', 'array', 'number', 'string', 'integer'].includes(type as string)
+        ) ||
+        new Set(types).size !== types.length
+      )
+        throw new Error('Invalid pure record key schema type annotation');
+      if (!types.includes('string')) return { not: {} };
+      output.type = 'string';
+    }
+    if (Array.isArray(node.enum)) {
+      if (!node.enum.length)
+        throw new Error('Invalid empty record key enum annotation');
+      const values = node.enum.filter((value) => typeof value === 'string');
+      if (!values.length) return { not: {} };
+      output.enum = values;
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(node, 'const') &&
+      typeof node.const !== 'string'
+    ) return { not: {} };
+    for (const keyword of ['allOf', 'anyOf', 'oneOf']) {
+      if (Array.isArray(node[keyword]))
+        output[keyword] = node[keyword].map((child) => visit(child, depth + 1));
+    }
+    for (const keyword of ['not', 'if', 'then', 'else']) {
+      if (Object.prototype.hasOwnProperty.call(node, keyword))
+        output[keyword] = visit(node[keyword], depth + 1);
+    }
+    return output;
+  };
+  return visit(schema, 0) as SchemaObject;
+}
+
 function parseRecord({
   generateSchema,
   pureInput,
@@ -474,16 +526,20 @@ function parseRecord({
   useOutput,
   openApiVersion
 }: ParsingArgs<z.ZodRecord>): SchemaObject {
-  // Key schemas are otherwise inspected only by the finite key-set classifier.
-  // Pure mode must also reject callback-dependent key branches.
-  if (pureInput) generateSchema(zodRef._def.keyType, useOutput, openApiVersion);
+  // Pure input is an explicit 2020-12 profile: retain the admitted key
+  // schema, including constraints that a finite key-set cannot represent.
+  const keySchema = pureInput
+    ? generateSchema(zodRef._def.keyType, useOutput, openApiVersion)
+    : undefined;
   const valueSchema =
     zodRef._def.valueType instanceof z.ZodUnknown
       ? {}
       : generateSchema(zodRef._def.valueType, useOutput, openApiVersion);
   const keys = recordStringKeys(zodRef._def.keyType);
   const constraints: SchemaObject = {};
-  if (keys !== undefined) {
+  if (keySchema !== undefined) {
+    constraints.propertyNames = recordInputKeySchema(keySchema);
+  } else if (keys !== undefined) {
     if (openApiVersion === '3.1') {
       constraints.propertyNames = keys.length ? { enum: keys } : { not: {} };
     } else {
