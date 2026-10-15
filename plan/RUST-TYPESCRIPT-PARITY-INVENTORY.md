@@ -12347,3 +12347,25 @@ The previously integrated record worktree was removed after exact625c58808 HEAD,
 clean status, all3 source hashes and zero owned processes were verified. Receipt
 `/private/tmp/fl-record-pure-cleanup.json` records54,696 KiB logical; branch and
 proof retained. Checklist660/682 remains unchanged.
+
+
+### 2026-10-15 — Awaited membership quota callbacks
+
+Trusted add-member and invitation acceptance now await configured membership
+quota callbacks outside writer transactions. Captured count and public user/org
+context, full IEEE numeric comparison, current pending-invitation CAS and actual
+team/session race behavior are preserved. Scalar defaults stay unchanged; full
+organization hydration uses the upstream callback-present fallback100. Native
+atomic graph rollback remains an explicit boundary from upstream fault behavior.
+
+Actual81 comparisons, native organization15 (1 ignored), focused restricted PG1
+(19.73s), and strict full/minimal all-target Clippy (12.94s/12.41s) pass. All five
+owned cleanup counts are0. Exact18 source hashes match
+`/private/tmp/fl-membership-callback-freeze.json`, SHA256
+`9bc24b0b7606dc9f791c52adee3246fe7d884db1e3653a4ae9b5ae77e4ea5bff`.
+Logs use `/private/tmp/fl-membership-callback-`. Initial shared route-key compile
+failure was fixed before final tests; later strict fixes changed imports/helper
+module layout only. Final proof includes coherent billing auth/router drafts,
+excludes later CORS/raw-path integration. CI adds the actual oracle and existing
+focused PG includes new cases. No dependencies changed. Broader auth gates remain
+open; checklist660/682 unchanged.

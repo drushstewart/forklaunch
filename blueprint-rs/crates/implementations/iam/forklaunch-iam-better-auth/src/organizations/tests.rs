@@ -8,6 +8,7 @@ pub(crate) mod invitation_policy;
 mod invitations;
 mod listing;
 mod members;
+mod membership_policy;
 mod permissions;
 pub(crate) mod policy;
 mod roles;

@@ -57,7 +57,7 @@ pub(super) fn failure() -> BlueprintError {
         "Unable to prepare invitation delivery",
     )
 }
-fn projection(value: &Value, fields: &[&str]) -> BlueprintResult<Value> {
+pub(super) fn projection(value: &Value, fields: &[&str]) -> BlueprintResult<Value> {
     // Validate borrowed selected values before cloning: no recursive clone of malformed input.
     for field in fields {
         if let Some(v) = value.get(*field)

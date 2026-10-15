@@ -75,6 +75,7 @@ pub struct AuthHttp<S> {
     organization_policy: crate::organizations::OrganizationPolicy,
     allow_creation: Option<Arc<dyn crate::organizations::OrganizationCreationPolicy>>,
     creation_limit: Option<Arc<dyn crate::organizations::OrganizationCreationPolicy>>,
+    membership_limit: Option<Arc<dyn crate::organizations::MembershipLimitPolicy>>,
     invitation_policy: crate::organizations::InvitationPolicy,
     team_policy: crate::organizations::TeamPolicy,
     organization_controls: crate::organizations::OrganizationControls,
@@ -204,7 +205,16 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self
     }
 
-    /// Replaces scalar organization options and clears creation callbacks.
+    /// Replaces scalar membership quota with an awaited numeric policy.
+    #[must_use]
+    pub fn with_membership_limit_policy(
+        mut self,
+        hook: Arc<dyn crate::organizations::MembershipLimitPolicy>,
+    ) -> Self {
+        self.membership_limit = Some(hook);
+        self
+    }
+    /// Replaces scalar organization options and clears creation/membership callbacks.
     /// HTTP bodies cannot override this policy; server-only member addition uses
     /// the equivalent `OrganizationService` builder.
     #[must_use]
@@ -215,6 +225,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self.organization_policy = policy;
         self.allow_creation = None;
         self.creation_limit = None;
+        self.membership_limit = None;
         self
     }
 
@@ -277,6 +288,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             organization_policy: crate::organizations::OrganizationPolicy::default(),
             allow_creation: None,
             creation_limit: None,
+            membership_limit: None,
             invitation_policy: crate::organizations::InvitationPolicy::default(),
             team_policy: crate::organizations::TeamPolicy::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),

@@ -70,7 +70,7 @@ impl<S: AuthStore> OrganizationService<S> {
         let organization = organization.ok_or_else(missing)?;
         let id = text(&organization, "id")?.to_owned();
         let body = if let Graph::Full(limit) = graph {
-            full_graph(&mut tx, organization, limit, self.policy.member_limit()).await?
+            full_graph(&mut tx, organization, limit, self.hydration_member_limit()).await?
         } else {
             organization
         };

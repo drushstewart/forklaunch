@@ -36,6 +36,8 @@ pub use team_policy::TeamPolicy;
 mod invitations;
 pub use invitation_policy::InvitationPolicy;
 mod members;
+mod membership_policy;
+pub use membership_policy::{MembershipLimitContext, MembershipLimitFuture, MembershipLimitPolicy};
 mod mutation;
 mod permission;
 mod policy;
@@ -51,6 +53,7 @@ pub struct OrganizationService<S> {
     policy: OrganizationPolicy,
     allow_creation: Option<Arc<dyn OrganizationCreationPolicy>>,
     creation_limit: Option<Arc<dyn OrganizationCreationPolicy>>,
+    membership_limit: Option<Arc<dyn MembershipLimitPolicy>>,
     invitation_policy: InvitationPolicy,
     team_policy: TeamPolicy,
     controls: OrganizationControls,
@@ -162,12 +165,19 @@ impl<S: AuthStore> OrganizationService<S> {
         self
     }
 
-    /// Replaces scalar creation/membership policy and clears creation callbacks.
+    /// Replaces scalar membership quota with an awaited numeric policy.
+    #[must_use]
+    pub fn with_membership_limit_policy(mut self, hook: Arc<dyn MembershipLimitPolicy>) -> Self {
+        self.membership_limit = Some(hook);
+        self
+    }
+    /// Replaces scalar creation/membership policy and clears creation/membership callbacks.
     #[must_use]
     pub fn with_organization_policy(mut self, policy: OrganizationPolicy) -> Self {
         self.policy = policy;
         self.allow_creation = None;
         self.creation_limit = None;
+        self.membership_limit = None;
         self
     }
 
@@ -184,6 +194,7 @@ impl<S: AuthStore> OrganizationService<S> {
             policy: OrganizationPolicy::default(),
             allow_creation: None,
             creation_limit: None,
+            membership_limit: None,
             invitation_policy: InvitationPolicy::default(),
             team_policy: TeamPolicy::default(),
             controls: OrganizationControls::default(),

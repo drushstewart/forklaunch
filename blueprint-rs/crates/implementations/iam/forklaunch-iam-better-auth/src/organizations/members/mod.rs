@@ -6,7 +6,7 @@ use super::{
 };
 #[cfg(feature = "postgres")]
 pub(crate) use list::query_number;
-mod add;
+pub(super) mod add;
 mod leave;
 mod list;
 mod read;

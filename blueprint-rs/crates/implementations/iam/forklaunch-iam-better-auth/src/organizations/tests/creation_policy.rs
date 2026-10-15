@@ -353,7 +353,7 @@ async fn http<S: AuthStore + 'static>(store: Arc<S>) {
 }
 
 #[path = "creation_policy_store.rs"]
-mod fault_store;
+pub(super) mod fault_store;
 #[allow(clippy::too_many_lines)]
 async fn cancellation_and_failures<S: AuthStore + 'static>(store: Arc<S>) {
     for stage in ["allow", "limit"] {

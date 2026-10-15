@@ -2126,7 +2126,7 @@ Remaining organization option families after these scalar/declarative profiles:
 
 | Family | Implemented scope | Remaining scope |
 | --- | --- | --- |
-| Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle, awaited creation allow/quota callbacks | Membership/dynamic-role quota callbacks |
+| Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle, awaited creation allow/quota and membership callbacks | Dynamic-role quota callbacks |
 | Teams | Default creation toggle, team/seat limits, last-team policy | Plugin route disabling, custom default-team creation, async limits |
 | Invitations | TTL, quota, verification, cancellation, trusted delivery/scheduler | Async quota callback and lifecycle hooks |
 | Access control | Declarative catalog/static roles, persisted dynamic grants and trusted synchronous authorizers | Plugin-disable topology and arbitrary JS receiver/return behavior |
@@ -2213,3 +2213,55 @@ partial persistence. Callback side effects are application-owned and are not
 rolled back if later admission or persistence fails. Dropping a pending request
 drops the owned future before graph creation; it cannot undo callback work already
 performed.
+
+### Awaited membership quota
+
+`with_membership_limit_policy` on `OrganizationService` or `AuthHttp` installs a
+trusted `MembershipLimitPolicy` for server-only `add_member` and invitation
+acceptance. There is no new public add-member route. Installing the scalar
+`with_organization_policy` afterward clears this callback; installing the callback
+afterward replaces only the membership scalar. Existing defaults stay unchanged.
+
+The opaque owned context exposes the target user's configured public fields and
+organization for direct addition, or the admitted recipient and organization for
+acceptance. Borrowed selected values are validated before cloning, with 4096 UTF-8
+bytes per string. It exposes no raw request, session credential, arbitrary extra
+fields, Debug or Serde. Both fallible preparation and the owned future are awaited
+outside database transactions. Errors are sanitized typed failures (empty 500 at
+HTTP); JavaScript direct-API thrown-value identity, receiver mutation, nonnumeric
+returns, blocking work and Rust panic equivalence are not claimed.
+
+The result is `f64`, preserving the declared JavaScript numeric domain rather than
+restricting callbacks to scalar integers. Admission compares the previously read
+member count with the result using `>=`: zero, negative zero and negative numbers
+deny even an empty organization; fractions are honored; NaN and positive infinity
+allow; negative infinity denies. Finite values above `u32::MAX` are accepted.
+The existing bounded member scan remains the source of the count. Neither count
+nor user/organization authorization is rerun after the callback. Concurrent member
+additions, deletion of the captured user/organization, or session revocation do
+not invent a new rejection after this admitted callback. Applications own external
+quota synchronization. The full-organization reader does not invoke the callback:
+its user-hydration limit falls back to 100, matching the upstream function-valued
+option behavior.
+
+Invitation acceptance checks the current invitation is still pending after the
+callback and consumes that current row. It does not repeat the earlier expiry,
+recipient-email or verification checks: a concurrently changed pending role or
+organization is used, while cancellation/deletion returns `INVITATION_NOT_FOUND`.
+Team enrollment reads the current team. With exactly one team, a missing captured
+session token causes empty 500 and rolls back enrollment; without a single-team
+cookie, missing sessions are skipped. Existing sessions are selected by the
+original token, including reassigned token rows, without resurrecting deleted rows.
+For direct addition, the team is admitted before the callback; a subsequently
+removed team can retain an unbounded membership pair, while a bounded new seat is
+denied. This models the pinned adapter, rather than adding new post-await scope
+checks. Existing-pair behavior is preserved.
+
+Native graph writes remain atomic, including member/team/session changes and
+invitation status. This differs from upstream partial failures where its separate
+invitation update or cleanup write itself fails; no universal multi-write fault
+parity is claimed. Lost commit acknowledgments may leave the complete graph
+persisted. Callback effects are application-owned and cannot be rolled back.
+Dropping a pending callback stops native publication, with no detached tasks.
+HTTP member timestamps sample the trusted clock after callback work; direct
+services retain explicit supplied time.

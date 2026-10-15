@@ -18,6 +18,11 @@ impl<S: AuthStore> OrganizationService<S> {
         id: &str,
         now: DateTime<Utc>,
     ) -> BlueprintResult<OrganizationSelection> {
+        if let Some(hook) = &self.membership_limit {
+            return self
+                .accept_with_policy(token, transient, id, now, hook.as_ref())
+                .await;
+        }
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
         let view = self

@@ -12,7 +12,7 @@ pub enum MemberRoles {
     Roles(Vec<String>),
 }
 impl MemberRoles {
-    fn joined(&self) -> String {
+    pub(in crate::organizations) fn joined(&self) -> String {
         match self {
             Self::Role(role) => role.clone(),
             Self::Roles(roles) => roles.join(","),
@@ -41,6 +41,11 @@ impl<S: AuthStore> OrganizationService<S> {
         input: AddMemberInput,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        if let Some(hook) = &self.membership_limit {
+            return self
+                .add_member_with_policy(token, transient, input, now, hook.as_ref())
+                .await;
+        }
         let session = if input.user_id.is_empty() {
             None
         } else if let Some(token) = token {
@@ -111,7 +116,7 @@ impl<S: AuthStore> OrganizationService<S> {
         Ok(member)
     }
 }
-async fn duplicate<T: AuthTransaction>(
+pub(in crate::organizations) async fn duplicate<T: AuthTransaction>(
     tx: &mut T,
     user: &Value,
     id: &str,
