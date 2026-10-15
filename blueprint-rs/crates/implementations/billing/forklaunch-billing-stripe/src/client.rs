@@ -448,3 +448,6 @@ mod plan_creation;
 
 #[cfg(feature = "postgres-identity")]
 mod customer_registration;
+
+#[cfg(feature = "postgres-identity")]
+mod subscription_creation;

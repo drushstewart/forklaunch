@@ -1,4 +1,4 @@
-//! Reservation-only foundation. No provider dispatch or claim release exists.
+//! Immutable dependency reservations and explicitly trusted publication.
 use super::super::{db_error, invalid, storage_error};
 use super::{PostgresBillingStore, StripeBindingScope, conflict};
 use crate::services::{BillingKind, Scope};
@@ -7,6 +7,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
+mod publication;
+pub use publication::{SubscriptionCreationStatus, TrustedSubscriptionPublisher};
 
 /// Opaque local evidence, not authenticated provider evidence. The external Party
 /// association remains an administrative assertion, not a cross-service FK.
@@ -34,15 +36,32 @@ impl SubscriptionDependencySnapshot {
             .unwrap_or_default()
     }
     #[must_use]
+    pub fn party_id(&self) -> &str {
+        self.data["customerBinding"]["party_id"]
+            .as_str()
+            .unwrap_or_default()
+    }
+    #[must_use]
+    pub fn party_type(&self) -> &str {
+        self.data["customerBinding"]["party_type"]
+            .as_str()
+            .unwrap_or_default()
+    }
+    #[must_use]
     pub fn plan_receipt(&self) -> &Value {
         &self.data["planReceipt"]
     }
 }
-/// Confirmed local reservation, deliberately without dispatch/publication API.
+/// Confirmed local reservation for the explicitly trusted provider adapter.
 /// No Clone/Debug/Serde. Inspection never reconstructs this capability.
 pub struct SubscriptionCreationReservation {
     operation_id: Uuid,
     public_id: Uuid,
+    reservation_id: Uuid,
+    payload_hash: String,
+    idempotency_key: String,
+    canonical: String,
+    snapshot: Box<SubscriptionDependencySnapshot>,
 }
 impl SubscriptionCreationReservation {
     #[must_use]
@@ -53,6 +72,10 @@ impl SubscriptionCreationReservation {
     pub const fn public_id(&self) -> Uuid {
         self.public_id
     }
+    #[must_use]
+    pub fn idempotency_key(&self) -> &str {
+        &self.idempotency_key
+    }
 }
 /// Historical unresolved intent. No expiry or implicit retry/release.
 pub struct SubscriptionCreationPending {
@@ -62,9 +85,10 @@ pub struct SubscriptionCreationPending {
 pub enum SubscriptionCreationClaim {
     Reserved(SubscriptionCreationReservation),
     Existing(SubscriptionCreationPending),
+    Completed { operation_id: Uuid, record: Value },
 }
 type RecordRow = (String, sqlx::types::Json<Value>);
-type IntentRow = (String, String, String, String);
+type IntentRow = (String, String, String, String, String, Option<String>);
 
 // This journal carries two encrypted record snapshots plus sealed provenance,
 // hence a 256 KiB envelope budget rather than the simpler 64 KiB Plan profile.
@@ -270,11 +294,11 @@ impl PostgresBillingStore {
         tx: &mut Transaction<'_, Postgres>,
         operation: Uuid,
     ) -> BlueprintResult<Option<IntentRow>> {
-        sqlx::query_as("SELECT public_id::text,actor_id,payload_hash,intent_ciphertext FROM fl_billing.subscription_creation_intents WHERE tenant_id=$1 AND operation_id=$2::uuid")
+        sqlx::query_as("SELECT public_id::text,actor_id,payload_hash,intent_ciphertext,state,receipt_ciphertext FROM fl_billing.subscription_creation_intents WHERE tenant_id=$1 AND operation_id=$2::uuid")
             .bind(self.tenant.id()).bind(operation.to_string()).fetch_optional(&mut **tx).await.map_err(db_error)
     }
     /// Trusted-adapter reservation only: caller freshness checks are not provider
-    /// proof themselves. Stage A has no provider dispatcher or release operation.
+    /// proof themselves. Only a separate trusted publisher can complete/release.
     /// An uncertain COMMIT may have retained all claims; inspect, never retry.
     /// # Errors
     /// Denies changed snapshots/payloads/actors, audit failure or expired context.
@@ -305,6 +329,9 @@ impl PostgresBillingStore {
             return Err(invalid());
         }
         let public = Uuid::new_v4();
+        let reservation_id = Uuid::new_v4();
+        let idempotency_key = format!("fl-subscription-{}", Uuid::new_v4());
+        let payload_hash = hash(&public.to_string(), &canonical);
         let encrypted=self.encryptor.seal(&json!({"kind":"subscription_creation","operationId":operation.to_string(),"publicId":public.to_string(),"canonical":canonical}).to_string(),self.tenant.id(),"[Billing subscription reservation]").map_err(|_|storage_error())?;
         let mut tx = self.transaction().await?;
         self.subscription_runtime_role(&mut tx).await?;
@@ -320,7 +347,7 @@ impl PostgresBillingStore {
             return Err(error);
         }
         let inserted=sqlx::query("INSERT INTO fl_billing.subscription_creation_intents(tenant_id,operation_id,public_id,reservation_id,actor_id,deployment_label,account_id,livemode,api_version,payload_hash,idempotency_key,intent_ciphertext) VALUES($1,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(tenant_id,operation_id) DO NOTHING")
-            .bind(self.tenant.id()).bind(operation.to_string()).bind(public.to_string()).bind(Uuid::new_v4().to_string()).bind(&snapshot.actor).bind(&snapshot.scope.deployment_label).bind(&snapshot.scope.account_id).bind(snapshot.scope.livemode).bind(&snapshot.api_version).bind(hash(&public.to_string(),&canonical)).bind(format!("fl-subscription-{}",Uuid::new_v4())).bind(encrypted).execute(&mut *tx).await.map_err(db_error)?.rows_affected();
+            .bind(self.tenant.id()).bind(operation.to_string()).bind(public.to_string()).bind(reservation_id.to_string()).bind(&snapshot.actor).bind(&snapshot.scope.deployment_label).bind(&snapshot.scope.account_id).bind(snapshot.scope.livemode).bind(&snapshot.api_version).bind(&payload_hash).bind(&idempotency_key).bind(encrypted).execute(&mut *tx).await.map_err(db_error)?.rows_affected();
         let result = if inserted == 1 {
             for (kind, id) in [
                 ("customer_record", snapshot.customer.to_string()),
@@ -347,6 +374,11 @@ impl PostgresBillingStore {
             SubscriptionCreationClaim::Reserved(SubscriptionCreationReservation {
                 operation_id: operation,
                 public_id: public,
+                reservation_id,
+                payload_hash,
+                idempotency_key,
+                canonical,
+                snapshot: Box::new(snapshot),
             })
         } else {
             let row = self
@@ -359,10 +391,19 @@ impl PostgresBillingStore {
             }
             self.audit_subscription_creation(&mut tx, operation, "inspect")
                 .await?;
-            SubscriptionCreationClaim::Existing(SubscriptionCreationPending {
-                operation_id: operation,
-                public_id: Uuid::parse_str(&row.0).map_err(|_| storage_error())?,
-            })
+            if row.4 == "completed" {
+                SubscriptionCreationClaim::Completed {
+                    operation_id: operation,
+                    record: self.open_subscription_receipt(operation, &row)?,
+                }
+            } else if row.4 == "pending" && row.5.is_none() {
+                SubscriptionCreationClaim::Existing(SubscriptionCreationPending {
+                    operation_id: operation,
+                    public_id: Uuid::parse_str(&row.0).map_err(|_| storage_error())?,
+                })
+            } else {
+                return Err(storage_error());
+            }
         };
         if let Err(error) = fresh() {
             tx.rollback().await.map_err(db_error)?;
@@ -372,7 +413,7 @@ impl PostgresBillingStore {
         Ok(result)
     }
     /// Historical unresolved reservation lookup; no dispatch capability or live
-    /// provider assertion. All durable claims remain held indefinitely.
+    /// provider assertion. Completed operations require `inspect_bound_subscription_creation`.
     /// # Errors
     /// Denies foreign actor, damaged ciphertext and audit/storage failures.
     pub async fn inspect_subscription_creation(
@@ -384,6 +425,9 @@ impl PostgresBillingStore {
         self.subscription_runtime_role(&mut tx).await?;
         let result = if let Some(row) = self.subscription_intent_row(&mut tx, operation).await? {
             self.open_subscription_intent(operation, &row)?;
+            if row.4 != "pending" || row.5.is_some() {
+                return Err(conflict());
+            }
             self.audit_subscription_creation(&mut tx, operation, "inspect")
                 .await?;
             Some(SubscriptionCreationPending {

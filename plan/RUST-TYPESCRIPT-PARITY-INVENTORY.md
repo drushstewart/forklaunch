@@ -8634,3 +8634,45 @@ transport proof is implied. Public registry/cloud validation remain separate.
 Metadata /private/tmp/fl-oct14-next-checkpoint.json; logs
 /private/tmp/fl-oct14-next-{package,install,repackaged-files,runtime,
 totp-runtime}.log. Source/hash receipts remain after owned workspace cleanup.
+
+
+## Direct verified Subscription creation and trusted atomic publication (2026-10-14)
+
+The opt-in direct-only profile resolves a verified Customer association and a
+locally unchanged Plan with allowlisted completed sealed creation provenance.
+Fresh pinned account/mode, Customer and expanded Plan GETs precede confirmed
+reservation; one idempotent Subscription POST and fixed exact-ID GET then verify
+customer/mode, complete single item, legacy Plan/Price/product/amount/cadence/
+quantity, stable item/start_date and supported active/incomplete states. Explicit
+AutomaticDefaultIncomplete selects charge_automatically/default_incomplete;
+unsupported discounts/taxes/trials/delegation/evidence remain unresolved.
+Customer defaults can affect invoices. Active is service state, never payment or
+charged-total proof; an active/unpaid invoice case tests this boundary. External
+Party lifecycle/authorization remains the trusted server caller's assertion.
+Default routes/legacy creation and managed transport are unchanged.
+
+Additive migration11 and an explicit separate trusted publisher connection
+atomically write local UUID/ownership binding/audit/encrypted receipt/completed
+journal and release only that operation's four claims. Runtime cannot inherit
+publisher/migration owner, update completed state, delete claims or execute
+publication/decrement helpers even with broad table grants. Publisher is trusted
+authority, not a defense against stolen publisher credentials; SQL does not
+pretend to authenticate application ciphertext as Stripe evidence. Constructor
+checks configured host/port/database, observed server/database tuple and immutable
+migration UUID, explicitly not cryptographic cloned-cluster equivalence. Native
+owns the transaction and rechecks freshness after awaited SQL before COMMIT.
+Unknown POST/expiry/COMMIT outcomes retain inspectable pending/completed state,
+never automatic retry/refund/delete. Historical inspection grants no new dispatch.
+
+All-feature compile, isolated basePG3, native StripePG1, unit17, strict base/Stripe
+all-feature/all-target Clippy, official SDK22.6.2 wire, Plan PG12.76s and Customer
+PG10.60s regressions pass. Matrices verify distinct non-BYPASS roles, runtime
+forgery/helper denial, claims during POST/readback, duplicate/concurrent calls,
+malformed/mismatched evidence, timeout/no retry, failed audit/release/freshness
+rollback and actual lost final COMMIT acknowledgment. Fixture databases/roles0.
+Only lint corrections were needed. Logs /private/tmp/fl-subscription-stage-b-
+{compile,base-pg,stripe-pg,unit,clippy-pass,prerequisite-regression,cleanup}.log
+and /private/tmp/fl-bound-subscription-sdk.log;14 exact hashes
+/private/tmp/fl-bound-subscription-stage-b-source.json. CI runs SDK and PG.
+General interrupted-effect recovery, mutation ownership, generated operation
+adapters and managed Subscription creation remain open.

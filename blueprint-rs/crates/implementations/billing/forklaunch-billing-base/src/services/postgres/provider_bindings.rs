@@ -22,7 +22,7 @@ pub use payment_link_creation::{
 pub use plan_creation::{PlanCreationClaim, PlanCreationReservation, PlanCreationStatus};
 pub use subscription_creation::{
     SubscriptionCreationClaim, SubscriptionCreationPending, SubscriptionCreationReservation,
-    SubscriptionDependencySnapshot,
+    SubscriptionCreationStatus, SubscriptionDependencySnapshot, TrustedSubscriptionPublisher,
 };
 
 type BindingRow = (

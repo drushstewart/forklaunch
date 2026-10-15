@@ -272,6 +272,7 @@ on:
       - 'cli/tests/rust_billing_bound_creation_sdk.mjs'
       - 'cli/tests/rust_billing_bound_plan_sdk.mjs'
       - 'cli/tests/rust_billing_customer_registration_sdk.mjs'
+      - 'cli/tests/rust_billing_bound_subscription_sdk.mjs'
       - 'cli/tests/rust_billing_subscription_target_gap.mjs'
       - 'cli/tests/rust_billing_managed_creation.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
@@ -597,6 +598,7 @@ on:
       - 'cli/tests/rust_billing_bound_creation_sdk.mjs'
       - 'cli/tests/rust_billing_bound_plan_sdk.mjs'
       - 'cli/tests/rust_billing_customer_registration_sdk.mjs'
+      - 'cli/tests/rust_billing_bound_subscription_sdk.mjs'
       - 'cli/tests/rust_billing_subscription_target_gap.mjs'
       - 'cli/tests/rust_billing_managed_creation.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
@@ -1221,6 +1223,9 @@ jobs:
       - run: node cli/tests/rust_billing_customer_registration_sdk.mjs
         env:
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
+      - run: node cli/tests/rust_billing_bound_subscription_sdk.mjs
+        env:
+          STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_billing_subscription_target_gap.mjs
       - run: node cli/tests/rust_billing_bound_creation_sdk.mjs
         env:
@@ -1566,6 +1571,7 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_creation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_plan_creation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test customer_registration -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_subscription_creation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test paused_effect -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --test http -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test business_rules -- --ignored
