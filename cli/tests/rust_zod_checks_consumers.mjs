@@ -30,6 +30,12 @@ const source = z
     uuid: z.string().uuid(),
     uri: z.string().url().url(),
     impossible: z.string().email().uuid().optional(),
+    cuid: z.string().cuid(),
+    cuid2: z.string().cuid2(),
+    ulid: z.string().ulid(),
+    nanoid: z.string().nanoid(),
+    base64: z.string().base64(),
+    base64url: z.string().base64url(),
   })
   .strict();
 const schema = validator.openapi2020(source, {
@@ -47,6 +53,12 @@ const validFormats = {
   email: "a'b@b-.co",
   uuid: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
   uri: "http://example.test/a b",
+  cuid: "c😀😀😀😀",
+  cuid2: "lower123",
+  ulid: "z".repeat(26),
+  nanoid: "-".repeat(21),
+  base64: "AB==",
+  base64url: "_w",
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
@@ -54,6 +66,12 @@ for (const patch of [
   { uuid: "urn:uuid:" + validFormats.uuid },
   { uri: "http://256.1.1.1" },
   { impossible: "a@b.co" },
+  { cuid: "c😀😀😀" },
+  { cuid2: "Upper" },
+  { ulid: "I".repeat(26) },
+  { nanoid: "a".repeat(20) },
+  { base64: "AA" },
+  { base64url: "/w==" },
 ])
   cases.push({ text: "😀", number: 0.3, ...validFormats, ...patch });
 assert.equal(

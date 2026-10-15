@@ -46,3 +46,82 @@ pub fn email(value: &str) -> bool {
                     .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
         })
 }
+
+/// Match Zod v3 CUID syntax, counting its tail in UTF-16 code units.
+#[must_use]
+pub fn cuid(value: &str) -> bool {
+    let Some(tail) = value.strip_prefix(['c', 'C']) else {
+        return false;
+    };
+    tail.encode_utf16().count() >= 8
+        && !tail.chars().any(|c| {
+            c == '-'
+                || matches!(c,
+        '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{00a0}' | '\u{1680}' |
+        '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' |
+        '\u{205f}' | '\u{3000}' | '\u{feff}')
+        })
+}
+
+/// Match Zod v3 CUID2 syntax without imposing a generator-specific length.
+#[must_use]
+pub fn cuid2(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
+}
+
+/// Match Zod v3 ULID syntax without imposing a timestamp-overflow restriction.
+#[must_use]
+pub fn ulid(value: &str) -> bool {
+    value.len() == 26 && value.bytes().all(|c| c.is_ascii_digit() || matches!(c.to_ascii_uppercase(), b'A'..=b'H' | b'J'..=b'K' | b'M'..=b'N' | b'P'..=b'T' | b'V'..=b'Z'))
+}
+
+/// Match Zod v3 Nano ID's fixed 21-character alphabet.
+#[must_use]
+pub fn nanoid(value: &str) -> bool {
+    value.len() == 21
+        && value
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
+}
+
+/// Match Zod v3 Base64 syntax, including empty input and noncanonical pad bits.
+#[must_use]
+pub fn base64(value: &str) -> bool {
+    base64_syntax(value, false)
+}
+
+/// Match Zod v3 URL-safe Base64 syntax, with optional terminal padding.
+#[must_use]
+pub fn base64url(value: &str) -> bool {
+    base64_syntax(value, true)
+}
+
+fn base64_syntax(value: &str, url: bool) -> bool {
+    let data = value.trim_end_matches('=');
+    let padding = value.len() - data.len();
+    if !data.bytes().all(|c| {
+        c.is_ascii_alphanumeric()
+            || if url {
+                matches!(c, b'_' | b'-')
+            } else {
+                matches!(c, b'+' | b'/')
+            }
+    }) {
+        return false;
+    }
+    match padding {
+        0 => {
+            if url {
+                data.len() % 4 != 1
+            } else {
+                data.len().is_multiple_of(4)
+            }
+        }
+        1 => data.len() % 4 == 3,
+        2 => data.len() % 4 == 2,
+        _ => false,
+    }
+}

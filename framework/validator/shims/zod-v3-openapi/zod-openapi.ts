@@ -222,7 +222,7 @@ function parseString({
     }
   }
   if (zodChecks) {
-    if (exact?.formats?.some(format => format !== 'email' || !hasFactoryEmailGrammar(zodRef)) && ['email', 'uuid', 'uri', factoryUriFormat].includes(baseSchema.format as string)) delete baseSchema.format;
+    if (exact?.formats?.some(format => format !== 'email' || !hasFactoryEmailGrammar(zodRef)) && ['email', 'uuid', 'uri', 'cuid', factoryUriFormat].includes(baseSchema.format as string)) delete baseSchema.format;
     if (exact?.formats?.includes('email') && hasFactoryEmailGrammar(zodRef)) delete baseSchema.pattern;
     if (exact?.utf16MinLength !== undefined) delete baseSchema.minLength;
     if (exact?.utf16MaxLength !== undefined) delete baseSchema.maxLength;

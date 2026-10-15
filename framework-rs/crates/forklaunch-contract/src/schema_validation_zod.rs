@@ -15,6 +15,12 @@ struct Checks {
 enum Format {
     Email,
     Uuid,
+    Cuid,
+    Cuid2,
+    Ulid,
+    Nanoid,
+    Base64,
+    Base64Url,
     #[cfg(feature = "zod-uri")]
     Uri,
 }
@@ -23,6 +29,12 @@ impl Format {
         match self {
             Self::Email => forklaunch_common::zod_string_format::email(value),
             Self::Uuid => forklaunch_common::zod_string_format::uuid(value),
+            Self::Cuid => forklaunch_common::zod_string_format::cuid(value),
+            Self::Cuid2 => forklaunch_common::zod_string_format::cuid2(value),
+            Self::Ulid => forklaunch_common::zod_string_format::ulid(value),
+            Self::Nanoid => forklaunch_common::zod_string_format::nanoid(value),
+            Self::Base64 => forklaunch_common::zod_string_format::base64(value),
+            Self::Base64Url => forklaunch_common::zod_string_format::base64url(value),
             #[cfg(feature = "zod-uri")]
             Self::Uri => ada_url::Url::can_parse(value, None),
         }
@@ -92,6 +104,12 @@ pub(super) fn compile<'a>(
         formats.push(match value.as_str() {
             Some("email") => Format::Email,
             Some("uuid") => Format::Uuid,
+            Some("cuid") => Format::Cuid,
+            Some("cuid2") => Format::Cuid2,
+            Some("ulid") => Format::Ulid,
+            Some("nanoid") => Format::Nanoid,
+            Some("base64") => Format::Base64,
+            Some("base64url") => Format::Base64Url,
             #[cfg(feature = "zod-uri")]
             Some("uri") => Format::Uri,
             #[cfg(not(feature = "zod-uri"))]

@@ -9,7 +9,7 @@ interface Checks {
   version: 1;
   utf16MinLength?: number;
   utf16MaxLength?: number;
-  formats?: ('email' | 'uuid' | 'uri')[];
+  formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url')[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
 }
 function admit(checks: readonly unknown[], metadata: readonly Metadata[]) {
@@ -27,7 +27,7 @@ export function projectStringChecks(
   const formats = checks
     .filter(
       (check) =>
-        ['email', 'uuid', 'url'].includes(check.kind) &&
+        ['email', 'uuid', 'url', 'cuid', 'cuid2', 'ulid', 'nanoid', 'base64', 'base64url'].includes(check.kind) &&
         !metadata.some((value) =>
           own(
             value,
@@ -36,7 +36,7 @@ export function projectStringChecks(
         )
     )
     .map((check) =>
-      check.kind === 'url' ? ('uri' as const) : (check.kind as 'email' | 'uuid')
+      check.kind === 'url' ? ('uri' as const) : (check.kind as NonNullable<Checks['formats']>[number])
     );
   const formatResult: Checks | undefined = formats.length
     ? { version: 1, formats }

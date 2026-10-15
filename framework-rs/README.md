@@ -1314,3 +1314,10 @@ URI assertions additionally require `zod-uri`; native compilation rejects URI
 demand without that feature. Email/UUID use shared Zod predicates. Compatibility
 fixtures pin Node 24.2.0 and Ada 3.2.4. Other formats and arbitrary regex equivalence
 remain separate work; explicit ordinary annotations retain precedence.
+
+
+The same opt-in profile supports CUID, CUID2, ULID, Nano ID, Base64 and Base64url
+using Zod's syntax rules, including noncanonical Base64 pad bits and optional
+URL-safe padding. These assertions require `zod-checks` but do not require
+`zod-uri`. They preserve ordered conjunctions and explicit format overrides.
+Date/time, IP-related and other raw Zod formats remain under parity development.

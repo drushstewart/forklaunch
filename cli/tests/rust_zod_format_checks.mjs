@@ -190,9 +190,9 @@ const raw = validator.openapi2020(
 );
 assert.equal(raw.pattern, "^a");
 assert.deepEqual(raw["x-forklaunch-zod-checks"].formats, ["email"]);
-assert.equal(
-  validator.openapi2020(z.string().email().cuid(), { zodChecks: true }).format,
-  "cuid",
+assert.deepEqual(
+  validator.openapi2020(z.string().email().cuid(), { zodChecks: true })["x-forklaunch-zod-checks"].formats,
+  ["email", "cuid"],
 );
 assert.throws(
   () => validator.openapi2020(z.string().trim().email(), { zodChecks: true }),

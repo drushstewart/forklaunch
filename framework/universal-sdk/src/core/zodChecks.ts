@@ -6,7 +6,7 @@ interface ZodChecks {
   version: 1;
   utf16MinLength?: number;
   utf16MaxLength?: number;
-  formats?: ('email' | 'uuid' | 'uri')[];
+  formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url')[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
 }
 function compileZodChecks(input: unknown): (value: unknown) => boolean {
@@ -53,7 +53,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     (!Array.isArray(value.formats) ||
       value.formats.length > 10000 ||
       value.formats.some(
-        (format) => !['email', 'uuid', 'uri'].includes(format)
+        (format) => !['email', 'uuid', 'uri', 'cuid', 'cuid2', 'ulid', 'nanoid', 'base64', 'base64url'].includes(format)
       ))
   )
     throw new Error('Invalid Zod format rules');
@@ -75,9 +75,18 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i;
   const uuid =
     /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/i;
+  const simpleFormats = {
+    cuid: /^c[^\s-]{8,}$/i,
+    cuid2: /^[0-9a-z]+$/,
+    ulid: /^[0-9A-HJKMNP-TV-Z]{26}$/i,
+    nanoid: /^[a-z0-9_-]{21}$/i,
+    base64: /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/,
+    base64url: /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/
+  };
   return (data: unknown) => {
     if (typeof data === 'string' && formatChecks)
       for (const format of formatChecks) {
+        if (format in simpleFormats && !simpleFormats[format as keyof typeof simpleFormats].test(data)) return false;
         if (format === 'email' && !email.test(data)) return false;
         if (format === 'uuid' && !uuid.test(data)) return false;
         if (format === 'uri') {

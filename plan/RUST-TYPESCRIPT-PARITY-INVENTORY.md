@@ -10730,3 +10730,30 @@ all-feature billing Clippy and feature-off Axum Clippy pass. Owned test roles re
 to zero. CI uses a direct-executable wrapper to release Cargo's build lock before
 nested Rust SDK compilation. Plan/Subscription creation surfaces, managed creation
 and broader mutation/reconciliation semantics remain open.
+
+
+### 2026-10-15 — identifier and Base64 Zod assertions
+
+The explicit Zod-check profile now preserves CUID, CUID2, ULID, Nano ID, Base64
+and Base64url checks across native schema validation, UniversalSdk and generated
+socket clients. Pure native predicates follow the actual Zod grammar: CUID counts
+UTF-16 units and ECMAScript whitespace, CUID2 has no invented generator length,
+ULID does not add a timestamp-overflow restriction, and Base64 syntax does not
+require canonical pad bits. URL-safe Base64 retains optional padding. Ordered
+conjunctions and explicit format overrides follow the existing profile. Default
+schema exports remain byte-equivalent; string transformations with synthesized
+checks are rejected explicitly.
+
+The permanent `rust_zod_identifier_checks.mjs` fixture passes 66,624 actual Zod/AJV
+comparisons and 66,624 native observations, including Unicode/whitespace, padding,
+length boundaries, nested/optional/union schemas, combined formats and inputs up
+to one MiB. Lone surrogate controls are JS-only because Rust strings cannot
+represent them. Generated consumers pass 15 actual HTTP responses and 60 TS/Rust
+socket encode/decode outcomes, strict compilation and feature-off rejection.
+The prior ordered-format matrix still passes 30,564 comparisons on both sides.
+Strict all-target/all-feature Clippy for common/contract/validation/both SDK crates,
+all 12 configured TypeScript roots and 623 exports, and the regenerated source
+inventory pass. No dependency or lock changes were needed.
+
+Raw date/time, duration, IP/CIDR, JWT and emoji checks and arbitrary regex semantics
+remain separate work. The broad schema gate and 660/682 checklist count are unchanged.
