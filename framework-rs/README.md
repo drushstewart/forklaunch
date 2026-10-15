@@ -313,13 +313,19 @@ failures always return a safe correlated 500, including None/Warning modes.
 The existing `insert_json_transform` API treats its errors as validation failures.
 
 The bounded `typescript_coerce::zod_json` evaluator supports typed JSON scalar
-rules, optional/nullable values, static defaults, arrays and ordered object fields
+rules, optional/nullable values, static defaults, ordered unions, arrays and ordered object fields
 with unknown-field stripping. Map `ZodJsonOutcome::Invalid` to validation failure
 and evaluator errors to operational failure. The [live composition example](crates/forklaunch-axum/examples/json_composition_runtime.rs)
 shows this mapping with `ParsedJsonBody`; its [runtime fixture](../cli/tests/rust_json_composition_runtime.mjs)
 checks HTTP, registered MCP forwarding and both generated SDKs. Define supported
 schemas explicitly; this API does not load arbitrary Zod callbacks or interpret
-OpenAPI schemas. Input/schema/evaluation budgets are enforced before projection.
+OpenAPI schemas. Input/schema/evaluation budgets are enforced before projection. For request
+schema diagnostics, call `zod_json_at_path(input, &schema, &["body"])` so the raw
+issue paths receive their root before union formatting. Adding a root to already
+formatted errors would produce different nested-union diagnostics. Ordered unions
+select the first valid result, otherwise the first dirty branch; all-aborted
+branches use the actual adapter's single-level variant formatting. The trusted
+path shares admission/work budgets with schema/input diagnostics.
 
 `RequestValidators::insert_request_transform` accepts one whole-schema callback
 for atomic parameter/query/header projections and optional JSON-body output.

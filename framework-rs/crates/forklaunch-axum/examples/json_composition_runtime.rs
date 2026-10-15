@@ -36,6 +36,39 @@ fn transform(
             },
         },
         Field {
+            name: "choice",
+            schema: Schema::Optional(Box::new(Schema::Union(vec![
+                Schema::String(vec![
+                    typescript_coerce::ZodStringCheck {
+                        rule: typescript_coerce::ZodStringRule::Step(
+                            typescript_coerce::ZodStringStep::Trim,
+                        ),
+                        message: None,
+                    },
+                    typescript_coerce::ZodStringCheck {
+                        rule: typescript_coerce::ZodStringRule::Step(
+                            typescript_coerce::ZodStringStep::Min(3),
+                        ),
+                        message: None,
+                    },
+                ]),
+                Schema::Number(vec![typescript_coerce::ZodNumberCheck {
+                    step: typescript_coerce::ZodNumberStep::Int,
+                    message: None,
+                }]),
+                Schema::Object(vec![Field {
+                    name: "nested",
+                    schema: Schema::Union(vec![
+                        Schema::String(vec![]),
+                        Schema::Array {
+                            element: Box::new(Schema::Boolean),
+                            checks: vec![],
+                        },
+                    ]),
+                }]),
+            ]))),
+        },
+        Field {
             name: "items",
             schema: Schema::Optional(Box::new(Schema::Array {
                 element: Box::new(Schema::Object(vec![Field {
@@ -59,19 +92,14 @@ fn transform(
         .parsed_json
         .as_ref()
         .and_then(|parsed| parsed.value.as_deref());
-    match typescript_coerce::zod_json(value, &schema) {
+    match typescript_coerce::zod_json_at_path(value, &schema, &["body"]) {
         Ok(ZodJsonOutcome::Valid(value)) => Ok(value),
-        Ok(ZodJsonOutcome::Invalid(mut errors)) => {
-            for error in &mut errors {
-                error.path.insert(0, "body".into());
-            }
-            Err(JsonTransformFailure::Validation(
-                typescript_request_validation_error_response(
-                    Some(&errors),
-                    Some(&request.context.correlation_id),
-                ),
-            ))
-        }
+        Ok(ZodJsonOutcome::Invalid(errors)) => Err(JsonTransformFailure::Validation(
+            typescript_request_validation_error_response(
+                Some(&errors),
+                Some(&request.context.correlation_id),
+            ),
+        )),
         Err(_) => Err(JsonTransformFailure::Operational),
     }
 }

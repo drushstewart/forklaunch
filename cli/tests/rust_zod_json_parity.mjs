@@ -14,6 +14,7 @@ function build(spec){
  case 'number':result=statics.number.innerType();break;
  case 'boolean':return statics.boolean;
  case 'unknown':return statics.unknown;
+ case 'union':return validator.union(spec.branches.map(build));
  case 'optional':return build(spec.inner).optional();
  case 'nullable':return build(spec.inner).nullable();
  case 'default':return build(spec.inner).default(spec.value);
@@ -31,8 +32,22 @@ const wrap=(kind,inner,extra={})=>({kind,inner,...extra});
 const object={kind:'object',fields:[['name',string],['age',number],['flag',wrap('optional',bool)],['label',wrap('default',{kind:'string'},{value:'default'})]]};
 const schemas=[string,number,bool,unknown,object,{kind:'object',fields:[]},wrap('array',object,{checks:[{name:'min',argument:2},{name:'max',argument:1}]}),wrap('array',string,{checks:[{name:'min',argument:3},{name:'length',argument:2},{name:'min',argument:1}]}),{kind:'object',fields:[['10',string],['2',number],['a',bool],['01',string]]},{kind:'object',fields:[['items',wrap('array',object)],['other',wrap('optional',unknown)]]}];
 for(const base of [string,number,bool,unknown,object])schemas.push(wrap('optional',base),wrap('nullable',base),wrap('default',base,{value:base===object?{name:' ab ',age:'3'}:base===number?'2':base===bool?'true':' xx '}),wrap('optional',wrap('default',base,{value:'d'})),wrap('default',wrap('optional',base),{value:'d'}),wrap('nullable',wrap('optional',base)));
+// Ordered unions retain source dirty/aborted status and one-level raw issue formatting.
+const union=(...branches)=>({kind:'union',branches});
+const strictString={kind:'string'};
+const unions=[union(),union(strictString),union(string,number),
+ union({kind:'string',checks:[{name:'min',argument:10}]},{kind:'string',checks:[{name:'trim'}]}),
+ union({kind:'string',checks:[{name:'min',argument:5}]},{kind:'string',checks:[{name:'min',argument:8}]}),
+ union(wrap('array',string),object),union(wrap('optional',string),unknown),
+ union(wrap('default',strictString,{value:'fallback'}),bool),
+ union(union(string,wrap('array',number)),object),
+ union({kind:'object',fields:[['name',string]]},{kind:'object',fields:[['age',number]]}),
+ union(wrap('nullable',bool),string),union(number,unknown),union(unknown,number)];
+for(const schema of unions)schemas.push(schema,wrap('optional',schema),wrap('nullable',schema),wrap('array',schema),
+ {kind:'object',fields:[['outer',schema]]},
+ {kind:'object',fields:[['outer',wrap('array',{kind:'object',fields:[['inner',schema]]})]]});
 const values=[undefined,null,false,true,0,.5,'','x',' aa ','NaN','-0',[],['x'],[' aa ','b'],[null,1],{}, {name:' aa ',age:'2',extra:true},{name:' a ',age:'bad',flag:null},{name:'long',age:2.5,label:null},{'10':null,'2':'bad',a:1,'01':false},{items:[{name:' aa ',age:'2',extra:1}],extra:{nested:true}},JSON.parse('{"__proto__":{"x":1},"name":" aa ","age":"2"}')];
-values.push([{name:' a ',age:'bad'}, {name:' aa ',age:3}]);
+values.push([{name:' a ',age:'bad'}, {name:' aa ',age:3}], {outer:false},{outer:[{inner:false},{inner:[]}]},{outer:[{inner:{name:null,age:'bad'}}]},[false,null],{outer:{name:null,age:'bad'}}, {outer:' x '});
 for(let i=0;i<64;i++)values.push({name:i%2?' aa ':'x',age:i%3?String(i):'invalid',flag:i%4===0?null:i%2?'true':false,extra:i});
 const bytes=Buffer.alloc(8);
 function tag(value){if(typeof value==='number'){bytes.writeDoubleBE(value);return {$number:bytes.toString('hex')};}if(Array.isArray(value))return value.map(tag);if(value!==null&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,tag(item)]));return value;}
@@ -42,6 +57,15 @@ for(const schema of schemas){const actual=build(schema);for(const value of value
  cases.push(input);expected.push(parsed.ok?(parsed.value===undefined?{ok:true,absent:true}:{ok:true,absent:false,value:tag(parsed.value)}):JSON.parse(JSON.stringify(parsed)));
  assert.equal(JSON.stringify(input),before);
 }}
+// Evaluate diagnostics in a trusted request path without cloning native input.
+for(const schema of unions)for(const path of [['body'],['request','body']])for(const value of values){
+ let wrapped=build(schema),input=value;
+ for(const key of [...path].reverse()){wrapped=z.object({[key]:wrapped});input={[key]:input};}
+ const parsed=validator.parse(wrapped,input);
+ cases.push({schema,path,...(value===undefined?{}:{value})});
+ if(parsed.ok){let output=parsed.value;for(const key of path)output=output[key];expected.push(output===undefined?{ok:true,absent:true}:{ok:true,absent:false,value:tag(output)});}
+ else expected.push(JSON.parse(JSON.stringify(parsed)));
+}
 // Raw numeric JSON preserves -0 and unsafe integer spelling until the native
 // evaluator normalizes it. Compare IEEE tags, never JSON.stringify(number).
 for(const raw of ['9007199254740993','18446744073709551615','-0','[-0,9007199254740993]','{"n":18446744073709551615}', '"-0"']){

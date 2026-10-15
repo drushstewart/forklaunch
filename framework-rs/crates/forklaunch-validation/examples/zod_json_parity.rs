@@ -1,7 +1,7 @@
 use forklaunch_validation::{
     typescript_coerce::{
         ZodFloatBound, ZodJsonField, ZodJsonOutcome, ZodJsonSchema, ZodNumberCheck, ZodNumberStep,
-        ZodStringCheck, ZodStringRule, ZodStringStep, zod_json,
+        ZodStringCheck, ZodStringRule, ZodStringStep, zod_json_at_path,
     },
     zod_array::ZodArrayStep,
 };
@@ -44,6 +44,14 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
                         _ => panic!("unknown number check"),
                     },
                 })
+                .collect(),
+        ),
+        "union" => ZodJsonSchema::Union(
+            spec["branches"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(schema)
                 .collect(),
         ),
         "boolean" => ZodJsonSchema::Boolean,
@@ -107,9 +115,16 @@ fn main() {
         let raw = input["raw"]
             .as_str()
             .map(|value| serde_json::from_str::<Value>(value).unwrap());
-        let result = match zod_json(
+        let path: Vec<_> = input["path"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|part| part.as_str().unwrap())
+            .collect();
+        let result = match zod_json_at_path(
             raw.as_ref().or_else(|| input.get("value")),
             &schema(&input["schema"]),
+            &path,
         ) {
             Ok(ZodJsonOutcome::Valid(value)) => match value {
                 Some(value) => json!({"ok":true,"absent":false,"value":tag(value)}),

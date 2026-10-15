@@ -318,3 +318,188 @@ fn arbitrary_precision_nonfinite_values_are_rejected_in_every_input_position() {
         Err(ZodJsonUnsupported::NonFiniteNumber)
     );
 }
+
+#[test]
+fn ordered_unions_keep_first_valid_or_first_dirty_and_empty_semantics() {
+    let dirty = ZodJsonSchema::String(vec![ZodStringCheck {
+        rule: super::super::ZodStringRule::Step(super::super::ZodStringStep::Min(10)),
+        message: None,
+    }]);
+    let trim = ZodJsonSchema::String(vec![ZodStringCheck {
+        rule: super::super::ZodStringRule::Step(super::super::ZodStringStep::Trim),
+        message: None,
+    }]);
+    assert_eq!(
+        zod_json(
+            Some(&json!(" x ")),
+            &ZodJsonSchema::Union(vec![dirty.clone(), trim])
+        )
+        .unwrap(),
+        ZodJsonOutcome::Valid(Some(json!("x")))
+    );
+    let first = zod_json(Some(&json!("x")), &dirty).unwrap();
+    assert_eq!(
+        zod_json(
+            Some(&json!("x")),
+            &ZodJsonSchema::Union(vec![dirty, ZodJsonSchema::Boolean])
+        )
+        .unwrap(),
+        first
+    );
+    assert_eq!(
+        zod_json(Some(&json!(null)), &ZodJsonSchema::Union(vec![])).unwrap(),
+        ZodJsonOutcome::Invalid(vec![])
+    );
+    assert_eq!(
+        zod_json(
+            None,
+            &ZodJsonSchema::Union(vec![
+                ZodJsonSchema::Optional(Box::new(ZodJsonSchema::String(vec![]))),
+                ZodJsonSchema::Unknown
+            ])
+        )
+        .unwrap(),
+        ZodJsonOutcome::Valid(None)
+    );
+}
+
+#[test]
+fn union_adapter_duplicates_outer_paths_and_flattens_only_one_level() {
+    let inner = ZodJsonSchema::Union(vec![
+        ZodJsonSchema::String(vec![]),
+        ZodJsonSchema::Object(vec![]),
+    ]);
+    let schema = ZodJsonSchema::Object(vec![ZodJsonField {
+        name: "outer",
+        schema: ZodJsonSchema::Union(vec![
+            inner,
+            ZodJsonSchema::Array {
+                element: Box::new(ZodJsonSchema::Unknown),
+                checks: vec![],
+            },
+        ]),
+    }]);
+    let ZodJsonOutcome::Invalid(errors) = zod_json(Some(&json!({"outer":false})), &schema).unwrap()
+    else {
+        panic!("expected invalid union")
+    };
+    assert_eq!(
+        errors,
+        vec![
+            ParseError {
+                path: vec![
+                    "Union Schema Variant 0".into(),
+                    "outer".into(),
+                    "outer".into()
+                ],
+                message: "Invalid input".into()
+            },
+            ParseError {
+                path: vec![
+                    "Union Schema Variant 1".into(),
+                    "outer".into(),
+                    "outer".into()
+                ],
+                message: "Expected array, received boolean".into()
+            },
+        ]
+    );
+}
+
+#[test]
+fn union_branch_work_and_duplicated_diagnostic_paths_are_bounded() {
+    let schema = ZodJsonSchema::Array {
+        element: Box::new(ZodJsonSchema::Union(vec![
+            ZodJsonSchema::String(vec![]);
+            100
+        ])),
+        checks: vec![],
+    };
+    assert_eq!(
+        zod_json(Some(&json!(vec![false; 1000])), &schema),
+        Err(ZodJsonUnsupported::EvaluationNodes)
+    );
+    let key = "k".repeat(1024 * 1024);
+    let schema = ZodJsonSchema::Object(vec![ZodJsonField {
+        name: &key,
+        schema: ZodJsonSchema::Union(vec![ZodJsonSchema::String(vec![]); 15]),
+    }]);
+    let input = Value::Object(Map::from_iter([(key.clone(), json!(false))]));
+    assert_eq!(
+        zod_json(Some(&input), &schema),
+        Err(ZodJsonUnsupported::EvaluationBytes)
+    );
+    let schema = ZodJsonSchema::Union(vec![ZodJsonSchema::Unknown; MAX_NODES]);
+    assert_eq!(
+        zod_json(None, &schema),
+        Err(ZodJsonUnsupported::SchemaNodes)
+    );
+}
+
+#[test]
+fn trusted_diagnostic_path_precedes_union_formatting_without_changing_output() {
+    let schema = ZodJsonSchema::Union(vec![
+        ZodJsonSchema::String(vec![]),
+        ZodJsonSchema::Object(vec![]),
+    ]);
+    let input = json!(false);
+    assert_eq!(
+        zod_json_at_path(Some(&input), &schema, &[]),
+        zod_json(Some(&input), &schema)
+    );
+    for path in [vec!["body"], vec!["request", "body"]] {
+        let ZodJsonOutcome::Invalid(errors) =
+            zod_json_at_path(Some(&input), &schema, &path).unwrap()
+        else {
+            panic!("expected invalid")
+        };
+        let expected = std::iter::once("Union Schema Variant 0")
+            .chain(path.iter().copied())
+            .chain(path.iter().copied())
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        assert_eq!(errors[0].path, expected);
+        assert_eq!(
+            zod_json_at_path(Some(&json!("valid")), &schema, &path),
+            Ok(ZodJsonOutcome::Valid(Some(json!("valid"))))
+        );
+    }
+    assert_eq!(input, json!(false));
+}
+
+#[test]
+fn oversized_diagnostic_path_is_rejected_before_schema_or_input_evaluation() {
+    let bad_schema = ZodJsonSchema::Object(vec![ZodJsonField {
+        name: "__proto__",
+        schema: ZodJsonSchema::Unknown,
+    }]);
+    assert_eq!(
+        zod_json_at_path(None, &bad_schema, &["x"; MAX_DEPTH + 1]),
+        Err(ZodJsonUnsupported::DiagnosticPath)
+    );
+    let huge = "p".repeat(MAX_ADMISSION_BYTES + 1);
+    assert_eq!(
+        zod_json_at_path(None, &bad_schema, &[&huge]),
+        Err(ZodJsonUnsupported::DiagnosticPath)
+    );
+    let path = "p".repeat(1024 * 1024);
+    let schema = ZodJsonSchema::Union(vec![ZodJsonSchema::String(vec![]); 16]);
+    assert_eq!(
+        zod_json_at_path(Some(&json!(false)), &schema, &[&path]),
+        Err(ZodJsonUnsupported::EvaluationBytes)
+    );
+}
+
+#[test]
+fn diagnostic_path_shares_schema_default_admission_even_without_input() {
+    let default = json!("d".repeat(9 * 1024 * 1024));
+    let schema = ZodJsonSchema::Default {
+        schema: Box::new(ZodJsonSchema::Unknown),
+        value: &default,
+    };
+    let path = "p".repeat(8 * 1024 * 1024);
+    assert_eq!(
+        zod_json_at_path(None, &schema, &[&path]),
+        Err(ZodJsonUnsupported::SchemaBytes)
+    );
+}

@@ -52,7 +52,7 @@ import {z} from 'zod/v3';
 import {OpenTelemetryCollector} from '@forklaunch/core/http';
 let handlerCalls=0;
 const app=forklaunchExpress(SchemaValidator(),new OpenTelemetryCollector('request-transform','silent'),{mcp:false,json:{strict:false}});
-for(const mode of ['none','warning','error'])for(const profile of ['public','protected','default','remove'])app.post('/transform/'+mode+'/'+profile,{name:'Transform'+mode+profile,summary:'Transform',body:profile==='remove'?{json:z.unknown().transform(()=>undefined)}:profile==='default'?{json:z.object({amount:number,label:z.string().default('fallback'),items:z.array(z.object({enabled:boolean})).optional()}).default({amount:7,label:'fallback'})}:{amount:number,label:z.string().default('fallback'),items:z.array(z.object({enabled:boolean})).optional()},...(profile==='protected'?{access:'authenticated',auth:{jwt:{signatureKey:'test-only'}}}:{}),options:{requestValidation:mode,responseValidation:'none'},responses:{200:z.unknown()}},(req,res)=>{handlerCalls++;res.json({hasBody:req.body!==undefined,body:req.body,raw:req._rawBody?.toString()});});
+for(const mode of ['none','warning','error'])for(const profile of ['public','protected','default','remove'])app.post('/transform/'+mode+'/'+profile,{name:'Transform'+mode+profile,summary:'Transform',body:profile==='remove'?{json:z.unknown().transform(()=>undefined)}:profile==='default'?{json:z.object({amount:number,label:z.string().default('fallback'),choice:z.union([z.string().trim().min(3),number.pipe(z.number().int()),z.object({nested:z.union([z.string(),z.array(boolean)])})]).optional(),items:z.array(z.object({enabled:boolean})).optional()}).default({amount:7,label:'fallback'})}:{amount:number,label:z.string().default('fallback'),choice:z.union([z.string().trim().min(3),number.pipe(z.number().int()),z.object({nested:z.union([z.string(),z.array(boolean)])})]).optional(),items:z.array(z.object({enabled:boolean})).optional()},...(profile==='protected'?{access:'authenticated',auth:{jwt:{signatureKey:'test-only'}}}:{}),options:{requestValidation:mode,responseValidation:'none'},responses:{200:z.unknown()}},(req,res)=>{handlerCalls++;res.json({hasBody:req.body!==undefined,body:req.body,raw:req._rawBody?.toString()});});
 app.get('/calls',{name:'Calls',summary:'Calls',responses:{200:{handlerCalls:z.number()}}},(_req,res)=>res.json({handlerCalls}));
 const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
 const port=server.address().port;
@@ -74,6 +74,12 @@ console.log('READY http://127.0.0.1:'+port);process.on('SIGTERM',async()=>{await
    assert.equal(response.status,body.amount==='bad'&&mode==='error'?400:200);
    if(response.status===200){const report=await response.json();assert.deepEqual(report.body,body.amount==='bad'?body:{amount:2,label:'fallback',items:[{enabled:true}]});}count++;
   }
+  for(const mode of ['none','warning','error'])for(const choice of [' good ',{nested:false}]) {
+   const body={amount:'2',choice,extra:true};const response=await fetch(ts+'/transform/'+mode+'/public',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+   const invalid=typeof choice==='object';assert.equal(response.status,invalid&&mode==='error'?400:200);
+   if(response.status===200)assert.deepEqual((await response.json()).body,invalid?body:{amount:2,label:'fallback',choice:'good'});
+   else assert.ok((await response.text()).includes('Union Schema Variant'));count++;
+  }
   const mcp=(await(await fetch(ts+'/mcp-origin')).json()).url;
   let registered=0;
   for(const mode of ['none','warning','error'])for(const body of [{amount:'2',items:[{enabled:'true',drop:1}],extra:true},{amount:'bad',items:[{enabled:[]}],extra:true}]) {
@@ -86,7 +92,7 @@ console.log('READY http://127.0.0.1:'+port);process.on('SIGTERM',async()=>{await
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--all-features','--example','json_composition_runtime']);
  const ts=await start(process.execPath,['service.mjs']);
  const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/json_composition_runtime'),[]);
- const inputs=[{amount:'12.5',extra:true},{amount:'',label:'explicit',extra:true},{amount:null},{amount:'bad',extra:true},{amount:'2',label:3,extra:true},{amount:'3',items:[{enabled:'true',drop:'secret'}],extra:true},{amount:'3',items:[{enabled:'wrong'},{enabled:[]}]},{},null,[]];
+ const inputs=[{amount:'12.5',extra:true},{amount:'',label:'explicit',extra:true},{amount:null},{amount:'bad',extra:true},{amount:'2',label:3,extra:true},{amount:'3',items:[{enabled:'true',drop:'secret'}],extra:true},{amount:'3',items:[{enabled:'wrong'},{enabled:[]}]},{amount:'2',choice:'  valid  '},{amount:'2',choice:' x '},{amount:'2',choice:[]},{amount:'2',choice:{nested:false}},{amount:'2',choice:{nested:['true','false'],strip:1}},{},null,[]];
  let comparisons=0;
  for(const mode of ['none','warning','error']){
   const cases=[...['public','protected'].flatMap(profile=>inputs.map(input=>[profile,JSON.stringify(input),'application/json'])),['default',undefined,undefined],['default','private original bytes','text/plain'],['remove','{}','application/json']];
@@ -141,8 +147,8 @@ console.log('READY http://127.0.0.1:'+port);process.on('SIGTERM',async()=>{await
 import assert from 'node:assert/strict';import {createForkLaunchSdk} from './client';
 const sdk=createForkLaunchSdk({baseUrl:${JSON.stringify(rust)}});
 function find(value:any,name:string):any {for(const [key,item] of Object.entries(value)){if(key.toLowerCase()===name.toLowerCase()&&typeof item==='function')return item.bind(value);if(item&&typeof item==='object'){const result=find(item,name);if(result)return result;}}}
-for(const mode of ['none','warning','error']) {const call=find(sdk,'Transform'+mode+'public');assert.ok(call);const result=await call({body:{amount:'2',items:[{enabled:'true',drop:1}],extra:true}});assert.equal(result.status,200);assert.deepEqual(result.response.body,{amount:2,label:'fallback',items:[{enabled:true}]});
- const invalid={amount:'bad',extra:'retained'};const failure=await call({body:invalid});assert.equal(failure.status,mode==='error'?400:200);if(mode!=='error')assert.deepEqual(failure.response.body,invalid);else assert.ok(failure.response.includes('amount'));
+for(const mode of ['none','warning','error']) {const call=find(sdk,'Transform'+mode+'public');assert.ok(call);const result=await call({body:{amount:'2',choice:' good ',items:[{enabled:'true',drop:1}],extra:true}});assert.equal(result.status,200);assert.deepEqual(result.response.body,{amount:2,label:'fallback',choice:'good',items:[{enabled:true}]});
+ const invalid={amount:'2',choice:{nested:false},extra:'retained'};const failure=await call({body:invalid});assert.equal(failure.status,mode==='error'?400:200);if(mode!=='error')assert.deepEqual(failure.response.body,invalid);else assert.ok(failure.response.includes('Union Schema Variant'));
 }
 console.log('PASS six generated TypeScript SDK composition success/failure calls');
 `);
@@ -150,9 +156,9 @@ console.log('PASS six generated TypeScript SDK composition success/failure calls
  const rustSource=readFileSync(join(temporary,'client.rs'),'utf8');
  const rustCalls=['none','warning','error'].map(mode=>{
   const prefix='Transform'+mode+'public';
-  return `let response = client.transform${mode}public(${prefix}Request { body: Some(r#"{"amount":"2","items":[{"enabled":"true","drop":1}],"extra":true}"#.into()), ..Default::default() }).await.unwrap(); let ${prefix}Responses::Status200(value) = response else { panic!("unexpected response"); }; assert_eq!(value["body"]["amount"].as_f64(),Some(2.0)); assert_eq!(value["body"]["label"],"fallback"); assert!(value["body"].get("extra").is_none());
-let invalid=client.transform${mode}public(${prefix}Request {body:Some(r#"{"amount":"bad","extra":"retained"}"#.into()),..Default::default()}).await.unwrap();
-${mode==='error'?`assert!(matches!(invalid,${prefix}Responses::Status400(_)));`:`let ${prefix}Responses::Status200(value)=invalid else {panic!("expected validation bypass")};assert_eq!(value["body"],serde_json::json!({"amount":"bad","extra":"retained"}));`}`;
+  return `let response = client.transform${mode}public(${prefix}Request { body: Some(r#"{"amount":"2","choice":" good ","items":[{"enabled":"true","drop":1}],"extra":true}"#.into()), ..Default::default() }).await.unwrap(); let ${prefix}Responses::Status200(value) = response else { panic!("unexpected response"); }; assert_eq!(value["body"]["amount"].as_f64(),Some(2.0)); assert_eq!(value["body"]["label"],"fallback");assert_eq!(value["body"]["choice"],"good"); assert!(value["body"].get("extra").is_none());
+let invalid=client.transform${mode}public(${prefix}Request {body:Some(r#"{"amount":"2","choice":{"nested":false},"extra":"retained"}"#.into()),..Default::default()}).await.unwrap();
+${mode==='error'?`assert!(matches!(invalid,${prefix}Responses::Status400(_)));`:`let ${prefix}Responses::Status200(value)=invalid else {panic!("expected validation bypass")};assert_eq!(value["body"],serde_json::json!({"amount":"2","choice":{"nested":false},"extra":"retained"}));`}`;
  }).join('\n');
  mkdirSync(join(temporary,'rust-sdk/src'),{recursive:true});
  writeFileSync(join(temporary,'rust-sdk/Cargo.toml'),'[package]\nname="composition-sdk-proof"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\nreqwest={version="0.12",default-features=false,features=["json"]}\nserde={version="1",features=["derive"]}\nserde_json="=1.0.151"\ntokio={version="1",features=["rt-multi-thread","macros"]}\n');

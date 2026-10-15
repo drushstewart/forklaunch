@@ -8796,3 +8796,31 @@ cleanup,actual,actual-full}.log. CI tracks the imported helper and expanded PG
 fixture. Working-source proof includes the frozen union dependency draft; no
 immutable package/browser-cookie claim. Fractional/negative/nonfinite option
 values and broader storage/generator/lockout/plugin policies remain open.
+
+
+## Ordered reusable Zod unions and raw diagnostic paths (2026-10-14)
+
+ZodJsonSchema::Union evaluates in declared order: first valid wins, otherwise
+first dirty diagnostics win; only all-aborted candidates produce invalid_union.
+Empty/single unions follow actual source runtime. A private raw issue tree
+preserves nested union paths until public formatting. The repository adapter
+flattens exactly one union level, prefixes VariantN and duplicates outer paths;
+nested branch unions retain Invalid input. No recursive flattening is invented.
+
+Additive zod_json_at_path applies a trusted path before formatting without
+cloning input; successful output is unchanged and zod_json delegates with empty
+path. Admission bounds64 segments and aggregate schema/input/path16MiB before
+evaluation; branch work, retained raw paths and final duplicated prefixes debit
+the existing100,000 node/32MiB logical work budgets. Tests include multiplicative
+branches, repeated1MiB paths and individually admissible9MiB default+8MiB path
+rejected together even with absent input. No allocator-overhead guarantee.
+
+All41 validation tests with arbitrary_precision,13,398 actual/native observations
+plus2 explicit nonfinite boundaries,99 paired HTTP cases,45 registered MCP calls,
+3 safe operational modes and6 calls per generated SDK pass. Strict validation/
+Axum all-feature/all-target Clippy with arbitrary_precision also passes. Logs
+/private/tmp/fl-zod-union-{tests,parity,live,clippy}.log; frozen8 hashes
+/private/tmp/fl-zod-union-source.json. Existing CI runs expanded fixtures.
+Success projection and ordered public diagnostics are tested; direct MCP schema
+interpretation/raw JSON key order remain separate. Record/strict own-key-order,
+literals/enums and broader arbitrary schemas/callbacks remain open.

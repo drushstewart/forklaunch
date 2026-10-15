@@ -38,7 +38,9 @@ pub use constrained_number::{
 
 #[path = "zod_json.rs"]
 mod json;
-pub use json::{ZodJsonField, ZodJsonOutcome, ZodJsonSchema, ZodJsonUnsupported, zod_json};
+pub use json::{
+    ZodJsonField, ZodJsonOutcome, ZodJsonSchema, ZodJsonUnsupported, zod_json, zod_json_at_path,
+};
 
 /// Coerce a JSON value with the actual `ForkLaunch` Zod number preprocessing.
 /// `None` represents JavaScript undefined. Infinities and signed zero are
