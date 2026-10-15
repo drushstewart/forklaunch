@@ -350,6 +350,8 @@ on:
       - 'cli/tests/rust_billing_bound_plan_creation_runtime.mjs'
       - 'cli/tests/rust_billing_bound_subscription_creation_runtime.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_expiration_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_payment_link_expiration_recovery_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_payment_link_expiration_recovery_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_expiration_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_subscription_recovery_runtime.mjs'
       - 'cli/tests/rust_billing_bound_subscription_recovery_route_sdks.mjs'
@@ -794,6 +796,8 @@ on:
       - 'cli/tests/rust_billing_bound_plan_creation_runtime.mjs'
       - 'cli/tests/rust_billing_bound_subscription_creation_runtime.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_expiration_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_payment_link_expiration_recovery_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_payment_link_expiration_recovery_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_expiration_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_subscription_recovery_runtime.mjs'
       - 'cli/tests/rust_billing_bound_subscription_recovery_route_sdks.mjs'
@@ -1634,6 +1638,8 @@ jobs:
         run: node cli/tests/rust_billing_bound_plan_creation_runtime.mjs
       - name: Bound Subscription recovery HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_subscription_recovery_runtime.mjs
+      - name: Bound PaymentLink expiration recovery HTTP, MCP and both SDKs
+        run: node cli/tests/rust_billing_bound_payment_link_expiration_recovery_runtime.mjs
       - name: Bound PaymentLink expiration HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_payment_link_expiration_runtime.mjs
       - name: Bound Subscription creation HTTP, MCP and both SDKs

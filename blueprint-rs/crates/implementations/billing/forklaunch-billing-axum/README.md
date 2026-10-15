@@ -473,3 +473,25 @@ function permission, schema usage, record/binding SELECT and UPDATE, and journal
 and publication-identity SELECT. Role separation and same-database checks remain
 mandatory. Startup makes no provider calls; incomplete, managed, or backup profiles
 fail before listening. Publisher credentials are trusted administrative authority.
+
+
+### Independent PaymentLink expiration recovery
+
+`paymentLinkExpirationRecovery` selects only POST
+`/bound-payment-links/:publicId/expiration-operations/:operationId/recover`
+with exactly `{eventId}` and the shared IDs-only inspection GET. It requires
+`trustedPrices` and `authority: "internal_service_tenant_v1"`, plus the distinct
+expiration publisher. It does not select the expiration/provider-update route.
+If both selectors are enabled, their normalized trusted-price sets must agree;
+the shared inspection route has one unambiguous policy.
+
+Recovery-only startup requires the existing provenance reads and audit writes,
+record/binding UPDATE permission for locks, and SELECT on expiration dependency
+claims. It does not require INSERT on expiration intents or claims. Publisher
+validation remains identical. Startup performs no provider I/O. The library uses
+only authenticated Event/current PaymentLink GETs, exact request-key linkage and
+the original claims; it cannot recreate a dispatch ticket or send another POST.
+The bounded event-version/time admission policy is not process-origin causality
+proof. Responses are 200 historical/completed or 202 pending/stale bookkeeping;
+IDs-only inspection performs no provider I/O. No response proves `active=false`,
+URL revocation, payment state or entitlement. Existing legacy routes remain.

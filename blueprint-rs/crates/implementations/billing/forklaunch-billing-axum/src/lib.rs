@@ -31,7 +31,9 @@ pub use bound_checkout::{
 #[cfg(feature = "bound-checkout")]
 pub use bound_payment_link::bound_payment_link_contracts;
 #[cfg(feature = "bound-checkout")]
-pub use bound_payment_link_expiration::bound_payment_link_expiration_contracts;
+pub use bound_payment_link_expiration::{
+    bound_payment_link_expiration_contracts, bound_payment_link_expiration_recovery_contracts,
+};
 #[cfg(feature = "bound-checkout")]
 pub use bound_payment_link_read::bound_payment_link_read_contracts;
 #[cfg(feature = "bound-checkout")]

@@ -52,3 +52,17 @@ pub fn bound_payment_link_expiration_contracts() -> Vec<RouteContract> {
   .with_response(200,Some(body("BoundPaymentLinkExpirationOperation",&operation(&["pending","completed"]))));
     vec![expire, inspect]
 }
+
+/// Publication-only event-linked recovery; this route never sends a provider POST.
+#[must_use]
+pub fn bound_payment_link_expiration_recovery_contracts() -> Vec<RouteContract> {
+    let recovery=auth(RouteContract::post("Recover Bound Payment Link Expiration","Authenticated event/current reads finish only local metadata-expiration bookkeeping. No provider update, retry, URL revocation or payment-state claim.","/bound-payment-links/:publicId/expiration-operations/:operationId/recover"))
+      .with_param(parameter("operationId"))
+      .with_request_body(body("BoundPaymentLinkExpirationRecoveryRequest",&json!({"type":"object","additionalProperties":false,"required":["eventId"],"properties":{"eventId":{"type":"string","pattern":"^evt_[A-Za-z0-9_]+$","maxLength":128}}})))
+      .with_response(200,Some(body("BoundPaymentLinkExpirationCompleted",&operation(&["completed"]))))
+      .with_response(202,Some(body("BoundPaymentLinkExpirationUncertain",&operation(&["pending","recordedEvidenceNoLongerCurrent"]))));
+    vec![
+        recovery,
+        bound_payment_link_expiration_contracts().remove(1),
+    ]
+}

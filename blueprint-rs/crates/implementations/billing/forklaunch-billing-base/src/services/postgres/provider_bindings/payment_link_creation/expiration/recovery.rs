@@ -23,6 +23,34 @@ impl PaymentLinkExpirationRecovery {
     }
 }
 impl PostgresBillingStore {
+    /// Validates read/lock/inspection capabilities without reservation INSERT authority.
+    /// # Errors
+    /// Rejects missing individual grants or migration-owner membership.
+    pub async fn validate_payment_link_expiration_recovery_access(&self) -> BlueprintResult<()> {
+        self.validate_payment_link_creation_read_access().await?;
+        let mut tx = self.transaction().await?;
+        self.expiration_role(&mut tx).await?;
+        for (table, privilege) in [
+            ("records", "UPDATE"),
+            ("provider_bindings", "UPDATE"),
+            ("payment_link_expiration_dependency_claims", "SELECT"),
+            ("payment_link_expiration_audit", "INSERT"),
+            ("subscription_publication_identity", "SELECT"),
+        ] {
+            let allowed: bool =
+                sqlx::query_scalar("SELECT has_table_privilege(current_user,$1,$2)")
+                    .bind(format!("fl_billing.{table}"))
+                    .bind(privilege)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(db_error)?;
+            if !allowed {
+                return Err(conflict());
+            }
+        }
+        tx.commit().await.map_err(db_error)
+    }
+
     /// Locks unchanged created provenance and exactly two pending dependency claims.
     /// No provider verification or dispatch capability is supplied by this method.
     /// # Errors

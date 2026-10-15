@@ -75,7 +75,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let subscription_publisher = if bound_billing_config.as_ref().is_some_and(|c|c.has_subscription() || c.has_subscription_recovery()) {
         Some(startup_store.trusted_subscription_publisher(publisher_pool.as_ref().ok_or("Missing publisher")?.clone()).await?)
     } else { None };
-    let expiration_publisher = if bound_billing_config.as_ref().is_some_and(|c|c.has_payment_link_expiration()) {
+    let expiration_publisher = if bound_billing_config.as_ref().is_some_and(|c|c.has_payment_link_expiration() || c.has_payment_link_expiration_recovery()) {
         Some(startup_store.trusted_payment_link_expiration_publisher(publisher_pool.as_ref().ok_or("Missing publisher")?.clone()).await?)
     } else { None };
     {{#stripe}}

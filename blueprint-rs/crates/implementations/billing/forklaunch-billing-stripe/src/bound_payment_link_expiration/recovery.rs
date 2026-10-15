@@ -50,6 +50,24 @@ fn event_matches(
     Ok(())
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Startup-only local direct-context/grant/publisher checks, with no provider I/O.
+    /// Does not require permission to reserve or dispatch an expiration operation.
+    /// # Errors
+    /// Rejects managed/Connect, missing recovery grants or invalid publisher separation.
+    pub async fn validate_bound_payment_link_expiration_recovery_configuration(
+        &self,
+        publisher: &TrustedPaymentLinkExpirationPublisher,
+    ) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        self.base()
+            .store()
+            .validate_payment_link_expiration_recovery_access()
+            .await?;
+        publisher
+            .validate_configuration_for(self.base().store())
+            .await
+    }
+
     /// Finishes local expiration after authenticated request-key-linked evidence.
     /// Only fixed GETs are made. This never retries POST, deactivates a URL, or proves
     /// payment/entitlement state or which process originated the matched request.

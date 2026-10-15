@@ -42,6 +42,7 @@ pub struct BoundBillingConfig {
     payment_link_read: Option<PaymentLinkReadConfig>,
     payment_link: Option<BoundPaymentLinkCreationProfile>,
     payment_link_expiration: Option<BoundPaymentLinkExpirationProfile>,
+    payment_link_expiration_recovery: Option<BoundPaymentLinkExpirationProfile>,
     plan: Option<BoundPlanCreationProfile>,
     subscription: Option<BoundSubscriptionCreationProfile>,
     subscription_recovery: Option<BoundSubscriptionCreationProfile>,
@@ -182,6 +183,42 @@ fn portal_profile(scope: &StripeBindingScope, part: &Value) -> BlueprintResult<B
         .map_err(|_| configuration())?,
     })
 }
+fn checkout_profile(value: &Value) -> BlueprintResult<Option<BoundCheckoutConfig>> {
+    let Some(part) = value.get("checkout") else {
+        return Ok(None);
+    };
+    exact(part, &["plans", "successUrl", "cancelUrl"], &[])?;
+    let mut legacy = part.clone();
+    for key in ["deploymentLabel", "accountId", "livemode"] {
+        legacy[key] = value[key].clone();
+    }
+    BoundCheckoutConfig::from_json(&legacy.to_string())
+        .map(Some)
+        .map_err(|_| configuration())
+}
+
+fn matching_expiration_prices(value: &Value) -> BlueprintResult<()> {
+    let (Some(left), Some(right)) = (
+        value.get("paymentLinkExpiration"),
+        value.get("paymentLinkExpirationRecovery"),
+    ) else {
+        return Ok(());
+    };
+    let prices = |value: &Value| -> BlueprintResult<std::collections::BTreeSet<String>> {
+        value
+            .get("trustedPrices")
+            .and_then(Value::as_array)
+            .ok_or_else(configuration)?
+            .iter()
+            .map(|v| v.as_str().map(str::to_owned).ok_or_else(configuration))
+            .collect()
+    };
+    if prices(left)? != prices(right)? {
+        return Err(configuration());
+    }
+    Ok(())
+}
+
 impl BoundBillingConfig {
     /// Parses at most 64 KiB of exact configuration. At least one domain is required.
     /// # Errors
@@ -203,22 +240,14 @@ impl BoundBillingConfig {
                 "paymentLinkRead",
                 "paymentLink",
                 "paymentLinkExpiration",
+                "paymentLinkExpirationRecovery",
                 "plan",
                 "subscription",
                 "subscriptionRecovery",
             ],
         )?;
         let scope = scope(&value)?;
-        let checkout = if let Some(part) = value.get("checkout") {
-            exact(part, &["plans", "successUrl", "cancelUrl"], &[])?;
-            let mut legacy = part.clone();
-            for key in ["deploymentLabel", "accountId", "livemode"] {
-                legacy[key] = value[key].clone();
-            }
-            Some(BoundCheckoutConfig::from_json(&legacy.to_string()).map_err(|_| configuration())?)
-        } else {
-            None
-        };
+        let checkout = checkout_profile(&value)?;
         let portal_config = |key| {
             value
                 .get(key)
@@ -255,6 +284,11 @@ impl BoundBillingConfig {
             .get("paymentLinkExpiration")
             .map(|part| payment_link_expiration_profile(&scope, part))
             .transpose()?;
+        let payment_link_expiration_recovery = value
+            .get("paymentLinkExpirationRecovery")
+            .map(|part| payment_link_expiration_profile(&scope, part))
+            .transpose()?;
+        matching_expiration_prices(&value)?;
         let payment_link_read = value
             .get("paymentLinkRead")
             .map(|part| payment_link_profile(&scope, part))
@@ -267,6 +301,7 @@ impl BoundBillingConfig {
             && payment_link_read.is_none()
             && payment_link.is_none()
             && payment_link_expiration.is_none()
+            && payment_link_expiration_recovery.is_none()
             && plan.is_none()
             && subscription.is_none()
             && subscription_recovery.is_none()
@@ -282,6 +317,7 @@ impl BoundBillingConfig {
             payment_link_read,
             payment_link,
             payment_link_expiration,
+            payment_link_expiration_recovery,
             plan,
             subscription,
             subscription_recovery,
@@ -327,6 +363,10 @@ impl BoundBillingConfig {
     pub const fn has_payment_link_expiration(&self) -> bool {
         self.payment_link_expiration.is_some()
     }
+    #[must_use]
+    pub const fn has_payment_link_expiration_recovery(&self) -> bool {
+        self.payment_link_expiration_recovery.is_some()
+    }
     /// Checkout/Portal/Subscription creation and `PaymentLink` expiration require separate publication connections.
     /// `PaymentLink` uses its existing ordinary-role immutable journal authority.
     #[must_use]
@@ -336,6 +376,7 @@ impl BoundBillingConfig {
             || self.has_subscription()
             || self.has_subscription_recovery()
             || self.has_payment_link_expiration()
+            || self.has_payment_link_expiration_recovery()
     }
     /// Shared runtime/artifact contracts, with no server configuration embedded.
     #[must_use]
@@ -361,6 +402,9 @@ impl BoundBillingConfig {
             routes.extend(
                 super::bound_payment_link_expiration::bound_payment_link_expiration_contracts(),
             );
+        }
+        if self.has_payment_link_expiration_recovery() {
+            routes.extend(super::bound_payment_link_expiration::bound_payment_link_expiration_recovery_contracts().into_iter().filter(|r|!self.has_payment_link_expiration()||r.operation_name!="inspectBoundPaymentLinkExpiration"));
         }
         if self.has_payment_link() {
             routes.extend(super::bound_payment_link::bound_payment_link_contracts());
@@ -440,7 +484,9 @@ impl BoundBillingV1 {
         subscription: Option<TrustedSubscriptionPublisher>,
         expiration: Option<TrustedPaymentLinkExpirationPublisher>,
     ) -> BlueprintResult<Self> {
-        if configuration.has_payment_link_expiration() != expiration.is_some()
+        if (configuration.has_payment_link_expiration()
+            || configuration.has_payment_link_expiration_recovery())
+            != expiration.is_some()
             || configuration.has_checkout() != checkout.is_some()
             || configuration.has_portal() != portal.is_some()
             || (configuration.has_subscription() || configuration.has_subscription_recovery())
@@ -454,14 +500,13 @@ impl BoundBillingV1 {
             subscription_read: configuration.subscription_read,
             payment_link_read: configuration.payment_link_read,
             payment_link: configuration.payment_link,
-            payment_link_expiration: configuration.payment_link_expiration.zip(expiration).map(
-                |(profile, publisher)| {
-                    super::bound_payment_link_expiration::BoundPaymentLinkExpirationV1 {
-                        profile,
-                        publisher,
-                    }
-                },
-            ),
+            payment_link_expiration: expiration.map(|publisher| {
+                super::bound_payment_link_expiration::BoundPaymentLinkExpirationV1 {
+                    expiration: configuration.payment_link_expiration,
+                    recovery: configuration.payment_link_expiration_recovery,
+                    publisher,
+                }
+            }),
             plan: configuration.plan,
             subscription: subscription.map(|publisher| {
                 super::bound_subscription::BoundSubscriptionV1 {
@@ -539,6 +584,27 @@ impl BillingBackend {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn payment_link_recovery_is_independent_and_shared_inspection_has_one_policy() {
+        let mut value = json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"paymentLinkExpirationRecovery":{"trustedPrices":["price_owned"],"authority":"internal_service_tenant_v1"}});
+        let config = BoundBillingConfig::from_json(&value.to_string()).unwrap();
+        assert!(config.has_payment_link_expiration_recovery());
+        assert!(!config.has_payment_link_expiration());
+        assert!(config.requires_publisher());
+        assert_eq!(config.contracts().len(), 2);
+        assert!(
+            !config
+                .contracts()
+                .iter()
+                .any(|r| r.operation_name == "expireBoundPaymentLink")
+        );
+        assert!(BoundBillingV1::trusted(config, None, None).is_err());
+        value["paymentLinkExpiration"] = value["paymentLinkExpirationRecovery"].clone();
+        let config = BoundBillingConfig::from_json(&value.to_string()).unwrap();
+        assert_eq!(config.contracts().len(), 3);
+        value["paymentLinkExpiration"]["trustedPrices"] = json!(["price_other"]);
+        assert!(BoundBillingConfig::from_json(&value.to_string()).is_err());
+    }
     #[test]
     fn payment_link_expiration_requires_explicit_publisher_and_authority() {
         let value = json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"paymentLinkExpiration":{"trustedPrices":["price_owned"],"authority":"internal_service_tenant_v1"}});

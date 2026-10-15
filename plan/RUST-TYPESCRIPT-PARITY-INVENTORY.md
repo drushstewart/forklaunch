@@ -11601,3 +11601,28 @@ pass108 live actual Universal SDK response checks, preserving explicit applicati
 object overrides. Configured TypeScript7.0.2 passes12 roots/625 exports. Logs:
 `/private/tmp/fl-unconstrained-typebox-{before,after,types}.log`. Native acceptance
 validation is prepared and queued after the immutable package target releases.
+
+### 2026-10-15: PaymentLink expiration recovery HTTP/MCP/SDK surfaces
+
+Independent `paymentLinkExpirationRecovery` selects trusted prices and explicit
+`internal_service_tenant_v1` authority with a separate expiration publisher. It
+exposes event-linked recovery and historical inspection without enabling provider
+mutation. Recovery-only startup needs read/lock/audit/publication authority but
+no reservation INSERT privileges. Combined expiration/recovery selectors require
+the same normalized trusted-price set and expose one inspection operation.
+Recovery accepts only an eventId; authenticated actor/tenant/profile checks and
+provider event/current-object evidence remain mandatory. It performs no provider
+POST, reports unresolved outcomes as202, and returns IDs-only historical receipts.
+
+Frozen12-source manifest `/private/tmp/fl-payment-link-expiration-recovery-route-final.json`
+has SHA256 `5fe8f1a20783d91dabbea931f05663e0a5f726b1502466b78b2090e15af28d1a`.
+Final restricted PostgreSQL HTTP/MCP and four actual generated SDK calls pass3.40s;
+existing expiration regression passes3.20s. Sixteen units and186 rendered artifact
+cases pass, including compiled base/Stripe mains. Artifact totals now count
+executed cases dynamically instead of the old stale printed166. Strict
+base/Stripe/Axum all-feature/all-target Clippy passes18.58s; minimal Axum8.43s.
+Scoped formatting/diff checks and owned database/role cleanup pass. Logs use
+`/private/tmp/fl-payment-link-expiration-recovery-route-` with suffixes
+wrapper-final,regression,units-final,clippy-final,minimal,artifacts-final,cleanup.
+CI runs the direct-executable wrapper so SDK compilation does not hold Cargo's
+outer test lock. Broader billing/reconciliation gates remain open;660/682 unchanged.

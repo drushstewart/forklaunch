@@ -13,6 +13,7 @@ function run(command,args,env={}) {
  const result=spawnSync(command,args,{cwd:temporary,env:{...Object.fromEntries(Object.entries(process.env).filter(([key])=>!['BILLING_BOUND_CHECKOUT_CONFIG','BILLING_BOUND_BILLING_CONFIG','BILLING_PUBLISHER_DATABASE_URL'].includes(key))),CARGO_TARGET_DIR:target,CARGO_INCREMENTAL:'0',...env},encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
  assert.equal(result.status,0,result.stderr);return result.stdout;
 }
+let testedCases=0;
 try {
  mkdirSync(path.join(temporary,'src'));
  const crates={
@@ -86,6 +87,11 @@ try {
    {name:'subscription-read-null',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:null},fail:true},
    {name:'subscription-read-unknown',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:{...subscriptionRead,create:true}},fail:true},
    {name:'subscription-read-policy',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:{...subscriptionRead,collectionPolicy:'send_invoice'}},fail:true},
+   {name:'payment-link-expiration-recovery-only',profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLinkRead:undefined,paymentLinkExpirationRecovery:{trustedPrices:['price_owned'],authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:2},
+   {name:'payment-link-expiration-recovery-missing-publisher',profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLinkRead:undefined,paymentLinkExpirationRecovery:{trustedPrices:['price_owned'],authority:'internal_service_tenant_v1'}},fail:true},
+   {name:'payment-link-expiration-recovery-mixed',profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLinkRead:undefined,paymentLinkExpiration:{trustedPrices:['price_owned'],authority:'internal_service_tenant_v1'},paymentLinkExpirationRecovery:{trustedPrices:['price_owned'],authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:3},
+   {name:'payment-link-expiration-recovery-policy-conflict',profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLinkRead:undefined,paymentLinkExpiration:{trustedPrices:['price_other'],authority:'internal_service_tenant_v1'},paymentLinkExpirationRecovery:{trustedPrices:['price_owned'],authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:true},
+   ...[null,{trustedPrices:['price_owned']}].map((paymentLinkExpirationRecovery,i)=>({name:'payment-link-expiration-recovery-invalid-'+i,profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLinkRead:undefined,paymentLinkExpirationRecovery},publisher:'postgres://publisher@localhost/db',fail:true})),
    {name:'payment-link-expiration-only',profile:'bound-billing-v1',aggregate:{deploymentLabel:'owned',accountId:'acct_private',livemode:false,paymentLinkExpiration:{trustedPrices:['price_owned'],authority:'internal_service_tenant_v1'}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:2},
    {name:'payment-link-expiration-missing-publisher',profile:'bound-billing-v1',aggregate:{deploymentLabel:'owned',accountId:'acct_private',livemode:false,paymentLinkExpiration:{trustedPrices:['price_owned'],authority:'internal_service_tenant_v1'}},fail:true},
    {name:'payment-link-expiration-missing-authority',profile:'bound-billing-v1',aggregate:{deploymentLabel:'owned',accountId:'acct_private',livemode:false,paymentLinkExpiration:{trustedPrices:['price_owned']}},publisher:'postgres://publisher@localhost/db',fail:true},
@@ -114,6 +120,7 @@ try {
    {name:'unknown',profile:'unknown',config:null,publisher:null,fail:true},
    {name:'unknown-config-field',profile:'bound-checkout-v1',config:{...configured,stripeFields:{}},publisher:'postgres://publisher@localhost/db',fail:true}
   ];
+  testedCases += cases.length;
   cases.sort((a,b)=>(a.name==='legacy'?-1:b.name==='legacy'?1:0));
   let legacy;
   for(const test of cases){
@@ -150,5 +157,5 @@ try {
   writeFileSync(path.join(temporary,'src/main.rs'),render(mainTemplate));
   run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
  }
- console.log('PASS actual rendered generated library: 166 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
+ console.log(`PASS actual rendered generated library: ${testedCases} base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile`);
 } finally {rmSync(temporary,{recursive:true,force:true});}

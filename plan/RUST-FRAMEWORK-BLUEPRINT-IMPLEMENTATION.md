@@ -2755,3 +2755,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Optional invitation delivery passes actual9, final organization6, restricted PostgreSQL and strict full/minimal Clippy. Callback ordering/commit uncertainty and sanitized delivery failures covered; stale generated executables cleaned after lease release. Broader auth remains open,660/682 unchanged.
 
 - 2026-10-15: Unconstrained Zod factory exports no longer falsely require objects; actual/AJV11,106 comparisons and strict12-root TypeScript pass. Explicit overrides preserved; native/SDK follow-up queued,660/682 unchanged.
+
+- 2026-10-15: Independent PaymentLink expiration recovery passes restricted PostgreSQL HTTP/MCP/both SDKs, expiration regression,16 units,186 actual artifacts and strict full/minimal Clippy. No provider POST or reservation INSERT authority required; broader billing stays open,660/682 unchanged.
