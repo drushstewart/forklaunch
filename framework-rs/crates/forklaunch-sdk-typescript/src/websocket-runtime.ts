@@ -208,6 +208,59 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
     ...(legacy || draft2019 ? ['prefixItems'] : []),
     ...(draft2020 ? ['additionalItems'] : []),
   ]);
+  // A pointer can make literal data act as a schema too. Repairing that data
+  // would change const/enum equality or defaults, so reject the dual-use case.
+  const literalRanges: string[][] = [];
+  const repairPaths: string[][] = [];
+  const checked = new Set<string>();
+  const inspect: Array<{ node: unknown; path: string[]; resource: unknown; resourcePath: string[] }> = [
+    { node: copy, path: [], resource: copy, resourcePath: [] },
+  ];
+  let remaining = 10000;
+  while (inspect.length) {
+    const { node, path, resource, resourcePath } = inspect.pop()!;
+    const location = JSON.stringify(path);
+    if (checked.has(location)) continue;
+    checked.add(location);
+    if (--remaining < 0 || path.length > 64)
+      throw new Error('Socket schema inspection budget exceeded');
+    if (!node || typeof node !== 'object' || Array.isArray(node)) continue;
+    const object = node as Record<string, unknown>;
+    const ownsResource = typeof object[draft4 ? 'id' : '$id'] === 'string';
+    const base = ownsResource ? node : resource;
+    const basePath = ownsResource ? path : resourcePath;
+    for (const key of ['default', 'const', 'enum']) {
+      if (Object.prototype.hasOwnProperty.call(object, key)) literalRanges.push([...path, key]);
+    }
+    if (object.properties && typeof object.properties === 'object' &&
+        Object.prototype.hasOwnProperty.call(object.properties, '__proto__')) repairPaths.push(path);
+    const push = (child: unknown, childPath: string[]) => {
+      if (inspect.length >= remaining) throw new Error('Socket schema inspection budget exceeded');
+      inspect.push({ node: child, path: childPath, resource: base, resourcePath: basePath });
+    };
+    if (typeof object.$ref === 'string' && object.$ref.startsWith('#/')) {
+      const tokens = decodeURIComponent(object.$ref.slice(2)).split('/').map(key => key.replace(/~1/g, '/').replace(/~0/g, '~'));
+      let target: unknown = base;
+      for (const key of tokens) target = target && typeof target === 'object' &&
+        Object.prototype.hasOwnProperty.call(target, key) ? (target as Record<string, unknown>)[key] : undefined;
+      push(target, [...basePath, ...tokens]);
+    }
+    for (const [key, child] of Object.entries(object)) {
+      if (ignored.has(key)) continue;
+      if (dictionaries.has(key) && child && typeof child === 'object' && !Array.isArray(child)) {
+        for (const [name, value] of Object.entries(child)) push(value, [...path, key, name]);
+      } else if (singles.has(key)) push(child, [...path, key]);
+      else if (['items', 'prefixItems', 'allOf', 'anyOf', 'oneOf'].includes(key)) {
+        if (Array.isArray(child)) child.forEach((value, index) => push(value, [...path, key, String(index)]));
+        else push(child, [...path, key]);
+      }
+    }
+  }
+  for (const path of repairPaths) for (const range of literalRanges) {
+    if (--remaining < 0) throw new Error('Socket schema inspection budget exceeded');
+    if (range.length <= path.length && range.every((key, index) => path[index] === key))
+      throw new Error('Socket own-property repair cannot rewrite a schema inside literal default/const/enum data');
+  }
   let activeSchemas: WeakSet<object> | undefined;
   if (ignored.size) {
     const active = new WeakSet<object>();
@@ -293,7 +346,7 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
       else if (object.$schema.includes('/draft/2020-12/'))
         object.$schema = 'https://json-schema.org/draft/2020-12/schema';
     }
-    const base = typeof object.$id === 'string' ? [] : location;
+    const base = typeof object[draft4 ? 'id' : '$id'] === 'string' ? [] : location;
     const properties = object.properties as Record<string, unknown> | undefined;
     if (
       properties &&

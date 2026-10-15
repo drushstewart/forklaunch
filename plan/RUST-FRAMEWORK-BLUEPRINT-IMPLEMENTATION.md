@@ -2119,3 +2119,10 @@ Portal create and IDs-only inspection pass restrictedPG/HTTP/MCP and4generated
 SDKcalls;32config/artifact cases and actual base/Stripe main compile,6units,
 Date/default66routes28schemas and strictClippy pass. Root CI wrapper passes3.49s.
 Cached Portal reread and other families remain open; see inventory.660/682 (96.8%).
+
+
+SDK own-property checkpoint (2026-10-14): bounded private AJV compilation view
+repairs __proto__ without changing public schema/reference targets; draft04 socket
+resource reset uses id. Dual-use default/const/enum targets requiring repair reject
+explicitly, preserving injected defaults/equality/options.128cases+controls,
+18reference/13body and strictsource/socket types pass.660/682 (96.8%) unchanged.

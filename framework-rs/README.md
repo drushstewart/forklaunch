@@ -1236,3 +1236,11 @@ outside this JSON profile. The [tuple oracle](../cli/tests/rust_zod_tuple_json_p
 checks 19,050 cases in each serde mode; the live composition fixture covers HTTP,
 MCP and both SDK transports. This does not add positional schema emission or
 precise generated tuple models; those require coordinated dialect/SDK changes.
+
+
+SDK validation preserves own schema properties such as `__proto__` through a
+private bounded AJV compilation view, including exact pattern constraints and
+resource-local references. Caller-injected engines retain their options and custom
+keywords. A local reference into literal `default`, `const` or `enum` storage that
+requires own-property repair fails explicitly: changing that storage could change
+default data or equality. Public schema documents remain unchanged.

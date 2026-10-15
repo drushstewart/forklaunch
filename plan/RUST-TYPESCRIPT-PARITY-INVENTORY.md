@@ -9841,3 +9841,29 @@ and /private/tmp/fl-bound-billing-{portal-live,aggregate-unit,aggregate-artifact
 checkout-regression,date-regression,contracts-regression,aggregate-clippy,default-clippy}.log.
 Owned roles/databases cleaned0. No manifests/locks/migrations/framework changes;
 no latest immutable archive-installed profile claim.660/682 (96.8%),22open unchanged.
+
+
+### SDK AJV own-property compilation (2026-10-14)
+
+Private bounded compilation-copy adapter keeps original public documents, own
+properties and reference strings. Exact-end collision-free patternProperties
+references original __proto__ property schemas, preserving existing patterns and
+$id-bearing property resources without duplicate inline resource IDs. Default
+SDK engines now enforce previously filtered OAS3.0 finite-record __proto__ schemas;
+raw AJV16exceptions in earlier Record receipt remain historical raw-engine facts.
+Schema-position traversal follows effective dialect, OpenAPI roots and explicit
+local targets with10k/64depth budgets; injected engine options/custom keywords
+are retained. Caller-selected ownProperties:false remains caller policy.
+Review reproduced an injected useDefaults:true dual-use bug: repairing a schema
+under default/const/enum changed literal data/equality. Both SDK/socket consumers
+now explicitly reject such targets when repair is required, before compilation;
+harmless literal refs remain supported. No implicit literal rewriting or resource
+rebasing. Socket draft04 resource pointers reset on id (other drafts use$id).
+Frozen5 /private/tmp/fl-ajv-own-source.json verified.128SDK/six-dialect socket
+cases plus dual-use/dialect-inactive/literal/resource/budget/injected controls pass;
+root independent oracle rerun also passes (/private/tmp/fl-ajv-own-root-review.log).
+18reference realHTTP,13body regressions, URI203261+90/injected and strict12roots/
+614exports TS7.0.2 pass. Final emitted socket runtime strictTSC passes. Logs
+/private/tmp/fl-ajv-own{,-reference,-body,-uri,-types,-socket-types}.log.
+No Cargo/lock/native/generated-install rerun claim. Broader schema constraint
+gate remains open;660/682 (96.8%),22open unchanged.

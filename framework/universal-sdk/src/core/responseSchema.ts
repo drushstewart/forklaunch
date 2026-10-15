@@ -1,6 +1,7 @@
 import type Ajv from 'ajv';
 import type { AnySchema, ValidateFunction } from 'ajv';
 import { OpenAPIObject } from 'openapi3-ts/oas31';
+import { ajvSchema } from './ajvSchema';
 import { coerceSpecialTypes } from './coerceSpecialTypes';
 import { coerceReferenced, SchemaCursor } from './coerceReferenced';
 
@@ -14,6 +15,7 @@ let nextDocumentId = 0;
  * legacy two-argument coerceSpecialTypes helper retains its existing behavior.
  */
 export class ResponseSchemas {
+  private inline = new WeakMap<object, AnySchema>();
   private documents = new WeakMap<OpenAPIObject, { ajv: Ajv; base: string }>();
   constructor(
     private readonly source: Ajv,
@@ -80,8 +82,15 @@ export class ResponseSchemas {
     schema: AnySchema
   ): ValidateFunction {
     if (!hasReferences(schema)) {
+      let compiled = typeof schema === 'object' ? this.inline.get(schema) : schema;
+      if (compiled === undefined) {
+        const dialect = this.source.defaultMeta?.();
+        compiled = ajvSchema(schema, this.source.opts?.schemaId, false, typeof dialect === 'string' ? dialect : undefined);
+        if (typeof schema === 'object') this.inline.set(schema, compiled);
+      }
+      const validationSchema = compiled;
       const validate = ((data: unknown) => {
-        const valid = this.source.validate(schema, data);
+        const valid = this.source.validate(validationSchema, data);
         validate.errors = this.source.errors;
         return valid;
       }) as ValidateFunction;
@@ -105,7 +114,9 @@ export class ResponseSchemas {
       const base =
         (document as OpenAPIObject & { $id?: string }).$id ??
         `https://forklaunch.invalid/sdk-document/${++nextDocumentId}`;
-      for (const schema of Object.values(document.components?.schemas ?? {})) {
+      const dialect = ajv.defaultMeta?.();
+      const compilation = ajvSchema(document, ajv.opts?.schemaId, true, typeof dialect === 'string' ? dialect : undefined) as OpenAPIObject;
+      for (const schema of Object.values(compilation.components?.schemas ?? {})) {
         if (
           schema &&
           typeof schema === 'object' &&
@@ -114,7 +125,7 @@ export class ResponseSchemas {
         )
           ajv.addSchema(schema as AnySchema, new URL(schema.$id, base).href);
       }
-      ajv.addSchema(document, base);
+      ajv.addSchema(compilation, base);
       entry = { ajv, base };
       this.documents.set(document, entry);
     }
