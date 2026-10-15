@@ -12033,3 +12033,9 @@ live consumers followed it. Exact commands/source order are in
 integrated hashes match `/private/tmp/fl-string-float-length-source.json` SHA256
 `c6dcb70c3d06f7187bd299ad9f3412166ce690c5a4b8f861401baf33638bfe80`.
 CI includes the new oracle. Checklist660/682 remains unchanged.
+
+
+The committed string-length worktree was removed after exact HEAD, six integrated
+hashes and zero open process/file references were checked. Receipt
+`/private/tmp/fl-string-float-length-cleanup.json` records4,219 regular files and
+45,247,323 logical bytes removed; the proof branch and native caches are retained.
