@@ -264,12 +264,13 @@ impl<S: AuthStore> TwoFactorService<S> {
                 "Unable to prepare OTP delivery",
             )
         })?;
-        if future.await.is_err() {
-            #[cfg(feature = "http")]
-            crate::error_origin::log_handled_failure(
-                "/two-factor/send-otp",
-                &error("TWO_FACTOR_DELIVERY_FAILED", "OTP delivery failed"),
-            );
+        let task = super::OtpBackgroundTask::new(future);
+        if let Some(dispatcher) = &self.otp_background_dispatcher {
+            if dispatcher.dispatch(task).is_err() {
+                super::otp_background::diagnostic(true);
+            }
+        } else {
+            task.await;
         }
         Ok(empty_response(json!({"status":true})))
     }

@@ -34,6 +34,8 @@ pub use lifecycle::TwoFactorLifecycleOptions;
 pub use lifetime_options::TwoFactorLifetimeOptions;
 pub use lockout_options::AccountLockoutOptions;
 mod otp;
+mod otp_background;
+pub use otp_background::{OtpBackgroundDispatcher, OtpBackgroundTask};
 mod otp_async;
 mod otp_codec;
 mod otp_codec_state;
@@ -70,6 +72,7 @@ pub struct TwoFactorService<S> {
     secret: Zeroizing<Vec<u8>>,
     issuer: String,
     otp_delivery: Option<Arc<dyn OtpDelivery>>,
+    otp_background_dispatcher: Option<Arc<dyn OtpBackgroundDispatcher>>,
     otp_options: OtpOptions,
     otp_storage: OtpStorage,
     otp_encryption_keys: Option<Arc<OtpEncryptionKeys>>,
@@ -173,6 +176,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             secret: Zeroizing::new(secret),
             issuer,
             otp_delivery: None,
+            otp_background_dispatcher: None,
             otp_options: OtpOptions::default(),
             otp_storage: OtpStorage::default(),
             otp_encryption_keys: None,

@@ -1624,3 +1624,52 @@ async fn http_async_backup_lifecycle_faults_and_default_builder_preservation() {
         401
     );
 }
+
+#[tokio::test]
+async fn http_otp_background_returns_before_task_and_preserves_builders() {
+    let origin = "http://auth.fixture.test";
+    let queue = Arc::new(otp_background::Queue::default());
+    let delivery = Arc::new(otp::Delivery::default());
+    delivery.mode.store(3, std::sync::atomic::Ordering::SeqCst);
+    let mut browser = Browser {
+        router: AuthHttp::new(
+            Arc::new(MemoryAuthStore::default()),
+            origin.into(),
+            vec![42; 32],
+            vec![],
+        )
+        .unwrap()
+        .with_rate_limiting(false)
+        .with_two_factor_otp_background_dispatcher(queue.clone())
+        .unwrap()
+        .with_two_factor_otp_options(delivery.clone(), OtpOptions::default())
+        .unwrap()
+        .with_two_factor_otp_storage(OtpStorage::Hashed)
+        .unwrap()
+        .router(),
+        jar: BTreeMap::new(),
+        origin: origin.into(),
+    };
+    assert_eq!(browser.call("/sign-up/email",Some(json!({"name":"Owned","firstName":"Owned","lastName":"User","email":"background-http@example.test","password":PASSWORD}))).await.0,200);
+    let response = browser.call("/two-factor/send-otp", Some(json!({}))).await;
+    assert_eq!(response.0, 200);
+    assert_eq!(response.1, json!({"status":true}));
+    assert!(response.2.get("set-auth-jwt").is_none());
+    assert!(response.2.get("set-cookie").is_none());
+    let task = queue.tasks.lock().unwrap().pop().unwrap();
+    let worker = tokio::spawn(task);
+    delivery.entered.notified().await;
+    assert!(!worker.is_finished());
+    delivery.released.notify_one();
+    worker.await.unwrap();
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/verify-otp",
+                Some(json!({"code":delivery.last()}))
+            )
+            .await
+            .0,
+        200
+    );
+}

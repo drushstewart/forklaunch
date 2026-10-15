@@ -1232,3 +1232,14 @@ inspection returns IDs/state and uncertain effects do not redispatch. Startup
 fails before listening for missing/mixed/base/managed/backup authority. Restricted
 PG, actor/concurrency/current-customer and both SDK HTTP/MCP checks pass; no remote
 URL validity, general financial operations or automatic alias provisioning claim.
+
+
+### OTP scheduling boundary review (2026-10-14)
+
+No runtime is implicitly captured and no detached task is created. Trusted app
+owns opaque lazy delivery future and queue/shutdown policy. Proof is committed
+before preparation/handoff; dispatch/delivery errors are sanitized without proof
+rollback or new authentication. Pending/cancelled queued work leaves its OTP proof
+valid, as explicit behavior. No store transaction spans polling. Blocking/panics
+and cancellation of external work remain outside this contract. FocusedHTTP/domain,
+affectedOTP and upstream failure/await controls pass; strictClippy passes.

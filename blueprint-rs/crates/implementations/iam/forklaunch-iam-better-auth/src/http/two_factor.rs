@@ -49,6 +49,25 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(self)
     }
 
+    /// Hands OTP delivery tasks to a trusted application-owned scheduler. Default
+    /// delivery remains awaited without this builder. No request selects policy.
+    /// # Errors
+    /// Rejects conflicting namespaces or invalid existing authentication config.
+    pub fn with_two_factor_otp_background_dispatcher(
+        mut self,
+        dispatcher: Arc<dyn crate::two_factor::OtpBackgroundDispatcher>,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_otp_background_dispatcher(dispatcher),
+        ));
+        Ok(self)
+    }
+
     /// Selects trusted OTP field encoding without changing delivery or row encryption.
     /// # Errors
     /// Rejects conflicting JWKS namespace or invalid trusted auth configuration.

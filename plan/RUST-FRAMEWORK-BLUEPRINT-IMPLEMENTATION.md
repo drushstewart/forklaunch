@@ -2126,3 +2126,9 @@ repairs __proto__ without changing public schema/reference targets; draft04 sock
 resource reset uses id. Dual-use default/const/enum targets requiring repair reject
 explicitly, preserving injected defaults/equality/options.128cases+controls,
 18reference/13body and strictsource/socket types pass.660/682 (96.8%) unchanged.
+
+
+OTP background checkpoint (2026-10-14): trusted optional app-owned scheduling
+preserves defaultawait, committedproof and sanitized error behavior, without
+automatic runtime/spawn.3focused/36affected and5actual checks plusstrictClippy
+pass. Other background callsites remain open;660/682 (96.8%),22open unchanged.

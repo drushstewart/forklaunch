@@ -93,6 +93,7 @@ impl<S> TwoFactorService<S> {
             secret: self.secret.clone(),
             issuer: self.issuer.clone(),
             otp_delivery: self.otp_delivery.clone(),
+            otp_background_dispatcher: self.otp_background_dispatcher.clone(),
             otp_options: self.otp_options,
             otp_storage: self.otp_storage,
             otp_encryption_keys: self.otp_encryption_keys.clone(),

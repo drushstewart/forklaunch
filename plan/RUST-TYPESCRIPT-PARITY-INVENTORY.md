@@ -9867,3 +9867,25 @@ root independent oracle rerun also passes (/private/tmp/fl-ajv-own-root-review.l
 /private/tmp/fl-ajv-own{,-reference,-body,-uri,-types,-socket-types}.log.
 No Cargo/lock/native/generated-install rerun claim. Broader schema constraint
 gate remains open;660/682 (96.8%),22open unchanged.
+
+
+### Application-owned OTP background dispatcher (2026-10-14)
+
+Trusted OtpBackgroundDispatcher accepts one opaque owned lazy Send/static Future;
+service/AuthHttp builders preserve other options and default awaiting without
+dispatcher. Proof commits before fallible delivery preparation. Preparation failure
+remains500, nohandoff; dispatcher ResultErr and async delivery errors are reduced
+to static diagnostics and retain proof/success200. No auth cookies/JWT minted.
+Scheduling, bounded queue capacity, rejection, shutdown drain/drop belong to app;
+no implicit runtime/tokio spawn. Rust task construction does not poll unlike eager
+JS Promise. Dropping cannot revoke external effects already started; accepted then
+Err task remains dispatcher-owned. Blocking/panics outside Result contract.
+Frozen12 /private/tmp/fl-otp-background-freeze.json SHA256
+6efd86c0ec164f7b9f821f70c717d10f2859aae38e9a91e482e8561b6bcdc95f.
+Focused3pass3.11s, affectedOTP36pass/1environmentignored46.86s; actual5pending/
+preparethrow/handlerthrow/deliveryreject controls pass; strictfullalltargets and
+minimal Clippy pass. Logs /private/tmp/fl-otp-background-{native,regression,actual,
+clippy,minimal-clippy}.log. HTTPhashedstorage immediate200 beforedrain and
+builderpreservation are tested. No storage/schema/manifests/locks changes, no PG
+rerun or immutablearchive claim. This is OTP-only backgroundhelper coverage;
+verification/reset/invitations/cleanup remain separate.660/682 (96.8%),22open.

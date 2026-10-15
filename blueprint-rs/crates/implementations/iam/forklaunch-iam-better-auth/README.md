@@ -1588,3 +1588,34 @@ These checks do not revoke plaintext already returned, detect every completed
 no-change reservation, or authorize the caller. The trusted `_with_clock` variant
 supports deterministic policy tests; blocking/non-yielding callbacks remain outside
 the cooperative timeout guarantee.
+
+### Application-owned OTP background delivery
+
+`with_otp_background_dispatcher(Arc<dyn OtpBackgroundDispatcher>)` on
+`TwoFactorService`, or `AuthHttp::with_two_factor_otp_background_dispatcher`, opts
+OTP delivery into synchronous handoff to an application-owned executor. Existing
+OTP/storage/MFA builders preserve the dispatcher. Without it, delivery is still
+awaited. The send operation first commits its encrypted proof, then calls the
+existing delivery hook's fallible `prepare`. Preparation failure remains an empty
+500 and never invokes the dispatcher. A successfully prepared task is handed off
+once; the response returns `{ "status": true }` without awaiting delivery.
+
+`OtpBackgroundDispatcher::dispatch` receives an owned `OtpBackgroundTask` implementing
+`Future<Output = ()> + Send + 'static`. It contains no public secret-inspection,
+Debug, or Serialize surface. An application may spawn it on its own runtime or
+place it in a bounded queue; it owns capacity, rejection, draining during shutdown,
+and cancellation. This library creates no detached task or implicit runtime.
+Dropping an unpolled/pending task cancels its Rust future. Unlike an eager JavaScript
+Promise, a Rust future does not execute merely because it was constructed. No
+claim is made that dropping it cancels external work the hook already started.
+Blocking dispatcher/callback code and panics are outside the fallible contract.
+
+Async delivery errors and dispatcher `Err` values are reduced to static sanitized
+diagnostics; secret error contents are discarded. They leave the committed OTP
+valid and do not change the successful response or mint a session, cookie, or JWT.
+A dispatcher that accepts a task and then returns an error owns that accepted task;
+there is no compensating cancellation or proof rollback. No storage transaction
+is held across delivery polling. The same path serves builtin and custom OTP
+field storage. This implements the OTP use of Better Auth's background helper;
+email verification, invitations, rate cleanup and other plugin background work
+remain separate capabilities.
