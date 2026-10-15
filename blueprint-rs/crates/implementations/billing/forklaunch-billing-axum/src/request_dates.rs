@@ -41,7 +41,9 @@ const MAX: i64 = 253_402_300_799_999;
 impl BillingRequestDateProfile {
     /// Project only request date properties. JSON Schema describes admission, not
     /// an assertion that arbitrary strings satisfy the supported date grammar.
-    pub(crate) fn project(self, route: &mut RouteContract) -> BlueprintResult<()> {
+    /// # Errors
+    /// Rejects malformed JSON in an explicitly supplied request schema.
+    pub fn project(self, route: &mut RouteContract) -> BlueprintResult<()> {
         if self == Self::Legacy {
             return Ok(());
         }

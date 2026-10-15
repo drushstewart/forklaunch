@@ -399,3 +399,8 @@ responses retain ISO date-time schemas. Contract request metadata and generated
 SDKs expose string-or-number admission with profile annotations. This is a bounded
 profile, not all JavaScript Date formats. Runtime environment selection persists
 across regeneration/sync.
+
+Billing contract/OpenAPI export uses the same `BILLING_REQUEST_DATE_PROFILE` as
+runtime startup. Library callers can explicitly select
+`contract_registry_with_request_dates`; the existing `contract_registry()` stays
+legacy. Application-defined custom routes are unaffected by package date projection.

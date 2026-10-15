@@ -270,6 +270,7 @@ on:
       - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_request_dates.mjs'
       - 'cli/tests/rust_billing_request_dates_sdk.mjs'
+      - 'cli/tests/rust_billing_date_artifacts.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
@@ -621,6 +622,7 @@ on:
       - 'cli/tests/rust_billing_configured_mappers.mjs'
       - 'cli/tests/rust_billing_request_dates.mjs'
       - 'cli/tests/rust_billing_request_dates_sdk.mjs'
+      - 'cli/tests/rust_billing_date_artifacts.mjs'
       - 'cli/tests/rust_billing_checkout_uri.mjs'
       - 'cli/tests/rust_billing_dto_types.mjs'
       - 'cli/tests/rust_billing_portal_options.mjs'
@@ -1263,6 +1265,7 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
       - run: node cli/tests/rust_billing_request_dates.mjs
+      - run: node cli/tests/rust_billing_date_artifacts.mjs
       - name: Billing date HTTP, MCP and generated SDK profile
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --test request_dates -- --ignored
       - run: node cli/tests/rust_billing_dto_types.mjs

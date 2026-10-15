@@ -9458,3 +9458,16 @@ CI adds oracle and live ignored integration execution using jobTSC/PG environmen
 Lock adds only3 billing-Axum dependency edges (validation and two dev SDK crates).
 No full JSDate/TimeClip-extreme or configured billing identity-wiring claim.
 Checklist remains660/682 (96.8%),22open.
+
+
+### Billing date generated artifact follow-through (2026-10-14)
+
+Generated billing library export now explicitly projects package-owned routes with
+the same public date projection and environment parser used by runtime startup.
+contract_registry() remains legacy; contract_registry_with_request_dates is explicit.
+Custom application routes are preserved. Actual rendered base/Stripe library
+compilation/export passes legacy and opt-in contract+OpenAPI metadata, unchanged
+responses and invalid-profile zero-output checks. Temporary source tree removed.
+Proof /private/tmp/fl-billing-date-artifacts.log; permanent fixture
+cli/tests/rust_billing_date_artifacts.mjs added to CI. No new live SDK claim beyond
+the preceding runtime-registry receipt; checklist remains660/682.

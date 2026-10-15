@@ -4,14 +4,14 @@ use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_blueprint_core::AuditContext;
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
 use forklaunch_billing_base::services::postgres::PostgresBillingStore;
-use forklaunch_billing_axum::{BillingBackend,BillingRequestDateProfile,billing_router};
+use forklaunch_billing_axum::{BillingBackend,billing_router};
 {{#stripe}}use forklaunch_billing_stripe::client::StripeBillingClient;
 use forklaunch_blueprint_core::provider_http::ProviderHttpClient;
 use std::time::Duration;{{/stripe}}
 use sqlx::postgres::PgPoolOptions;
 use forklaunch_core::telemetry::otlp::TelemetryRuntime;
 use jsonwebtoken::{Algorithm, Validation};
-use {{crate_module}}::{service_info, write_contract_artifacts};
+use {{crate_module}}::{service_info, write_contract_artifacts, request_date_profile_from_env};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -76,7 +76,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(secret) = instance_key { backend = backend.with_platform_event_key(secret)?; }
     {{/stripe}}{{^stripe}}let backend = BillingBackend::base(store);{{/stripe}}
     let backend = backend.with_database_backup(env::var("BILLING_DATABASE_BACKUP").unwrap_or_else(|_|"false".into()).parse()?);
-    let backend = backend.with_request_dates(env::var("BILLING_REQUEST_DATE_PROFILE").unwrap_or_else(|_|"legacy".into()).parse::<BillingRequestDateProfile>()?);
+    let backend = backend.with_request_dates(request_date_profile_from_env()?);
     let host = env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned());
     let port: u16 = env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?;
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
