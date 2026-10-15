@@ -1619,3 +1619,16 @@ the selected policy with documented upstream transient exceptions. JWT and MFA
 challenge/trust lifetimes are independent. Restricted PostgreSQL lifecycle,
 full IAM tests and strict full/minimal profiles pass. Existing caller/request-clock
 sampling semantics remain explicit and are not claimed as post-await timing parity.
+
+
+### 2026-10-15 — explicit PaymentLink creation authority
+
+Creation uses a separate trusted selector and existing durable actor/tenant/profile
+journal. Startup validates individual required database grants without provider I/O;
+read selectors confer no creation authority. HTTP/MCP and generated SDK requests
+admit only bounded typed fields and trusted prices. Completed responses and
+inspection expose immutable IDs, not historical provider URLs. Ambiguous outcomes
+remain 202 and pending duplicates cannot redispatch. Restricted-role tests verify
+missing-grant rejection, actor/payload conflicts and zero provider calls on invalid
+admission. This profile is direct-only and does not turn declared amount into proof
+of a Stripe charge or grant entitlement authority.

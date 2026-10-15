@@ -10702,3 +10702,31 @@ Regex and other format families remain open; this closes the named conjunction
 behavior, not the broad schema gate. The source inventory remains 623 entries and
 1,703 declaration records across 44 packages. Session-policy PostgreSQL cleanup
 also confirms zero owned fixture roles, records and audit rows after its passing run.
+
+
+### 2026-10-15 — PaymentLink creation HTTP, MCP and SDK surfaces
+
+An explicit `paymentLink` selector exposes direct, actor-bound creation through
+POST `/bound-payment-links` and historical IDs-only inspection through GET
+`/bound-payment-link-operations/:operationId`. The existing immutable journal binds
+operation UUID, actor, tenant, trusted profile and canonical request. Trusted prices
+and bounded typed line items are required; callers cannot supply raw provider
+options or publication state. Declared amount is not charged-total proof.
+
+Completed initial/repeated operations return 200 with IDs only. Uncertain outcomes
+return 202 and may already have provider/local effects; pending repeats do not
+redispatch. Inspection neither revives URLs nor asserts current provider ownership.
+Creation authority is separate from read selection. Startup checks each required
+local privilege individually with no provider I/O; creation needs no record/binding
+SELECT or sensitive-read audit INSERT. Base, backup and managed transports reject
+this direct profile. Existing 66 default routes remain unchanged.
+
+The final restricted PostgreSQL test passes real HTTP/MCP and two calls from each
+generated TS/Rust SDK in 2.74 seconds. It covers individual missing grants,
+invalid inputs before provider calls, actor/payload conflicts, integral JSON-float
+normalization, completed/pending repeats and IDs-only inspection. Ten units, 104
+rendered artifact/startup cases including compiled base/Stripe binaries, strict
+all-feature billing Clippy and feature-off Axum Clippy pass. Owned test roles return
+to zero. CI uses a direct-executable wrapper to release Cargo's build lock before
+nested Rust SDK compilation. Plan/Subscription creation surfaces, managed creation
+and broader mutation/reconciliation semantics remain open.

@@ -276,3 +276,34 @@ active is an error, and local amount/status are unchanged. The whole remote phas
 shares one five-second context. Evidence and result aggregates each have an 8 MiB
 limit. Omitted/empty selection enumeration, account scans and pagination are unsupported.
 Each original proof is reobserved after I/O; this is not an atomic multi-record snapshot.
+
+### Explicit direct PaymentLink creation
+
+`bound-billing-v1` can separately select
+`"paymentLink":{"trustedPrices":["price_your_reference"]}` under the common
+trusted deployment/account/mode scope. `paymentLinkRead` does not enable creation.
+This domain uses its existing ordinary-role immutable creation journal, not a
+separate publisher. A publisher URL is rejected unless another selected domain
+requires it. Startup requires schema USAGE, INSERT on records/provider bindings,
+SELECT/INSERT/UPDATE on payment-link creation intents, and INSERT on creation and
+binding audits. No provider call occurs during startup. Creation alone does not
+require record/binding SELECT or sensitive-read audit INSERT; selecting reads adds
+their grants separately. Base, backup and managed transports fail closed.
+
+POST `/bound-payment-links` (`createBoundPaymentLink`) accepts exactly operationId,
+amount, currency, paymentMethods and lineItems (`price`, `quantity`). The operation
+UUID is caller-visible and bound to the authenticated actor, tenant, profile and
+canonical request. Prices must belong to the server allowlist; currency is three
+uppercase letters, paymentMethods has 1..32 safe identifiers, and lineItems has
+1..20 items with integral quantity 1..999999. No supplied public ID, raw provider
+options, fees, transfer/delegation or status is accepted. The server sets PENDING.
+Amount is a declared local value, not independently verified price or charged total.
+
+Successful publication or a completed duplicate returns HTTP200 with only state,
+operationId and publicId. HTTP202 `unresolved` or `recordedEvidenceNoLongerCurrent`
+may already have provider/local effects; it is not rollback proof or retry authority.
+GET `/bound-payment-link-operations/:operationId` returns actor-owned historical
+pending/completed status and IDs only, or404. Inspection never revives a URL or
+provider DTO, proves current ownership/validity, or dispatches another POST.
+Changed payload/actor conflicts; pending repeats do not redispatch. Existing66
+legacy routes remain available; this explicit selector is not full default mapper parity.

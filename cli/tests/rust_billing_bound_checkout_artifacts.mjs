@@ -46,6 +46,10 @@ try {
   const paymentLinkRead={trustedPrices:["price_owned"]};
   const linkReadAggregate={deploymentLabel:"owned",accountId:"acct_private",livemode:false,paymentLinkRead};
   const cases=[
+   {name:'payment-link-create-only',profile:'bound-billing-v1',aggregate:{deploymentLabel:"owned",accountId:"acct_private",livemode:false,paymentLink:{trustedPrices:["price_owned"]}},fail:!stripe,count:2},
+   {name:'payment-link-create-read',profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLink:paymentLinkRead},fail:!stripe,count:4},
+   {name:'payment-link-create-stray-publisher',profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLink:paymentLinkRead},publisher:'postgres://publisher@localhost/db',fail:true},
+   ...[null,{}, {trustedPrices:[]},{trustedPrices:['price_owned'],maxRecords:100},{trustedPrices:['price_owned'],publisher:'no'}].map((paymentLink,i)=>({name:'payment-link-create-invalid-'+i,profile:'bound-billing-v1',aggregate:{deploymentLabel:'owned',accountId:'acct_private',livemode:false,paymentLink},fail:true})),
    {name:'payment-link-read-limit',profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLinkRead:{...paymentLinkRead,maxRecords:150}},fail:!stripe,count:2},
    ...[0,1001,1.5,null].map(maxRecords=>({name:'payment-link-read-invalid-limit-'+maxRecords,profile:'bound-billing-v1',aggregate:{...linkReadAggregate,paymentLinkRead:{...paymentLinkRead,maxRecords}},fail:true})),
    {name:'payment-link-read-only',profile:'bound-billing-v1',aggregate:linkReadAggregate,fail:!stripe,count:2},
@@ -104,9 +108,9 @@ try {
    if(listRoute){const field=listRoute.request.query.find(v=>v.name==='ids');assert.equal(field.required,true);const schema=typeof field.schema.jsonSchema==='string'?JSON.parse(field.schema.jsonSchema):field.schema.jsonSchema;assert.equal(schema.type,'array');assert.equal(schema.minItems,1);assert.equal(schema.maxItems,test.name==='payment-link-read-limit'?150:100);assert.equal(schema.items.format,'uuid');}
    const text=JSON.stringify({contract,openapi});assert(text.includes('x-forklaunch-date-profile'));
    for(const secret of ['acct_private','private-password','private.example'])assert(!text.includes(secret));
-   const bound=contract.routes.filter(r=>(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')||r.path.startsWith('/bound-plans/')||r.path.startsWith('/bound-subscriptions/')||r.path.startsWith('/bound-payment-links')));
+   const bound=contract.routes.filter(r=>(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')||r.path.startsWith('/bound-plans/')||r.path.startsWith('/bound-subscriptions/')||(r.path.startsWith('/bound-payment-links')||r.path.startsWith('/bound-payment-link-operations/'))));
    if(test.profile==='legacy'){assert.equal(bound.length,0);legacy=contract.routes;}
-   else {assert.equal(bound.length,test.count??3);assert.deepEqual(contract.routes.filter(r=>!(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')||r.path.startsWith('/bound-plans/')||r.path.startsWith('/bound-subscriptions/')||r.path.startsWith('/bound-payment-links'))),legacy);if(['plan-read-only','subscription-read-only','subscription-plan-read','payment-link-read-only','payment-link-read-limit','all-read-only'].includes(test.name)){assert(bound.every(r=>['getBoundCreatedPlan','getBoundCreatedSubscription','getBoundCreatedPaymentLink','listBoundCreatedPaymentLinks'].includes(r.operationName)));assert(bound.every(r=>!r.responses.some(v=>v.statusCode===202)));if(test.name==='subscription-read-only')assert.equal(bound[0].operationName,'getBoundCreatedSubscription');if(test.name==='payment-link-read-only')assert.equal(bound[0].operationName,'getBoundCreatedPaymentLink');}else assert(bound.some(r=>r.responses.some(v=>v.statusCode===202)));}
+   else {assert.equal(bound.length,test.count??3);assert.deepEqual(contract.routes.filter(r=>!(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')||r.path.startsWith('/bound-plans/')||r.path.startsWith('/bound-subscriptions/')||(r.path.startsWith('/bound-payment-links')||r.path.startsWith('/bound-payment-link-operations/')))),legacy);if(['plan-read-only','subscription-read-only','subscription-plan-read','payment-link-read-only','payment-link-read-limit','all-read-only'].includes(test.name)){assert(bound.every(r=>['getBoundCreatedPlan','getBoundCreatedSubscription','getBoundCreatedPaymentLink','listBoundCreatedPaymentLinks'].includes(r.operationName)));assert(bound.every(r=>!r.responses.some(v=>v.statusCode===202)));if(test.name==='subscription-read-only')assert.equal(bound[0].operationName,'getBoundCreatedSubscription');if(test.name==='payment-link-read-only')assert.equal(bound[0].operationName,'getBoundCreatedPaymentLink');}else assert(bound.some(r=>r.responses.some(v=>v.statusCode===202)));}
   }
 
  }
@@ -125,5 +129,5 @@ try {
   writeFileSync(path.join(temporary,'src/main.rs'),render(mainTemplate));
   run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
  }
- console.log('PASS actual rendered generated library: 88 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
+ console.log('PASS actual rendered generated library: 104 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
 } finally {rmSync(temporary,{recursive:true,force:true});}

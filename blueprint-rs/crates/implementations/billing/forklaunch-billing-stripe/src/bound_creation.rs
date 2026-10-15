@@ -122,6 +122,18 @@ pub(crate) fn completed(
     })
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Validates direct transport and creation/inspection grants without provider I/O.
+    /// No separately privileged publisher is used by this finite `PaymentLink` profile.
+    /// # Errors
+    /// Rejects managed clients and missing local privileges before listening.
+    pub async fn validate_bound_payment_link_creation_configuration(&self) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        self.base()
+            .store()
+            .validate_payment_link_creation_access()
+            .await
+    }
+
     /// Direct-only, one-dispatch creation backed by a durable immutable journal.
     /// Operation IDs are retry/inspection keys, never authorization. The configured
     /// store tenant/actor and trusted profile supply authority. No cache is written.

@@ -82,6 +82,17 @@ fn intent_hash(public_id: &str, canonical: &str) -> String {
     format!("{:x}", hash.finalize())
 }
 impl PostgresBillingStore {
+    /// Checks only local grants required by explicit creation and receipt inspection.
+    /// # Errors
+    /// Rejects missing schema usage or journal/record/binding/audit write privileges.
+    pub async fn validate_payment_link_creation_access(&self) -> BlueprintResult<()> {
+        let allowed:bool=sqlx::query_scalar("SELECT has_schema_privilege(current_user,'fl_billing','USAGE') AND has_table_privilege(current_user,'fl_billing.records','INSERT') AND has_table_privilege(current_user,'fl_billing.provider_bindings','INSERT') AND has_table_privilege(current_user,'fl_billing.payment_link_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.payment_link_creation_intents','INSERT') AND has_table_privilege(current_user,'fl_billing.payment_link_creation_intents','UPDATE') AND has_table_privilege(current_user,'fl_billing.payment_link_creation_audit','INSERT') AND has_table_privilege(current_user,'fl_billing.provider_binding_audit','INSERT')").fetch_one(&self.pool).await.map_err(db_error)?;
+        if !allowed {
+            return Err(conflict());
+        }
+        Ok(())
+    }
+
     fn seal_creation(
         &self,
         operation: Uuid,
