@@ -7,9 +7,19 @@ use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
 impl<S: AuthStore> CredentialService<S> {
+    /// Enables a separate session revocation transaction after password commit.
+    /// Defaults to false. A revocation error does not undo the password update or
+    /// restore the consumed reset proof. All current user sessions, including expired
+    /// ones, are selected through the tenant-bound store's indexed user lookup.
+    #[must_use]
+    pub fn with_revoke_sessions_on_password_reset(mut self, enabled: bool) -> Self {
+        self.revoke_sessions_on_password_reset = enabled;
+        self
+    }
+
     /// Consumes the newest verification and invalidates duplicates before hashing.
     /// Token consumption persists even for expired tokens or missing users, matching
-    /// the configured handler. Successful resets retain existing sessions.
+    /// the configured handler. Resets retain sessions unless revocation is enabled.
     /// # Errors
     /// Returns token/password/user errors or sanitized storage failures.
     pub async fn reset_password(
@@ -76,7 +86,29 @@ impl<S: AuthStore> CredentialService<S> {
             tx.insert(Model::Account, json!({"id":uuid::Uuid::new_v4().to_string(),"userId":user_id,"accountId":user_id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
         }
         tx.commit().await?;
+        if self.revoke_sessions_on_password_reset {
+            self.revoke_reset_sessions(&user_id).await?;
+        }
         Ok(json!({"status":true}))
+    }
+    async fn revoke_reset_sessions(&self, user_id: &str) -> BlueprintResult<()> {
+        let mut tx = self.store.begin(true).await?;
+        let mut after = None;
+        loop {
+            let page = tx
+                .find_page(Model::Session, "userId", user_id, after, 256)
+                .await?;
+            for session in page.records {
+                if session["userId"].as_str() == Some(user_id) {
+                    tx.delete(Model::Session, text(&session, "id")?).await?;
+                }
+            }
+            after = page.next;
+            if after.is_none() {
+                break;
+            }
+        }
+        tx.commit().await
     }
 }
 fn time(row: &Value, field: &str) -> BlueprintResult<DateTime<Utc>> {
@@ -239,3 +271,7 @@ pub(crate) mod tests {
         tx.commit().await.unwrap();
     }
 }
+
+#[cfg(all(test, feature = "http"))]
+#[path = "reset_revocation_tests.rs"]
+pub(crate) mod revocation_tests;

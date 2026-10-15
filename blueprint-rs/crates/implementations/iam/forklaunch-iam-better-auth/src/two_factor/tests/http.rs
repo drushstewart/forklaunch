@@ -2216,3 +2216,67 @@ async fn http_signup_auto_sign_in_policy_matrix() {
         );
     }
 }
+
+#[tokio::test]
+async fn http_reset_revocation_option_retains_cookie_but_invalidates_server_session() {
+    for enabled in [false, true] {
+        let store = Arc::new(MemoryAuthStore::default());
+        let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+        let mut browser = Browser {
+            router: AuthHttp::new(
+                store.clone(),
+                "http://auth.fixture.test".into(),
+                vec![42; 32],
+                vec![],
+            )
+            .unwrap()
+            .with_rate_limiting(false)
+            .with_clock(move || now)
+            .with_revoke_sessions_on_password_reset(enabled)
+            .router(),
+            jar: BTreeMap::new(),
+            origin: "http://auth.fixture.test".into(),
+        };
+        let input = json!({"name":"Reset","firstName":"Reset","lastName":"Owner","email":"reset-http@example.test","password":"old-owned-password"});
+        let (status, first, _) = browser.call("/sign-up/email", Some(input)).await;
+        assert_eq!(status, 200);
+        let mut tx = store.begin(true).await.unwrap();
+        tx.insert(Model::Verification, json!({"id":"http-revocation","identifier":"reset-password:http-revocation","value":first["user"]["id"],"createdAt":now.to_rfc3339(),"expiresAt":(now+chrono::Duration::minutes(1)).to_rfc3339()})).await.unwrap();
+        tx.commit().await.unwrap();
+        let jar = browser.jar.clone();
+        let (status, body, headers) = browser
+            .call(
+                "/reset-password",
+                Some(json!({"token":"http-revocation","newPassword":"new-owned-password"})),
+            )
+            .await;
+        assert_eq!((status, body), (200, json!({"status":true})));
+        assert!(!headers.contains_key("set-cookie"));
+        assert_eq!(browser.jar, jar);
+        let mut tx = store.begin(false).await.unwrap();
+        let sessions = tx
+            .find_page(
+                Model::Session,
+                "userId",
+                first["user"]["id"].as_str().unwrap(),
+                None,
+                256,
+            )
+            .await
+            .unwrap();
+        assert_eq!(sessions.records.len(), usize::from(!enabled));
+        tx.commit().await.unwrap();
+        assert_eq!(
+            browser
+                .call(
+                    "/sign-in/email",
+                    Some(
+                        json!({"email":"reset-http@example.test","password":"new-owned-password"})
+                    )
+                )
+                .await
+                .0,
+            200
+        );
+    }
+}

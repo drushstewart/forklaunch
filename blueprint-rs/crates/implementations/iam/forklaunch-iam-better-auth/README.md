@@ -1732,3 +1732,14 @@ Consumers exhaustively matching the public enum must add the new variant. The le
 false (or `EMAIL_NOT_VERIFIED` if required verification also applies). Required and
 auto-signin-disabled duplicate signup share the existing synthetic-profile privacy,
 password hashing, callback ordering and final uniqueness/atomicity rules.
+
+`CredentialService::with_revoke_sessions_on_password_reset(true)` and the matching
+`AuthHttp` builder opt into revoking the user's sessions after a password reset;
+the default remains false. The tenant-bound indexed query deletes all matching
+sessions, including expired ones, without deleting another user's sessions.
+Password/proof commits precede the separate atomic session-deletion transaction:
+if revocation fails, the reset returns an error but the new password and consumed
+proof remain committed, and session deletions roll back. This matches the observed
+upstream partial-failure boundary, rather than making the whole reset atomic.
+The reset response does not clear browser cookies. This option does not install
+an `onPasswordReset` callback.

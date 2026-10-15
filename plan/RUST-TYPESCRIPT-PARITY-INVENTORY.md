@@ -10445,3 +10445,23 @@ string-literals-{native,types}.log plus named regression logs; root types log
 /private/tmp/fl-string-literals-root-types.log. CI enables native proof with existing
 contract schema-validation example; no Rust source/deps/locks changed. Broader
 schema/Unicode/callback gates remain open,660/682(96.8%),22open unchanged.
+
+
+### Optional post-reset session revocation (2026-10-14)
+
+Defaultfalse with_revoke_sessions_on_password_reset is available on trusted
+CredentialService/AuthHttp. Enabled reset first commits password update and
+consumed proof, then deletes all current user's sessions (including expired)
+through tenant-bound indexed256-row cursor pages in a separate writer transaction.
+Foreign users remain untouched;513-session test proves pagination. No cookie
+clearing is invented. A second-delete fault rolls back earlier session deletions
+while the changed password/consumed proof remain committed, matching upstream's
+observable failure boundary. Native revocation batch is transactional; no claim
+about arbitrary source adapter partial deletes or onPasswordReset hooks.
+Actual4,focused3(18.68s),affectedreset8(18.70s),restrictedPG1(99.67s),strictfull
+allfeature/alltarget18.08s+minimal3.08s pass. Ownedroles/records/audits0.
+Frozen10 /private/tmp/fl-reset-revocation-freeze.json verified (manifest SHA256
+3f2bdb242ddaa60b77ec07e6fcce790f3204940ce400a38dc46b3b97ed32af5b).
+Logs /private/tmp/fl-reset-revocation-{actual,native,regression,pg,clippy,
+minimal-clippy}.log. No schema/dependency changes. Further trusted hooks and
+provider lifecycle remain open;660/682(96.8%),22broad gates unchanged.

@@ -20,6 +20,8 @@ pub use verification_policy::{EmailVerificationPolicy, SignupOutcome};
 mod password;
 mod profile;
 mod reset;
+#[cfg(all(test, feature = "http"))]
+pub(crate) use reset::revocation_tests;
 pub(crate) mod reset_request;
 pub use reset_request::{
     PasswordResetDelivery, PasswordResetDeliveryContext, PasswordResetService,
@@ -86,6 +88,7 @@ pub struct CredentialService<S> {
     workers: Arc<Semaphore>,
     verification_policy: EmailVerificationPolicy,
     signup_auto_sign_in: bool,
+    revoke_sessions_on_password_reset: bool,
     #[cfg(feature = "http")]
     pub(crate) verification_delivery: Option<verification_policy::Delivery>,
 }
@@ -99,6 +102,7 @@ impl<S: AuthStore> CredentialService<S> {
             store,
             verification_policy: EmailVerificationPolicy::default(),
             signup_auto_sign_in: true,
+            revoke_sessions_on_password_reset: false,
             #[cfg(feature = "http")]
             verification_delivery: None,
             workers: WORKERS.get_or_init(|| Arc::new(Semaphore::new(4))).clone(),

@@ -245,6 +245,7 @@ async fn reset<S: AuthStore + 'static>(
         .or_else(|| query.get("token").and_then(Value::as_str))
         .unwrap_or("");
     CredentialService::new(app.store.clone())
+        .with_revoke_sessions_on_password_reset(app.revoke_sessions_on_password_reset)
         .reset_password(token, super::text(payload, "newPassword")?.to_owned(), now)
         .await
 }
@@ -329,6 +330,17 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             ));
         }
         self.background_dispatcher = Some(dispatcher);
+        self
+    }
+}
+
+impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Revokes the user's sessions after a successful password update when enabled.
+    /// Defaults to false. Revocation failure leaves the changed password and
+    /// consumed reset proof committed; the session deletion transaction rolls back.
+    #[must_use]
+    pub fn with_revoke_sessions_on_password_reset(mut self, enabled: bool) -> Self {
+        self.revoke_sessions_on_password_reset = enabled;
         self
     }
 }
