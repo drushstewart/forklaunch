@@ -12612,3 +12612,7 @@ An additional351 retired owned CLI cache files/1,039,414,478 logical bytes were
 removed after archive/open-file/inode checks; unrelated watcher46080 was preserved.
 Receipt: `/private/tmp/fl-oct15-retired-package-cli-cache-cleanup.json`.
 Broad gates remain open; checklist660/682 (96.8%) unchanged.
+
+The integrated UTF16 worktree was removed after exact commit, nine source hashes,
+clean status and no active/open owned files were verified. Branch and proofs
+remain; `/private/tmp/fl-utf16-bound-domain-cleanup.json` records54,876KiB logical.
