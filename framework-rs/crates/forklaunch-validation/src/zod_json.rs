@@ -20,6 +20,8 @@ mod object_policy;
 mod ordered;
 #[path = "zod_json_record.rs"]
 mod record;
+#[path = "zod_json_tuple.rs"]
+mod tuple;
 use ordered::Order;
 pub use ordered::{OrderedJsonDocument, OrderedJsonError};
 use resources::{
@@ -63,6 +65,13 @@ pub enum ZodJsonSchema<'a> {
     Array {
         element: Box<Self>,
         checks: Vec<ZodArrayStep>,
+    },
+    /// Ordered dense JSON tuple. Every declared slot counts toward minimum
+    /// length, including optional/default schemas. An optional rest validates
+    /// all trailing values. Sparse/undefined JavaScript elements are excluded.
+    Tuple {
+        items: Vec<Self>,
+        rest: Option<Box<Self>>,
     },
     Object(Vec<ZodJsonField<'a>>),
     /// Reject unknown keys in original ECMAScript own-key order.
@@ -364,6 +373,7 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
                 fields, catchall, ..
             } => fields.len() + usize::from(catchall.is_some()),
             ZodJsonSchema::Union(branches) => branches.len(),
+            ZodJsonSchema::Tuple { items, rest } => items.len() + usize::from(rest.is_some()),
             ZodJsonSchema::Record { .. } => 2,
             ZodJsonSchema::Optional(_)
             | ZodJsonSchema::Nullable(_)
@@ -374,6 +384,12 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
             return Err(ZodJsonUnsupported::SchemaNodes);
         }
         match schema {
+            ZodJsonSchema::Tuple { items, rest } => {
+                stack.extend(items.iter().map(|item| (item, depth + 1)));
+                if let Some(rest) = rest {
+                    stack.push((rest, depth + 1));
+                }
+            }
             ZodJsonSchema::Record { key, value } => {
                 stack.push((key, depth + 1));
                 stack.push((value, depth + 1));
@@ -530,6 +546,9 @@ fn evaluate_ordered(
         },
         ZodJsonSchema::Array { element, checks } => {
             array(input, element, checks, remaining, order)?
+        }
+        ZodJsonSchema::Tuple { items, rest } => {
+            tuple::evaluate(input, items, rest.as_deref(), remaining, order)?
         }
         ZodJsonSchema::Object(fields) => object(input, fields, remaining, order, false)?,
         ZodJsonSchema::StrictObject(fields) => object(input, fields, remaining, order, true)?,

@@ -1226,3 +1226,13 @@ prototype mutation. UniversalSdk's owned AJV engines validate own properties;
 injected engines retain caller options. OAS3.0 AJV still filters `__proto__` schema
 properties, an explicit consumer limitation. Transform/regex/UTF-16 key grammars
 remain separate. See the [record fixture](../cli/tests/rust_zod_record_openapi.mjs).
+
+`ZodJsonSchema::Tuple { items, rest }` validates ordered dense JSON arrays.
+Every declared slot counts toward minimum length, including optional/default
+schemas. Short arrays abort before child evaluation; surplus values without rest
+produce a length error followed by declared child errors. Rest validates trailing
+values under shared depth/work/output budgets. Sparse/undefined JS elements remain
+outside this JSON profile. The [tuple oracle](../cli/tests/rust_zod_tuple_json_parity.mjs)
+checks 19,050 cases in each serde mode; the live composition fixture covers HTTP,
+MCP and both SDK transports. This does not add positional schema emission or
+precise generated tuple models; those require coordinated dialect/SDK changes.

@@ -17,6 +17,27 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
+fn tuple_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
+    use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
+    ["pair", "trail"]
+        .into_iter()
+        .map(|name| Field {
+            name,
+            schema: Schema::Optional(Box::new(Schema::Tuple {
+                items: vec![
+                    Schema::String(vec![typescript_coerce::ZodStringCheck {
+                        rule: typescript_coerce::ZodStringRule::Step(
+                            typescript_coerce::ZodStringStep::Trim,
+                        ),
+                        message: None,
+                    }]),
+                    Schema::Number(vec![]),
+                ],
+                rest: (name == "trail").then(|| Box::new(Schema::Boolean)),
+            })),
+        })
+        .collect()
+}
 fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> {
     use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
     let mut fields = vec![
@@ -101,6 +122,7 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
             })),
         },
     ];
+    fields.extend(tuple_fields());
     fields.extend(absence_fields());
     fields.extend(object_policy_fields());
     #[cfg(feature = "zod-uri")]

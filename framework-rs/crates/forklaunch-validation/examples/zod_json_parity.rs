@@ -119,6 +119,15 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
             schema: inner(),
             value: &spec["value"],
         },
+        "tuple" => ZodJsonSchema::Tuple {
+            items: spec["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(schema)
+                .collect(),
+            rest: spec.get("rest").map(|value| Box::new(schema(value))),
+        },
         "array" => ZodJsonSchema::Array {
             element: inner(),
             checks: spec["checks"]

@@ -9762,3 +9762,23 @@ New bound Checkout CI wrapper passes actual HTTP/MCP and6SDK calls in3.63s,
 log /private/tmp/fl-bound-checkout-ci-wrapper.log, against coherent current-main
 Aggregate initial compile. Wrapper releases Cargo buildlock before nested SDK
 compile. This is not a new archive-installed bound-profile runtime claim.
+
+
+### Checked dense JSON tuples (2026-10-14)
+
+Additive Tuple{items,rest} preaborts short arrays before child/default evaluation;
+optional/default slots still count toward minimum. Surplus/no-rest marksDirty then
+evaluates only declared positions; rest validates every trailing item. Child status,
+ordered paths/messages, original own-key order, sharedschema/work/output bytebudget
+and preallocation/default-clone charging match finite checked composition rules.
+Dense JSON only; sparse/undefined elements/arbitrary callbacks remain outsideprofile.
+Frozen7 /private/tmp/fl-zod-tuple-source.json.73allfeature/71minimal validationtests,
+19050 exact actual/native pairs each default/arbitrary_precision,291liveHTTP/
+138FastMCP/nativeMCP,3safe500 modes and6calls each generatedTS/RustSDK pass;
+strict validation allfeature/minimal and AxumexampleClippy pass. Logs
+/private/tmp/fl-tuple-{validation,minimal,parity,live,clippy,minimal-clippy,live-clippy}.log.
+No failure required production changes; scratch source installed coherently.
+CI adds oracle and expanded existinglive fixture. SDK checks prove transport/value
+behavior, not new precise tuple models. Positional OAS3.1 emission requires explicit
+2020dialect, consumer selection/positional coercion and Rustmodel follow-through;
+current emitter remains separate opengap.660/682 (96.8%),22open unchanged.

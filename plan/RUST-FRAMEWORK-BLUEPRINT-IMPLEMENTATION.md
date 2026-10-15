@@ -51,7 +51,8 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: Never-leaf false-schema and required-object emission with224 exact cases, union/bounds regressions and strict types. Exact generated never types remain separate.
 - Completed: finite record-key export and safe schema-property merge preservation,1744 exact pairs plus16 explicitly asserted OAS3.0AJV proto exceptions; defaultSDK own-property validation and prior emitter regressions pass.
 - Completed: immutable9e374 portable services/workers/HTTP/MCP/SDK verification with2745 before/after byte checks; owned roots/cache cleaned.
-- Active: checked tuple composition, server-only backup viewing validation and aggregate Portal/Checkout routing. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: checked dense JSON Tuple items/rest with19050 pairs per serde mode, sharedbudget checks and291HTTP/138MCP/bothSDK transport comparisons. Positional schema/typedtuple models remain separate.
+- Active: server-only backup viewing validation and aggregate Portal/Checkout routing; tuple schema/SDK dialect audit continues. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
 - Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.

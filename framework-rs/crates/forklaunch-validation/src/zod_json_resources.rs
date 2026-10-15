@@ -85,7 +85,8 @@ pub(super) fn evaluation_bytes(
             .saturating_add(own_schema_bytes(schema))
             .saturating_add(checks.len().saturating_add(1).saturating_mul(128)),
         ZodJsonSchema::Boolean => input_bytes()?.saturating_mul(4).saturating_add(128),
-        ZodJsonSchema::Record { .. }
+        ZodJsonSchema::Tuple { .. }
+        | ZodJsonSchema::Record { .. }
         | ZodJsonSchema::Null
         | ZodJsonSchema::Undefined
         | ZodJsonSchema::Void
