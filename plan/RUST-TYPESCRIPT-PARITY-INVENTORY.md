@@ -10595,3 +10595,14 @@ runtime evidence: /private/tmp/fl-oct14-payment-link-checkpoint.json and
 hooks, admission, builtin-name qualification and ongoing drafts by exact source
 commit. Local receipt only; no public publication or hosted/cloud validation claim.
 Checklist660/682(96.8%),22broad gates remain open.
+
+### 2026-10-15 — Completed immutable workspace cleanup
+
+After committed runtime receipt9b84f9a33, removed the exact owned6f77 checkpoint
+and generated archive roots (212646681 logical bytes), then 182 exclusive
+nonexecutable cache files in 80 groups (417385757 logical bytes).
+Total 630032438 logical bytes; no APFS physical-space claim. Guards verified
+exact owned roots, no symlink/open-file/active-process use, current-source cache
+exclusion and retained archive SHA256 before/after. Executables, live workspaces
+and active agent caches preserved. Evidence /private/tmp/fl-oct14-payment-link-
+cleanup.log and /private/tmp/fl-oct14-payment-link-cache-cleanup.{json,log}.

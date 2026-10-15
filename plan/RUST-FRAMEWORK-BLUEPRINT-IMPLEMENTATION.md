@@ -2641,3 +2641,14 @@ roles/records/audits0. Eight-path /private/tmp/fl-verification-auto-freeze.json
 verified SHA2564ca4ee6e6413cbe17a2b130ca28282cdd189c6a74b1305e909ed2a09411ba5f2.
 Logs /private/tmp/fl-verification-auto-{actual,native,regression,pg,clippy,minimal-clippy}.log.
 No dependencies/locks; checklist660/682(96.8%),22broad gates remain open.
+
+### 2026-10-15 — Completed immutable workspace cleanup
+
+After committed runtime receipt9b84f9a33, removed the exact owned6f77 checkpoint
+and generated archive roots (212646681 logical bytes), then 182 exclusive
+nonexecutable cache files in 80 groups (417385757 logical bytes).
+Total 630032438 logical bytes; no APFS physical-space claim. Guards verified
+exact owned roots, no symlink/open-file/active-process use, current-source cache
+exclusion and retained archive SHA256 before/after. Executables, live workspaces
+and active agent caches preserved. Evidence /private/tmp/fl-oct14-payment-link-
+cleanup.log and /private/tmp/fl-oct14-payment-link-cache-cleanup.{json,log}.
