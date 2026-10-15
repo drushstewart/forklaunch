@@ -280,7 +280,7 @@ async fn matrix(f: &Fixture) {
         .await
         .unwrap();
     let combined = billing_router(combined, authentication(), ServiceInfo::new("billing", "1"));
-    assert_eq!(selected.len(), 5);
+    assert_eq!(selected.len(), 6);
     for route in selected {
         assert!(combined.registry().routes().contains(&route));
     }
@@ -441,13 +441,37 @@ async fn matrix(f: &Fixture) {
     let id = created["publicId"].as_str().unwrap();
     assert!(Uuid::parse_str(id).is_ok());
     assert_eq!(created["record"]["stripeFields"]["id"], "bps_owned_1");
+    let stored = value(
+        call(
+            &client,
+            &base,
+            Method::GET,
+            &format!("/bound-portal/sessions/{id}"),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(stored["state"], "stored");
+    assert_eq!(stored["record"], created["record"]);
+    assert!(
+        chrono::DateTime::parse_from_rfc3339(stored["observedAt"].as_str().unwrap()).unwrap()
+            >= chrono::DateTime::parse_from_rfc3339(
+                created["record"]["createdAt"].as_str().unwrap()
+            )
+            .unwrap()
+    );
+    let get_path = format!("/bound-portal/sessions/{id}");
+    let mcp=rpc(&client,&base,"tools/call",json!({"name":"getStoredBoundPortalSession","arguments":{"params":{"publicId":id},"headers":{"authorization":sign("GET",&get_path,None)}}})).await;
+    assert_eq!(mcp["result"]["isError"], false, "{mcp}");
+    assert_eq!(p.posts.load(Ordering::SeqCst), 1);
     let duplicate = value(call(&client, &base, Method::POST, &path, Some(input(f))).await).await;
     assert_eq!(duplicate["state"], "completed");
     assert!(duplicate.get("record").is_none());
     assert_eq!(p.posts.load(Ordering::SeqCst), 1);
     let inspection = value(call(&client, &base, Method::GET, &path, None).await).await;
     assert_eq!(inspection, duplicate);
-    for path in [&path] {
+    for path in [&path, &get_path] {
         let header = generate_hmac_auth_header(
             b"other-service-key",
             "other",
@@ -504,6 +528,7 @@ async fn matrix(f: &Fixture) {
     assert_eq!(first.await.status(), 200);
     route_sdks(sdk_typescript, sdk_rust, &base, f).await;
     assert_eq!(p.posts.load(Ordering::SeqCst), 5);
+    expired_read(f, &publisher_pool, &client, &base).await;
     // Provider effect occurred, malformed result leaves a durable pending operation.
     let operation = Uuid::new_v4();
     let path = format!("/bound-portal/operations/{operation}");
@@ -564,4 +589,62 @@ async fn route_sdks(typescript: String, rust: String, base: &str, f: &Fixture) {
         String::from_utf8_lossy(&output.stderr)
     );
     println!("{}", String::from_utf8_lossy(&output.stdout));
+}
+
+// Explicit trusted publication fixture proves route410 without waiting five minutes.
+// It does not represent an actual provider creation or a new financial operation.
+async fn expired_read(f: &Fixture, pool: &sqlx::PgPool, client: &Client, base: &str) {
+    let store = f
+        .store
+        .with_audit_context(AuditContext::actor(
+            "service:default",
+            "expired-read-fixture",
+        ))
+        .unwrap();
+    let publisher = store.trusted_portal_publisher(pool.clone()).await.unwrap();
+    let operation = Uuid::new_v4();
+    let snapshot = store
+        .snapshot_portal_dependencies(&f.scope, f.customer, STRIPE_API_VERSION)
+        .await
+        .unwrap();
+    let payload = json!({"profile":"direct_portal_v1","customer":f.customer.to_string(),"fields":{"customer":"cus_owned","configuration":"bpc_owned","return_url":"https://example.test/return"}});
+    let forklaunch_billing_base::services::postgres::PortalCreationClaim::Reserved(ticket) = store
+        .reserve_portal_creation(snapshot, operation, &payload, || Ok(()))
+        .await
+        .unwrap()
+    else {
+        panic!("fresh fixture")
+    };
+    let id = ticket.public_id();
+    let created = chrono::Utc::now() - chrono::Duration::minutes(6);
+    let provider = json!({"id":format!("bps_{}",id.simple()),"object":"billing_portal.session","livemode":false,"customer":"cus_owned","configuration":"bpc_owned","return_url":"https://example.test/return","url":"https://billing.stripe.com/p/session/private"});
+    let record = json!({"id":id.to_string(),"customerId":f.customer.to_string(),"providerFields":provider,"uri":provider["url"],"createdAt":created,"updatedAt":created,"expiresAt":created+chrono::Duration::minutes(5)});
+    publisher.complete(ticket, record, || Ok(())).await.unwrap();
+    let response = call(
+        client,
+        base,
+        Method::GET,
+        &format!("/bound-portal/sessions/{id}"),
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), 410);
+    assert!(!response.text().await.unwrap().contains("https://"));
+    let path = format!("/bound-portal/sessions/{id}");
+    let mcp=rpc(client,base,"tools/call",json!({"name":"getStoredBoundPortalSession","arguments":{"params":{"publicId":id.to_string()},"headers":{"authorization":sign("GET",&path,None)}}})).await;
+    assert_eq!(mcp["result"]["isError"], true, "{mcp}");
+    assert!(!mcp.to_string().contains("https://"));
+    let inspection = value(
+        call(
+            client,
+            base,
+            Method::GET,
+            &format!("/bound-portal/operations/{operation}"),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(inspection["state"], "completed");
+    assert!(inspection.get("record").is_none());
 }

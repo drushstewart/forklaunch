@@ -56,7 +56,8 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: aggregate bound billing selector and Portal create/IDs-only inspect routes,32configuration/artifact cases, actual generated-main compilation, HTTP/MCP/four SDK calls and strictClippy.
 - Completed: private SDK own-property compilation,128cases/controls and strict types; dual-use literal schema repairs reject explicitly to preserve defaults/equality.
 - Completed: optional application-owned OTP background delivery,3focused/36affected/5actual checks and strictClippy; defaultawait retained.
-- Active: provenance-aware stored Portal rereads, trusted password-reset delivery/shared background scheduler, and explicit dialect/positional tuple SDK consumers. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: stored Portal UUID rereads with sealed/current provenance, original5minTTL, no providerI/O and explicit expired410; restrictedPG/races plusHTTP/MCP/sixSDKcalls and strictClippy pass. Explicit tuple consumer/emitter slices also pass; precise Rust tuple models remain separate.
+- Active: trusted password-reset delivery/shared background scheduler, precise fixed Rust tuple models, and remaining billing family reads. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable37b54 archive package/install/portable services/workers/SDK/HTTP/MCP runtime passes with2775 before/after byte-verified files and packagedIAM184 (3PGignored). Later OTPdispatcher/tupleconsumer/new drafts are excluded by source commit; owned roots and414MB exclusive nonexecutable cache cleaned with guards.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
@@ -2151,3 +2152,10 @@ closed/rest/nested tuple positions under explicitdialect, preserving legacy/Type
 1620actual/AJV comparisons and20realHTTP SDKcases plusprior regressions pass;
 619/1696 inventory updated and strict12roots/619exports pass. Rootcallbacks0;
 nested callbacks and Rust typedtuple models remain open.660/682 (96.8%).
+
+
+Stored Portal checkpoint (2026-10-14): provenance/currentCustomer/alias/receipt
+checks and original5minTTL gate direct local reread, no providerrefresh. PGmutation/
+auditexpiry andHTTP/MCP410/noURL +6SDKcalls pass;32artifacts/generatedmaincompile
+andstrictClippy pass. observedAt completionclock differs from preceding finalSELECT
+linearization. Otherfamilies remainopen;660/682 (96.8%),22open unchanged.

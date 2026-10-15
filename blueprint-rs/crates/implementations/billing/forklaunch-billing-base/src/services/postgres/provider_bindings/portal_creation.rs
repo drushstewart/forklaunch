@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 mod publication;
+mod read;
 pub use publication::{PortalCreationStatus, TrustedPortalPublisher};
 
 /// Opaque local evidence, not authenticated provider evidence. The external Party

@@ -130,16 +130,34 @@ aggregate. No new dependency, migration, or automatic publisher grant is needed.
 Portal adds `createBoundPortalSession` (POST) and `inspectBoundPortalOperation`
 (GET), both at `/bound-portal/operations/:operationId`. The body contains exactly
 `localCustomerId`, a registered local Customer UUID. The server pins configuration
-and return URL. HTTP, MCP, and generated SDKs share these two contracts and the
+and return URL. HTTP, MCP, and generated SDKs share these contracts and the
 same trusted service-key/tenant authority boundary described above. Creation uses
 the existing Portal journal, customer claims, direct provider validation, and
 separate trusted publisher. Fresh creation may return a URL; completed duplicates
 and inspection return IDs only. Uncertain effects remain pending, without retry
 or claim release. These routes confer no payment or entitlement proof.
 
-There is deliberately no Portal session URL GET in this aggregate. Configured
-TypeScript currently rereads its cached DTO; matching that behavior safely would
-require an explicit historical-read policy, immutable receipt/current Customer
-checks, and the original unextended local expiry. This slice neither reissues a
-URL nor claims that its original five-minute local policy proves remote validity.
-Plan, Subscription, and PaymentLink route integration remain separate gaps.
+`getStoredBoundPortalSession` adds GET `/bound-portal/sessions/:publicId` under
+the same authenticated actor and server policy. It returns
+`{state: "stored", observedAt, record}` without provider GET or POST. This is the
+original stored DTO, not a new or refreshed session. An actor-owned completed
+receipt, matching current Portal record and alias, and unchanged registered
+Customer body/binding are all required. No generic cache or mutable provider
+field can establish authority. Changed server configuration, scope/API version,
+missing provenance, and managed transport fail closed.
+
+The sealed original `expiresAt` must be exactly five minutes after its original
+`createdAt`. Reads reject future creation times, backward clocks, and expiry,
+including expiry during audit/database waits; expired reads return HTTP 410
+without a URL. No TTL is extended. The data snapshot linearizes at the final
+matching SELECT after audit waits. `observedAt` records the subsequent completion-
+clock TTL check after audit COMMIT; it does not mean data remained unchanged
+through COMMIT or afterward. Current alias generation is checked across this
+read, without claiming the alias was never administratively rebound historically.
+
+The stored URL may already be invalid remotely. Its local five-minute policy
+proves neither remote validity nor payment/entitlement state. Creation duplicates
+and operation inspection still return IDs only, even when a separate explicit
+stored-read operation is permitted. This preserves that separation while adding
+an authorized bounded form of the configured TypeScript cache reread. Plan,
+Subscription, and PaymentLink route integration remain separate gaps.

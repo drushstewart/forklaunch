@@ -9981,3 +9981,31 @@ TS5.9.3:619entries/1696declarations/0unresolved; tests and strict12roots/619expo
 No native/Cargo/lock changes or precise generatedRusttuple claim. OAS3.0 tuples,
 precise Rust tuple models and remaining emitter/constraint gates stay open;
 660/682 (96.8%),22open unchanged.
+
+
+### Provenance-aware stored Portal UUID rereads (2026-10-14)
+
+New direct-only get_stored_bound_portal_session returns original sealed DTO under
+current trusted profile, without providerHTTP or URL renewal. Actor-owned completed
+creation receipt, immutable intent/scope/API/config/redirect, exact current Portal
+record, durable alias and current Customer data/xmin/binding must match. Atomic
+joined observation includes alias/Customerbinding xmin as well as data/generation;
+repeat after sensitiveaudit awaits must equal initial snapshot, then commit.
+Original createdAt<=clock<expiresAt and exact5min lifetime checked beforedecode
+and on fresh completionclock afterCOMMIT; reversal/future/expiry reject withoutURL.
+Data linearizes at final matching SELECT; observedAt denotes completionclockcheck,
+not data unchanged throughCOMMIT. No historical never-rebound or remoteURLvalidity
+claim. Duplicatecreate/inspection remain IDs-only, no cache/provenance downgrade.
+AggregatePortal adds getStoredBoundPortalSession GET /bound-portal/sessions/:publicId
+with stored DTO/observedAt200 and explicit expiry410; HTTP/MCP andSDK metadataagree.
+Frozen12 /private/tmp/fl-stored-portal-final.json SHA256
+3fd8b6aac5d69c85968b78d99a19c529be56864f069ce5d9102f260572bcfdd3.
+RestrictedPG provenance/tenant/actor/config/API/mutation/auditexpiry+zero provider
+trapcalls pass2.94s; TTL nanosecond/future/backward unit and6routeunits pass.
+HTTP/MCPfresh+expired410/noURL andbothSDK3calls each6total pass3.21s;32artifact/env
+cases plusactualbase/Stripe binarytemplatecompile, strictbilling allfeature/alltarget
+andAxumfeatureoffClippy pass. Logs /private/tmp/fl-stored-portal-{domain-pg,
+lifetime-unit,route-unit,live-route,artifacts,clippy,default-clippy}.log.
+Ownedroles/databases cleaned0. Only fixture UUIDSerde/semicolon fixes during
+validation, productiondomain unchanged after firstPG. No lock/dependency/template
+changes andno new immutablearchive-generatedprofileclaim.660/682 (96.8%),22open.

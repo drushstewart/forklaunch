@@ -14,9 +14,9 @@ use uuid::Uuid;
 /// `flow_data`, `customer_account` or `on_behalf_of` delegation in this finite profile.
 /// Configuration GETs are observations, not locks on future remote changes.
 pub struct BoundPortalCreationProfile {
-    scope: StripeBindingScope,
-    configuration_id: String,
-    return_url: String,
+    pub(crate) scope: StripeBindingScope,
+    pub(crate) configuration_id: String,
+    pub(crate) return_url: String,
 }
 impl BoundPortalCreationProfile {
     /// # Errors
@@ -47,8 +47,9 @@ impl BoundPortalCreationProfile {
         })
     }
 }
-/// A successful new publication returns its short-lived URL exactly once here.
-/// Historical duplicates expose only IDs, never a seemingly refreshed URL.
+/// Fresh creation returns its short-lived URL; creation duplicates expose only IDs.
+/// A separately authorized stored-read API may return the original DTO within its
+/// unextended local lifetime, without refreshing the URL or proving remote validity.
 pub enum BoundPortalCreationOutcome {
     Created {
         operation_id: Uuid,

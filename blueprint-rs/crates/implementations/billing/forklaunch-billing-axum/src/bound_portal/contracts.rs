@@ -93,5 +93,9 @@ pub fn bound_portal_contracts() -> Vec<RouteContract> {
             &json!({"anyOf":[operation("pending",None),operation("completed",None)]}),
         )),
     );
-    vec![create, inspect]
+    let stored=auth(RouteContract::get("Get Stored Bound Portal Session", "Original stored Portal DTO inside its unextended local lifetime; no provider refresh or remote URL validity proof. observedAt is the completion-clock TTL check; data linearizes at the final matching database SELECT before audit commit.", "/bound-portal/sessions/:publicId"))
+        .with_param(parameter("publicId"))
+        .with_response(410,Some(BodyContract{kind:BodyKind::Text,schema:SchemaRef::named("String"),content_type:Some("text/plain".into())}))
+        .with_response(200,Some(body("StoredBoundPortalSession",&json!({"type":"object","additionalProperties":false,"properties":{"state":{"type":"string","enum":["stored"]},"observedAt":{"type":"string","format":"date-time","description":"Final completion-clock TTL check, not a guarantee data remained unchanged after the final SELECT."},"record":record},"required":["state","observedAt","record"]}))));
+    vec![create, inspect, stored]
 }

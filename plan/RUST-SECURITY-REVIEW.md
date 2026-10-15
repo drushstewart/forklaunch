@@ -1243,3 +1243,14 @@ rollback or new authentication. Pending/cancelled queued work leaves its OTP pro
 valid, as explicit behavior. No store transaction spans polling. Blocking/panics
 and cancellation of external work remain outside this contract. FocusedHTTP/domain,
 affectedOTP and upstream failure/await controls pass; strictClippy passes.
+
+
+### Stored Portal read authority (2026-10-14)
+
+URL disclosure requires actor-owned sealed completed receipt and exact current
+Portal/alias/Customer proof, with atomic joined snapshots repeated after audit waits.
+Original unextended five-minute TTL must survive finalCOMMIT clockcheck; expired
+HTTP410/MCP denial returns noURL. Snapshot metadata includes xmin to detect no-op
+mutations during waits; post-finalSELECT changes remain outside read linearization.
+No provider call, TTL renewal, historical never-rebound or remotevalidity claim.
+RestrictedPG/race/expiry/tenant/actor and liveHTTP/MCP/bothSDK proofs pass.

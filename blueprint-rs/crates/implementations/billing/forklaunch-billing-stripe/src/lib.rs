@@ -210,6 +210,8 @@ pub mod bound_subscription_creation;
 
 #[cfg(feature = "postgres-identity")]
 pub mod bound_portal_creation;
+#[cfg(feature = "postgres-identity")]
+pub mod bound_portal_reads;
 
 #[cfg(feature = "postgres-identity")]
 pub mod bound_checkout_creation;

@@ -42,8 +42,8 @@ try {
   const configured={deploymentLabel:'owned',accountId:'acct_private',livemode:false,plans:[{localPlanId:'11111111-1111-4111-8111-111111111111',creationOperationId:'22222222-2222-4222-8222-222222222222'}],successUrl:'https://private.example/success',cancelUrl:'https://private.example/cancel'};
   const aggregate={deploymentLabel:'owned',accountId:'acct_private',livemode:false,portal:{configurationId:'bpc_private',returnUrl:'https://private.example/return'}};
   const cases=[
-   {name:'aggregate-portal',profile:'bound-billing-v1',aggregate,publisher:'postgres://publisher@localhost/db',fail:!stripe,count:2},
-   {name:'aggregate-both',profile:'bound-billing-v1',aggregate:{...aggregate,checkout:{plans:configured.plans,successUrl:configured.successUrl,cancelUrl:configured.cancelUrl}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:5},
+   {name:'aggregate-portal',profile:'bound-billing-v1',aggregate,publisher:'postgres://publisher@localhost/db',fail:!stripe,count:3},
+   {name:'aggregate-both',profile:'bound-billing-v1',aggregate:{...aggregate,checkout:{plans:configured.plans,successUrl:configured.successUrl,cancelUrl:configured.cancelUrl}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:6},
    {name:'aggregate-checkout',profile:'bound-billing-v1',aggregate:{deploymentLabel:aggregate.deploymentLabel,accountId:aggregate.accountId,livemode:false,checkout:{plans:configured.plans,successUrl:configured.successUrl,cancelUrl:configured.cancelUrl}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:3},
    {name:'aggregate-mixed',profile:'bound-billing-v1',aggregate,config:configured,publisher:'postgres://publisher@localhost/db',fail:true},
    {name:'aggregate-missing-publisher',profile:'bound-billing-v1',aggregate,fail:true},

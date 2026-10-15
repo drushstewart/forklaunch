@@ -144,6 +144,17 @@ async fn execute(
                 Err(error) => Err(error),
             }
         }
+        "getStoredBoundPortalSession" => {
+            let observed = service
+                .get_stored_bound_portal_session(&profile.configuration.profile, id)
+                .await?;
+            let mut record = serde_json::to_value(observed.record).map_err(|_| invalid())?;
+            stripe_names(&mut record);
+            Ok((
+                StatusCode::OK,
+                json!({"state":"stored","observedAt":observed.observed_at,"record":record}),
+            ))
+        }
         "inspectBoundPortalOperation" => match service
             .base()
             .store()
@@ -179,6 +190,11 @@ async fn dispatch(
     match execute(backend, session, operation, id, input).await {
         Ok((status, value)) => (status, Json(value)).into_response(),
         Err(error) => match error.code.as_str() {
+            "billing_portal_local_session_expired" => (
+                StatusCode::GONE,
+                "Stored portal session is outside its original local lifetime",
+            )
+                .into_response(),
             "billing_bound_portal_invalid" => {
                 (StatusCode::BAD_REQUEST, "Invalid bound Portal request").into_response()
             }

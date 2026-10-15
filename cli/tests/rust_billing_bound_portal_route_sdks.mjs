@@ -15,9 +15,10 @@ run(process.execPath,[compiler,'--strict','--noEmit','--target','ES2022','--modu
 const exports={};vm.runInNewContext(ts.transpileModule(readFileSync(tsFile,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,fetch,URL,URLSearchParams,Headers,Request,Response,AbortController,console});
 function sign(method,url,body=''){const stamp=new Date().toISOString(),nonce=randomUUID(),signature=createHmac('sha256','billing-date-fixture').update(`${method}\n${url}\n${body?body+'\n':'undefined'}${stamp}\n${nonce}`).digest('base64');return `HMAC keyId=default ts=${stamp} nonce=${nonce} signature=${signature}`;}
 function find(value,name){for(const[key,item]of Object.entries(value)){if(key.toLowerCase()===name.toLowerCase()&&typeof item==='function')return item.bind(value);if(item&&typeof item==='object'){const result=find(item,name);if(result)return result;}}}
-const sdk=exports.createForkLaunchSdk({baseUrl:base}),create=find(sdk,'createBoundPortalSession'),inspect=find(sdk,'inspectBoundPortalOperation');assert(create&&inspect);
+const sdk=exports.createForkLaunchSdk({baseUrl:base}),create=find(sdk,'createBoundPortalSession'),get=find(sdk,'getStoredBoundPortalSession'),inspect=find(sdk,'inspectBoundPortalOperation');assert(create&&get&&inspect);
 const operationId=randomUUID(),body={localCustomerId:customer},route=`/bound-portal/operations/${operationId}`;
 const created=await create({params:{operationId},body,headers:{authorization:sign('POST',route,JSON.stringify(body))}});assert.equal(created.status,200);assert.equal(created.response.state,'created');const publicId=created.response.publicId;assert.equal(created.response.record.customerId,customer);
+const stored=await get({params:{publicId},headers:{authorization:sign('GET',`/bound-portal/sessions/${publicId}`)}});assert.equal(stored.status,200);assert.equal(stored.response.state,'stored');assert.deepEqual(stored.response.record,created.response.record);assert(Date.parse(stored.response.observedAt)>=Date.parse(created.response.record.createdAt));
 const historical=await inspect({params:{operationId},headers:{authorization:sign('GET',route)}});assert.equal(historical.status,200);assert.equal(historical.response.state,'completed');assert(!('record'in historical.response));
 const scratch=mkdtempSync(path.join(tmpdir(),'fl-portal-route-sdk-'));
 try {
@@ -29,6 +30,7 @@ try {
  let headers=std::collections::BTreeMap::from([("authorization".into(),args[4].clone())]);
  let result=match args[2].as_str(){
  "create"=>{let response=client.create_bound_portal_session(CreateBoundPortalSessionRequest{params:std::collections::BTreeMap::from([("operationId".into(),args[3].clone())]),headers,body:Some(args[5].clone()),..Default::default()}).await.unwrap();let CreateBoundPortalSessionResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
+ "get"=>{let response=client.get_stored_bound_portal_session(GetStoredBoundPortalSessionRequest{params:std::collections::BTreeMap::from([("publicId".into(),args[3].clone())]),headers,..Default::default()}).await.unwrap();let GetStoredBoundPortalSessionResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  "inspect"=>{let response=client.inspect_bound_portal_operation(InspectBoundPortalOperationRequest{params:std::collections::BTreeMap::from([("operationId".into(),args[3].clone())]),headers,..Default::default()}).await.unwrap();let InspectBoundPortalOperationResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  _=>panic!("unexpected operation")};println!("{}",result);
 }`);
@@ -36,6 +38,7 @@ try {
  run('cargo',['build','--quiet','--manifest-path',path.join(scratch,'Cargo.toml')],{env:{...process.env,CARGO_TARGET_DIR:target,CARGO_BUILD_JOBS:'2',CARGO_INCREMENTAL:'0'}});
  const binary=path.join(target,'debug/bound-portal-route-sdk-proof'),operation=randomUUID(),url=`/bound-portal/operations/${operation}`,raw=JSON.stringify(body);
  const created=JSON.parse(run(binary,[base,'create',operation,sign('POST',url,raw),raw]));assert.equal(created.state,'created');assert.equal(created.record.customerId,customer);
+ const stored=JSON.parse(run(binary,[base,'get',created.publicId,sign('GET',`/bound-portal/sessions/${created.publicId}`)]));assert.equal(stored.state,'stored');assert.deepEqual(stored.record,created.record);
  const historical=JSON.parse(run(binary,[base,'inspect',operation,sign('GET',url)]));assert.equal(historical.state,'completed');assert(!('record'in historical));
- console.log('PASS generated TypeScript strict typecheck + two live calls; compiled Rust SDK + two live calls, shared BoundPortalV1 contracts');
+ console.log('PASS generated TypeScript strict typecheck + three live calls; compiled Rust SDK + three live calls, shared BoundPortalV1 contracts');
 } finally {rmSync(scratch,{recursive:true,force:true});}
