@@ -76,7 +76,7 @@ async fn configured_owner_preflight_matches_ts_before_provider_io() {
             .update_subscription(serde_json::from_value(input).unwrap())
             .await
             .unwrap_err();
-        assert_eq!(error.code, "billing_validation");
+        assert_eq!(error.code, "billing_configured_mapper_error");
         assert!(state.calls.lock().await.is_empty());
         assert_eq!(
             service.base().get_subscription("local-sub").await.unwrap(),
@@ -137,7 +137,7 @@ async fn configured_owner_preflight_matches_ts_before_provider_io() {
                 ]
             );
         } else {
-            assert_eq!(result.unwrap_err().code, "billing_validation");
+            assert_eq!(result.unwrap_err().code, "billing_configured_mapper_error");
             assert!(state.calls.lock().await.is_empty());
         }
         state.calls.lock().await.clear();

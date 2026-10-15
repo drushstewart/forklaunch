@@ -11802,3 +11802,26 @@ references in keyring configuration/rotation tests; it failed and is retained in
 `fl-org-controls-minimal-clippy-final.log`. This does not replace the passing
 minimal-library check and remains a separate feature-gating follow-up. Creator-role
 lifecycle and broader auth coverage remain open; checklist660/682 is unchanged.
+
+
+### 2026-10-15: Configured Subscription HTTP error parity
+
+Selected configured Subscription ownership failures now return the actual TS
+sanitized500 text envelope with supplied or generated TypeScript correlation IDs.
+A dedicated mapper error code keeps malformed input admission at400; generic
+backends preserve native correlation behavior and existing owner-update semantics.
+The adapter reuses the existing HTTP formatter through one internal dependency
+and lockfile edge; no dependency versions changed.
+
+Actual configured mapper/createContext/guard/final Express error-handler source
+passes12 real HTTP cases. The fixture owns its route, entropy primitive and
+telemetry; this is not a full TypeScript application-bootstrap claim. Native
+signed HTTP with restricted PostgreSQL passes in0.58s, service2 tests pass,
+legacy170 comparisons and186 rendered artifact cases (including compiled actual
+binary templates) pass. Strict all-feature/all-target Clippy21.67s and minimal
+Clippy1.68s pass; PostgreSQL cleanup counts are0/0. Frozen8 manifest
+`/private/tmp/fl-subscription-owner-transport-final.json` SHA256
+`5f584310917d4705efae0827f90ab2caba7f7738c4a2ffd2a65a89e10beeb6d3`
+is verified. Logs use `/private/tmp/fl-subscription-owner-`; CI runs the new actual
+HTTP oracle alongside the existing native fixture. Broader billing and general
+schema-error parity remain open; checklist660/682 is unchanged.

@@ -79,7 +79,7 @@ Primary provider reference: <https://docs.stripe.com/api/checkout/sessions/expir
   before provider calls/local writes, unchanged or omitted owner acceptance,
   missing-row ordering, null DTO rejection, and generic/custom reassignment.
 - The same-named billing-axum target runs actual HMAC HTTP against restricted
-  PostgreSQL: changed owners return sanitized 400, omitted/same owners return
+  PostgreSQL: changed owners return sanitized 500 text after the transport correction below, omitted/same owners return
   200 after GET/POST, and missing rows return 404 without provider access.
 - `rust_billing_bound_checkout_artifacts.mjs` renders and compiles both generated
   main templates and asserts only Stripe selects the configured guard.
@@ -97,7 +97,30 @@ blank check uses the exact ECMAScript whitespace set: retained U+0085 is not
 blank, while U+FEFF and U+2028 are. No arbitrary provider-options schema parity
 claim is added by this narrow preflight correction.
 
-The HTTP receipt establishes native dispatch, status and sanitization only. The
-actual configured TypeScript mapper throws an ordinary Error; this batch does
-not run the TypeScript HTTP adapter and does not establish cross-language HTTP
-error-envelope/status parity. That broader transport gate remains explicit.
+## Configured owner-error transport correction
+
+The original native-only HTTP proof returned 400; it was not evidence of TS
+error parity. A follow-up fixture now executes the actual configured mapper,
+actual `createContext` middleware and `isForklaunchRequest` guard, and the exact
+final error handler extracted from `framework/express/src/expressApplication.ts`
+over real Express HTTP. Twelve cases cover both owner failures with supplied,
+missing and empty correlation fields, plus the handler's non-ForkLaunch fallback.
+Ordinary mapper Errors produce sanitized 500 text. The fixture owns the route,
+telemetry seams and UUID entropy primitive; it does not claim full application,
+controller, authentication, or schema-admission bootstrap coverage.
+
+The selected native configured guard emits a distinct internal error code.
+Generated configured Stripe dispatch maps only that error to the shared
+`forklaunch_http::typescript_parser_error_response` formatter and uses the
+existing TypeScript correlation profile. Supplied IDs are retained; missing or
+empty correlation fields generate a UUID and agree between header and body.
+The native restricted-PG HTTP fixture verifies exact text, content type,
+correlation, no provider calls/local writes, and suppression of mapper internals.
+
+Null and invalid-enum request admission remains native 400, and missing-row
+behavior remains native 404; those controls are not claims that this extracted
+TS fixture proves corresponding HTTP equivalence. Generic native backend owner
+updates and correlation behavior remain unchanged. Other mapper errors and the
+broader HTTP transport gate remain separate work.
+
+Source fixture: `cli/tests/typescript_billing_subscription_owner_http.mjs`.

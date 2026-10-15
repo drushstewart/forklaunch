@@ -1253,6 +1253,7 @@ dependencies = [
  "forklaunch-billing-stripe",
  "forklaunch-blueprint-core",
  "forklaunch-core",
+ "forklaunch-http",
  "forklaunch-sdk-codegen",
  "forklaunch-sdk-rust",
  "forklaunch-sdk-typescript",

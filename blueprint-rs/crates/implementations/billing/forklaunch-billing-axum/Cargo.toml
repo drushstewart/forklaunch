@@ -12,6 +12,7 @@ default = []
 bound-checkout = ["forklaunch-billing-stripe/postgres-identity"]
 
 [dependencies]
+forklaunch-http = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-http" }
 forklaunch-validation = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-validation" }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
 forklaunch-billing-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-billing-interface" }

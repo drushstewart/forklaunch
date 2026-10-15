@@ -39,7 +39,7 @@ fn validate_configured_subscription_update(
             .is_some_and(|kind| kind != &original.party_type)
     {
         return Err(BlueprintError::new(
-            "billing_validation",
+            "billing_configured_mapper_error",
             "Subscription ownership cannot change during an update",
         ));
     }
@@ -53,7 +53,7 @@ fn validate_configured_subscription_update(
             .is_some_and(|value| !matches!(value, "user" | "organization"))
     {
         return Err(BlueprintError::new(
-            "billing_validation",
+            "billing_configured_mapper_error",
             "Invalid subscription update",
         ));
     }

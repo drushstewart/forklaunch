@@ -396,6 +396,7 @@ on:
       - 'cli/tests/rust_billing_managed_creation.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
       - 'cli/tests/rust_billing_checkout_expiration_source.mjs'
+      - 'cli/tests/typescript_billing_subscription_owner_http.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_cached_session_identity.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
@@ -846,6 +847,7 @@ on:
       - 'cli/tests/rust_billing_managed_creation.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
       - 'cli/tests/rust_billing_checkout_expiration_source.mjs'
+      - 'cli/tests/typescript_billing_subscription_owner_http.mjs'
       - 'cli/tests/rust_billing_payment_link_cache_reads.mjs'
       - 'cli/tests/rust_billing_cached_session_identity.mjs'
       - 'cli/tests/rust_billing_subscription_party_types.mjs'
@@ -1761,6 +1763,10 @@ jobs:
       - run: node cli/tests/rust_billing_checkout_expiration_source.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/typescript_billing_subscription_owner_http.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_billing_subscription_update_preflight.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

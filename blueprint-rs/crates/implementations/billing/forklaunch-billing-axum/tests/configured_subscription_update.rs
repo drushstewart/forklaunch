@@ -84,7 +84,7 @@ async fn matrix(f: &Fixture) {
     let id = Uuid::new_v4().to_string();
     base.create_subscription(serde_json::from_value(json!({"id":id,"partyId":"local-party","partyType":"user","productId":"local-plan","active":true,"startDate":"2026-01-01T00:00:00Z","status":"ACTIVE","externalId":"sub_owned","billingProvider":"stripe"})).unwrap()).await.unwrap();
     let before = base.get_subscription(&id).await.unwrap();
-    let backend = BillingBackend::stripe((*f.store).clone(), client)
+    let backend = BillingBackend::stripe((*f.store).clone(), client.clone())
         .with_configured_subscription_updates(true);
     let auth = HmacJwksAuth::new(
         KEY.to_vec(),
@@ -102,29 +102,54 @@ async fn matrix(f: &Fixture) {
     });
     let http = reqwest::Client::new();
     let path = format!("/subscription/{id}");
-    for body in [
-        json!({"partyId":"other"}),
-        json!({"partyType":"organization"}),
-        json!({"partyId":null}),
-        json!({"partyType":null}),
-        json!({"billingProvider":"invalid"}),
-        json!({"partyType":"invalid"}),
-    ] {
-        let response = http
-            .put(format!("{url}{path}"))
-            .header("authorization", sign("PUT", &path, Some(&body), "default"))
-            .json(&body)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 400);
-        let error_body = response.text().await.unwrap();
-        if body["partyId"] == "other" || body["partyType"] == "organization" {
-            assert!(error_body.contains("Invalid billing request"));
-            assert!(!error_body.contains("Subscription ownership"));
+    for correlation in [None, Some("owner-correlation"), Some("")] {
+        for body in [
+            json!({"partyId":"other"}),
+            json!({"partyType":"organization"}),
+            json!({"partyId":null}),
+            json!({"partyType":null}),
+            json!({"billingProvider":"invalid"}),
+            json!({"partyType":"invalid"}),
+        ] {
+            let mut request = http
+                .put(format!("{url}{path}"))
+                .header("authorization", sign("PUT", &path, Some(&body), "default"))
+                .json(&body);
+            if let Some(value) = correlation {
+                request = request.header("x-correlation-id", value);
+            }
+            let response = request.send().await.unwrap();
+            let mapper_error = body["partyId"] == "other" || body["partyType"] == "organization";
+            assert_eq!(response.status(), if mapper_error { 500 } else { 400 });
+            let selected = response
+                .headers()
+                .get("x-correlation-id")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned();
+            if let Some(value) = correlation.filter(|value| !value.is_empty()) {
+                assert_eq!(selected, value);
+            } else {
+                assert_eq!(Uuid::parse_str(&selected).unwrap().get_version_num(), 4);
+            }
+            if mapper_error {
+                assert_eq!(
+                    response.headers()["content-type"],
+                    "text/plain; charset=utf-8"
+                );
+            }
+            let error_body = response.text().await.unwrap();
+            if mapper_error {
+                assert_eq!(
+                    error_body,
+                    format!("Internal server error:\n\nCorrelation id: {selected}")
+                );
+                assert!(!error_body.contains("Subscription ownership"));
+            }
+            assert!(calls.lock().await.is_empty());
+            assert_eq!(base.get_subscription(&id).await.unwrap(), before);
         }
-        assert!(calls.lock().await.is_empty());
-        assert_eq!(base.get_subscription(&id).await.unwrap(), before);
     }
     for body in [
         json!({}),
@@ -164,5 +189,45 @@ async fn matrix(f: &Fixture) {
     assert_eq!(response.status(), 404);
     assert!(calls.lock().await.is_empty());
     server.abort();
+    let auth = HmacJwksAuth::new(
+        KEY.to_vec(),
+        RemoteJwks::new(RemoteJwksConfig::new("http://127.0.0.1:9/jwks")).unwrap(),
+        Validation::new(Algorithm::RS256),
+    )
+    .unwrap();
+    let legacy = billing_router(
+        BillingBackend::stripe((*f.store).clone(), client),
+        auth,
+        ServiceInfo::new("billing", "1"),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let legacy_url = format!("http://{}", listener.local_addr().unwrap());
+    let legacy_server = tokio::spawn(async move {
+        axum::serve(listener, legacy.into_router_with_default_mcp().unwrap())
+            .await
+            .unwrap();
+    });
+    let body = json!({"partyId":"generic-other"});
+    let response = http
+        .put(format!("{legacy_url}{path}"))
+        .header("authorization", sign("PUT", &path, Some(&body), "default"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert!(!response.headers().contains_key("x-correlation-id"));
+    assert_eq!(
+        base.get_subscription(&id).await.unwrap().party_id,
+        "generic-other"
+    );
+    assert_eq!(
+        *calls.lock().await,
+        [
+            "GET /v1/subscriptions/sub_owned",
+            "POST /v1/subscriptions/sub_owned"
+        ]
+    );
+    legacy_server.abort();
     provider_task.abort();
 }

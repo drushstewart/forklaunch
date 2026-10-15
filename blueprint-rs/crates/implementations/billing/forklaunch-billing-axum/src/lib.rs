@@ -377,6 +377,27 @@ async fn dispatch(
         Err(error) => failure(&error),
     }
 }
+async fn dispatch_with_context(
+    backend: Arc<BillingBackend>,
+    session: AuthenticatedSession,
+    contract: RouteContract,
+    input: Value,
+    context: forklaunch_axum::RequestContext,
+) -> Response {
+    match backend.call(&session, &contract, input).await {
+        Ok(result) => result.into_response(),
+        Err(error) if error.code == "billing_configured_mapper_error" => {
+            let response =
+                forklaunch_http::typescript_parser_error_response(500, &context.correlation_id);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                response.body.as_text().unwrap_or_default().to_owned(),
+            )
+                .into_response()
+        }
+        Err(error) => failure(&error),
+    }
+}
 /// Builds thirty core billing operations, compliance routes and health. Each data read audits
 /// the verified request actor and uses the server's configured tenant.
 /// # Panics
@@ -391,7 +412,15 @@ pub fn billing_router(
     let registry = module_contracts::module_registry(backend.client.is_some());
     let backend = Arc::new(backend);
     let auth = Arc::new(auth);
-    let config = RouterConfig::default().with_authenticator(move |request, contract| {
+    let config = RouterConfig {
+        correlation_id_format: if backend.configured_subscription_updates {
+            forklaunch_axum::CorrelationIdFormat::TypeScript
+        } else {
+            forklaunch_axum::CorrelationIdFormat::Native
+        },
+        ..RouterConfig::default()
+    }
+    .with_authenticator(move |request, contract| {
         let auth = Arc::clone(&auth);
         async move { auth.authenticate(request, contract).await }
     });
@@ -465,6 +494,7 @@ pub fn billing_router(
                 contract,
                 move |Extension(session): Extension<AuthenticatedSession>,
                       Path(id): Path<String>,
+                      Extension(context): Extension<forklaunch_axum::RequestContext>,
                       Json(mut input): Json<Value>| {
                     let backend = Arc::clone(&backend);
                     let contract = handler_contract.clone();
@@ -473,7 +503,7 @@ pub fn billing_router(
                             return failure(&invalid());
                         };
                         object.entry("id").or_insert(json!(id));
-                        dispatch(backend, session, contract, input).await
+                        dispatch_with_context(backend, session, contract, input, context).await
                     }
                 },
             ),

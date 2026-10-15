@@ -2767,3 +2767,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Bounded JSON intersections pass12,096 comparisons in each number mode,83 full/78 minimal tests,291 HTTP/138 MCP and both SDKs. Merge/status/reference identity and atomic failure/resource behavior covered; broader schema gates remain open,660/682 unchanged.
 
 - 2026-10-15: Organization deletion/dynamic-role controls pass actual16, final native organization8, restricted PostgreSQL and strict full/all-target plus minimal-library Clippy. Quota concurrency and malformed deletion ordering covered; broader auth remains open,660/682 unchanged. Separate minimal-all-target keyring feature-gating failure recorded.
+
+- 2026-10-15: Configured Subscription ownership errors now match TS500 text/correlation behavior; actual12 HTTP, signed native PostgreSQL HTTP, service2, legacy170, artifacts186 and strict full/minimal checks pass. Generic semantics and malformed-input400 preserved; broader billing stays open,660/682 unchanged.
