@@ -100,9 +100,15 @@ pub(super) fn authenticate(
         date_epoch_millis(Some(&Value::String(values[1].into()))).map_err(|_| internal(request))?;
     let timestamp = iso_timestamp(millis);
     let wire_path = request.raw_path.as_deref().unwrap_or(&request.path);
-    let path = wire_path
-        .strip_prefix(mount(route).unwrap_or_default())
-        .unwrap_or(wire_path);
+    let prefix = mount(route).unwrap_or_default();
+    let path = if wire_path
+        .get(..prefix.len())
+        .is_some_and(|part| part.eq_ignore_ascii_case(prefix))
+    {
+        &wire_path[prefix.len()..]
+    } else {
+        wire_path
+    };
     let path = if path.is_empty() { "/" } else { path };
     let body = match &request.body {
         Body::Empty => "undefined".into(),

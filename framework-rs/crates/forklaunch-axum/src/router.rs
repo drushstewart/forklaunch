@@ -48,6 +48,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+mod case_routes;
 mod correlation;
 mod typescript_cors;
 pub use typescript_cors::{
@@ -146,9 +147,12 @@ pub struct RouterConfig {
     /// Empty by default. This does not rewrite the URI, add contracts or select auth.
     pub optional_trailing_slash_paths: HashSet<String>,
     /// Paths with implicit Express-style OPTIONS, only absent an explicit handler.
-    /// Uses methods on the exact canonical pattern, not unions of overlapping patterns.
+    /// Uses exact-pattern methods by default; case-insensitive dispatch unions matching patterns.
     /// Empty by default; selection neither creates a contract nor bypasses explicit auth.
     pub typescript_options_paths: HashSet<String>,
+    /// Static-segment ECMAScript non-/u case-insensitive routing (optional feature).
+    /// Matching selected intersections use registry operation order; unselected paths remain strict.
+    pub typescript_case_insensitive_paths: HashSet<String>,
     /// Format for errors returned by framework local handlers.
     pub handler_error_format: HandlerErrorFormat,
     /// Final wire representation for request-parser and transport-limit failures.
@@ -193,6 +197,7 @@ impl Default for RouterConfig {
             auth_error_formats: HashMap::new(),
             optional_trailing_slash_paths: HashSet::new(),
             typescript_options_paths: HashSet::new(),
+            typescript_case_insensitive_paths: HashSet::new(),
             handler_error_format: HandlerErrorFormat::Json,
             parser_error_format: ParserErrorFormat::Json,
             router_origin_format: RouterOriginFormat::Native,
@@ -259,6 +264,18 @@ impl RouterConfig {
     #[must_use]
     pub fn with_typescript_options_for_path(mut self, path: impl AsRef<str>) -> Self {
         self.typescript_options_paths
+            .insert(forklaunch_common::route_open_api_path(
+                &normalize_route_path(path.as_ref()),
+            ));
+        self
+    }
+
+    /// Select pinned ECMAScript `/i` matching for static path segments only.
+    /// Requires `typescript-routing`; original URI, parameters, query and signatures
+    /// remain intact. Selected intersections use registry order, including HEAD fallback.
+    #[must_use]
+    pub fn with_typescript_case_insensitive_path(mut self, path: impl AsRef<str>) -> Self {
+        self.typescript_case_insensitive_paths
             .insert(forklaunch_common::route_open_api_path(
                 &normalize_route_path(path.as_ref()),
             ));
@@ -420,9 +437,15 @@ impl ForkLaunchRouter {
                                 canonical.strip_suffix(&contract.openapi_path)
                             }
                         })
-                        && request.path.starts_with(prefix)
                     {
-                        request.path.drain(..prefix.len());
+                        if let Some(dispatch) = request.transport_route_path.as_mut() {
+                            if dispatch.starts_with(prefix) {
+                                dispatch.drain(..prefix.len());
+                                request.path = case_routes::local_path(&request.path, prefix);
+                            }
+                        } else if request.path.starts_with(prefix) {
+                            request.path.drain(..prefix.len());
+                        }
                     }
                     let correlation_id = request.context.correlation_id.clone();
                     let error_format = parts
@@ -617,6 +640,12 @@ impl ForkLaunchRouter {
         self.config
             .auth_error_formats
             .extend(config.auth_error_formats);
+        self.config.typescript_case_insensitive_paths.extend(
+            config
+                .typescript_case_insensitive_paths
+                .into_iter()
+                .map(|path| join_base_path(&prefix, &path)),
+        );
         self.config.typescript_options_paths.extend(
             config
                 .typescript_options_paths
@@ -758,7 +787,7 @@ impl ForkLaunchRouter {
             registry: declared_registry,
             projected_registry,
             routes,
-            mut extended_routes,
+            extended_routes,
             config,
             internal_mounts,
             local_validation,
@@ -770,41 +799,8 @@ impl ForkLaunchRouter {
 
         internal::validate(&internal_mounts, &registry, &config)
             .expect("invalid internal HTTP mount");
-        for path in &config.optional_trailing_slash_paths {
-            assert!(
-                routes.contains_key(path) && !path.contains("{*"),
-                "invalid optional trailing-slash path selection"
-            );
-        }
-        for path in &config.typescript_options_paths {
-            assert!(
-                routes.contains_key(path) && !path.contains("{*"),
-                "invalid automatic OPTIONS path selection"
-            );
-        }
-        let mut router = Router::new();
-        for (path, mut method_router) in routes {
-            if let Some(methods) = extended_routes.remove(&path) {
-                let mut allowed: Vec<_> = registry
-                    .routes()
-                    .iter()
-                    .filter(|route| route.openapi_path == path)
-                    .map(|route| route.method.as_str())
-                    .collect();
-                if allowed.contains(&"GET") && !allowed.contains(&"HEAD") {
-                    allowed.push("HEAD");
-                }
-                allowed.sort_unstable();
-                allowed.dedup();
-                let allow = allowed.join(", ");
-                method_router = origin::extended(method_router, methods, allow, &config);
-            }
-            method_router = origin::selected_options(method_router, &path, &registry, &config);
-            if path != "/" && config.optional_trailing_slash_paths.contains(&path) {
-                router = router.route(&format!("{path}/"), method_router.clone());
-            }
-            router = router.route(&path, method_router);
-        }
+        let (mut router, isolated) =
+            build_transport_routes(routes, extended_routes, &registry, &config);
 
         router = origin::install(
             router,
@@ -813,6 +809,19 @@ impl ForkLaunchRouter {
             &registry,
         );
 
+        let mut protected = internal_mounts
+            .iter()
+            .flat_map(|mount| mount.reserved_prefixes.clone())
+            .collect::<Vec<_>>();
+        if config.openapi_enabled {
+            protected.push(config.openapi_path.clone());
+        }
+        if config.docs_enabled {
+            protected.push(config.docs_path.clone());
+        }
+        if config.swagger_enabled {
+            protected.push(config.swagger_path.clone());
+        }
         for mount in internal_mounts {
             router = if mount.prefix == "/" {
                 router.merge(mount.router)
@@ -835,16 +844,31 @@ impl ForkLaunchRouter {
             local_validation,
             &local_version_plans,
         ));
-        router = router.layer(middleware::from_fn_with_state(state, validate_contract));
-
-        let router = with_body_limit(router, config.body_limit, config.parser_error_format);
-        let router = router
-            .layer(middleware::from_fn_with_state(telemetry, observe_request))
-            .layer(PropagateRequestIdLayer::x_request_id())
-            .layer(SetRequestIdLayer::x_request_id(
-                CounterMakeRequestId::default(),
-            ))
-            .layer(TraceLayer::new_for_http());
+        let ids = CounterMakeRequestId::default();
+        let router = instrument_router(
+            router,
+            Arc::clone(&state),
+            telemetry.clone(),
+            &config,
+            ids.clone(),
+        );
+        let isolated = isolated
+            .into_iter()
+            .map(|(path, router)| {
+                let router = origin::install(router, &config, true, &registry);
+                (
+                    path,
+                    instrument_router(
+                        router,
+                        Arc::clone(&state),
+                        telemetry.clone(),
+                        &config,
+                        ids.clone(),
+                    ),
+                )
+            })
+            .collect();
+        let router = case_routes::wrap(router, isolated, &registry, &config, protected);
         let router = typescript_cors::wrap(router, config.cors, config.typescript_cors);
         let router = origin::wrap(router, config.router_origin_format);
         #[cfg(feature = "cookie-session")]
@@ -1236,7 +1260,9 @@ async fn validate_contract(
     request: Request,
     next: Next,
 ) -> Response {
-    let Some(method) = method_to_contract(request.method()) else {
+    let Some(method) = case_routes::selected_method(request.extensions())
+        .or_else(|| method_to_contract(request.method()))
+    else {
         return next.run(request).await;
     };
     let Some(matched) = request
@@ -1715,9 +1741,14 @@ fn build_framework_request(
         RequestContext::new(correlation_id),
     );
     request.raw_path = Some(path.to_owned());
-    request.params = match_path_checked(&contract.openapi_path, path)
-        .map_err(|error| validation_error_response(&[error], &request.context.correlation_id))?
-        .unwrap_or_default();
+    request.transport_route_path = case_routes::dispatch_path(parts).map(str::to_owned);
+    request.transport_route_method = case_routes::selected_method(&parts.extensions);
+    request.params = match_path_checked(
+        &contract.openapi_path,
+        request.transport_route_path.as_deref().unwrap_or(path),
+    )
+    .map_err(|error| validation_error_response(&[error], &request.context.correlation_id))?
+    .unwrap_or_default();
 
     request.raw_query = parts.uri.query().map(str::to_owned);
     request.parsed_fields = parts
@@ -1826,6 +1857,77 @@ fn mount_documentation(
     }
 
     router
+}
+
+fn build_transport_routes(
+    handlers: HashMap<String, MethodRouter>,
+    mut extended_routes: HashMap<String, HashMap<String, MethodRouter>>,
+    registry: &ContractRegistry,
+    config: &RouterConfig,
+) -> (Router, HashMap<String, Router>) {
+    for path in &config.optional_trailing_slash_paths {
+        assert!(
+            handlers.contains_key(path) && !path.contains("{*"),
+            "invalid optional trailing-slash path selection"
+        );
+    }
+    for path in &config.typescript_options_paths {
+        assert!(
+            handlers.contains_key(path) && !path.contains("{*"),
+            "invalid automatic OPTIONS path selection"
+        );
+    }
+    let mut isolated = HashMap::new();
+    let mut router = Router::new();
+    for (path, mut method_router) in handlers {
+        if let Some(methods) = extended_routes.remove(&path) {
+            let mut allowed: Vec<_> = registry
+                .routes()
+                .iter()
+                .filter(|route| route.openapi_path == path)
+                .map(|route| route.method.as_str())
+                .collect();
+            if allowed.contains(&"GET") && !allowed.contains(&"HEAD") {
+                allowed.push("HEAD");
+            }
+            allowed.sort_unstable();
+            allowed.dedup();
+            let allow = allowed.join(", ");
+            method_router = origin::extended(method_router, methods, allow, config);
+        }
+        method_router = origin::selected_options(method_router, &path, registry, config);
+        if !config.typescript_case_insensitive_paths.is_empty() {
+            let mut single = Router::new().route(&path, method_router.clone());
+            if path != "/" && config.optional_trailing_slash_paths.contains(&path) {
+                single = single.route(&format!("{path}/"), method_router.clone());
+            }
+            isolated.insert(path.clone(), single);
+        }
+        if !config.typescript_case_insensitive_paths.contains(&path) {
+            if path != "/" && config.optional_trailing_slash_paths.contains(&path) {
+                router = router.route(&format!("{path}/"), method_router.clone());
+            }
+            router = router.route(&path, method_router);
+        }
+    }
+
+    (router, isolated)
+}
+
+fn instrument_router(
+    router: Router,
+    state: Arc<ValidationState>,
+    telemetry: OpenTelemetryCollector,
+    config: &RouterConfig,
+    ids: CounterMakeRequestId,
+) -> Router {
+    let router = router.layer(middleware::from_fn_with_state(state, validate_contract));
+    with_body_limit(router, config.body_limit, config.parser_error_format)
+        .layer(middleware::from_fn_with_state(telemetry, observe_request))
+        .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(SetRequestIdLayer::x_request_id(ids))
+        .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn(case_routes::restore))
 }
 
 /// A dependency-free request-id generator backed by a monotonic counter.

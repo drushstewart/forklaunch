@@ -78,7 +78,13 @@ pub(super) fn selected_options(
     let parser_format = config.parser_error_format;
     router.options(move |request: Request| {
         let allow = allow.clone();
-        async move { fallback(&request, parser_format, Some(&allow)) }
+        async move {
+            let allow = request
+                .extensions()
+                .get::<super::case_routes::OptionsAllow>()
+                .map_or(allow.as_str(), |value| value.0.as_str());
+            fallback(&request, parser_format, Some(allow))
+        }
     })
 }
 

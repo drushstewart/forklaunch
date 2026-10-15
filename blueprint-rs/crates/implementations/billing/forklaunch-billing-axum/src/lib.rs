@@ -555,7 +555,8 @@ pub fn billing_router(
             );
             config = config
                 .with_optional_trailing_slash_for_path(&contract.openapi_path)
-                .with_typescript_options_for_path(&contract.openapi_path);
+                .with_typescript_options_for_path(&contract.openapi_path)
+                .with_typescript_case_insensitive_path(&contract.openapi_path);
             project_configured_billing_hmac(&mut contract);
             config = config.with_auth_error_format_for_route(
                 &contract,

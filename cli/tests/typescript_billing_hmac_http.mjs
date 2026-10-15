@@ -42,7 +42,7 @@ const app=express();app.use(express.json({verify(req,_res,buffer){req._rawBody=b
 let calls=0;app.use((req,res,next)=>{req.contractDetails={access:'internal',auth:{hmac:{secretKeys:{default:'owned-hmac-secret'}}}};context.createContext({})(req,res,next);});
 const guarded=async(req,res,next)=>{try{await auth.parseRequestAuth(req,res,next);}catch(error){next(error);}};
 app.put('/owned',guarded,(_req,res)=>{calls++;res.json({ok:true});});
-const mounted=express.Router();mounted.put(['/:id','/'],guarded,(_req,res)=>{calls++;res.json({ok:true});});mounted.get(['/:id','/'],guarded,(_req,res)=>{calls++;res.json({ok:true});});mounted.options('/explicit/:id',guarded,(_req,res)=>{calls++;res.status(202).send('explicit');});app.use('/payment-link',mounted);const outer=express.Router();outer.use('/payment-link',mounted);app.use('/outer',outer);app.use(box.exports.handler);
+const mounted=express.Router();mounted.put(['/:id','/'],guarded,(_req,res)=>{calls++;res.json({ok:true});});mounted.get(['/:id','/'],guarded,(_req,res)=>{calls++;res.json({ok:true});});mounted.options('/explicit/:id',guarded,(_req,res)=>{calls++;res.status(202).send('explicit');});mounted.get('/:id/success',guarded,(_req,res)=>{calls++;res.json({ok:true});});app.use('/payment-link',mounted);const outer=express.Router();outer.use('/payment-link',mounted);app.use('/outer',outer);app.use(box.exports.handler);
 const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server));});
 function header(stamp=new Date(),nonce='repeat-nonce') {return `HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${hmac.createHmacToken({method:'PUT',path:'/owned',body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'})}`;}
 const valid=header();
@@ -87,5 +87,71 @@ try {
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}/payment-link/explicit/owned`,{method:'OPTIONS',headers:value===undefined?{}:{authorization:value}});assert.equal(response.status,authorization==='valid'?202:401);assert.equal(calls,authorization==='valid'?1:0);assert.equal(response.headers.get('allow'),null);await response.text();count++;
  }
 
+ for(const [wirePath,signedPath,status] of [
+ ['/PAYMENT-LINK/MiXeD/SUCCESS','/MiXeD/SUCCESS',200],
+ ['/PaYmEnT-LiNk/MiXeD/sUcCeSs?Keep=VaLuE','/MiXeD/sUcCeSs',200],
+ ['/PaYmEnT-LiNk/MiXeD/sUcCeSs','/mixed/success',403],
+ ['/PAYMENT-LINK/MiXeD%2FaBc/SUCCESS/','/MiXeD%2FaBc/SUCCESS/',200],
+ ['/PAYMENT-LINK/MiXeD%2FaBc/SUCCESS','/MiXeD/aBc/SUCCESS',403],
+ ['/%70ayment-link/MiXeD/success','/MiXeD/success',404],
+ ['/payment-link/MiXeD/%73uccess','/MiXeD/%73uccess',404],
+ ['/payment-linK/MiXeD/success','/MiXeD/success',404],
+ ['/payment-link/MiXeD/ſuccess','/MiXeD/ſuccess',404],
+ ]) {
+  const stamp=new Date(),nonce='case';const signature=hmac.createHmacToken({method:'GET',path:signedPath,timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
+  calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}${wirePath}`,{headers:{authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`}});assert.equal(response.status,status,wirePath);assert.equal(calls,status===200?1:0);await response.text();count++;
+ }
  console.log(`PASS ${count} actual HMAC HTTP context/auth/final-error cases: missing/empty/format/signature/key/date, accepted repeated/old/future/extra-part; raw Buffer signing. Server registry and protected handler are owned; no live provider.`);
 }finally{await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
+
+// Ordered route wiring controls use the same installed Express implementation.
+{
+const app=express();
+const mark=name=>(req,res)=>res.set('X-Selected',name).set('X-Original',req.originalUrl).set('X-Method',req.method).send(name);
+app.get('/head/:id',mark('earlier-get'));
+app.head('/head/:id',mark('later-head'));
+app.head('/explicit/:id',mark('earlier-head'));
+app.get('/explicit/:id',mark('later-get'));
+app.get('/overlap/:id',mark('earlier-param'));
+app.get('/overlap/fixed',mark('later-static'));
+app.post('/overlap/fixed',mark('post-static'));
+app.put('/overlap/:id',mark('put-param'));
+app.post('/method/:id',mark('earlier-post'));
+app.get('/method/fixed',mark('later-get-method'));
+app.get('/case',mark('lower-first'));
+app.get('/CASE',mark('upper-second'));
+app.get('/subscription/user/:id',mark('user-first'));
+app.get('/subscription/:id/cancel',mark('cancel-second'));
+app.options('/explicit-options/:id',mark('options-explicit'));
+app.get('/explicit-options/:id',mark('options-get'));
+const server=app.listen(0,'127.0.0.1'); await new Promise(r=>server.once('listening',r));
+let count=0;
+try {
+ const base=`http://127.0.0.1:${server.address().port}`;
+ for(const [method,path,chosen] of [
+ ['HEAD','/HEAD/MiXeD','earlier-get'],['HEAD','/EXPLICIT/MiXeD','earlier-head'],
+ ['GET','/OVERLAP/FIXED','earlier-param'],['GET','/overlap/fixed','earlier-param'],
+ ['POST','/OVERLAP/FIXED','post-static'],['GET','/METHOD/FIXED','later-get-method'],
+ ['GET','/CASE','lower-first'],['GET','/case','lower-first'],
+ ['GET','/SUBSCRIPTION/USER/CANCEL','user-first'],
+ ['OPTIONS','/EXPLICIT-OPTIONS/MiXeD','options-explicit'],
+ ['GET','/OVERLAP/%2F?ignored=yes','earlier-param']]) {
+  const result=await fetch(base+path,{method});assert.equal(result.status,200);assert.equal(result.headers.get('x-selected'),chosen);assert.equal(result.headers.get('x-original'),path);assert.equal(result.headers.get('x-method'),method);if(method==='HEAD')assert.equal(await result.text(),'');count++;
+ }
+ const response=await fetch(base+'/OVERLAP/FIXED',{method:'OPTIONS',headers:{authorization:'invalid'}});
+ assert.equal(response.status,200);assert.equal(response.headers.get('allow'),'GET, HEAD, POST, PUT');assert.equal(await response.text(),'GET, HEAD, POST, PUT');count++;
+ console.log(`Actual installed Express ordered routing ${count} PASS; owned route wiring, no controller parity claim`);
+} finally {await new Promise(r=>server.close(r));}
+
+}
+
+// Direct installed Express path-to-regexp matching, distinct from URL encoding by fetch.
+{
+ const {match}=require(path.join(deps,'node_modules/path-to-regexp'));
+ for(const [literal,candidate,expected] of [
+  ['café','CAFÉ',true],['Σ','ς',true],['s','ſ',false],['k','K',false],
+  ['i','İ',false],['ß','SS',false],['𐐀','𐐨',false],['%c3%a9','%C3%A9',true],
+  ['café','caf%C3%A9',false],['payment-link','%70ayment-link',false],
+ ]) assert.equal(Boolean(match(`/${literal}/:id`)(`/${candidate}/MiXeD`)),expected,`${literal} / ${candidate}`);
+ console.log('PASS10 installed Express matcher Unicode/non-u and encoded-literal observations; not browser URL-decoding claims');
+}

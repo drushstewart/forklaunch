@@ -1454,6 +1454,7 @@ dependencies = [
 name = "forklaunch-common"
 version = "0.1.0"
 dependencies = [
+ "forklaunch-regress",
  "ryu-js",
 ]
 
@@ -1843,6 +1844,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "forklaunch-regress"
+version = "0.11.1"
+dependencies = [
+ "hashbrown 0.16.1",
+ "memchr",
+]
+
+[[package]]
 name = "forklaunch-sdk-codegen"
 version = "0.1.0"
 dependencies = [
@@ -2195,6 +2204,17 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash 0.1.5",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
 ]
 
 [[package]]

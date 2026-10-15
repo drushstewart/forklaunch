@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
+typescript-routing = ["forklaunch-axum/typescript-routing"]
 default = []
 bound-checkout = ["forklaunch-billing-stripe/postgres-identity"]
 

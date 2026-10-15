@@ -132,6 +132,12 @@ pub struct FrameworkRequest {
     /// Original transport pathname, before route normalization; excludes query.
     /// None for callers that only provide a normalized logical route.
     pub raw_path: Option<String>,
+    /// Trusted transport-only matching pathname; observable `path` remains original.
+    /// Never populated from request JSON or headers, and never an authorization proof.
+    pub transport_route_path: Option<String>,
+    /// Transport-selected contract method (e.g. earlier GET handling an actual HEAD).
+    /// Observable method remains the original method; no network field sets this hint.
+    pub transport_route_method: Option<HttpMethod>,
     pub params: Params,
     pub query: Query,
     /// Original encoded query, including repeated keys, when supplied by transport.
@@ -151,6 +157,10 @@ pub struct FrameworkRequest {
 }
 
 impl FrameworkRequest {
+    fn matching_path(&self) -> &str {
+        self.transport_route_path.as_deref().unwrap_or(&self.path)
+    }
+
     #[must_use]
     pub fn new(method: HttpMethod, path: impl Into<String>, context: RequestContext) -> Self {
         Self {
@@ -158,6 +168,8 @@ impl FrameworkRequest {
             method,
             path: normalize_route_path(&path.into()),
             raw_path: None,
+            transport_route_path: None,
+            transport_route_method: None,
             params: Params::new(),
             query: Query::new(),
             raw_query: None,
@@ -615,11 +627,17 @@ impl LocalRouter {
     }
 
     fn has_explicit_head(&self, request: &FrameworkRequest) -> bool {
-        request.method == HttpMethod::Head
+        request.transport_route_method.unwrap_or(request.method) == HttpMethod::Head
             && self.routes.iter().any(|route| {
                 route.contract.method == HttpMethod::Head
                     && !matches!(
-                        match_path_checked(&route.contract.path, &request.path),
+                        match_path_checked(
+                            &route.contract.path,
+                            request
+                                .transport_route_path
+                                .as_deref()
+                                .unwrap_or(&request.path)
+                        ),
                         Ok(None)
                     )
             })
@@ -725,15 +743,11 @@ impl LocalRouter {
         self.validate_json_parsers(json_parsers)?;
         let explicit_head = self.has_explicit_head(&request);
         for route in &self.routes {
-            if route.contract.method != request.method
-                && !(request.method == HttpMethod::Head
-                    && !explicit_head
-                    && route.contract.method == HttpMethod::Get)
-            {
+            if !local_method_matches(&request, route.contract.method, explicit_head) {
                 continue;
             }
 
-            let params = match match_path_checked(&route.contract.path, &request.path) {
+            let params = match match_path_checked(&route.contract.path, request.matching_path()) {
                 Ok(params) => params,
                 Err(error) => {
                     return Ok(normalize_local_error(
@@ -1706,4 +1720,14 @@ fn parse_local_json(
             format,
         )),
     }
+}
+
+fn local_method_matches(
+    request: &FrameworkRequest,
+    candidate: HttpMethod,
+    explicit_head: bool,
+) -> bool {
+    let method = request.transport_route_method.unwrap_or(request.method);
+    candidate == method
+        || (method == HttpMethod::Head && !explicit_head && candidate == HttpMethod::Get)
 }
