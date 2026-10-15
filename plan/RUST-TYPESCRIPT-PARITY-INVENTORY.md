@@ -9570,3 +9570,18 @@ final-clippy,canonical,cli,types}.log. Runtime formatter churn removed; final SD
 proof rerun. Only framework lock1line contract→Ada; rustls0.23.46 preserved.
 CI runs schema/SDK oracles under pinnedNode24.2 and explicitfeatureoff rejection.
 Broad schema gate remains open;660/682 (96.8%),22open unchanged.
+
+
+### Immutable9e374 package checkpoint prepared (2026-10-14)
+
+Explicit source9e3749cae8b9d9cde907bd65742f8fd6fed23d71 excludes all async-backup
+and bound-Checkout route drafts. Git-free package/offline locked debug installation,
+repackaged dotfile list,2745 regular extracted-byte comparisons and intentional
+PEM fixture checks pass. Archive4818854bytes SHA256
+d5ce67809545afc4f88ce16dd37f6a319643e34d470444c71d1a44acbfd2c2da
+retained at cli/target/parity-artifacts/forklaunch-9e3749cae-d5ce6780.crate.
+CLI lock SHA256d66f3120b6fab6af185dfa4e22c614b4bf5324370aede8667c9807e3e5bc5110.
+Metadata /private/tmp/fl-oct14-uri-checkpoint.json; driver/package/install/
+repackaged-files logs use /private/tmp/fl-oct14-uri- prefix. Portable runtime
+HTTP/MCP/SDK verification awaits native queue; no new runtime claim yet. Owned
+source/install roots retained only until that verification and cleanup.
