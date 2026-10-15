@@ -10788,3 +10788,14 @@ Local evidence: `/private/tmp/fl-oct15-policy-format-checkpoint.json` and
 drafts, regex prototype and the later six identifier/Base64 assertions are excluded
 from this immutable checkpoint. It does not prove cloud deployment or public
 registry publication. Full parity remains 660/682 (96.8%).
+
+
+After committing that checkpoint, guarded cleanup removed its two exact owned
+workspace roots (213,691,674 logical bytes) and 195 exclusive non-executable cache
+files in 86 groups (421,193,548 logical bytes). Total: 634,885,222 logical bytes;
+no physical APFS reclamation claim. Guards require completed source verification,
+no symlink/active process/open file, unchanged cache inode/size/mtime and retained
+archive hash before/after. Current source caches, executables, unrelated worktrees
+and the shared PostgreSQL fixture are preserved. Logs:
+`/private/tmp/fl-oct15-policy-format-cleanup.log` and
+`/private/tmp/fl-oct15-policy-format-cache-cleanup.json`.
