@@ -8714,3 +8714,27 @@ actual-final,clippy-final,minimal-clippy}.log. Evidence is working-tree source
 with the frozen checked-transform dependency, not an immutable package receipt.
 CI tracks the imported lifecycle oracle helper and existing PostgreSQL test.
 Custom storage, backup generators, trust TTL and broader plugins remain open.
+
+
+## Live checked JSON composition bridge (2026-10-14)
+
+Axum now offers additive insert_json_transform_checked with explicit validation
+versus operational failure. Validation retains Error/Warning/None behavior;
+operational/resource failure always stops with the existing safe correlated500.
+The old callback API retains its behavior. Registration still requires the
+JSON parser and declared400 rejection; parser/auth ordering and original bytes
+remain intact. This is a trusted callback API, not a schema interpreter.
+
+A shared native example contract, both SDK generators and actual configured
+TypeScript routes exercise nested coercion/defaults/optional arrays/strip and
+atomic failure. All143 Axum tests,69 paired HTTP cases,30 registered MCP calls,
+three operational-mode cases, six calls per generated TypeScript/Rust SDK,
+strict all-feature/all-target Axum/SDK Clippy, and201 existing transform pairs
+pass. Callback-once/auth/handler counts and raw bytes are asserted. Public
+error envelopes prove rejection/body diagnostics; raw object key order is
+separate. MCP transport admission is permissive to reach downstream HTTP
+validation; this does not prove direct MCP schema interpreter equivalence.
+Logs /private/tmp/fl-composition-bridge-{tests,live,clippy}.log and
+/private/tmp/fl-composition-legacy-{transform,fields}.log. CI runs the fixture
+with pinned canonical dependencies. Broader unions/records/strict/schema gates
+remain open. Evidence is working source, not an immutable package proof.

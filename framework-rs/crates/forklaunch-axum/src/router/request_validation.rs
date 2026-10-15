@@ -5,8 +5,20 @@ use forklaunch_contract::{
 use forklaunch_http::{ErrorKind, ErrorResponse, FrameworkRequest, FrameworkResponse};
 use std::{collections::BTreeMap, sync::Arc};
 
-type JsonTransform =
-    dyn Fn(&FrameworkRequest) -> Result<Option<serde_json::Value>, FrameworkResponse> + Send + Sync;
+type JsonTransform = dyn Fn(&FrameworkRequest) -> Result<Option<serde_json::Value>, JsonTransformFailure>
+    + Send
+    + Sync;
+
+/// A trusted JSON schema callback distinguishes user validation failures from
+/// evaluator/resource failures. Operational failures always produce a redacted
+/// internal error, including when request validation is None or Warning.
+#[derive(Debug, Clone)]
+pub enum JsonTransformFailure {
+    /// Public diagnostic response subject to the route's validation mode.
+    Validation(FrameworkResponse),
+    /// Internal evaluator failure; no diagnostic payload is exposed.
+    Operational,
+}
 
 type RequestTransform = dyn Fn(
         &FrameworkRequest,
@@ -174,6 +186,29 @@ impl RequestValidators {
         + Sync
         + 'static,
     ) -> Result<(), String> {
+        self.insert_json_transform_checked(route, parsers, rejection, move |request| {
+            transform(request).map_err(JsonTransformFailure::Validation)
+        })
+    }
+
+    /// Register a JSON schema callback with explicit operational failures.
+    /// Validation failures follow the configured Error/Warning/None policy;
+    /// operational failures stop processing with a safe correlated 500 in every
+    /// mode. Success preserves the same atomic projection and original bytes as
+    /// [`Self::insert_json_transform`]. Parser and configured authentication order
+    /// remain unchanged. This callback does not interpret schema definitions.
+    /// # Errors
+    /// Requires an exact JSON parser registration and a 400 rejection declaration.
+    pub fn insert_json_transform_checked(
+        &mut self,
+        route: &RouteContract,
+        parsers: &forklaunch_http::JsonRequestParsers,
+        rejection: ResponseContract,
+        transform: impl Fn(&FrameworkRequest) -> Result<Option<serde_json::Value>, JsonTransformFailure>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Result<(), String> {
         parsers.validate_registration(route)?;
         if rejection.status_code != 400 {
             return Err("JSON schema transforms require a 400 rejection declaration".into());
@@ -282,13 +317,16 @@ impl RequestValidators {
                         request.parsed_fields = Some(fields);
                         Ok(())
                     }
-                    Err(response) => Err(response),
+                    Err(response) => Err(JsonTransformFailure::Validation(response)),
                 }
             }
         };
         match result {
             Ok(()) => None,
-            Err(response) if route.options.request_validation == ValidationMode::Error => {
+            Err(JsonTransformFailure::Operational) => Some(internal_failure(request)),
+            Err(JsonTransformFailure::Validation(response))
+                if route.options.request_validation == ValidationMode::Error =>
+            {
                 Some(check_rejection(entry, request, response))
             }
             Err(_) => {

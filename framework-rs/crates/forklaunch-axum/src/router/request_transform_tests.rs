@@ -223,3 +223,41 @@ async fn accepted_absent_defaults_and_root_removal_skip_only_body_checks() {
         }
     }
 }
+
+#[test]
+fn operational_transform_failures_are_never_validation_mode_suppressed() {
+    for mode in [
+        ValidationMode::None,
+        ValidationMode::Warning,
+        ValidationMode::Error,
+    ] {
+        let mut route = route();
+        route.options.request_validation = mode;
+        let parsers = parsers(&route);
+        let mut validators = RequestValidators::default();
+        validators
+            .insert_json_transform_checked(&route, &parsers, rejection(), |_| {
+                Err(JsonTransformFailure::Operational)
+            })
+            .unwrap();
+        let mut request = FrameworkRequest::new(
+            HttpMethod::Post,
+            "/transform",
+            RequestContext::new("safe-correlation"),
+        )
+        .with_header("content-type", "application/json")
+        .with_header("content-length", "17")
+        .with_body(FrameworkBody::Text("{\"private\":\"yes\"}".into()));
+        request.parsed_json = parsers.parse(&route, &request).unwrap();
+        let before = request.parsed_json.as_ref().unwrap().value.clone();
+        let response = validators
+            .transform_request(&route, &mut request, None)
+            .unwrap();
+        assert_eq!(response.status_code, 500);
+        assert_eq!(request.parsed_json.as_ref().unwrap().value, before);
+        let body = format!("{:?}", response.body);
+        assert!(body.contains("safe-correlation"));
+        assert!(!body.contains("private"));
+        assert!(!body.contains("yes"));
+    }
+}

@@ -1,0 +1,184 @@
+//! Bounded reusable JSON evaluator integrated with HTTP and mounted MCP transport.
+#[path = "json_composition/contract.rs"]
+mod contract;
+use axum::{Extension, Json};
+use forklaunch_axum::{
+    AuthErrorFormat, CorrelationIdFormat, ForkLaunchRouter, JsonRequestParsers,
+    JsonTransformFailure, ParsedJsonBody, RequestValidators, RouterConfig,
+};
+use forklaunch_contract::{
+    BodyContract, BodyKind, ResponseContract, RouteContract, SchemaRef, ValidationMode,
+};
+use forklaunch_core::ServiceInfo;
+use forklaunch_http::{BodyParserHooks, ErrorKind, ErrorResponse, FrameworkRequest};
+use forklaunch_validation::{typescript_coerce, typescript_request_validation_error_response};
+use serde_json::{Value, json};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+fn transform(
+    request: &FrameworkRequest,
+    root_default: bool,
+) -> Result<Option<Value>, JsonTransformFailure> {
+    use typescript_coerce::{ZodJsonField as Field, ZodJsonOutcome, ZodJsonSchema as Schema};
+    let fallback = json!("fallback");
+    let schema = Schema::Object(vec![
+        Field {
+            name: "amount",
+            schema: Schema::Number(vec![]),
+        },
+        Field {
+            name: "label",
+            schema: Schema::Default {
+                schema: Box::new(Schema::String(vec![])),
+                value: &fallback,
+            },
+        },
+        Field {
+            name: "items",
+            schema: Schema::Optional(Box::new(Schema::Array {
+                element: Box::new(Schema::Object(vec![Field {
+                    name: "enabled",
+                    schema: Schema::Boolean,
+                }])),
+                checks: vec![],
+            })),
+        },
+    ]);
+    let root_value = json!({"amount":7,"label":"fallback"});
+    let schema = if root_default {
+        Schema::Default {
+            schema: Box::new(schema),
+            value: &root_value,
+        }
+    } else {
+        schema
+    };
+    let value = request
+        .parsed_json
+        .as_ref()
+        .and_then(|parsed| parsed.value.as_deref());
+    match typescript_coerce::zod_json(value, &schema) {
+        Ok(ZodJsonOutcome::Valid(value)) => Ok(value),
+        Ok(ZodJsonOutcome::Invalid(mut errors)) => {
+            for error in &mut errors {
+                error.path.insert(0, "body".into());
+            }
+            Err(JsonTransformFailure::Validation(
+                typescript_request_validation_error_response(
+                    Some(&errors),
+                    Some(&request.context.correlation_id),
+                ),
+            ))
+        }
+        Err(_) => Err(JsonTransformFailure::Operational),
+    }
+}
+fn report(parsed: ParsedJsonBody) -> Value {
+    let mut result = json!({"hasBody":parsed.value.is_some()});
+    if let Some(value) = parsed.value {
+        result["body"] = value.as_ref().clone();
+    }
+    if let Some(raw) = parsed.raw_body {
+        result["raw"] = json!(String::from_utf8_lossy(&raw));
+    }
+    result
+}
+fn rejection() -> ResponseContract {
+    ResponseContract::new(
+        400,
+        Some(BodyContract {
+            kind: BodyKind::Text,
+            schema: SchemaRef::named("String"),
+            content_type: Some("text/plain".into()),
+        }),
+    )
+}
+#[tokio::main]
+async fn main() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let transforms = Arc::new(AtomicUsize::new(0));
+    let authentications = Arc::new(AtomicUsize::new(0));
+    let mut parsers = JsonRequestParsers::default();
+    let mut validators = RequestValidators::default();
+    let mut router = ForkLaunchRouter::new(ServiceInfo::new("transform", "1"));
+    for (name, mode) in [
+        ("none", ValidationMode::None),
+        ("warning", ValidationMode::Warning),
+        ("error", ValidationMode::Error),
+    ] {
+        for profile in ["public", "protected", "default", "remove", "unsupported"] {
+            let route = contract::route(name, mode, profile);
+            parsers.insert(&route, BodyParserHooks::default()).unwrap();
+            let transform_calls = transforms.clone();
+            validators
+                .insert_json_transform_checked(&route, &parsers, rejection(), move |request| {
+                    transform_calls.fetch_add(1, Ordering::SeqCst);
+                    match profile {
+                        "remove" => Ok(None),
+                        "unsupported" => {
+                            let schema = typescript_coerce::ZodJsonSchema::Object(vec![
+                                typescript_coerce::ZodJsonField {
+                                    name: "__proto__",
+                                    schema: typescript_coerce::ZodJsonSchema::Unknown,
+                                },
+                            ]);
+                            assert!(typescript_coerce::zod_json(None, &schema).is_err());
+                            Err(JsonTransformFailure::Operational)
+                        }
+                        _ => transform(request, profile == "default"),
+                    }
+                })
+                .unwrap();
+            let count = calls.clone();
+            router = router.post(
+                route,
+                move |Extension(parsed): Extension<ParsedJsonBody>| async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    Json(report(parsed))
+                },
+            );
+        }
+    }
+    let auth_count = authentications.clone();
+    let app = router
+        .get(RouteContract::get("Counters", "Counters", "/counters").with_response(200,None), move || {
+            let value=json!({"transforms":transforms.load(Ordering::SeqCst),"auth":authentications.load(Ordering::SeqCst)});
+            async move {Json(value)}
+        })
+        .get(
+            RouteContract::get("Calls", "Calls", "/calls").with_response(200, None),
+            move || async move { Json(json!({"handlerCalls":calls.load(Ordering::SeqCst)})) },
+        )
+        .with_config(
+            RouterConfig {
+                request_validators: validators,
+                json_request_parsers: parsers,
+                auth_error_format: AuthErrorFormat::TypeScriptText,
+                correlation_id_format: CorrelationIdFormat::TypeScript,
+                ..RouterConfig::default()
+            }
+            .with_response_authenticator(move |_, _| {
+                auth_count.fetch_add(1, Ordering::SeqCst);
+                async {
+                Err(ErrorResponse::new(
+                    ErrorKind::Unauthorized,
+                    "Authorization token required.",
+                ))
+                }
+            }),
+        );
+    #[cfg(feature = "mcp")]
+    let app = app
+        .into_router_with_mcp(forklaunch_mcp::server::McpServerOptions::new(
+            "composition",
+            "1",
+        ))
+        .unwrap();
+    #[cfg(not(feature = "mcp"))]
+    let app = app.into_router();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    println!("READY http://{}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap();
+}

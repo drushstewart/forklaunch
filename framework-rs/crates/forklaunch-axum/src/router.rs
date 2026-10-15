@@ -58,7 +58,7 @@ pub use origin::RouterOriginFormat;
 mod response_validation;
 pub use response_validation::ResponseValidators;
 mod request_validation;
-pub use request_validation::{RequestValidationStage, RequestValidators};
+pub use request_validation::{JsonTransformFailure, RequestValidationStage, RequestValidators};
 
 /// Default maximum request body size accepted before a `400` is returned (2 MiB).
 pub const DEFAULT_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;

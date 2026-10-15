@@ -59,6 +59,7 @@ on:
       - 'cli/tests/rust_zod_string_formats_parity.mjs'
       - 'cli/tests/rust_zod_binary_parity.mjs'
       - 'cli/tests/rust_zod_json_parity.mjs'
+      - 'cli/tests/rust_json_composition_runtime.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -386,6 +387,7 @@ on:
       - 'cli/tests/rust_zod_string_formats_parity.mjs'
       - 'cli/tests/rust_zod_binary_parity.mjs'
       - 'cli/tests/rust_zod_json_parity.mjs'
+      - 'cli/tests/rust_json_composition_runtime.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -867,6 +869,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_json_composition_runtime.mjs
+        env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_zod_email_openapi.mjs
         env:
