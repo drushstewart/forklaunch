@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {spawnSync} from 'node:child_process';
 import {actualUniversalSdk} from './fixtures/rust_better_auth_frontend_client.mjs';
 import {createRequire} from 'node:module';
 import path from 'node:path';
@@ -80,6 +81,20 @@ for(const source of [typebox.any,typebox.unknown,typebox.type()]){
  assert.equal(typebox.openapi({...source,type:'object'}).type,'object','explicit TypeBox override preserved');
 }
 console.log(`PASS ${typeboxComparisons} actual TypeBox/AJV unconstrained factory comparisons`);
+
+// Reuse the general native schema acceptance executable; no new build target/cache.
+if(process.env.FORKLAUNCH_UNCONSTRAINED_NATIVE==='1'){
+ const target=path.resolve(process.env.CARGO_TARGET_DIR??path.join(root,'framework-rs/target'));
+ const env={...process.env,CARGO_TARGET_DIR:target,CARGO_BUILD_JOBS:process.env.CARGO_BUILD_JOBS??'1',CARGO_INCREMENTAL:'0'};
+ const run=(command,args,options={})=>{const result=spawnSync(command,args,{cwd:root,env,encoding:'utf8',maxBuffer:8*1024*1024,...options});assert.equal(result.status,0,result.stdout+'\n'+result.stderr);return result.stdout;};
+ run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-contract','--features','schema-validation','--example','uri_schema_parity']);
+ let native=0;
+ for(const {schema,values:inputs} of factoryNative){
+  const result=run(path.join(target,'debug/examples/uri_schema_parity'),[],{input:[schema,...inputs].map(JSON.stringify).join('\n')+'\n'}).trim().split('\n');
+  assert.deepEqual(result,inputs.map(()=> 'true'));native+=inputs.length;
+ }
+ console.log(`PASS ${native} native contract factory-schema comparisons`);
+}
 
 // Exercise the actual HTTP SDK's response validator with factory-produced schemas.
 const {universalSdk}=await actualUniversalSdk();

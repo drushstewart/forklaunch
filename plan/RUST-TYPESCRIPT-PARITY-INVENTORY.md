@@ -11660,3 +11660,15 @@ after checking no native target process or candidate open file remained.
 8,486,436,936 logical bytes were removed, retaining third-party dependencies,
 source and proof archives. Exact paths/sizes/mtimes and completion are recorded in
 `/private/tmp/fl-oct15-old-blueprint-project-rlibs{,-cleanup}.json`.
+
+### 2026-10-15: Native unconstrained factory conformance
+
+The factory schema fixture now additionally passes594 native contract comparisons
+across Zod/TypeBox direct and wrapped schemas. The same final run passes11,106
+Zod/AJV comparisons,162 TypeBox/AJV comparisons and108 live actual Universal SDK
+HTTP responses. CI enables this native branch with the existing schema-validation
+example; its required feature is explicit. Log:
+`/private/tmp/fl-unconstrained-factories-native-final.log`. The first invocation
+identified a missing test-command feature flag, corrected before the final pass.
+This closes the native validation follow-up for factory annotations; generated
+Rust/TypeScript SDK-specific consumer expansion remains separate.
