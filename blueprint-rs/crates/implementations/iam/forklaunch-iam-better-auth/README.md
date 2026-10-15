@@ -1666,3 +1666,23 @@ order. The existing `OtpBackgroundTask`, `OtpBackgroundDispatcher` and
 No dispatcher means default-await delivery. Applications own lazy task polling,
 queue limits, runtime lifetime, draining and cancellation as described above;
 there is no implicit executor or retry.
+
+Explicit verification-email delivery can be enabled with
+`AuthHttp::with_email_verification_delivery(Arc<dyn EmailVerificationDelivery>)`.
+The trusted callback receives an owned, bounded public-user projection and borrowed
+accessors to its zeroized token/URL; the context has no Debug or Serde implementation.
+The explicit send endpoint always awaits the returned `DeliveryFuture`, even when a
+shared background dispatcher is installed. Preparation or delivery errors produce a
+sanitized empty 500. Anonymous missing/already-verified requests return the same
+success without delivery; anonymous delivery success/failure observes a 500ms floor
+(not a constant-time guarantee). Authenticated requests require matching email and
+reject already-verified users. Callback redirects must be trusted and at most 8192 bytes.
+
+Issued HS256 tokens use the configured auth secret, lowercase email and a one-hour
+expiry. The existing GET verifier marks the current tenant-local email owner verified;
+it does not create a session by default. These are email-address proofs, not immutable
+user-ID proofs: replay succeeds while unexpired and email reassignment may change the
+owner to whom a token applies. No purpose, single-use record or email-change authority
+is added by this issuance API. Expiry equality rejects the proof. Delivery remains
+disabled unless installed. Automatic signup/signin delivery, configurable expiry,
+email-change forwarding, before/after hooks and auto-sign-in remain separate options.

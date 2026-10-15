@@ -1280,3 +1280,15 @@ after audit waits plus finalcontextdeadline afterCOMMIT prevent stale read relea
 across tested races. No financial mutation, implicit publisher or entitlement
 capability. Product presentation refresh leaves localUUID/price/name intact.
 RestrictedPG provider mismatches/actor/tenant/policy/race/expiry andstrictClippy pass.
+
+
+### Explicit email verification delivery review (2026-10-14)
+
+Existing secret signs email-only1h HS256 proof compatible with current verifier;
+no change-email/session authority minted. Currentemailowner/replay semantics match
+source, not immutableuser/singleuse claims. Callbackorigin+bound and publicscalar
+projection precede sensitivecontext creation; opaqueURL/token zeroize and errors
+sanitizeempty500. Anonymous500ms minimum is a floor, not constanttime; missing/
+verifiedusers receive same200 withoutdelivery. Explicitsend awaitsignoresbackground
+dispatch. Actual11, restrictedPG/currentuser verification and liveHTTP/MCPregression
+pass with strictClippy; no new authentication or automatic signup policy.

@@ -10102,3 +10102,32 @@ immutability trigger prevents the proposed no-op journal mutation test; snapshot
 still records xmin. Ownedfl_bound_plan roles cleaned0.
 No manifest/lock/migration or default route/API change; aggregate route/config
 integration remains separate.660/682 (96.8%),22open unchanged.
+
+
+### Trusted explicit verification-email delivery (2026-10-14)
+
+Optional EmailVerificationDelivery hook enables existing send-verification-email;
+defaultdisabled unchanged. Explicit endpoint alwaysawaits and propagates sanitized
+prepare/future error as empty500, deliberately ignoring globalbackgrounddispatcher
+as actualsource does. Anonymous missing/alreadyverified gets same200 withoutdelivery,
+with signedtoken dummywork and500ms floor includingcallbackerrors; sessionlookup
+precedes floor, no constanttime claim. Valid authenticatedemailmismatch/alreadyverified
+reject400 and skipfloor; invalid/expiredcookies takeanonymouspath. Trustedcallback
+guard and8192byte callbackbound precede store/tokenwork. No new sessions/cookies/JWT
+authentication, apart from existing ordinary session refresh behavior.
+Opaque context carries bounded borrowed-before-clone publicprojection, zeroizing
+URL/token, noDebug/Serde/rawrequest. HS256 lowercaseemail/iat/exp+1h proof uses
+existingsecret and GETverifier, no updateTo/requestType/change-email authority.
+It proves current tenant-local emailaddress ownership, not immutableuserid: address
+reassignment can apply unexpiredproof to currentowner, and alreadyverified replay
+succeeds. No singleuse/store/purpose/autoSignIn claim or silent extra authority.
+Frozen9 /private/tmp/fl-email-delivery-freeze.json SHA256
+0775c1d44ca62f86c3e7a9118f7a7f2aa4ea8bfee8a274c572484796fc587979.
+Actual11/focused3(3.62s), restrictedPG1(52.91s), existinglive signedauthHTTP/MCP/
+JWKS/refresh/CSRF/shutdown1(24.83s) pass; strictfullalltargetsClippy10.48s/minimal3.60s
+pass. Logs /private/tmp/fl-email-delivery-{actual,native,pg,consumer,clippy,
+minimal-clippy}.log; owned roles/records/audits0. Final lint also corrects prior
+resetmodule docmarkdown and gates HTTPimplementation out ofminimallib.
+No manifests/locks/migrations/templates, no immutablearchive deliveryprofile claim.
+Signup/signin/change-email callbacks, verified before/afterhooks andexpiryoptions
+remain separate;660/682 (96.8%),22open unchanged.

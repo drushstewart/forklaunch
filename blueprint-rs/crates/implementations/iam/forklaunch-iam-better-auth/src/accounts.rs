@@ -13,6 +13,8 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
 
+pub(crate) mod email_delivery;
+pub use email_delivery::{EmailVerificationDelivery, EmailVerificationDeliveryContext};
 mod password;
 mod profile;
 mod reset;

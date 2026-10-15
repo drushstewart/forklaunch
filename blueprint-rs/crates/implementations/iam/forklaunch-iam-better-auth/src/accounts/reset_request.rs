@@ -1,5 +1,5 @@
 //! Opt-in trusted reset delivery; tokens commit before callback preparation.
-//! Configured PostgreSQL encrypts records; custom stores own storage security.
+//! Configured `PostgreSQL` encrypts records; custom stores own storage security.
 use super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model, SecondsFormat,
     Utc, Value, json, public_user, validate_email,
@@ -76,7 +76,7 @@ fn token() -> BlueprintResult<Zeroizing<String>> {
     }
     Ok(output)
 }
-fn projection(user: &Value) -> BlueprintResult<Value> {
+pub(crate) fn projection(user: &Value) -> BlueprintResult<Value> {
     // Match public_user's allowlist, validating borrowed values before that helper
     // clones them. Do not recursively clone malformed caller-controlled fields.
     for field in [
@@ -107,7 +107,7 @@ fn projection(user: &Value) -> BlueprintResult<Value> {
     Ok(public_user(user))
 }
 
-fn component(value: &str) -> String {
+pub(crate) fn component(value: &str) -> String {
     const HEX: &[u8] = b"0123456789ABCDEF";
     let mut output = String::new();
     for byte in value.bytes() {

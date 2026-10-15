@@ -63,6 +63,7 @@ pub struct AuthHttp<S> {
     two_factor: Option<Arc<crate::two_factor::TwoFactorService<S>>>,
     background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     otp_background_override: bool,
+    email_verification_delivery: Option<Arc<dyn crate::accounts::EmailVerificationDelivery>>,
     password_reset_delivery: Option<Arc<dyn crate::accounts::PasswordResetDelivery>>,
     jwks_adapter: Option<crate::keyring::adapter::JwksAdapter>,
     key_config: crate::keyring::KeyPairConfig,
@@ -131,6 +132,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             two_factor: None,
             background_dispatcher: None,
             otp_background_override: false,
+            email_verification_delivery: None,
             password_reset_delivery: None,
             jwks_adapter: None,
             key_config: crate::keyring::KeyPairConfig::default(),
@@ -502,6 +504,7 @@ async fn dispatch<S: AuthStore + 'static>(
     }
     response
 }
+#[allow(clippy::too_many_lines)] // Central route dispatch preserves shared parsing/auth ordering.
 async fn handle<S: AuthStore + 'static>(
     app: &AuthHttp<S>,
     request: Request,
@@ -540,6 +543,9 @@ async fn handle<S: AuthStore + 'static>(
     if matches!(path, "/sign-up/email" | "/sign-in/email") {
         request::guard(app, &parts, &payload, &query, true)?;
         return credential::login(app, path, payload, &parts.headers, pending, now).await;
+    }
+    if path == "/send-verification-email" && app.email_verification_delivery.is_some() {
+        return email::send(app, &payload, (&token, transient), pending, now).await;
     }
     if let Some(result) = credential::public(app, path, &payload, &query, now).await {
         return result;
@@ -809,6 +815,7 @@ fn failure_response(error: &BlueprintError) -> Response {
         error.code.as_str(),
         "HTTP_INTERNAL_EMPTY"
             | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
+            | "EMAIL_VERIFICATION_DELIVERY_FAILED"
             | "PASSWORD_RESET_DELIVERY_PREPARATION_FAILED"
             | "TWO_FACTOR_GENERATION_FAILED"
             | "TWO_FACTOR_STORAGE_DECODE_FAILED"

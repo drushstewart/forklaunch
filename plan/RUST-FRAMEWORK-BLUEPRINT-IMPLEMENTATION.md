@@ -60,7 +60,8 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: trusted password-reset delivery/shared app-owned scheduler, actual9/domainHTTP/restrictedPG/strictClippy proofs, existing OTP aliases and explicit override precedence.
 - Completed: precise fixed Rust tuple sequence models through shared CLI/native generation,79modelcases/native46/fullCLI1125 and strictClippy; implicitdraft7 prefix annotation control fixed.
 - Completed: provenance-aware directly created Plan UUID library reads with Product-only enrichment,65actualTS/restrictedPG/provider/race/deadline and strictClippy checks. Aggregate read-route configuration remains separate.
-- Active: variable-prefix/rest Rust tuple models, explicit aggregate Plan-read wiring and trusted email-verification delivery. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: trusted explicit verification-email delivery, compatible1h email-address tokens, anonymousfloor/privacy and callbackerrors, actual11/PG/liveHTTPMCP/strictClippy proofs.
+- Active: variable-prefix/rest Rust tuple models, explicit aggregate Plan-read wiring and signup/signin verification policy design. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable37b54 archive package/install/portable services/workers/SDK/HTTP/MCP runtime passes with2775 before/after byte-verified files and packagedIAM184 (3PGignored). Later OTPdispatcher/tupleconsumer/new drafts are excluded by source commit; owned roots and414MB exclusive nonexecutable cache cleaned with guards.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
@@ -2182,3 +2183,9 @@ Bound Plan read checkpoint (2026-10-14): sealedcompletedprovenance+exactcurrent
 DTO/alias/profile, freshPlan/Product terms and finaldeadline preserve localUUID
 with Product-only enrichment.65actualTS/newPG5.54s/creationPG12.85s andstrict
 Clippy pass. No automaticroute/publisher capability;660/682 (96.8%),22open.
+
+
+Email delivery checkpoint (2026-10-14): trusted explicit endpoint awaits callback
+independently ofbackgroundscheduler; compatible1h addressproof, anonymousfloor/
+privacy and authenticatederror behavior pass11actual/3focused/PG/liveHTTPMCP/
+strictClippy checks. Signup/signin/hooks remainopen;660/682 (96.8%),22open.

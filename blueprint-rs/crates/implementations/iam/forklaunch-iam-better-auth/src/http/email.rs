@@ -238,3 +238,85 @@ fn redirect(destination: &str) -> Response {
     response.headers_mut().insert(header::LOCATION, location);
     response
 }
+
+impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Enables explicit verification email requests. Delivery is always awaited;
+    /// global background dispatch does not apply to this upstream endpoint.
+    #[must_use]
+    pub fn with_email_verification_delivery(
+        mut self,
+        delivery: Arc<dyn crate::accounts::EmailVerificationDelivery>,
+    ) -> Self {
+        self.email_verification_delivery = Some(delivery);
+        self
+    }
+}
+
+pub(super) async fn send<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    payload: &Value,
+    credentials: (&str, bool),
+    pending: &mut HeaderMap,
+    now: DateTime<Utc>,
+) -> BlueprintResult<Value> {
+    let hook = app
+        .email_verification_delivery
+        .as_deref()
+        .ok_or_else(internal)?;
+    let email = text(payload, "email")?;
+    let callback = payload["callbackURL"].as_str().unwrap_or("");
+    if callback.len() > 8192 {
+        return Err(BlueprintError::new(
+            "INVALID_CALLBACK_URL",
+            "Invalid callbackURL",
+        ));
+    }
+    let view = SessionService::new(app.store.clone())
+        .get(credentials.0, credentials.1, false, now)
+        .await?;
+    super::refresh_cookie_headers(app, view.as_ref(), credentials.0, pending)?;
+    if let Some(view) = view {
+        if text(&view.user, "email")?.to_lowercase() != email.to_lowercase() {
+            return Err(BlueprintError::new("EMAIL_MISMATCH", "Email mismatch"));
+        }
+        if view.user["emailVerified"] == true {
+            return Err(BlueprintError::new(
+                "EMAIL_ALREADY_VERIFIED",
+                "Email is already verified",
+            ));
+        }
+        crate::accounts::email_delivery::deliver(
+            hook,
+            &view.user,
+            &app.auth_base_url(),
+            callback,
+            &app.secret,
+            now,
+        )
+        .await?;
+    } else {
+        let start = tokio::time::Instant::now();
+        let mut tx = app.store.begin(false).await?;
+        let user = tx
+            .find_unique(Model::User, "email", &email.to_lowercase())
+            .await?;
+        tx.commit().await?;
+        let result = match user.filter(|u| u["emailVerified"] != true) {
+            Some(user) => {
+                crate::accounts::email_delivery::deliver(
+                    hook,
+                    &user,
+                    &app.auth_base_url(),
+                    callback,
+                    &app.secret,
+                    now,
+                )
+                .await
+            }
+            None => crate::accounts::email_delivery::token(email, &app.secret, now).map(|_| ()),
+        };
+        tokio::time::sleep_until(start + std::time::Duration::from_millis(500)).await;
+        result?;
+    }
+    Ok(json!({"status":true}))
+}

@@ -1844,3 +1844,133 @@ async fn http_shared_background_preserves_legacy_otp_alias_and_override_order() 
         }
     }
 }
+
+#[tokio::test]
+async fn http_email_delivery_privacy_floor_verify_and_background_independence() {
+    email_delivery_lifecycle(Arc::new(MemoryAuthStore::default())).await;
+}
+
+pub(crate) async fn email_delivery_lifecycle<S: AuthStore + 'static>(store: Arc<S>) {
+    use crate::accounts::{EmailVerificationDelivery, EmailVerificationDeliveryContext};
+    struct Delivery(std::sync::Mutex<Vec<EmailVerificationDeliveryContext>>);
+    impl EmailVerificationDelivery for Delivery {
+        fn prepare(
+            &self,
+            context: EmailVerificationDeliveryContext,
+        ) -> BlueprintResult<crate::background::DeliveryFuture> {
+            self.0.lock().unwrap().push(context);
+            Ok(Box::pin(async { Ok(()) }))
+        }
+    }
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::User,json!({"id":"verify-owned","email":"verify@example.test","name":"Owned","emailVerified":false,"password":"private"})).await.unwrap();
+    tx.commit().await.unwrap();
+    let delivery = Arc::new(Delivery(std::sync::Mutex::new(Vec::new())));
+    let queue = Arc::new(otp_background::Queue::default());
+    let mut browser = Browser {
+        router: AuthHttp::new(
+            store.clone(),
+            "http://auth.fixture.test".into(),
+            vec![42; 32],
+            vec![],
+        )
+        .unwrap()
+        .with_rate_limiting(false)
+        .with_email_verification_delivery(delivery.clone())
+        .with_background_dispatcher(queue)
+        .router(),
+        jar: BTreeMap::new(),
+        origin: "http://auth.fixture.test".into(),
+    };
+    for email in ["missing@example.test", "VERIFY@EXAMPLE.TEST"] {
+        let start = std::time::Instant::now();
+        let (status, body, headers) = browser
+            .call("/send-verification-email", Some(json!({"email":email})))
+            .await;
+        assert_eq!((status, body), (200, json!({"status":true})));
+        assert!(start.elapsed() >= std::time::Duration::from_millis(500));
+        assert!(!headers.contains_key("set-auth-jwt"));
+    }
+    let proof = {
+        let values = delivery.0.lock().unwrap();
+        assert_eq!(values.len(), 1);
+        assert!(values[0].user().get("password").is_none());
+        values[0].token().to_owned()
+    };
+    for _ in 0..2 {
+        let (status, body, headers) = browser
+            .call(&format!("/verify-email?token={proof}"), None)
+            .await;
+        assert_eq!((status, body), (200, json!({"status":true,"user":null})));
+        assert!(!headers.contains_key("set-cookie"));
+    }
+    assert_eq!(
+        browser
+            .call(
+                "/send-verification-email",
+                Some(json!({"email":"verify@example.test","callbackURL":"https://evil.example/"}))
+            )
+            .await
+            .0,
+        403
+    );
+    assert_eq!(delivery.0.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn http_email_delivery_failure_floor_and_authenticated_errors() {
+    struct Failing;
+    impl crate::accounts::EmailVerificationDelivery for Failing {
+        fn prepare(
+            &self,
+            _: crate::accounts::EmailVerificationDeliveryContext,
+        ) -> BlueprintResult<crate::background::DeliveryFuture> {
+            Ok(Box::pin(async {
+                Err(BlueprintError::new("private", "sensitive diagnostic"))
+            }))
+        }
+    }
+    let store = Arc::new(MemoryAuthStore::default());
+    let mut browser = Browser {
+        router: AuthHttp::new(
+            store.clone(),
+            "http://auth.fixture.test".into(),
+            vec![42; 32],
+            vec![],
+        )
+        .unwrap()
+        .with_rate_limiting(false)
+        .with_email_verification_delivery(Arc::new(Failing))
+        .router(),
+        jar: BTreeMap::new(),
+        origin: "http://auth.fixture.test".into(),
+    };
+    assert_eq!(browser.call("/sign-up/email",Some(json!({"name":"Owned","firstName":"Owned","lastName":"User","email":"verify-failure@example.test","password":"owned-test-password"}))).await.0,200);
+    assert_eq!(
+        browser
+            .call(
+                "/send-verification-email",
+                Some(json!({"email":"other@example.test"}))
+            )
+            .await
+            .1["code"],
+        "EMAIL_MISMATCH"
+    );
+    let (status, body, _) = browser
+        .call(
+            "/send-verification-email",
+            Some(json!({"email":"verify-failure@example.test"})),
+        )
+        .await;
+    assert_eq!((status, body), (500, Value::Null));
+    browser.jar.clear();
+    let start = std::time::Instant::now();
+    let (status, body, _) = browser
+        .call(
+            "/send-verification-email",
+            Some(json!({"email":"verify-failure@example.test"})),
+        )
+        .await;
+    assert_eq!((status, body), (500, Value::Null));
+    assert!(start.elapsed() >= std::time::Duration::from_millis(500));
+}
