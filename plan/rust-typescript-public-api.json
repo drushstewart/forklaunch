@@ -24683,7 +24683,7 @@
               "name": "registerZodChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/zodChecks.ts",
-              "line": 289
+              "line": 315
             }
           ]
         },
@@ -25508,7 +25508,7 @@
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 1112
+              "line": 1114
             }
           ]
         },
@@ -25519,25 +25519,31 @@
               "name": "zodChecksKeyword",
               "kind": "VariableDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 3
+              "line": 4
             },
             {
               "name": "projectStringChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 28
+              "line": 29
             },
             {
               "name": "projectNumberChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 151
+              "line": 152
             },
             {
               "name": "projectArrayChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 172
+              "line": 173
+            },
+            {
+              "name": "projectStringPredicates",
+              "kind": "FunctionDeclaration",
+              "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
+              "line": 190
             }
           ]
         },

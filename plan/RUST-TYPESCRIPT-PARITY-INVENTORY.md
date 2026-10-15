@@ -12711,3 +12711,39 @@ the expanded tests. Selection counts exact canonical-pattern methods; Express
 union across overlapping patterns remains outside this profile. Case-insensitive
 routing and legacy date handling remain measured gaps. Broader route/auth gates
 and checklist660/682 remain open.
+
+
+### 2026-10-15 — Positioned UTF16 literal predicates
+
+Integrated0bd149fa4 extends the explicit zodChecks assertion profile to startsWith,
+endsWith and includes predicates outside the portable-pattern subset, including
+full IEEE numeric positions and exact UTF16 needle units. Native matching scans
+UTF16 without copying the input using a bounded linear matcher. Existing portable
+artifact bytes and explicit annotation merge/override behavior are preserved;
+pureInput admits the supported predicates only with zodChecks. There are no new
+dependencies, manifests or locks and no inferred callback transformations.
+
+Both native modes pass6,562 admitted semantic comparisons/386schemas,52 stable
+portable artifacts,5 annotation controls and16 aligned admission controls.
+One JS-admitted262,144-unit schema exceeds the existing native whole-schema node
+budget; it is separately asserted as a resource rejection, not counted equivalent.
+The original failure remains in `fl-string-predicate-domain-native-before.log`.
+Direct compiler tests independently prove the keyword unit budget. Whole-schema
+limits can reject earlier; neither guard was weakened.
+
+Common18/contract44 all-feature tests, feature-off33, focused3 and strict full/
+minimal Clippy pass. Earlier literals92,880JS/30,960native, UTF16bounds5,020native,
+pureInput577+246 controls,54 live HTTP responses,216 generatedTS/Rust socket
+checks and strict12-root/625-export types pass. One checked-conversion spelling
+was corrected for Clippy; final focused/default-native checks were rerun afterward.
+Eleven hashes match `/private/tmp/fl-string-predicate-domain-source.json`, SHA256
+`5c3cc57bc1f675f77431460f53d838ffbf824ac180cd86d1050a44e119c3a5c1`.
+Detailed receipt: `/private/tmp/fl-string-predicate-domain-receipt.md`; CI runs both
+number modes and existing expanded consumers. Broad schema/error gates remain
+open; checklist660/682 (96.8%) unchanged.
+
+Guarded cleanup additionally removed199 generated CLI outputs/734,819,579 logical
+bytes referring exclusively to the completed, removed auth-package roots. Retained
+archive hash, no active compiler/open candidates, unchanged inode/mtime/size and
+current-source exclusions were verified. Unrelated watcher46080 remains running.
+Receipt: `/private/tmp/fl-oct15-auth-package-cache-cleanup.json`.

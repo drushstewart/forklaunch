@@ -118,6 +118,7 @@ on:
       - 'cli/tests/rust_zod_discriminator_input_openapi.mjs'
       - 'cli/tests/rust_zod_number_bounds_openapi.mjs'
       - 'cli/tests/rust_zod_utf16_bounds_openapi.mjs'
+      - 'cli/tests/rust_zod_string_predicates_openapi.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -592,6 +593,7 @@ on:
       - 'cli/tests/rust_zod_discriminator_input_openapi.mjs'
       - 'cli/tests/rust_zod_number_bounds_openapi.mjs'
       - 'cli/tests/rust_zod_utf16_bounds_openapi.mjs'
+      - 'cli/tests/rust_zod_string_predicates_openapi.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -1260,6 +1262,19 @@ jobs:
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
           FORKLAUNCH_UTF16_BOUNDS_NATIVE: '1'
           FORKLAUNCH_UTF16_BOUNDS_ARBITRARY: '1'
+      - name: Positioned UTF16 predicates in default mode
+        run: node cli/tests/rust_zod_string_predicates_openapi.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_STRING_PREDICATES_NATIVE: '1'
+      - name: Positioned UTF16 predicates in arbitrary precision mode
+        run: node cli/tests/rust_zod_string_predicates_openapi.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_STRING_PREDICATES_NATIVE: '1'
+          FORKLAUNCH_STRING_PREDICATES_ARBITRARY: '1'
       - name: Pure discriminator dispatch conformance
         run: node cli/tests/rust_zod_discriminator_input_openapi.mjs
         env:
