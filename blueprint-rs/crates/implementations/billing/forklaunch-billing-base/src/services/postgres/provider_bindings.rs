@@ -28,9 +28,9 @@ pub use plan_creation::{
     PlanCreationClaim, PlanCreationReadSnapshot, PlanCreationReservation, PlanCreationStatus,
 };
 pub use subscription_creation::{
-    SubscriptionCreationClaim, SubscriptionCreationPending, SubscriptionCreationRecovery,
-    SubscriptionCreationReservation, SubscriptionCreationStatus, SubscriptionDependencySnapshot,
-    TrustedSubscriptionPublisher,
+    SubscriptionCreationClaim, SubscriptionCreationPending, SubscriptionCreationReadSnapshot,
+    SubscriptionCreationRecovery, SubscriptionCreationReservation, SubscriptionCreationStatus,
+    SubscriptionDependencySnapshot, TrustedSubscriptionPublisher,
 };
 
 type BindingRow = (

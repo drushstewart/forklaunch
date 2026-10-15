@@ -2217,3 +2217,8 @@ unchanged; NativeEnum/getter sandbox remain outside profile. Public inventory
 ### Trusted signup/signin verification policy (2026-10-14)
 
 Trusted required signup/signin policy now has actual13/focusedHTTP/restrictedPG/fullIAM198 evidence; callback transaction-visibility boundary remains explicit. Checklist660/682(96.8%),22open unchanged.
+
+
+### Bound completed Subscription read (2026-10-14)
+
+Library completed Subscription read now has actualTS66/restrictedPG/provider/provenance race evidence; aggregate route and lifecycle synchronization remain separate. Checklist660/682(96.8%),22open unchanged.

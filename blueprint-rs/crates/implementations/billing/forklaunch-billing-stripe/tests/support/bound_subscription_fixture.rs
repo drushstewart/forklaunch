@@ -35,8 +35,11 @@ impl Fixture {
         .await
         .unwrap()
     }
-    #[allow(clippy::too_many_lines)]
     pub async fn new() -> Self {
+        Self::new_with_plan_actor("service:subscription").await
+    }
+    #[allow(clippy::too_many_lines)]
+    pub async fn new_with_plan_actor(plan_actor: &str) -> Self {
         let admin = PgPoolOptions::new()
             .max_connections(3)
             .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
@@ -102,9 +105,12 @@ impl Fixture {
             .complete_customer_registration(snapshot, || Ok(()))
             .await
             .unwrap();
+        let plan_store = store
+            .with_audit_context(AuditContext::actor(plan_actor, "catalog-fixture"))
+            .unwrap();
         let plan_operation = Uuid::new_v4();
         let request = json!({"name":"Pro","active":true,"currency":"USD","cadence":"month","unitAmount":1200,"productId":"custom-product"});
-        let PlanCreationClaim::Reserved(ticket) = store
+        let PlanCreationClaim::Reserved(ticket) = plan_store
             .reserve_plan_creation(
                 &scope,
                 plan_operation,
@@ -119,7 +125,7 @@ impl Fixture {
         let plan = ticket.public_id();
         let product = json!({"id":"custom-product","object":"product","livemode":false});
         let record = json!({"id":plan.to_string(),"name":"Pro","price":1200,"active":true,"currency":"USD","cadence":"month","externalId":"custom-plan","billingProvider":"stripe","providerFields":product,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"});
-        store
+        plan_store
             .complete_plan_creation(
                 ticket,
                 record,

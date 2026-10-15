@@ -71,7 +71,7 @@ fn canonical(value: &Value) -> Value {
         value => value.clone(),
     }
 }
-fn intent_hash(public_id: &str, canonical: &str) -> String {
+pub(super) fn intent_hash(public_id: &str, canonical: &str) -> String {
     let mut hash = Sha256::new();
     hash.update(b"forklaunch/plan-creation/v1\0");
     hash.update(public_id.as_bytes());

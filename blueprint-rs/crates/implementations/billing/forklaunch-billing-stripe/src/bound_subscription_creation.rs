@@ -1,6 +1,7 @@
 //! Explicit direct subscription creation. Creation/active never means paid.
 //! Customer defaults, balances and invoice configuration can affect financial
 //! outcomes; this profile does not attest invoice totals or payment success.
+mod read;
 mod recovery;
 mod validation;
 use crate::{client::VerifiedStripeContext, services::StripeBillingService};

@@ -1413,6 +1413,8 @@ jobs:
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_reads -- --ignored --nocapture
       - name: Bound Plan read provenance, provider and race PostgreSQL checks
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_plan_reads -- --ignored --nocapture
+      - name: Bound Subscription read provenance and provider PostgreSQL checks
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_subscription_creation bound_subscription_created_read_matrix -- --ignored --nocapture
       - name: Billing date HTTP, MCP and generated SDK profile
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --test request_dates -- --ignored
       - run: node cli/tests/rust_billing_dto_types.mjs

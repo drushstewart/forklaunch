@@ -1,6 +1,8 @@
 #![cfg(feature = "postgres-identity")]
 #[path = "support/bound_subscription_fixture.rs"]
 mod fixture;
+#[path = "support/bound_subscription_read_cases.rs"]
+mod read_cases;
 use axum::{
     Json, Router,
     extract::State,
@@ -35,6 +37,9 @@ use uuid::Uuid;
 #[derive(Clone, Default)]
 struct Provider {
     posts: Arc<AtomicUsize>,
+    requests: Arc<AtomicUsize>,
+    customer_response: Arc<Mutex<Option<Value>>>,
+    plan_response: Arc<Mutex<Option<Value>>>,
     event: Arc<Mutex<Value>>,
     event_reads: Arc<AtomicUsize>,
     response: Arc<Mutex<Option<Value>>>,
@@ -128,13 +133,15 @@ async fn bound_subscription_native_wire_matrix() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { matrix(&run, false).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
 }
 // Keep connection/loopback teardown with the assertions even when a case panics.
-async fn matrix(f: &Fixture) {
+async fn matrix(f: &Fixture, reads: bool) {
     let p = Provider::default();
     let app = Router::new()
         .route(
@@ -153,16 +160,18 @@ async fn matrix(f: &Fixture) {
         )
         .route(
             "/v1/customers/{id}",
-            get(|h: HeaderMap| async move {
+            get(|State(p): State<Provider>, h: HeaderMap| async move {
                 auth(&h);
-                Json(json!({"id":"cus_owned","object":"customer","livemode":false}))
+                Json(p.customer_response.lock().unwrap().clone().unwrap_or_else(
+                    || json!({"id":"cus_owned","object":"customer","livemode":false}),
+                ))
             }),
         )
         .route(
             "/v1/plans/{id}",
-            get(|h: HeaderMap| async move {
+            get(|State(p): State<Provider>, h: HeaderMap| async move {
                 auth(&h);
-                Json(plan())
+                Json(p.plan_response.lock().unwrap().clone().unwrap_or_else(plan))
             }),
         )
         .route(
@@ -176,7 +185,17 @@ async fn matrix(f: &Fixture) {
         )
         .route("/v1/subscriptions", post(create))
         .route("/v1/subscriptions/{id}", get(read))
-        .with_state(p.clone());
+        .with_state(p.clone())
+        .layer(axum::middleware::from_fn({
+            let count = p.requests.clone();
+            move |r: axum::extract::Request, n: axum::middleware::Next| {
+                let count = count.clone();
+                async move {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    n.run(r).await
+                }
+            }
+        }));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let client = StripeBillingClient::with_transport(
         "owned-subscription-key".into(),
@@ -211,8 +230,12 @@ async fn matrix(f: &Fixture) {
         SubscriptionCollectionPolicy::AutomaticDefaultIncomplete,
     )
     .unwrap();
-    cases(f, &p, &service, &profile, &publisher).await;
-    recovery_cases(f, &p, &service, &profile, &publisher).await;
+    if reads {
+        read_cases::matrix(f, &p, &service, &profile, &publisher).await;
+    } else {
+        cases(f, &p, &service, &profile, &publisher).await;
+        recovery_cases(f, &p, &service, &profile, &publisher).await;
+    }
     drop(publisher);
     pool.close().await;
     server.abort();
@@ -515,6 +538,25 @@ async fn recovery_cases(
         .unwrap();
     assert_eq!(evidence["event"], event);
     assert_eq!(evidence["eventHash"].as_str().unwrap().len(), 64);
+    let Some(forklaunch_billing_base::services::postgres::SubscriptionCreationStatus::Completed {
+        record: recovered,
+        ..
+    }) = f
+        .store
+        .inspect_bound_subscription_creation(operation)
+        .await
+        .unwrap()
+    else {
+        panic!("recovered receipt")
+    };
+    let recovered_id = Uuid::parse_str(recovered["id"].as_str().unwrap()).unwrap();
+    assert!(
+        service
+            .get_bound_created_subscription(profile, recovered_id)
+            .await
+            .is_ok()
+    );
+
     assert!(matches!(
         service
             .recover_bound_subscription(profile, publisher, operation, "evt_owned")
@@ -523,4 +565,18 @@ async fn recovery_cases(
         Outcome::Completed { .. }
     ));
     assert_eq!(p.posts.load(Ordering::SeqCst), posts);
+}
+
+#[tokio::test]
+#[ignore = "requires owned isolated FORKLAUNCH_TEST_POSTGRES_URL"]
+async fn bound_subscription_created_read_matrix() {
+    let f = Arc::new(Fixture::new_with_plan_actor("service:catalog").await);
+    let run = f.clone();
+    let result = tokio::task::LocalSet::new()
+        .run_until(async move {
+            tokio::task::spawn_local(async move { matrix(&run, true).await }).await
+        })
+        .await;
+    Arc::try_unwrap(f).ok().unwrap().cleanup().await;
+    result.unwrap();
 }

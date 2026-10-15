@@ -1325,3 +1325,24 @@ fullIAM198pass/3ignored and strict full/minimal Clippy pass. Frozen11 manifest
 {actual,native,pg,full,clippy,minimal-clippy}.log. Existing metadata already admits
 nullable signup token and403; no new Cookie/JWT on denied paths. Broad660/682
 (96.8%),22open unchanged.
+
+
+### Bound completed Subscription read (2026-10-14)
+
+Library get_bound_created_subscription uses actor-owned sealed completed receipt,
+exact local DTO/alias generation, Customer and Plan provenance and current trusted
+profile. Plan creator may be catalog actor: subscription authority is explicit
+trusted mapping, not same-actor equality. Nonlocking joined observations repeat
+after provider/audit waits; original request deadline is checked after commit.
+Fresh pinned account/mode Customer, expandedPlan and Subscription reads validate
+original item/start/customer/Plan/quantity/description. Only active/incomplete and
+incomplete-to-active transitions are supported; local status/active remain intact,
+current provider fields replace only stripeFields, matching actual TS getter.
+Direct and authenticated-event-recovered completed receipts work; pending/admin
+fallback, trial/discount/delegated transitions and lifecycle synchronization do not.
+CustomerParty is explicit admin assertion, not external IAM ownership proof.
+ActualTS66, new restrictedPG matrix and existing creation/recovery tests2pass6.21s,
+strict base/Stripe allfeature/alltarget Clippy pass. Frozen11 manifest
+/private/tmp/fl-subscription-read-final.json verified. Logs /private/tmp/fl-subscription-
+read-final-pg.log and /private/tmp/fl-subscription-read-clippy-final.log. No new
+routes yet; aggregate selection remains separate. Broad660/682(96.8%),22open.

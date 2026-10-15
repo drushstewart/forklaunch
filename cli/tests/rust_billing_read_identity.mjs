@@ -55,6 +55,14 @@ let cases=0;
    assert.notDeepEqual(result.stripeFields,provider);assert.deepEqual(row,before);
    assert.deepEqual(calls,['orm:read','provider:get']);calls.length=0;cases++;
   }
+  if(kind==='Subscription'){
+   provider={...good,status:'canceled',metadata:{fresh:true}};
+   const before=structuredClone(row),result=await service.getSubscription({id});
+   assert.equal(result.id,id);assert.equal(result.active,row.active);assert.equal(result.status,row.status);
+   assert.equal(result.partyId,row.partyId);assert.equal(result.productId,row.productId);
+   assert.deepEqual(result.stripeFields,provider);assert.deepEqual(row,before);
+   assert.deepEqual(calls,['orm:read','provider:get']);calls.length=0;cases++;
+  }
   const list=kind==='Plan'?'listPlans':'listSubscriptions';
   for(const bad of invalid){provider=bad;assert.deepEqual(structuredClone(await service[list]()),[]);assert.deepEqual(calls,['orm:list','provider:get']);calls.length=0;cases++;}
   provider=good;assert.equal((await service[list]())[0].id,id);calls.length=0;cases++;
