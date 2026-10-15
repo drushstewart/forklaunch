@@ -62,12 +62,14 @@ fn args(cmd: Command) -> Command {
     cmd.arg(
         Arg::new("service")
             .required(true)
-            .help("The service to change, by name"),
+            .help("The service (or, for email, the worker) to change, by name"),
     )
     .arg(
         Arg::new("type")
             .required(true)
-            .help("What to add: object-store (s3) or cache (redis)"),
+            .help(
+                "What to add: object-store (s3), cache (redis), or a platform capability: email, sms, whatsapp, voice, payments (email also on a worker)",
+            ),
     )
     .arg(
         Arg::new("base_path")
@@ -325,8 +327,18 @@ fn change_capability(
         .iter()
         .find(|p| p.name == service)
         .with_context(|| format!("no project named '{service}' in the manifest"))?;
-    if project.r#type != ProjectType::Service {
-        bail!("'{service}' is not a service; capabilities are added to services");
+    let is_worker = project.r#type == ProjectType::Worker;
+    if project.r#type != ProjectType::Service && !(is_worker && capability.workers) {
+        let allowed: Vec<&str> = super::capabilities::CAPABILITIES
+            .iter()
+            .filter(|c| c.workers)
+            .map(|c| c.id)
+            .collect();
+        bail!(
+            "'{service}' is not a service; {} is added to services (a worker can have: {})",
+            capability.id,
+            allowed.join(", ")
+        );
     }
     let mut service_capabilities: Vec<String> = project
         .resources
@@ -364,6 +376,9 @@ fn change_capability(
         service_capabilities.clone(),
         app_capabilities,
     );
+    if is_worker {
+        edit = edit.for_worker();
+    }
     super::capabilities::apply(&mut edit, capability, adding)?;
 
     // The manifest: only the capability's entry in the service's
@@ -402,7 +417,7 @@ impl CliCommand for AddCommand {
     fn command(&self) -> Command {
         args(command(
             "add",
-            "Add a capability to a service: writes its setup code, local stand-in and manifest resource",
+            "Add a capability to a service (email also to a worker): writes its setup code, local stand-in and manifest resource",
         ))
     }
 

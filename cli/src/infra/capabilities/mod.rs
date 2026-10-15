@@ -43,6 +43,11 @@ pub(crate) struct Capability {
     pub(crate) registration_key: &'static str,
     /// Whether the platform delivers events for it (adds `/platform-events`).
     pub(crate) receives_events: bool,
+    /// Whether a worker may hold it (`infra add <worker> <capability>`). The
+    /// platform side must serve a caller that is not tied to one service:
+    /// email is sent from the app environment's identity, so a worker can
+    /// send; the others still assume a service.
+    pub(crate) workers: bool,
     /// Capability-specific edits on add; the shared ones are applied around it.
     pub(crate) add: fn(&mut CapabilityEdit) -> Result<()>,
     /// Capability-specific edits on remove.
@@ -97,6 +102,10 @@ pub(crate) struct CapabilityEdit {
     pub(crate) service_capabilities: Vec<String>,
     /// Capabilities of every project after the change.
     pub(crate) app_capabilities: Vec<String>,
+    /// The docker-compose services that run this project's code. A service
+    /// is one (`<name>`); a worker is two (`<name>-worker`, `<name>-server`).
+    /// The last one receives the mock's events.
+    compose_keys: Vec<String>,
     staged: BTreeMap<PathBuf, Option<String>>,
 }
 
@@ -116,8 +125,20 @@ impl CapabilityEdit {
             service_path: service_path.to_path_buf(),
             service_capabilities,
             app_capabilities,
+            compose_keys: vec![service_name.to_string()],
             staged: BTreeMap::new(),
         }
+    }
+
+    /// For a worker project: its worker and server containers both get the
+    /// gateway settings; the server (which mounts `/platform-events`)
+    /// receives the mock's events.
+    pub(crate) fn for_worker(mut self) -> Self {
+        self.compose_keys = vec![
+            format!("{}-worker", self.service_name),
+            format!("{}-server", self.service_name),
+        ];
+        self
     }
 
     /// A file's content as it will be after the staged edits.
@@ -265,8 +286,33 @@ impl CapabilityEdit {
         let pairs = local_gateway_env();
         let pairs: Vec<(&str, &str)> = pairs.iter().map(|(k, v)| (*k, v.as_str())).collect();
         self.ensure_env_local(&pairs)?;
-        let service = self.service_name.clone();
-        self.update_compose(|compose| ensure_gateway_mock(compose, &service, feature))
+        let keys = self.compose_keys.clone();
+        self.update_compose(|compose| {
+            // Every container that runs this project's code must be there (a
+            // worker is two): wiring only one would leave the other without
+            // the gateway settings, or send the events to the wrong one.
+            let missing: Vec<&str> = keys
+                .iter()
+                .map(String::as_str)
+                .filter(|k| !compose.services.contains_key(*k))
+                .collect();
+            if !missing.is_empty() {
+                bail!(
+                    "no {} service in docker-compose (needs: {})",
+                    missing
+                        .iter()
+                        .map(|k| format!("'{k}'"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    keys.join(", ")
+                );
+            }
+            // The last one (a worker's server) mounts /platform-events.
+            for (i, key) in keys.iter().enumerate() {
+                ensure_gateway_mock(compose, key, feature, i + 1 == keys.len())?;
+            }
+            Ok(())
+        })
     }
 
     /// Undo `ensure_gateway_wiring` for `feature`, dropping the service's
@@ -317,17 +363,20 @@ impl CapabilityEdit {
                 }
             }
         }
-        let service = self.service_name.clone();
+        let keys = self.compose_keys.clone();
         let service_has_none_left = self.service_capabilities.is_empty();
         let app_has_none_left = self.app_capabilities.is_empty();
         self.update_compose(|compose| {
-            release_gateway_mock(
-                compose,
-                &service,
-                feature,
-                service_has_none_left,
-                app_has_none_left,
-            );
+            for (i, key) in keys.iter().enumerate() {
+                release_gateway_mock(
+                    compose,
+                    key,
+                    feature,
+                    i + 1 == keys.len(),
+                    service_has_none_left,
+                    app_has_none_left,
+                );
+            }
             Ok(())
         })
     }
@@ -628,10 +677,43 @@ fn render(template: &str, app_name: &str) -> String {
 }
 
 /// The service and mock sides of the local gateway in docker-compose.
+/// The mock's event destinations for a feature: `MOCK_EVENTS_URL_<FEATURE>`,
+/// a comma-separated list, one entry per project that holds the feature
+/// (the mock delivers each event to every entry).
+fn events_var(feature: &str) -> String {
+    format!("MOCK_EVENTS_URL_{}", feature.to_uppercase().replace('-', "_"))
+}
+
+fn events_url(compose: &DockerCompose, service_key: &str) -> Option<String> {
+    let service = compose.services.get(service_key)?;
+    let port = service
+        .environment
+        .as_ref()
+        .and_then(|e| e.get("PORT").cloned())
+        .unwrap_or_else(|| "8000".to_string());
+    Some(format!("http://{service_key}:{port}"))
+}
+
+fn url_list(value: Option<&String>) -> Vec<String> {
+    value
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Wire one container to the local gateway mock. `receives_events`: this
+/// container mounts `/platform-events` and is added to the feature's event
+/// destinations (never replacing another project's).
 pub(crate) fn ensure_gateway_mock(
     compose: &mut DockerCompose,
     service_key: &str,
     feature: &str,
+    receives_events: bool,
 ) -> Result<()> {
     let service = compose
         .services
@@ -675,10 +757,15 @@ pub(crate) fn ensure_gateway_mock(
             ),
             ..Default::default()
         });
-    mock.environment.get_or_insert_with(Default::default).insert(
-        format!("MOCK_EVENTS_URL_{}", feature.to_uppercase().replace('-', "_")),
-        format!("http://{service_key}:{port}"),
-    );
+    if receives_events {
+        let url = format!("http://{service_key}:{port}");
+        let env = mock.environment.get_or_insert_with(Default::default);
+        let mut urls = url_list(env.get(&events_var(feature)));
+        if !urls.contains(&url) {
+            urls.push(url);
+        }
+        env.insert(events_var(feature), urls.join(","));
+    }
 
     let target = compose.services.get_mut(service_key).unwrap();
     let env = target.environment.get_or_insert_with(Default::default);
@@ -705,19 +792,31 @@ pub(crate) fn ensure_gateway_mock(
     Ok(())
 }
 
+/// Undo `ensure_gateway_mock` for one container: only its own event
+/// destination goes; another project's stays.
 pub(crate) fn release_gateway_mock(
     compose: &mut DockerCompose,
     service_key: &str,
     feature: &str,
+    receives_events: bool,
     service_has_none_left: bool,
     app_has_none_left: bool,
 ) {
-    if let Some(mock) = compose.services.get_mut(GATEWAY_MOCK_SERVICE) {
+    let own_url = events_url(compose, service_key);
+    if let (true, Some(mock)) = (
+        receives_events,
+        compose.services.get_mut(GATEWAY_MOCK_SERVICE),
+    ) {
         if let Some(env) = mock.environment.as_mut() {
-            env.shift_remove(&format!(
-                "MOCK_EVENTS_URL_{}",
-                feature.to_uppercase().replace('-', "_")
-            ));
+            let urls: Vec<String> = url_list(env.get(&events_var(feature)))
+                .into_iter()
+                .filter(|u| Some(u) != own_url.as_ref())
+                .collect();
+            if urls.is_empty() {
+                env.shift_remove(&events_var(feature));
+            } else {
+                env.insert(events_var(feature), urls.join(","));
+            }
         }
     }
     if service_has_none_left {
@@ -872,8 +971,8 @@ mod tests {
     #[test]
     fn gateway_mock_is_added_once_and_removed_with_the_last_capability() {
         let mut c = compose();
-        ensure_gateway_mock(&mut c, "billing", "payments").unwrap();
-        ensure_gateway_mock(&mut c, "billing", "email").unwrap();
+        ensure_gateway_mock(&mut c, "billing", "payments", true).unwrap();
+        ensure_gateway_mock(&mut c, "billing", "email", true).unwrap();
         let mock = &c.services[GATEWAY_MOCK_SERVICE];
         let env = mock.environment.as_ref().unwrap();
         assert_eq!(env["MOCK_EVENTS_URL_PAYMENTS"], "http://billing:8001");
@@ -883,10 +982,10 @@ mod tests {
         assert_eq!(billing["PLATFORM_GATEWAY_URL"], "http://gateway-mock:8080");
         assert_eq!(billing["INSTANCE_HMAC_KEY"], LOCAL_INSTANCE_HMAC_KEY);
 
-        release_gateway_mock(&mut c, "billing", "email", false, false);
+        release_gateway_mock(&mut c, "billing", "email", true, false, false);
         assert!(c.services.contains_key(GATEWAY_MOCK_SERVICE));
         assert!(c.services["billing"].environment.as_ref().unwrap().contains_key("INSTANCE_ID"));
-        release_gateway_mock(&mut c, "billing", "payments", true, true);
+        release_gateway_mock(&mut c, "billing", "payments", true, true, true);
         assert!(!c.services.contains_key(GATEWAY_MOCK_SERVICE));
         assert!(!c.services["billing"].environment.as_ref().unwrap().contains_key("INSTANCE_ID"));
         assert!(c.services["billing"].depends_on.is_none());

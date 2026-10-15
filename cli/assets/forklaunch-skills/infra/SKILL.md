@@ -30,9 +30,11 @@ role scoped to that bucket, with no keys. `infra add <service> payments` wires
 Stripe Connect through the platform instead of a Stripe key (see `/integrations`).
 See `/cli` for flags.
 
-`forklaunch infra add <service> email` registers the platform-held
-`EmailClient` (SES through the instance gateway, no mail key) and an email
-events handler; see `/integrations`.
+`forklaunch infra add <service> email` (or `<worker>`) registers the
+platform-held `EmailClient` (SES through the instance gateway, no mail key)
+and an email events handler. It works for managed instances and for apps
+deployed with `forklaunch deploy create` (the deploy supplies the gateway
+settings); see `/integrations`.
 
 `forklaunch infra add <service> sms` wires platform-held text messages the
 same way: an `SmsClient` registration, an SMS event handler and the local

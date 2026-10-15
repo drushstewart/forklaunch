@@ -201,8 +201,8 @@ export function createEmailClient(
     })
   ) {
     throw new Error(
-      'Email is sent by the ForkLaunch platform and is only available to managed instances: ' +
-        'PLATFORM_GATEWAY_URL, INSTANCE_ID and INSTANCE_HMAC_KEY must be set. ' +
+      'Email is sent by the ForkLaunch platform: PLATFORM_GATEWAY_URL, INSTANCE_ID and INSTANCE_HMAC_KEY must be set. ' +
+        'A managed instance and an app deployed with `forklaunch deploy create` get them from the platform at deploy. ' +
         'Locally, `forklaunch infra add <service> email` sets them to the gateway mock in docker-compose.'
     );
   }
