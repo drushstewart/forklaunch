@@ -187,3 +187,42 @@ fn extended_utf16_ieee_bounds_preserve_legacy_admission_and_budget() {
     assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"utf16MinLengths":vec![0;5001],"arrayMaxItems":vec![2;5000]}})).is_err());
     assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"utf16MinLengths":vec![0;5000],"arrayMaxItems":vec![2;5000]}})).is_ok());
 }
+
+#[test]
+fn string_predicate_demand_tracks_schema_refs_not_literal_data() {
+    let assertion = json!({"x-forklaunch-zod-checks":{"version":1,"stringPredicates":[{"kind":"startsWith","sourceUnits":[55357]}]}});
+    for schema in [
+        assertion.clone(),
+        json!({"allOf":[assertion]}),
+        json!({"$defs":{"P":assertion},"$ref":"#/$defs/P"}),
+        json!({"default":assertion,"$ref":"#/default"}),
+    ] {
+        assert_eq!(compile(&schema).is_ok(), cfg!(feature = "zod-checks"));
+    }
+    assert!(compile(&json!({"const":assertion})).is_ok());
+}
+#[cfg(feature = "zod-checks")]
+#[test]
+fn literal_predicates_match_utf16_fragments_and_share_rule_admission() {
+    let rule = json!({"kind":"includes","sourceUnits":[56832],"position":1.5});
+    let schema = json!({"x-forklaunch-zod-checks":{"version":1,"stringPredicates":[rule]}});
+    let validate = compile(&schema).unwrap();
+    assert!(validate(&json!("😀")).is_ok());
+    assert!(validate(&json!("a")).is_err());
+    assert!(validate(&json!(null)).is_ok());
+    for units in [
+        json!([-1]),
+        json!([65536]),
+        json!([0.5]),
+        json!([null]),
+        json!(["1"]),
+    ] {
+        assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"stringPredicates":[{"kind":"startsWith","sourceUnits":units}]}})).is_err());
+    }
+    let long = json!({"kind":"endsWith","sourceUnits":vec![97;4096]});
+    assert!(
+        compile(&json!({"x-forklaunch-zod-checks":{"version":1,"stringPredicates":vec![long;65]}}))
+            .is_err()
+    );
+    assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"stringPredicates":vec![rule;5001],"arrayMaxItems":vec![2;5000]}})).is_err());
+}

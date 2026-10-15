@@ -106,6 +106,7 @@ function emoji(value: string): boolean {
 const zodChecksKeyword = 'x-forklaunch-zod-checks';
 interface ZodChecks {
   version: 1;
+  stringPredicates?: {kind: 'startsWith' | 'endsWith' | 'includes'; sourceUnits: number[]; position?: number | 'NaN' | 'Infinity' | '-Infinity'}[];
   arrayMinItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
   arrayMaxItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
   utf16MinLengths?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
@@ -128,6 +129,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
       (key) =>
         ![
           'version',
+          'stringPredicates',
           'utf16MinLengths',
           'utf16MaxLengths',
           'utf16MinLength',
@@ -183,7 +185,25 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
       (!Array.isArray(value.jwtAlgorithms) || value.jwtAlgorithms.length > 10000 ||
        value.jwtAlgorithms.some((algorithm) => algorithm !== null && typeof algorithm !== 'string')))
     throw new Error('Invalid Zod JWT algorithms');
+  if (Object.prototype.hasOwnProperty.call(value, 'stringPredicates')) {
+    const rules = value.stringPredicates;
+    if (!Array.isArray(rules) || rules.length > 10000) throw new Error('Invalid string predicates');
+    let remaining = 262144;
+    for (const rule of rules) {
+      if (!rule || typeof rule !== 'object' || Array.isArray(rule) ||
+          !['startsWith','endsWith','includes'].includes(rule.kind) ||
+          Object.keys(rule).length !== (rule.kind === 'includes' ? 3 : 2) ||
+          !Object.prototype.hasOwnProperty.call(rule,'kind') || !Object.prototype.hasOwnProperty.call(rule,'sourceUnits') ||
+          Object.keys(rule).some(key=>!['kind','sourceUnits',...(rule.kind==='includes'?['position']:[])].includes(key)) ||
+          !Array.isArray(rule.sourceUnits) || rule.sourceUnits.length > 4096 ||
+          (remaining -= rule.sourceUnits.length) < 0 ||
+          rule.sourceUnits.some((unit: unknown)=>typeof unit !== 'number' || !Number.isInteger(unit) || unit < 0 || unit > 65535) ||
+          (rule.kind === 'includes' && !(typeof rule.position === 'number' && Number.isFinite(rule.position)) && !['NaN','Infinity','-Infinity'].includes(rule.position)))
+        throw new Error('Invalid string predicate rule');
+    }
+  }
   if (
+    (Array.isArray(value.stringPredicates) ? value.stringPredicates.length : 0) +
     (Array.isArray(value.utf16MinLengths) ? value.utf16MinLengths.length : 0) +
     (Array.isArray(value.utf16MaxLengths) ? value.utf16MaxLengths.length : 0) +
     (Array.isArray(value.arrayMinItems) ? value.arrayMinItems.length : 0) +
@@ -197,6 +217,9 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
   )
     throw new Error('Zod check profile exceeds 10000 rules');
   const profile = value as unknown as ZodChecks;
+  const predicates = profile.stringPredicates?.map(rule=>({kind:rule.kind,
+    needle:rule.sourceUnits.map(unit=>String.fromCharCode(unit)).join(''),
+    position:typeof rule.position === 'number' ? rule.position : Number(rule.position)}));
   // Capture immutable admitted configuration; do not retain mutable user arrays.
   const minimum = profile.utf16MinLength,
     maximum = profile.utf16MaxLength;
@@ -234,6 +257,9 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     `^${simpleFormats.date.source.slice(1,-1)}T${timeSource(rule.precision)}(${rule.local ? 'Z?' : 'Z'}${rule.offset ? '|([+-]\\d{2}:?\\d{2})' : ''})$`
   ));
   return (data: unknown) => {
+    if (typeof data === 'string' && predicates && !predicates.every(rule=>
+      rule.kind === 'includes' ? data.includes(rule.needle,rule.position) :
+      rule.kind === 'startsWith' ? data.startsWith(rule.needle) : data.endsWith(rule.needle))) return false;
     if (typeof data === 'string' && jwtAlgorithms && !jwtAlgorithms.every((algorithm) => jwt(data, algorithm))) return false;
     if (typeof data === 'string' && dateTimeChecks && !dateTimeChecks.every((check) => check.test(data))) return false;
     if (typeof data === 'string' && timeChecks && !timeChecks.every((check) => check.test(data))) return false;

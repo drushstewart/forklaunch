@@ -1,12 +1,14 @@
 //! Reserved exact Zod check assertions; never reinterpret ordinary schema keywords.
 //! Input strings are Rust UTF-8 strings, so lone JavaScript UTF-16 surrogates are
 //! outside this representation domain. Numbers use their finite IEEE-754 value.
+use forklaunch_common::zod_string_predicate::{PredicateKind, StringPredicate};
 use forklaunch_common::{zod_cardinality::ZodCardinality, zod_multiple_of::ZodMultipleOf};
 use jsonschema::{Keyword, ValidationError, paths::Location};
 use serde_json::{Map, Value};
 
 pub(super) const KEYWORD: &str = "x-forklaunch-zod-checks";
 struct Checks {
+    string_predicates: Vec<StringPredicate>,
     utf16_minimum: Vec<ZodCardinality>,
     utf16_maximum: Vec<ZodCardinality>,
     array_minimum: Vec<ZodCardinality>,
@@ -230,6 +232,71 @@ fn cardinalities(
         .map(|value| numeric_value(value).map(ZodCardinality::new))
         .collect()
 }
+fn string_predicates(
+    value: Option<&Value>,
+) -> Result<Vec<StringPredicate>, ValidationError<'static>> {
+    let rules = raw_rules(value)?;
+    let mut remaining = 262_144usize;
+    // Preflight every source and field before allocating needle/prefix storage.
+    for rule in rules.into_iter().flatten() {
+        let fields = rule.as_object().ok_or_else(invalid)?;
+        let kind = fields
+            .get("kind")
+            .and_then(Value::as_str)
+            .ok_or_else(invalid)?;
+        if !matches!(kind, "startsWith" | "endsWith" | "includes")
+            || fields.len() != if kind == "includes" { 3 } else { 2 }
+        {
+            return Err(invalid());
+        }
+        let units = fields
+            .get("sourceUnits")
+            .and_then(Value::as_array)
+            .ok_or_else(invalid)?;
+        if units.len() > 4096 {
+            return Err(invalid());
+        }
+        remaining = remaining.checked_sub(units.len()).ok_or_else(invalid)?;
+        for unit in units {
+            bound(Some(unit))?
+                .filter(|unit| u16::try_from(*unit).is_ok())
+                .ok_or_else(invalid)?;
+        }
+        if kind == "includes" {
+            numeric_value(fields.get("position").ok_or_else(invalid)?)?;
+        }
+    }
+    rules
+        .into_iter()
+        .flatten()
+        .map(|rule| {
+            let fields = rule.as_object().ok_or_else(invalid)?;
+            let kind = match fields.get("kind").and_then(Value::as_str) {
+                Some("startsWith") => PredicateKind::StartsWith,
+                Some("endsWith") => PredicateKind::EndsWith,
+                Some("includes") => PredicateKind::Includes,
+                _ => return Err(invalid()),
+            };
+            let units = fields
+                .get("sourceUnits")
+                .and_then(Value::as_array)
+                .ok_or_else(invalid)?
+                .iter()
+                .map(|unit| {
+                    bound(Some(unit))?
+                        .and_then(|unit| u16::try_from(unit).ok())
+                        .ok_or_else(invalid)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let position = fields
+                .get("position")
+                .map(numeric_value)
+                .transpose()?
+                .unwrap_or(0.0);
+            StringPredicate::new(kind, &units, position).ok_or_else(invalid)
+        })
+        .collect()
+}
 pub(super) fn compile<'a>(
     _: &'a Map<String, Value>,
     value: &'a Value,
@@ -241,6 +308,7 @@ pub(super) fn compile<'a>(
             !matches!(
                 key.as_str(),
                 "version"
+                    | "stringPredicates"
                     | "utf16MinLengths"
                     | "utf16MaxLengths"
                     | "utf16MinLength"
@@ -260,6 +328,7 @@ pub(super) fn compile<'a>(
     // Validate aggregate rule counts before allocating any per-rule vectors.
     let mut count = 0usize;
     for key in [
+        "stringPredicates",
         "utf16MinLengths",
         "utf16MaxLengths",
         "formats",
@@ -275,6 +344,7 @@ pub(super) fn compile<'a>(
             .filter(|count| *count <= 10_000)
             .ok_or_else(invalid)?;
     }
+    let string_predicates = string_predicates(fields.get("stringPredicates"))?;
     let jwt_algorithms = jwt_algorithms(fields.get("jwtAlgorithms"))?;
     let date_times = date_times(fields.get("dateTimes"))?;
     let time_precisions = time_precisions(fields.get("timePrecisions"))?;
@@ -295,6 +365,7 @@ pub(super) fn compile<'a>(
     let array_minimum = cardinalities(raw_minimum)?;
     let array_maximum = cardinalities(raw_maximum)?;
     Ok(Box::new(Checks {
+        string_predicates,
         utf16_minimum,
         utf16_maximum,
         array_minimum,
@@ -325,6 +396,13 @@ impl<'i> Keyword<'i> for Checks {
             }
         }
         if let Some(value) = instance.as_str() {
+            if !self
+                .string_predicates
+                .iter()
+                .all(|rule| rule.accepts(value))
+            {
+                return false;
+            }
             if !self.jwt_algorithms.iter().all(|algorithm| {
                 forklaunch_common::zod_string_format::jwt(value, algorithm.as_deref())
             }) {
@@ -383,5 +461,22 @@ impl<'i> Keyword<'i> for Checks {
                 "value violates exact Zod check assertions",
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod predicate_resource_tests {
+    use super::string_predicates;
+    use serde_json::json;
+    #[test]
+    fn keyword_source_budget_is_independent_of_outer_schema_node_limit() {
+        let rule = json!({"kind":"includes","sourceUnits":vec![97;4096],"position":0});
+        assert_eq!(
+            string_predicates(Some(&json!(vec![rule.clone(); 64])))
+                .unwrap()
+                .len(),
+            64
+        );
+        assert!(string_predicates(Some(&json!(vec![rule; 65]))).is_err());
     }
 }

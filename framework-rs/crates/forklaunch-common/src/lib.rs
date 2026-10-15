@@ -3,6 +3,9 @@
 #[cfg(feature = "zod-checks")]
 pub mod zod_cardinality;
 
+#[cfg(feature = "zod-checks")]
+pub mod zod_string_predicate;
+
 /// Exact Zod v3 numeric remainder semantics for explicitly enabled consumers.
 #[cfg(feature = "zod-checks")]
 pub mod zod_multiple_of;

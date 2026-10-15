@@ -34,7 +34,7 @@ const supported = new Set([
 /** Ordinary constructed schemas only; arbitrary getters, Proxies and shape thunks
  * are not sandboxed. Date retains the existing declared wire representation.
  */
-export function assertPureInputSchema(schema: ZodTypeAny): void {
+export function assertPureInputSchema(schema: ZodTypeAny, zodChecks = false): void {
   if (schema._def.typeName === 'ZodLiteral') {
     const value = schema._def.value;
     if (
@@ -77,7 +77,7 @@ export function assertPureInputSchema(schema: ZodTypeAny): void {
     );
   }
   if (
-    schema._def.typeName === 'ZodString' &&
+    !zodChecks && schema._def.typeName === 'ZodString' &&
     (schema._def.checks as z.ZodStringCheck[]).some(
       (check) =>
         (check.kind === 'startsWith' ||
@@ -105,10 +105,11 @@ export function pureInputOptional(
   schema: ZodTypeAny,
   charge: (depth: number) => void,
   depth: number,
-  active = new Set<ZodTypeAny>()
+  active = new Set<ZodTypeAny>(),
+  zodChecks = false
 ): boolean {
   charge(depth);
-  assertPureInputSchema(schema);
+  assertPureInputSchema(schema, zodChecks);
   if (active.has(schema))
     throw new Error('Pure input schema cycle is unsupported');
   active.add(schema);
@@ -133,17 +134,17 @@ export function pureInputOptional(
         return true;
       case 'ZodNullable':
       case 'ZodReadonly':
-        return pureInputOptional(def.innerType!, charge, depth + 1, active);
+        return pureInputOptional(def.innerType!, charge, depth + 1, active, zodChecks);
       case 'ZodBranded':
-        return pureInputOptional(def.type!, charge, depth + 1, active);
+        return pureInputOptional(def.type!, charge, depth + 1, active, zodChecks);
       case 'ZodUnion':
         return def.options!.some((option) =>
-          pureInputOptional(option, charge, depth + 1, active)
+          pureInputOptional(option, charge, depth + 1, active, zodChecks)
         );
       case 'ZodIntersection':
         return (
-          pureInputOptional(def.left!, charge, depth + 1, active) &&
-          pureInputOptional(def.right!, charge, depth + 1, active)
+          pureInputOptional(def.left!, charge, depth + 1, active, zodChecks) &&
+          pureInputOptional(def.right!, charge, depth + 1, active, zodChecks)
         );
       default:
         return false;

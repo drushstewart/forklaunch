@@ -3,7 +3,7 @@ import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
 import { merge } from './schemaMerge';
 import { assertPureInputSchema, pureInputOptional } from './pureInput';
 import { stringLiteralPattern } from './stringLiteral';
-import { projectStringChecks, projectNumberChecks, projectArrayChecks, zodChecksKeyword } from './zodChecks';
+import { projectStringPredicates, projectStringChecks, projectNumberChecks, projectArrayChecks, zodChecksKeyword } from './zodChecks';
 import { AnyZodObject, z, ZodTypeAny } from 'zod/v3';
 import {
   factoryEmailPattern,
@@ -163,6 +163,7 @@ function parseString({
   const { checks = [] } = zodRef._def;
   const regexProfile = zodRegex ? projectRegexChecks(checks, schemas as Record<string, unknown>[]) : undefined;
   const exact = zodChecks ? projectStringChecks(checks, schemas as Record<string, unknown>[], hasFactoryEmailGrammar(zodRef)) : undefined;
+  const predicates = zodChecks ? projectStringPredicates(checks, schemas as Record<string, unknown>[], Object.values(exact ?? {}).reduce<number>((count, value)=>count + (Array.isArray(value) ? value.length : 0),0)) : undefined;
   checks.forEach((item) => {
     switch (item.kind) {
       case 'email':
@@ -207,6 +208,7 @@ function parseString({
     const patterns = checks.map(stringLiteralPattern).filter(pattern => pattern !== undefined);
     if (patterns.length) baseSchema.allOf = patterns.map(pattern => ({ pattern }));
   }
+  if (predicates) baseSchema.allOf = [...(baseSchema.allOf ?? []), { [zodChecksKeyword]: predicates }];
   // Zod applies every declared length rule. Collapse only the non-transforming
   // finite registration profile; UTF-16 versus JSON Schema code-point counting
   // remains a separate wire-schema limitation, even for a single constraint.
@@ -1141,7 +1143,7 @@ export function generateSchema(
   ): SchemaObject => {
     charge(depth);
     if (context?.pureInput) {
-      assertPureInputSchema(schema);
+      assertPureInputSchema(schema, context.zodChecks);
       if (active.has(schema))
         throw new Error('Pure input schema cycle is unsupported');
       active.add(schema);
@@ -1190,7 +1192,7 @@ export function generateSchema(
       pureInput: context?.pureInput
         ? {
             isOptional: (child: ZodTypeAny) =>
-              pureInputOptional(child, charge, depth + 1)
+              pureInputOptional(child, charge, depth + 1, undefined, context.zodChecks)
           }
         : undefined,
       generateSchema: (

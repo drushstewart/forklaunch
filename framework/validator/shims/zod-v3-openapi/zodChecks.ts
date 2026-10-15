@@ -1,3 +1,4 @@
+import { stringLiteralPattern } from './stringLiteral';
 import type { ZodNumberCheck, ZodStringCheck } from 'zod/v3';
 
 export const zodChecksKeyword = 'x-forklaunch-zod-checks';
@@ -181,4 +182,30 @@ export function projectArrayChecks(
   const minimum = metadata.some(value=>own(value,'minItems')) ? [] : [definition.exactLength,definition.minLength].filter(value=>value!==null).map(value=>encode(value.value));
   const maximum = metadata.some(value=>own(value,'maxItems')) ? [] : [definition.exactLength,definition.maxLength].filter(value=>value!==null).map(value=>encode(value.value));
   return minimum.length || maximum.length ? {version:1,...(minimum.length?{arrayMinItems:minimum}:{}),...(maximum.length?{arrayMaxItems:maximum}:{})} : undefined;
+}
+
+/** Missing portable patterns retain literal code units, never regex semantics.
+ * The generated allOf location deliberately preserves existing annotation merge.
+ */
+export function projectStringPredicates(checks: readonly ZodStringCheck[], metadata: readonly Metadata[], otherRules = 0) {
+  admit(checks, metadata);
+  const rules = checks.filter(check =>
+    ['startsWith','endsWith','includes'].includes(check.kind) && stringLiteralPattern(check) === undefined
+  );
+  if (!rules.length) return undefined;
+  if (rules.length + otherRules > maximumRules) throw new Error('Zod check profile exceeds 10000 rules');
+  if (checks.some(check=>['trim','toLowerCase','toUpperCase'].includes(check.kind)))
+    throw new Error('Zod check projection cannot combine string transformations with literal predicates');
+  let remaining = 262144;
+  const stringPredicates = rules.map(check => {
+    if (check.kind !== 'startsWith' && check.kind !== 'endsWith' && check.kind !== 'includes')
+      throw new Error('Invalid string predicate');
+    if (typeof check.value !== 'string' || check.value.length > 4096 || (remaining -= check.value.length) < 0)
+      throw new Error('Zod string predicate source unit limit');
+    const position = check.kind === 'includes' && check.position !== undefined ? check.position : 0;
+    if (typeof position !== 'number') throw new Error('Zod string predicate position must be numeric');
+    return {kind:check.kind,sourceUnits:Array.from({length:check.value.length},(_,index)=>check.value.charCodeAt(index)),
+      ...(check.kind === 'includes' ? {position:Number.isNaN(position)?'NaN':position===Infinity?'Infinity':position===-Infinity?'-Infinity':position} : {})};
+  });
+  return {version:1 as const,stringPredicates};
 }
