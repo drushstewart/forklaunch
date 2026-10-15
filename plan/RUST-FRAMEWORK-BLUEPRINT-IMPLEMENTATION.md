@@ -26,7 +26,7 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: immutable416d archive installation and portable runtime HTTP/MCP checks, including generated Better Auth29 actual-client calls and112 frontend actions; UUID/email runtime grammars81036 comparisons and default no-delivery OTP routes also pass.
 - Completed: verified Customer association registration and immutable Subscription reservation/dependency barriers; trusted fixed OTP delivery plus bounded OTP digit/validity/attempt options, UUID/email/binary runtime grammars, TS email schema correction and fixed separate-channel AsyncAPI replies. Each has actual-source/native and scoped runtime/database receipts.
 - Active: explicit trusted Subscription publication/direct creation, bounded reusable schema composition/resource fixes, and TOTP digit/period options. Broader plugin/mapper/schema/deployment gates remain open.
-- Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 is running on a separate build cache.
+- Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
 - Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.
 

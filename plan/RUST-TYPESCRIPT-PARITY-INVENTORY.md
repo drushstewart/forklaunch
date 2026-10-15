@@ -8606,3 +8606,31 @@ Logs /private/tmp/fl-zod-json-{final-parity,resource-tests,arbitrary-tests,
 final-clippy}.log; six exact hashes /private/tmp/fl-zod-json-source-sha256.json.
 CI runs the evaluator oracle. Union/record/strict/callbacks, live composition
 integration and broader schema/emitter gates remain open.
+
+
+## Immutable d835 archive, portable runtime and generated MFA29 (2026-10-14)
+
+Source d835988ca7e2a636e53b08861c6a8ca5977cce7a plus the recorded CLI lock
+installs offline/locked from its Git-free Cargo archive. All2622 regular packaged
+files are byte-verified after extraction and after runtime. Retained archive:
+cli/target/parity-artifacts/forklaunch-d835988ca-f54de962.crate
+SHA256 f54de9621571a5a24e73badc6ce8872cfbc7689b603dec10cb37d76d3f20881a, 4599368 bytes.
+CLI lock SHA256 59f7db815712b329afa16484d18c79c127862170af830cb2cd3abc572a36afa7.
+The three intentional certificate/test-key PEM fixtures match previous verified
+archive bytes; unrelated absolute source IAM PEM symlinks were not followed/read.
+No node_modules, target or generated output was packaged.
+
+Portable relocated services, all four worker kinds, modules/capabilities, native/
+CLI SDK generation, recursive clients and HTTP/MCP shared/separate/disabled/custom
+surfaces pass. Packaged IAM120 tests and typed WebSocket consumers also pass.
+The installed CLI separately passes generated realTCP twoFactorClient29 calls,
+112 existing frontend actions, HTTP/MCP discovery/listeners, encrypted tenant
+sessions, JWT, SDKs, relocation, restart and rename/delete. All generated fixture
+roles/records/audits are zero afterward. This includes fixed delivered-OTP library
+source, Customer registration and Subscription reservations, but predates the
+later OTP/TOTP option, generic composition and Subscription publication drafts.
+The generated preset still selects no OTP delivery channel; no browser/mail
+transport proof is implied. Public registry/cloud validation remain separate.
+Metadata /private/tmp/fl-oct14-next-checkpoint.json; logs
+/private/tmp/fl-oct14-next-{package,install,repackaged-files,runtime,
+totp-runtime}.log. Source/hash receipts remain after owned workspace cleanup.
