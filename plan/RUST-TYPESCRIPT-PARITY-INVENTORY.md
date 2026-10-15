@@ -10757,3 +10757,34 @@ inventory pass. No dependency or lock changes were needed.
 
 Raw date/time, duration, IP/CIDR, JWT and emoji checks and arbitrary regex semantics
 remain separate work. The broad schema gate and 660/682 checklist count are unchanged.
+
+
+### 2026-10-15 — immutable d7bd packaged-runtime checkpoint
+
+Exact commit `d7bd2a7d85e8657d9475d9b8deb18d1d0bd4fea4` passes offline locked CLI
+packaging, installation and repackage-list checks. The retained crate contains
+2,858 regular files and is 5,005,037 bytes, SHA-256
+`eb809c04bb1c101af5750966c63b7a4ae08373cb6cf0cb0ede48ee2d81d1cf71`.
+All regular source bytes were verified against the retained archive before and
+after runtime testing; the existing intentional PEM allowlist/bytes also pass.
+The CLI lock hash remains
+`d66f3120b6fab6af185dfa4e22c614b4bf5324370aede8667c9807e3e5bc5110`.
+
+The installed CLI generates and relocates the application, service, all four
+worker families and selected blueprint modules. Workspace compilation, all component
+OpenAPI/contract exports, AsyncAPI/socket imports, strict TS/Rust SDK generation
+and regeneration, and bundled native generators pass. Actual HTTP/MCP checks pass
+initialization/discovery/health, enabled/disabled/custom endpoints, shared/separate
+listeners, explicit/ephemeral ports, the +2000 fallback, atomic startup rejection
+and graceful shutdown. All five generated capability callbacks pass actual-TS
+signature and forgery/staleness/replay/redelivery checks. Bundled IAM passes
+214 tests with three PostgreSQL-only tests intentionally ignored; restricted PG
+proof is recorded separately above. The generated app resolves its own dependency
+graph; the locked offline claim applies to CLI package/install operations.
+
+Retained archive: `cli/target/parity-artifacts/forklaunch-d7bd2a7d8-eb809c04.crate`.
+Local evidence: `/private/tmp/fl-oct15-policy-format-checkpoint.json` and
+`/private/tmp/fl-oct15-policy-format-runtime.log`. Credential/TTL and Plan route
+drafts, regex prototype and the later six identifier/Base64 assertions are excluded
+from this immutable checkpoint. It does not prove cloud deployment or public
+registry publication. Full parity remains 660/682 (96.8%).
