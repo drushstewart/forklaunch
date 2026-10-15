@@ -68,6 +68,24 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(self)
     }
 
+    /// Configures challenge/trusted-device expiry without changing session or OTP TTLs.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted authentication configuration.
+    pub fn with_two_factor_lifetime_options(
+        mut self,
+        options: crate::two_factor::TwoFactorLifetimeOptions,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_lifetime_options(options),
+        ));
+        Ok(self)
+    }
+
     /// Enables trusted lifecycle policy while preserving OTP/TOTP configuration.
     /// Passwordless never skips an existing credential password, and policy is not
     /// accepted from HTTP. Skip-verification deliberately enables protection immediately.
@@ -370,7 +388,18 @@ fn apply<S: AuthStore>(
         cookie(app, pending, "trust_device", None, 0)?;
     }
     if let Some(trust) = response.trust {
-        cookie(app, pending, "trust_device", Some(&trust), 2_592_000)?;
+        cookie(
+            app,
+            pending,
+            "trust_device",
+            Some(&trust),
+            app.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .lifetime_options()
+                .trusted_device()
+                .as_secs(),
+        )?;
         set_cookie(
             pending,
             &format!(

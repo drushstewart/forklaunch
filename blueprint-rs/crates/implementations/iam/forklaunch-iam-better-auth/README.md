@@ -1256,3 +1256,20 @@ absent; malformed non-string values fail closed. Existing required-password path
 retain the hash snapshot and mutation-time comparison. No email linking or new
 social-sign-in protection is implied. Custom trust/challenge TTLs and backup-code
 format/storage options remain separate parity work.
+
+`TwoFactorLifetimeOptions::new(challenge, trusted_device)` accepts independent
+whole-second `std::time::Duration` values from zero through 365 days. Defaults stay
+600 seconds and 30 days. Apply through `TwoFactorService::with_lifetime_options`
+or `AuthHttp::with_two_factor_lifetime_options`; other configured factor options
+and delivery hooks survive either builder order. This bounded API excludes
+fractional, negative and nonfinite JavaScript values.
+
+The policy sets both durable record expiry and cookie `Max-Age`. Existing records
+retain their expiry after policy changes; new challenges and newly issued/renewed
+trust use the current policy. Challenge proofs are valid at their exact expiry
+instant and rejected afterward, matching the upstream consume boundary. Trusted
+proofs require strictly future expiry. Thus zero-age challenges are consumable only
+at their issuance instant by a caller retaining the cookie, while zero-age trust
+is immediately expired; browsers may discard zero-age cookies immediately. This
+changes neither session expiry nor delivered-OTP lifetime. Trust renewal remains
+transactional and one-use, including rollback when replacement insertion fails.

@@ -1079,3 +1079,12 @@ the current session; other sessions/trust remain independent. Disabled TOTP
 challenges issue no session/JWT and can still use backup recovery. Restricted
 PostgreSQL race/rollback tests and actual-source option ordering pass; see the
 lifecycle receipt in RUST-TYPESCRIPT-PARITY-INVENTORY.md.
+
+
+MFA lifetime policy (2026-10-14): trusted whole-second0..365day options update
+new challenge/device rows and cookie Max-Age consistently without extending
+existing persisted expiry or changing sessions/OTP code TTL. Actual-source tests
+prove inclusive challenge equality and strict future trust expiry. Generic
+memory/restricted-PG tests prove one-use and failed trust renewal rollback;
+HTTP tests verify proof and credential-renewal cookies. Configuration remains
+server-owned, with no schema change or browser enforcement claim.

@@ -753,3 +753,84 @@ async fn http_lifecycle_policy_password_order_skip_issuers_and_disabled_recovery
         false
     );
 }
+
+#[tokio::test]
+async fn http_lifetime_options_cookie_and_record_alignment() {
+    use std::time::Duration as StdDuration;
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    let store = Arc::new(MemoryAuthStore::default());
+    let options =
+        TwoFactorLifetimeOptions::new(StdDuration::from_secs(2), StdDuration::from_secs(7))
+            .unwrap();
+    let app = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+        .unwrap()
+        .with_clock(move || now)
+        .with_rate_limiting(false)
+        .with_two_factor_lifetime_options(options)
+        .unwrap()
+        .with_two_factor_lifecycle_options(
+            TwoFactorLifecycleOptions::default().with_skip_verification_on_enable(true),
+        )
+        .unwrap()
+        .with_two_factor_totp_options(TotpOptions::default())
+        .unwrap();
+    let mut browser = Browser {
+        router: app.router(),
+        jar: BTreeMap::new(),
+        origin: origin.into(),
+    };
+    let credentials = json!({"name":"TTL","firstName":"TTL","lastName":"Test","email":"ttl@example.test","password":PASSWORD});
+    assert_eq!(
+        browser
+            .call("/sign-up/email", Some(credentials.clone()))
+            .await
+            .0,
+        200
+    );
+    let enrolled = browser
+        .call("/two-factor/enable", Some(json!({"password":PASSWORD})))
+        .await;
+    assert_eq!(enrolled.0, 200);
+    browser.call("/sign-out", Some(json!({}))).await;
+    let challenge = browser
+        .call("/sign-in/email", Some(credentials.clone()))
+        .await;
+    assert_eq!(challenge.1["twoFactorRedirect"], true);
+    assert!(challenge.2.get_all("set-cookie").iter().any(|v| {
+        let s = v.to_str().unwrap();
+        s.starts_with("better-auth.two_factor=") && s.contains("Max-Age=2")
+    }));
+    let proof = browser
+        .call(
+            "/two-factor/verify-backup-code",
+            Some(json!({"code":enrolled.1["backupCodes"][0],"trustDevice":true})),
+        )
+        .await;
+    assert_eq!(proof.0, 200);
+    assert!(proof.2.get_all("set-cookie").iter().any(|v| {
+        let s = v.to_str().unwrap();
+        s.starts_with("better-auth.trust_device=") && s.contains("Max-Age=7")
+    }));
+    let records = rows(store.as_ref(), Model::Verification).await;
+    let trust = records
+        .iter()
+        .find(|r| {
+            r["identifier"]
+                .as_str()
+                .unwrap()
+                .starts_with("trust-device-")
+        })
+        .unwrap();
+    assert_eq!(
+        time(trust, "expiresAt").unwrap(),
+        now + Duration::seconds(7)
+    );
+    browser.call("/sign-out", Some(json!({}))).await;
+    let renewed = browser.call("/sign-in/email", Some(credentials)).await;
+    assert!(renewed.1.get("twoFactorRedirect").is_none());
+    assert!(renewed.2.get_all("set-cookie").iter().any(|v| {
+        let s = v.to_str().unwrap();
+        s.starts_with("better-auth.trust_device=") && s.contains("Max-Age=7")
+    }));
+}

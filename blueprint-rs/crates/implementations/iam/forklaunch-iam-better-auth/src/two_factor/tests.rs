@@ -10,6 +10,7 @@ mod fault_store;
 #[cfg(feature = "http")]
 mod http;
 mod lifecycle_options;
+mod lifetime_options;
 mod otp;
 mod otp_options;
 #[cfg(feature = "postgres")]
@@ -404,7 +405,7 @@ async fn pending_factor_expiry_disabled_user_and_backup_race() {
                 "ABCDE-FGHIJ",
                 true,
                 false,
-                now + Duration::seconds(600)
+                now + Duration::seconds(600) + Duration::milliseconds(1)
             )
             .await
             .err()

@@ -13,8 +13,10 @@
 mod crypto;
 mod enrollment;
 mod lifecycle;
+mod lifetime_options;
 use lifecycle::PasswordAction;
 pub use lifecycle::TwoFactorLifecycleOptions;
+pub use lifetime_options::TwoFactorLifetimeOptions;
 mod otp;
 pub use otp::{OtpDelivery, OtpDeliveryContext, OtpDeliveryFuture, OtpOptions};
 pub(crate) mod signin;
@@ -44,6 +46,7 @@ pub struct TwoFactorService<S> {
     otp_options: OtpOptions,
     totp_options: TotpOptions,
     lifecycle_options: TwoFactorLifecycleOptions,
+    lifetime_options: TwoFactorLifetimeOptions,
 }
 /// A successful state transition. Explicit wire projection can contain recovery
 /// credentials and must only be returned to the authorized browser.
@@ -137,6 +140,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             otp_options: OtpOptions::default(),
             totp_options: TotpOptions::default(),
             lifecycle_options: TwoFactorLifecycleOptions::default(),
+            lifetime_options: TwoFactorLifetimeOptions::default(),
         })
     }
 }

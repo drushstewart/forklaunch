@@ -53,7 +53,7 @@ pub(super) async fn login<S: AuthStore + 'static>(
                             pending,
                             "trust_device",
                             Some(&trust),
-                            2_592_000,
+                            factor.lifetime_options().trusted_device().as_secs(),
                         )?;
                     }
                     grant
@@ -73,7 +73,7 @@ pub(super) async fn login<S: AuthStore + 'static>(
                         pending,
                         "two_factor",
                         Some(&challenge.identifier),
-                        600,
+                        factor.lifetime_options().challenge().as_secs(),
                     )?;
                     return Ok(
                         json!({"twoFactorRedirect":true,"twoFactorMethods":challenge.methods()}),

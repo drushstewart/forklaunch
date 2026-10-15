@@ -54,7 +54,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             return Err(error("TOTP_NOT_ENABLED", "TOTP is not enabled"));
         }
         let identifier = format!("2fa-{}", crypto::opaque(20)?);
-        tx.insert(Model::Verification,json!({"id":uuid::Uuid::new_v4().to_string(),"identifier":identifier,"value":user["id"],"expiresAt":expiry(now,600)?,"attempts":0,"persistent":persistent,"ipAddress":ip,"userAgent":agent})).await?;
+        tx.insert(Model::Verification,json!({"id":uuid::Uuid::new_v4().to_string(),"identifier":identifier,"value":user["id"],"expiresAt":expiry(now,self.lifetime_options.challenge_seconds())?,"attempts":0,"persistent":persistent,"ipAddress":ip,"userAgent":agent})).await?;
         Ok(SigninGate::Challenge(TwoFactorChallenge {
             identifier,
             persistent,
@@ -72,7 +72,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             &hmac::Key::new(hmac::HMAC_SHA256, &self.secret),
             format!("{}!{identifier}", text(user, "id")?).as_bytes(),
         );
-        tx.insert(Model::Verification,json!({"id":uuid::Uuid::new_v4().to_string(),"identifier":identifier,"value":user["id"],"expiresAt":expiry(now,2_592_000)?})).await?;
+        tx.insert(Model::Verification,json!({"id":uuid::Uuid::new_v4().to_string(),"identifier":identifier,"value":user["id"],"expiresAt":expiry(now,self.lifetime_options.trust_seconds())?})).await?;
         Ok(format!(
             "{}!{identifier}",
             URL_SAFE_NO_PAD.encode(signature.as_ref())

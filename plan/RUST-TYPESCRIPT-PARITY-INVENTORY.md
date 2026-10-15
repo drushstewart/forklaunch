@@ -8771,3 +8771,28 @@ and ciphertext-bound receipt tampering. Owned databases/roles0. Final11 hashes:
 clippy-second,unit,sdk,cleanup}.log. CI runs new SDK fixture and existing expanded
 PG matrices. No migration/default route change. Broader interruption, mapper,
 managed Subscription and mutation gates remain open.
+
+
+## Trusted challenge and device lifetime options (2026-10-14)
+
+TwoFactorLifetimeOptions supports independently configured whole-second challenge
+and trusted-device lifetimes0..365days, preserving600s/30day defaults. New and
+renewed records/cookies use current trusted configuration; existing durable expiry
+remains unchanged. Builders preserve lifecycle/TOTP/OTP policies. The actual
+clock-controlled oracle exposed challenge expiry equality: native backup/TOTP/OTP
+now accept at exact challenge expiry, reject after; trust still requires strict
+future expiry. Zero duration follows those distinct boundaries. Session and
+delivered-code lifetimes remain separate. No schema/storage change.
+
+Actual nine-case clock oracle and integrated two-factor fixture pass; focused
+native4, full two-factor22/1PGignored, restricted PostgreSQL1 in49.56s, strict
+all-feature/all-target and minimal-library Clippy pass. HTTP tests compare issued
+challenge/proof-trust/credential-renewal cookie Max-Age with stored expiry; generic
+memory/PG cases verify equality/+1ms, current-policy renewal, one-use challenges
+and failed renewal insertion rollback. Owned roles/records/audits0. Final15 hashes:
+/private/tmp/fl-lifetime-options-freeze.json; logs
+/private/tmp/fl-lifetime-options-{native,regression,postgres,clippy,minimal-clippy,
+cleanup,actual,actual-full}.log. CI tracks the imported helper and expanded PG
+fixture. Working-source proof includes the frozen union dependency draft; no
+immutable package/browser-cookie claim. Fractional/negative/nonfinite option
+values and broader storage/generator/lockout/plugin policies remain open.

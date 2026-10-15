@@ -132,7 +132,7 @@ async fn authority<T: AuthTransaction>(
     let row = verification_row(tx, challenge)
         .await?
         .ok_or_else(invalid_challenge)?;
-    if time(&row, "expiresAt")? <= now {
+    if time(&row, "expiresAt")? < now {
         return Err(invalid_challenge());
     }
     let user = tx
