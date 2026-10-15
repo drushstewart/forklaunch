@@ -11525,3 +11525,24 @@ SHA25619cc444136379950d4ca9774f0a1c186c5f21cf907335e2c99be184977d6c65a.
 Logs /private/tmp/fl-payment-link-expiration-recovery-{sdk,pg-final,regression,clippy-final,minimal}.log.
 CI includes the SDK oracle and recovery PostgreSQL matrix. HTTP/MCP/SDK recovery
 selection remains separate; broad checklist660/682(96.8%) unchanged.
+
+### 2026-10-15: Ordered runtime string formats
+
+Commit `d6605594d` exposes the sixteen shared Zod format kernels through ordered
+runtime string checks, retaining the optional Ada URI capability. Checked time
+precision and IP versions reject unsupported registration separately from input
+errors; borrowed JWT algorithm checks charge schema and repeated evaluation bytes.
+JWT checks validate syntax/header constraints, without authenticating signatures.
+Ordered trim, custom diagnostics and atomic whole-input preservation remain intact.
+
+The frozen nine-source manifest is `/private/tmp/fl-runtime-formats-source.json`;
+proof is `/private/tmp/fl-runtime-formats-receipt.md`. Actual/native comparisons
+pass 65,703 cases plus four unsupported registrations. Validation tests pass 76
+with all features and 71 without defaults; strict validation/Axum Clippy passes.
+Live coverage passes 267 HTTP comparisons, 126 MCP calls, three operational-error
+controls and six calls through each generated SDK. Logs use the
+`/private/tmp/fl-runtime-formats-` prefix. CI runs the oracle with pinned Node
+24.2.0 and retains the extended composition fixture. Native inputs remain valid
+Unicode JSON; time precision is bounded to 0..1000. Intersections, discriminated
+unions, allocating case transforms, recursion and arbitrary callbacks/non-JSON
+outputs remain separate schema work. Checklist remains 660/682.

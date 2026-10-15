@@ -106,6 +106,7 @@ on:
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
+      - 'cli/tests/rust_zod_runtime_formats.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -548,6 +549,7 @@ on:
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
+      - 'cli/tests/rust_zod_runtime_formats.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
       - 'cli/tests/rust_zod_number_parity.mjs'
@@ -1166,6 +1168,11 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_zod_runtime_formats.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_RUNTIME_FORMATS_NATIVE: '1'
       - run: node cli/tests/rust_zod_emoji_checks.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

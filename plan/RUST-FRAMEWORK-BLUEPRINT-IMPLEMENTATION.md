@@ -2749,3 +2749,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Trusted cancellation-on-reinvite preserves committed cancellation before later admission errors, resend precedence and existing100/101 duplicate windows. Actual10, native organization5, restricted PostgreSQL and strict full/minimal checks pass; both commit-acknowledgement boundaries are covered. Delivery remains next;660/682 unchanged.
 
 - 2026-10-15: Event-linked PaymentLink expiration recovery library passes official SDK wire, restricted PostgreSQL, prior expiration regression and strict full/minimal Clippy. Authenticated reads recover publication-only proof; no provider POST or retry. Explicit HTTP/MCP/SDK exposure remains next;660/682 unchanged.
+
+- 2026-10-15: Ordered runtime formats pass65,703 actual/native comparisons,76 all-feature/71 minimal tests,267 HTTP/126 MCP and both generated SDKs. Typed registration and JWT algorithm resource bounds are covered; broader schema composition remains open,660/682 unchanged.
