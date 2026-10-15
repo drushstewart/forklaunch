@@ -7,6 +7,17 @@ use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
 impl<S: AuthStore> CredentialService<S> {
+    /// Installs the trusted `onPasswordReset` callback subset. It is always awaited
+    /// after password commit and before optional session revocation.
+    #[must_use]
+    pub fn with_password_reset_observer(
+        mut self,
+        observer: std::sync::Arc<dyn super::PasswordResetObserver>,
+    ) -> Self {
+        self.password_reset_observer = Some(observer);
+        self
+    }
+
     /// Enables a separate session revocation transaction after password commit.
     /// Defaults to false. A revocation error does not undo the password update or
     /// restore the consumed reset proof. All current user sessions, including expired
@@ -54,11 +65,15 @@ impl<S: AuthStore> CredentialService<S> {
         }
         let user_id = text(&row, "value")?.to_owned();
         let mut tx = self.store.begin(false).await?;
-        let exists = tx.get(Model::User, &user_id).await?.is_some();
+        let user = tx.get(Model::User, &user_id).await?;
         tx.commit().await?;
-        if !exists {
-            return Err(user_not_found());
-        }
+        let user = user.ok_or_else(user_not_found)?;
+        // Capture before the password update, matching the source callback snapshot.
+        // Projection validation errors are delayed until after password commit.
+        let observer_context = self
+            .password_reset_observer
+            .as_ref()
+            .map(|_| super::reset_observer::context(&user));
         let password = Zeroizing::new(password);
         let hash = self
             .run_crypto(move || credentials::hash_password(&password))
@@ -86,6 +101,13 @@ impl<S: AuthStore> CredentialService<S> {
             tx.insert(Model::Account, json!({"id":uuid::Uuid::new_v4().to_string(),"userId":user_id,"accountId":user_id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
         }
         tx.commit().await?;
+        if let (Some(observer), Some(context)) = (&self.password_reset_observer, observer_context) {
+            observer
+                .prepare(context?)
+                .map_err(|_| super::reset_observer::failure())?
+                .await
+                .map_err(|_| super::reset_observer::failure())?;
+        }
         if self.revoke_sessions_on_password_reset {
             self.revoke_reset_sessions(&user_id).await?;
         }

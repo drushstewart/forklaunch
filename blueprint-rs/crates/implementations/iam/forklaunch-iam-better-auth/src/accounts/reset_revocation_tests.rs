@@ -59,7 +59,7 @@ pub(crate) async fn lifecycle<S: AuthStore>(store: Arc<S>) {
         );
     }
 }
-async fn seed<S: AuthStore>(store: &S, user: &str, now: DateTime<Utc>, count: usize) {
+pub(crate) async fn seed<S: AuthStore>(store: &S, user: &str, now: DateTime<Utc>, count: usize) {
     let mut tx = store.begin(true).await.unwrap();
     let stamp = now.to_rfc3339_opts(SecondsFormat::Millis, true);
     tx.insert(

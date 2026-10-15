@@ -67,6 +67,7 @@ pub struct AuthHttp<S> {
     otp_background_override: bool,
     signup_auto_sign_in: bool,
     revoke_sessions_on_password_reset: bool,
+    password_reset_observer: Option<Arc<dyn crate::accounts::PasswordResetObserver>>,
     email_verification_policy: crate::accounts::EmailVerificationPolicy,
     email_verification_delivery: Option<Arc<dyn crate::accounts::EmailVerificationDelivery>>,
     password_reset_delivery: Option<Arc<dyn crate::accounts::PasswordResetDelivery>>,
@@ -139,6 +140,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             otp_background_override: false,
             signup_auto_sign_in: true,
             revoke_sessions_on_password_reset: false,
+            password_reset_observer: None,
             email_verification_policy: crate::accounts::EmailVerificationPolicy::default(),
             email_verification_delivery: None,
             password_reset_delivery: None,
@@ -825,6 +827,7 @@ fn failure_response(error: &BlueprintError) -> Response {
             | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
             | "EMAIL_VERIFICATION_DELIVERY_FAILED"
             | "PASSWORD_RESET_DELIVERY_PREPARATION_FAILED"
+            | "PASSWORD_RESET_OBSERVER_FAILED"
             | "TWO_FACTOR_GENERATION_FAILED"
             | "TWO_FACTOR_STORAGE_DECODE_FAILED"
             | "TWO_FACTOR_BACKUP_STORAGE_FAILED"

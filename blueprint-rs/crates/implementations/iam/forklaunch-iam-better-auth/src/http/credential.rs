@@ -244,8 +244,12 @@ async fn reset<S: AuthStore + 'static>(
         .filter(|token| !token.is_empty())
         .or_else(|| query.get("token").and_then(Value::as_str))
         .unwrap_or("");
-    CredentialService::new(app.store.clone())
-        .with_revoke_sessions_on_password_reset(app.revoke_sessions_on_password_reset)
+    let mut service = CredentialService::new(app.store.clone())
+        .with_revoke_sessions_on_password_reset(app.revoke_sessions_on_password_reset);
+    if let Some(observer) = &app.password_reset_observer {
+        service = service.with_password_reset_observer(observer.clone());
+    }
+    service
         .reset_password(token, super::text(payload, "newPassword")?.to_owned(), now)
         .await
 }
@@ -341,6 +345,19 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     #[must_use]
     pub fn with_revoke_sessions_on_password_reset(mut self, enabled: bool) -> Self {
         self.revoke_sessions_on_password_reset = enabled;
+        self
+    }
+}
+
+impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Installs the trusted `onPasswordReset` callback subset. Always awaited after
+    /// password commit, before optional revocation; shared scheduling is not used.
+    #[must_use]
+    pub fn with_password_reset_observer(
+        mut self,
+        observer: std::sync::Arc<dyn crate::accounts::PasswordResetObserver>,
+    ) -> Self {
+        self.password_reset_observer = Some(observer);
         self
     }
 }

@@ -1743,3 +1743,20 @@ proof remain committed, and session deletions roll back. This matches the observ
 upstream partial-failure boundary, rather than making the whole reset atomic.
 The reset response does not clear browser cookies. This option does not install
 an `onPasswordReset` callback.
+
+`with_password_reset_observer(Arc<dyn PasswordResetObserver>)` on
+`CredentialService` or `AuthHttp` installs the bounded `onPasswordReset` hook.
+Its `prepare` receives an opaque `PasswordResetObserverContext`; `user_json()`
+exposes the bounded native public-user snapshot captured before the password
+update. The owned JSON string is zeroized on drop, with no Debug/Serde, password,
+reset token, session or raw Request. Callback-owned copies remain application data.
+Arbitrary additional upstream user fields and raw Request access are outside this
+callback profile. Selected user fields are validated before cloning; a projection
+failure is reported after password commit, while no-hook operation skips projection.
+The callback is always awaited outside database transactions after password commit
+and before optional session revocation, regardless of the background dispatcher.
+Preparation/future errors produce empty HTTP 500; cancellation leaves the changed
+password and consumed proof committed without running later revocation. A callback
+may reenter storage/authentication; successful completion then revokes the current
+sessions if configured, including ones it created. Blocking code and panics are
+outside the fallible cooperative callback contract.

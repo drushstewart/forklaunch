@@ -2280,3 +2280,89 @@ async fn http_reset_revocation_option_retains_cookie_but_invalidates_server_sess
         );
     }
 }
+
+#[tokio::test]
+async fn http_reset_observer_errors_empty_500_and_never_background() {
+    struct Hook(bool);
+    impl crate::accounts::PasswordResetObserver for Hook {
+        fn prepare(
+            &self,
+            context: crate::accounts::PasswordResetObserverContext,
+        ) -> BlueprintResult<crate::background::DeliveryFuture> {
+            let user: Value = serde_json::from_str(context.user_json()).unwrap();
+            assert_eq!(user["email"], "observer-http@example.test");
+            if self.0 {
+                return Err(forklaunch_blueprint_core::BlueprintError::new(
+                    "secret", "secret",
+                ));
+            }
+            Ok(Box::pin(async {
+                Err(forklaunch_blueprint_core::BlueprintError::new(
+                    "secret", "secret",
+                ))
+            }))
+        }
+    }
+    struct Never;
+    impl crate::background::AuthBackgroundDispatcher for Never {
+        fn dispatch(&self, _: crate::background::AuthBackgroundTask) -> BlueprintResult<()> {
+            panic!("reset observer must be awaited directly")
+        }
+    }
+    for sync in [false, true] {
+        let store = Arc::new(MemoryAuthStore::default());
+        let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+        let mut browser = Browser {
+            router: AuthHttp::new(
+                store.clone(),
+                "http://auth.fixture.test".into(),
+                vec![42; 32],
+                vec![],
+            )
+            .unwrap()
+            .with_rate_limiting(false)
+            .with_clock(move || now)
+            .with_background_dispatcher(Arc::new(Never))
+            .with_revoke_sessions_on_password_reset(true)
+            .with_password_reset_observer(Arc::new(Hook(sync)))
+            .router(),
+            jar: BTreeMap::new(),
+            origin: "http://auth.fixture.test".into(),
+        };
+        let (_, first, _) = browser.call("/sign-up/email", Some(json!({"name":"Reset","firstName":"Reset","lastName":"Owner","email":"observer-http@example.test","password":"old-owned-password"}))).await;
+        let mut tx = store.begin(true).await.unwrap();
+        tx.insert(Model::Verification, json!({"id":"observer-http","identifier":"reset-password:observer-http","value":first["user"]["id"],"createdAt":now.to_rfc3339(),"expiresAt":(now+chrono::Duration::minutes(1)).to_rfc3339()})).await.unwrap();
+        tx.commit().await.unwrap();
+        let (status, body, headers) = browser
+            .call(
+                "/reset-password",
+                Some(json!({"token":"observer-http","newPassword":"new-owned-password"})),
+            )
+            .await;
+        assert_eq!((status, body), (500, Value::Null));
+        assert!(!headers.contains_key("set-cookie"));
+        let mut tx = store.begin(false).await.unwrap();
+        assert!(
+            tx.get(Model::Verification, "observer-http")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            tx.find_page(
+                Model::Session,
+                "userId",
+                first["user"]["id"].as_str().unwrap(),
+                None,
+                256
+            )
+            .await
+            .unwrap()
+            .records
+            .len(),
+            1
+        );
+        tx.commit().await.unwrap();
+        assert_eq!(browser.call("/sign-in/email", Some(json!({"email":"observer-http@example.test","password":"new-owned-password"}))).await.0, 200);
+    }
+}

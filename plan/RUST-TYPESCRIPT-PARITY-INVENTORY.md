@@ -10513,3 +10513,28 @@ Ownedroles0. Logs /private/tmp/fl-created-payment-link-read-{final,legacy,creati
 clippy-final}.log; actual /private/tmp/fl-payment-link-read-audit-ts.log and
 /private/tmp/fl-payment-link-provenance-audit-configured.log. No new route/migration/
 manifest or reservation behavior; aggregate selection remains separate.660/682(96.8%).
+
+
+### Trusted post-password-reset observer (2026-10-14)
+
+with_password_reset_observer implements the bounded onPasswordReset subset:
+prepare and owned future are always awaited after committed password/proof state,
+before optional session revocation, outside DB transactions. Background dispatcher
+is bypassed. Sync/future/projection failures return sanitized empty500 and preserve
+sessions. Reentrant callback can use the new password; its newly created session
+is subsequently revoked when enabled. Native cancellation may leave revocation
+unperformed with committed password/consumed proof; no JavaScript cancellation
+semantics claim. Blocking callbacks/panics are not intercepted.
+Opaque context has only bounded zeroized public user_json, no Debug/Serde/password/
+token/session/raw Request. Projection validates before cloning/serialization;
+context snapshot captured before password update and projection error delayed
+until after commit. No-hook path skips projection. Arbitrary user fields and
+upstream optional Request are outside this supported subset.
+Actual6,focused3(34.43s),restrictedPG1(135.28s),affectedreset11(34.57s),strict
+allfeature/alltarget17.62s+minimal3.84s pass. Ownedroles/records/audits0.
+Frozen11 /private/tmp/fl-reset-observer-freeze.json verified, SHA256
+ee2b9da2af7c5db832dcaf2e02752d5afca1317f8d7a6278e49ed85b9fb79e97.
+Logs /private/tmp/fl-reset-hook-actual.log and /private/tmp/fl-reset-observer-
+{native,pg,regression,clippy,minimal-clippy}.log. Final source-only rustfmt reexport
+ordering followed green checks; no deps/locks. Broader auth hooks/provider/plugin
+gates remain open;660/682(96.8%),22open unchanged.
