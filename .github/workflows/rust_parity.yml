@@ -128,6 +128,7 @@ on:
       - 'cli/tests/rust_version_query_parity.mjs'
       - 'cli/tests/rust_version_default_errors_parity.mjs'
       - 'cli/tests/rust_version_json_wire_parity.mjs'
+      - 'cli/tests/rust_zod_diagnostic_provenance.mjs'
       - 'cli/tests/rust_version_text_wire_parity.mjs'
       - 'cli/tests/rust_version_request_parser_diagnostics.mjs'
       - 'cli/tests/rust_version_optional_body_parity.mjs'
@@ -611,6 +612,7 @@ on:
       - 'cli/tests/rust_version_query_parity.mjs'
       - 'cli/tests/rust_version_default_errors_parity.mjs'
       - 'cli/tests/rust_version_json_wire_parity.mjs'
+      - 'cli/tests/rust_zod_diagnostic_provenance.mjs'
       - 'cli/tests/rust_version_text_wire_parity.mjs'
       - 'cli/tests/rust_version_request_parser_diagnostics.mjs'
       - 'cli/tests/rust_version_optional_body_parity.mjs'
@@ -1133,6 +1135,15 @@ jobs:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_version_json_wire_parity.mjs
         env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_zod_diagnostic_provenance.mjs
+        env:
+          FORKLAUNCH_DIAGNOSTIC_NATIVE: 1
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_version_json_wire_parity.mjs
+        env:
+          FORKLAUNCH_DIAGNOSTIC_NATIVE: 1
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_version_text_wire_parity.mjs
         env:
