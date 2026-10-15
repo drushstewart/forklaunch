@@ -3469,3 +3469,17 @@ PayPal migration12 receipt flow to the open reconciliation checklist description
 The provider-specific evidence requirements and retained-reference behavior remain
 unchanged. This is documentation reconciliation, not new runtime validation or a
 closed gate; pending/ambiguous/charged and omitted-history cases remain open.
+
+
+### 2026-10-15 — Combined IAM regression after quota integration
+
+The full all-feature IAM library suite passes237 tests with zero failures in
+164.17s; five database-specific tests are ignored in this run and retain their
+separate focused PostgreSQL receipts. This covers the integrated role quota/cache
+and invitation callbacks, beyond the earlier immutable package checkpoint.
+Command: `cargo test --locked --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-better-auth --all-features --lib`.
+Existing blueprint target/jobs1/incremental0; session44982 terminal0. The production
+graph was held fixed during the run, including billing's coherent automatic-OPTIONS
+draft; no immutable/committed-only source claim is made for that draft.
+Log `/private/tmp/fl-iam-role-invitation-full.log` SHA256 `3270f6e78e1aecf48afaef5b40c58c82ba93870922942cdb1ce1d27bef5a3b5d`.
+Broad auth/ORM gates and checklist660/682 remain unchanged.
