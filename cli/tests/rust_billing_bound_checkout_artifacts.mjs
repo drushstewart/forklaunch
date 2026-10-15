@@ -41,7 +41,17 @@ try {
   run('cargo',['build','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
   const configured={deploymentLabel:'owned',accountId:'acct_private',livemode:false,plans:[{localPlanId:'11111111-1111-4111-8111-111111111111',creationOperationId:'22222222-2222-4222-8222-222222222222'}],successUrl:'https://private.example/success',cancelUrl:'https://private.example/cancel'};
   const aggregate={deploymentLabel:'owned',accountId:'acct_private',livemode:false,portal:{configurationId:'bpc_private',returnUrl:'https://private.example/return'}};
+  const subscriptionRead={plans:configured.plans,collectionPolicy:'automatic_default_incomplete_v1'};
+  const readAggregate={deploymentLabel:'owned',accountId:'acct_private',livemode:false,subscriptionRead};
   const cases=[
+   {name:'subscription-read-only',profile:'bound-billing-v1',aggregate:readAggregate,fail:!stripe,count:1},
+   {name:'subscription-plan-read',profile:'bound-billing-v1',aggregate:{...readAggregate,planRead:{trustedProducts:['custom-product']}},fail:!stripe,count:2},
+   {name:'subscription-read-stray-publisher',profile:'bound-billing-v1',aggregate:readAggregate,publisher:'postgres://publisher@localhost/db',fail:true},
+   {name:'subscription-read-mixed',profile:'bound-billing-v1',aggregate:{...aggregate,subscriptionRead},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:4},
+   {name:'subscription-read-missing-publisher',profile:'bound-billing-v1',aggregate:{...aggregate,subscriptionRead},fail:true},
+   {name:'subscription-read-null',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:null},fail:true},
+   {name:'subscription-read-unknown',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:{...subscriptionRead,create:true}},fail:true},
+   {name:'subscription-read-policy',profile:'bound-billing-v1',aggregate:{...readAggregate,subscriptionRead:{...subscriptionRead,collectionPolicy:'send_invoice'}},fail:true},
    {name:'plan-read-only',profile:'bound-billing-v1',aggregate:{deploymentLabel:'owned',accountId:'acct_private',livemode:false,planRead:{trustedProducts:['custom-product']}},fail:!stripe,count:1},
    {name:'plan-read-stray-publisher',profile:'bound-billing-v1',aggregate:{deploymentLabel:'owned',accountId:'acct_private',livemode:false,planRead:{trustedProducts:['custom-product']}},publisher:'postgres://publisher@localhost/db',fail:true},
    {name:'plan-read-mixed',profile:'bound-billing-v1',aggregate:{...aggregate,planRead:{trustedProducts:['custom-product']}},publisher:'postgres://publisher@localhost/db',fail:!stripe,count:4},
@@ -79,9 +89,9 @@ try {
    const contract=JSON.parse(readFileSync(path.join(directory,'contract.json'))),openapi=JSON.parse(readFileSync(path.join(directory,'openapi.json')));
    const text=JSON.stringify({contract,openapi});assert(text.includes('x-forklaunch-date-profile'));
    for(const secret of ['acct_private','private-password','private.example'])assert(!text.includes(secret));
-   const bound=contract.routes.filter(r=>(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')||r.path.startsWith('/bound-plans/')));
+   const bound=contract.routes.filter(r=>(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')||r.path.startsWith('/bound-plans/')||r.path.startsWith('/bound-subscriptions/')));
    if(test.profile==='legacy'){assert.equal(bound.length,0);legacy=contract.routes;}
-   else {assert.equal(bound.length,test.count??3);assert.deepEqual(contract.routes.filter(r=>!(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')||r.path.startsWith('/bound-plans/'))),legacy);if(test.name==='plan-read-only'){assert.equal(bound[0].operationName,'getBoundCreatedPlan');assert(!bound[0].responses.some(v=>v.statusCode===202));}else assert(bound.some(r=>r.responses.some(v=>v.statusCode===202)));}
+   else {assert.equal(bound.length,test.count??3);assert.deepEqual(contract.routes.filter(r=>!(r.path.startsWith('/bound-checkout/')||r.path.startsWith('/bound-portal/')||r.path.startsWith('/bound-plans/')||r.path.startsWith('/bound-subscriptions/'))),legacy);if(['plan-read-only','subscription-read-only','subscription-plan-read'].includes(test.name)){assert(bound.every(r=>['getBoundCreatedPlan','getBoundCreatedSubscription'].includes(r.operationName)));assert(bound.every(r=>!r.responses.some(v=>v.statusCode===202)));if(test.name==='subscription-read-only')assert.equal(bound[0].operationName,'getBoundCreatedSubscription');}else assert(bound.some(r=>r.responses.some(v=>v.statusCode===202)));}
   }
 
  }
@@ -100,5 +110,5 @@ try {
   writeFileSync(path.join(temporary,'src/main.rs'),render(mainTemplate));
   run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
  }
- console.log('PASS actual rendered generated library: 46 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
+ console.log('PASS actual rendered generated library: 62 base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile');
 } finally {rmSync(temporary,{recursive:true,force:true});}

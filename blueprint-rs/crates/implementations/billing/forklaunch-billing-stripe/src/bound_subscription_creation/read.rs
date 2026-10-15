@@ -50,6 +50,18 @@ fn request(
     })
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Checks direct transport and local read/audit access without provider I/O.
+    /// No publisher or creation authority is required or inferred.
+    /// # Errors
+    /// Denies managed transport and missing local privileges.
+    pub async fn validate_bound_subscription_read_configuration(&self) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        self.base()
+            .store()
+            .validate_subscription_creation_read_access()
+            .await
+    }
+
     /// Reads only completed direct creation provenance (including validated
     /// event-recovered receipts). Requires the original trusted Plan mapping and
     /// unchanged Customer/Plan records, bindings and completed Plan provenance.

@@ -2347,3 +2347,29 @@ Logs /private/tmp/fl-signup-auto-signin-{actual,native,regression,pg,clippy,
 minimal-clippy}.log. Existing nullable token metadata adequate; prospective-user
 callback boundary and broaderhooks remain as previously documented. No fullIAM
 rerun claimed for this slice (affected5 and focused3 used).660/682(96.8%),22open.
+
+
+### Aggregate completed Subscription read selection (2026-10-14)
+
+BoundBillingV1 now accepts optional subscriptionRead:{plans:[{localPlanId,
+creationOperationId}],collectionPolicy:"automatic_default_incomplete_v1"} under
+shared pinned deployment/account/mode. Exact bounded nonempty Plan mappings and
+finite policy required. Sole read selection needs no publisher; mixed creation
+still requires separately trusted publisher. GET /bound-subscriptions/:publicId
+uses authenticated service actor and the completed-provenance library getter;
+HTTP/MCP and generated artifacts/SDKs share registry metadata. Local direct
+transport/schema/SELECT/auditINSERT grants validate before listening, zero
+provider startup I/O; unsupported/backup/missing grants reject. Existing66legacy
+routes remain: selector does not make the whole service read-only. No provider
+POST or lifecycle/entitlement synchronization added.
+Frozen10 manifest /private/tmp/fl-subscription-read-route-final.json verified,
+SHA256e8c2cbb901836d536685eb1b3a3e0762fb56d6beffd60c01f4a686f155127181.
+RestrictedPG/liveHTTP/MCP+oneTS/oneRust SDK read3.11s,8units,62rendered config/
+artifact cases+actualbase/Stripe maincompile,strict3crateallfeature/alltarget and
+featureoff Clippy pass. OwnedfixturePGroles/databases0. Logs /private/tmp/fl-
+subscription-route-{live,units,artifacts-final,clippy-final,default-clippy}.log.
+Root CI direct-executable wrapper releases Cargo lock before nested SDK builds;
+syntax checked, same executable validated by agent. Independent wrapper rerun
+queued behind focused CORS check. Corrected copied getter before native compile,
+boxed test DTO/path classifier/format lints; no manifest/migration/template edits.
+Broader mapper/mutation/recovery gates remain open;660/682(96.8%),22open.

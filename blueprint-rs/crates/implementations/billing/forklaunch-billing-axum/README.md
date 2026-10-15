@@ -111,7 +111,7 @@ Select `BILLING_IDENTITY_PROFILE=bound-billing-v1` and supply
 }
 ```
 
-At least one of `checkout`, `portal`, and `planRead` is required; omit an unselected domain.
+At least one of `checkout`, `portal`, `planRead`, and `subscriptionRead` is required; omit an unselected domain.
 Null, empty, unknown, or partial sections fail. The shared scope is server-owned;
 no DTO may override it. When `checkout` or `portal` is selected,
 `BILLING_PUBLISHER_DATABASE_URL` is the single explicit separate publisher
@@ -122,7 +122,7 @@ publication function grant, independently validated before listening. Mixed old
 supported; they do not select Portal implicitly.
 
 Library callers construct `BoundBillingConfig` and `BoundBillingV1::trusted`
-with exactly the selected creation publisher capabilities (none for `planRead`), then call
+with exactly the selected creation publisher capabilities (none for `planRead` or `subscriptionRead`), then call
 `with_bound_billing`. Artifact callers use `contract_registry_with_bound_billing`
 with the same configuration; a selector alone cannot guess selected families.
 The existing optional `bound-checkout` Cargo feature also enables this additive
@@ -201,3 +201,34 @@ The existing 66 legacy routes remain available unchanged: selecting only this
 new read capability does **not** make the entire generated service read-only.
 Its internal HMAC service key/tenant authority is the same existing boundary,
 not new end-user or cross-service IAM ownership proof.
+
+
+## Direct Subscription provenance read
+
+The same `bound-billing-v1` aggregate accepts an explicit read capability:
+
+```json
+{"deploymentLabel":"your-deployment","accountId":"acct_your_account","livemode":false,"subscriptionRead":{"plans":[{"localPlanId":"11111111-1111-4111-8111-111111111111","creationOperationId":"22222222-2222-4222-8222-222222222222"}],"collectionPolicy":"automatic_default_incomplete_v1"}}
+```
+
+This adds `getBoundCreatedSubscription`, `GET /bound-subscriptions/:publicId`,
+through the shared HTTP/MCP/artifact registry. Read-only selections require no
+publisher connection and reject a stray publisher setting; mixed creation selections
+retain their separate publisher requirements. Startup validates direct transport
+and local schema usage, SELECT on records, provider bindings, Customer bindings,
+Subscription and Plan creation journals, and INSERT on sensitive-read audit. Startup
+makes no provider requests. This does not remove the existing 66 legacy routes or
+make the whole service read-only.
+
+The authenticated actor must own the completed Subscription receipt. The trusted
+Plan catalog may have a different actor. Current encrypted Customer/Plan records,
+bindings, and completed Plan provenance must match sealed creation dependencies;
+external Party association remains an administrative assertion, not IAM ownership
+proof. Fresh authenticated Customer, Plan, and Subscription reads must match the
+finite original terms. Only unchanged active/incomplete or incomplete-to-active
+states qualify; other provider changes require another workflow. The response
+refreshes `stripeFields` only: local UUID, lifecycle, party and product fields remain
+unchanged. There is no payment or entitlement claim, provider POST, creation alias
+fallback, or automatic lifecycle synchronization. The data snapshot linearizes at
+the final matching database SELECT; context freshness is checked after audit commit.
+Later local or provider changes remain possible.

@@ -40,6 +40,19 @@ fn id(value: &Value, key: &str) -> BlueprintResult<Uuid> {
     Uuid::parse_str(value[key].as_str().ok_or_else(storage_error)?).map_err(|_| storage_error())
 }
 impl PostgresBillingStore {
+    /// Validates local table read and sensitive-audit insertion grants only.
+    /// No provider request, row lock, claims or publication privilege is used.
+    /// # Errors
+    /// Denies missing schema usage or any required table privilege.
+    pub async fn validate_subscription_creation_read_access(&self) -> BlueprintResult<()> {
+        let allowed: bool = sqlx::query_scalar("SELECT has_schema_privilege(current_user,'fl_billing','USAGE') AND has_table_privilege(current_user,'fl_billing.records','SELECT') AND has_table_privilege(current_user,'fl_billing.provider_bindings','SELECT') AND has_table_privilege(current_user,'fl_billing.stripe_customer_bindings','SELECT') AND has_table_privilege(current_user,'fl_billing.subscription_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.plan_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.sensitive_read_audit','INSERT')")
+            .fetch_one(&self.pool).await.map_err(db_error)?;
+        if !allowed {
+            return Err(conflict());
+        }
+        Ok(())
+    }
+
     /// Resolves actor-owned completed direct provenance and exact current local
     /// dependencies without FOR UPDATE or publisher/claim privileges. Plan
     /// provenance may belong to another actor, as authorized at creation time.

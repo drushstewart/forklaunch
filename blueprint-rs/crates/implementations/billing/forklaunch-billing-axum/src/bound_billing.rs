@@ -1,15 +1,19 @@
 //! One explicit finite selector for compatible domain-specific authority profiles.
 use super::{
     BillingBackend, BoundCheckoutConfig, BoundCheckoutV1, BoundPortalV1, bound_checkout_contracts,
-    bound_plan_read_contracts, bound_portal_contracts,
+    bound_plan_read_contracts, bound_portal_contracts, bound_subscription_read_contracts,
 };
 use forklaunch_billing_base::services::postgres::{
     StripeBindingScope, TrustedCheckoutPublisher, TrustedPortalPublisher,
 };
 use forklaunch_billing_stripe::bound_plan_creation::BoundPlanCreationProfile;
 use forklaunch_billing_stripe::bound_portal_creation::BoundPortalCreationProfile;
+use forklaunch_billing_stripe::bound_subscription_creation::{
+    BoundSubscriptionCreationProfile, SubscriptionCollectionPolicy,
+};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult, contract::RouteContract};
 use serde_json::Value;
+use uuid::Uuid;
 
 pub(super) fn configuration() -> BlueprintError {
     BlueprintError::new(
@@ -26,6 +30,7 @@ pub struct BoundBillingConfig {
     checkout: Option<BoundCheckoutConfig>,
     portal: Option<BoundPortalConfig>,
     plan_read: Option<BoundPlanCreationProfile>,
+    subscription_read: Option<BoundSubscriptionCreationProfile>,
 }
 fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult<()> {
     let object = value.as_object().ok_or_else(configuration)?;
@@ -37,6 +42,34 @@ fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult
         return Err(configuration());
     }
     Ok(())
+}
+fn subscription_profile(
+    scope: &StripeBindingScope,
+    part: &Value,
+) -> BlueprintResult<BoundSubscriptionCreationProfile> {
+    exact(part, &["plans", "collectionPolicy"], &[])?;
+    if part["collectionPolicy"] != "automatic_default_incomplete_v1" {
+        return Err(configuration());
+    }
+    let rows = part["plans"].as_array().ok_or_else(configuration)?;
+    if rows.is_empty() || rows.len() > 1000 {
+        return Err(configuration());
+    }
+    let mut plans = Vec::with_capacity(rows.len());
+    for row in rows {
+        exact(row, &["localPlanId", "creationOperationId"], &[])?;
+        let id = |key: &str| {
+            Uuid::parse_str(row[key].as_str().ok_or_else(configuration)?)
+                .map_err(|_| configuration())
+        };
+        plans.push((id("localPlanId")?, id("creationOperationId")?));
+    }
+    BoundSubscriptionCreationProfile::trusted(
+        scope.clone(),
+        plans,
+        SubscriptionCollectionPolicy::AutomaticDefaultIncomplete,
+    )
+    .map_err(|_| configuration())
 }
 impl BoundBillingConfig {
     /// Parses at most 64 KiB of exact configuration. At least one domain is required.
@@ -50,7 +83,7 @@ impl BoundBillingConfig {
         exact(
             &value,
             &["deploymentLabel", "accountId", "livemode"],
-            &["checkout", "portal", "planRead"],
+            &["checkout", "portal", "planRead", "subscriptionRead"],
         )?;
         let scope = StripeBindingScope::administrative(
             value["deploymentLabel"]
@@ -97,17 +130,29 @@ impl BoundBillingConfig {
             exact(part, &["trustedProducts"], &[])?;
             let products: Vec<String> = serde_json::from_value(part["trustedProducts"].clone())
                 .map_err(|_| configuration())?;
-            Some(BoundPlanCreationProfile::trusted(scope, products).map_err(|_| configuration())?)
+            Some(
+                BoundPlanCreationProfile::trusted(scope.clone(), products)
+                    .map_err(|_| configuration())?,
+            )
         } else {
             None
         };
-        if checkout.is_none() && portal.is_none() && plan_read.is_none() {
+        let subscription_read = value
+            .get("subscriptionRead")
+            .map(|part| subscription_profile(&scope, part))
+            .transpose()?;
+        if checkout.is_none()
+            && portal.is_none()
+            && plan_read.is_none()
+            && subscription_read.is_none()
+        {
             return Err(configuration());
         }
         Ok(Self {
             checkout,
             portal,
             plan_read,
+            subscription_read,
         })
     }
     #[must_use]
@@ -121,6 +166,10 @@ impl BoundBillingConfig {
     #[must_use]
     pub const fn has_plan_read(&self) -> bool {
         self.plan_read.is_some()
+    }
+    #[must_use]
+    pub const fn has_subscription_read(&self) -> bool {
+        self.subscription_read.is_some()
     }
     /// Only creation families need a separately trusted publication connection.
     #[must_use]
@@ -140,6 +189,9 @@ impl BoundBillingConfig {
         if self.has_plan_read() {
             routes.extend(bound_plan_read_contracts());
         }
+        if self.has_subscription_read() {
+            routes.extend(bound_subscription_read_contracts());
+        }
         routes
     }
 }
@@ -148,6 +200,7 @@ pub struct BoundBillingV1 {
     checkout: Option<BoundCheckoutV1>,
     portal: Option<BoundPortalV1>,
     plan_read: Option<BoundPlanCreationProfile>,
+    subscription_read: Option<BoundSubscriptionCreationProfile>,
 }
 impl BoundBillingV1 {
     /// # Errors
@@ -164,6 +217,7 @@ impl BoundBillingV1 {
         }
         Ok(Self {
             plan_read: configuration.plan_read,
+            subscription_read: configuration.subscription_read,
             checkout: configuration
                 .checkout
                 .zip(checkout)
@@ -183,6 +237,7 @@ impl BillingBackend {
         if self.bound_checkout.is_some()
             || self.bound_portal.is_some()
             || self.bound_plan_read.is_some()
+            || self.bound_subscription_read.is_some()
         {
             return Err(configuration());
         }
@@ -195,6 +250,9 @@ impl BillingBackend {
         if let Some(plan_read) = profile.plan_read {
             self = self.with_bound_plan_read(plan_read).await?;
         }
+        if let Some(subscription_read) = profile.subscription_read {
+            self = self.with_bound_subscription_read(subscription_read).await?;
+        }
         Ok(self)
     }
 }
@@ -205,6 +263,32 @@ mod tests {
     use serde_json::json;
     fn valid() -> Value {
         json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}})
+    }
+    #[test]
+    fn subscription_read_is_an_explicit_nonpublishing_capability() {
+        let mut value = json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"subscriptionRead":{"plans":[{"localPlanId":Uuid::new_v4(),"creationOperationId":Uuid::new_v4()}],"collectionPolicy":"automatic_default_incomplete_v1"}});
+        let config = BoundBillingConfig::from_json(&value.to_string()).unwrap();
+        assert!(config.has_subscription_read());
+        assert!(!config.requires_publisher());
+        assert_eq!(config.contracts(), bound_subscription_read_contracts());
+        assert!(BoundBillingV1::trusted(config, None, None).is_ok());
+        let valid = value["subscriptionRead"].clone();
+        for invalid in [
+            Value::Null,
+            json!({}),
+            json!({"plans":[],"collectionPolicy":"automatic_default_incomplete_v1"}),
+            json!({"plans":valid["plans"],"collectionPolicy":"send_invoice"}),
+            json!({"plans":valid["plans"],"collectionPolicy":"automatic_default_incomplete_v1","create":true}),
+        ] {
+            value["subscriptionRead"] = invalid;
+            assert!(BoundBillingConfig::from_json(&value.to_string()).is_err());
+        }
+        value["subscriptionRead"] = valid.clone();
+        value["subscriptionRead"]["plans"] = json!([valid["plans"][0], valid["plans"][0]]);
+        assert!(BoundBillingConfig::from_json(&value.to_string()).is_err());
+        value["subscriptionRead"] = valid;
+        value["subscriptionRead"]["plans"][0]["localPlanId"] = json!(Uuid::nil());
+        assert!(BoundBillingConfig::from_json(&value.to_string()).is_err());
     }
     #[test]
     fn aggregate_selects_only_explicit_domains_and_preserves_legacy_contracts() {
