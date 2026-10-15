@@ -33,6 +33,7 @@ impl Budget {
 
 pub(super) fn own_schema_bytes(schema: &ZodJsonSchema<'_>) -> usize {
     match schema {
+        ZodJsonSchema::Literal(literal) => literal.bytes(),
         ZodJsonSchema::String(checks) => checks.iter().fold(0usize, |bytes, check| {
             bytes
                 .saturating_add(check.message.map_or(0, str::len))
@@ -56,14 +57,21 @@ pub(super) fn own_schema_bytes(schema: &ZodJsonSchema<'_>) -> usize {
 pub(super) fn evaluation_bytes(
     input: Option<&Value>,
     schema: &ZodJsonSchema<'_>,
+    budget: &mut Budget,
 ) -> Result<usize, ZodJsonUnsupported> {
-    let input_bytes = || {
+    let mut input_bytes = || {
         input
-            .map(super::admit_value)
+            .map(|value| super::admit_value_counted(value, Some(&mut *budget)))
             .transpose()
             .map(|size| size.map_or(0, |(_, bytes)| bytes))
     };
     Ok(match schema {
+        // Escaping may expand each input byte sixfold. Both the intermediate
+        // JSON rendering and final diagnostic are charged before allocation.
+        ZodJsonSchema::Literal(literal) => input_bytes()?
+            .saturating_mul(3)
+            .saturating_add(literal.bytes().saturating_mul(12))
+            .saturating_add(128),
         ZodJsonSchema::String(checks) => input_bytes()?
             .saturating_mul(checks.len().saturating_add(2))
             .saturating_add(own_schema_bytes(schema))

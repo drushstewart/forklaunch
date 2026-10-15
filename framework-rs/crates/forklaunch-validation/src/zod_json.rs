@@ -11,6 +11,9 @@ mod issues;
 #[path = "zod_json_resources.rs"]
 mod resources;
 use issues::Issue;
+#[path = "zod_json_literal.rs"]
+mod literal;
+pub use literal::ZodJsonLiteral;
 use resources::{
     Budget, MAX_ADMISSION_BYTES, clone_json, evaluation_bytes, number_bytes, own_schema_bytes,
 };
@@ -29,6 +32,7 @@ pub enum ZodJsonSchema<'a> {
     Boolean,
     Number(Vec<ZodNumberCheck<'a>>),
     Unknown,
+    Literal(ZodJsonLiteral<'a>),
     Optional(Box<Self>),
     Nullable(Box<Self>),
     Default {
@@ -124,7 +128,7 @@ impl Parsed {
 /// Evaluate the finite schema over JSON, with atomic transformed output.
 /// Schema and input admission precede evaluation: maximum depth 64 and 100,000
 /// nodes (including checks/default values), plus at most 100,000 schema-node
-/// and check applications during evaluation. Aggregate input/schema strings,
+/// and check applications, including revisited input descendants, during evaluation. Aggregate input/schema strings,
 /// keys, messages and defaults are admitted up to 16 MiB. Evaluation debits a
 /// conservative 32 MiB byte-work allowance before clones, scalar transforms,
 /// repeated checks, output keys and diagnostic path/message allocations.
@@ -200,10 +204,24 @@ pub fn zod_json_at_path(
 }
 
 fn admit_value(value: &Value) -> Result<(usize, usize), ZodJsonUnsupported> {
+    admit_value_counted(value, None)
+}
+
+fn admit_value_counted(
+    value: &Value,
+    mut budget: Option<&mut Budget>,
+) -> Result<(usize, usize), ZodJsonUnsupported> {
     let mut stack = vec![(value, 0)];
     let mut nodes = 0;
     let mut bytes = 0usize;
     while let Some((value, depth)) = stack.pop() {
+        // The evaluator has already charged the root application. Every
+        // revisited descendant is charged before inspection or child expansion.
+        if depth > 0
+            && let Some(budget) = &mut budget
+        {
+            budget.charge(1, 0)?;
+        }
         if depth > MAX_DEPTH {
             return Err(ZodJsonUnsupported::InputDepth);
         }
@@ -335,14 +353,24 @@ fn evaluate(
         ZodJsonSchema::Array { checks, .. } => checks.len(),
         _ => 0,
     };
-    remaining.charge(1 + checks, evaluation_bytes(input, schema)?)?;
+    remaining.charge(1 + checks, 0)?;
+    let bytes = evaluation_bytes(input, schema, remaining)?;
+    remaining.charge(0, bytes)?;
     Ok(match schema {
-        ZodJsonSchema::Unknown => {
-            if let Some(value) = input {
-                remaining.charge(admit_value(value)?.0.saturating_sub(1), 0)?;
+        ZodJsonSchema::Literal(literal) => {
+            if literal.matches(input) {
+                Parsed::valid(input.map(clone_json).transpose()?)
+            } else {
+                Parsed::invalid(
+                    vec![ParseError {
+                        path: Vec::new(),
+                        message: literal.diagnostic(),
+                    }],
+                    Status::Aborted,
+                )
             }
-            Parsed::valid(input.map(clone_json).transpose()?)
         }
+        ZodJsonSchema::Unknown => Parsed::valid(input.map(clone_json).transpose()?),
         ZodJsonSchema::Optional(_) if input.is_none() => Parsed::valid(None),
         ZodJsonSchema::Nullable(_) if input == Some(&Value::Null) => {
             Parsed::valid(Some(Value::Null))

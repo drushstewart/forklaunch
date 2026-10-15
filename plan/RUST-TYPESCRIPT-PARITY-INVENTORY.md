@@ -8902,3 +8902,37 @@ pass on the frozen final source. Owned roles/records/audits0. Final15 hashes:
 imported helper and expanded PG fixture. Working-source proof includes frozen
 literal/resource dependency draft, not an immutable archive receipt. Broader
 backup generation/storage/OTP codecs/plugins remain open.
+
+
+## Strict JSON literals, ordered enum lowering and counted rescans (2026-10-14)
+
+ZodJsonLiteral supports borrowed String/Number(f64)/Boolean with strict scalar
+equality; signed zeros compare equal while successful output preserves input
+sign. NaN never matches; nonfinite expected values render null in actual literal
+diagnostics while input remains the finite JSON subset. String diagnostics match
+JSON.stringify escaping; finite number messages use ryu_js spelling. Ordered
+enums lower to literal Union branches in source Object.values order, including
+integer-key ordering, duplicates and empty/single members. Null/object/symbol
+literals and arbitrary JavaScript reflection are outside the typed factory.
+Schema/evaluation byte budgets cover worst-case diagnostic escaping before
+allocation.
+
+Resource review found repeated scalar-union metric scans could traverse large
+zero-string-byte containers without spending evaluation nodes. The evaluator
+now debits base schema/check work before metrics and each revisited descendant
+before inspection, sharing the existing100,000-node budget. Unknown cloning
+retains bounded admission without the redundant prior descendant debit. The
+adversarial repeated-scan test and oversized literal diagnostic tests pass.
+This extends the earlier union resource proof rather than silently relabeling it.
+
+All45 validation tests with arbitrary_precision,118,132 exact source/native
+observations+2 nonfinite boundaries,117 paired HTTP cases,54 registered MCP calls,
+3 operational-mode cases,6 calls per generated TypeScript/Rust SDK and strict
+validation/Axum all-feature/all-target Clippy pass. Fixture covers Latin1/control/
+Unicode2028/2029 escaping, unsafe integers, nonfinite configs, signed-zero raw
+inputs, ordered enum diagnostics and nested union/path contexts. Final resource
+regression reran after test-only lint correction; production unchanged. Logs
+/private/tmp/fl-zod-literal-{tests,parity,live,clippy,final-resource}.log; final9
+hashes /private/tmp/fl-zod-literal-source.json. Existing CI runs expanded fixtures.
+Record/strict own-key order, broader schema/callback and wire key-order gates
+remain open. No immutable archive claim.

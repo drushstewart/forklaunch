@@ -313,7 +313,7 @@ failures always return a safe correlated 500, including None/Warning modes.
 The existing `insert_json_transform` API treats its errors as validation failures.
 
 The bounded `typescript_coerce::zod_json` evaluator supports typed JSON scalar
-rules, optional/nullable values, static defaults, ordered unions, arrays and ordered object fields
+rules, strict typed literals, optional/nullable values, static defaults, ordered unions, arrays and ordered object fields
 with unknown-field stripping. Map `ZodJsonOutcome::Invalid` to validation failure
 and evaluator errors to operational failure. The [live composition example](crates/forklaunch-axum/examples/json_composition_runtime.rs)
 shows this mapping with `ParsedJsonBody`; its [runtime fixture](../cli/tests/rust_json_composition_runtime.mjs)
@@ -325,7 +325,12 @@ issue paths receive their root before union formatting. Adding a root to already
 formatted errors would produce different nested-union diagnostics. Ordered unions
 select the first valid result, otherwise the first dirty branch; all-aborted
 branches use the actual adapter's single-level variant formatting. The trusted
-path shares admission/work budgets with schema/input diagnostics.
+path shares admission/work budgets with schema/input diagnostics. Use
+`ZodJsonLiteral::{String, Number, Boolean}` for strict literal branches; ordered
+enums lower to `Union` of those literals in source `Object.values` order. Numeric
+signed zeros compare equal and preserve the input sign. This API accepts an
+explicit ordered schema; it does not reflect arbitrary JavaScript enum objects.
+Repeated input metric scans also debit the shared evaluation node budget.
 
 `RequestValidators::insert_request_transform` accepts one whole-schema callback
 for atomic parameter/query/header projections and optional JSON-body output.

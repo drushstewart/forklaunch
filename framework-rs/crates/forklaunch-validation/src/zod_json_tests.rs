@@ -264,7 +264,8 @@ fn message_and_rule_times_string_work_is_charged_before_checks() {
         evaluate(Some(&input), &schema, &mut budget),
         Err(ZodJsonUnsupported::EvaluationBytes)
     ));
-    assert_eq!(budget.nodes, MAX_NODES);
+    // Application and rules are reserved before even computing byte metrics.
+    assert_eq!(budget.nodes, MAX_NODES - 1001);
 }
 
 #[test]
@@ -501,5 +502,124 @@ fn diagnostic_path_shares_schema_default_admission_even_without_input() {
     assert_eq!(
         zod_json_at_path(None, &schema, &[&path]),
         Err(ZodJsonUnsupported::SchemaBytes)
+    );
+}
+
+#[test]
+fn literals_are_strict_preserve_input_zero_sign_and_abort_on_mismatch() {
+    for expected in [-0.0, 0.0] {
+        for input in [-0.0_f64, 0.0] {
+            let raw = json!(input);
+            let ZodJsonOutcome::Valid(Some(value)) = zod_json(
+                Some(&raw),
+                &ZodJsonSchema::Literal(ZodJsonLiteral::Number(expected)),
+            )
+            .unwrap() else {
+                panic!("expected equal signed zero")
+            };
+            assert_eq!(value.as_f64().unwrap().to_bits(), input.to_bits());
+        }
+    }
+    let schema = ZodJsonSchema::Literal(ZodJsonLiteral::Number(1.0));
+    let invalid = zod_json(Some(&json!("1")), &schema).unwrap();
+    assert_eq!(
+        invalid,
+        ZodJsonOutcome::Invalid(vec![ParseError {
+            path: vec![],
+            message: "Invalid literal value, expected 1".into()
+        }])
+    );
+    assert!(
+        evaluate(Some(&json!("1")), &schema, &mut Budget::new())
+            .unwrap()
+            .status
+            == Status::Aborted
+    );
+    let raw: Value = serde_json::from_str("9007199254740993").unwrap();
+    let before = raw.to_string();
+    let ZodJsonOutcome::Valid(Some(value)) = zod_json(
+        Some(&raw),
+        &ZodJsonSchema::Literal(ZodJsonLiteral::Number(9_007_199_254_740_992.0)),
+    )
+    .unwrap() else {
+        panic!("expected JS rounding")
+    };
+    assert_eq!(value.as_f64(), Some(9_007_199_254_740_992.0));
+    assert_eq!(raw.to_string(), before);
+}
+
+#[test]
+fn literal_diagnostics_follow_json_stringify_and_nonfinite_expected_values() {
+    for expected in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert_eq!(
+            zod_json(
+                None,
+                &ZodJsonSchema::Literal(ZodJsonLiteral::Number(expected))
+            ),
+            Ok(ZodJsonOutcome::Invalid(vec![ParseError {
+                path: vec![],
+                message: "Invalid literal value, expected null".into()
+            }]))
+        );
+    }
+    let expected = "a\"\\\n\0\u{2028}😀";
+    let literal = ZodJsonSchema::Literal(ZodJsonLiteral::String(expected));
+    let ZodJsonOutcome::Invalid(errors) = zod_json(None, &literal).unwrap() else {
+        panic!("expected literal failure")
+    };
+    assert_eq!(
+        errors[0].message,
+        format!(
+            "Invalid literal value, expected {}",
+            serde_json::to_string(expected).unwrap()
+        )
+    );
+    assert_eq!(
+        zod_json(Some(&json!(expected)), &literal),
+        Ok(ZodJsonOutcome::Valid(Some(json!(expected))))
+    );
+}
+
+#[test]
+fn literal_escaped_diagnostics_and_repeated_schema_applications_are_bounded() {
+    let expected = "\0".repeat(3 * 1024 * 1024);
+    assert_eq!(
+        zod_json(
+            None,
+            &ZodJsonSchema::Literal(ZodJsonLiteral::String(&expected))
+        ),
+        Err(ZodJsonUnsupported::EvaluationBytes)
+    );
+    let expected = "x".repeat(1024 * 1024);
+    let schema = ZodJsonSchema::Array {
+        element: Box::new(ZodJsonSchema::Literal(ZodJsonLiteral::String(&expected))),
+        checks: vec![],
+    };
+    assert_eq!(
+        zod_json(Some(&json!([false, false, false])), &schema),
+        Err(ZodJsonUnsupported::EvaluationBytes)
+    );
+}
+
+#[test]
+fn repeated_scalar_metric_scans_charge_zero_byte_input_descendants() {
+    let input = Value::Array(vec![Value::Object(Map::new()); 40_000]);
+    let schema = ZodJsonSchema::Union(vec![ZodJsonSchema::String(vec![]); 3]);
+    assert_eq!(
+        zod_json(Some(&input), &schema),
+        Err(ZodJsonUnsupported::EvaluationNodes)
+    );
+    let input = Value::Object(
+        (0..20_000)
+            .map(|index| (index.to_string(), Value::Array(vec![Value::Null])))
+            .collect(),
+    );
+    let schema = ZodJsonSchema::Union(vec![
+        ZodJsonSchema::Literal(ZodJsonLiteral::Boolean(true));
+        3
+    ]);
+    assert_eq!(
+        zod_json(Some(&input), &schema),
+        Err(ZodJsonUnsupported::EvaluationNodes)
     );
 }

@@ -36,6 +36,13 @@ fn transform(
             },
         },
         Field {
+            name: "kind",
+            schema: Schema::Optional(Box::new(Schema::Union(vec![
+                Schema::Literal(typescript_coerce::ZodJsonLiteral::String("create")),
+                Schema::Literal(typescript_coerce::ZodJsonLiteral::String("update")),
+            ]))),
+        },
+        Field {
             name: "choice",
             schema: Schema::Optional(Box::new(Schema::Union(vec![
                 Schema::String(vec![

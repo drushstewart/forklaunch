@@ -1,7 +1,7 @@
 use forklaunch_validation::{
     typescript_coerce::{
-        ZodFloatBound, ZodJsonField, ZodJsonOutcome, ZodJsonSchema, ZodNumberCheck, ZodNumberStep,
-        ZodStringCheck, ZodStringRule, ZodStringStep, zod_json_at_path,
+        ZodFloatBound, ZodJsonField, ZodJsonLiteral, ZodJsonOutcome, ZodJsonSchema, ZodNumberCheck,
+        ZodNumberStep, ZodStringCheck, ZodStringRule, ZodStringStep, zod_json_at_path,
     },
     zod_array::ZodArrayStep,
 };
@@ -54,6 +54,16 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
                 .map(schema)
                 .collect(),
         ),
+        "literal" => ZodJsonSchema::Literal(match spec["literal"]["kind"].as_str().unwrap() {
+            "string" => ZodJsonLiteral::String(spec["literal"]["value"].as_str().unwrap()),
+            "boolean" => ZodJsonLiteral::Boolean(spec["literal"]["value"].as_bool().unwrap()),
+            "number" => ZodJsonLiteral::Number(
+                spec["literal"]["value"]
+                    .as_f64()
+                    .unwrap_or_else(|| spec["literal"]["value"].as_str().unwrap().parse().unwrap()),
+            ),
+            _ => panic!("unsupported literal kind"),
+        }),
         "boolean" => ZodJsonSchema::Boolean,
         "unknown" => ZodJsonSchema::Unknown,
         "optional" => ZodJsonSchema::Optional(inner()),

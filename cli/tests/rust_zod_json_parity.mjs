@@ -15,6 +15,7 @@ function build(spec){
  case 'boolean':return statics.boolean;
  case 'unknown':return statics.unknown;
  case 'union':return validator.union(spec.branches.map(build));
+ case 'literal':return validator.literal(spec.literal.kind==='number'?(typeof spec.literal.value==='string'?Number(spec.literal.value):spec.literal.value):spec.literal.value);
  case 'optional':return build(spec.inner).optional();
  case 'nullable':return build(spec.inner).nullable();
  case 'default':return build(spec.inner).default(spec.value);
@@ -62,9 +63,32 @@ for(const schema of unions)for(const path of [['body'],['request','body']])for(c
  let wrapped=build(schema),input=value;
  for(const key of [...path].reverse()){wrapped=z.object({[key]:wrapped});input={[key]:input};}
  const parsed=validator.parse(wrapped,input);
- cases.push({schema,path,...(value===undefined?{}:{value})});
+ cases.push({schema,path,...(value===undefined?{}:Object.is(value,-0)?{raw:'-0'}:{value})});
  if(parsed.ok){let output=parsed.value;for(const key of path)output=output[key];expected.push(output===undefined?{ok:true,absent:true}:{ok:true,absent:false,value:tag(output)});}
  else expected.push(JSON.parse(JSON.stringify(parsed)));
+}
+// Typed literal factory and explicit ordered enum lowering (no object reflection
+// is inferred by the native evaluator). Compare numeric output through IEEE tags.
+const literal=value=>({kind:'literal',literal:{kind:typeof value,value:typeof value==='number'&&!Number.isFinite(value)?String(value):Object.is(value,-0)?'-0':value}});
+const literalValues=[true,false,0,-0,1,-1,.5,1e-7,1e-6,1e20,1e21,Number.MIN_VALUE,Number.MAX_VALUE,9007199254740992,Number.MAX_SAFE_INTEGER,NaN,Infinity,-Infinity,
+ ...Array.from({length:256},(_,index)=>String.fromCharCode(index)),'é','😀','\u2028','\u2029','a"\\\n\u0000'];
+function addLiteralCase(schema,value,path=[]){
+ let actual=build(schema),wrapped=value;
+ for(const key of [...path].reverse()){actual=z.object({[key]:actual});wrapped={[key]:wrapped};}
+ const parsed=validator.parse(actual,wrapped);cases.push({schema,path,...(value===undefined?{}:Object.is(value,-0)?{raw:'-0'}:{value})});
+ if(parsed.ok){let output=parsed.value;for(const key of path)output=output[key];expected.push(output===undefined?{ok:true,absent:true}:{ok:true,absent:false,value:tag(output)});}
+ else expected.push(JSON.parse(JSON.stringify(parsed)));
+}
+for(const value of literalValues){const spec=literal(value);for(const input of [...values,...literalValues.filter(value=>typeof value!=='number'||Number.isFinite(value))])addLiteralCase(spec,input);
+ for(const input of [undefined,false,'other',{outer:false}])addLiteralCase(union(spec,{kind:'string',checks:[{name:'min',argument:10}]}),input,['body']);
+}
+for(const members of [[],[['a','x']],[['a','x'],['b','y']],[['a',1],['b','1'],['c',false]],[['a','same'],['b','same']],[['2','two'],['1','one'],['z','zee']],[['a',NaN],['b',Infinity],['c',-0]]]){
+ const record=Object.fromEntries(members),actual=validator.enum_(record);
+ const lowered=union(...Object.values(record).map(literal));
+ for(const value of values){const parsed=validator.parse(actual,value);cases.push({schema:lowered,...(value===undefined?{}:{value})});expected.push(parsed.ok?(parsed.value===undefined?{ok:true,absent:true}:{ok:true,absent:false,value:tag(parsed.value)}):JSON.parse(JSON.stringify(parsed)));}
+}
+for(const expectedValue of [-0,0,9007199254740992,18446744073709551616])for(const raw of ['-0','0','9007199254740993','18446744073709551615']){
+ const schema=literal(expectedValue),parsed=validator.parse(build(schema),JSON.parse(raw));cases.push({schema,raw});expected.push(parsed.ok?{ok:true,absent:false,value:tag(parsed.value)}:JSON.parse(JSON.stringify(parsed)));
 }
 // Raw numeric JSON preserves -0 and unsafe integer spelling until the native
 // evaluator normalizes it. Compare IEEE tags, never JSON.stringify(number).
