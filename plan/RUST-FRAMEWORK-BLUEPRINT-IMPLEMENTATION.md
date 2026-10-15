@@ -3178,3 +3178,20 @@ module layout only. Final proof includes coherent billing auth/router drafts,
 excludes later CORS/raw-path integration. CI adds the actual oracle and existing
 focused PG includes new cases. No dependencies changed. Broader auth gates remain
 open; checklist660/682 unchanged.
+
+
+### 2026-10-15 — CORS delegates integrated and workspace cleaned
+
+The previously frozen CORS implementation is now integrated as4c71cb5d5. All7
+committed source hashes match its source manifest; the shared router file was
+staged selectively so concurrent billing auth/raw-path drafts remain unstaged.
+Existing isolated native8/live64/strictfull22.68s/minimal27.67s/static810 evidence
+is retained as described above. Billing's final coherent graph validation will
+also run the8 CORS tests; this receipt does not claim that pending run completed.
+CI now executes the live delegate comparison as well as static CORS regression.
+
+Removed only the completed CORS worktree after exactfb1aa08a0 HEAD, clean status,
+all7 source hashes and zero owned processes were verified. Cleanup receipt
+`/private/tmp/fl-cors-delegate-cleanup.json`:4247 regular files,45,577,931 logical
+bytes. The branch, manifest and proof logs remain. Broader CORS/route/error gates
+remain open; checklist660/682 unchanged.

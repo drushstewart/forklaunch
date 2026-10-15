@@ -47,6 +47,7 @@ on:
       - 'cli/tests/rust_router_origin_parity.mjs'
       - 'cli/tests/rust_correlation_parity.mjs'
       - 'cli/tests/rust_cors_parity.mjs'
+      - 'cli/tests/typescript_cors_origin_delegate_http.mjs'
       - 'cli/tests/rust_json_request_parity.mjs'
       - 'cli/tests/rust_request_order_parity.mjs'
       - 'cli/tests/rust_request_transform_parity.mjs'
@@ -514,6 +515,7 @@ on:
       - 'cli/tests/rust_router_origin_parity.mjs'
       - 'cli/tests/rust_correlation_parity.mjs'
       - 'cli/tests/rust_cors_parity.mjs'
+      - 'cli/tests/typescript_cors_origin_delegate_http.mjs'
       - 'cli/tests/rust_json_request_parity.mjs'
       - 'cli/tests/rust_request_order_parity.mjs'
       - 'cli/tests/rust_request_transform_parity.mjs'
@@ -1074,6 +1076,10 @@ jobs:
       - run: node cli/tests/rust_cors_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/typescript_cors_origin_delegate_http.mjs
+        env:
+          FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_CORS_DELEGATE_NATIVE: '1'
       - run: node cli/tests/rust_json_request_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
