@@ -11159,3 +11159,37 @@ Receipt: `/private/tmp/fl-oct15-licensed-checkpoint.json`; generation log:
 workspaces were removed after process/open-file and retained-archive hash checks,
 reclaiming185,515,249 logical file bytes (no physical APFS claim). The archive and
 logs remain. This does not change runtime format semantics or close a broad gate.
+
+
+### 2026-10-15 — Expanded immutable runtime checkpoint
+
+Exact committed snapshot `69cee669b4a2904e4a6f626d0c0732ab7b9485dd` passed
+CLI packaging/installation from an archive, portable services/all four workers,
+OpenAPI/AsyncAPI export, contract regeneration, strict generated TypeScript/Rust
+consumers and native SDK generators. Live HTTP/MCP initialization, discovery,
+health invocation and Origin rejection pass with shared/separate/disabled/custom
+listeners, explicit/ephemeral ports, TypeScript +2000 fallback, atomic startup
+rejection and graceful shutdown. All five generated capability callbacks pass
+actual TypeScript signature checks, forgery/staleness/replay rejection and event
+redelivery. Packaged IAM passes220 tests/3 ignored in168.41s; PostgreSQL proof is
+separate and is not claimed by this packaged suite.
+
+The snapshot includes the committed raw date/duration/time/datetime/IP/emoji/JWT
+formats, credential policy, fresh organization clocks and Subscription surfaces.
+It predates Portal local expiration, current organization scalar policy, and regex
+integration. Its Unicode data/license template omission was discovered by expanded
+checks and fixed separately in `f2b306269`; the preceding receipt proves corrected
+package/install/generation provenance. This runtime pass does not erase that
+known older-archive packaging defect or imply a full runtime rerun of the fix.
+
+Archive2,889 regular files, SHA256
+`59d5ef01b7141a8cb008bfce6a57c07c72ef197fb5c573500df190dc8b35b4de`;
+all extracted source bytes verified before/after runtime. Retained under
+`cli/target/parity-artifacts/forklaunch-69cee669b-59d5ef01.crate`.
+Receipt `/private/tmp/fl-oct15-expanded-checkpoint.json`, runtime log
+`/private/tmp/fl-oct15-expanded-runtime.log`. CLI package/install is offline/locked;
+generated runtime dependency resolution is a separate fresh graph, not an
+all-offline/locked claim. Exact owned workspaces were cleaned after active-process,
+open-file and archive-integrity checks:215,137,127 logical file bytes removed,
+without a physical APFS space claim. No public registry or cloud deployment ran.
+No broad gate closes; checklist remains660/682(96.8%).
