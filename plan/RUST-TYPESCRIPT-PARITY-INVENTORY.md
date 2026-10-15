@@ -11626,3 +11626,8 @@ Scoped formatting/diff checks and owned database/role cleanup pass. Logs use
 wrapper-final,regression,units-final,clippy-final,minimal,artifacts-final,cleanup.
 CI runs the direct-executable wrapper so SDK compilation does not hold Cargo's
 outer test lock. Broader billing/reconciliation gates remain open;660/682 unchanged.
+
+The committed runtime-format worktree was removed after confirming its exact
+HEAD, clean state, nine integrated source hashes and zero active/open paths.
+Proof branch and external logs/manifests remain;4,176 regular files totaling
+44,720,196 logical bytes were removed. Receipt: `/private/tmp/fl-runtime-formats-cleanup.json`.
