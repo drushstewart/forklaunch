@@ -18,26 +18,49 @@ pub struct EmailVerificationPolicy {
 /// Signup can succeed without granting an authenticated session.
 pub enum SignupOutcome {
     Authenticated(AuthGrant),
-    VerificationRequired { user: Value },
+    VerificationRequired {
+        user: Value,
+    },
+    /// Signup auto-signin was disabled independently of verification.
+    Unauthenticated {
+        user: Value,
+    },
 }
 impl SignupOutcome {
     #[must_use]
     pub fn body(&self) -> Value {
         match self {
             Self::Authenticated(grant) => grant.signup_body(),
-            Self::VerificationRequired { user } => json!({"token":null,"user":user}),
+            Self::VerificationRequired { user } | Self::Unauthenticated { user } => {
+                json!({"token":null,"user":user})
+            }
         }
     }
 }
 pub(super) fn required() -> BlueprintError {
     BlueprintError::new("EMAIL_NOT_VERIFIED", "Email not verified")
 }
-pub(super) fn synthetic(user: &Value) -> SignupOutcome {
-    let mut user = public_user(user);
-    if user.get("image").is_none() {
-        user["image"] = Value::Null;
+pub(super) fn signup_disabled() -> BlueprintError {
+    BlueprintError::new(
+        "SIGNUP_SESSION_DISABLED",
+        "Use the signup outcome API when signup auto-signin is disabled",
+    )
+}
+pub(super) fn without_session(user: Value, required: bool) -> SignupOutcome {
+    if required {
+        SignupOutcome::VerificationRequired { user }
+    } else {
+        SignupOutcome::Unauthenticated { user }
     }
-    SignupOutcome::VerificationRequired { user }
+}
+pub(super) fn synthetic(user: &Value, required: bool) -> SignupOutcome {
+    let mut user = public_user(user);
+    for field in ["image", "phoneNumber"] {
+        if user.get(field).is_none() {
+            user[field] = Value::Null;
+        }
+    }
+    without_session(user, required)
 }
 #[cfg(feature = "http")]
 pub(crate) struct Delivery {
@@ -47,13 +70,23 @@ pub(crate) struct Delivery {
     pub secret: Zeroizing<Vec<u8>>,
 }
 impl<S: AuthStore> CredentialService<S> {
+    /// Controls session issuance only for signup. Subsequent signin is unaffected.
+    #[must_use]
+    pub fn with_signup_auto_sign_in(mut self, enabled: bool) -> Self {
+        self.signup_auto_sign_in = enabled;
+        self
+    }
+    pub(super) fn skip_signup_session(&self) -> bool {
+        !self.signup_auto_sign_in || self.verification_policy.require
+    }
     #[must_use]
     pub fn with_email_verification_policy(mut self, policy: EmailVerificationPolicy) -> Self {
         self.verification_policy = policy;
         self
     }
-    /// Creates an atomic account with an explicit no-session result when required.
-    /// Legacy `sign_up` rejects required-policy use before any effects.
+    /// Creates an atomic account with an explicit no-session result when verification
+    /// is required or signup auto-signin is disabled. Legacy `sign_up` rejects
+    /// either no-session configuration before any effects.
     /// # Errors
     /// Returns credential, callback preparation or persistence failures.
     pub async fn sign_up_outcome(
@@ -194,3 +227,6 @@ pub(crate) mod tests {
 
 #[cfg(all(test, feature = "http"))]
 pub(crate) mod tests_async;
+
+#[cfg(test)]
+pub(crate) mod tests_auto;

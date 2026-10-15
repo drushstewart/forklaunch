@@ -85,6 +85,7 @@ pub struct CredentialService<S> {
     store: Arc<S>,
     workers: Arc<Semaphore>,
     verification_policy: EmailVerificationPolicy,
+    signup_auto_sign_in: bool,
     #[cfg(feature = "http")]
     pub(crate) verification_delivery: Option<verification_policy::Delivery>,
 }
@@ -97,6 +98,7 @@ impl<S: AuthStore> CredentialService<S> {
         Self {
             store,
             verification_policy: EmailVerificationPolicy::default(),
+            signup_auto_sign_in: true,
             #[cfg(feature = "http")]
             verification_delivery: None,
             workers: WORKERS.get_or_init(|| Arc::new(Semaphore::new(4))).clone(),
@@ -130,12 +132,16 @@ impl<S: AuthStore> CredentialService<S> {
         if self.verification_policy.require {
             return Err(verification_policy::required());
         }
+        if !self.signup_auto_sign_in {
+            return Err(verification_policy::signup_disabled());
+        }
         match self
             .signup_outcome_with_fields(input, fields, ip, agent, now, "")
             .await?
         {
             SignupOutcome::Authenticated(grant) => Ok(grant),
             SignupOutcome::VerificationRequired { .. } => Err(verification_policy::required()),
+            SignupOutcome::Unauthenticated { .. } => Err(verification_policy::signup_disabled()),
         }
     }
 
@@ -155,7 +161,7 @@ impl<S: AuthStore> CredentialService<S> {
         let mut tx = self.store.begin(false).await?;
         let exists = find_email(&mut tx, &email).await?.is_some();
         tx.commit().await?;
-        if exists && !self.verification_policy.require {
+        if exists && !self.skip_signup_session() {
             return Err(duplicate());
         }
         let password = Zeroizing::new(input.password);
@@ -180,7 +186,10 @@ impl<S: AuthStore> CredentialService<S> {
             }
         }
         if exists {
-            return Ok(verification_policy::synthetic(&user));
+            return Ok(verification_policy::synthetic(
+                &user,
+                self.verification_policy.require,
+            ));
         }
         if self
             .verification_policy
@@ -192,8 +201,11 @@ impl<S: AuthStore> CredentialService<S> {
         }
         let mut tx = self.store.begin(true).await?;
         if find_email(&mut tx, &email).await?.is_some() {
-            return if self.verification_policy.require {
-                Ok(verification_policy::synthetic(&user))
+            return if self.skip_signup_session() {
+                Ok(verification_policy::synthetic(
+                    &user,
+                    self.verification_policy.require,
+                ))
             } else {
                 Err(duplicate())
             };
@@ -211,11 +223,12 @@ impl<S: AuthStore> CredentialService<S> {
                 ))
             })?;
         tx.insert(Model::Account,json!({"id":uuid::Uuid::new_v4().to_string(),"userId":id,"accountId":id,"providerId":"credential","password":hash,"createdAt":timestamp,"updatedAt":timestamp})).await?;
-        if self.verification_policy.require {
+        if self.skip_signup_session() {
             tx.commit().await?;
-            return Ok(SignupOutcome::VerificationRequired {
-                user: public_user(&user),
-            });
+            return Ok(verification_policy::without_session(
+                public_user(&user),
+                self.verification_policy.require,
+            ));
         }
         let session = new_session(&id, ip, agent, now)?;
         tx.insert(Model::Session, session.clone()).await?;

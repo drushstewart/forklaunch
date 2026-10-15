@@ -358,3 +358,24 @@ fullIAM198pass/3ignored and strict full/minimal Clippy pass. Frozen11 manifest
 {actual,native,pg,full,clippy,minimal-clippy}.log. Existing metadata already admits
 nullable signup token and403; no new Cookie/JWT on denied paths. Broad660/682
 (96.8%),22open unchanged.
+
+
+### Independent signup auto-signin option (2026-10-14)
+
+Trusted with_signup_auto_sign_in(false) on AuthHttp/CredentialService suppresses
+signup sessions independently of verification requirements; defaulttrue preserves
+existing behavior. New SignupOutcome::Unauthenticated returns token:null/no cookie,
+with generic duplicate submitted-profile privacy; later signin remains enabled.
+Verification sending fallback still depends on require, not auto-signin. Synthetic
+configured public output fills absent image/phoneNumber:null. Legacy sign_up fails
+before effects when no AuthGrant can be issued. New enum variant requires exhaustive
+consumer matches to adapt; existing variants/default methods remain available.
+Actual5,focused3(43.92s),affectedpolicy5(53.27s),restrictedPG1(83.36s) and strict
+allfeature/alltarget+minimal Clippy pass. Concurrent duplicates yield one account,
+zero sessions; owned roles/records/audits0. Frozen9 manifest
+/private/tmp/fl-signup-auto-signin-freeze.json verified (manifest SHA256
+f08f68d890ab363fd0e813b4c01f24575baa55e62870e45736171d278e08253d).
+Logs /private/tmp/fl-signup-auto-signin-{actual,native,regression,pg,clippy,
+minimal-clippy}.log. Existing nullable token metadata adequate; prospective-user
+callback boundary and broaderhooks remain as previously documented. No fullIAM
+rerun claimed for this slice (affected5 and focused3 used).660/682(96.8%),22open.

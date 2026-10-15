@@ -1714,5 +1714,21 @@ For direct services, install the same policy with
 handle `SignupOutcome::VerificationRequired`. Legacy `sign_up` rejects required
 policy before side effects because its return type requires an authenticated grant.
 Email verification is a service configuration, not a global user login prohibition.
-Independent `autoSignIn:false`, custom synthetic-user/existing-user hooks, social
+Independent custom synthetic-user/existing-user hooks, social
 policy and verification before/after hooks remain separate capabilities.
+
+`AuthHttp::with_signup_auto_sign_in(false)` and the corresponding direct
+`CredentialService` builder suppress only signup session issuance. The default is
+true. New and duplicate signup return `token:null` without authentication cookies;
+subsequent correct-password signin remains enabled unless verification policy
+independently requires an already-verified address. Disabling signup auto-signin
+does not turn on verification delivery: its default still follows `require`.
+Required verification takes precedence over auto-signin true.
+
+`sign_up_outcome` returns the new `SignupOutcome::Unauthenticated { user }` variant
+for this independent no-session option; existing `VerificationRequired` is retained.
+Consumers exhaustively matching the public enum must add the new variant. The legacy
+`sign_up` API returns `SIGNUP_SESSION_DISABLED` before effects when auto-signin is
+false (or `EMAIL_NOT_VERIFIED` if required verification also applies). Required and
+auto-signin-disabled duplicate signup share the existing synthetic-profile privacy,
+password hashing, callback ordering and final uniqueness/atomicity rules.

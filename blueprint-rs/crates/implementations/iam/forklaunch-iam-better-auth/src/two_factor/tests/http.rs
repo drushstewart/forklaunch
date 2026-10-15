@@ -2145,3 +2145,74 @@ async fn http_verification_policy_signup_signin_delivery_matrix() {
         );
     }
 }
+
+#[tokio::test]
+async fn http_signup_auto_sign_in_policy_matrix() {
+    use crate::accounts::{
+        EmailVerificationDelivery, EmailVerificationDeliveryContext, EmailVerificationPolicy,
+    };
+    #[derive(Default)]
+    struct Hook(std::sync::atomic::AtomicUsize);
+    impl EmailVerificationDelivery for Hook {
+        fn prepare(
+            &self,
+            _: EmailVerificationDeliveryContext,
+        ) -> BlueprintResult<crate::background::DeliveryFuture> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(Box::pin(async { Ok(()) }))
+        }
+    }
+    for (auto, require, send, expected_sends) in [
+        (false, false, None, 0),
+        (false, false, Some(true), 1),
+        (false, true, None, 1),
+        (true, true, Some(false), 0),
+        (true, false, None, 0),
+    ] {
+        let hook = Arc::new(Hook::default());
+        let mut browser = Browser {
+            router: AuthHttp::new(
+                Arc::new(MemoryAuthStore::default()),
+                "http://auth.fixture.test".into(),
+                vec![42; 32],
+                vec![],
+            )
+            .unwrap()
+            .with_rate_limiting(false)
+            .with_email_verification_delivery(hook.clone())
+            .with_signup_auto_sign_in(auto)
+            .with_email_verification_policy(EmailVerificationPolicy {
+                require,
+                send_on_signup: send,
+                send_on_signin: false,
+            })
+            .router(),
+            jar: BTreeMap::new(),
+            origin: "http://auth.fixture.test".into(),
+        };
+        let input = json!({"name":"Original","firstName":"First","lastName":"Last","email":"auto-http@example.test","password":"owned-auto-password"});
+        let (status, first, headers) = browser.call("/sign-up/email", Some(input.clone())).await;
+        assert_eq!(status, 200);
+        assert_eq!(first["token"].is_null(), !auto || require);
+        if !auto || require {
+            assert!(!headers.contains_key("set-cookie"));
+            assert!(!headers.contains_key("set-auth-jwt"));
+        }
+        let mut changed = input.clone();
+        changed["name"] = json!("Submitted");
+        let (status, second, _) = browser.call("/sign-up/email", Some(changed)).await;
+        assert_eq!(status, if !auto || require { 200 } else { 422 });
+        if !auto || require {
+            assert_eq!(second["user"]["name"], "Submitted");
+            assert_ne!(first["user"]["id"], second["user"]["id"]);
+        }
+        assert_eq!(
+            hook.0.load(std::sync::atomic::Ordering::SeqCst),
+            expected_sends
+        );
+        assert_eq!(
+            browser.call("/sign-in/email", Some(input)).await.0,
+            if require { 403 } else { 200 }
+        );
+    }
+}

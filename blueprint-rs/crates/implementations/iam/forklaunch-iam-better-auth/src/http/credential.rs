@@ -18,7 +18,8 @@ pub(super) async fn login<S: AuthStore + 'static>(
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
     let mut service = CredentialService::new(app.store.clone())
-        .with_email_verification_policy(app.email_verification_policy);
+        .with_email_verification_policy(app.email_verification_policy)
+        .with_signup_auto_sign_in(app.signup_auto_sign_in);
     if let Some(hook) = &app.email_verification_delivery {
         service.verification_delivery = Some(crate::accounts::verification_policy::Delivery {
             hook: hook.clone(),
@@ -51,7 +52,8 @@ pub(super) async fn login<S: AuthStore + 'static>(
             .await?
         {
             crate::accounts::SignupOutcome::Authenticated(grant) => grant,
-            outcome @ crate::accounts::SignupOutcome::VerificationRequired { .. } => {
+            outcome @ (crate::accounts::SignupOutcome::VerificationRequired { .. }
+            | crate::accounts::SignupOutcome::Unauthenticated { .. }) => {
                 let mut body = outcome.body();
                 if app.two_factor.is_some() {
                     super::two_factor::user_default(&mut body);
@@ -286,6 +288,12 @@ pub(super) async fn public<S: AuthStore + 'static>(
 }
 
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Disables automatic signup sessions without disabling later password signin.
+    #[must_use]
+    pub fn with_signup_auto_sign_in(mut self, enabled: bool) -> Self {
+        self.signup_auto_sign_in = enabled;
+        self
+    }
     /// Installs trusted email/password verification policy, independent of manual delivery.
     #[must_use]
     pub fn with_email_verification_policy(

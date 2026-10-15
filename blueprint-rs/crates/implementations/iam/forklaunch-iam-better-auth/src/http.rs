@@ -56,6 +56,8 @@ mod two_factor;
 
 /// Trusted, tenant-bound dependencies. Requests cannot select storage tenants,
 /// signing secrets, clocks or JWT issuer/audience through headers/body fields.
+// Independent trusted options; these flags do not encode mutually exclusive states.
+#[allow(clippy::struct_excessive_bools)]
 pub struct AuthHttp<S> {
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
@@ -63,6 +65,7 @@ pub struct AuthHttp<S> {
     two_factor: Option<Arc<crate::two_factor::TwoFactorService<S>>>,
     background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     otp_background_override: bool,
+    signup_auto_sign_in: bool,
     email_verification_policy: crate::accounts::EmailVerificationPolicy,
     email_verification_delivery: Option<Arc<dyn crate::accounts::EmailVerificationDelivery>>,
     password_reset_delivery: Option<Arc<dyn crate::accounts::PasswordResetDelivery>>,
@@ -133,6 +136,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             two_factor: None,
             background_dispatcher: None,
             otp_background_override: false,
+            signup_auto_sign_in: true,
             email_verification_policy: crate::accounts::EmailVerificationPolicy::default(),
             email_verification_delivery: None,
             password_reset_delivery: None,
