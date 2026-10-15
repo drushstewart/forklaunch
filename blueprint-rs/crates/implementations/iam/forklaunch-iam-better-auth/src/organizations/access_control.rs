@@ -39,6 +39,9 @@ impl OrganizationAccessControl {
     pub(super) fn roles(&self) -> OrganizationRoles {
         self.0.roles.clone()
     }
+    pub(super) fn role_statements(&self, name: &str) -> Option<&OrganizationStatements> {
+        self.0.roles.get(name)
+    }
     pub(super) fn predefined(&self, name: &str) -> bool {
         self.0.roles.contains_key(name)
     }

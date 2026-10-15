@@ -19,7 +19,7 @@ fn configured() -> OrganizationAccessControl {
         json!({"boss":full(),"reader":{"project":["read"]}}),
     )
 }
-async fn fixture<S: AuthStore>(store: &S, label: &str, role: &str) -> Fixture {
+pub(super) async fn fixture<S: AuthStore>(store: &S, label: &str, role: &str) -> Fixture {
     let f = seed(store, &format!("access-{label}")).await;
     let mut tx = store.begin(true).await.unwrap();
     tx.delete(Model::OrganizationRole, &format!("{}-grant", f.org))
@@ -35,7 +35,13 @@ async fn fixture<S: AuthStore>(store: &S, label: &str, role: &str) -> Fixture {
     tx.commit().await.unwrap();
     f
 }
-async fn grant<S: AuthStore>(store: &S, f: &Fixture, id: &str, role: &str, permission: &str) {
+pub(super) async fn grant<S: AuthStore>(
+    store: &S,
+    f: &Fixture,
+    id: &str,
+    role: &str,
+    permission: &str,
+) {
     let mut tx = store.begin(true).await.unwrap();
     tx.insert(Model::OrganizationRole,json!({"id":format!("{}-{id}",f.org),"organizationId":f.org,"role":role,"permission":permission})).await.unwrap();
     tx.commit().await.unwrap();
@@ -178,7 +184,7 @@ pub(crate) async fn exercise<S: AuthStore + 'static>(store: Arc<S>) {
     );
     prototypes(store.clone()).await;
     dynamic_prototypes(store.clone()).await;
-    lifecycle(store.clone()).await;
+    lifecycle(store.clone(), None).await;
     // Dynamic grants remain scoped and limited to the actual first-100 window.
     let f = fixture(store.as_ref(), "window", "boss").await;
     let svc = OrganizationService::new(store.clone())
@@ -227,9 +233,22 @@ pub(crate) async fn exercise<S: AuthStore + 'static>(store: Arc<S>) {
     http(store).await;
 }
 #[allow(clippy::too_many_lines)]
-async fn lifecycle<S: AuthStore + 'static>(store: Arc<S>) {
-    let f = fixture(store.as_ref(), "lifecycle", "boss").await;
+pub(super) async fn lifecycle<S: AuthStore + 'static>(
+    store: Arc<S>,
+    registry: Option<crate::organizations::OrganizationRoleAuthorizers>,
+) {
+    let label = if registry.is_some() {
+        "authorizer-lifecycle"
+    } else {
+        "lifecycle"
+    };
+    let f = fixture(store.as_ref(), label, "boss").await;
     let svc = OrganizationService::new(store.clone()).with_access_control(configured());
+    let svc = if let Some(registry) = registry {
+        svc.with_role_authorizers(registry)
+    } else {
+        svc
+    };
     let base = json!({"organizationId":f.org,"role":"fresh","permission":{"project":["read"]}});
     let created = svc
         .create_organization_role(&f.owner_token, false, &base, f.now)

@@ -196,7 +196,7 @@ fn trim(value: &str) -> &str {
     value.trim_matches(|c: char| c == '\u{feff}' || c.is_whitespace() && c != '\u{85}')
 }
 async fn authorize<T: AuthTransaction>(
-    config: &crate::organizations::OrganizationAccessControl,
+    config: &crate::organizations::Authorization,
     tx: &mut T,
     org: &str,
     user: &str,

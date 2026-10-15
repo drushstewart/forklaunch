@@ -78,7 +78,7 @@ impl<S: AuthStore> OrganizationService<S> {
     }
 }
 async fn authorized_team<T: AuthTransaction>(
-    config: &crate::organizations::OrganizationAccessControl,
+    config: &crate::organizations::Authorization,
     tx: &mut T,
     view: &SessionView,
     body: &Value,

@@ -110,7 +110,7 @@ pub(super) fn check_predefined(
     }
 }
 pub(super) async fn check_permissions<T: AuthTransaction>(
-    config: &crate::organizations::OrganizationAccessControl,
+    config: &crate::organizations::Authorization,
     tx: &mut T,
     org: &str,
     role: &str,

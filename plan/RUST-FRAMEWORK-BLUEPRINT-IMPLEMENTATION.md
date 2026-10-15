@@ -2984,3 +2984,33 @@ All9 paths match `/private/tmp/fl-payment-link-update-final.json` SHA256
 `39b0087e9a2bfd3ddf9c91787d5e2628472aabf6ab75b0304bb983f94e3b7344`.
 Logs use `/private/tmp/fl-payment-link-update-`. No dependency changes. Remaining
 request coercion and broader billing gates stay open. Checklist660/682 unchanged.
+
+
+### 2026-10-15: Trusted synchronous organization role authorizers
+
+OrganizationRoleAuthorizers binds exact own-role callbacks to an immutable access
+control snapshot. Installation replaces that snapshot; a later with_access_control
+replaces roles and clears callbacks. Typed synchronous callbacks receive borrowed
+role/statements/admitted permissions, return Result<bool>, preserve role order and
+short-circuiting, and suppress declarative fallback on false. Stored dynamic roles
+replace matching callbacks. Creator bypass and malformed stored-grant ordering
+remain unchanged. Callback errors become sanitized empty500. The callback request
+removes __proto__ as actual Zod admission does; an entries helper exposes JS own-key
+order. Declarative config retains its Eq/Debug API. Arbitrary JS receivers, invalid
+return shapes, asynchronous scheduling and panic isolation are not claimed.
+
+Actual fixture16 includes15 admitted cases and1 nondeclared undefined-return
+observation. Final coherent-source organization13 (1 ignored) and focused restricted
+PostgreSQL1 pass0.29s/16.09s, including prior declarative and callback lifecycles.
+Full/minimal all-target strict Clippy passes19.01s/12.99s. The initial organization
+run was preliminary because array integration and a callback admission correction
+followed it; final tests include both. Only a redundant must_use attribute was
+removed after final tests, with strict checks on final source. All owned database,
+audit/index and role cleanup counts are0.
+
+All18 paths match `/private/tmp/fl-org-authorizers-freeze.json` SHA256
+`d4aec2b0e1ad8b6ff5763519e1cc30e1ec744f8ec22d0fdb80827b8a52f32c00`.
+Logs use `/private/tmp/fl-org-authorizers-`; CI adds the actual oracle and existing
+focused PG exercises the new cases. No dependencies changed. Remaining async
+organization policies, topology/schema/hooks and broader Better Auth gates stay
+open. Checklist660/682 unchanged.

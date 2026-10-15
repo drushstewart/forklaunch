@@ -77,7 +77,7 @@ pub struct AuthHttp<S> {
     team_policy: crate::organizations::TeamPolicy,
     organization_controls: crate::organizations::OrganizationControls,
     creator_role: crate::organizations::CreatorRole,
-    access_control: crate::organizations::OrganizationAccessControl,
+    access_control: crate::organizations::Authorization,
     invitation_delivery: Option<Arc<dyn crate::organizations::InvitationEmailDelivery>>,
     cancel_pending_invitations_on_reinvite: bool,
     store: Arc<S>,
@@ -133,13 +133,23 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self
     }
 
-    /// Replaces the trusted organization resource catalog and static roles.
+    /// Replaces organization catalog/static roles and clears custom authorizers.
     #[must_use]
     pub fn with_access_control(
         mut self,
         policy: crate::organizations::OrganizationAccessControl,
     ) -> Self {
-        self.access_control = policy;
+        self.access_control = policy.into();
+        self
+    }
+    /// Installs the bound organization policy and trusted synchronous role callbacks.
+    /// A later `with_access_control` replaces both roles and overrides.
+    #[must_use]
+    pub fn with_role_authorizers(
+        mut self,
+        registry: crate::organizations::OrganizationRoleAuthorizers,
+    ) -> Self {
+        self.access_control = registry.into();
         self
     }
     /// Installs trusted creator identity without declaring permission roles.
@@ -246,7 +256,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             team_policy: crate::organizations::TeamPolicy::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),
             creator_role: crate::organizations::CreatorRole::default(),
-            access_control: crate::organizations::OrganizationAccessControl::default(),
+            access_control: crate::organizations::OrganizationAccessControl::default().into(),
             invitation_delivery: None,
             cancel_pending_invitations_on_reinvite: false,
             store,

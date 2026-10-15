@@ -47,7 +47,7 @@ impl Mutation {
     }
 }
 async fn authorize<T: AuthTransaction>(
-    config: &crate::organizations::OrganizationAccessControl,
+    config: &crate::organizations::Authorization,
     tx: &mut T,
     view: &SessionView,
     id: &str,

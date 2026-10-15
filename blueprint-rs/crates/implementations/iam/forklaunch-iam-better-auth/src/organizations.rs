@@ -12,6 +12,11 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 mod access_control;
+mod authorizers;
+pub(crate) use authorizers::Authorization;
+pub use authorizers::{
+    OrganizationAuthorizationRequest, OrganizationRoleAuthorizer, OrganizationRoleAuthorizers,
+};
 mod create;
 pub use access_control::{OrganizationAccessControl, OrganizationRoles, OrganizationStatements};
 mod delivery;
@@ -44,7 +49,7 @@ pub struct OrganizationService<S> {
     team_policy: TeamPolicy,
     controls: OrganizationControls,
     creator_role: CreatorRole,
-    access_control: OrganizationAccessControl,
+    access_control: Authorization,
     invitation_delivery: Option<Arc<dyn InvitationEmailDelivery>>,
     background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     cancel_pending_invitations_on_reinvite: bool,
@@ -89,9 +94,21 @@ impl<S: AuthStore> OrganizationService<S> {
         self
     }
 
-    /// Replaces the trusted resource catalog and static role map.
+    /// Replaces the trusted resource catalog/static roles and clears custom authorizers.
     #[must_use]
     pub fn with_access_control(mut self, policy: OrganizationAccessControl) -> Self {
+        self.access_control = policy.into();
+        self
+    }
+    /// Installs bound static roles and synchronous overrides as one policy snapshot.
+    /// A later `with_access_control` replaces the snapshot and clears the overrides.
+    #[must_use]
+    pub fn with_role_authorizers(mut self, registry: OrganizationRoleAuthorizers) -> Self {
+        self.access_control = registry.into();
+        self
+    }
+    #[cfg(feature = "http")]
+    pub(crate) fn with_authorization(mut self, policy: Authorization) -> Self {
         self.access_control = policy;
         self
     }
@@ -142,7 +159,7 @@ impl<S: AuthStore> OrganizationService<S> {
             team_policy: TeamPolicy::default(),
             controls: OrganizationControls::default(),
             creator_role: CreatorRole::default(),
-            access_control: OrganizationAccessControl::default(),
+            access_control: OrganizationAccessControl::default().into(),
             invitation_delivery: None,
             background_dispatcher: None,
             cancel_pending_invitations_on_reinvite: false,

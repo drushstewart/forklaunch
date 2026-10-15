@@ -209,3 +209,5 @@ pub(crate) mod access_control;
 
 #[cfg(feature = "postgres")]
 pub(crate) mod postgres;
+
+mod authorizers;

@@ -98,7 +98,7 @@ fn scope(explicit: Option<&str>, session: &Value) -> BlueprintResult<String> {
         .ok_or_else(|| BlueprintError::new("NO_ACTIVE_ORGANIZATION", "No active organization"))
 }
 async fn authorize<T: AuthTransaction>(
-    config: &crate::organizations::OrganizationAccessControl,
+    config: &crate::organizations::Authorization,
     tx: &mut T,
     org: &str,
     user: &str,

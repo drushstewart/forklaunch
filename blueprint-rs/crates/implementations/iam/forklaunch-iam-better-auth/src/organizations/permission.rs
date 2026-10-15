@@ -7,7 +7,7 @@ mod grants;
 use grants::{Actions, Grants};
 type Statements = BTreeMap<String, Vec<String>>;
 pub(super) async fn allowed<T: AuthTransaction>(
-    config: &super::OrganizationAccessControl,
+    config: &super::Authorization,
     tx: &mut T,
     organization: &str,
     roles: &str,
@@ -16,7 +16,7 @@ pub(super) async fn allowed<T: AuthTransaction>(
     allowed_with_creator(config, tx, organization, roles, requested, None).await
 }
 pub(super) async fn allowed_with_creator<T: AuthTransaction>(
-    config: &super::OrganizationAccessControl,
+    config: &super::Authorization,
     tx: &mut T,
     organization: &str,
     roles: &str,
@@ -41,10 +41,19 @@ pub(super) async fn allowed_with_creator<T: AuthTransaction>(
         return Ok(true);
     }
     for role in roles.split(',') {
-        if let Some(statements) = grants.get(role)?
-            && authorize(statements, requested)?
-        {
-            return Ok(true);
+        if let Some(statements) = grants.get(role)? {
+            let custom = if grants.replaced(role) {
+                None
+            } else {
+                config.custom(role, requested)
+            };
+            let accepted = match custom {
+                Some(result) => result?,
+                None => authorize(statements, requested)?,
+            };
+            if accepted {
+                return Ok(true);
+            }
         }
     }
     Ok(false)

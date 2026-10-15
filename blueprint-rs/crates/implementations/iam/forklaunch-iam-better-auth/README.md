@@ -2108,10 +2108,9 @@ organization/team/member/invitation permission checks share the same immutable
 configuration. HTTP bodies cannot install policy. The separate ForkLaunch
 scoped permission-surfacing service retains its explicit TS platform mapping.
 
-This implements declarative `createAccessControl`/`newRole` statements, not
-arbitrary JavaScript `Role.authorize` overrides. The upstream override is
-synchronous and a stored dynamic row for the same role replaces it with
-`ac.newRole`; a bounded trusted custom-authorizer extension remains separate.
+Declarative `createAccessControl`/`newRole` statements support trusted synchronous
+`Role.authorize` overrides through `OrganizationRoleAuthorizers` below. A stored
+dynamic row for the same role replaces its override with `ac.newRole` behavior.
 Explicit own role/resource keys, including `__proto__`, `constructor`, and
 `toString`, are retained. Permission-record admission strips `__proto__` without
 validating its value, as the pinned Zod record parser does. Absent inherited
@@ -2130,9 +2129,41 @@ Remaining organization option families after these scalar/declarative profiles:
 | Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle | Async policy callbacks |
 | Teams | Default creation toggle, team/seat limits, last-team policy | Plugin route disabling, custom default-team creation, async limits |
 | Invitations | TTL, quota, verification, cancellation, trusted delivery/scheduler | Async quota callback and lifecycle hooks |
-| Access control | Declarative catalog/static roles and persisted dynamic grants | Custom synchronous authorizers and plugin-disable topology |
+| Access control | Declarative catalog/static roles, persisted dynamic grants and trusted synchronous authorizers | Plugin-disable topology and arbitrary JS receiver/return behavior |
 | Lifecycle hooks | Invitation delivery only | Before/after organization, member, invitation, team and team-member hooks |
 | Storage/schema | Fixed configured models and fields, encrypted tenant store | Arbitrary model/field remapping and additional-field schema definitions |
 
 These are remaining capabilities, not exclusions from the requested broader
 Better Auth parity scope.
+
+### Trusted synchronous organization authorizers
+
+`OrganizationRoleAuthorizers::new(control, callbacks)` binds an immutable callback
+registry to an `OrganizationAccessControl` snapshot. Every callback key must be
+an exact own static role name; inherited names are accepted only when explicitly
+declared. Configuration bounds also bound the callback map. Install it using
+`OrganizationService::with_role_authorizers` or `AuthHttp::with_role_authorizers`.
+A later `with_access_control` replaces the catalog/roles and clears overrides;
+installing a registry afterward reinstalls its own bound snapshot.
+
+`OrganizationRoleAuthorizer::authorize` returns `BlueprintResult<bool>` and gets
+an immutable borrowed role name, its original statements and the admitted
+permission request. `entries()` follows JavaScript numeric-index-first resource
+ordering. Callbacks run synchronously during authoritative admission, including
+inside an existing transaction; applications own their execution and must avoid
+blocking transaction reentry. There is no asynchronous scheduling or panic
+isolation. Errors become sanitized empty HTTP 500 responses and do not expose
+application error details. Ordinary denials return false. The registry/context
+have no Debug or serialization implementation.
+
+Role-list order and short-circuiting are preserved, including repeated names.
+Creator bypass occurs after dynamic-grant decoding but before callbacks. Any
+stored dynamic row for a role replaces that role's callback, even if its
+permissions are empty. Other static callbacks remain installed. HTTP request
+bodies cannot install callbacks or replace this trusted configuration.
+
+The typed profile models declared synchronous allow/deny results. Arbitrary
+JavaScript receiver/request mutation, promise or nondeclared return values and
+JavaScript thrown-value/panic equivalence are separate runtime behaviors, not
+claimed by this extension. The existing declarative configuration retains its
+Clone/Debug/PartialEq/Eq API.
