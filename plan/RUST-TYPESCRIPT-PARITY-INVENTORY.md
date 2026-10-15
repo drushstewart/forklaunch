@@ -11968,3 +11968,25 @@ close the broader schema gate. Checklist660/682 is unchanged.
 The clean committed case worktree was removed after exact HEAD,17 integrated
 hashes and zero open paths. `/private/tmp/fl-case-cleanup.json` records4,214 files
 and45,191,355 logical bytes removed; proof branch/receipts and active caches remain.
+
+
+### 2026-10-15: Configured cached billing date coercion
+
+Configured Checkout and PaymentLink reads now normalize their five declared date
+fields before PostgreSQL typed DTO validation, through an additive BillingStore
+hook. Epoch milliseconds and admitted ISO strings preserve chrono extended years;
+optional omission and opaque provider data remain unchanged. Reads do not rewrite
+cached or encrypted bytes. Generic typed reads retain their existing validation.
+Locale-dependent/offsetless strings and JavaScript dates outside chrono's range
+remain explicit unsupported boundaries; non-JSON Date/NaN observations are not
+native parity claims. One existing workspace validation dependency edge was added,
+without version changes.
+
+Actual TypeScript160, native135 shared JSON comparisons (3 tests), restricted
+PostgreSQL HTTP1 with35 date cases, configured369, legacy170 and artifact186 checks
+pass. Full strict Clippy29.09s and minimal3.57s pass; owned database cleanup is0.
+Logs use `/private/tmp/fl-billing-cached-dates-`. All10 frozen paths match
+`/private/tmp/fl-billing-cached-dates-final.json` SHA256
+`715f1416cf521da7625526f9f555c97b00662f27f5afd96299e5ed7bb084d818`.
+CI includes the actual date oracle and existing native read suites. Cache-selected
+lists and broader billing gates remain open. Checklist660/682 is unchanged.

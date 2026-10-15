@@ -14,6 +14,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{future::Future, sync::Arc, time::Duration};
 
+mod cached_dates;
 pub mod memory;
 #[cfg(feature = "postgres")]
 pub mod postgres;
@@ -70,6 +71,23 @@ pub trait BillingStore: Send + Sync {
         kind: BillingKind,
         id: &str,
     ) -> impl Future<Output = BlueprintResult<Option<Value>>> + Send;
+    /// Read the configured Checkout/`PaymentLink` cache DTO date subset without
+    /// rewriting stored data. Generic reads remain unchanged. ISO/epoch values
+    /// use JS millisecond truncation within chrono's representable range;
+    /// locale/offsetless date strings are explicitly unsupported.
+    fn get_configured_cached(
+        &self,
+        kind: BillingKind,
+        id: &str,
+    ) -> impl Future<Output = BlueprintResult<Option<Value>>> + Send {
+        async move {
+            cached_dates::ensure_kind(kind)?;
+            self.get(Scope::Cache, kind, id)
+                .await?
+                .map(|data| cached_dates::normalize(kind, data))
+                .transpose()
+        }
+    }
     fn patch(
         &self,
         scope: Scope,

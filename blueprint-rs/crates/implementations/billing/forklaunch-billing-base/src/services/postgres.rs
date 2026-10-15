@@ -39,6 +39,10 @@ use forklaunch_core::persistence::{
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::{sync::Arc, time::Duration};
+enum DecodeProfile<'a> {
+    Legacy(&'a str),
+    ConfiguredCached,
+}
 #[derive(Clone)]
 pub struct PostgresBillingStore {
     pool: PgPool,
@@ -161,8 +165,20 @@ impl PostgresBillingStore {
         scope: Scope,
         kind: BillingKind,
         id: &str,
-        mut data: Value,
+        data: Value,
         operation: &str,
+    ) -> BlueprintResult<Value> {
+        self.decode_profile(tx, scope, kind, id, data, DecodeProfile::Legacy(operation))
+            .await
+    }
+    async fn decode_profile(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        scope: Scope,
+        kind: BillingKind,
+        id: &str,
+        mut data: Value,
+        profile: DecodeProfile<'_>,
     ) -> BlueprintResult<Value> {
         if data["id"].as_str() != Some(id) {
             return Err(storage_error());
@@ -188,7 +204,14 @@ impl PostgresBillingStore {
                 sensitive = true;
             }
         }
+        if matches!(&profile, DecodeProfile::ConfiguredCached) {
+            data = super::cached_dates::normalize(kind, data)?;
+        }
         validate_record(kind, &data).map_err(|_| storage_error())?;
+        let operation = match profile {
+            DecodeProfile::Legacy(operation) => operation,
+            DecodeProfile::ConfiguredCached => "get_configured_cached",
+        };
         if sensitive {
             sqlx::query("INSERT INTO fl_billing.sensitive_read_audit(id,tenant_id,scope,kind,record_id,actor_id,correlation_id,operation) VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8)")
                 .bind(uuid::Uuid::new_v4().to_string()).bind(self.tenant.id()).bind(scope.as_str()).bind(kind.as_str()).bind(id).bind(&self.audit.actor_id).bind(&self.audit.correlation_id).bind(operation).execute(&mut **tx).await.map_err(db_error)?;
@@ -252,6 +275,33 @@ impl BillingStore for PostgresBillingStore {
             .bind(self.tenant.id()).bind(scope.as_str()).bind(kind.as_str()).bind(id).fetch_optional(&mut *tx).await.map_err(db_error)?;
         let value = match row {
             Some(row) => Some(self.decode(&mut tx, scope, kind, id, row.0, "get").await?),
+            None => None,
+        };
+        tx.commit().await.map_err(db_error)?;
+        Ok(value)
+    }
+    async fn get_configured_cached(
+        &self,
+        kind: BillingKind,
+        id: &str,
+    ) -> BlueprintResult<Option<Value>> {
+        validate_id(id)?;
+        super::cached_dates::ensure_kind(kind)?;
+        let mut tx = self.transaction().await?;
+        let row: Option<sqlx::types::Json<Value>> = sqlx::query_scalar("SELECT data FROM fl_billing.records WHERE tenant_id=$1 AND scope='cache' AND kind=$2 AND id=$3 AND (expires_at IS NULL OR expires_at>now())")
+            .bind(self.tenant.id()).bind(kind.as_str()).bind(id).fetch_optional(&mut *tx).await.map_err(db_error)?;
+        let value = match row {
+            Some(row) => Some(
+                self.decode_profile(
+                    &mut tx,
+                    Scope::Cache,
+                    kind,
+                    id,
+                    row.0,
+                    DecodeProfile::ConfiguredCached,
+                )
+                .await?,
+            ),
             None => None,
         };
         tx.commit().await.map_err(db_error)?;

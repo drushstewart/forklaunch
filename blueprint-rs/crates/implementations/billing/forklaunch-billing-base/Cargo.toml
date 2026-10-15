@@ -12,6 +12,7 @@ default = []
 postgres = ["dep:forklaunch-core", "dep:sqlx", "dep:tokio", "dep:sha2"]
 
 [dependencies]
+forklaunch-validation = { version = "0.1.0", path = "../../../../../framework-rs/crates/forklaunch-validation" }
 sha2 = { version = "0.10", optional = true }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
 forklaunch-billing-interface = { version = "0.1.0", path = "../../../interfaces/forklaunch-billing-interface" }

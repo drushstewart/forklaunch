@@ -1277,6 +1277,7 @@ dependencies = [
  "forklaunch-billing-interface",
  "forklaunch-blueprint-core",
  "forklaunch-core",
+ "forklaunch-validation",
  "serde",
  "serde_json",
  "sha2",

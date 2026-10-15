@@ -310,7 +310,7 @@ async fn malformed_cached_dto_is_mapper_failure_without_provider_or_store_mutati
         }
         for patch in [
             json!({"id":"different"}),
-            json!({"createdAt":"invalid"}),
+            json!({"createdAt":"2026-01-01T25:00:00Z"}),
             json!({"updatedAt":null}),
             json!({"providerFields":null}),
             json!({"paymentMethods":3}),
@@ -345,4 +345,79 @@ async fn malformed_cached_dto_is_mapper_failure_without_provider_or_store_mutati
             );
         }
     }
+}
+
+#[tokio::test]
+async fn configured_cached_dates_match_actual_source_subset() {
+    let cases: Vec<Value> = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../../../cli/tests/fixtures/rust_billing_cached_dates.json"
+    )))
+    .unwrap();
+    let state = Provider::default();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let app = Router::new().fallback(provider).with_state(state.clone());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    for checkout in [false, true] {
+        let fields = if checkout {
+            vec!["expiresAt", "createdAt", "updatedAt"]
+        } else {
+            vec!["createdAt", "updatedAt"]
+        };
+        for field in fields {
+            for case in &cases {
+                let mut cached = record(checkout);
+                cached[field] = case["input"].clone();
+                let client = StripeBillingClient::with_transport(
+                    "sk_fixture".into(),
+                    ProviderHttpClient::new(&url, Duration::from_secs(2), 4096).unwrap(),
+                )
+                .unwrap();
+                let service = StripeBillingService::new(
+                    BaseBillingService::new(Arc::new(RawCache(cached.clone()))),
+                    client,
+                )
+                .with_configured_cached_reads(true);
+                let mut provider = evidence(checkout);
+                provider["metadata"] = json!({"createdAt":"opaque-not-a-date"});
+                *state.result.lock().await = provider.clone();
+                state.calls.lock().await.clear();
+                let result = read(&service, checkout, "public-local-id").await;
+                match case
+                    .get("native")
+                    .unwrap_or(&case["profile"])
+                    .as_str()
+                    .unwrap()
+                {
+                    "accepted" => {
+                        let result = result.unwrap();
+                        assert_eq!(
+                            serde_json::from_value::<chrono::DateTime<chrono::Utc>>(
+                                result[field].clone()
+                            )
+                            .unwrap()
+                            .timestamp_millis(),
+                            case["epochMillis"].as_i64().unwrap(),
+                            "{} {field}",
+                            case["name"]
+                        );
+                        assert_eq!(result["providerFields"], provider);
+                        assert_eq!(state.calls.lock().await.len(), 1);
+                    }
+                    expected => {
+                        let code = if expected == "unsupported" {
+                            "billing_configured_cache_date_unsupported"
+                        } else {
+                            "billing_configured_mapper_error"
+                        };
+                        assert_eq!(result.unwrap_err(), code, "{} {field}", case["name"]);
+                        assert!(state.calls.lock().await.is_empty());
+                    }
+                }
+                assert_eq!(service.base().store().0, cached);
+            }
+        }
+    }
+    server.abort();
 }

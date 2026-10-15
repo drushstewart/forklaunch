@@ -153,6 +153,71 @@ async fn matrix(f: &Fixture) {
             base.store().get(Scope::Cache, kind, &id).await.unwrap(),
             Some(cached.clone())
         );
+        // Owner-seeded legacy cache scalars exercise the real decrypt/validate
+        // boundary. The configured read normalizes a copy, never the ciphertext.
+        let fields = if checkout {
+            vec!["expiresAt", "createdAt", "updatedAt"]
+        } else {
+            vec!["createdAt", "updatedAt"]
+        };
+        for field in fields {
+            for (input, expected) in [
+                (json!(0), Some(0)),
+                (json!(1.9), Some(1)),
+                (json!(-1.9), Some(-1)),
+                (json!("2026-01-01"), Some(1_767_225_600_000)),
+                (json!("+010000-01-01T00:00:00Z"), Some(253_402_300_800_000)),
+                (json!(null), None),
+                (json!(8_640_000_000_000_000_i64), None),
+            ] {
+                let mut tx = f.owner.begin().await.unwrap();
+                sqlx::query("SELECT set_config('forklaunch.tenant_id','portal-a',true)")
+                    .execute(&mut *tx)
+                    .await
+                    .unwrap();
+                let original:sqlx::types::Json<Value>=sqlx::query_scalar("SELECT data FROM fl_billing.records WHERE tenant_id='portal-a' AND scope='cache' AND kind=$1 AND id=$2").bind(kind.as_str()).bind(&id).fetch_one(&mut *tx).await.unwrap();
+                let modified:sqlx::types::Json<Value>=sqlx::query_scalar("UPDATE fl_billing.records SET data=jsonb_set(data,ARRAY[$3::text],$4) WHERE tenant_id='portal-a' AND scope='cache' AND kind=$1 AND id=$2 RETURNING data").bind(kind.as_str()).bind(&id).bind(field).bind(sqlx::types::Json(input.clone())).fetch_one(&mut *tx).await.unwrap();
+                tx.commit().await.unwrap();
+                if input.is_number() {
+                    assert!(
+                        base.store().get(Scope::Cache, kind, &id).await.is_err(),
+                        "generic typed read unchanged"
+                    );
+                }
+                state.calls.lock().await.clear();
+                let response = http
+                    .get(format!("{url}{path}"))
+                    .header("authorization", sign("GET", &path, None, "default"))
+                    .send()
+                    .await
+                    .unwrap();
+                if let Some(expected) = expected {
+                    assert_eq!(response.status(), 200, "{field}/{input}");
+                    let body: Value = response.json().await.unwrap();
+                    assert_eq!(
+                        serde_json::from_value::<chrono::DateTime<chrono::Utc>>(
+                            body[field].clone()
+                        )
+                        .unwrap()
+                        .timestamp_millis(),
+                        expected
+                    );
+                    assert_eq!(state.calls.lock().await.len(), 1);
+                } else {
+                    assert_eq!(response.status(), 500);
+                    assert!(state.calls.lock().await.is_empty());
+                }
+                let mut tx = f.owner.begin().await.unwrap();
+                sqlx::query("SELECT set_config('forklaunch.tenant_id','portal-a',true)")
+                    .execute(&mut *tx)
+                    .await
+                    .unwrap();
+                let after:sqlx::types::Json<Value>=sqlx::query_scalar("SELECT data FROM fl_billing.records WHERE tenant_id='portal-a' AND scope='cache' AND kind=$1 AND id=$2").bind(kind.as_str()).bind(&id).fetch_one(&mut *tx).await.unwrap();
+                assert_eq!(after, modified);
+                sqlx::query("UPDATE fl_billing.records SET data=$3 WHERE tenant_id='portal-a' AND scope='cache' AND kind=$1 AND id=$2").bind(kind.as_str()).bind(&id).bind(original).execute(&mut *tx).await.unwrap();
+                tx.commit().await.unwrap();
+            }
+        }
         for status in [404, 429, 500, 599] {
             *state.status.lock().await = Some(status);
             for correlation in [None, Some("cache-status"), Some("")] {

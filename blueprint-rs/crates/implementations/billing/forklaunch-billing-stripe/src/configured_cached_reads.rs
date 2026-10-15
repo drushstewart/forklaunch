@@ -1,6 +1,6 @@
 //! The configured TypeScript cache-read hooks, not a provider ownership proof.
 use crate::{client::StripeResource, services::StripeBillingService};
-use forklaunch_billing_base::services::{BillingKind, BillingStore, Scope};
+use forklaunch_billing_base::services::{BillingKind, BillingStore};
 use forklaunch_billing_interface::services::{CheckoutSessionDto, PaymentLinkDto};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
@@ -139,7 +139,7 @@ impl<S: BillingStore> StripeBillingService<S> {
         let raw = self
             .base()
             .store()
-            .get(Scope::Cache, kind, id)
+            .get_configured_cached(kind, id)
             .await?
             .ok_or_else(invalid)?;
         serde_json::from_value(raw).map_err(|_| invalid())

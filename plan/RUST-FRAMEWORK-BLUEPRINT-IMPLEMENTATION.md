@@ -2777,3 +2777,25 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Configured cache-first Checkout/PaymentLink GET passes actual369 plus48 HTTP cases, native Stripe2/restricted-PG HTTP1, legacy170, artifacts186 and strict full/minimal checks. Provider429/status/text/correlation and read-only public identity behavior covered; cache date coercion/lists and broader billing remain open,660/682 unchanged.
 
 - 2026-10-15: Unicode16 case transforms pass2,224,128 scalar plus13,855 context/order comparisons,95 full/89 minimal tests,351 HTTP/168 MCP and both SDKs. Licensed source/package inclusion and strict checks pass; committed worktree cleaned. Numeric length bounds and broader schema gates remain open,660/682 unchanged.
+
+
+### 2026-10-15: Configured cached billing date coercion
+
+Configured Checkout and PaymentLink reads now normalize their five declared date
+fields before PostgreSQL typed DTO validation, through an additive BillingStore
+hook. Epoch milliseconds and admitted ISO strings preserve chrono extended years;
+optional omission and opaque provider data remain unchanged. Reads do not rewrite
+cached or encrypted bytes. Generic typed reads retain their existing validation.
+Locale-dependent/offsetless strings and JavaScript dates outside chrono's range
+remain explicit unsupported boundaries; non-JSON Date/NaN observations are not
+native parity claims. One existing workspace validation dependency edge was added,
+without version changes.
+
+Actual TypeScript160, native135 shared JSON comparisons (3 tests), restricted
+PostgreSQL HTTP1 with35 date cases, configured369, legacy170 and artifact186 checks
+pass. Full strict Clippy29.09s and minimal3.57s pass; owned database cleanup is0.
+Logs use `/private/tmp/fl-billing-cached-dates-`. All10 frozen paths match
+`/private/tmp/fl-billing-cached-dates-final.json` SHA256
+`715f1416cf521da7625526f9f555c97b00662f27f5afd96299e5ed7bb084d818`.
+CI includes the actual date oracle and existing native read suites. Cache-selected
+lists and broader billing gates remain open. Checklist660/682 is unchanged.
