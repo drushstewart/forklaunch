@@ -1330,3 +1330,10 @@ Raw Zod `.duration()` also survives explicit `zodChecks` export: signed ordered
 components and terminal dot/comma fractions retain lexical acceptance. Native
 validation scans bytes without numeric conversion or regex backtracking. No
 normalization, elapsed-time arithmetic or general ISO duration claim is implied.
+
+Raw `.time()` assertions use the same explicit profile with `timePrecisions`:
+null permits optional seconds/fractions, zero permits optional integer seconds,
+and positive integer precision (1..1000) requires exact fractional digits. Positive
+precision deliberately preserves Zod's repeated seconds-group syntax. Negative,
+fractional or larger precision configurations fail admission. No timezone conversion
+or time normalization occurs.

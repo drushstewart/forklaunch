@@ -7,6 +7,7 @@ interface ZodChecks {
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration')[];
+  timePrecisions?: (number | null)[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
 }
 function compileZodChecks(input: unknown): (value: unknown) => boolean {
@@ -22,7 +23,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
           'utf16MinLength',
           'utf16MaxLength',
           'multipleOf',
-          'formats'
+          'formats',
+          'timePrecisions'
         ].includes(key)
     )
   )
@@ -57,7 +59,12 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
       ))
   )
     throw new Error('Invalid Zod format rules');
+  if (Object.prototype.hasOwnProperty.call(value, 'timePrecisions') &&
+      (!Array.isArray(value.timePrecisions) || value.timePrecisions.length > 10000 ||
+       value.timePrecisions.some((p) => p !== null && (typeof p !== 'number' || !Number.isInteger(p) || p < 0 || p > 1000))))
+    throw new Error('Invalid Zod time precisions');
   if (
+    (Array.isArray(value.timePrecisions) ? value.timePrecisions.length : 0) +
     (Array.isArray(value.formats) ? value.formats.length : 0) +
       (Array.isArray(value.multipleOf) ? value.multipleOf.length : 0) >
     10000
@@ -71,6 +78,9 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     typeof divisor === 'number' ? divisor : Number(divisor)
   );
   const formatChecks = profile.formats?.slice();
+  const timeChecks = profile.timePrecisions?.map((p) => new RegExp(
+    `^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d${p ? `\\.\\d{${p}}` : p === null ? '(\\.\\d+)?' : ''})${p ? '+' : '?'}$`
+  ));
   const email =
     /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i;
   const uuid =
@@ -86,6 +96,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     base64url: /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/
   };
   return (data: unknown) => {
+    if (typeof data === 'string' && timeChecks && !timeChecks.every((check) => check.test(data))) return false;
     if (typeof data === 'string' && formatChecks)
       for (const format of formatChecks) {
         if (format in simpleFormats && !simpleFormats[format as keyof typeof simpleFormats].test(data)) return false;

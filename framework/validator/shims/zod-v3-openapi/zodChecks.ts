@@ -10,6 +10,7 @@ interface Checks {
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration')[];
+  timePrecisions?: (number | null)[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
 }
 function admit(checks: readonly unknown[], metadata: readonly Metadata[]) {
@@ -38,11 +39,19 @@ export function projectStringChecks(
     .map((check) =>
       check.kind === 'url' ? ('uri' as const) : (check.kind as NonNullable<Checks['formats']>[number])
     );
-  const formatResult: Checks | undefined = formats.length
-    ? { version: 1, formats }
+  const timePrecisions = metadata.some((value) => own(value, 'format')) ? [] : checks
+    .filter((check) => check.kind === 'time')
+    .map((check) => {
+      const precision = check.precision ?? null;
+      if (precision !== null && (!Number.isInteger(precision) || precision < 0 || precision > 1000))
+        throw new Error('Zod time precision must be null or an integer from 0 to 1000');
+      return precision;
+    });
+  const formatResult: Checks | undefined = formats.length || timePrecisions.length
+    ? { version: 1, ...(formats.length ? { formats } : {}), ...(timePrecisions.length ? { timePrecisions } : {}) }
     : undefined;
   if (
-    formats.length &&
+    (formats.length || timePrecisions.length) &&
     checks.some((check) =>
       ['trim', 'toLowerCase', 'toUpperCase'].includes(check.kind)
     )

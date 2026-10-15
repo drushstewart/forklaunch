@@ -11,6 +11,7 @@ struct Checks {
     maximum: Option<u64>,
     divisors: Vec<ZodMultipleOf>,
     formats: Vec<Format>,
+    time_precisions: Vec<Option<u16>>,
 }
 enum Format {
     Email,
@@ -64,6 +65,28 @@ fn bound(value: Option<&Value>) -> Result<Option<u64>, ValidationError<'static>>
         })
         .transpose()
 }
+fn time_precisions(value: Option<&Value>) -> Result<Vec<Option<u16>>, ValidationError<'static>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let values = value
+        .as_array()
+        .filter(|v| v.len() <= 10_000)
+        .ok_or_else(invalid)?;
+    values
+        .iter()
+        .map(|value| {
+            if value.is_null() {
+                return Ok(None);
+            }
+            bound(Some(value))?
+                .filter(|v| *v <= 1000)
+                .and_then(|v| u16::try_from(v).ok())
+                .map(Some)
+                .ok_or_else(invalid)
+        })
+        .collect()
+}
 pub(super) fn compile<'a>(
     _: &'a Map<String, Value>,
     value: &'a Value,
@@ -74,12 +97,18 @@ pub(super) fn compile<'a>(
         || fields.keys().any(|key| {
             !matches!(
                 key.as_str(),
-                "version" | "utf16MinLength" | "utf16MaxLength" | "multipleOf" | "formats"
+                "version"
+                    | "utf16MinLength"
+                    | "utf16MaxLength"
+                    | "multipleOf"
+                    | "formats"
+                    | "timePrecisions"
             )
         })
     {
         return Err(invalid());
     }
+    let time_precisions = time_precisions(fields.get("timePrecisions"))?;
     let minimum = bound(fields.get("utf16MinLength"))?;
     let maximum = bound(fields.get("utf16MaxLength"))?;
     let raw_formats = fields
@@ -100,7 +129,9 @@ pub(super) fn compile<'a>(
                 .ok_or_else(invalid)
         })
         .transpose()?;
-    if raw_formats.map_or(0, Vec::len) + raw_divisors.map_or(0, Vec::len) > 10_000 {
+    if raw_formats.map_or(0, Vec::len) + raw_divisors.map_or(0, Vec::len) + time_precisions.len()
+        > 10_000
+    {
         return Err(invalid());
     }
     let mut formats = Vec::new();
@@ -152,11 +183,19 @@ pub(super) fn compile<'a>(
         maximum,
         divisors,
         formats,
+        time_precisions,
     }))
 }
 impl<'i> Keyword<'i> for Checks {
     fn is_valid(&self, instance: &'i Value) -> bool {
         if let Some(value) = instance.as_str() {
+            if !self
+                .time_precisions
+                .iter()
+                .all(|p| forklaunch_common::zod_string_format::time(value, *p))
+            {
+                return false;
+            }
             if !self.formats.iter().all(|format| format.accepts(value)) {
                 return false;
             }

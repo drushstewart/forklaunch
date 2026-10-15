@@ -10916,3 +10916,26 @@ all-target/all-feature Clippy for five affected crates, configured TypeScript al
 12 roots/623 exports, and public API inventory623/1703 pass. Logs:
 `/private/tmp/fl-zod-duration-{js,native,consumers,types,clippy}.log`.
 Time/datetime options, regex and other format gaps remain; 660/682 unchanged.
+
+
+### 2026-10-15 — Raw Zod time precision assertions
+
+The explicit versioned check profile now carries ordered `timePrecisions` rules
+through the emitter, owned/generated AJV and native validation. Null precision
+allows optional seconds and fractions; zero allows optional integer seconds;
+positive integers through 1000 require exact fractional digits. Native linear
+parsing deliberately preserves actual Zod's repeated seconds-group acceptance for
+positive precision. Negative, fractional, nonfinite and larger configurations fail
+admission. Per-list and aggregate 10,000-rule limits cover the new field. Explicit
+format overrides and transform rejection remain; default export is unchanged.
+
+Permanent `rust_zod_time_checks.mjs` passes 108,336 actual Zod/AJV and 108,336
+native observations, including all hour/minute boundaries, precision 0/1/2/3/9/1000,
+optional/repeated seconds, Unicode/control suffixes, million-digit fractions,
+conjunctions, nested schemas and invalid-profile rejection. Live HTTP checks pass
+19; generated TypeScript/Rust socket checks pass 76 with strict generated-source
+compilation and feature-off rejection. Strict all-target/all-feature Clippy across
+five affected crates, configured TypeScript all 12 roots/623 exports, and refreshed
+public API inventory 623/1703 pass. Evidence logs:
+`/private/tmp/fl-zod-time-{js,native,consumers,types,clippy}.log`.
+Datetime options, regex and other constraints remain open; checklist 660/682 unchanged.

@@ -2711,3 +2711,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Subscription creation HTTP/MCP/both SDKs pass real restricted PostgreSQL role separation, 12 unit tests, 136 rendered artifact cases and strict full/minimal Clippy. Explicit service tenant authority and separate publisher required; broader billing remains open, 660/682 unchanged.
 
 - 2026-10-15: Raw duration assertions validated with34,626 actual/AJV and34,626 native observations,17 HTTP/68 socket checks, strict Clippy and configured types/inventory. Other string formats and regex remain open;660/682 unchanged.
+
+- 2026-10-15: Raw time precision assertions pass 108,336 actual/AJV and 108,336 native observations, 19 HTTP/76 socket checks, strict Clippy and configured types/inventory. Datetime/regex and broader constraints remain open; 660/682 unchanged.

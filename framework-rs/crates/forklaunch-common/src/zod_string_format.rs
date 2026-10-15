@@ -222,3 +222,48 @@ pub fn duration(value: &str) -> bool {
     }
     true
 }
+
+/// Match raw Zod time syntax with a bounded admitted fractional precision.
+/// Positive precision preserves Zod's repeated seconds-group acceptance.
+#[must_use]
+pub fn time(value: &str, precision: Option<u16>) -> bool {
+    let bytes = value.as_bytes();
+    let pair = |v: &[u8], max: u8| {
+        v.len() == 2 && v.iter().all(u8::is_ascii_digit) && (v[0] - b'0') * 10 + v[1] - b'0' <= max
+    };
+    if bytes.len() < 5 || bytes[2] != b':' || !pair(&bytes[..2], 23) || !pair(&bytes[3..5], 59) {
+        return false;
+    }
+    let mut rest = &bytes[5..];
+    if rest.is_empty() {
+        return precision.is_none_or(|p| p == 0);
+    }
+    loop {
+        if rest.len() < 3 || rest[0] != b':' || !pair(&rest[1..3], 59) {
+            return false;
+        }
+        rest = &rest[3..];
+        match precision {
+            Some(0) => return rest.is_empty(),
+            Some(count) => {
+                let count = usize::from(count);
+                if rest.len() < count + 1
+                    || rest[0] != b'.'
+                    || !rest[1..=count].iter().all(u8::is_ascii_digit)
+                {
+                    return false;
+                }
+                rest = &rest[count + 1..];
+                if rest.is_empty() {
+                    return true;
+                }
+            }
+            None => {
+                return rest.is_empty()
+                    || (rest.len() > 1
+                        && rest[0] == b'.'
+                        && rest[1..].iter().all(u8::is_ascii_digit));
+            }
+        }
+    }
+}
