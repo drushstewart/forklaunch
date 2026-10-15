@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 619 resolved declaration entry points and 1,696 declaration/re-export
+It records 620 resolved declaration entry points and 1,698 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -10187,3 +10187,22 @@ releasingCargo buildlock before nestedSDKcompile. Logs /private/tmp/fl-plan-read
 Onlyfixturesemicolon correction; productionpassed unchanged. Ownedfl_bound_plan
 roles0. No manifests/locks/newmigration; no newimmutablearchive selectedprofile
 claim. Subscription/otherfamilies/remainingmapper semantics open;660/682 (96.8%).
+
+
+### Opt-in pure input schema export (2026-10-14)
+
+`openapi2020(schema, {pureInput:true})` and the explicit 2020 generator option
+traverse supported ordinary constructed Zod schemas without evaluating default
+factories, effects, predicates or built-in coercions. Unsupported nodes reject;
+computed defaults are omitted, explicit OpenAPI defaults retained, omittedness is
+structural, and nullable false schemas preserve null through an anyOf branch.
+All union children traverse guards. Shared 10,000-work/64-depth limits and cycle
+checks bound traversal. NativeEnum remains rejected until normalized projection.
+This is not a sandbox for getters, Proxies or shape thunks; Date retains declared
+wire semantics. Structural Default omittedness does not prove factory output valid.
+Default exports remain compatible, including date/binary SDK behavior.
+Frozen five-file manifest /private/tmp/fl-pure-input-source.json verified by root.
+577 actual/AJV comparisons and 138 controls pass; tuple1620, SDK20, union10674,
+Never224 and strict 12-root/619-export TS7.0.2 checks pass. Root regenerated public
+inventory: 620 entries/1698 declarations across44 packages; syntactic counts are
+not semantic parity. CI includes fixture. Broader22 gates remain open,660/682(96.8%).

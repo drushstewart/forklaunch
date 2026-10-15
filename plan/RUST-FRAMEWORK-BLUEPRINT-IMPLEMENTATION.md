@@ -2204,3 +2204,11 @@ GET with no publisher connection; mixedcreation retains separatepublisher. Local
 startupgrant/configvalidation,46artifactcases/actualgeneratedmain andHTTP/MCP/
 2SDKcalls pass; rootCIwrapper2.46s, strictClippy green. Legacy66routes unchanged
 andnotclaimedread-only.660/682 (96.8%),22open unchanged.
+
+
+Pure input export checkpoint (2026-10-14): opt-in supported-node traversal avoids
+named Zod callbacks and computed defaults, rejects coercion/unsupported nodes,
+preserves nullable false schemas and enforces finite budgets.577 actual/AJV and
+138 controls plus existing tuple/SDK/union/Never regressions pass. Default API
+unchanged; NativeEnum/getter sandbox remain outside profile. Public inventory
+620/1698 refreshed. Broad checklist660/682(96.8%),22open unchanged.

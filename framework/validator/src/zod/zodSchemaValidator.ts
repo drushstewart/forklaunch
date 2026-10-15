@@ -533,14 +533,30 @@ export class ZodSchemaValidator implements SV<
   }
 
   /** Explicit 2020-12 input-schema profile; root callbacks are not evaluated.
-   * Nested defaults/effects retain the general exporter's existing semantics.
+   * By default, nested defaults/effects retain the general exporter's semantics.
+   * pureInput recursively omits computed defaults and rejects callback-dependent
+   * effects, pipelines, catch and lazy schemas without executing their callbacks.
+   * Explicit default annotations are retained; wrapper optionality is structural.
+   * Purity covers named validation/default callbacks on ordinary Zod schemas,
+   * not arbitrary getters, Proxies or shape thunks. Date keeps its wire projection.
    */
   openapi2020(
-    schema: unknown
+    schema: unknown,
+    options?: { pureInput?: boolean }
   ): SchemaObject & {
     $schema: 'https://json-schema.org/draft/2020-12/schema';
   } {
     const schemified = this.schemify(schema as ZodIdiomaticSchema);
+    if (options?.pureInput) {
+      // The pure traversal is immutable and owns its cycle/depth/work guards.
+      // Cloning before those guards would recurse through cyclic schema graphs.
+      return generateSchema(schemified, false, '3.1', {
+        jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
+        pureInput: true
+      }) as SchemaObject & {
+        $schema: 'https://json-schema.org/draft/2020-12/schema';
+      };
+    }
     let current: unknown = schemified;
     for (let depth = 0; current; depth++) {
       if (depth > 64)

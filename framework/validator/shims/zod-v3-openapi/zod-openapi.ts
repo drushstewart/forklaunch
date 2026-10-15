@@ -1,5 +1,6 @@
 import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
 import { merge } from './schemaMerge';
+import { assertPureInputSchema, pureInputOptional } from './pureInput';
 import { AnyZodObject, z, ZodTypeAny } from 'zod/v3';
 import {
   factoryEmailPattern,
@@ -28,8 +29,11 @@ type OpenAPIVersion = '3.0' | '3.1';
 
 export interface SchemaGenerationOptions {
   readonly jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema';
+  /** Reject callback-dependent schemas and omit computed defaults recursively. */
+  readonly pureInput?: boolean;
 }
 interface ParsingArgs<T> {
+  pureInput?: { isOptional: (schema: ZodTypeAny) => boolean };
   generateSchema: (
     schema: OpenApiZodAny,
     useOutput?: boolean,
@@ -299,6 +303,7 @@ function getExcludedDefinitionsFromSchema(
 
 function parseObject({
   generateSchema,
+  pureInput,
   zodRef,
   schemas,
   useOutput,
@@ -331,6 +336,7 @@ function parseObject({
     (zodRef as z.AnyZodObject).shape
   ).filter((key) => {
     const item = (zodRef as z.AnyZodObject).shape[key];
+    if (pureInput) return !pureInput.isOptional(item);
     return !(
       item.isOptional() ||
       item instanceof z.ZodDefault ||
@@ -406,11 +412,15 @@ function recordStringKeys(schema: ZodTypeAny): string[] | undefined {
 
 function parseRecord({
   generateSchema,
+  pureInput,
   zodRef,
   schemas,
   useOutput,
   openApiVersion
 }: ParsingArgs<z.ZodRecord>): SchemaObject {
+  // Key schemas are otherwise inspected only by the finite key-set classifier.
+  // Pure mode must also reject callback-dependent key branches.
+  if (pureInput) generateSchema(zodRef._def.keyType, useOutput, openApiVersion);
   const valueSchema =
     zodRef._def.valueType instanceof z.ZodUnknown
       ? {}
@@ -513,12 +523,18 @@ function parseOptional({
 
 function parseNullable({
   generateSchema,
+  pureInput,
   schemas,
   zodRef,
   useOutput,
   openApiVersion
 }: ParsingArgs<z.ZodNullable<OpenApiZodAny>>): SchemaObject {
   const schema = generateSchema(zodRef.unwrap(), useOutput, openApiVersion);
+  if (pureInput) return merge(
+    { anyOf: [schema, { type: 'null' }] },
+    zodRef.description ? { description: zodRef.description } : {},
+    ...schemas
+  );
   return merge(
     schema,
     openApiVersion === '3.0'
@@ -531,6 +547,7 @@ function parseNullable({
 
 function parseDefault({
   generateSchema,
+  pureInput,
   schemas,
   zodRef,
   useOutput,
@@ -538,7 +555,7 @@ function parseDefault({
 }: ParsingArgs<z.ZodDefault<OpenApiZodAny>>): SchemaObject {
   return merge(
     {
-      default: zodRef._def.defaultValue(),
+      ...(pureInput ? {} : { default: zodRef._def.defaultValue() }),
       ...generateSchema(zodRef._def.innerType, useOutput, openApiVersion)
     },
     zodRef.description ? { description: zodRef.description } : {},
@@ -598,10 +615,19 @@ function parseArray({
 }
 
 function parseLiteral({
+  pureInput,
   schemas,
   zodRef,
   openApiVersion
 }: ParsingArgs<z.ZodLiteral<OpenApiZodAny>>): SchemaObject {
+  const value = zodRef._def.value as unknown;
+  if (pureInput && (value === null || value === undefined)) {
+    return merge(
+      value === null ? { type: 'null' } : { not: {} },
+      zodRef.description ? { description: zodRef.description } : {},
+      ...schemas
+    );
+  }
   const type = typeof zodRef._def.value as 'string' | 'number' | 'boolean';
   return merge(
     {
@@ -652,6 +678,7 @@ function parseIntersection({
 
 function parseUnion({
   generateSchema,
+  pureInput,
   schemas,
   zodRef,
   useOutput,
@@ -659,6 +686,7 @@ function parseUnion({
 }: ParsingArgs<z.ZodUnion<[z.ZodTypeAny, ...z.ZodTypeAny[]]>>): SchemaObject {
   const contents = zodRef._def.options;
   if (
+    !pureInput &&
     contents.reduce(
       (prev, content) => prev && content._def.typeName === 'ZodLiteral',
       true
@@ -912,16 +940,41 @@ export function generateSchema(
   ) {
     throw new Error('Explicit JSON Schema 2020-12 export requires OpenAPI 3.1');
   }
+  if (options?.pureInput && useOutput) {
+    throw new Error('Pure input export does not support output projection');
+  }
   const context = options ? Object.freeze({ ...options }) : undefined;
   let remaining = 10000;
+  const active = new Set<ZodTypeAny>();
+  const charge = (depth: number) => {
+    if (context && (depth > 64 || --remaining < 0))
+      throw new Error('Explicit JSON Schema export budget exceeded');
+  };
   const generate = (
     schema: OpenApiZodAny,
     output: boolean,
     version: OpenAPIVersion,
     depth: number
   ): SchemaObject => {
-    if (context && (depth > 64 || --remaining < 0))
-      throw new Error('Explicit JSON Schema export budget exceeded');
+    charge(depth);
+    if (context?.pureInput) {
+      assertPureInputSchema(schema);
+      if (active.has(schema))
+        throw new Error('Pure input schema cycle is unsupported');
+      active.add(schema);
+    }
+    try {
+      return render(schema, output, version, depth);
+    } finally {
+      active.delete(schema);
+    }
+  };
+  const render = (
+    schema: OpenApiZodAny,
+    output: boolean,
+    version: OpenAPIVersion,
+    depth: number
+  ): SchemaObject => {
     const { metaOpenApi = {} } = schema;
     const schemas = [
       ...(Array.isArray(metaOpenApi) ? metaOpenApi : [metaOpenApi])
@@ -945,6 +998,12 @@ export function generateSchema(
       useOutput: output,
       openApiVersion: version,
       jsonSchemaDialect: context?.jsonSchemaDialect,
+      pureInput: context?.pureInput
+        ? {
+            isOptional: (child: ZodTypeAny) =>
+              pureInputOptional(child, charge, depth + 1)
+          }
+        : undefined,
       generateSchema: (
         child: OpenApiZodAny,
         childOutput = output,
@@ -953,6 +1012,8 @@ export function generateSchema(
     };
     try {
       const typeName = schema._def.typeName as WorkerKeys;
+      if (context?.pureInput && (typeName === 'ZodUndefined' || typeName === 'ZodVoid'))
+        return parseNever(args as ParsingArgs<z.ZodNever>);
       if (typeName in workerMap) return workerMap[typeName](args);
       return catchAllParser(args);
     } catch (err) {
