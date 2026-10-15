@@ -11744,3 +11744,31 @@ Universal SDK responses and140 generated TypeScript/Rust socket codec checks,
 strict generated source checks and feature-off rejection before output. Log:
 `/private/tmp/fl-unconstrained-factories-generated-consumers.log`. This closes the
 queued factory-specific generated-consumer follow-up; broader schema gates remain.
+
+### 2026-10-15: Bounded runtime JSON intersections
+
+Commit `59df4f436` adds `ZodJsonSchema::Intersection { left, right }`. Both branches
+evaluate in source order; dirty transformed values remain private and merge only
+when neither branch aborted. Merge conflicts follow branch diagnostics, while
+public invalid outcomes preserve the original whole input. Equality-only private
+origin tokens preserve same-reference input/default container behavior, including
+nested values; distinct constructed object merges retain actual prototype-key
+semantics. Tokens are never dereferenced. Origin tracking activates only for
+schemas containing intersections; existing schemas avoid its extra allocation.
+Admission, evaluation, provenance and merging share bounded node/byte budgets.
+Deferred missing-order failures still allow a later valid union branch to win.
+
+Frozen11-source manifest `/private/tmp/fl-intersection-source.json` SHA256
+`39285c6323d8385a09c8b10e632ddc6451fe2f068d45744b811e3d1a5e643c77` was verified
+against all eleven integrated files. After helper refactors, validation83 full/78
+minimal tests and strict validation/Axum full/all-target plus minimal validation
+Clippy pass. Each default/arbitrary-precision configuration passes the same12,096
+actual-source/native cases. Live checks pass291 HTTP comparisons,138 MCP calls,
+three operational500 controls and six calls through each generated SDK. Logs use
+`/private/tmp/fl-intersection-`; commands/scope are in `fl-intersection-receipt.md`.
+CI runs the new differential fixture and extended existing live fixture.
+
+This does not admit sparse arrays, Date/non-JSON outputs or arbitrary callbacks;
+nonfinite outputs required for merging remain explicit unsupported values.
+Discriminated dispatch, allocating case transforms and remaining schema/emitter
+constraints stay open. No dependency, manifest, lock or TypeScript API changes.
