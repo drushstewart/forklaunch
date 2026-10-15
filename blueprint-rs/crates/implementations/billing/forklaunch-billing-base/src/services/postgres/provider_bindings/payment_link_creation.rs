@@ -1,4 +1,5 @@
 //! Trusted adapter journal; never a public provider-evidence ingestion endpoint.
+mod admission;
 mod managed;
 mod read;
 use super::super::{db_error, invalid, storage_error};
@@ -123,6 +124,8 @@ impl PostgresBillingStore {
     /// second dispatch ticket. A commit error must be inspected, not retried.
     /// # Errors
     /// Denies malformed IDs, conflicting payloads/scopes/actors, and storage errors.
+    /// Before cloning, admits at most 32 nested levels, 8192 values and 65536
+    /// serialized UTF-8 bytes for the complete immutable intent envelope.
     pub async fn reserve_payment_link_creation(
         &self,
         scope: &StripeBindingScope,
@@ -134,6 +137,7 @@ impl PostgresBillingStore {
         if operation.is_nil() || api_version.is_empty() || api_version.len() > 128 {
             return Err(invalid());
         }
+        admission::validate(self.tenant.id(), scope, operation, api_version, payload)?;
         let canonical=canonical(&json!({"tenant":self.tenant.id(),"operation":operation.to_string(),"deployment":scope.deployment_label,"account":scope.account_id,"livemode":scope.livemode,"apiVersion":api_version,"payload":payload})).to_string();
         if canonical.len() > 65536 {
             return Err(invalid());

@@ -2562,3 +2562,20 @@ manifest /private/tmp/fl-email-observer-freeze.json verified (SHA256
 Evidence: /private/tmp/fl-email-verification-hooks-actual.log and
 /private/tmp/fl-email-observer-{native,regression,pg,clippy,minimal-clippy}.log.
 Auto-signin after verification remains separate; checklist660/682(96.8%),22open.
+
+### 2026-10-14 — PaymentLink reservation admission before cloning
+
+The public reservation method now checks borrowed intent data before recursive
+cloning/canonicalization: depth32,8192 values and exact65536 serialized UTF-8 bytes
+for the full envelope. A bounded writer measures escaped keys/values and UTF-8
+without constructing the envelope Value. Ordinary valid canonical hashes and
+commit/recovery handling are unchanged; extreme depth/width are explicit new
+admission limits. Boundary65536 accepted/65537 rejected, large plain/Unicode
+values preserved, hostile nesting/width/keys/escaped values rejected.
+Focused2 units, full direct creation/concurrency/lost-COMMIT PostgreSQL matrix
+with zero-write rejection checks17.77s and strict base/Stripe Clippy16.97s pass.
+Owned roles0. Frozen3 manifest /private/tmp/fl-payment-link-admission-final.json
+verified SHA256156f2713429e947702fa953e5adae5310ebee779d53615beace6014f80131565.
+Logs /private/tmp/fl-payment-link-admission-{units,pg,clippy}.log. Existing CI
+creation matrix covers the added integration cases; no dependencies/migrations.
+Broader billing gates remain open;660/682(96.8%),22open.

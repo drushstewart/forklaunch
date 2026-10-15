@@ -25,6 +25,7 @@ use uuid::Uuid;
 #[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL owner database"]
 async fn direct_bound_creation_journal_matrix() {
     let f = Fixture::new().await;
+    hostile_reservation_input(&f).await;
     completed_and_conflicts(&f).await;
     denied_profiles(&f).await;
     denied_provider_scope(&f).await;
@@ -637,5 +638,43 @@ async fn denied_provider_scope(f: &Fixture) {
                 .unwrap(),
             Some(Outcome::Unresolved { .. })
         ));
+    }
+}
+
+async fn hostile_reservation_input(f: &Fixture) {
+    let counts = || async {
+        sqlx::query_as::<_, (i64, i64)>("SELECT (SELECT count(*) FROM fl_billing.payment_link_creation_intents WHERE tenant_id=$1),(SELECT count(*) FROM fl_billing.payment_link_creation_audit WHERE tenant_id=$1)")
+            .bind(f.tenant.id()).fetch_one(&f.owner).await.unwrap()
+    };
+    let before = counts().await;
+    let posts = f.posts();
+    let mut deep = Value::Null;
+    for _ in 0..128 {
+        deep = Value::Array(vec![deep]);
+    }
+    for payload in [
+        deep,
+        json!(vec![0; 10_000]),
+        json!("x".repeat(70_000)),
+        json!({"x".repeat(70_000): null}),
+        json!("\u{0000}".repeat(12_000)),
+        json!({"\u{0000}".repeat(12_000): null}),
+    ] {
+        let operation = Uuid::new_v4();
+        assert!(
+            f.store
+                .reserve_payment_link_creation(&f.scope, operation, STRIPE_API_VERSION, &payload)
+                .await
+                .is_err()
+        );
+        assert!(
+            f.store
+                .inspect_payment_link_creation(operation)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(counts().await, before);
+        assert_eq!(f.posts(), posts);
     }
 }
