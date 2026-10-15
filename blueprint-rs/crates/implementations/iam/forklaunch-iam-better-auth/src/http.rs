@@ -82,6 +82,7 @@ pub struct AuthHttp<S> {
     team_count_limit: Option<Arc<dyn crate::organizations::TeamCountLimitPolicy>>,
     team_member_limit: Option<Arc<dyn crate::organizations::TeamMemberLimitPolicy>>,
     team_policy: crate::organizations::TeamPolicy,
+    organization_features: crate::organizations::OrganizationFeatures,
     team_seat_query_profile: crate::organizations::TeamSeatQueryProfile,
     organization_controls: crate::organizations::OrganizationControls,
     creator_role: crate::organizations::CreatorRole,
@@ -148,7 +149,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         policy: crate::organizations::OrganizationAccessControl,
     ) -> Self {
         self.access_control = crate::organizations::Authorization::from(policy)
-            .with_cache(self.access_control.cache().clone());
+            .with_cache(self.access_control.cache().clone())
+            .with_dynamic(self.organization_features.dynamic_access_control);
         self
     }
     /// Installs the bound organization policy and trusted synchronous role callbacks.
@@ -159,7 +161,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         registry: crate::organizations::OrganizationRoleAuthorizers,
     ) -> Self {
         self.access_control = crate::organizations::Authorization::from(registry)
-            .with_cache(self.access_control.cache().clone());
+            .with_cache(self.access_control.cache().clone())
+            .with_dynamic(self.organization_features.dynamic_access_control);
         self
     }
     /// Shares organization permission snapshots within one trusted tenant/application.
@@ -214,6 +217,19 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self.team_member_limit = None;
         self
     }
+    /// Selects trusted organization plugin features. Existing stored data is retained.
+    #[must_use]
+    pub fn with_organization_features(
+        mut self,
+        features: crate::organizations::OrganizationFeatures,
+    ) -> Self {
+        self.organization_features = features;
+        self.access_control = self
+            .access_control
+            .with_dynamic(features.dynamic_access_control);
+        self
+    }
+
     /// Selects the trusted upstream seat-query profile, independently of quotas.
     #[must_use]
     pub fn with_team_seat_query_profile(
@@ -363,6 +379,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             team_count_limit: None,
             team_member_limit: None,
             team_policy: crate::organizations::TeamPolicy::default(),
+            organization_features: crate::organizations::OrganizationFeatures::default(),
             team_seat_query_profile: crate::organizations::TeamSeatQueryProfile::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),
             creator_role: crate::organizations::CreatorRole::default(),
@@ -654,7 +671,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             .route("/revoke-sessions", post(dispatch::<S>))
             .route("/revoke-other-sessions", post(dispatch::<S>))
             .route("/sign-out", post(dispatch::<S>))
-            .merge(organization::routes::<S>())
+            .merge(organization::routes::<S>(app.organization_features))
             .merge(two_factor::routes::<S>(app.two_factor.is_some()))
             .method_not_allowed_fallback(not_found)
             .fallback(not_found)
@@ -741,11 +758,14 @@ async fn dispatch<S: AuthStore + 'static>(
     let path = request.uri().path().to_owned();
     let response = handle(&app, request, &mut pending).await;
     let mut response = match response {
-        Ok(body) => (
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            crate::ecmascript::stringify(&body),
-        )
-            .into_response(),
+        Ok(mut body) => {
+            app.organization_output(&path, &mut body);
+            (
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                crate::ecmascript::stringify(&body),
+            )
+                .into_response()
+        }
         Err(error) => {
             let response = failure_for_path(&error, &path);
             if error.code == "HTTP_INTERNAL_EMPTY"

@@ -17,6 +17,7 @@ impl<S: AuthStore> OrganizationService<S> {
         body: &Value,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        self.organization_features.require_teams()?;
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
         let view = self
@@ -67,6 +68,7 @@ impl<S: AuthStore> OrganizationService<S> {
         body: &Value,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        self.organization_features.require_teams()?;
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
         let view = self

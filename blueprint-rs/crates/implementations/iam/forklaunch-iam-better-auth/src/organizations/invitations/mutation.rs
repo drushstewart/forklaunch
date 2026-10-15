@@ -43,6 +43,7 @@ impl<S: AuthStore> OrganizationService<S> {
         invitation["status"] = json!("rejected");
         tx.replace(Model::Invitation, invitation.clone()).await?;
         tx.commit().await?;
+        self.organization_features.invitation(&mut invitation);
         Ok(json!({"invitation":invitation,"member":null}))
     }
     /// Cancels an invitation regardless of status/expiry, with a scoped grant.
@@ -91,6 +92,7 @@ impl<S: AuthStore> OrganizationService<S> {
         invitation["status"] = json!("canceled");
         tx.replace(Model::Invitation, invitation.clone()).await?;
         tx.commit().await?;
+        self.organization_features.invitation(&mut invitation);
         Ok(invitation)
     }
 }

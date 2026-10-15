@@ -38,6 +38,10 @@ impl<S: AuthStore> OrganizationService<S> {
             .into_iter()
             .filter(|row| row["organizationId"] == id)
             .take(100)
+            .map(|mut row| {
+                self.organization_features.invitation(&mut row);
+                row
+            })
             .collect::<Vec<_>>();
         tx.commit().await?;
         Ok(json!(invitations))
@@ -97,6 +101,7 @@ impl<S: AuthStore> OrganizationService<S> {
         invitation["organizationSlug"] = organization["slug"].clone();
         invitation["inviterEmail"] = user["email"].clone();
         tx.commit().await?;
+        self.organization_features.invitation(&mut invitation);
         Ok(invitation)
     }
     /// Lists received pending invitations after the adapter's 100-row limit.
@@ -150,6 +155,7 @@ impl<S: AuthStore> OrganizationService<S> {
             {
                 row["organizationName"] = name.clone();
             }
+            self.organization_features.invitation(&mut row);
             invitations.push(row);
         }
         tx.commit().await?;

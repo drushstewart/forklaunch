@@ -91,7 +91,12 @@ impl<S: AuthStore> OrganizationService<S> {
             if resend {
                 row["expiresAt"] = json!(timestamp(self.invitation_policy.expiry(now)?));
                 tx.replace(Model::Invitation, row.clone()).await?;
-                let completed = complete(row, admitted.inviter, &organization);
+                let completed = complete(
+                    row,
+                    admitted.inviter,
+                    &organization,
+                    self.organization_features,
+                );
                 tx.commit().await?;
                 return Ok(completed);
             }
@@ -141,8 +146,17 @@ impl<S: AuthStore> OrganizationService<S> {
                 "Invitation limit reached",
             ));
         }
-        if let Some(hook) = &self.team_member_limit {
-            let teams = input::teams(&mut tx, &admitted.org, body.get("teamId"), None).await?;
+        if let Some(hook) = &self.team_member_limit
+            && self.organization_features.teams
+        {
+            let teams = input::teams(
+                &mut tx,
+                &admitted.org,
+                body.get("teamId")
+                    .filter(|_| self.organization_features.teams),
+                None,
+            )
+            .await?;
             tx.commit().await?;
             if body
                 .get("teamId")
@@ -179,24 +193,37 @@ impl<S: AuthStore> OrganizationService<S> {
             }
             let mut tx = self.store.begin(true).await?;
             let now = self.time_source.sample(now);
-            let row = json!({"id":uuid::Uuid::new_v4().to_string(),"email":admitted.email,"role":admitted.role,"organizationId":admitted.org,"inviterId":admitted.actor,"status":"pending","expiresAt":timestamp(self.invitation_policy.expiry(now)?),"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
+            let mut row = json!({"id":uuid::Uuid::new_v4().to_string(),"email":admitted.email,"role":admitted.role,"organizationId":admitted.org,"inviterId":admitted.actor,"status":"pending","expiresAt":timestamp(self.invitation_policy.expiry(now)?),"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
+            self.organization_features.invitation(&mut row);
             tx.insert(Model::Invitation, row.clone()).await?;
-            let completed = complete(row, admitted.inviter, organization);
+            let completed = complete(
+                row,
+                admitted.inviter,
+                organization,
+                self.organization_features,
+            );
             tx.commit().await?;
             return Ok(completed);
         }
         let teams = input::teams(
             &mut tx,
             &admitted.org,
-            body.get("teamId"),
+            body.get("teamId")
+                .filter(|_| self.organization_features.teams),
             self.team_policy.maximum_members,
         )
         .await?;
         let now = self.time_source.sample(now);
         let expiry = timestamp(self.invitation_policy.expiry(now)?);
-        let row = json!({"id":uuid::Uuid::new_v4().to_string(),"email":admitted.email,"role":admitted.role,"organizationId":admitted.org,"inviterId":admitted.actor,"status":"pending","expiresAt":expiry,"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
+        let mut row = json!({"id":uuid::Uuid::new_v4().to_string(),"email":admitted.email,"role":admitted.role,"organizationId":admitted.org,"inviterId":admitted.actor,"status":"pending","expiresAt":expiry,"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
+        self.organization_features.invitation(&mut row);
         tx.insert(Model::Invitation, row.clone()).await?;
-        let completed = complete(row, admitted.inviter, organization);
+        let completed = complete(
+            row,
+            admitted.inviter,
+            organization,
+            self.organization_features,
+        );
         tx.commit().await?;
         Ok(completed)
     }

@@ -120,7 +120,7 @@ fn parse_roles(value: &Value) -> BlueprintResult<Vec<String>> {
     Ok(roles)
 }
 async fn validate_roles<T: AuthTransaction>(
-    config: &crate::organizations::OrganizationAccessControl,
+    config: &crate::organizations::Authorization,
     tx: &mut T,
     organization: &str,
     roles: &[String],
@@ -132,7 +132,7 @@ async fn validate_roles<T: AuthTransaction>(
     if unknown.is_empty() {
         return Ok(());
     }
-    let found: Vec<_> =
+    let found: Vec<_> = if config.dynamic_enabled {
         crate::store::find_all(tx, Model::OrganizationRole, "organizationId", organization)
             .await?
             .into_iter()
@@ -144,7 +144,10 @@ async fn validate_roles<T: AuthTransaction>(
             })
             .take(100)
             .filter_map(|row| row["role"].as_str().map(str::to_owned))
-            .collect();
+            .collect()
+    } else {
+        Vec::new()
+    };
     let invalid: Vec<_> = unknown
         .into_iter()
         .filter(|role| !found.contains(role))

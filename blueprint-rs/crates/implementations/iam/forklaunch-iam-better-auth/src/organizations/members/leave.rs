@@ -30,7 +30,7 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             return Err(only_owner());
         }
-        delete_member(&mut tx, &member).await?;
+        delete_member(&mut tx, &member, self.organization_features.teams).await?;
         if view.session["activeOrganizationId"] == id {
             update_active(&mut tx, &view, None, None, now).await?;
         }

@@ -70,13 +70,13 @@ impl<S: AuthStore> OrganizationService<S> {
         tx.replace(Model::Invitation, invitation.clone()).await?;
         let teams = invitation["teamId"]
             .as_str()
-            .filter(|s| !s.is_empty())
+            .filter(|s| self.organization_features.teams && !s.is_empty())
             .map_or_else(Vec::new, |s| s.split(',').collect::<Vec<_>>());
         for id in &teams {
             self.enroll_accepted_team(&mut tx, org.as_ref(), id, &view, now)
                 .await?;
         }
-        let now = if self.team_member_limit.is_some() {
+        let now = if self.organization_features.teams && self.team_member_limit.is_some() {
             self.time_source.sample(now)
         } else {
             now
@@ -84,7 +84,7 @@ impl<S: AuthStore> OrganizationService<S> {
         let member = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":org,"userId":view.user["id"],"role":invitation["role"],"createdAt":timestamp(now)});
         tx.insert(Model::Member, member.clone()).await?;
         let cookie = teams.len() == 1;
-        if self.team_member_limit.is_some() {
+        if self.organization_features.teams && self.team_member_limit.is_some() {
             if let Some(mut session) = tx.find_unique(Model::Session, "token", token).await? {
                 session["activeOrganizationId"] = json!(org);
                 if cookie {
@@ -106,6 +106,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .await?;
         }
         tx.commit().await?;
+        self.organization_features.invitation(&mut invitation);
         Ok(OrganizationSelection {
             body: json!({"invitation":invitation,"member":member}),
             cookie,

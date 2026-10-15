@@ -28,11 +28,13 @@ pub use delivery::{InvitationDeliveryContext, InvitationEmailDelivery};
 mod controls;
 mod creator_role;
 pub use creator_role::CreatorRole;
+pub(crate) mod features;
 mod full;
 mod invitation_policy;
 mod team_callbacks;
 mod team_policy;
 pub use controls::OrganizationControls;
+pub use features::OrganizationFeatures;
 pub use team_callbacks::{
     OrganizationAdapterFuture, OrganizationCallbackAdapter, TeamCountLimitContext,
     TeamCountLimitPolicy, TeamLimitFuture, TeamMemberLimitContext, TeamMemberLimitPolicy,
@@ -71,6 +73,7 @@ pub struct OrganizationService<S> {
     team_count_limit: Option<Arc<dyn TeamCountLimitPolicy>>,
     team_member_limit: Option<Arc<dyn TeamMemberLimitPolicy>>,
     team_policy: TeamPolicy,
+    organization_features: OrganizationFeatures,
     team_seat_query_profile: TeamSeatQueryProfile,
     controls: OrganizationControls,
     creator_role: CreatorRole,
@@ -122,21 +125,24 @@ impl<S: AuthStore> OrganizationService<S> {
     /// Replaces the trusted resource catalog/static roles and clears custom authorizers.
     #[must_use]
     pub fn with_access_control(mut self, policy: OrganizationAccessControl) -> Self {
-        self.access_control =
-            Authorization::from(policy).with_cache(self.access_control.cache().clone());
+        self.access_control = Authorization::from(policy)
+            .with_cache(self.access_control.cache().clone())
+            .with_dynamic(self.organization_features.dynamic_access_control);
         self
     }
     /// Installs bound static roles and synchronous overrides as one policy snapshot.
     /// A later `with_access_control` replaces the snapshot and clears the overrides.
     #[must_use]
     pub fn with_role_authorizers(mut self, registry: OrganizationRoleAuthorizers) -> Self {
-        self.access_control =
-            Authorization::from(registry).with_cache(self.access_control.cache().clone());
+        self.access_control = Authorization::from(registry)
+            .with_cache(self.access_control.cache().clone())
+            .with_dynamic(self.organization_features.dynamic_access_control);
         self
     }
     #[cfg(feature = "http")]
     pub(crate) fn with_authorization(mut self, policy: Authorization) -> Self {
-        self.access_control = policy;
+        self.access_control =
+            policy.with_dynamic(self.organization_features.dynamic_access_control);
         self
     }
     /// Shares permission-cache effects with other services in the same trusted tenant.
@@ -177,6 +183,16 @@ impl<S: AuthStore> OrganizationService<S> {
         self.team_member_limit = None;
         self
     }
+    /// Selects trusted organization plugin features. Existing stored data is retained.
+    #[must_use]
+    pub fn with_organization_features(mut self, features: OrganizationFeatures) -> Self {
+        self.organization_features = features;
+        self.access_control = self
+            .access_control
+            .with_dynamic(features.dynamic_access_control);
+        self
+    }
+
     /// Selects the trusted upstream seat-query profile, independently of quotas.
     #[must_use]
     pub fn with_team_seat_query_profile(mut self, profile: TeamSeatQueryProfile) -> Self {
@@ -268,6 +284,7 @@ impl<S: AuthStore> OrganizationService<S> {
             team_count_limit: None,
             team_member_limit: None,
             team_policy: TeamPolicy::default(),
+            organization_features: OrganizationFeatures::default(),
             team_seat_query_profile: TeamSeatQueryProfile::default(),
             controls: OrganizationControls::default(),
             creator_role: CreatorRole::default(),
@@ -350,6 +367,7 @@ impl<S: AuthStore> OrganizationService<S> {
             &self.time_source,
         )
         .await
+        .map(|view| view.map(|v| self.organization_features.view(v)))
     }
 
     async fn session(
@@ -363,6 +381,7 @@ impl<S: AuthStore> OrganizationService<S> {
             .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?
+            .map(|v| self.organization_features.view(v))
             .ok_or_else(unauthorized)
     }
 }

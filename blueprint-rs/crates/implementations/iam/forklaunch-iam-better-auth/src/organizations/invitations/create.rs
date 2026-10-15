@@ -32,7 +32,9 @@ impl<S: AuthStore> OrganizationService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
-        let first = if self.invitation_limit.is_some() || self.team_member_limit.is_some() {
+        let first = if self.invitation_limit.is_some()
+            || (self.organization_features.teams && self.team_member_limit.is_some())
+        {
             self.invitation_with_limit(token, body, now, self.invitation_limit.as_deref())
                 .await?
         } else {
@@ -146,7 +148,7 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             pending["expiresAt"] = json!(expiry);
             tx.replace(Model::Invitation, pending.clone()).await?;
-            let completed = complete(pending, inviter, &organization);
+            let completed = complete(pending, inviter, &organization, self.organization_features);
             tx.commit().await?;
             return Ok(completed);
         }
@@ -154,13 +156,15 @@ impl<S: AuthStore> OrganizationService<S> {
         let teams = input::teams(
             &mut tx,
             org,
-            body.get("teamId"),
+            body.get("teamId")
+                .filter(|_| self.organization_features.teams),
             self.team_policy.maximum_members,
         )
         .await?;
-        let invitation = json!({"id":uuid::Uuid::new_v4().to_string(),"email":email,"role":role,"organizationId":org,"inviterId":actor,"status":"pending","expiresAt":expiry,"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
-        tx.insert(Model::Invitation, invitation.clone()).await?;
-        let completed = complete(invitation, inviter, &organization);
+        let mut row = json!({"id":uuid::Uuid::new_v4().to_string(),"email":email,"role":role,"organizationId":org,"inviterId":actor,"status":"pending","expiresAt":expiry,"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
+        self.organization_features.invitation(&mut row);
+        tx.insert(Model::Invitation, row.clone()).await?;
+        let completed = complete(row, inviter, &organization, self.organization_features);
         tx.commit().await?;
         Ok(completed)
     }
@@ -194,7 +198,13 @@ fn same_pending(expected: &[Value], current: &[Value]) -> bool {
     }
 }
 
-fn complete(row: Value, inviter: Option<BlueprintResult<Value>>, organization: &Value) -> Step {
+fn complete(
+    mut row: Value,
+    inviter: Option<BlueprintResult<Value>>,
+    organization: &Value,
+    features: crate::organizations::OrganizationFeatures,
+) -> Step {
+    features.invitation(&mut row);
     let context = inviter
         .map(|inviter| inviter.and_then(|inviter| delivery::context(inviter, organization, &row)));
     Step::Complete(row, context.map(Box::new))

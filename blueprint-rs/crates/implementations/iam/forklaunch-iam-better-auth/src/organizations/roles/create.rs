@@ -14,6 +14,7 @@ impl<S: AuthStore> OrganizationService<S> {
         body: &Value,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        self.organization_features.require_roles()?;
         if let Some(hook) = &self.role_limit {
             return self
                 .create_role_with_limit(token, transient, body, now, hook.as_ref())

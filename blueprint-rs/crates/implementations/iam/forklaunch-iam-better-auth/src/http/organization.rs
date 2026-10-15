@@ -22,6 +22,7 @@ fn service<S: AuthStore>(app: &AuthHttp<S>) -> OrganizationService<S> {
         .with_organization_policy(app.organization_policy)
         .with_invitation_policy(app.invitation_policy)
         .with_team_policy(app.team_policy)
+        .with_organization_features(app.organization_features)
         .with_team_seat_query_profile(app.team_seat_query_profile)
         .with_organization_controls(app.organization_controls)
         .with_creator_role(app.creator_role.clone())
@@ -176,21 +177,15 @@ pub(super) fn strip_record_keys(path: &str, payload: &mut Value) {
     }
 }
 
-pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<AuthHttp<S>>> {
+pub(super) fn routes<S: AuthStore + 'static>(
+    features: crate::organizations::OrganizationFeatures,
+) -> axum::Router<std::sync::Arc<AuthHttp<S>>> {
     use super::{dispatch, not_found};
     use axum::{
         Router,
         routing::{get, post},
     };
-    Router::new()
-        .route("/organization/create-role", post(dispatch::<S>))
-        .route("/organization/update-role", post(dispatch::<S>))
-        .route("/organization/delete-role", post(dispatch::<S>))
-        .route(
-            "/organization/list-roles",
-            get(dispatch::<S>).head(not_found),
-        )
-        .route("/organization/get-role", get(dispatch::<S>).head(not_found))
+    let mut router = Router::new()
         .route("/organization/invite-member", post(dispatch::<S>))
         .route("/organization/accept-invitation", post(dispatch::<S>))
         .route("/organization/reject-invitation", post(dispatch::<S>))
@@ -220,24 +215,6 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
             "/organization/list-members",
             get(dispatch::<S>).head(not_found),
         )
-        .route(
-            "/organization/list-teams",
-            get(dispatch::<S>).head(not_found),
-        )
-        .route(
-            "/organization/list-user-teams",
-            get(dispatch::<S>).head(not_found),
-        )
-        .route(
-            "/organization/list-team-members",
-            get(dispatch::<S>).head(not_found),
-        )
-        .route("/organization/set-active-team", post(dispatch::<S>))
-        .route("/organization/create-team", post(dispatch::<S>))
-        .route("/organization/update-team", post(dispatch::<S>))
-        .route("/organization/remove-team", post(dispatch::<S>))
-        .route("/organization/add-team-member", post(dispatch::<S>))
-        .route("/organization/remove-team-member", post(dispatch::<S>))
         .route("/organization/leave", post(dispatch::<S>))
         .route("/organization/update-member-role", post(dispatch::<S>))
         .route("/organization/remove-member", post(dispatch::<S>))
@@ -254,7 +231,40 @@ pub(super) fn routes<S: AuthStore + 'static>() -> axum::Router<std::sync::Arc<Au
         .route(
             "/organization/get-full-organization",
             get(dispatch::<S>).head(not_found),
-        )
+        );
+    if features.teams {
+        router = router
+            .route(
+                "/organization/list-teams",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route(
+                "/organization/list-user-teams",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route(
+                "/organization/list-team-members",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route("/organization/set-active-team", post(dispatch::<S>))
+            .route("/organization/create-team", post(dispatch::<S>))
+            .route("/organization/update-team", post(dispatch::<S>))
+            .route("/organization/remove-team", post(dispatch::<S>))
+            .route("/organization/add-team-member", post(dispatch::<S>))
+            .route("/organization/remove-team-member", post(dispatch::<S>));
+    }
+    if features.dynamic_access_control {
+        router = router
+            .route("/organization/create-role", post(dispatch::<S>))
+            .route("/organization/update-role", post(dispatch::<S>))
+            .route("/organization/delete-role", post(dispatch::<S>))
+            .route(
+                "/organization/list-roles",
+                get(dispatch::<S>).head(not_found),
+            )
+            .route("/organization/get-role", get(dispatch::<S>).head(not_found));
+    }
+    router
 }
 
 fn selected<S: AuthStore>(
@@ -275,4 +285,25 @@ fn selected<S: AuthStore>(
         }
     }
     Ok(result.body)
+}
+
+impl<S: AuthStore> AuthHttp<S> {
+    pub(super) fn organization_output(&self, path: &str, body: &mut Value) {
+        if self.organization_features.teams {
+            return;
+        }
+        if let Some(session) = body.get_mut("session") {
+            self.organization_features.session(session);
+        }
+        if path == "/update-session" {
+            self.organization_features.session(body);
+        }
+        if path == "/list-sessions"
+            && let Some(rows) = body.as_array_mut()
+        {
+            for row in rows {
+                self.organization_features.session(row);
+            }
+        }
+    }
 }

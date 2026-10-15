@@ -33,9 +33,13 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         let failure =
             || BlueprintError::new("HTTP_INTERNAL_EMPTY", "Unable to resolve JWT payload");
         let custom = if let Some(resolver) = &self.payload_resolver {
-            (resolver.0)(JwtSessionContext::from_view(view))
-                .await
-                .map_err(|_| failure())?
+            (resolver.0)({
+                let mut context = JwtSessionContext::from_view(view);
+                self.organization_features.session(&mut context.session);
+                context
+            })
+            .await
+            .map_err(|_| failure())?
         } else {
             Some(Map::from_iter([
                 (

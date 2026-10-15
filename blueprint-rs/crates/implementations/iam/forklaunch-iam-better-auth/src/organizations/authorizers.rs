@@ -85,6 +85,7 @@ impl OrganizationRoleAuthorizers {
 pub(crate) struct Authorization {
     registry: OrganizationRoleAuthorizers,
     cache: super::OrganizationPermissionCache,
+    pub(super) dynamic_enabled: bool,
 }
 impl Deref for Authorization {
     type Target = OrganizationAccessControl;
@@ -100,6 +101,7 @@ impl From<OrganizationAccessControl> for Authorization {
                 callbacks: Arc::new(BTreeMap::new()),
             },
             cache: super::OrganizationPermissionCache::default(),
+            dynamic_enabled: true,
         }
     }
 }
@@ -108,10 +110,15 @@ impl From<OrganizationRoleAuthorizers> for Authorization {
         Self {
             registry,
             cache: super::OrganizationPermissionCache::default(),
+            dynamic_enabled: true,
         }
     }
 }
 impl Authorization {
+    pub(crate) fn with_dynamic(mut self, enabled: bool) -> Self {
+        self.dynamic_enabled = enabled;
+        self
+    }
     pub(crate) fn with_cache(mut self, cache: super::OrganizationPermissionCache) -> Self {
         self.cache = cache;
         self

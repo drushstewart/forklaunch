@@ -253,6 +253,30 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
 
     pub(super) fn configured_schema(&self) -> Value {
         let mut schema = super::public::openapi_schema(&self.auth_base_url(), self.jwks_path());
+        if let Some(paths) = schema["paths"].as_object_mut() {
+            paths.retain(|path, _| self.organization_features.route(path));
+        }
+        if !self.organization_features.dynamic_access_control
+            && let Some(schemas) = schema["components"]["schemas"].as_object_mut()
+        {
+            schemas.remove("OrganizationRole");
+        }
+        if !self.organization_features.teams {
+            if let Some(schemas) = schema["components"]["schemas"].as_object_mut() {
+                schemas.remove("Team");
+                schemas.remove("TeamMember");
+            }
+            if let Some(properties) =
+                schema["components"]["schemas"]["Session"]["properties"].as_object_mut()
+            {
+                properties.remove("activeTeamId");
+            }
+            if let Some(properties) =
+                schema["components"]["schemas"]["Invitation"]["properties"].as_object_mut()
+            {
+                properties.remove("teamId");
+            }
+        }
         if self.two_factor.is_some() {
             augment_schema(&mut schema);
             if let Some(service) = &self.two_factor {

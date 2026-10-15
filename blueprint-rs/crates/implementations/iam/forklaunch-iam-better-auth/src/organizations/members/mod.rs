@@ -76,8 +76,12 @@ async fn owner_count<T: AuthTransaction>(
 pub(in crate::organizations) async fn delete_member<T: AuthTransaction>(
     tx: &mut T,
     member: &Value,
+    teams_enabled: bool,
 ) -> BlueprintResult<()> {
     tx.delete(Model::Member, text(member, "id")?).await?;
+    if !teams_enabled {
+        return Ok(());
+    }
     let user = text(member, "userId")?;
     for mut team in crate::store::find_all(
         tx,

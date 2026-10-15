@@ -70,7 +70,14 @@ impl<S: AuthStore> OrganizationService<S> {
         let organization = organization.ok_or_else(missing)?;
         let id = text(&organization, "id")?.to_owned();
         let body = if let Graph::Full(limit) = graph {
-            full_graph(&mut tx, organization, limit, self.hydration_member_limit()).await?
+            full_graph(
+                &mut tx,
+                organization,
+                limit,
+                self.hydration_member_limit(),
+                self.organization_features,
+            )
+            .await?
         } else {
             organization
         };
@@ -88,6 +95,7 @@ async fn full_graph<T: AuthTransaction>(
     mut organization: Value,
     limit: Option<i64>,
     user_limit: usize,
+    features: super::OrganizationFeatures,
 ) -> BlueprintResult<Value> {
     let id = text(&organization, "id")?.to_owned();
     let mut members: Vec<_> = crate::store::find_all(tx, Model::Member, "organizationId", &id)
@@ -132,15 +140,21 @@ async fn full_graph<T: AuthTransaction>(
             .into_iter()
             .filter(|row| row["organizationId"] == id)
             .take(100)
+            .map(|mut row| {
+                features.invitation(&mut row);
+                row
+            })
             .collect::<Vec<_>>()
     );
-    organization["teams"] = json!(
-        crate::store::find_all(tx, Model::Team, "organizationId", &id)
-            .await?
-            .into_iter()
-            .filter(|row| row["organizationId"] == id)
-            .take(100)
-            .collect::<Vec<_>>()
-    );
+    if features.teams {
+        organization["teams"] = json!(
+            crate::store::find_all(tx, Model::Team, "organizationId", &id)
+                .await?
+                .into_iter()
+                .filter(|row| row["organizationId"] == id)
+                .take(100)
+                .collect::<Vec<_>>()
+        );
+    }
     Ok(organization)
 }

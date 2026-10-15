@@ -65,6 +65,8 @@ impl<S: AuthStore> OrganizationService<S> {
                 })
             })
             .ok_or_else(no_active)?;
+        self.organization_features
+            .member_team(input.team_id.as_deref())?;
         let mut tx = self.store.begin(true).await?;
         let user = tx
             .get(Model::User, &input.user_id)

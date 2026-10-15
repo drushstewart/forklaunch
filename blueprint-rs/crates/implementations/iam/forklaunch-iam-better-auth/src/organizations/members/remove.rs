@@ -73,7 +73,7 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             return Err(BlueprintError::new("HTTP_MESSAGE_ONLY", "User not found"));
         }
-        delete_member(&mut tx, &target).await?;
+        delete_member(&mut tx, &target, self.organization_features.teams).await?;
         if target["userId"] == view.user["id"] && view.session["activeOrganizationId"] == id {
             update_active(&mut tx, &view, None, None, now).await?;
         }

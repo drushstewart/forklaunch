@@ -176,6 +176,7 @@ impl<S: crate::store::AuthStore> super::OrganizationService<S> {
         now: chrono::DateTime<chrono::Utc>,
     ) -> BlueprintResult<Value> {
         use crate::store::{AuthTransaction, Model};
+        self.organization_features.require_teams()?;
         if organization_id.is_empty() {
             return Err(BlueprintError::new(
                 "NO_ACTIVE_ORGANIZATION",

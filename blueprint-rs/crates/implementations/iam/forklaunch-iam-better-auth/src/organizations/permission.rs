@@ -25,15 +25,18 @@ pub(super) async fn allowed_with_creator<T: AuthTransaction>(
     creator_role: Option<&str>,
 ) -> BlueprintResult<bool> {
     let mut grants = Grants::new(config.roles());
-    for row in crate::store::find_all(tx, Model::OrganizationRole, "organizationId", organization)
-        .await?
-        .into_iter()
-        .filter(|row| row["organizationId"] == organization)
-        .take(100)
-    {
-        let role = text(&row, "role")?;
-        let permission = parse_permissions(&row["permission"], role)?;
-        grants.merge(role, permission)?;
+    if config.dynamic_enabled {
+        for row in
+            crate::store::find_all(tx, Model::OrganizationRole, "organizationId", organization)
+                .await?
+                .into_iter()
+                .filter(|row| row["organizationId"] == organization)
+                .take(100)
+        {
+            let role = text(&row, "role")?;
+            let permission = parse_permissions(&row["permission"], role)?;
+            grants.merge(role, permission)?;
+        }
     }
     let grants = std::sync::Arc::new(grants);
     config

@@ -2128,9 +2128,9 @@ Remaining organization option families after these scalar/declarative profiles:
 | Family | Implemented scope | Remaining scope |
 | --- | --- | --- |
 | Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle, awaited creation allow/quota, membership and dynamic-role quota callbacks | Arbitrary JavaScript callback context/return coercion |
-| Teams | Default creation toggle, scalar/awaited team and seat limits, last-team policy | Plugin route disabling, custom default-team creation |
+| Teams | Optional feature topology, default creation toggle, scalar/awaited team and seat limits, last-team policy | Custom default-team creation |
 | Invitations | TTL, scalar/awaited quota, verification, cancellation, trusted delivery/scheduler | Lifecycle hooks and arbitrary JS AuthContext mutation |
-| Access control | Declarative catalog/static roles, persisted dynamic grants and trusted synchronous authorizers | Plugin-disable topology and arbitrary JS receiver/return behavior |
+| Access control | Optional dynamic feature topology, declarative catalog/static roles, persisted dynamic grants and trusted synchronous authorizers | Arbitrary JS receiver/return behavior |
 | Lifecycle hooks | Invitation delivery only | Before/after organization, member, invitation, team and team-member hooks |
 | Storage/schema | Fixed configured models and fields, encrypted tenant store | Arbitrary model/field remapping and additional-field schema definitions |
 
@@ -2437,3 +2437,28 @@ this option describes an upstream query adapter, not a property of PostgreSQL
 storage generally. Scalar policy and callback builders preserve this selection.
 The configured ORM fixture covers actual SQL behavior and stored outcomes;
 restricted native PostgreSQL tests independently verify the native profile.
+
+### Optional organization feature topology
+
+`OrganizationFeatures::new(teams, dynamic_access_control)` configures the two
+optional organization families through `OrganizationService` or `AuthHttp`
+`with_organization_features`. Both default to enabled, matching the ForkLaunch
+configured plugin; the upstream unconfigured plugin defaults are different.
+Access-control and feature builders preserve each other in either order.
+
+Disabling teams removes all nine team HTTP routes and their OpenAPI paths,
+Team/TeamMember schemas, and projected invitation `teamId` and session
+`activeTeamId` fields, including trusted JWT payload/subject snapshots. It skips
+default-team creation, invitation team admission/join/quota work and member
+removal's team cleanup. A trusted add-member request with a nonempty team ID
+still fails with the upstream message-only teams-disabled error. Stored rows
+and fields are retained; reenabling the feature makes them available again.
+
+Disabling dynamic access control removes its five HTTP routes and model schema
+and excludes persisted dynamic grants from permission checks and role
+admission, while configured static roles and authorizers remain available.
+Rust domain methods remain part of the static API and return
+`ORGANIZATION_FEATURE_DISABLED` before effects; unlike JavaScript, they cannot
+be absent properties. Disabled HTTP routes return empty 404 responses.
+This topology does not implement lifecycle hooks, custom default-team creators
+or arbitrary additional-field/model remapping.

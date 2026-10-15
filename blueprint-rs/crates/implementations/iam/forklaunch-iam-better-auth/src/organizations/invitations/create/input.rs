@@ -14,7 +14,7 @@ pub(super) fn trim(value: &str) -> &str {
     value.trim_matches(|c: char| c == '\u{feff}' || c.is_whitespace() && c != '\u{85}')
 }
 pub(super) async fn validate_roles<T: AuthTransaction>(
-    config: &crate::organizations::OrganizationAccessControl,
+    config: &crate::organizations::Authorization,
     tx: &mut T,
     org: &str,
     role: &str,
@@ -24,17 +24,21 @@ pub(super) async fn validate_roles<T: AuthTransaction>(
         .map(trim)
         .filter(|role| !role.is_empty() && !config.admitted_role(role))
         .collect::<Vec<_>>();
-    let found = crate::store::find_all(tx, Model::OrganizationRole, "organizationId", org)
-        .await?
-        .into_iter()
-        .filter(|row| {
-            row["organizationId"] == org
-                && row["role"]
-                    .as_str()
-                    .is_some_and(|role| unknown.contains(&role))
-        })
-        .take(100)
-        .collect::<Vec<_>>();
+    let found = if config.dynamic_enabled {
+        crate::store::find_all(tx, Model::OrganizationRole, "organizationId", org)
+            .await?
+            .into_iter()
+            .filter(|row| {
+                row["organizationId"] == org
+                    && row["role"]
+                        .as_str()
+                        .is_some_and(|role| unknown.contains(&role))
+            })
+            .take(100)
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let invalid = unknown
         .into_iter()
         .filter(|role| !found.iter().any(|row| row["role"] == *role))

@@ -42,7 +42,8 @@ impl<S: AuthStore> OrganizationService<S> {
         .await;
         if let Err(error) = result {
             let mut tx = self.store.begin(true).await?;
-            super::super::members::delete_member(&mut tx, &row).await?;
+            super::super::members::delete_member(&mut tx, &row, self.organization_features.teams)
+                .await?;
             tx.commit().await?;
             return Err(error);
         }

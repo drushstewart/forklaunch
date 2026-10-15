@@ -11,7 +11,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 #[derive(Clone)]
 pub struct JwtSessionContext {
     user: Value,
-    session: Value,
+    pub(super) session: Value,
 }
 impl JwtSessionContext {
     pub(super) fn from_view(view: &SessionView) -> Self {
@@ -57,7 +57,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
     }
     pub(super) async fn jwt_subject(&self, view: &SessionView) -> BlueprintResult<String> {
         if let Some(resolver) = &self.subject_resolver {
-            let context = JwtSessionContext::from_view(view);
+            let mut context = JwtSessionContext::from_view(view);
+            self.organization_features.session(&mut context.session);
             let subject = (resolver.0)(context).await.map_err(|_| {
                 BlueprintError::new("HTTP_INTERNAL_EMPTY", "Unable to resolve JWT subject")
             })?;

@@ -57,14 +57,14 @@ impl<S: AuthStore> OrganizationService<S> {
         let org = text(&invitation, "organizationId")?;
         let teams = invitation["teamId"]
             .as_str()
-            .filter(|s| !s.is_empty())
+            .filter(|s| self.organization_features.teams && !s.is_empty())
             .map_or_else(Vec::new, |s| s.split(',').collect::<Vec<_>>());
         let now = self.time_source.sample(now);
         for id in &teams {
             self.enroll_accepted_team(&mut tx, org.as_ref(), id, &view, now)
                 .await?;
         }
-        let now = if self.team_member_limit.is_some() {
+        let now = if self.organization_features.teams && self.team_member_limit.is_some() {
             self.time_source.sample(now)
         } else {
             now
@@ -83,6 +83,7 @@ impl<S: AuthStore> OrganizationService<S> {
         let member = json!({"id":uuid::Uuid::new_v4().to_string(),"organizationId":org,"userId":view.user["id"],"role":invitation["role"],"createdAt":timestamp(now)});
         tx.insert(Model::Member, member.clone()).await?;
         tx.commit().await?;
+        self.organization_features.invitation(&mut invitation);
         Ok(OrganizationSelection {
             body: json!({"invitation":invitation,"member":member}),
             cookie,

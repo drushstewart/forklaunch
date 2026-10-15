@@ -14,6 +14,7 @@ impl<S: AuthStore> OrganizationService<S> {
         query: &Value,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        self.organization_features.require_teams()?;
         let view = self.session(token, transient, now).await?;
         let id = query["organizationId"]
             .as_str()
@@ -55,6 +56,7 @@ impl<S: AuthStore> OrganizationService<S> {
         query: &Value,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        self.organization_features.require_teams()?;
         let view = self.session(token, transient, now).await?;
         let id = query["teamId"]
             .as_str()
