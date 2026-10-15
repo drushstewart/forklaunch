@@ -22,6 +22,7 @@ fn service<S: AuthStore>(app: &AuthHttp<S>) -> OrganizationService<S> {
         .with_organization_policy(app.organization_policy)
         .with_invitation_policy(app.invitation_policy)
         .with_team_policy(app.team_policy)
+        .with_team_seat_query_profile(app.team_seat_query_profile)
         .with_organization_controls(app.organization_controls)
         .with_creator_role(app.creator_role.clone())
         .with_authorization(app.access_control.clone())

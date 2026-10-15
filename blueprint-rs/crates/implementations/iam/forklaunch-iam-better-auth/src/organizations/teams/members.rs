@@ -39,6 +39,7 @@ impl<S: AuthStore> OrganizationService<S> {
                 text(body, "userId")?,
                 self.time_source.sample(now),
                 limit,
+                self.team_seat_query_profile,
             )
             .await?;
             tx.commit().await?;

@@ -2424,3 +2424,16 @@ nodes and 4,096 aggregate UTF-8 bytes across keys and string values. These expli
 native resource limits are not upstream rejection semantics. Missing metadata
 remains absent, and invalid metadata fails before the relevant callback; existing
 caller-specific persistence and error ordering remains unchanged.
+
+`TeamSeatQueryProfile::MikroOrmPostgres` is an explicit organization/HTTP
+builder option selected by the generated PostgreSQL application. It matches the
+configured MikroORM seat predicate: a nonfinite callback limit fails with an
+empty 500 during new seat reservation, after existing-pair reuse. Finite
+fractions and large finite limits remain supported. Invitation admission still
+uses its JavaScript comparison; accepting an invitation rolls back on this
+failure, and server-side add-member compensates its previously inserted member.
+The generic service and PostgreSQL store retain the memory-comparison default;
+this option describes an upstream query adapter, not a property of PostgreSQL
+storage generally. Scalar policy and callback builders preserve this selection.
+The configured ORM fixture covers actual SQL behavior and stored outcomes;
+restricted native PostgreSQL tests independently verify the native profile.

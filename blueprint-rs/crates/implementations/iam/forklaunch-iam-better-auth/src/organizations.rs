@@ -38,7 +38,7 @@ pub use team_callbacks::{
     TeamCountLimitPolicy, TeamLimitFuture, TeamMemberLimitContext, TeamMemberLimitPolicy,
     TeamPolicySession,
 };
-pub use team_policy::TeamPolicy;
+pub use team_policy::{TeamPolicy, TeamSeatQueryProfile};
 mod invitations;
 pub use invitation_policy::InvitationPolicy;
 pub use invitations::create::limit::{
@@ -71,6 +71,7 @@ pub struct OrganizationService<S> {
     team_count_limit: Option<Arc<dyn TeamCountLimitPolicy>>,
     team_member_limit: Option<Arc<dyn TeamMemberLimitPolicy>>,
     team_policy: TeamPolicy,
+    team_seat_query_profile: TeamSeatQueryProfile,
     controls: OrganizationControls,
     creator_role: CreatorRole,
     access_control: Authorization,
@@ -176,6 +177,13 @@ impl<S: AuthStore> OrganizationService<S> {
         self.team_member_limit = None;
         self
     }
+    /// Selects the trusted upstream seat-query profile, independently of quotas.
+    #[must_use]
+    pub fn with_team_seat_query_profile(mut self, profile: TeamSeatQueryProfile) -> Self {
+        self.team_seat_query_profile = profile;
+        self
+    }
+
     /// Installs the trusted awaited maximum-team callback, preserving other options.
     #[must_use]
     pub fn with_team_count_limit_policy(mut self, hook: Arc<dyn TeamCountLimitPolicy>) -> Self {
@@ -260,6 +268,7 @@ impl<S: AuthStore> OrganizationService<S> {
             team_count_limit: None,
             team_member_limit: None,
             team_policy: TeamPolicy::default(),
+            team_seat_query_profile: TeamSeatQueryProfile::default(),
             controls: OrganizationControls::default(),
             creator_role: CreatorRole::default(),
             access_control: Authorization::from(OrganizationAccessControl::default())

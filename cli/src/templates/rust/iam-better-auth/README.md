@@ -82,3 +82,10 @@ skip that callback; unexpected failures invoke it. No callback is installed by
 default. Built-in `Configured` tracing independently records unexpected failures and
 characterized internal catches while suppressing silent handled failures. Exact
 logger payloads and uncharacterized plugin event counts remain parity work.
+
+The preset also selects `TeamSeatQueryProfile::MikroOrmPostgres`: trusted team
+quota callbacks may return any IEEE number, but nonfinite limits fail at new
+seat reservation with an empty 500, matching the configured ORM. Existing
+memberships bypass that predicate; invitation preflight retains its separate
+JavaScript comparison. Generic native services keep memory-adapter comparisons
+unless this profile is explicitly selected.

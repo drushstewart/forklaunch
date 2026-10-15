@@ -1,6 +1,6 @@
 use std::{env, sync::Arc};
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
-use forklaunch_iam_better_auth::{http::{AuthHttp, AuthApiErrorObserverMode, AuthApiErrorTraceMode}, store::{postgres::PostgresAuthStore, MemberQueryProfile}, oauth::google_client::GoogleClient};
+use forklaunch_iam_better_auth::{http::{AuthHttp, AuthApiErrorObserverMode, AuthApiErrorTraceMode}, store::{postgres::PostgresAuthStore, MemberQueryProfile}, organizations::TeamSeatQueryProfile, oauth::google_client::GoogleClient};
 use forklaunch_auth::jwt::{Algorithm, RemoteJwks, RemoteJwksConfig, Validation};
 use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_blueprint_core::AuditContext;
@@ -50,7 +50,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut application = AuthHttp::new(store, base_url.clone(), auth_secret.into_bytes(), trusted)?
         .with_base_path(env::var("BETTER_AUTH_BASE_PATH").unwrap_or_else(|_| "/api/auth".into()))?
         .with_api_error_observer_mode(AuthApiErrorObserverMode::UnexpectedOnly)
-        .with_api_error_trace_mode(AuthApiErrorTraceMode::Configured);
+        .with_api_error_trace_mode(AuthApiErrorTraceMode::Configured)
+        .with_team_seat_query_profile(TeamSeatQueryProfile::MikroOrmPostgres);
     if env::var("BETTER_AUTH_TWO_FACTOR_ENABLED").is_ok_and(|value| value == "true") {
         application = application.with_two_factor()?;
     }

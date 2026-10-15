@@ -39,3 +39,23 @@ pub(super) fn member_limit() -> forklaunch_blueprint_core::BlueprintError {
         "Team member limit reached",
     )
 }
+
+/// Seat-predicate behavior of the selected upstream storage adapter.
+/// This does not reject callback values at admission: existing pairs bypass the
+/// predicate, and invitation quotas continue to use JavaScript comparisons.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TeamSeatQueryProfile {
+    /// Compatibility default: ECMAScript numeric comparisons.
+    #[default]
+    MemoryAdapter,
+    /// Configured MikroORM/PostgreSQL predicate rejects nonfinite SQL operands.
+    MikroOrmPostgres,
+}
+impl TeamSeatQueryProfile {
+    pub(super) fn validate(self, limit: f64) -> forklaunch_blueprint_core::BlueprintResult<()> {
+        if self == Self::MikroOrmPostgres && !limit.is_finite() {
+            return Err(super::team_callbacks::failure());
+        }
+        Ok(())
+    }
+}

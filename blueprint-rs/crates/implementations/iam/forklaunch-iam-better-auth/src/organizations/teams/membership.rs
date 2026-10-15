@@ -8,7 +8,15 @@ pub(in crate::organizations) async fn add<T: AuthTransaction>(
     now: DateTime<Utc>,
     limit: Option<u32>,
 ) -> BlueprintResult<Value> {
-    add_numeric(tx, team, user, now, limit.map(f64::from)).await
+    add_numeric(
+        tx,
+        team,
+        user,
+        now,
+        limit.map(f64::from),
+        super::super::TeamSeatQueryProfile::default(),
+    )
+    .await
 }
 #[allow(clippy::cast_precision_loss)] // Stored counter is compared as an ECMAScript Number.
 pub(in crate::organizations) async fn add_numeric<T: AuthTransaction>(
@@ -17,6 +25,7 @@ pub(in crate::organizations) async fn add_numeric<T: AuthTransaction>(
     user: &str,
     now: DateTime<Utc>,
     limit: Option<f64>,
+    profile: super::super::TeamSeatQueryProfile,
 ) -> BlueprintResult<Value> {
     let id = text(&team, "id")?.to_owned();
     let pair = serde_json::to_vec(&json!([id, user])).map_err(|_| super::super::internal())?;
@@ -33,6 +42,9 @@ pub(in crate::organizations) async fn add_numeric<T: AuthTransaction>(
     let rows = crate::store::find_all(tx, Model::TeamMember, "teamId", &id).await?;
     if let Some(existing) = rows.iter().find(|row| row["userId"] == user) {
         return Ok(existing.clone());
+    }
+    if let Some(limit) = limit {
+        profile.validate(limit)?;
     }
     let actual = i64::try_from(rows.iter().filter(|row| row["teamId"] == id).count())
         .map_err(|_| super::super::internal())?;

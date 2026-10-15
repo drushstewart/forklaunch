@@ -82,6 +82,7 @@ pub struct AuthHttp<S> {
     team_count_limit: Option<Arc<dyn crate::organizations::TeamCountLimitPolicy>>,
     team_member_limit: Option<Arc<dyn crate::organizations::TeamMemberLimitPolicy>>,
     team_policy: crate::organizations::TeamPolicy,
+    team_seat_query_profile: crate::organizations::TeamSeatQueryProfile,
     organization_controls: crate::organizations::OrganizationControls,
     creator_role: crate::organizations::CreatorRole,
     access_control: crate::organizations::Authorization,
@@ -213,6 +214,16 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self.team_member_limit = None;
         self
     }
+    /// Selects the trusted upstream seat-query profile, independently of quotas.
+    #[must_use]
+    pub fn with_team_seat_query_profile(
+        mut self,
+        profile: crate::organizations::TeamSeatQueryProfile,
+    ) -> Self {
+        self.team_seat_query_profile = profile;
+        self
+    }
+
     /// Installs the trusted awaited maximum-team callback, preserving other options.
     #[must_use]
     pub fn with_team_count_limit_policy(
@@ -352,6 +363,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             team_count_limit: None,
             team_member_limit: None,
             team_policy: crate::organizations::TeamPolicy::default(),
+            team_seat_query_profile: crate::organizations::TeamSeatQueryProfile::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),
             creator_role: crate::organizations::CreatorRole::default(),
             access_control: crate::organizations::Authorization::from(

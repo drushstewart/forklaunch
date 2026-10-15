@@ -147,10 +147,12 @@ pub(super) async fn seat<T: crate::store::AuthTransaction>(
     user: &str,
     now: chrono::DateTime<chrono::Utc>,
     limit: f64,
+    profile: super::TeamSeatQueryProfile,
 ) -> BlueprintResult<Value> {
     use crate::store::Model;
     if let Some(row) = tx.get(Model::Team, team).await? {
-        return super::teams::add_team_member_numeric(tx, row, user, now, Some(limit)).await;
+        return super::teams::add_team_member_numeric(tx, row, user, now, Some(limit), profile)
+            .await;
     }
     if let Some(row) = crate::store::find_all(tx, Model::TeamMember, "teamId", team)
         .await?
@@ -159,6 +161,7 @@ pub(super) async fn seat<T: crate::store::AuthTransaction>(
     {
         return Ok(row);
     }
+    profile.validate(limit)?;
     Err(super::team_policy::member_limit())
 }
 impl<S: crate::store::AuthStore> super::OrganizationService<S> {
@@ -249,6 +252,7 @@ impl<S: crate::store::AuthStore> super::OrganizationService<S> {
                 super::text(&view.user, "id")?,
                 self.time_source.sample(now),
                 limit,
+                self.team_seat_query_profile,
             )
             .await?;
         } else {

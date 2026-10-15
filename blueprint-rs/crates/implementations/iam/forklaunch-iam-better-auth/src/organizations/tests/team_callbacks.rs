@@ -1,4 +1,5 @@
 mod edges;
+mod query_profile;
 use super::invitation_policy::{Fixture, request};
 use super::team_policy::{records, setup, team};
 use super::*;
@@ -124,7 +125,8 @@ pub(crate) async fn exercise<S: AuthStore + 'static>(store: Arc<S>) {
     count_cases(store.clone()).await;
     mutation_cases(store.clone()).await;
     visibility_and_defaults(store.clone()).await;
-    edges::exercise(store).await;
+    edges::exercise(store.clone()).await;
+    query_profile::exercise(store).await;
 }
 async fn count_cases<S: AuthStore + 'static>(store: Arc<S>) {
     for (i, limit) in [
