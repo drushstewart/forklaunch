@@ -1117,3 +1117,14 @@ representation validation does not derive digit width from a hash. Restricted
 PG verifies one-use/rollback/lockout and expiry. Async/encrypted field codecs
 remain separate; their destructive-consume versus CAS failure semantics must
 be implemented explicitly, not inferred from at-rest encryption.
+
+### 2026-10-14: opt-in encrypted OTP
+
+The built-in OTP field codec now matches the admitted Better Auth XChaCha20Poly1305
+format, with SHA256-derived zeroized keys, fresh24-byte nonce, authenticated tag
+and explicit bounded version/legacy key policy. Unknown keys and failed decode
+consume the pending OTP atomically before sanitized500; no session/cookie is
+issued. Existing128-byte supplied proof bound remains explicit. Five actual
+Node/Rust vectors, native35, restrictedPG rollback/races and strict Clippy pass.
+The production/source19 hashes and detailed receipts are in the parity inventory.
+Async custom codecs and backup field representation remain separate open work.

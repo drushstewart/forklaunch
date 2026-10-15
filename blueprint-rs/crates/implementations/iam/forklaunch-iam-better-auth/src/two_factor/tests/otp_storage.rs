@@ -7,7 +7,7 @@ fn otp_hash_vectors_and_persisted_representation_bounds() {
         ("", "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU"),
         ("123456", "jZae727K08KaOmKSgOaGzww_XVqGr_PKEgIMkjrcbJI"),
     ] {
-        assert_eq!(OtpStorage::Hashed.encode(input).as_str(), expected);
+        assert_eq!(OtpStorage::Hashed.comparison(input).as_str(), expected);
         assert!(super::super::otp_storage::valid_stored(expected));
     }
     for value in [
@@ -62,7 +62,7 @@ pub(super) async fn lifecycle<S: AuthStore + 'static>(store: Arc<S>) {
                 .into_iter()
                 .find(|row| !existing_ids.contains(&row["id"]))
                 .unwrap();
-            assert_eq!(saved["value"], json!(storage.encode(&code).as_str()));
+            assert_eq!(saved["value"], json!(storage.comparison(&code).as_str()));
             let other = if storage == OtpStorage::Plain {
                 OtpStorage::Hashed
             } else {

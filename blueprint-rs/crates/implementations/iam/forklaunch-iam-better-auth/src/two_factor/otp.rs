@@ -225,7 +225,11 @@ impl<S: AuthStore> TwoFactorService<S> {
             .map(|row| text(row, "id").map(str::to_owned))
             .transpose()?
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let stored = self.otp_storage.encode(&code);
+        let stored = if self.otp_storage == super::OtpStorage::Encrypted {
+            self.encrypt_otp(&code)?
+        } else {
+            self.otp_storage.comparison(&code)
+        };
         let row = json!({"id":id,"identifier":bound.identifier,"value":stored.as_str(),"attempts":0,"expiresAt":expires});
         if previous.is_some() {
             tx.replace(Model::Verification, row).await?;
@@ -336,10 +340,25 @@ impl<S: AuthStore> TwoFactorService<S> {
             ));
         }
         let expected = text(&otp, "value")?;
-        if !super::otp_storage::valid_stored(expected) {
+        let decoded;
+        let expected = if self.otp_storage == super::OtpStorage::Encrypted {
+            decoded = match self.decrypt_otp(expected) {
+                Ok(value) => value,
+                Err(error) => {
+                    tx.commit().await?;
+                    return Err(error);
+                }
+            };
+            decoded.as_str()
+        } else {
+            expected
+        };
+        if self.otp_storage != super::OtpStorage::Encrypted
+            && !super::otp_storage::valid_stored(expected)
+        {
             return Err(corrupt());
         }
-        let comparison = self.otp_storage.encode(supplied);
+        let comparison = self.otp_storage.comparison(supplied);
         let supplied = comparison.as_str();
         let difference = expected
             .bytes()

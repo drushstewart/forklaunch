@@ -23,6 +23,8 @@ pub use lifetime_options::TwoFactorLifetimeOptions;
 pub use lockout_options::AccountLockoutOptions;
 mod otp;
 pub use otp::{OtpDelivery, OtpDeliveryContext, OtpDeliveryFuture, OtpOptions};
+mod otp_encryption;
+pub use otp_encryption::OtpEncryptionKeys;
 mod otp_storage;
 pub(crate) mod signin;
 pub use otp_storage::OtpStorage;
@@ -51,6 +53,7 @@ pub struct TwoFactorService<S> {
     otp_delivery: Option<Arc<dyn OtpDelivery>>,
     otp_options: OtpOptions,
     otp_storage: OtpStorage,
+    otp_encryption_keys: Option<Arc<OtpEncryptionKeys>>,
     totp_options: TotpOptions,
     lifecycle_options: TwoFactorLifecycleOptions,
     lifetime_options: TwoFactorLifetimeOptions,
@@ -149,6 +152,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             otp_delivery: None,
             otp_options: OtpOptions::default(),
             otp_storage: OtpStorage::default(),
+            otp_encryption_keys: None,
             totp_options: TotpOptions::default(),
             lifecycle_options: TwoFactorLifecycleOptions::default(),
             lifetime_options: TwoFactorLifetimeOptions::default(),

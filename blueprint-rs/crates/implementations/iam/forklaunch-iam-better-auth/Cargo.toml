@@ -23,6 +23,7 @@ tower-http = { version = "0.6", features = ["cors"], optional = true }
 tower = { version = "0.5", features = ["util"], optional = true }
 forklaunch-blueprint-core = { version = "0.1.0", path = "../../../forklaunch-blueprint-core" }
 base64 = "0.22"
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc", "zeroize"] }
 hex = "0.4"
 hmac = "0.12"
 sha2 = "0.10"

@@ -1356,7 +1356,40 @@ account lockout, expiry, atomic single use, and rollback retain their existing
 semantics. Invalid string inputs within the existing 128-byte limit count as failed
 proofs; malformed non-string bodies fail validation before consuming attempts.
 
-Built-in encrypted OTP field encoding, asynchronous custom hash/encrypt/decrypt,
-versioned encryption secrets, and backup field codecs remain separate extension
-work. Their upstream callback failure/consumption rules differ and are not
+Asynchronous custom hash/encrypt/decrypt and backup field codecs remain separate
+extension work. Built-in encrypted OTP field encoding is described below. Their upstream callback failure/consumption rules differ and are not
 represented by this synchronous plain/hashed profile.
+
+
+### Encrypted OTP field representation
+
+`OtpStorage::Encrypted` uses SHA-256 of the existing trusted service signing-secret
+bytes, then XChaCha20-Poly1305 with a fresh random 24-byte nonce. The stored field is
+lowercase hex of nonce, ciphertext and tag. `OtpEncryptionKeys::legacy(String)`
+selects independent bare-hex field keys; `OtpEncryptionKeys::versioned(current,
+Vec<(u32, String)>, Option<String>)` adds `$ba$version$hex` envelopes and optional
+legacy decoding. Install an `Arc` with `with_otp_encryption_keys` on the service or
+`with_two_factor_otp_encryption_keys` on `AuthHttp`; this also selects encrypted
+mode. Selecting Plain/Hashed leaves the configured keys available for later
+Encrypted selection. Cookie signing and generic tenant-row encryption are unchanged.
+
+Configuration accepts 1..=16 distinct version keys, a present current u32 version,
+and 32..=4096-byte UTF-8 secrets. Derived keys and temporary owned secrets are
+zeroized; the key configuration has no Debug/Serialize implementation. Retained
+versions can decode old proofs; retired/unknown keys, malformed envelopes/hex and
+invalid tags produce a sanitized empty 500 **after committing OTP consumption**,
+matching upstream. No new failed-attempt increment or session/trust issuance occurs;
+expired account-lock clearing that precedes consumption still commits. A failed
+transaction commit instead rolls back consumption and returns the storage failure.
+Async custom codecs remain unimplemented: no database lock spans a user callback.
+
+The admitted ciphertext payload is at most 32 bytes (the current maximum generated
+OTP width), with at most 192 bytes of stored envelope text. Version parsing admits
+the bounded decimal-prefix behavior used by upstream, including leading ECMAScript
+whitespace and `+`; unsupported versions fail closed. Decryption uses replacement
+UTF-8 decoding like upstream. The existing 128-byte supplied-code limit remains:
+upstream can accept a 144-character ciphertext as the proof after switching to
+Plain, while this bounded native profile rejects that input before consuming an
+attempt. Existing digit proofs and hashed fields are not rewritten. Plain/Hashed
+to Encrypted conversion errors consume; Encrypted to Plain/Hashed comparison
+failures retain the proof and increment its attempt count.

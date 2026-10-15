@@ -1079,7 +1079,7 @@ async fn http_otp_storage_policy_preserved_and_invalid_inputs_counted() {
     let saved = rows(store.as_ref(), Model::Verification).await;
     assert_eq!(
         saved[0]["value"],
-        json!(OtpStorage::Hashed.encode(&code).as_str())
+        json!(OtpStorage::Hashed.comparison(&code).as_str())
     );
     for supplied in ["", "é🔑", "not-digits"] {
         let (status, body, _) = browser
@@ -1101,6 +1101,105 @@ async fn http_otp_storage_policy_preserved_and_invalid_inputs_counted() {
     assert_eq!(
         browser
             .call("/two-factor/verify-otp", Some(json!({"code":code})))
+            .await
+            .0,
+        200
+    );
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn http_encrypted_otp_failure_consumes_without_session_or_cookie() {
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    let store = Arc::new(MemoryAuthStore::default());
+    let session = new_session("encrypted-http-user", "", "", now).unwrap();
+    let cookie = crate::cookies::sign_cookie_value(text(&session, "token").unwrap(), &[42; 32]);
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::User,json!({"id":"encrypted-http-user","email":"encrypted-http@example.test","twoFactorEnabled":true})).await.unwrap();
+    tx.insert(Model::Session, session).await.unwrap();
+    tx.commit().await.unwrap();
+    let delivery = Arc::new(otp::Delivery::default());
+    let keys = Arc::new(OtpEncryptionKeys::versioned(7, vec![(7, "x".repeat(32))], None).unwrap());
+    let router = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+        .unwrap()
+        .with_clock(move || now)
+        .with_rate_limiting(false)
+        .with_two_factor_otp_encryption_keys(keys)
+        .unwrap()
+        .with_two_factor_otp(delivery.clone())
+        .unwrap()
+        .with_two_factor_backup_code_options(BackupCodeOptions::default())
+        .unwrap()
+        .with_two_factor_lifetime_options(TwoFactorLifetimeOptions::default())
+        .unwrap()
+        .router();
+    let mut browser = Browser {
+        router,
+        origin: origin.into(),
+        jar: BTreeMap::from([("better-auth.session_token".into(), cookie)]),
+    };
+    let sessions = rows(store.as_ref(), Model::Session).await;
+    for kind in 0..4 {
+        assert_eq!(
+            browser
+                .call("/two-factor/send-otp", Some(json!({"storeOTP":"plain"})))
+                .await
+                .0,
+            200
+        );
+        let mut saved = rows(store.as_ref(), Model::Verification).await.remove(0);
+        let encrypted = text(&saved, "value").unwrap();
+        assert!(encrypted.starts_with("$ba$7$"));
+        saved["value"] = json!(match kind {
+            0 => "$ba$7$not-hex".to_owned(),
+            1 => encrypted.replace("$7$", "$8$"),
+            2 => encrypted.replace("$7$", "$-1$"),
+            _ => format!(
+                "{}{}",
+                &encrypted[..encrypted.len() - 1],
+                if encrypted.ends_with('0') { '1' } else { '0' }
+            ),
+        });
+        let mut tx = store.begin(true).await.unwrap();
+        tx.replace(Model::Verification, saved).await.unwrap();
+        tx.commit().await.unwrap();
+        let (status, body, headers) = browser
+            .call(
+                "/two-factor/verify-otp",
+                Some(json!({"code":delivery.last()})),
+            )
+            .await;
+        assert_eq!(status, 500);
+        assert!(body.is_null());
+        assert!(headers.get("set-cookie").is_none());
+        assert!(headers.get("set-auth-jwt").is_none());
+        assert_eq!(rows(store.as_ref(), Model::Session).await, sessions);
+        assert!(rows(store.as_ref(), Model::Verification).await.is_empty());
+        assert_eq!(
+            browser
+                .call(
+                    "/two-factor/verify-otp",
+                    Some(json!({"code":delivery.last()}))
+                )
+                .await
+                .1["code"],
+            "OTP_HAS_EXPIRED"
+        );
+    }
+    assert_eq!(
+        browser
+            .call("/two-factor/send-otp", Some(json!({})))
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/verify-otp",
+                Some(json!({"code":delivery.last()}))
+            )
             .await
             .0,
         200

@@ -804,6 +804,7 @@ fn failure_response(error: &BlueprintError) -> Response {
         "HTTP_INTERNAL_EMPTY"
             | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
             | "TWO_FACTOR_GENERATION_FAILED"
+            | "TWO_FACTOR_STORAGE_DECODE_FAILED"
     ) {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }

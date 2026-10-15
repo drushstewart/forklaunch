@@ -1,0 +1,32 @@
+[
+  {
+    "secret": "owned-codec-secret-at-least-32-characters",
+    "plaintext": "0",
+    "nonce": "000102030405060708090a0b0c0d0e0f1011121314151617",
+    "ciphertext": "000102030405060708090a0b0c0d0e0f1011121314151617fec5b9ede7a6f61cf6794e188051f47b73"
+  },
+  {
+    "secret": "owned-codec-secret-at-least-32-characters",
+    "plaintext": "012345",
+    "nonce": "000102030405060708090a0b0c0d0e0f1011121314151617",
+    "ciphertext": "000102030405060708090a0b0c0d0e0f1011121314151617feb2fc5053738523332893ef25fd27a37667957fa084"
+  },
+  {
+    "secret": "owned-codec-secret-at-least-32-characters",
+    "plaintext": "01234567890123456789012345678901",
+    "nonce": "000102030405060708090a0b0c0d0e0f1011121314151617",
+    "ciphertext": "000102030405060708090a0b0c0d0e0f1011121314151617feb2fc505373c10b362c4487c1087a4949f579866a419b8f7c2b15bc22cf52fcf8835ec3903b6919f729737332068aff"
+  },
+  {
+    "secret": "owned-codec-secret-at-least-32-characters",
+    "plaintext": "é🔑",
+    "nonce": "000102030405060708090a0b0c0d0e0f1011121314151617",
+    "ciphertext": "000102030405060708090a0b0c0d0e0f10111213141516170d2a3efcf3d7f7e90cf55c44659f04b87a1f480bc1a3"
+  },
+  {
+    "secret": "owned-codec-secret-at-least-32-characters",
+    "plaintext": "",
+    "nonce": "000102030405060708090a0b0c0d0e0f1011121314151617",
+    "ciphertext": "000102030405060708090a0b0c0d0e0f1011121314151617fbca28417896153a047f13628dd52b5b"
+  }
+]

@@ -12,11 +12,13 @@ pub enum OtpStorage {
     #[default]
     Plain,
     Hashed,
+    /// Better Auth XChaCha20-Poly1305 field encoding using trusted encryption keys.
+    Encrypted,
 }
 impl OtpStorage {
-    pub(super) fn encode(self, code: &str) -> Zeroizing<String> {
+    pub(super) fn comparison(self, code: &str) -> Zeroizing<String> {
         Zeroizing::new(match self {
-            Self::Plain => code.to_owned(),
+            Self::Plain | Self::Encrypted => code.to_owned(),
             Self::Hashed => URL_SAFE_NO_PAD
                 .encode(ring::digest::digest(&ring::digest::SHA256, code.as_bytes()).as_ref()),
         })
@@ -25,7 +27,8 @@ impl OtpStorage {
 /// Validate either supported persisted representation, independently of current
 /// policy. A policy switch is an ordinary failed proof, not corrupt storage.
 pub(super) fn valid_stored(value: &str) -> bool {
-    ((1..=32).contains(&value.len()) && value.bytes().all(|b| b.is_ascii_digit()))
+    super::otp_encryption::recognizable(value)
+        || ((1..=32).contains(&value.len()) && value.bytes().all(|b| b.is_ascii_digit()))
         || (value.len() == 43
             && URL_SAFE_NO_PAD
                 .decode(value)

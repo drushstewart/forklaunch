@@ -9172,3 +9172,27 @@ Owned roles/records0. Logs /private/tmp/fl-paypal-void-{unit,pg,read-regression,
 schema-wire,legacy,clippy,minimal-clippy,cleanup}.log. CI runs restricted PG and
 tracks the history schema fixture. No live provider/deployment or immutable
 package claim; broader reconciliation remains open and660/682 unchanged.
+
+### 2026-10-14: built-in encrypted OTP field storage (working source)
+
+Trusted Encrypted mode uses SHA256(secret UTF8)→XChaCha20Poly1305, fresh24-byte
+nonce and lowercase nonce/ciphertext/tag hex. Independent validated field keys
+support bounded version envelopes and explicit legacy fallback; only zeroized
+derived keys are retained and key configuration has no Debug/Serde. Existing
+cookie keys/row encryption remain independent. Unknown/retired keys, malformed
+encoding and bad tags commit destructive OTP consumption before empty500, with
+no session/trust or new attempt increment; prior authorized expired-lock cleanup
+commits too. Commit failure rolls back. Plain/hash→encrypted errors consume;
+encrypted→plain/hash wrong proofs retain/increment. Existing128-byte supplied
+proof bound explicitly excludes upstream144-character ciphertext-as-Plain-proof
+behavior. Decimal-prefix version parsing and replacement UTF8 decoding match the
+admitted actual-source subset. Async custom/backup field codecs remain open.
+
+Frozen19 hashes: /private/tmp/fl-otp-encrypted-freeze.json. Five deterministic
+Node/Rust vectors match encrypt/decrypt bytes. Actual full fixture plus8 encrypted
+groups pass; focused4, affected35/1ignored56.14s, restrictedPG1/47.80s, strict
+all-feature/all-target Clippy7.50s and minimal3.36s pass. Cleanup0/0/0. Logs:
+/private/tmp/fl-otp-encrypted-{native,regression,postgres,clippy,minimal,actual,
+full-actual,cleanup}.log. Pinned RustCrypto chacha20poly1305 0.11.0 and additive
+lock edges are included; owned fake-secret JSON vectors are source assets. No
+new generated-TCP or immutable archive claim;660/682 stays unchanged.
