@@ -9494,3 +9494,20 @@ allfeature/alltargetClippy9.20s/minimal5.38s and actual9groups pass; cleanup0/0/
 Logs /private/tmp/fl-backup-storage-{final,regression,postgres,clippy,minimal,actual,cleanup}.log.
 No manifests/locks/migrations changed; CI tracks actual fixture. No new immutable
 or generated MFA receipt. Broader plugin gate remains open;660/682 unchanged.
+
+
+### Rustls advisory refresh and patch (2026-10-14)
+
+A fresh RustSec scan (1329 advisories, commit
+edb58f5974b83eb8302332821cb6d389777aa351) found newly published
+RUSTSEC-2026-0346/0347/0348/0349 against rustls0.23.45 in all three lockfiles.
+Targeted update to0.23.46 removes all four without adding scanner exceptions;
+tracked lock deltas contain only Rustls version/checksum changes. The ignored
+CLI lock was likewise updated (SHA256
+d66f3120b6fab6af185dfa4e22c614b4bf5324370aede8667c9807e3e5bc5110).
+Fresh all-lockfile gate passes with only existing reviewed findings visible;
+report /private/tmp/fl-oct14-patched-security.json and corresponding.log.
+CLI1121 tests pass; allfeature IAM library167 pass/3environment-gatedPGignored
+in88.02s. Generated billing date base/Stripe template compilation/artifact checks
+also pass against the patched graph. Separate restrictedPG receipts remain
+applicable, not relabeled as this run. No hosted CI/publication claim.
