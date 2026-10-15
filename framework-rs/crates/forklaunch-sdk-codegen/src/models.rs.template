@@ -33,6 +33,7 @@ pub enum {{name}} {
 {{/has_default}}
 {{/union}}
 {{^union}}
+{{^sequence}}
 #[derive(Debug, Clone{{#has_default}}, Default{{/has_default}}, PartialEq, Serialize, Deserialize)]
 {{#deny_unknown_fields}}#[serde(deny_unknown_fields)]{{/deny_unknown_fields}}{{#transparent}}#[serde(transparent)]{{/transparent}}
 pub struct {{name}} {
@@ -42,7 +43,51 @@ pub struct {{name}} {
     pub {{field_name}}: {{{field_type}}},
 {{/fields}}
 }
+{{/sequence}}
 {{/union}}
+
+{{#sequence}}
+#[derive(Debug, Clone{{#has_default}}, Default{{/has_default}}, PartialEq)]
+pub struct {{name}} {
+{{#fields}}
+    pub {{field_name}}: {{{field_type}}},
+{{/fields}}
+}
+
+impl Serialize for {{name}} {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq as _;
+        #[allow(unused_mut)]
+        let mut sequence = serializer.serialize_seq(Some({{sequence_len}}))?;
+{{#fields}}
+        sequence.serialize_element(&self.{{field_name}})?;
+{{/fields}}
+        sequence.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for {{name}} {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct SequenceVisitor;
+        impl<'de> serde::de::Visitor<'de> for SequenceVisitor {
+            type Value = {{name}};
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("the fixed-length {{name}} sequence")
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+{{#fields}}
+                let {{field_name}} = sequence.next_element()?.ok_or_else(|| serde::de::Error::custom("missing tuple element {{field_name}}"))?;
+{{/fields}}
+                if sequence.next_element::<serde::de::IgnoredAny>()?.is_some() {
+                    return Err(serde::de::Error::custom("extra tuple element"));
+                }
+                Ok({{name}} { {{#fields}}{{field_name}}, {{/fields}} })
+            }
+        }
+        deserializer.deserialize_seq(SequenceVisitor)
+    }
+}
+{{/sequence}}
 
 {{/models}}
 {{#aliases}}

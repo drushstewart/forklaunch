@@ -10042,3 +10042,32 @@ commitfault checks pass. Owned roles/records/audits0. Logs
 No manifests/locks/schema/template changes; no immutablearchive/generated delivery
 profile claim. Configurable tokenTTL/arbitraryuserprojection/rawJScontext and email/
 invitation/globalbackgroundcoverage remain separate.660/682 (96.8%),22open unchanged.
+
+
+### Precise fixed-length Rust tuple models (2026-10-14)
+
+Shared CLI/native model compiler recognizes exact closed dense positional shapes
+using effective min/max/tail constraints, including truncated prefixes and exact
+empty arrays. Named item0/item1 sequence structs use custom SerializeSeq/SeqAccess
+with strict missing/extra rejection, retaining null separately from missing. Empty
+sequence serializes[] notunit/null; numeric sequence_len metadata avoids expression
+depth and serde tuple arity16 limits. Existing field-based recursion/default analysis
+follows required positionalBox edges, suppressing recursiveDefault. Allfour existing
+RustModelTemplate construction sites audited for additive sequence metadata.
+Root review found implicitdraft7 prefixItems incorrectly active during graph model
+normalization; scoped ignore-prefix fix for emptydialect preserves explicit2020
+inheritance and legacyitems[], with runtimePayloadCodec/model ['x']/[1] controls.
+Other implicit dialectkeyword policies are not globally reinterpreted this slice.
+Frozen5 /private/tmp/fl-fixed-tuple-source.json.79generatedRust acceptance/roundtrip
+cases across14schemas:72actualZod cases+7schema/dialect controls; generatedTS valid
+assignments/types compile. Arity0/1/2/16/17/32/128, nested/null/ref/legacy/truncation/
+requiredrecursion tested (/private/tmp/fl-fixed-tuple-models.log). Nativecodegen
+allfeature46, minimal46/nativeSDKRust5 and strictalltargetClippy pass; fullCLI1125
+pass and1294 embeddedsource/template entries pass. Logs
+/private/tmp/fl-fixed-tuple-{native,consumers,clippy,cli-full,package}.log.
+Initial CLI unit assertions corrected for sharedmodule path/namedalias target,
+no production defect; finalfullsuite green. Package coverage is currentworking
+source including drafts, not immutable archive. No dependency/lock edits.
+Variable prefix/rest still use existing broad representation and need separate
+precise sequence/presence handling; this is not fulltuple or schemagate closure.
+660/682 (96.8%),22open unchanged.

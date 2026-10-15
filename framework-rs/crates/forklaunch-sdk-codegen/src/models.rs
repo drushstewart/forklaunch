@@ -12,6 +12,10 @@ pub struct RustModelTemplate {
     pub name: String,
     pub fields: Vec<RustModelFieldTemplate>,
     pub union: bool,
+    /// Fixed-length JSON sequence, rendered with an explicit Serde visitor.
+    pub sequence: bool,
+    /// Exact element count, emitted as a literal rather than a nested expression.
+    pub sequence_len: usize,
     pub deny_unknown_fields: bool,
     pub transparent: bool,
     pub has_default: bool,
@@ -311,6 +315,8 @@ pub(crate) fn rust_types_from_schema(
                             field_type,
                         }],
                         union: false,
+                        sequence: false,
+                        sequence_len: 0,
                         deny_unknown_fields: false,
                         transparent: true,
                         has_default: true,
@@ -463,6 +469,9 @@ pub(crate) fn build_rust_type(
         }
         Some("object") => rust_model_from_schema(type_name, schema, models),
         Some("array") => {
+            if let Some(items) = fixed_sequence_items(schema) {
+                return build_rust_sequence(type_name, items, models);
+            }
             let item_type_name = format!("{}Item", rust_type_name(type_name));
             let item_type = schema.get("items").map_or_else(
                 || "serde_json::Value".to_string(),
@@ -507,6 +516,8 @@ pub(crate) fn build_rust_union(
             name: name.clone(),
             fields: vec![],
             union: true,
+            sequence: false,
+            sequence_len: 0,
             deny_unknown_fields: false,
             transparent: false,
             has_default: true,
@@ -545,6 +556,8 @@ pub(crate) fn rust_model_from_schema(
             name: model_name.clone(),
             fields: vec![],
             union: false,
+            sequence: false,
+            sequence_len: 0,
             deny_unknown_fields: false,
             transparent: false,
             has_default: true,
@@ -617,6 +630,8 @@ pub(crate) fn rust_model_from_schema(
             name: model_name.clone(),
             fields,
             union: false,
+            sequence: false,
+            sequence_len: 0,
             deny_unknown_fields: schema.get("additionalProperties")
                 == Some(&JsonValue::Bool(false)),
             transparent: false,
@@ -625,6 +640,83 @@ pub(crate) fn rust_model_from_schema(
         },
     );
     model_name
+}
+
+// Only exact dense positional shapes receive a precise Rust sequence model.
+// Variable-length prefixes/rest retain their existing broad representation.
+fn fixed_sequence_items(schema: &JsonValue) -> Option<&[JsonValue]> {
+    let prefix = schema
+        .get("prefixItems")
+        .or_else(|| schema.get("items").filter(|items| items.is_array()))
+        .and_then(JsonValue::as_array);
+    let tail = if schema.get("prefixItems").is_some() {
+        schema.get("items")
+    } else if prefix.is_some() {
+        schema.get("additionalItems")
+    } else {
+        schema.get("items")
+    };
+    let prefix = prefix.map_or(&[][..], Vec::as_slice);
+    let minimum = schema
+        .get("minItems")
+        .and_then(JsonValue::as_u64)
+        .unwrap_or(0);
+    let maximum = schema
+        .get("maxItems")
+        .and_then(JsonValue::as_u64)
+        .unwrap_or(u64::MAX);
+    let maximum = if tail == Some(&JsonValue::Bool(false)) {
+        maximum.min(prefix.len() as u64)
+    } else {
+        maximum
+    };
+    // Truncated prefixes are valid: later positions are unreachable under maxItems.
+    if minimum == maximum && maximum <= prefix.len() as u64 {
+        return Some(&prefix[..usize::try_from(maximum).ok()?]);
+    }
+    None
+}
+
+fn build_rust_sequence(
+    type_name: &str,
+    items: &[JsonValue],
+    models: &mut BTreeMap<String, RustModelTemplate>,
+) -> String {
+    let base = rust_type_name(type_name);
+    let mut name = base.clone();
+    let mut suffix = 2;
+    while models.contains_key(&name) {
+        name = format!("{base}{suffix}");
+        suffix += 1;
+    }
+    models.insert(
+        name.clone(),
+        RustModelTemplate {
+            name: name.clone(),
+            fields: vec![],
+            union: false,
+            sequence: true,
+            sequence_len: items.len(),
+            deny_unknown_fields: false,
+            transparent: false,
+            has_default: true,
+            variants: vec![],
+        },
+    );
+    let fields = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| RustModelFieldTemplate {
+            optional: false,
+            required: false,
+            flatten: false,
+            wire_name_literal: format!("\"{index}\""),
+            field_name: format!("item{index}"),
+            field_type: build_rust_type(&format!("{name}Item{index}"), item, models),
+        })
+        .collect();
+    models.get_mut(&name).unwrap().fields = fields;
+    name
 }
 
 pub(crate) fn rust_type_name(input: &str) -> String {
@@ -809,4 +901,75 @@ pub fn render_rust_models(
         aliases,
     };
     Ok(ramhorns::Template::new(include_str!("models.rs.template"))?.render(&data))
+}
+
+#[cfg(test)]
+mod sequence_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn fixed_shapes_use_sequences_and_keep_variable_shapes_broad() {
+        for count in [0, 1, 16, 17, 128] {
+            let schema = json!({"type":"array", "prefixItems":vec![json!({"type":"string"});count], "items":false, "minItems":count});
+            let (models, _, name) = rust_types_from_schema("Tuple", &schema);
+            let model = models.iter().find(|model| model.name == name).unwrap();
+            assert!(model.sequence);
+            assert_eq!(model.fields.len(), count);
+            assert!(model.has_default);
+        }
+        for schema in [
+            json!({"type":"array", "prefixItems":[{"type":"string"}], "items":false}),
+            json!({"type":"array", "prefixItems":[{"type":"string"}], "minItems":1}),
+            json!({"type":"array", "prefixItems":[{"type":"string"}], "minItems":2, "items":false}),
+        ] {
+            let (models, _, _) = rust_types_from_schema("Tuple", &schema);
+            assert!(models.iter().all(|model| !model.sequence));
+        }
+        assert_eq!(
+            fixed_sequence_items(&json!({"type":"array", "maxItems":0})),
+            Some(&[][..])
+        );
+        assert_eq!(
+            fixed_sequence_items(
+                &json!({"type":"array", "prefixItems":[true,true], "minItems":1,"maxItems":1})
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+        assert_eq!(
+            fixed_sequence_items(
+                &json!({"type":"array", "items":[true], "minItems":1,"additionalItems":false})
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn implicit_draft_seven_ignores_modern_positions() {
+        let schema = json!({"type":"array","prefixItems":[{"type":"number"}],"items":{"type":"string"},"minItems":1,"maxItems":1});
+        let normalized = super::super::schema::normalize(&schema, "Legacy").unwrap();
+        assert!(normalized.get("prefixItems").is_none());
+        let (models, aliases, ty) = rust_types_from_schema("Legacy", &normalized);
+        assert!(models.is_empty());
+        assert_eq!(ty, "Legacy");
+        assert_eq!(aliases[0].target_type, "Vec<String>");
+    }
+
+    #[test]
+    fn required_recursive_position_does_not_derive_default() {
+        let schema = json!({"$schema":"https://json-schema.org/draft/2020-12/schema", "$defs":{"Node":{"type":"array","prefixItems":[{"$ref":"#/$defs/Node"}],"minItems":1,"items":false}}, "$ref":"#/$defs/Node"});
+        let schema = super::super::schema::normalize(&schema, "Recursive").unwrap();
+        let (models, aliases, _) = rust_types_from_schema("Recursive", &schema);
+        let sequence = models.iter().find(|model| model.sequence).unwrap();
+        assert!(!sequence.has_default);
+        assert!(sequence.fields[0].field_type.starts_with("Box<"));
+        let source = render_rust_models(&models, &aliases).unwrap();
+        assert!(source.contains("deserialize_seq"));
+        assert!(source.contains("extra tuple element"));
+        assert!(!source.contains("PartialEq, Serialize, Deserialize)]\npub struct"));
+    }
 }

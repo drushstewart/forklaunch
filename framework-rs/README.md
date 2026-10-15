@@ -1263,3 +1263,12 @@ may pass fourth options `{ jsonSchemaDialect: 'https://json-schema.org/draft/202
 with OpenAPI3.1. Conflicting dialect metadata/OAS3.0 reject. Root input callbacks
 are skipped by the adapter; nested callback/default export behavior retains its
 existing limitations. Precise generated Rust tuple models remain separate work.
+
+
+Generated Rust models now represent exact fixed-length JSON tuples as named
+sequence structs with typed `item0`, `item1`, and subsequent fields. Custom Serde
+requires every position and rejects extras, including correct `[]` handling for
+empty tuples. Required recursive positions retain boxed edges without recursive
+Default derivation. Shared CLI/native generation supports arities beyond Serde's
+native tuple limit; tests include128 positions. Variable prefixes and typed rest
+items retain broad models pending separate presence-aware support.

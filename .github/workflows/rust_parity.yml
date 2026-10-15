@@ -75,6 +75,7 @@ on:
       - 'cli/tests/rust_ajv_own_properties.mjs'
       - 'cli/tests/rust_sdk_tuple_coercion.mjs'
       - 'cli/tests/rust_zod_tuple_openapi.mjs'
+      - 'cli/tests/rust_sdk_fixed_tuple_models.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -457,6 +458,7 @@ on:
       - 'cli/tests/rust_ajv_own_properties.mjs'
       - 'cli/tests/rust_sdk_tuple_coercion.mjs'
       - 'cli/tests/rust_zod_tuple_openapi.mjs'
+      - 'cli/tests/rust_sdk_fixed_tuple_models.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -1067,6 +1069,11 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_sdk_fixed_tuple_models.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_zod_email_openapi.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

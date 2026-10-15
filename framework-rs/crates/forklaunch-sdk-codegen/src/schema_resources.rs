@@ -462,7 +462,8 @@ pub(super) fn ignored_keyword(dialect: &str, keyword: &str) -> bool {
                     | "minContains"
                     | "maxContains"
             ))
-        || ((legacy || dialect.contains("2019-09")) && keyword == "prefixItems")
+        || ((dialect.is_empty() || legacy || dialect.contains("2019-09"))
+            && keyword == "prefixItems")
         || (dialect.contains("2020-12") && keyword == "additionalItems")
 }
 
