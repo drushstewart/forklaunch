@@ -22,7 +22,9 @@ mod subscription_creation;
 pub use paused_effect::{PausedEffectAcknowledgement, PausedSubscriptionEffectSnapshot};
 pub use payment_link_creation::{
     ManagedPaymentLinkPublication, PaymentLinkCreationClaim, PaymentLinkCreationReadSnapshot,
-    PaymentLinkCreationReservation, PaymentLinkCreationStatus,
+    PaymentLinkCreationReservation, PaymentLinkCreationStatus, PaymentLinkExpirationClaim,
+    PaymentLinkExpirationReservation, PaymentLinkExpirationStatus,
+    TrustedPaymentLinkExpirationPublisher,
 };
 pub use plan_creation::{
     PlanCreationClaim, PlanCreationReadSnapshot, PlanCreationReservation, PlanCreationStatus,

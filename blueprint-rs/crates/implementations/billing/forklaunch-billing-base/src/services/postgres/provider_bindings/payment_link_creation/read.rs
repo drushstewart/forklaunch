@@ -8,12 +8,12 @@ use uuid::Uuid;
 
 /// Opaque completed-creation snapshot. No dispatch key or publication authority.
 pub struct PaymentLinkCreationReadSnapshot {
-    binding: DurableStripeBinding,
-    actor: String,
-    api_version: String,
-    proof: Value,
-    payload: Value,
-    record: Value,
+    pub(super) binding: DurableStripeBinding,
+    pub(super) actor: String,
+    pub(super) api_version: String,
+    pub(super) proof: Value,
+    pub(super) payload: Value,
+    pub(super) record: Value,
 }
 impl PaymentLinkCreationReadSnapshot {
     /// Serialized size of retained bounded proof, payload and record; no proof exposure.
@@ -49,7 +49,7 @@ impl PostgresBillingStore {
     /// # Errors
     /// Denies missing schema usage, table SELECT or sensitive-audit INSERT.
     pub async fn validate_payment_link_creation_read_access(&self) -> BlueprintResult<()> {
-        let allowed:bool=sqlx::query_scalar("SELECT has_schema_privilege(current_user,'fl_billing','USAGE') AND has_table_privilege(current_user,'fl_billing.records','SELECT') AND has_table_privilege(current_user,'fl_billing.provider_bindings','SELECT') AND has_table_privilege(current_user,'fl_billing.payment_link_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.sensitive_read_audit','INSERT')").fetch_one(&self.pool).await.map_err(db_error)?;
+        let allowed:bool=sqlx::query_scalar("SELECT has_schema_privilege(current_user,'fl_billing','USAGE') AND has_table_privilege(current_user,'fl_billing.records','SELECT') AND has_table_privilege(current_user,'fl_billing.provider_bindings','SELECT') AND has_table_privilege(current_user,'fl_billing.payment_link_creation_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.payment_link_expiration_intents','SELECT') AND has_table_privilege(current_user,'fl_billing.sensitive_read_audit','INSERT')").fetch_one(&self.pool).await.map_err(db_error)?;
         if !allowed {
             return Err(conflict());
         }
@@ -185,13 +185,13 @@ impl PostgresBillingStore {
             record,
         })
     }
-    async fn payment_link_read_observation(
+    pub(super) async fn payment_link_read_observation(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         binding: &DurableStripeBinding,
         operation: Uuid,
     ) -> BlueprintResult<Value> {
-        let value: Option<sqlx::types::Json<Value>> = sqlx::query_scalar("SELECT jsonb_build_object('record',r.data,'recordVersion',r.xmin::text,'binding',to_jsonb(b),'bindingVersion',b.xmin::text,'intent',j.intent_ciphertext,'receipt',j.receipt_ciphertext,'hash',j.payload_hash,'journalVersion',j.xmin::text) FROM fl_billing.provider_bindings b JOIN fl_billing.records r ON r.tenant_id=b.tenant_id AND r.scope=b.scope AND r.kind=b.kind AND r.id=b.storage_id JOIN fl_billing.payment_link_creation_intents j ON j.tenant_id=b.tenant_id AND j.public_id=b.public_id AND j.operation_id=$9::uuid AND j.state='completed' AND j.actor_id=$10 WHERE b.tenant_id=$1 AND b.kind='payment_link' AND b.scope='durable' AND b.public_id=$2::uuid AND b.binding_id=$3::uuid AND b.storage_id=$4 AND b.provider_id=$5 AND b.deployment_label=$6 AND b.account_id=$7 AND b.livemode=$8 AND r.data->>'id'=$4")
+        let value: Option<sqlx::types::Json<Value>> = sqlx::query_scalar("SELECT jsonb_build_object('record',r.data,'recordVersion',r.xmin::text,'binding',to_jsonb(b),'bindingVersion',b.xmin::text,'intent',j.intent_ciphertext,'receipt',j.receipt_ciphertext,'hash',j.payload_hash,'journalVersion',j.xmin::text) FROM fl_billing.provider_bindings b JOIN fl_billing.records r ON r.tenant_id=b.tenant_id AND r.scope=b.scope AND r.kind=b.kind AND r.id=b.storage_id JOIN fl_billing.payment_link_creation_intents j ON j.tenant_id=b.tenant_id AND j.public_id=b.public_id AND j.operation_id=$9::uuid AND j.state='completed' AND j.actor_id=$10 WHERE b.tenant_id=$1 AND b.kind='payment_link' AND b.scope='durable' AND b.public_id=$2::uuid AND b.binding_id=$3::uuid AND b.storage_id=$4 AND b.provider_id=$5 AND b.deployment_label=$6 AND b.account_id=$7 AND b.livemode=$8 AND r.data->>'id'=$4 AND NOT EXISTS(SELECT 1 FROM fl_billing.payment_link_expiration_intents e WHERE e.tenant_id=b.tenant_id AND e.public_id=b.public_id AND e.state='completed')")
             .bind(self.tenant.id()).bind(binding.public_id.to_string()).bind(binding.binding_id.to_string())
             .bind(&binding.storage_id).bind(&binding.provider_id).bind(&binding.scope.deployment_label)
             .bind(&binding.scope.account_id).bind(binding.scope.livemode).bind(operation.to_string())

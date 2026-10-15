@@ -104,7 +104,7 @@ impl StripeBillingService<PostgresBillingStore> {
         record.provider_fields = Some(provider);
         Ok(record)
     }
-    async fn prepare_bound_created_payment_link(
+    pub(crate) async fn prepare_bound_created_payment_link(
         &self,
         profile: &BoundPaymentLinkCreationProfile,
         public_id: Uuid,

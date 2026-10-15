@@ -7,6 +7,8 @@ pub use bound_created_payment_link_reads::BoundPaymentLinkListLimit;
 #[cfg(feature = "postgres-identity")]
 pub mod bound_creation;
 #[cfg(feature = "postgres-identity")]
+pub mod bound_payment_link_expiration;
+#[cfg(feature = "postgres-identity")]
 pub mod bound_reads;
 #[cfg(feature = "postgres-reconciliation")]
 pub mod checkout_repair;

@@ -1,5 +1,10 @@
 //! Trusted adapter journal; never a public provider-evidence ingestion endpoint.
 mod admission;
+mod expiration;
+pub use expiration::{
+    PaymentLinkExpirationClaim, PaymentLinkExpirationReservation, PaymentLinkExpirationStatus,
+    TrustedPaymentLinkExpirationPublisher,
+};
 mod managed;
 mod read;
 use super::super::{db_error, invalid, storage_error};

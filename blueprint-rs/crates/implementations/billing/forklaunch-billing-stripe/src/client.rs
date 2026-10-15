@@ -453,6 +453,8 @@ mod customer_registration;
 mod subscription_creation;
 
 #[cfg(feature = "postgres-identity")]
+mod payment_link_expiration;
+#[cfg(feature = "postgres-identity")]
 mod portal_creation;
 
 #[cfg(feature = "postgres-identity")]

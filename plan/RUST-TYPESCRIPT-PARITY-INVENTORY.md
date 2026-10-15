@@ -11285,3 +11285,36 @@ hash-checked before and after cleanup. Receipt:
 and temporary release root were removed after process/open-file checks, removing
 49,651,071 logical bytes without a physical APFS claim. Public installation and
 checked schema/HTTP/MCP/WS regex integration remain open;660/682(96.8%) unchanged.
+
+
+### 2026-10-15 — PaymentLink metadata expiration library
+
+Explicit BoundPaymentLinkExpirationProfile and a separate trusted publisher now
+support the existing TypeScript metadata.status=EXPIRED operation against a sealed
+provider alias. This does not set active=false or revoke a Stripe URL. Local
+payment status/amount are unchanged; completion hides the bound record from GET
+and list. The actual TypeScript fixture records its existing UUID dispatch gap
+and cache/optional database deletion semantics, not an arbitrary-target guarantee.
+
+Migration17 adds immutable encrypted intent/completion evidence, separate record
+and alias claims, and private current-row counters. Only a newly confirmed
+reservation yields an opaque single-dispatch ticket. Exact repeats inspect stored
+IDs/status; competing operations on the same public ID cannot issue another POST.
+Uncertain commit/response retains claims indefinitely and permits inspection only.
+The separate publisher atomically records completion, audit and claim release.
+Startup for existing created-record reads now requires SELECT on the expiration
+journal. No HTTP/MCP/SDK selection is included in this library checkpoint.
+
+Validation: actual extracted TS6 cases and official Stripe22.6.2 wire pass. Final
+restricted PostgreSQL tests2 pass6.52s, including migration16-to17 backfill under
+an ordinary migration owner, role denial, races, dropped acknowledgments, audit
+rollback and immutable history. Existing list/read regressions pass6.39s/5.47s.
+Strict all-feature/all-target Clippy passes1.87s and minimal8.16s. Owned fixture
+databases/roles remaining0. CI runs both oracle fixtures and the PostgreSQL suite.
+
+Frozen16-source reviewed manifest /private/tmp/fl-payment-link-expiration-reviewed.json,
+SHA2563110bdd8ab98a128887f2ade269714b46df7034284266076701c1c7fb928b72c.
+Only a transaction-ownership documentation correction followed the agent's final
+native checks; executable code matches its tested freeze. Logs:
+/private/tmp/fl-payment-link-expiration-{source,sdk,final-pg,clippy-final2,minimal}.log.
+Surface wiring and event-linked recovery remain open;660/682(96.8%) unchanged.

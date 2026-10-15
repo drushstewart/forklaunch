@@ -366,6 +366,8 @@ on:
       - 'cli/tests/rust_billing_portal_url_shape.mjs'
       - 'cli/tests/rust_billing_consumed_references.mjs'
       - 'cli/tests/rust_billing_bound_creation_sdk.mjs'
+      - 'cli/tests/rust_billing_bound_payment_link_expiration_sdk.mjs'
+      - 'cli/tests/rust_billing_payment_link_expiration_source.mjs'
       - 'cli/tests/rust_billing_bound_plan_sdk.mjs'
       - 'cli/tests/rust_billing_customer_registration_sdk.mjs'
       - 'cli/tests/rust_billing_bound_subscription_sdk.mjs'
@@ -795,6 +797,8 @@ on:
       - 'cli/tests/rust_billing_portal_url_shape.mjs'
       - 'cli/tests/rust_billing_consumed_references.mjs'
       - 'cli/tests/rust_billing_bound_creation_sdk.mjs'
+      - 'cli/tests/rust_billing_bound_payment_link_expiration_sdk.mjs'
+      - 'cli/tests/rust_billing_payment_link_expiration_source.mjs'
       - 'cli/tests/rust_billing_bound_plan_sdk.mjs'
       - 'cli/tests/rust_billing_customer_registration_sdk.mjs'
       - 'cli/tests/rust_billing_bound_subscription_sdk.mjs'
@@ -1595,6 +1599,8 @@ jobs:
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_expiration -- --ignored --nocapture
       - name: Bound Plan read provenance, provider and race PostgreSQL checks
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_plan_reads -- --ignored --nocapture
+      - name: PaymentLink metadata expiration and migration PostgreSQL checks
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_payment_link_expiration -- --ignored --nocapture
       - name: Created PaymentLink bounded list PostgreSQL checks
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_created_payment_link_list -- --ignored --nocapture
       - name: Created PaymentLink read provenance and provider PostgreSQL checks
@@ -1667,6 +1673,12 @@ jobs:
         env:
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_billing_subscription_target_gap.mjs
+      - run: node cli/tests/rust_billing_payment_link_expiration_source.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+      - run: node cli/tests/rust_billing_bound_payment_link_expiration_sdk.mjs
+        env:
+          STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_billing_bound_creation_sdk.mjs
         env:
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
