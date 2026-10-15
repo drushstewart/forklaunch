@@ -25337,7 +25337,7 @@
               "name": "pureInputOptional",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/pureInput.ts",
-              "line": 76
+              "line": 89
             }
           ]
         },

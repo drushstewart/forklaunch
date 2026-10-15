@@ -1283,3 +1283,7 @@ nodes and coercions reject; computed defaults are omitted. This supported profil
 covers ordinary constructed schemas, preserves declared Date wire representation,
 and does not sandbox arbitrary getters, Proxies or shape thunks. NativeEnum supports normalized finite string/number values, including numeric
 reverse maps and mixed enums; non-JSON effective values reject. The default exporter remains unchanged.
+
+Pure input also rejects built-in string trim/case transforms: ordered constraints
+and Unicode expansion require a separate input projection. Default exports retain
+their compatibility behavior.

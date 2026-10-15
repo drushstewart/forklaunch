@@ -297,6 +297,53 @@ for (const leaf of [
     guards++;
   }
 }
+for (const transform of ["trim", "toLowerCase", "toUpperCase"]) {
+  for (const leaf of [
+    z.string()[transform](),
+    z.string().min(3)[transform]().min(1),
+    z.string().max(1)[transform]().max(1),
+  ]) {
+    for (const shape of shapes) {
+      let defaultCalls = 0;
+      const schema = shape(
+        leaf.default(() => {
+          defaultCalls++;
+          throw Error("no default callback");
+        }),
+      );
+      assert.throws(
+        () => pure(schema),
+        /does not support built-in string transforms/,
+      );
+      assert.equal(defaultCalls, 0);
+      guards++;
+    }
+  }
+  const schema = z.string().min(3)[transform]().min(1);
+  assert.equal(validator.openapi2020(schema).minLength, 1);
+  assert.equal(
+    validator.openapi2020(schema, { pureInput: false }).minLength,
+    1,
+  );
+  guards++;
+}
+// Actual ordered-transform admission differs from its legacy wire schema.
+for (const [schema, input] of [
+  [z.string().trim().min(2), " a "],
+  [z.string().max(1).toLowerCase().max(1), "İ"],
+  [z.string().max(1).toUpperCase().max(1), "ß"],
+]) {
+  const validate = new Ajv2020({ strict: false }).compile(
+    validator.openapi2020(schema),
+  );
+  assert.equal(validate(input), true);
+  assert.equal(schema.safeParse(input).success, false);
+  assert.throws(
+    () => pure(schema),
+    /does not support built-in string transforms/,
+  );
+  guards++;
+}
 console.log(
   `PASS ${comparisons} actual Zod/AJV2020 pure input admission comparisons +${guards} callback/annotation/resource/compatibility controls; nested defaults/effects never executed, unsupported callback-dependent schemas rejected, default export unchanged`,
 );

@@ -10324,3 +10324,20 @@ receipts are separate. Known tuple public-name collision fixed later is not
 covered by this archive. Cleanup follows only after committing this receipt.
 Checklist660/682(96.8%),22broad gates remain open; startup evidence is local,
 not an AWS deployment or published-crate receipt.
+
+
+### Pure input built-in string transform guard (2026-10-14)
+
+Opt-in pure input now rejects trim/toLowerCase/toUpperCase registrations as
+unsupported projections, including nested/optional/union/default wrappers.
+These transforms do not execute user callbacks but can change admission through
+ordered constraints or Unicode expansion (lowercase İ/uppercase ß); silently
+exporting raw length constraints was unsound. Default exporter remains unchanged.
+577comparisons+246controls (including108 transform/nesting/default guards and
+three actual admission reproducers), strictTS7.0.2 12roots/620exports,NativeEnum
+16080+41,tuple1620 andSDK20 pass. Frozen2 manifest
+/private/tmp/fl-pure-transforms-source.json verified; logs /private/tmp/fl-pure-
+transforms-{parity,types,zod_native_enum_openapi,zod_tuple_openapi,sdk_tuple_coercion}.log.
+Root regenerated inventory source locations and checks pass. This supported
+profile rejects transformed strings rather than claiming exact transformed input
+projection; callback/Unicode/general schema gates remain open.660/682(96.8%).

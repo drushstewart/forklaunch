@@ -62,6 +62,19 @@ export function assertPureInputSchema(schema: ZodTypeAny): void {
       'Pure input export does not support non-JSON native enum values'
     );
   }
+  if (
+    schema._def.typeName === 'ZodString' &&
+    (schema._def.checks as z.ZodStringCheck[]).some(
+      (check) =>
+        check.kind === 'trim' ||
+        check.kind === 'toLowerCase' ||
+        check.kind === 'toUpperCase'
+    )
+  ) {
+    throw new Error(
+      'Pure input export does not support built-in string transforms'
+    );
+  }
   if (schema._def.coerce === true) {
     throw new Error('Pure input export does not support built-in coercion');
   }
