@@ -24683,7 +24683,7 @@
               "name": "registerZodChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/zodChecks.ts",
-              "line": 279
+              "line": 289
             }
           ]
         },
@@ -25525,19 +25525,19 @@
               "name": "projectStringChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 26
+              "line": 28
             },
             {
               "name": "projectNumberChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 131
+              "line": 151
             },
             {
               "name": "projectArrayChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 152
+              "line": 172
             }
           ]
         },

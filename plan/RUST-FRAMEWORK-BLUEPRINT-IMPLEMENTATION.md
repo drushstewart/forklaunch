@@ -3367,3 +3367,44 @@ whose dependency files referenced previously removed, owned package roots.
 Retained archive hashes, inactive target, no open files and unchanged inode,
 mtime and size were verified. Current sources and proof archives are preserved;
 `/private/tmp/fl-oct15-retired-package-cache-cleanup.json` records the guards.
+
+
+### 2026-10-15 — Extended UTF16 bounds and immutable package validation
+
+Integrated f7dff8dfd extends the opt-in zodChecks profile with directional
+UTF16 bound arrays for finite numbers and exact NaN/Infinity/-Infinity tags.
+Existing safe-integer scalar admission and artifact bytes remain unchanged.
+Own bound overrides retain precedence; assertions affect strings only and share
+the existing aggregate10,000-rule budget, checked before rule-vector allocation.
+No dependency or lock changed. Lone JavaScript surrogate inputs remain outside
+native UTF8 strings; no arbitrary transform inference is claimed.
+
+Both native number modes pass5,020 actual-Zod/AJV/native comparisons/502schemas,
+48 stable profiles and24 override/admission controls each. Contract41/full and
+32/feature-off tests, strict full/minimal Clippy, prior arrays7,699 and strings
+10,200,51 live HTTP responses and204 generated TS/Rust socket codec/type checks
+pass. Strict types12roots/625exports and prior opted-in2220 checks pass.
+Nine integrated hashes match `/private/tmp/fl-utf16-bound-domain-source.json`,
+SHA256 `c91e36b03ab20ad25204329e8a13d620d614d428d8bc266516aeedfb63425268`.
+Full receipt: `/private/tmp/fl-utf16-bound-domain-receipt.md`; CI runs both modes.
+
+Separately, immutable source6fcbf887cb9b48ae804ce57a02dddd1fb2dc1004 passes
+fresh offline locked CLI packaging/install and relocated runtime validation:
+portable services/four workers, infra/module checks, OpenAPI/AsyncAPI, strict
+Rust/TS SDK consumers and native generators,233 IAM tests (five PG tests ignored),
+five HTTP/MCP listener modes and five signed capability callbacks. Startup,
+discovery, health, Origin rejection, startup-failure handling and graceful shutdown
+pass. Every one of3,084 archive files was byte-verified after runtime. This source
+excludes later role-quota/cache, trailing-slash and extendedUTF16 changes; those
+have their separate focused proofs above. No public registry or AWS claim.
+
+Retained archive `cli/target/parity-artifacts/forklaunch-6fcbf887c-94404aa3.crate`
+has SHA256 `94404aa3b007116b3a1a56c50b22e2ca3a076735771b8ff8a7c143de2ff66825`.
+Runtime log `/private/tmp/fl-oct15-auth-package-runtime.log` SHA256
+`2e0f74f7019f3c1746611fbfd914692b9dbad1673dee61b454e4a27f1accc060`.
+Metadata `/private/tmp/fl-oct15-auth-package-checkpoint.json` records exact guarded
+cleanup of two owned roots/269,373,483 logical bytes after terminal success.
+An additional351 retired owned CLI cache files/1,039,414,478 logical bytes were
+removed after archive/open-file/inode checks; unrelated watcher46080 was preserved.
+Receipt: `/private/tmp/fl-oct15-retired-package-cli-cache-cleanup.json`.
+Broad gates remain open; checklist660/682 (96.8%) unchanged.
