@@ -2929,3 +2929,26 @@ changes are excluded from this immutable checkpoint. Owned extraction/install/
 generated roots were removed after no-open-file/process checks and retained archive
 hash verification:4,226+5,579 files,267,976,298 logical bytes. Native caches and the
 archive remain. Checklist660/682 is unchanged.
+
+
+### 2026-10-15: Checked general array bounds and messages
+
+Commit70157fe93 adds ZodArrayRule/Check, zod_array_checks and CheckedArray while
+retaining the existing Array/u32 API. General IEEE bounds preserve last registration
+per kind, exact/min/max diagnostic order, NaN-inert checks and custom messages.
+Dirty container checks still evaluate elements; union recovery, intersection
+behavior and atomic public outputs remain intact. Rule/message resources are
+charged before allocating output. Sparse/non-JSON domains, arbitrary callbacks and
+numeric cardinality schema emission remain separate open work.
+
+Actual/native169,920 comparisons, full98/minimal92 tests and strict validation/Axum
+checks pass. Final focused2 tests, legacy u32array117,963 and shared string10,200
+comparisons pass after the mechanical check-count helper/lifetime lint edits.
+Live387HTTP/186MCP/3safe500/6TypeScriptSDK/6RustSDK cases pass. No semantic differential
+failure occurred; the full/minimal suites preceded those mechanical edits, while
+final strict, focused, differential and live checks followed them. Commands and
+source order: `/private/tmp/fl-array-float-length-receipt.md`; logs share the prefix.
+All10 integrated paths match `/private/tmp/fl-array-float-length-source.json` SHA256
+`e45d482641f069a7b2b8bf803e009797db2d197f9ea25e9929b66b00ca001f97`.
+No manifests/dependencies changed. CI includes the new oracle. Checklist660/682 is
+unchanged.
