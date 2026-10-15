@@ -2618,3 +2618,26 @@ runtime evidence: /private/tmp/fl-oct14-payment-link-checkpoint.json and
 hooks, admission, builtin-name qualification and ongoing drafts by exact source
 commit. Local receipt only; no public publication or hosted/cloud validation claim.
 Checklist660/682(96.8%),22broad gates remain open.
+
+### 2026-10-15 — Optional sign-in after email verification
+
+AuthHttp.with_auto_sign_in_after_verification enables ordinary newly verified
+proof login after the awaited after-hook; defaultfalse. Current same-user session
+is reused; anonymous/invalid/foreign/expired sessions create a target session.
+Already-verified replay and change-email flows retain their independent behavior.
+Redirects carry the login cookie; signed transient preference suppresses Max-Age
+without shortening the configured persisted lifetime. Final writer rechecks
+current target ID/email/verified state before granting a session; this stronger
+stale-hook boundary is explicit. No transaction spans the application callback.
+
+Expired cleanup commits independently before session insertion. Unexpected
+insert/commit failure retains verified state/cleanup, returns sanitized empty500
+and suppresses pending cookies. Native Result<()> storage cannot represent
+upstream createSession=null/APIError; that different clear-cookie/error behavior
+is documented as unsupported rather than mapped onto all storage failures.
+Actual15, native2(17 lifecycle branches+cancellation), affected email7(3.66s),
+restricted PostgreSQL1(137.88s) and strict full18.74s/minimal4.26s pass; owned
+roles/records/audits0. Eight-path /private/tmp/fl-verification-auto-freeze.json
+verified SHA2564ca4ee6e6413cbe17a2b130ca28282cdd189c6a74b1305e909ed2a09411ba5f2.
+Logs /private/tmp/fl-verification-auto-{actual,native,regression,pg,clippy,minimal-clippy}.log.
+No dependencies/locks; checklist660/682(96.8%),22broad gates remain open.

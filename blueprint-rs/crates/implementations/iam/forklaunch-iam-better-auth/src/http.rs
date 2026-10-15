@@ -29,6 +29,8 @@ mod callback;
 mod credential;
 mod email;
 #[cfg(test)]
+pub(crate) use email::auto_tests as email_auto_tests;
+#[cfg(test)]
 pub(crate) use email::observer_tests as email_observer_tests;
 mod external_jwt;
 mod jwks_path;
@@ -74,6 +76,7 @@ pub struct AuthHttp<S> {
     email_verification_delivery: Option<Arc<dyn crate::accounts::EmailVerificationDelivery>>,
     before_email_verification: Option<Arc<dyn crate::accounts::EmailVerificationObserver>>,
     after_email_verification: Option<Arc<dyn crate::accounts::EmailVerificationObserver>>,
+    auto_sign_in_after_verification: bool,
     password_reset_delivery: Option<Arc<dyn crate::accounts::PasswordResetDelivery>>,
     jwks_adapter: Option<crate::keyring::adapter::JwksAdapter>,
     key_config: crate::keyring::KeyPairConfig,
@@ -149,6 +152,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             email_verification_delivery: None,
             before_email_verification: None,
             after_email_verification: None,
+            auto_sign_in_after_verification: false,
             password_reset_delivery: None,
             jwks_adapter: None,
             key_config: crate::keyring::KeyPairConfig::default(),
@@ -833,6 +837,7 @@ fn failure_response(error: &BlueprintError) -> Response {
             | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
             | "EMAIL_VERIFICATION_DELIVERY_FAILED"
             | "EMAIL_VERIFICATION_OBSERVER_FAILED"
+            | "EMAIL_VERIFICATION_SESSION_FAILED"
             | "PASSWORD_RESET_DELIVERY_PREPARATION_FAILED"
             | "PASSWORD_RESET_OBSERVER_FAILED"
             | "TWO_FACTOR_GENERATION_FAILED"

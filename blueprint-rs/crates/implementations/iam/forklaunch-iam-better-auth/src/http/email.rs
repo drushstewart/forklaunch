@@ -27,7 +27,10 @@ pub(super) async fn dispatch<S: AuthStore + 'static>(
     let mut response = match handle(&app, parts, &mut pending).await {
         Ok(response) => response,
         Err(error) => {
-            if error.code == "EMAIL_VERIFICATION_OBSERVER_FAILED" {
+            if matches!(
+                error.code.as_str(),
+                "EMAIL_VERIFICATION_OBSERVER_FAILED" | "EMAIL_VERIFICATION_SESSION_FAILED"
+            ) {
                 pending.clear();
             }
             failure(&error)
@@ -38,6 +41,8 @@ pub(super) async fn dispatch<S: AuthStore + 'static>(
     }
     response
 }
+// Keep token validation, existing change-email branches, and post-hook login ordering together.
+#[allow(clippy::too_many_lines)]
 async fn handle<S: AuthStore + 'static>(
     app: &AuthHttp<S>,
     parts: Parts,
@@ -137,7 +142,14 @@ async fn handle<S: AuthStore + 'static>(
         }
         Err(error) => return Err(error),
     };
-    complete(app, pending, applied, destination, transient).await
+    let login = login_request(
+        app.auto_sign_in_after_verification,
+        &user,
+        &claims,
+        session_token,
+        (ip, agent),
+    )?;
+    complete(app, pending, applied, destination, transient, login).await
 }
 async fn complete<S: AuthStore + 'static>(
     app: &AuthHttp<S>,
@@ -145,13 +157,19 @@ async fn complete<S: AuthStore + 'static>(
     applied: Applied,
     destination: Option<&str>,
     transient: bool,
+    login: Option<LoginRequest>,
 ) -> BlueprintResult<Response> {
     if let Some(context) = applied.after
         && let Some(observer) = &app.after_email_verification
     {
         observe(observer.as_ref(), context?).await?;
     }
-    if let Some(session) = applied.session {
+    let session = if let Some(login) = login {
+        Some(auto_login(app, pending, login, transient).await?)
+    } else {
+        applied.session
+    };
+    if let Some(session) = session {
         set_cookie(
             pending,
             &app.cookie
@@ -162,6 +180,94 @@ async fn complete<S: AuthStore + 'static>(
         }
     }
     Ok(success(destination, applied.body))
+}
+struct LoginRequest {
+    user_id: String,
+    email: String,
+    token: String,
+    ip: String,
+    agent: String,
+}
+fn login_request(
+    enabled: bool,
+    user: &Value,
+    claims: &VerifiedEmailToken,
+    token: String,
+    metadata: (String, String),
+) -> BlueprintResult<Option<LoginRequest>> {
+    if !enabled
+        || user["emailVerified"] == true
+        || claims
+            .update_to
+            .as_ref()
+            .is_some_and(|email| !email.is_empty())
+    {
+        return Ok(None);
+    }
+    Ok(Some(LoginRequest {
+        user_id: text(user, "id")?.to_owned(),
+        email: claims.email.to_lowercase(),
+        token,
+        ip: metadata.0,
+        agent: metadata.1,
+    }))
+}
+fn login_failure() -> BlueprintError {
+    BlueprintError::new(
+        "EMAIL_VERIFICATION_SESSION_FAILED",
+        "Authentication operation failed",
+    )
+}
+async fn auto_login<S: AuthStore + 'static>(
+    app: &AuthHttp<S>,
+    pending: &mut HeaderMap,
+    request: LoginRequest,
+    transient: bool,
+) -> BlueprintResult<Value> {
+    // Expired-session cleanup/refresh commits independently before a new grant,
+    // matching upstream's getSession-before-create partial-failure boundary.
+    let view = SessionService::new(app.store.clone())
+        .get(&request.token, transient, false, (app.clock)())
+        .await?;
+    if let Some(view) = &view {
+        if view.refreshed {
+            set_cookie(
+                pending,
+                &app.cookie.serialize(&request.token, &app.secret, true),
+            )?;
+        }
+    } else if !request.token.is_empty() {
+        for cookie in app.cookie.clear_session() {
+            set_cookie(pending, &cookie)?;
+        }
+    }
+    let mut tx = app.store.begin(true).await.map_err(|_| login_failure())?;
+    let now = (app.clock)();
+    let user = tx
+        .get(Model::User, &request.user_id)
+        .await
+        .map_err(|_| login_failure())?
+        .filter(|user| {
+            user["email"].as_str() == Some(request.email.as_str()) && user["emailVerified"] == true
+        })
+        .ok_or_else(|| BlueprintError::new("UNAUTHORIZED", "Unauthorized"))?;
+    let current = load(&mut tx, &request.token, true, now)
+        .await
+        .map_err(|_| login_failure())?;
+    let session = if let Some(current) = current.filter(|current| {
+        current.user["id"] == user["id"] && current.user["email"] == user["email"]
+    }) {
+        current.session
+    } else {
+        let session = new_session(&request.user_id, &request.ip, &request.agent, now)
+            .map_err(|_| login_failure())?;
+        tx.insert(Model::Session, session.clone())
+            .await
+            .map_err(|_| login_failure())?;
+        session
+    };
+    tx.commit().await.map_err(|_| login_failure())?;
+    Ok(session)
 }
 struct Applied {
     body: Value,
@@ -403,3 +509,17 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
 #[cfg(test)]
 #[path = "email_observer_tests.rs"]
 pub(crate) mod observer_tests;
+
+impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Enables ordinary newly verified proof login after the after-verification hook.
+    /// Defaults to false. Already-verified replay and change-email flows are unchanged.
+    #[must_use]
+    pub fn with_auto_sign_in_after_verification(mut self, enabled: bool) -> Self {
+        self.auto_sign_in_after_verification = enabled;
+        self
+    }
+}
+
+#[cfg(test)]
+#[path = "email_auto_tests.rs"]
+pub(crate) mod auto_tests;

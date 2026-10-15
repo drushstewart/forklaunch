@@ -56,7 +56,7 @@ impl<S: AuthStore + 'static> EmailVerificationObserver for Hook<S> {
         }))
     }
 }
-fn token(email: &str, mode: &str, now: DateTime<Utc>) -> String {
+pub(super) fn token(email: &str, mode: &str, now: DateTime<Utc>) -> String {
     let mut claims = json!({"email":email,"exp":now.timestamp()+60});
     if matches!(
         mode,

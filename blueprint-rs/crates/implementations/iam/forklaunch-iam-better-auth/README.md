@@ -1784,3 +1784,22 @@ email-based update. Tokens retain the existing address-owner, reassignment and
 replay semantics, not single-use or ID-bound authority. These hooks do not enable
 `autoSignInAfterVerification`. Callback-owned copies, blocking code and panics are
 outside the bounded cooperative context contract.
+
+`AuthHttp::with_auto_sign_in_after_verification(true)` opts into ordinary newly
+verified email-proof login after the successful after-verification hook; default
+false, already-verified replay, and independent change-email login behavior remain
+unchanged. A valid current session for the same user is reused; absent, invalid,
+expired or other-user sessions cause a new session for the verified user. Redirects
+retain the login cookie. A signed `dont_remember` marker suppresses cookie Max-Age
+and is retained, while new persisted sessions keep the configured one-day lifetime.
+Expired-session cleanup/refresh commits before new-session creation. Unexpected
+creation/commit failure returns empty HTTP500 without response cookies, preserving
+verified user state and already-committed expired-session cleanup. Upstream's
+custom-adapter null session result (`FAILED_TO_CREATE_SESSION`, including its
+retained pending clear cookies) cannot be represented by native `AuthStore::insert`
+returning `Result<()>`; native storage errors are unexpected failures, not that
+handled null case. After-hook failure/cancellation creates no login session.
+A final tenant-bound writer rechecks target ID, email and verified status and loads
+or creates the session; it refuses stale callback authority if the user was deleted,
+changed address or became unverified. This is deliberately stronger than upstream
+snapshot-based session creation. No database transaction spans a hook await.
