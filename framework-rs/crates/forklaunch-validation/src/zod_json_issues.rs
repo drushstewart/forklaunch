@@ -3,6 +3,8 @@ use super::{Budget, ParseError, ZodJsonUnsupported};
 
 pub(super) enum Issue {
     Leaf(ParseError),
+    /// Ordering is needed only if this diagnostic survives union selection.
+    UnorderedObject,
     Union {
         path: Vec<String>,
         branches: Vec<Vec<Self>>,
@@ -13,6 +15,7 @@ impl Issue {
         budget.charge(1, key.len())?;
         match self {
             Self::Leaf(error) => error.path.insert(0, key.to_owned()),
+            Self::UnorderedObject => {}
             Self::Union { path, branches } => {
                 path.insert(0, key.to_owned());
                 for issue in branches.iter_mut().flatten() {
@@ -32,6 +35,7 @@ pub(super) fn format(
     for issue in issues {
         match issue {
             Issue::Leaf(error) => output.push(error),
+            Issue::UnorderedObject => return Err(ZodJsonUnsupported::ObjectOrderUnavailable),
             Issue::Union { path, branches } => {
                 for (index, branch) in branches.into_iter().enumerate() {
                     for issue in branch {
@@ -47,6 +51,9 @@ pub(super) fn format(
                         projected.extend(path.iter().cloned());
                         let (child_path, message) = match issue {
                             Issue::Leaf(error) => (error.path, error.message),
+                            Issue::UnorderedObject => {
+                                return Err(ZodJsonUnsupported::ObjectOrderUnavailable);
+                            }
                             Issue::Union { path, .. } => {
                                 budget.charge(0, 13)?;
                                 (path, "Invalid input".into())

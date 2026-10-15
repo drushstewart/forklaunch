@@ -17,13 +17,9 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-fn transform(
-    request: &FrameworkRequest,
-    root_default: bool,
-) -> Result<Option<Value>, JsonTransformFailure> {
-    use typescript_coerce::{ZodJsonField as Field, ZodJsonOutcome, ZodJsonSchema as Schema};
-    let fallback = json!("fallback");
-    let schema = Schema::Object(vec![
+fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> {
+    use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
+    Schema::Object(vec![
         Field {
             name: "amount",
             schema: Schema::Number(vec![]),
@@ -32,7 +28,7 @@ fn transform(
             name: "label",
             schema: Schema::Default {
                 schema: Box::new(Schema::String(vec![])),
-                value: &fallback,
+                value: fallback,
             },
         },
         Field {
@@ -76,6 +72,13 @@ fn transform(
             ]))),
         },
         Field {
+            name: "settings",
+            schema: Schema::Optional(Box::new(Schema::StrictObject(vec![Field {
+                name: "enabled",
+                schema: Schema::Boolean,
+            }]))),
+        },
+        Field {
             name: "items",
             schema: Schema::Optional(Box::new(Schema::Array {
                 element: Box::new(Schema::Object(vec![Field {
@@ -85,7 +88,15 @@ fn transform(
                 checks: vec![],
             })),
         },
-    ]);
+    ])
+}
+fn transform(
+    request: &FrameworkRequest,
+    root_default: bool,
+) -> Result<Option<Value>, JsonTransformFailure> {
+    use typescript_coerce::{ZodJsonOutcome, ZodJsonSchema as Schema};
+    let fallback = json!("fallback");
+    let schema = composition_schema(&fallback);
     let root_value = json!({"amount":7,"label":"fallback"});
     let schema = if root_default {
         Schema::Default {
@@ -99,7 +110,22 @@ fn transform(
         .parsed_json
         .as_ref()
         .and_then(|parsed| parsed.value.as_deref());
-    match typescript_coerce::zod_json_at_path(value, &schema, &["body"]) {
+    // This fixture registers no reviver or preceding transformation. Only at
+    // that explicit boundary may decompressed bytes reconstruct original order.
+    // The parser's framed-empty synthetic object has no own-key ambiguity.
+    let result = if let Some(raw) = request
+        .parsed_json
+        .as_ref()
+        .and_then(|parsed| parsed.raw_body.as_deref())
+        .filter(|raw| value.is_some() && !raw.is_empty())
+    {
+        let document = typescript_coerce::OrderedJsonDocument::parse(raw)
+            .map_err(|_| JsonTransformFailure::Operational)?;
+        typescript_coerce::zod_json_ordered_at_path(&document, &schema, &["body"])
+    } else {
+        typescript_coerce::zod_json_at_path(value, &schema, &["body"])
+    };
+    match result {
         Ok(ZodJsonOutcome::Valid(value)) => Ok(value),
         Ok(ZodJsonOutcome::Invalid(errors)) => Err(JsonTransformFailure::Validation(
             typescript_request_validation_error_response(

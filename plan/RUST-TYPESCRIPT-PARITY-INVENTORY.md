@@ -9036,3 +9036,41 @@ Final16 hashes /private/tmp/fl-backup-options-freeze.json; logs
 /private/tmp/fl-backup-options-{native,regression,postgres,clippy,minimal,actual,
 full-actual,cleanup}.log. CI tracks helper and expanded PG. Working-source proof
 includes frozen ordered-validator dependency draft, not immutable archive dda838.
+
+
+## Immutable ordered input and strict JSON objects (2026-10-14)
+
+OrderedJsonDocument binds immutable Value to a local object-order tree, preserving
+ECMAScript integer-index ordering, duplicate first position/last value and string
+insertion order without repeated ancestor-path sidecars. Parsing checks raw16MiB
+before decode and depth64/node100,000/logical value+metadata16MiB during building;
+logical metadata includes32 units/node and retained keys/strings, not allocator
+overhead. Vendored literal-key discrimination separates real private-marker
+object keys from serde numeric protocol without vendor/global feature changes.
+
+StrictObject emits declared-field errors then one dirty unknown-key message in
+actual own-key order. Ordinary Value can infer numeric keys plus at most one
+non-index unknown key. Missing order remains a deferred raw issue: later valid
+union branches win, and hidden nested-union children do not demand unobservable
+order; only retained formatted diagnostics raise ObjectOrderUnavailable. Trusted
+default Values gain no invented order. No source mutation/stale-sidecar access.
+
+Arbitrary_precision testing found bare -0 reaches a custom serde visitor as
+integer0. A bounded lexical numeric-token queue now preserves finite IEEE/-0
+across both modes while serde alone validates full syntax; strings/escapes/keys
+are skipped and successful decode must consume exactly the queue. Token count/
+metadata budgets apply before push/build. Malformed/nonfinite/lone-surrogate
+inputs remain outside this declared parser domain.
+
+All52 validation tests pass in default and arbitrary_precision;2018 exact actual/
+native ordered pairs pass per mode (4036 total), alongside118,132 prior composition
+pairs+2 nonfinite boundaries. Live138 HTTP/63 registered MCP/3 operational cases
+and6 calls per generated SDK pass; SDK calls exercise strict success/failure.
+Strict validation/Axum all-feature/all-target Clippy passes. The live bridge uses
+a declared no-reviver boundary and ordinary unambiguous synthetic{} for framed
+empty JSON; it never reparses stale transformed bytes. Outputs remain semantic
+JSON values, not serialized-key-order equivalence; record transforms remain open.
+Final10 hashes /private/tmp/fl-zod-ordered-source.json; logs
+/private/tmp/fl-zod-ordered-{tests,arbitrary-tests,parity,live,legacy,clippy}.log.
+CI tracks/runs new two-mode oracle plus expanded live fixture. Working-source
+proof, not immutable dda838 archive scope.

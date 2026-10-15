@@ -332,6 +332,19 @@ signed zeros compare equal and preserve the input sign. This API accepts an
 explicit ordered schema; it does not reflect arbitrary JavaScript enum objects.
 Repeated input metric scans also debit the shared evaluation node budget.
 
+Choose `ZodJsonSchema::StrictObject` to reject unknown keys with source-ordered
+diagnostics. Parse `OrderedJsonDocument` from bounded JSON and evaluate it with
+`zod_json_ordered_at_path(&document, &schema, &["body"])`. The immutable document
+retains original own-key order, including duplicate-key position and numeric
+indices. Its value has read-only access. Ordinary `Value` inputs work where order
+is unambiguous; selected diagnostics needing unavailable order return an explicit
+unsupported result. Later valid union branches still win. Never rebuild ordering
+from stale raw bytes after a reviver or transformation; supply a fresh ordered
+document at that boundary. The live example uses an explicit parser without
+those hooks and handles its synthetic empty object separately. Evaluator outputs
+retain semantic JSON scope; serialized property order and record transforms are
+separate capabilities.
+
 `RequestValidators::insert_request_transform` accepts one whole-schema callback
 for atomic parameter/query/header projections and optional JSON-body output.
 It runs before authentication in every validation mode, preserving all original

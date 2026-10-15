@@ -1,7 +1,8 @@
 use forklaunch_validation::{
     typescript_coerce::{
-        ZodFloatBound, ZodJsonField, ZodJsonLiteral, ZodJsonOutcome, ZodJsonSchema, ZodNumberCheck,
-        ZodNumberStep, ZodStringCheck, ZodStringRule, ZodStringStep, zod_json_at_path,
+        OrderedJsonDocument, ZodFloatBound, ZodJsonField, ZodJsonLiteral, ZodJsonOutcome,
+        ZodJsonSchema, ZodNumberCheck, ZodNumberStep, ZodStringCheck, ZodStringRule, ZodStringStep,
+        zod_json_at_path, zod_json_ordered_at_path,
     },
     zod_array::ZodArrayStep,
 };
@@ -89,8 +90,8 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
                 })
                 .collect(),
         },
-        "object" => ZodJsonSchema::Object(
-            spec["fields"]
+        "strict" | "object" => {
+            let fields = spec["fields"]
                 .as_array()
                 .unwrap()
                 .iter()
@@ -98,8 +99,13 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
                     name: field[0].as_str().unwrap(),
                     schema: schema(&field[1]),
                 })
-                .collect(),
-        ),
+                .collect();
+            if spec["kind"] == "strict" {
+                ZodJsonSchema::StrictObject(fields)
+            } else {
+                ZodJsonSchema::Object(fields)
+            }
+        }
         _ => panic!("unknown schema"),
     }
 }
@@ -131,11 +137,15 @@ fn main() {
             .flatten()
             .map(|part| part.as_str().unwrap())
             .collect();
-        let result = match zod_json_at_path(
-            raw.as_ref().or_else(|| input.get("value")),
-            &schema(&input["schema"]),
-            &path,
-        ) {
+        let schema = schema(&input["schema"]);
+        let evaluated = if input["ordered"] == true {
+            let document =
+                OrderedJsonDocument::parse(input["raw"].as_str().unwrap().as_bytes()).unwrap();
+            zod_json_ordered_at_path(&document, &schema, &path)
+        } else {
+            zod_json_at_path(raw.as_ref().or_else(|| input.get("value")), &schema, &path)
+        };
+        let result = match evaluated {
             Ok(ZodJsonOutcome::Valid(value)) => match value {
                 Some(value) => json!({"ok":true,"absent":false,"value":tag(value)}),
                 None => json!({"ok":true,"absent":true}),

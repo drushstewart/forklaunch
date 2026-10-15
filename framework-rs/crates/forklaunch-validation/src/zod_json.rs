@@ -14,6 +14,10 @@ use issues::Issue;
 #[path = "zod_json_literal.rs"]
 mod literal;
 pub use literal::ZodJsonLiteral;
+#[path = "zod_json_ordered.rs"]
+mod ordered;
+use ordered::Order;
+pub use ordered::{OrderedJsonDocument, OrderedJsonError};
 use resources::{
     Budget, MAX_ADMISSION_BYTES, clone_json, evaluation_bytes, number_bytes, own_schema_bytes,
 };
@@ -22,9 +26,12 @@ const MAX_DEPTH: usize = 64;
 const MAX_NODES: usize = 100_000;
 
 /// Programmatic schema composition; this does not interpret JSON Schema or Zod.
-/// Objects strip unknown fields. Literal defaults apply only to absent input.
+/// Objects strip unknown fields unless `StrictObject` is explicitly selected.
+/// Literal defaults apply only to absent input.
 /// Ordered unions choose the first valid branch, otherwise the first dirty
 /// branch. Empty and single-branch unions follow the source runtime behavior.
+/// Strict unknown-key diagnostics use trusted own-key order; ordinary values
+/// need an ordered document only when the selected diagnostic is ambiguous.
 /// Record, arbitrary callbacks and non-JSON outputs are not supported.
 #[derive(Debug, Clone)]
 pub enum ZodJsonSchema<'a> {
@@ -44,6 +51,8 @@ pub enum ZodJsonSchema<'a> {
         checks: Vec<ZodArrayStep>,
     },
     Object(Vec<ZodJsonField<'a>>),
+    /// Reject unknown keys in original ECMAScript own-key order.
+    StrictObject(Vec<ZodJsonField<'a>>),
     Union(Vec<Self>),
 }
 
@@ -70,6 +79,7 @@ pub enum ZodJsonUnsupported {
     PrototypeField,
     NonFiniteNumber,
     DiagnosticPath,
+    ObjectOrderUnavailable,
 }
 
 /// Successful absent input remains distinct from JSON null. Invalid results
@@ -167,6 +177,45 @@ pub fn zod_json_at_path(
     schema: &ZodJsonSchema<'_>,
     path: &[&str],
 ) -> Result<ZodJsonOutcome, ZodJsonUnsupported> {
+    evaluate_document(input, schema, path, None, 0)
+}
+
+/// Evaluate immutable ordered JSON without reparsing original transport bytes.
+/// Defaults supplied as ordinary values do not gain invented property order.
+/// # Errors
+/// Returns the same boundaries as [`zod_json_at_path`], including unavailable
+/// order when strict unknown-key diagnostics require it.
+pub fn zod_json_ordered_at_path(
+    input: &OrderedJsonDocument,
+    schema: &ZodJsonSchema<'_>,
+    path: &[&str],
+) -> Result<ZodJsonOutcome, ZodJsonUnsupported> {
+    evaluate_document(
+        Some(&input.value),
+        schema,
+        path,
+        Some(&input.order),
+        input.bytes,
+    )
+}
+
+/// Evaluate an ordered document with an empty diagnostic path.
+/// # Errors
+/// See [`zod_json_ordered_at_path`].
+pub fn zod_json_ordered(
+    input: &OrderedJsonDocument,
+    schema: &ZodJsonSchema<'_>,
+) -> Result<ZodJsonOutcome, ZodJsonUnsupported> {
+    zod_json_ordered_at_path(input, schema, &[])
+}
+
+fn evaluate_document(
+    input: Option<&Value>,
+    schema: &ZodJsonSchema<'_>,
+    path: &[&str],
+    order: Option<&Order>,
+    metadata_bytes: usize,
+) -> Result<ZodJsonOutcome, ZodJsonUnsupported> {
     if path.len() > MAX_DEPTH {
         return Err(ZodJsonUnsupported::DiagnosticPath);
     }
@@ -181,13 +230,14 @@ pub fn zod_json_at_path(
         return Err(ZodJsonUnsupported::SchemaBytes);
     }
     if let Some(input) = input
-        && schema_bytes.saturating_add(admit_value(input)?.1) > MAX_ADMISSION_BYTES
+        && schema_bytes.saturating_add(admit_value(input)?.1.max(metadata_bytes))
+            > MAX_ADMISSION_BYTES
     {
         return Err(ZodJsonUnsupported::InputBytes);
     }
     let mut remaining = Budget::new();
     remaining.charge(path.len(), path_bytes)?;
-    let mut parsed = evaluate(input, schema, &mut remaining)?;
+    let mut parsed = evaluate_ordered(input, schema, &mut remaining, order)?;
     if let Some(value) = &parsed.value {
         admit_value(value)?;
     }
@@ -271,7 +321,7 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
             ZodJsonSchema::String(checks) => checks.len(),
             ZodJsonSchema::Number(checks) => checks.len(),
             ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
-            ZodJsonSchema::Object(fields) => fields.len(),
+            ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => fields.len(),
             ZodJsonSchema::Union(branches) => branches.len(),
             ZodJsonSchema::Optional(_)
             | ZodJsonSchema::Nullable(_)
@@ -306,7 +356,7 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
                 nodes += checks.len();
                 stack.push((element, depth + 1));
             }
-            ZodJsonSchema::Object(fields) => {
+            ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => {
                 let mut names = std::collections::BTreeSet::new();
                 for field in fields {
                     if !names.insert(field.name) {
@@ -342,10 +392,20 @@ fn prototype_name(name: &str) -> bool {
     )
 }
 
+#[cfg(test)]
 fn evaluate(
     input: Option<&Value>,
     schema: &ZodJsonSchema<'_>,
     remaining: &mut Budget,
+) -> Result<Parsed, ZodJsonUnsupported> {
+    evaluate_ordered(input, schema, remaining, None)
+}
+
+fn evaluate_ordered(
+    input: Option<&Value>,
+    schema: &ZodJsonSchema<'_>,
+    remaining: &mut Budget,
+    order: Option<&Order>,
 ) -> Result<Parsed, ZodJsonUnsupported> {
     let checks = match schema {
         ZodJsonSchema::String(checks) => checks.len(),
@@ -376,10 +436,10 @@ fn evaluate(
             Parsed::valid(Some(Value::Null))
         }
         ZodJsonSchema::Optional(inner) | ZodJsonSchema::Nullable(inner) => {
-            evaluate(input, inner, remaining)?
+            evaluate_ordered(input, inner, remaining, order)?
         }
         ZodJsonSchema::Default { schema, value } => {
-            evaluate(input.or(Some(value)), schema, remaining)?
+            evaluate_ordered(input.or(Some(value)), schema, remaining, input.and(order))?
         }
         ZodJsonSchema::String(checks) => match zod_string_checks(input, checks) {
             Ok(value) => Parsed::valid(Some(Value::String(value.to_owned()))),
@@ -409,9 +469,12 @@ fn evaluate(
                 },
             ),
         },
-        ZodJsonSchema::Array { element, checks } => array(input, element, checks, remaining)?,
-        ZodJsonSchema::Object(fields) => object(input, fields, remaining)?,
-        ZodJsonSchema::Union(branches) => union(input, branches, remaining)?,
+        ZodJsonSchema::Array { element, checks } => {
+            array(input, element, checks, remaining, order)?
+        }
+        ZodJsonSchema::Object(fields) => object(input, fields, remaining, order, false)?,
+        ZodJsonSchema::StrictObject(fields) => object(input, fields, remaining, order, true)?,
+        ZodJsonSchema::Union(branches) => union(input, branches, remaining, order)?,
     })
 }
 
@@ -419,12 +482,13 @@ fn union(
     input: Option<&Value>,
     branches: &[ZodJsonSchema<'_>],
     remaining: &mut Budget,
+    order: Option<&Order>,
 ) -> Result<Parsed, ZodJsonUnsupported> {
     let mut first_dirty = None;
     let mut aborted = Vec::new();
     for branch in branches {
         remaining.charge(1, 16)?;
-        let parsed = evaluate(input, branch, remaining)?;
+        let parsed = evaluate_ordered(input, branch, remaining, order)?;
         match parsed.status {
             Status::Valid => return Ok(parsed),
             Status::Dirty if first_dirty.is_none() => {
@@ -450,6 +514,7 @@ fn array(
     element: &ZodJsonSchema<'_>,
     checks: &[ZodArrayStep],
     remaining: &mut Budget,
+    order: Option<&Order>,
 ) -> Result<Parsed, ZodJsonUnsupported> {
     let errors = zod_array_shape(input, checks).err().unwrap_or_default();
     let Some(Value::Array(values)) = input else {
@@ -461,7 +526,12 @@ fn array(
     }
     let mut output = Vec::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
-        let mut child = evaluate(Some(value), element, remaining)?;
+        let mut child = evaluate_ordered(
+            Some(value),
+            element,
+            remaining,
+            order.and_then(|o| o.index(index)),
+        )?;
         parsed.absorb(&mut child, &index.to_string(), remaining)?;
         if let Some(value) = child.value {
             output.push(value);
@@ -477,6 +547,8 @@ fn object(
     input: Option<&Value>,
     fields: &[ZodJsonField<'_>],
     remaining: &mut Budget,
+    order: Option<&Order>,
+    strict: bool,
 ) -> Result<Parsed, ZodJsonUnsupported> {
     let Some(Value::Object(values)) = input else {
         return Ok(Parsed::invalid(
@@ -507,17 +579,80 @@ fn object(
     let mut parsed = Parsed::valid(None);
     let mut output = Map::new();
     for field in ordered {
-        let mut child = evaluate(values.get(field.name), &field.schema, remaining)?;
+        let mut child = evaluate_ordered(
+            values.get(field.name),
+            &field.schema,
+            remaining,
+            order.and_then(|o| o.field(field.name)),
+        )?;
         parsed.absorb(&mut child, field.name, remaining)?;
         if let Some(value) = child.value {
             remaining.charge(0, field.name.len())?;
             output.insert(field.name.to_owned(), value);
         }
     }
+    if strict {
+        reject_unknown(values, fields, order, &mut parsed, remaining)?;
+    }
     if parsed.status == Status::Valid {
         parsed.value = Some(Value::Object(output));
     }
     Ok(parsed)
+}
+
+fn reject_unknown(
+    values: &Map<String, Value>,
+    fields: &[ZodJsonField<'_>],
+    order: Option<&Order>,
+    parsed: &mut Parsed,
+    remaining: &mut Budget,
+) -> Result<(), ZodJsonUnsupported> {
+    remaining.charge(values.len() + fields.len(), 0)?;
+    let declared: std::collections::BTreeSet<_> = fields.iter().map(|field| field.name).collect();
+    if values.keys().all(|key| declared.contains(key.as_str())) {
+        return Ok(());
+    }
+    let mut keys: Vec<_> = if let Some(keys) = order.and_then(Order::keys) {
+        keys.iter()
+            .filter(|key| !declared.contains(key.as_str()))
+            .collect()
+    } else {
+        let keys: Vec<_> = values
+            .keys()
+            .filter(|key| !declared.contains(key.as_str()))
+            .collect();
+        // Numeric indices have specified order independently of insertion. One
+        // remaining string key is unambiguous; two need original own-key order.
+        if keys.iter().filter(|key| index_key(key).0).count() > 1 {
+            parsed.errors.push(Issue::UnorderedObject);
+            if parsed.status == Status::Valid {
+                parsed.status = Status::Dirty;
+            }
+            return Ok(());
+        }
+        keys
+    };
+    keys.sort_by_key(|key| index_key(key));
+    let bytes = keys
+        .iter()
+        .filter(|key| !declared.contains(key.as_str()))
+        .fold(64usize, |sum, key| {
+            sum.saturating_add(key.len()).saturating_add(4)
+        });
+    remaining.charge(keys.len(), bytes.saturating_mul(2))?;
+    let extras: Vec<_> = keys
+        .iter()
+        .filter(|key| !declared.contains(key.as_str()))
+        .map(|key| format!("'{key}'"))
+        .collect();
+    parsed.errors.push(Issue::Leaf(ParseError {
+        path: Vec::new(),
+        message: format!("Unrecognized key(s) in object: {}", extras.join(", ")),
+    }));
+    if parsed.status == Status::Valid {
+        parsed.status = Status::Dirty;
+    }
+    Ok(())
 }
 
 fn index_key(name: &str) -> (bool, u32) {
@@ -530,3 +665,7 @@ fn index_key(name: &str) -> (bool, u32) {
 #[cfg(test)]
 #[path = "zod_json_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "zod_json_ordered_tests.rs"]
+mod ordered_tests;

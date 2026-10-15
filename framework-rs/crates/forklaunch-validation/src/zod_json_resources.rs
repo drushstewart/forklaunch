@@ -47,9 +47,11 @@ pub(super) fn own_schema_bytes(schema: &ZodJsonSchema<'_>) -> usize {
         ZodJsonSchema::Number(checks) => checks.iter().fold(0usize, |bytes, check| {
             bytes.saturating_add(check.message.map_or(0, str::len))
         }),
-        ZodJsonSchema::Object(fields) => fields.iter().fold(0usize, |bytes, field| {
-            bytes.saturating_add(field.name.len())
-        }),
+        ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => {
+            fields.iter().fold(0usize, |bytes, field| {
+                bytes.saturating_add(field.name.len())
+            })
+        }
         _ => 0,
     }
 }
@@ -83,11 +85,13 @@ pub(super) fn evaluation_bytes(
         ZodJsonSchema::Boolean => input_bytes()?.saturating_mul(4).saturating_add(128),
         ZodJsonSchema::Unknown => input_bytes()?.saturating_mul(3),
         ZodJsonSchema::Array { checks, .. } => checks.len().saturating_add(1).saturating_mul(128),
-        ZodJsonSchema::Object(fields) => own_schema_bytes(schema).saturating_mul(
-            usize::try_from(fields.len().max(1).ilog2())
-                .unwrap_or(usize::MAX)
-                .saturating_add(2),
-        ),
+        ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => {
+            own_schema_bytes(schema).saturating_mul(
+                usize::try_from(fields.len().max(1).ilog2())
+                    .unwrap_or(usize::MAX)
+                    .saturating_add(2),
+            )
+        }
         _ => 0,
     })
 }
