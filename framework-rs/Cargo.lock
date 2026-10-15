@@ -1595,6 +1595,7 @@ version = "0.1.0"
 name = "forklaunch-contract"
 version = "0.1.0"
 dependencies = [
+ "ada-url",
  "forklaunch-common",
  "forklaunch-jsonschema-protocol",
  "indexmap 2.14.0",

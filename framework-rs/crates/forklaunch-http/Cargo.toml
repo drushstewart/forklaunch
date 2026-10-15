@@ -7,6 +7,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+zod-uri = ["forklaunch-contract/zod-uri"]
+
 [dependencies]
 forklaunch-common = { version = "0.1.0", path = "../forklaunch-common" }
 forklaunch-contract = { version = "0.1.0", path = "../forklaunch-contract", features = ["schema-validation"] }

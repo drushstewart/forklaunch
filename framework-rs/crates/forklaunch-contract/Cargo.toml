@@ -9,10 +9,12 @@ repository.workspace = true
 
 [features]
 default = []
+zod-uri = ["schema-validation", "dep:ada-url"]
 json-schema = ["dep:serde_json", "dep:serde", "dep:percent-encoding"]
 schema-validation = ["json-schema", "dep:jsonschema", "dep:regex"]
 
 [dependencies]
+ada-url = { version = "=3.2.4", optional = true }
 indexmap = "2"
 regex = { version = "1", optional = true }
 jsonschema = { package = "forklaunch-jsonschema-protocol", version = "0.1.0", path = "../vendor/jsonschema", default-features = false, features = ["idna", "forklaunch-ajv-pointer-decoding", "forklaunch-ajv-ref-siblings", "forklaunch-static-anchor-resolution", "forklaunch-legacy-fragment-ids"], optional = true }
@@ -23,3 +25,7 @@ percent-encoding = { version = "2.3", optional = true }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "uri_schema_parity"
+required-features = ["schema-validation"]

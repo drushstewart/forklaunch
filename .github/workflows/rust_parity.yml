@@ -65,6 +65,8 @@ on:
       - 'cli/tests/rust_zod_absence_json_parity.mjs'
       - 'cli/tests/rust_zod_object_policy_parity.mjs'
       - 'cli/tests/rust_zod_uri_parity.mjs'
+      - 'cli/tests/rust_zod_uri_openapi.mjs'
+      - 'cli/tests/rust_zod_uri_sdk.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -136,6 +138,10 @@ on:
       - 'framework/common/src/safeStringify.ts'
       - 'framework/core/src/http/mcpGenerator/mcpGenerator.ts'
       - 'framework/universal-sdk/src/universalSdk.ts'
+      - 'framework/universal-sdk/src/core/uriFormat.ts'
+      - 'framework/validator/src/zod/uriOpenApi.ts'
+      - 'framework/validator/src/zod/zodSchemaValidator.ts'
+      - 'framework/validator/shims/zod-v3-openapi/zod-openapi.ts'
       - 'cli/tests/rust_otlp_runtime.mjs'
       - 'cli/tests/rust_cac_provider_parity.mjs'
       - 'cli/tests/rust_sms_provider_parity.mjs'
@@ -418,6 +424,8 @@ on:
       - 'cli/tests/rust_zod_absence_json_parity.mjs'
       - 'cli/tests/rust_zod_object_policy_parity.mjs'
       - 'cli/tests/rust_zod_uri_parity.mjs'
+      - 'cli/tests/rust_zod_uri_openapi.mjs'
+      - 'cli/tests/rust_zod_uri_sdk.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -489,6 +497,10 @@ on:
       - 'framework/common/src/safeStringify.ts'
       - 'framework/core/src/http/mcpGenerator/mcpGenerator.ts'
       - 'framework/universal-sdk/src/universalSdk.ts'
+      - 'framework/universal-sdk/src/core/uriFormat.ts'
+      - 'framework/validator/src/zod/uriOpenApi.ts'
+      - 'framework/validator/src/zod/zodSchemaValidator.ts'
+      - 'framework/validator/shims/zod-v3-openapi/zod-openapi.ts'
       - 'cli/tests/rust_otlp_runtime.mjs'
       - 'cli/tests/rust_cac_provider_parity.mjs'
       - 'cli/tests/rust_sms_provider_parity.mjs'
@@ -951,6 +963,17 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_zod_uri_openapi.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_zod_uri_sdk.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - name: Explicit feature-off URI schema rejection
+        run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-contract --no-default-features
       - name: Live HTTP, MCP and SDK URL compatibility
         run: node cli/tests/rust_json_composition_runtime.mjs
         env:

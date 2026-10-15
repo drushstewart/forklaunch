@@ -7,6 +7,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+zod-uri = ["forklaunch-ws/zod-uri"]
+
 [dependencies]
 url = "2"
 anyhow = "1"

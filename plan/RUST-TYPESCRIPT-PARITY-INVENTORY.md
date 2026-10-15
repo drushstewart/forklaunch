@@ -9542,3 +9542,31 @@ pass cli/tests/rust_package_sources.sh. Proof
 /private/tmp/fl-oct14-current-package-sources.log. This is working-source coverage,
 not a new immutable archive/runtime receipt. Refetched origin/main remains
 fully merged (zero missing commits through e36cfd29c).
+
+
+### WHATWG URI schema and consumer consistency (2026-10-14)
+
+Private factory provenance marks only the single-url-check repository factory.
+It exports reserved forklaunch-whatwg-url without old RFC regex. Raw Zod URL,
+TypeBox, multiple-check profiles and explicit user format/pattern overrides keep
+existing behavior; schema extraction never invokes callbacks. UniversalSdk initial,
+injected and isolated response AJV engines and generated TS sockets register new
+URL admission. Native contract central compiler uses optional pinned Ada directly
+(no validation dependency cycle), forwarded through HTTP/MCP/WS/Axum/SDK crates.
+Feature-off rejects the reserved format only in compiled schema locations,
+including references, not literal const/default data. Ordinary+multipart and RFC
+retention are tested. No output normalization or exhaustive URL claim.
+CLI socket generator supports explicit FORKLAUNCH_SDK_ZOD_URI unset/0/1;1 enables
+compiler feature, invalid values fail. Generated Rust socket consumer opts into
+its zod-uri feature. Default compiler returns explicit error and no artifact output.
+Frozen21 /private/tmp/fl-uri-semantics-source.json. Schema203261 native/AJV plus90
+shape/control and injected-engine checks pass; strict generatedTS socket and Rust
+schema/codec6 cases pass. Native Axum143/contract27/HTTP73/WS18/MCP26 pass;
+final contract ordinary/multipart2+2 and8crate strictClippy+finalminimal pass.
+Canonical366 passes with0OpenAPI diffs; CLI websocket7 pass; configured12roots/
+614exports strict types pass (actual compilerTS7.0.2, not claimed5.9).
+Logs /private/tmp/fl-uri-semantics-{parity,sdk,regression,final-tests,clippy,
+final-clippy,canonical,cli,types}.log. Runtime formatter churn removed; final SDK
+proof rerun. Only framework lock1line contract→Ada; rustls0.23.46 preserved.
+CI runs schema/SDK oracles under pinnedNode24.2 and explicitfeatureoff rejection.
+Broad schema gate remains open;660/682 (96.8%),22open unchanged.

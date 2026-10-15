@@ -138,6 +138,12 @@ function socketValidator(schema: AnySchema): ValidateFunction {
   // CJS package declarations are exposed as a namespace under NodeNext ESM.
   const addFormats = addFormatsModule as unknown as FormatsPlugin;
   addFormats(engine);
+  engine.addFormat('forklaunch-whatwg-url', {
+    type: 'string',
+    validate: (value: string) => {
+      try { new URL(value); return true; } catch { return false; }
+    },
+  });
   engine.removeKeyword('multipleOf');
   engine.addKeyword({
     keyword: 'multipleOf',

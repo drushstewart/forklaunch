@@ -9,6 +9,7 @@ repository.workspace = true
 
 [features]
 default = []
+zod-uri = ["forklaunch-contract/zod-uri"]
 json-schema = ["forklaunch-contract/schema-validation"]
 transport = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util"]
 validation = ["dep:forklaunch-validation"]

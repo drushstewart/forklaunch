@@ -9,6 +9,7 @@ import { OpenAPIObject } from 'openapi3-ts/oas31';
 import { mapContentType } from './core/mapContentType';
 import { refreshOpenApi } from './core/openApi';
 import { ResponseSchemas, schemaPointer } from './core/responseSchema';
+import { registerFactoryUriFormat } from './core/uriFormat';
 import { getSdkPath } from './core/resolvePath';
 import { ResponseContentParserType } from './types/contentTypes.types';
 import {
@@ -40,7 +41,13 @@ export class UniversalSdk {
       Record<string, ResponseContentParserType> | undefined,
     responseAjvFactory?: () => Ajv
   ) {
-    this.responseSchemas = new ResponseSchemas(ajv, responseAjvFactory);
+    registerFactoryUriFormat(ajv);
+    this.responseSchemas = new ResponseSchemas(
+      ajv,
+      responseAjvFactory
+        ? () => registerFactoryUriFormat(responseAjvFactory())
+        : undefined
+    );
   }
 
   /**

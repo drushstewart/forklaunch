@@ -1179,5 +1179,21 @@ checks; it does not redefine RFC JSON Schema `format: uri`. The pinned Ada depen
 requires a C++20 compiler; default builds exclude it. The
 [URI differential fixture](../cli/tests/rust_zod_uri_parity.mjs) checks 205,676
 inputs plus ordered errors and composition against the actual TypeScript factory,
-with pinned source hashes. TypeScript URI schema emission remains a separate
-conformance task because its current RFC format/regex can reject runtime-valid URLs.
+with pinned source hashes.
+
+The marked TypeScript URI factory now exports `format: forklaunch-whatwg-url`
+without the conflicting RFC regex. UniversalSdk and generated TypeScript sockets
+register that format with the JavaScript URL parser. Native contract, HTTP, MCP,
+WebSocket and SDK generator crates forward the optional `zod-uri` feature; without
+it, compiling a schema containing this reserved format fails explicitly. Arbitrary
+RFC `uri` schemas and explicit user overrides keep their existing meaning.
+
+For CLI socket generation, set `FORKLAUNCH_SDK_ZOD_URI=1` to enable the pinned
+parser in its compiler subprocess. Unset or `0` leaves the feature disabled;
+other values fail. Watch/sync inherit the selection. Generated Rust socket crates
+expose their own `zod-uri` feature, which consumers must enable. C++20 is required.
+This profile targets Node24.2/Ada3.2.4; other JS engines or parser versions may
+admit different Unicode hostnames. HTTP SDK clients retain their existing typed
+transport behavior. The [schema fixture](../cli/tests/rust_zod_uri_openapi.mjs)
+checks 203,261 native/AJV admissions; the
+[SDK fixture](../cli/tests/rust_zod_uri_sdk.mjs) checks both socket clients.

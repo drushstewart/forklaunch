@@ -23,6 +23,7 @@ import {
 } from 'zod/v3';
 import { requestBodyOpenApi } from './requestBodyOpenApi';
 import { markFactoryEmail } from './emailOpenApi';
+import { markFactoryUri } from './uriOpenApi';
 import { extendZodWithOpenApi } from '../../shims/zod-v3-openapi/zod-extensions';
 import { generateSchema } from '../../shims/zod-v3-openapi/zod-openapi';
 import {
@@ -118,10 +119,8 @@ export class ZodSchemaValidator implements SV<
     title: 'Email',
     example: 'a@b.com'
   });
-  uri = z.string().url().openapi({
+  uri = markFactoryUri(z.string().url()).openapi({
     title: 'URI',
-    format: 'uri',
-    pattern: '^[a-zA-Z][a-zA-Z\\d+-.]*:[^\\s]*$',
     example: 'https://forklaunch.com'
   });
   number = z

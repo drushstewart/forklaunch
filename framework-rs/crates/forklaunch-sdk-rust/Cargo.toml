@@ -7,6 +7,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+zod-uri = ["forklaunch-sdk-codegen/zod-uri"]
+
 [dependencies]
 anyhow = "1"
 ramhorns = "1.0.1"

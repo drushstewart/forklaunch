@@ -6,6 +6,11 @@ import {
   hasFactoryEmailGrammar
 } from '../../src/zod/emailOpenApi';
 
+import {
+  factoryUriFormat,
+  hasFactoryUriGrammar
+} from '../../src/zod/uriOpenApi';
+
 export type AnatineSchemaObject = SchemaObject & { hideDefinitions?: string[] };
 
 export interface OpenApiZodAny extends ZodTypeAny {
@@ -143,7 +148,9 @@ function parseString({
         baseSchema.format = 'cuid';
         break;
       case 'url':
-        baseSchema.format = 'uri';
+        baseSchema.format = hasFactoryUriGrammar(zodRef)
+          ? factoryUriFormat
+          : 'uri';
         break;
       case 'datetime':
         baseSchema.format = 'date-time';

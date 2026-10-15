@@ -44,9 +44,25 @@ fn compile_profile(schema: &Value, multipart: bool) -> Result<Arc<JsonValidator>
                 .size_limit(1024 * 1024)
                 .dfa_size_limit(1024 * 1024),
         );
-    if multipart {
-        options = options.with_schema_rewriter(file::rewrite);
+    #[cfg(feature = "zod-uri")]
+    {
+        options = options.with_format("forklaunch-whatwg-url", |value| {
+            ada_url::Url::can_parse(value, None)
+        });
     }
+    options = options.with_schema_rewriter(move |schema| {
+        #[cfg(not(feature = "zod-uri"))]
+        if schema.get("format").and_then(Value::as_str) == Some("forklaunch-whatwg-url") {
+            return Err(
+                "forklaunch-whatwg-url requires the forklaunch-contract zod-uri feature".to_owned(),
+            );
+        }
+        if multipart {
+            file::rewrite(schema)
+        } else {
+            Ok(None)
+        }
+    });
     if schema.get("$schema").is_none() {
         options = options.with_draft(jsonschema::Draft::Draft7);
     }
@@ -108,3 +124,7 @@ impl std::io::Write for SchemaBytes {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "schema_validation_uri_tests.rs"]
+mod uri_tests;

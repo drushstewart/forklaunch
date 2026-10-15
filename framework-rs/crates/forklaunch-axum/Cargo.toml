@@ -9,7 +9,7 @@ repository.workspace = true
 
 [features]
 default = ["adapter"]
-zod-uri = ["dep:forklaunch-validation", "forklaunch-validation/zod-uri"]
+zod-uri = ["dep:forklaunch-validation", "forklaunch-validation/zod-uri", "forklaunch-contract/zod-uri", "forklaunch-http/zod-uri", "forklaunch-mcp?/zod-uri", "forklaunch-ws?/zod-uri"]
 cookie-session = ["adapter", "dep:tower-sessions", "dep:subtle", "dep:rand", "dep:url"]
 multipart = ["adapter", "axum/multipart", "dep:forklaunch-validation"]
 sse = ["adapter", "dep:futures-util", "dep:forklaunch-validation"]

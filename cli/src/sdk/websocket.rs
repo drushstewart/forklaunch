@@ -28,6 +28,7 @@ pub(crate) fn generate_from(
         matches!(source, "socket-contract" | "asyncapi"),
         "Invalid socket SDK source"
     );
+    let _ = zod_uri_enabled(std::env::var_os("FORKLAUNCH_SDK_ZOD_URI").as_deref())?;
     let imported = source == "asyncapi";
     let root = root.canonicalize()?;
     let manifest: toml::Value =
@@ -282,22 +283,38 @@ pub(crate) fn generate_from(
     }
     Ok(())
 }
+fn zod_uri_enabled(value: Option<&std::ffi::OsStr>) -> Result<bool> {
+    match value {
+        None => Ok(false),
+        Some(value) if value == "0" => Ok(false),
+        Some(value) if value == "1" => Ok(true),
+        Some(_) => bail!("FORKLAUNCH_SDK_ZOD_URI must be unset, 0 or 1"),
+    }
+}
+fn configure_uri_feature(command: &mut Command, value: Option<&std::ffi::OsStr>) -> Result<()> {
+    if zod_uri_enabled(value)? {
+        command.args(["--features", "zod-uri"]);
+    }
+    Ok(())
+}
 fn compile(root: &Path, artifact: &Path, target: &str, source: &str) -> Result<Value> {
     let manifest = root.join(".forklaunch/framework-rs/Cargo.toml").canonicalize().context("Bundled Rust framework missing; generate or upgrade the application's bundled framework first")?;
     if !manifest.starts_with(root) {
         bail!("Bundled socket compiler must stay inside the application");
     }
     let mut output = tempfile::tempfile()?;
-    let mut child = Command::new(crate::core::openapi_export::resolve_command("cargo"))
+    let mut command = Command::new(crate::core::openapi_export::resolve_command("cargo"));
+    command
         .args(["run", "--quiet", "--manifest-path"])
-        .arg(manifest)
-        .args([
-            "-p",
-            "forklaunch-sdk-typescript",
-            "--example",
-            "socket_artifacts",
-            "--",
-        ])
+        .arg(manifest);
+    command.args(["-p", "forklaunch-sdk-typescript"]);
+    // Opt-in uses pinned Ada/C++20; inherited by watch and sync invocations.
+    configure_uri_feature(
+        &mut command,
+        std::env::var_os("FORKLAUNCH_SDK_ZOD_URI").as_deref(),
+    )?;
+    let mut child = command
+        .args(["--example", "socket_artifacts", "--"])
         .arg(artifact)
         .arg(target)
         .arg(source)
@@ -446,6 +463,10 @@ name = "{name}-websocket-sdk"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+zod-uri = ["forklaunch-ws/zod-uri"]
+
 [dependencies]
 forklaunch-ws = {{ path = "../../../.forklaunch/framework-rs/crates/forklaunch-ws", features = ["transport", "json-schema"] }}
 serde = {{ version = "1", features = ["derive"] }}
@@ -521,11 +542,18 @@ fn stage_workspace(
                     }
                     cursor += line.len();
                 }
-                let separator = if content[..insertion].ends_with('\n') { "" } else { "\n" };
+                let separator = if content[..insertion].ends_with('\n') {
+                    ""
+                } else {
+                    "\n"
+                };
                 let mut updated = content;
                 updated.insert_str(
                     insertion,
-                    &format!("{separator}{}- 'sdks/typescript-websocket/*'\n", " ".repeat(sequence_indent)),
+                    &format!(
+                        "{separator}{}- 'sdks/typescript-websocket/*'\n",
+                        " ".repeat(sequence_indent)
+                    ),
                 );
                 updated
             } else {
@@ -537,13 +565,17 @@ fn stage_workspace(
         // Shared planning also supplies Bun membership and mixed TS modules.
         // Keep the existing comment-preserving YAML edit when it already has
         // the complete planned membership/policies.
-        let planned = super::workspace::plan_typescript_sdk(root, super::workspace::SdkWorkspace::WebSocket)?;
+        let planned =
+            super::workspace::plan_typescript_sdk(root, super::workspace::SdkWorkspace::WebSocket)?;
         for (path, content) in planned {
             if path == "pnpm-workspace.yaml" {
                 let final_content = if serde_yml::from_str::<serde_yml::Value>(&updated)?
-                    == serde_yml::from_str::<serde_yml::Value>(&content)? {
+                    == serde_yml::from_str::<serde_yml::Value>(&content)?
+                {
                     updated.clone()
-                } else { content };
+                } else {
+                    content
+                };
                 stage(files, path, final_content)?;
             } else {
                 stage(files, path, content)?;
@@ -578,6 +610,26 @@ pub(crate) fn rename_service(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn uri_generator_opt_in_is_explicit() {
+        use std::ffi::OsStr;
+        assert!(!super::zod_uri_enabled(None).unwrap());
+        assert!(!super::zod_uri_enabled(Some(OsStr::new("0"))).unwrap());
+        assert!(super::zod_uri_enabled(Some(OsStr::new("1"))).unwrap());
+        let mut command = Command::new("cargo");
+        configure_uri_feature(&mut command, Some(OsStr::new("1"))).unwrap();
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            ["--features", "zod-uri"]
+        );
+        let mut default = Command::new("cargo");
+        configure_uri_feature(&mut default, None).unwrap();
+        assert_eq!(default.get_args().count(), 0);
+        for value in ["", "true", "2", " 1"] {
+            assert!(super::zod_uri_enabled(Some(OsStr::new(value))).is_err());
+        }
+    }
+
     use super::*;
     #[test]
     fn combined_generation_allows_absent_sockets_but_requires_explicit_artifacts() {
