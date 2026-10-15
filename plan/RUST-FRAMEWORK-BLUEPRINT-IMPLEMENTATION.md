@@ -3038,3 +3038,29 @@ Detailed evidence and corrections: `/private/tmp/fl-cardinality-receipt.md` and
 `/private/tmp/fl-cardinality-*.log`. CI runs the new oracle in both number modes.
 This closes the retained-array cardinality export slice; broader schema/emitter
 and validation gates remain open. Checklist660/682 (96.8%) is unchanged.
+
+
+### 2026-10-15 — Awaited organization creation callbacks
+
+Trusted allow-create and organization-limit callbacks now preserve actual awaited
+ordering, captured public-user context, list-read failure ordering and token-based
+active-session updates. A true limit result denies creation. Hooks run outside
+writer transactions; pending cancellation performs no graph writes. Callback
+preparation/future errors produce sanitized empty500 responses. HTTP timestamps
+sample the clock after awaited admission. Scalar defaults remain unchanged.
+
+The actual-source oracle passes31 observations, including state/token races and
+late timestamps. Native organization14 (1 ignored), focused restricted PostgreSQL1
+(17.31s), full/minimal all-target strict Clippy pass. Restricted tests cover reentry,
+races, rollback, lost acknowledgements and cancellation; all five cleanup counts
+are0. Native atomic graph writes remain an explicit difference from upstream
+partial persistence on failures. No post-await authorization conditions were added
+to the callback path. No dependencies changed.
+
+All11 source paths match `/private/tmp/fl-org-creation-freeze.json`, SHA256
+`a49bc845b00a7ebc95f9371d24ad7ea7a1b155fce9622810740963b0166b5edc`.
+Logs: `/private/tmp/fl-org-creation-{actual,native,pg,clippy,minimal-clippy,cleanup}.log`.
+The initial compile missed one existing helper import; final coherent proof follows
+its restoration and includes a2a50e304 shared cardinality integration. CI adds the
+actual oracle; the existing focused PG job includes the new cases. Broader auth
+options/hooks remain open. Checklist660/682 is unchanged.

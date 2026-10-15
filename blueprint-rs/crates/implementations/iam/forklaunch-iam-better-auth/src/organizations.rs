@@ -18,7 +18,11 @@ pub use authorizers::{
     OrganizationAuthorizationRequest, OrganizationRoleAuthorizer, OrganizationRoleAuthorizers,
 };
 mod create;
+mod creation_policy;
 pub use access_control::{OrganizationAccessControl, OrganizationRoles, OrganizationStatements};
+pub use creation_policy::{
+    OrganizationCreationContext, OrganizationCreationFuture, OrganizationCreationPolicy,
+};
 mod delivery;
 pub use delivery::{InvitationDeliveryContext, InvitationEmailDelivery};
 mod controls;
@@ -45,6 +49,8 @@ pub(crate) mod tests;
 
 pub struct OrganizationService<S> {
     policy: OrganizationPolicy,
+    allow_creation: Option<Arc<dyn OrganizationCreationPolicy>>,
+    creation_limit: Option<Arc<dyn OrganizationCreationPolicy>>,
     invitation_policy: InvitationPolicy,
     team_policy: TeamPolicy,
     controls: OrganizationControls,
@@ -137,10 +143,31 @@ impl<S: AuthStore> OrganizationService<S> {
         self
     }
 
-    /// Installs trusted creation and membership policy independently of sessions.
+    /// Replaces allow-create with trusted awaited policy; true permits creation.
+    #[must_use]
+    pub fn with_allow_user_to_create_organization(
+        mut self,
+        hook: Arc<dyn OrganizationCreationPolicy>,
+    ) -> Self {
+        self.allow_creation = Some(hook);
+        self
+    }
+    /// Replaces the scalar organization quota; true means the limit is reached.
+    #[must_use]
+    pub fn with_organization_limit_policy(
+        mut self,
+        hook: Arc<dyn OrganizationCreationPolicy>,
+    ) -> Self {
+        self.creation_limit = Some(hook);
+        self
+    }
+
+    /// Replaces scalar creation/membership policy and clears creation callbacks.
     #[must_use]
     pub fn with_organization_policy(mut self, policy: OrganizationPolicy) -> Self {
         self.policy = policy;
+        self.allow_creation = None;
+        self.creation_limit = None;
         self
     }
 
@@ -155,6 +182,8 @@ impl<S: AuthStore> OrganizationService<S> {
     pub fn new(store: Arc<S>) -> Self {
         Self {
             policy: OrganizationPolicy::default(),
+            allow_creation: None,
+            creation_limit: None,
             invitation_policy: InvitationPolicy::default(),
             team_policy: TeamPolicy::default(),
             controls: OrganizationControls::default(),

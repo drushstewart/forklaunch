@@ -2126,7 +2126,7 @@ Remaining organization option families after these scalar/declarative profiles:
 
 | Family | Implemented scope | Remaining scope |
 | --- | --- | --- |
-| Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle | Async policy callbacks |
+| Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle, awaited creation allow/quota callbacks | Membership/dynamic-role quota callbacks |
 | Teams | Default creation toggle, team/seat limits, last-team policy | Plugin route disabling, custom default-team creation, async limits |
 | Invitations | TTL, quota, verification, cancellation, trusted delivery/scheduler | Async quota callback and lifecycle hooks |
 | Access control | Declarative catalog/static roles, persisted dynamic grants and trusted synchronous authorizers | Plugin-disable topology and arbitrary JS receiver/return behavior |
@@ -2167,3 +2167,49 @@ JavaScript receiver/request mutation, promise or nondeclared return values and
 JavaScript thrown-value/panic equivalence are separate runtime behaviors, not
 claimed by this extension. The existing declarative configuration retains its
 Clone/Debug/PartialEq/Eq API.
+
+### Awaited organization creation policies
+
+`OrganizationService` and `AuthHttp` accept independent trusted
+`with_allow_user_to_create_organization` and `with_organization_limit_policy`
+callbacks implementing `OrganizationCreationPolicy`. The first boolean means
+creation is allowed; the second means the organization limit **has been reached**.
+Each replaces its scalar option. Installing `with_organization_policy` afterward
+clears both callbacks; installing either callback afterward overrides that option.
+Absent callbacks preserve the existing scalar/default behavior.
+
+`prepare` receives an owned `OrganizationCreationContext::user()` projection of
+configured public user fields. Selected values are validated before cloning,
+with a 4096-byte UTF-8 limit per string. Credentials, raw requests and arbitrary
+additional fields are not exposed. Contexts have no Debug/Serde implementation.
+Preparation returns an owned lazy `OrganizationCreationFuture`; both preparation
+and awaited errors become sanitized empty HTTP 500 responses. These policies
+always await and do not use the delivery background dispatcher. Rust panics,
+blocking callback work and JavaScript receiver/mutation behavior are outside the
+explicit Result contract.
+
+Order is admitted session/user, allow callback (or scalar), the default adapter's
+first 100 memberships and organization hydration, quota callback (or scalar),
+then slug admission and creation. No database transaction remains open while
+application work runs. A denied allow callback skips quota work. The same admitted
+user snapshot is used by both callbacks, without rereading identity or rerunning
+callbacks after an await. A concurrent user mutation/deletion or session revocation
+does not retroactively revoke this admitted creation, matching the pinned plugin.
+The callbacks receive no organization count, request body or session credentials;
+external quota synchronization belongs to their implementation.
+
+On the callback path, active organization/team selection updates a currently
+existing session matching the originally admitted **token**, even if its ID or
+user association changed. A removed or retokened session is skipped and never
+recreated. `keepCurrentActiveOrganization` skips selection as before. The scalar
+path retains its existing authoritative writer recheck and session-update behavior.
+HTTP creation timestamps sample the trusted clock after callback work; direct
+service calls retain their explicit supplied time. A concurrent slug is checked
+inside the native writer transaction. Native graph
+writes remain atomic: a failed commit rolls them back, while a lost commit
+acknowledgment can leave the complete graph persisted. This is a native storage
+invariant, not a claim that every upstream multi-write failure has identical
+partial persistence. Callback side effects are application-owned and are not
+rolled back if later admission or persistence fails. Dropping a pending request
+drops the owned future before graph creation; it cannot undo callback work already
+performed.

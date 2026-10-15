@@ -17,7 +17,8 @@ pub(crate) async fn exercise<S: AuthStore + 'static>(store: Arc<S>, foreign: &S)
     controls::exercise(store.clone()).await;
     creator_role::exercise(store.clone()).await;
     access_control::exercise(store.clone()).await;
-    authorizers::exercise(store).await;
+    authorizers::exercise(store.clone()).await;
+    creation_policy::exercise(store).await;
 }
 
 #[tokio::test]

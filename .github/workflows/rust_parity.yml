@@ -319,6 +319,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_creator_role.mjs'
       - 'cli/tests/fixtures/rust_better_auth_access_control.mjs'
       - 'cli/tests/fixtures/rust_better_auth_role_authorizers.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_creation_callbacks.mjs'
       - 'cli/tests/fixtures/rust_better_auth_team_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_invitation_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_invitation_cancel.mjs'
@@ -782,6 +783,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_creator_role.mjs'
       - 'cli/tests/fixtures/rust_better_auth_access_control.mjs'
       - 'cli/tests/fixtures/rust_better_auth_role_authorizers.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_creation_callbacks.mjs'
       - 'cli/tests/fixtures/rust_better_auth_team_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_invitation_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_invitation_cancel.mjs'
@@ -2079,6 +2081,10 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/fixtures/rust_better_auth_role_authorizers.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/fixtures/rust_better_auth_creation_callbacks.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

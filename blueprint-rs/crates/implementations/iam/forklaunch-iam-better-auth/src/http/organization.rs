@@ -26,6 +26,12 @@ fn service<S: AuthStore>(app: &AuthHttp<S>) -> OrganizationService<S> {
         .with_creator_role(app.creator_role.clone())
         .with_authorization(app.access_control.clone())
         .with_cancel_pending_invitations_on_reinvite(app.cancel_pending_invitations_on_reinvite);
+    if let Some(hook) = &app.allow_creation {
+        service = service.with_allow_user_to_create_organization(hook.clone());
+    }
+    if let Some(hook) = &app.creation_limit {
+        service = service.with_organization_limit_policy(hook.clone());
+    }
     if let Some(hook) = &app.invitation_delivery {
         service = service.with_invitation_delivery(hook.clone());
     }

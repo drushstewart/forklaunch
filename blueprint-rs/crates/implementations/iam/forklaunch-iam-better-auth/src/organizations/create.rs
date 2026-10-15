@@ -18,35 +18,21 @@ impl<S: AuthStore> OrganizationService<S> {
         body: &Value,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
-        self.session(token, transient, now).await?;
-        let mut tx = self.store.begin(true).await?;
-        let view = self
-            .recheck(&mut tx, token, now)
-            .await?
-            .ok_or_else(unauthorized)?;
-        if !self.policy.allow_create {
-            return Err(BlueprintError::new(
-                "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION",
-                "You are not allowed to create a new organization",
-            ));
+        let admitted = self.session(token, transient, now).await?;
+        let callbacks = self.has_creation_callbacks();
+        if callbacks {
+            self.creation_callbacks(&admitted).await?;
         }
-        if let Some(limit) = self.policy.organization_limit {
-            // Match the configured default adapter's first 100 memberships,
-            // not owner-only organizations or an unbounded total count.
-            let user = text(&view.user, "id")?;
-            let count = tx
-                .find_page(Model::Member, "userId", user, None, 100)
+        let mut tx = self.store.begin(true).await?;
+        let view = if callbacks {
+            admitted
+        } else {
+            self.recheck(&mut tx, token, now)
                 .await?
-                .records
-                .into_iter()
-                .filter(|row| row["userId"] == user)
-                .count();
-            if u32::try_from(count).map_err(|_| internal())? >= limit {
-                return Err(BlueprintError::new(
-                    "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_ORGANIZATIONS",
-                    "You have reached the maximum number of organizations",
-                ));
-            }
+                .ok_or_else(unauthorized)?
+        };
+        if !callbacks {
+            self.creation_scalar(&mut tx, &view).await?;
         }
         if find_slug(&mut tx, text(body, "slug")?).await?.is_some() {
             return Err(BlueprintError::new(
@@ -54,6 +40,11 @@ impl<S: AuthStore> OrganizationService<S> {
                 "Organization already exists",
             ));
         }
+        let now = if callbacks {
+            self.time_source.sample(now)
+        } else {
+            now
+        };
         let id = uuid::Uuid::new_v4().to_string();
         let created = timestamp(now);
         let mut organization = json!({"id":id,"name":text(body,"name")?,"slug":text(body,"slug")?,"createdAt":created,"subscription":"free","status":"active"});
@@ -81,7 +72,18 @@ impl<S: AuthStore> OrganizationService<S> {
             None
         };
         if body["keepCurrentActiveOrganization"] != true {
-            update_active(&mut tx, &view, Some(&id), team_id.as_deref(), now).await?;
+            if callbacks {
+                super::creation_policy::update_captured_token(
+                    &mut tx,
+                    token,
+                    &id,
+                    team_id.as_deref(),
+                    now,
+                )
+                .await?;
+            } else {
+                update_active(&mut tx, &view, Some(&id), team_id.as_deref(), now).await?;
+            }
         }
         tx.commit().await?;
         if let Some(metadata) = body.get("metadata") {

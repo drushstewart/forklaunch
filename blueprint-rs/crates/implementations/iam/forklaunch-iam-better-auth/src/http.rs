@@ -73,6 +73,8 @@ pub struct AuthHttp<S> {
     token_lifetimes: crate::accounts::AuthTokenLifetimes,
     session_policy: crate::sessions::SessionPolicy,
     organization_policy: crate::organizations::OrganizationPolicy,
+    allow_creation: Option<Arc<dyn crate::organizations::OrganizationCreationPolicy>>,
+    creation_limit: Option<Arc<dyn crate::organizations::OrganizationCreationPolicy>>,
     invitation_policy: crate::organizations::InvitationPolicy,
     team_policy: crate::organizations::TeamPolicy,
     organization_controls: crate::organizations::OrganizationControls,
@@ -183,7 +185,26 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self
     }
 
-    /// Applies trusted scalar organization options to all organization routes.
+    /// Installs trusted awaited allow-create; true permits creation.
+    #[must_use]
+    pub fn with_allow_user_to_create_organization(
+        mut self,
+        hook: Arc<dyn crate::organizations::OrganizationCreationPolicy>,
+    ) -> Self {
+        self.allow_creation = Some(hook);
+        self
+    }
+    /// Installs trusted awaited organization quota; true means limit reached.
+    #[must_use]
+    pub fn with_organization_limit_policy(
+        mut self,
+        hook: Arc<dyn crate::organizations::OrganizationCreationPolicy>,
+    ) -> Self {
+        self.creation_limit = Some(hook);
+        self
+    }
+
+    /// Replaces scalar organization options and clears creation callbacks.
     /// HTTP bodies cannot override this policy; server-only member addition uses
     /// the equivalent `OrganizationService` builder.
     #[must_use]
@@ -192,6 +213,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         policy: crate::organizations::OrganizationPolicy,
     ) -> Self {
         self.organization_policy = policy;
+        self.allow_creation = None;
+        self.creation_limit = None;
         self
     }
 
@@ -252,6 +275,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             token_lifetimes: crate::accounts::AuthTokenLifetimes::default(),
             session_policy: crate::sessions::SessionPolicy::default(),
             organization_policy: crate::organizations::OrganizationPolicy::default(),
+            allow_creation: None,
+            creation_limit: None,
             invitation_policy: crate::organizations::InvitationPolicy::default(),
             team_policy: crate::organizations::TeamPolicy::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),
