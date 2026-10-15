@@ -10573,3 +10573,25 @@ fixed tuples79/variable920/Self144, strict all-feature/all-target Clippy and
 full CLI1128 pass. Fourteen-path manifest /private/tmp/fl-builtin-source.json
 verified; logs /private/tmp/fl-builtin-{models,units,fixed,variable,self,clippy,cli}.log.
 No dependency/lock changes. Broader schema gates remain open;660/682(96.8%),22open.
+
+### 2026-10-14 — Immutable6f77 packaged runtime PASS
+
+Exact source6f77f4eb616d125b4706fda8690b5e302a9d7b6b passed offline locked package/
+installation, git-free repackage listing, relocated generated services/modules/
+four worker variants, OpenAPI/contract/AsyncAPI exports, strict generated Rust/
+TypeScript SDK consumers and native recursive generators. Real HTTP/MCP startup,
+initialization/discovery/health, custom/disabled endpoints, shared/separate
+listeners, explicit/ephemeral ports and +2000 fallback, atomic startup rejection
+and graceful shutdown pass. All five capability callbacks pass signed
+TypeScript interoperability and rejection/replay checks. Packaged IAM207pass/
+3PostgreSQLignored (144.44s); PostgreSQL has separate working-source receipts.
+
+All2832regular source files match retained archive before and after execution.
+Archive4959058bytes SHA256e4a2d118a72c9c028971b37c0d05403e9082ea038255fb11d04520ecfeafb9a5,
+cli/target/parity-artifacts/forklaunch-6f77f4eb6-e4a2d118.crate. Metadata and full
+runtime evidence: /private/tmp/fl-oct14-payment-link-checkpoint.json and
+/private/tmp/fl-oct14-payment-link-runtime.log; independent byte check via
+/private/tmp/fl-oct14-payment-link-verify.py passed. Excludes later verification
+hooks, admission, builtin-name qualification and ongoing drafts by exact source
+commit. Local receipt only; no public publication or hosted/cloud validation claim.
+Checklist660/682(96.8%),22broad gates remain open.
