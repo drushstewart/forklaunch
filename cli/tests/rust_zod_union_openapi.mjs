@@ -14,12 +14,14 @@ let AjvDraft4;try{AjvDraft4=require('ajv-draft-04')}catch(error){if(error.code!=
 const {generateSchema}=load(path.join(root,'framework/validator/shims/zod-v3-openapi/zod-openapi.ts'));
 // Finite JSON union acceptance; this does not encode coercion or transforms.
 let comparisons=0,exports=0;
+const factoryNative=[];
 const values=[null,false,true,-10,-0,0,1,5,10,20,'','a','same','😀',[],{}, {kind:'a'},[1]];
 const shapes=[x=>x,x=>x.optional(),x=>z.object({value:x}),x=>z.array(x)];
 function check(label,schema){
  for(let i=0;i<shapes.length;i++)for(const version of ['3.0','3.1']){
   const wrapped=shapes[i](schema),exported=generateSchema(wrapped,false,version);
   const validate=(version==='3.0'?new AjvDraft4({strict:false}):new Ajv({strict:false})).compile(exported);exports++;
+  if(label.startsWith('factory '))factoryNative.push({schema:exported,values:values.map(value=>i===2?{value}:i===3?[value]:value)});
   for(const value of values){const input=i===2?{value}:i===3?[value]:value;
    assert.equal(validate(input),validator.parse(wrapped,input).ok,JSON.stringify({label,version,i,input,exported}));comparisons++;
   }
@@ -64,6 +66,21 @@ for(const schema of [z.union([z.string().transform(callback),z.number()]),z.unio
 assert.equal(callbacks,0);
 console.log(`PASS ${comparisons} actual Zod/AJV union comparisons over ${exports} OAS3.0/3.1 exports; overlap, finite enum duplicates/mixed/empty, annotation/discriminator controls and zero callbacks`);
 
+// TypeBox's Kind-driven runtime also admits every value for Any/Unknown.
+const typebox=load(path.join(root,'framework/validator/src/typebox/staticSchemaValidator.ts')).SchemaValidator();
+const factoryHttp=[validator.any,validator.unknown,validator.type()].map(source=>validator.openapi(source));
+let typeboxComparisons=0;
+for(const source of [typebox.any,typebox.unknown,typebox.type()]){
+ factoryHttp.push(typebox.openapi(source));
+ for(const [wrapped,inputs] of [[source,values],[typebox.schemify({value:source}),values.map(value=>({value}))],[typebox.array(source),values.map(value=>[value])]]){
+  const schema=typebox.openapi(wrapped),validate=new Ajv({strict:false}).compile(schema);
+  for(const value of inputs){assert.equal(typebox.parse(wrapped,value).ok,true);assert.equal(validate(value),true);typeboxComparisons++;}
+  factoryNative.push({schema,values:inputs});
+ }
+ assert.equal(typebox.openapi({...source,type:'object'}).type,'object','explicit TypeBox override preserved');
+}
+console.log(`PASS ${typeboxComparisons} actual TypeBox/AJV unconstrained factory comparisons`);
+
 // Exercise the actual HTTP SDK's response validator with factory-produced schemas.
 const {universalSdk}=await actualUniversalSdk();
 let payload,requests=0;
@@ -71,14 +88,13 @@ const server=http.createServer((_,response)=>{requests++;response.setHeader('con
 try {
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const host=`http://127.0.0.1:${server.address().port}`;
- for(const source of [validator.any,validator.unknown,validator.type()]){
-  const schema=validator.openapi(source);
+ for(const schema of factoryHttp){
   const doc={openapi:'3.1.0',info:{title:'Unconstrained',version:'1'},paths:{'/value':{get:{operationId:'value',responses:{200:{content:{'application/json':{schema}}}}}}}};
   const before=JSON.stringify(doc);
   const sdk=await universalSdk({host,registryOptions:{raw:doc}});
   for(const value of values){payload=value;assert.deepEqual((await sdk.value()).response,JSON.parse(JSON.stringify(value)));}
   assert.equal(JSON.stringify(doc),before);
  }
- assert.equal(requests,values.length*3);
+ assert.equal(requests,values.length*factoryHttp.length);
  console.log(`PASS ${requests} actual Universal SDK HTTP factory-schema responses`);
 } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

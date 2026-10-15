@@ -11589,3 +11589,15 @@ immutable packaged-runtime run, which intentionally predates this source change.
 The factory regression also passes54 live HTTP responses through the actual
 Universal SDK across any/unknown/type factories and all18 JSON examples; source
 OpenAPI documents remain unchanged. Log: `/private/tmp/fl-unconstrained-factory-sdk.log`.
+
+### 2026-10-15: TypeBox unconstrained factory consistency
+
+The same factory-only correction now applies to TypeBox Any/Unknown and its
+`type<T>()` alias. Kind-driven parsing already admitted all JSON values; the
+factory-owned object annotation incorrectly restricted exported-schema consumers.
+The permanent fixture first reproduced that disagreement, then passed162 actual
+TypeBox/AJV checks across direct/object/array shapes. Combined Zod/TypeBox factories
+pass108 live actual Universal SDK response checks, preserving explicit application
+object overrides. Configured TypeScript7.0.2 passes12 roots/625 exports. Logs:
+`/private/tmp/fl-unconstrained-typebox-{before,after,types}.log`. Native acceptance
+validation is prepared and queued after the immutable package target releases.

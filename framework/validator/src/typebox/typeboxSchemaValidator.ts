@@ -310,12 +310,10 @@ export class TypeboxSchemaValidator implements SV<
     title: 'Undefined'
   });
   any: TAny = Type.Any({
-    type: 'object',
     example: 'any',
     title: 'Any'
   });
   unknown: TUnknown = Type.Unknown({
-    type: 'object',
     example: 'unknown',
     title: 'Unknown'
   });
