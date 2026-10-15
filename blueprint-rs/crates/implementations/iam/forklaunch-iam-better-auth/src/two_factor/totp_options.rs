@@ -97,6 +97,7 @@ impl<S> TwoFactorService<S> {
             totp_options: self.totp_options,
             lifecycle_options: self.lifecycle_options.clone(),
             lifetime_options: self.lifetime_options,
+            account_lockout_options: self.account_lockout_options,
         }
     }
 }

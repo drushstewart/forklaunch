@@ -1273,3 +1273,37 @@ at their issuance instant by a caller retaining the cookie, while zero-age trust
 is immediately expired; browsers may discard zero-age cookies immediately. This
 changes neither session expiry nor delivered-OTP lifetime. Trust renewal remains
 transactional and one-use, including rollback when replacement insertion fails.
+
+`AccountLockoutOptions::new(enabled, threshold, duration)` configures the shared
+pending-sign-in failure budget through `TwoFactorService::with_account_lockout_options`
+or `AuthHttp::with_two_factor_account_lockout_options`. Defaults remain enabled,
+10 failures and 900 seconds. The typed subset admits thresholds 1..=100 and
+whole-millisecond durations from zero through 365 days. Invalid options fail before
+storage access; negative/nonfinite JavaScript options are outside this profile.
+
+TOTP, backup codes and delivered OTP share this counter only during pending sign-in
+and only when a factor row exists. Authenticated verification bypasses the account
+budget without resetting it; OTP-only users without a factor row retain their
+separate OTP attempt limit. Per-challenge and OTP attempt limits remain enforced
+when account lockout is disabled. Disabled account policy leaves historical counters
+and deadlines untouched, including on success. Re-enabling honors the stored
+existing deadline, while the current threshold/duration controls later failures.
+Locks clear at equality; zero-duration locks can therefore clear on the next request.
+
+Failure increments, lock deadlines, proof attempts and successful consumption are
+transactional in the native store. Expired-lock clearing also persists when the
+request deliberately rejects an exhausted challenge; backend errors roll back the
+transaction. Counters must be unsigned integers (missing/null means zero), and
+increment overflow fails closed. Concurrent native failures cannot lose increments.
+
+Lock deadlines follow upstream binary64 arithmetic (`duration_ms / 1000 * 1000`
+plus the clock's millisecond timestamp) and JavaScript Date truncation toward zero.
+The admitted clock/deadline range is the intersection of JavaScript Date's
+±8.64e15 milliseconds and Chrono's representable UTC dates. An unrepresentable
+result fails before mutating the counter. Sub-millisecond clock precision is
+normalized by `timestamp_millis`; unrelated session/OTP deadline logic is unchanged.
+Disabled-policy successful TOTP/OTP verification does not rewrite the factor row;
+it therefore does not require factor-update capability merely to reset a disabled
+counter. Backup consumption and enrollment still update the factor. A dedicated
+factor-update-denying store wrapper tests this distinction over memory and the
+restricted PostgreSQL store, including rollback when backup consumption is denied.

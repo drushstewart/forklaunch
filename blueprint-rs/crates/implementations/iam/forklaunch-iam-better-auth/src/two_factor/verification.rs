@@ -1,6 +1,6 @@
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, FactorResponse, Model, TwoFactorService,
-    Utc, Value, authenticated, corrupt, crypto, empty_response, enabled, enrollment, error, expiry,
+    Utc, authenticated, corrupt, crypto, empty_response, enabled, enrollment, error, expiry,
     factor, invalid_challenge, json, new_session, output_user, secret, text, time, timestamp,
     unauthorized, verification_row,
 };
@@ -130,15 +130,8 @@ impl<S: AuthStore> TwoFactorService<S> {
             if !recovery && row["verified"] == false {
                 return Err(error("TOTP_NOT_ENABLED", "TOTP is not enabled"));
             }
-            if !row["lockedUntil"].is_null() {
-                if time(&row, "lockedUntil")? > now {
-                    return Err(error(
-                        "ACCOUNT_TEMPORARILY_LOCKED",
-                        "Account temporarily locked. Please try again later.",
-                    ));
-                }
-                row["lockedUntil"] = Value::Null;
-                row["failedVerificationCount"] = json!(0);
+            if self.check_account_lock(&mut row, now)? {
+                tx.replace(Model::TwoFactor, row.clone()).await?;
             }
             let challenge_row = pending.as_ref().ok_or_else(invalid_challenge)?;
             let attempts = challenge_row["attempts"]
@@ -183,17 +176,9 @@ impl<S: AuthStore> TwoFactorService<S> {
             if let Some(mut challenge_row) = pending {
                 let attempts = challenge_row["attempts"].as_u64().ok_or_else(corrupt)?;
                 challenge_row["attempts"] = json!(attempts + 1);
-                let count = row
-                    .get("failedVerificationCount")
-                    .filter(|value| !value.is_null())
-                    .map_or(Ok(0), |value| value.as_u64().ok_or_else(corrupt))?
-                    .checked_add(1)
-                    .ok_or_else(corrupt)?;
-                row["failedVerificationCount"] = json!(count);
-                if count >= 10 {
-                    row["lockedUntil"] = json!(expiry(now, 900)?);
+                if self.record_account_failure(&mut row, now)? {
+                    tx.replace(Model::TwoFactor, row).await?;
                 }
-                tx.replace(Model::TwoFactor, row).await?;
                 tx.replace(Model::Verification, challenge_row).await?;
                 tx.commit().await?;
             }
@@ -203,6 +188,7 @@ impl<S: AuthStore> TwoFactorService<S> {
                 error("INVALID_CODE", "Invalid code")
             });
         }
+        let mut factor_changed = recovery;
         if recovery {
             row["backupCodes"]
                 .as_array_mut()
@@ -213,8 +199,8 @@ impl<S: AuthStore> TwoFactorService<S> {
             json!({"token":session.as_ref().map(|row|row["token"].clone()),"user":output_user(&user)}),
         );
         if let Some(challenge_row) = pending {
-            row["failedVerificationCount"] = json!(0);
-            row["lockedUntil"] = Value::Null;
+            factor_changed |= self.account_lockout_options.enabled();
+            self.reset_account_failures(&mut row);
             tx.delete(Model::Verification, text(&challenge_row, "id")?)
                 .await?;
             if disable_session {
@@ -266,8 +252,11 @@ impl<S: AuthStore> TwoFactorService<S> {
                 // snapshot even though only the replacement cookie session is active.
             }
             row["verified"] = json!(true);
+            factor_changed = true;
         }
-        tx.replace(Model::TwoFactor, row).await?;
+        if factor_changed {
+            tx.replace(Model::TwoFactor, row).await?;
+        }
         tx.commit().await?;
         Ok(response)
     }

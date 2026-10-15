@@ -68,6 +68,24 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(self)
     }
 
+    /// Configures the pending-sign-in account budget independently of per-proof limits.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted authentication configuration.
+    pub fn with_two_factor_account_lockout_options(
+        mut self,
+        options: crate::two_factor::AccountLockoutOptions,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_account_lockout_options(options),
+        ));
+        Ok(self)
+    }
+
     /// Configures challenge/trusted-device expiry without changing session or OTP TTLs.
     /// # Errors
     /// Rejects conflicting JWKS namespace or invalid trusted authentication configuration.

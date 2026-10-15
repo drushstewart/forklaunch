@@ -1088,3 +1088,12 @@ prove inclusive challenge equality and strict future trust expiry. Generic
 memory/restricted-PG tests prove one-use and failed trust renewal rollback;
 HTTP tests verify proof and credential-renewal cookies. Configuration remains
 server-owned, with no schema change or browser enforcement claim.
+
+
+MFA account lockout (2026-10-14): shared pending-only factor budget is independent
+of challenge/OTP attempts. Trusted disabled policy bypasses historical account
+locks without rewriting their fields; successful disabled TOTP/OTP makes no factor
+UPDATE, while backup-code consumption still requires an atomic write. Enabled
+policy checks bounds/counter overflow and representable JS-Date deadline before
+mutation. Final restricted PG verifies concurrent increments, rollback, lazy
+expiry reset and denied-factor-write behavior. Defaults remain10 failures/900s.

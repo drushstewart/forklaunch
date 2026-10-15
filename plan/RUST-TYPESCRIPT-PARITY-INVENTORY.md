@@ -8871,3 +8871,34 @@ fixture setup failure retained and strengthened to prove denial. Owned roles/
 records0. Final10 hashes /private/tmp/fl-scoped-capture-source.json; logs
 /private/tmp/fl-scoped-capture-{initial-check,ts-sdk,pg-second,unit,clippy,
 cancellation-regression,cleanup}.log. CI adds SDK/source oracle and isolated PG.
+
+
+## Trusted pending-account lockout options (2026-10-14)
+
+AccountLockoutOptions provides enabled flag, threshold1..100 and whole-ms
+duration0..365days, preserving true/10/900s defaults. Pending TOTP/backup/OTP
+share the factor account budget; authenticated recovery and OTP-only accounts
+without a factor record bypass it. Independent challenge/OTP attempt limits
+remain enforced. Disabled policy neither checks nor mutates historical failure
+fields; re-enabling honors stored deadlines, and current threshold/duration
+applies to the next failure. Exact expiry clears the lock. Lazy expired-lock
+reset now persists before deliberate exhausted-challenge deletion errors.
+
+Deadline arithmetic matches source binary64 seconds-to-ms addition and Date
+TimeClip on bounded JS-Date/Chrono clocks, including1001ms at epoch0/negative
+clocks; unrepresentable deadlines fail before counter mutation. Corrupt counters
+and increment overflow fail closed. Review caught redundant disabled-success
+factor writes: TOTP/OTP now issue zero factor UPDATEs, while backup consumption
+still requires one and rolls back atomically if denied. Actual adapter-denial
+oracle and generic memory/PG fail-on-replace wrapper prove that boundary.
+
+Actual integrated fixture/routes and16 direct helper clock cases pass. Full
+two-factor25/1ignored53.26s precedes only the final write guard; final affected
+focused3, restrictedPG1/47.23s and strict all-feature/all-target/minimal Clippy
+pass on the frozen final source. Owned roles/records/audits0. Final15 hashes:
+/private/tmp/fl-lockout-options-freeze.json; final logs
+/private/tmp/fl-lockout-options-readonly-{native,postgres,clippy,minimal}.log,
+/private/tmp/fl-lockout-options-final-actual.log and cleanup.log. CI tracks
+imported helper and expanded PG fixture. Working-source proof includes frozen
+literal/resource dependency draft, not an immutable archive receipt. Broader
+backup generation/storage/OTP codecs/plugins remain open.

@@ -834,3 +834,94 @@ async fn http_lifetime_options_cookie_and_record_alignment() {
         s.starts_with("better-auth.trust_device=") && s.contains("Max-Age=7")
     }));
 }
+
+#[tokio::test]
+async fn http_account_lockout_options_status_precedence_and_builder_preservation() {
+    use std::time::Duration as StdDuration;
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    let store = Arc::new(MemoryAuthStore::default());
+    let mut user =
+        json!({"id":"http-lockout-user","email":"lockout@example.test","twoFactorEnabled":false});
+    let session = new_session("http-lockout-user", "", "", now).unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::User, user.clone()).await.unwrap();
+    tx.insert(Model::Session, session.clone()).await.unwrap();
+    tx.commit().await.unwrap();
+    let factor = TwoFactorService::new(store.clone(), vec![42; 32], "Lockout".into())
+        .unwrap()
+        .with_lifecycle_options(
+            TwoFactorLifecycleOptions::default()
+                .with_passwordless(true)
+                .with_skip_verification_on_enable(true),
+        );
+    let enrolled = factor
+        .enable(text(&session, "token").unwrap(), String::new(), None, now)
+        .await
+        .unwrap();
+    user["twoFactorEnabled"] = json!(true);
+    let mut tx = store.begin(true).await.unwrap();
+    let signin::SigninGate::Challenge(challenge) = factor
+        .gate(&mut tx, &user, None, true, "", "", now)
+        .await
+        .unwrap()
+    else {
+        panic!("challenge")
+    };
+    tx.commit().await.unwrap();
+    let app = |enabled| {
+        AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+            .unwrap()
+            .with_clock(move || now)
+            .with_rate_limiting(false)
+            .with_two_factor_account_lockout_options(
+                AccountLockoutOptions::new(enabled, 1, StdDuration::from_millis(1500)).unwrap(),
+            )
+            .unwrap()
+            .with_two_factor_lifetime_options(TwoFactorLifetimeOptions::default())
+            .unwrap()
+            .with_two_factor_totp_options(TotpOptions::default())
+            .unwrap()
+    };
+    let mut browser = Browser {
+        router: app(true).router(),
+        jar: BTreeMap::from([(
+            "better-auth.two_factor".into(),
+            crate::cookies::sign_cookie_value(challenge.identifier(), &[42; 32]),
+        )]),
+        origin: origin.into(),
+    };
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/verify-backup-code",
+                Some(json!({"code":"invalid"}))
+            )
+            .await
+            .1["code"],
+        "INVALID_BACKUP_CODE"
+    );
+    let locked = browser
+        .call(
+            "/two-factor/verify-backup-code",
+            Some(json!({"code":enrolled.body()["backupCodes"][0]})),
+        )
+        .await;
+    assert_eq!(locked.0, 429);
+    assert_eq!(locked.1["code"], "ACCOUNT_TEMPORARILY_LOCKED");
+    assert!(locked.2.get("set-cookie").is_none());
+    browser.router = app(false).router();
+    let success = browser
+        .call(
+            "/two-factor/verify-backup-code",
+            Some(json!({"code":enrolled.body()["backupCodes"][0]})),
+        )
+        .await;
+    assert_eq!(success.0, 200);
+    let row = rows(store.as_ref(), Model::TwoFactor).await.remove(0);
+    assert_eq!(row["failedVerificationCount"], 1);
+    assert_eq!(
+        time(&row, "lockedUntil").unwrap(),
+        now + Duration::milliseconds(1500)
+    );
+}

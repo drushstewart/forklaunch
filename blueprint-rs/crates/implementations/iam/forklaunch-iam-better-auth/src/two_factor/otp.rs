@@ -1,7 +1,7 @@
 //! Bounded delivered OTP options with trusted default-await delivery.
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, FactorResponse, Model, TwoFactorService,
-    Utc, Value, authenticated, corrupt, crypto, empty_response, enabled, enrollment, error, expiry,
+    Utc, Value, authenticated, corrupt, crypto, empty_response, enabled, enrollment, error,
     invalid_challenge, json, output_user, text, time, verification_row,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -313,16 +313,8 @@ impl<S: AuthStore> TwoFactorService<S> {
             None
         };
         if let Some(factor) = factor.as_mut()
-            && !factor["lockedUntil"].is_null()
+            && self.check_account_lock(factor, now)?
         {
-            if time(factor, "lockedUntil")? > now {
-                return Err(error(
-                    "ACCOUNT_TEMPORARILY_LOCKED",
-                    "Account temporarily locked. Please try again later.",
-                ));
-            }
-            factor["lockedUntil"] = Value::Null;
-            factor["failedVerificationCount"] = json!(0);
             tx.replace(Model::TwoFactor, factor.clone()).await?;
         }
         let Some(mut otp) = verification_row(&mut tx, &bound.identifier).await? else {
@@ -355,25 +347,18 @@ impl<S: AuthStore> TwoFactorService<S> {
         if supplied.len() != expected.len() || difference != 0 {
             otp["attempts"] = json!(attempts + 1);
             tx.insert(Model::Verification, otp).await?;
-            if let Some(mut factor) = factor {
-                let failures = factor
-                    .get("failedVerificationCount")
-                    .filter(|value| !value.is_null())
-                    .map_or(Ok(0), |value| value.as_u64().ok_or_else(corrupt))?
-                    .checked_add(1)
-                    .ok_or_else(corrupt)?;
-                factor["failedVerificationCount"] = json!(failures);
-                if failures >= 10 {
-                    factor["lockedUntil"] = json!(expiry(now, 900)?);
-                }
+            if let Some(mut factor) = factor
+                && self.record_account_failure(&mut factor, now)?
+            {
                 tx.replace(Model::TwoFactor, factor).await?;
             }
             tx.commit().await?;
             return Err(error("INVALID_CODE", "Invalid code"));
         }
-        if let Some(mut factor) = factor {
-            factor["failedVerificationCount"] = json!(0);
-            factor["lockedUntil"] = Value::Null;
+        if let Some(mut factor) = factor
+            && self.account_lockout_options.enabled()
+        {
+            self.reset_account_failures(&mut factor);
             tx.replace(Model::TwoFactor, factor).await?;
         }
         let mut user = bound.user;

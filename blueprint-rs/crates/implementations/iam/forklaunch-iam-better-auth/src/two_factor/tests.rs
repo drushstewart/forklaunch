@@ -11,6 +11,8 @@ mod fault_store;
 mod http;
 mod lifecycle_options;
 mod lifetime_options;
+mod lockout_options;
+mod lockout_store;
 mod otp;
 mod otp_options;
 #[cfg(feature = "postgres")]
