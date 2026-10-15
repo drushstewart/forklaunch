@@ -63,11 +63,11 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: trusted explicit verification-email delivery, compatible1h email-address tokens, anonymousfloor/privacy and callbackerrors, actual11/PG/liveHTTPMCP/strictClippy proofs.
 - Completed: variable-prefix/rest Rust sequence models with absent/null preservation and pre-write contiguity/bounds checks;892modelcases/strictgeneratedRust+TS/native46/fullCLI1125 pass.
 - Completed: explicit aggregate Plan-read selection/GET without inferred publisher,46config/artifact cases, startup grants,HTTP/MCP/twoSDKcalls and strictClippy. Existing66legacyroutes remain.
-- Completed: opt-in pure input export without named Zod callback execution;577 actual/AJV comparisons,138 controls and strict12-root/620-export types pass. NativeEnum remains separate.
+- Completed: opt-in pure input export without named Zod callback execution;577 actual/AJV comparisons,138 controls and strict12-root/620-export types pass. Finite NativeEnum now has separate normalized projection evidence.
 - Completed: signup/signin verification-required policy with no-session signup, duplicate privacy and correct-password gate; actual13/restrictedPG/fullIAM198 and strictClippy pass. Prospective-user callback visibility differs from upstream transactions.
 - Completed: completed Subscription UUID library reads with sealed Customer/Plan provenance and fresh finite provider evidence; actualTS66/restrictedPG and strictClippy pass. Local lifecycle fields remain unchanged.
 - Completed: reserved Rust tuple visitor/generic names, recursive SequenceVisitor/A/D/S collision proofs;920variable/79fixed/47codegen/1126CLI and strictgeneratedRust pass.
-- Active: independent signup auto-signin option, explicit aggregate Subscription read HTTP/MCP/SDK selection, and finite NativeEnum projection. Broader plugin/mapper/schema/deployment gates remain open.
+- Active: independent signup auto-signin option, explicit aggregate Subscription read HTTP/MCP/SDK selection, and remaining schema/SDK conformance. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable4ff9e3958 package/install passed2799 files with SHA256db6cb114da0e7faabb74e01ceb1ae0da081020194764fbabbbc177171ca0033c. Portable runtime underway; current policy/pure/Subscription/collision fixes are excluded by exact source commit.
 - Validation: immutable37b54 archive package/install/portable services/workers/SDK/HTTP/MCP runtime passes with2775 before/after byte-verified files and packagedIAM184 (3PGignored). Later OTPdispatcher/tupleconsumer/new drafts are excluded by source commit; owned roots and414MB exclusive nonexecutable cache cleaned with guards.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
@@ -2232,3 +2232,20 @@ Library completed Subscription read now has actualTS66/restrictedPG/provider/pro
 ### Generated Rust tuple internal names (2026-10-14)
 
 Reserved generated internal names prevent recursive model collisions;920 variable/79 fixed/47 codegen/1126 CLI and strict generated compilation pass. Checklist660/682(96.8%),22open unchanged.
+
+
+### Finite NativeEnum schema projection (2026-10-14)
+
+Numeric reverse maps, mixed string/number enums, duplicate values and empty enums
+now follow actual pinned Zod getValidEnumValues semantics, including own private
+key behavior. Homogeneous enums declare type, mixed enums use enum without type,
+empty enums emit false schema. Explicit annotation merging remains compatible;
+enum_ factory union(Object.values) semantics are intentionally distinct. Pure
+input now supports normalized finite NativeEnum, superseding its earlier exclusion;
+non-JSON effective values reject, while raw nonfinite baseline behavior is unchanged.
+Frozen4 /private/tmp/fl-native-enum-source.json hashes verified.16080 actual/AJV
+comparisons across240exports and41controls pass; pure577+132controls,union10674,
+tuple1620,SDK20,Record1744+16rawAJV exceptions,Never224 and strictTS7.0.2
+12roots/620exports pass. No public export/dependency/Cargo changes. CI includes
+oracle. Logs /private/tmp/fl-native-enum-{parity,types}.log and named regression
+logs. This finite correction does not close the broad schema gate;660/682(96.8%).

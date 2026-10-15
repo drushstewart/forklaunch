@@ -1281,5 +1281,5 @@ TypeScript `openapi2020(schema, {pureInput:true})` opts into bounded structural
 input export without evaluating Zod default factories or predicates. Unsupported
 nodes and coercions reject; computed defaults are omitted. This supported profile
 covers ordinary constructed schemas, preserves declared Date wire representation,
-and does not sandbox arbitrary getters, Proxies or shape thunks. NativeEnum is
-currently excluded. The default exporter remains unchanged.
+and does not sandbox arbitrary getters, Proxies or shape thunks. NativeEnum supports normalized finite string/number values, including numeric
+reverse maps and mixed enums; non-JSON effective values reject. The default exporter remains unchanged.

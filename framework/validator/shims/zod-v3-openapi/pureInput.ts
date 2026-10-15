@@ -1,8 +1,7 @@
-import type { ZodTypeAny } from 'zod/v3';
+import { z, type ZodTypeAny } from 'zod/v3';
 
 // Explicit supported nodes prevent the general exporter's catch-all fallback from
 // silently admitting JSON for non-JSON or unimplemented Zod types.
-// NativeEnum is excluded until its numeric reverse-map projection is implemented.
 const supported = new Set([
   'ZodObject',
   'ZodRecord',
@@ -17,6 +16,7 @@ const supported = new Set([
   'ZodArray',
   'ZodLiteral',
   'ZodEnum',
+  'ZodNativeEnum',
   'ZodIntersection',
   'ZodUnion',
   'ZodDiscriminatedUnion',
@@ -47,6 +47,20 @@ export function assertPureInputSchema(schema: ZodTypeAny): void {
     ) {
       throw new Error('Pure input export does not support non-JSON literal');
     }
+  }
+  if (
+    schema._def.typeName === 'ZodNativeEnum' &&
+    !z.util
+      .getValidEnumValues(schema._def.values)
+      .every(
+        (value) =>
+          typeof value === 'string' ||
+          (typeof value === 'number' && Number.isFinite(value))
+      )
+  ) {
+    throw new Error(
+      'Pure input export does not support non-JSON native enum values'
+    );
   }
   if (schema._def.coerce === true) {
     throw new Error('Pure input export does not support built-in coercion');

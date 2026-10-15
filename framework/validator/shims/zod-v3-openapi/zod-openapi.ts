@@ -644,6 +644,27 @@ function parseEnum({
   zodRef,
   openApiVersion
 }: ParsingArgs<z.ZodEnum<never> | z.ZodNativeEnum<never>>): SchemaObject {
+  if (zodRef._def.typeName === 'ZodNativeEnum') {
+    // Use Zod's own reverse-map/private-key semantics; enum_ factory unions are
+    // intentionally distinct and retain their existing projection.
+    const values = [...new Set(z.util.getValidEnumValues(zodRef._def.values))];
+    if (values.every((value) =>
+      typeof value === 'string' ||
+      (typeof value === 'number' && Number.isFinite(value))
+    )) {
+      const type =
+        values.length && values.every((value) => typeof value === typeof values[0])
+          ? typeof values[0] as 'string' | 'number'
+          : undefined;
+      return merge(
+        values.length
+          ? { ...(type ? { type: typeFormat(type, openApiVersion) } : {}), enum: values }
+          : { not: {} },
+        zodRef.description ? { description: zodRef.description } : {},
+        ...schemas
+      );
+    }
+  }
   const type = typeof Object.values(zodRef._def.values)[0] as
     | 'string'
     | 'number';

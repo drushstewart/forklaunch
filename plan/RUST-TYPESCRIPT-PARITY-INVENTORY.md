@@ -10263,3 +10263,20 @@ manifest /private/tmp/fl-tuple-collision-source.json verified; isolated cli/targ
 logs /private/tmp/fl-tuple-collision-{units,variable,fixed,clippy,cli}.log. No lock or
 dependency changes. Immutable4ff checkpoint predates this fix and does not prove
 these model names. Broader schema/codegen gates remain open,660/682(96.8%).
+
+
+### Finite NativeEnum schema projection (2026-10-14)
+
+Numeric reverse maps, mixed string/number enums, duplicate values and empty enums
+now follow actual pinned Zod getValidEnumValues semantics, including own private
+key behavior. Homogeneous enums declare type, mixed enums use enum without type,
+empty enums emit false schema. Explicit annotation merging remains compatible;
+enum_ factory union(Object.values) semantics are intentionally distinct. Pure
+input now supports normalized finite NativeEnum, superseding its earlier exclusion;
+non-JSON effective values reject, while raw nonfinite baseline behavior is unchanged.
+Frozen4 /private/tmp/fl-native-enum-source.json hashes verified.16080 actual/AJV
+comparisons across240exports and41controls pass; pure577+132controls,union10674,
+tuple1620,SDK20,Record1744+16rawAJV exceptions,Never224 and strictTS7.0.2
+12roots/620exports pass. No public export/dependency/Cargo changes. CI includes
+oracle. Logs /private/tmp/fl-native-enum-{parity,types}.log and named regression
+logs. This finite correction does not close the broad schema gate;660/682(96.8%).

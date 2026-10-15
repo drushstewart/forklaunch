@@ -287,8 +287,6 @@ for (const leaf of [
   z.literal(1n),
   z.literal(Symbol("x")),
   z.literal({}),
-  z.nativeEnum({ 0: "A", A: 0 }),
-  z.nativeEnum({ A: "a", B: 1 }),
 ]) {
   for (const schema of [
     leaf,
