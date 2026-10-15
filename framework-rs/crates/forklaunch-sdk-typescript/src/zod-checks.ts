@@ -7,6 +7,7 @@ interface ZodChecks {
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration')[];
+  dateTimes?: { precision: number | null; local: boolean; offset: boolean }[];
   timePrecisions?: (number | null)[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
 }
@@ -24,7 +25,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
           'utf16MaxLength',
           'multipleOf',
           'formats',
-          'timePrecisions'
+          'timePrecisions',
+          'dateTimes'
         ].includes(key)
     )
   )
@@ -63,7 +65,14 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
       (!Array.isArray(value.timePrecisions) || value.timePrecisions.length > 10000 ||
        value.timePrecisions.some((p) => p !== null && (typeof p !== 'number' || !Number.isInteger(p) || p < 0 || p > 1000))))
     throw new Error('Invalid Zod time precisions');
+  if (Object.prototype.hasOwnProperty.call(value, 'dateTimes') &&
+      (!Array.isArray(value.dateTimes) || value.dateTimes.length > 10000 || value.dateTimes.some((rule) =>
+        !rule || typeof rule !== 'object' || Array.isArray(rule) || Object.keys(rule).length !== 3 ||
+        typeof rule.local !== 'boolean' || typeof rule.offset !== 'boolean' ||
+        (rule.precision !== null && (typeof rule.precision !== 'number' || !Number.isInteger(rule.precision) || rule.precision < 0 || rule.precision > 1000)))))
+    throw new Error('Invalid Zod datetime rules');
   if (
+    (Array.isArray(value.dateTimes) ? value.dateTimes.length : 0) +
     (Array.isArray(value.timePrecisions) ? value.timePrecisions.length : 0) +
     (Array.isArray(value.formats) ? value.formats.length : 0) +
       (Array.isArray(value.multipleOf) ? value.multipleOf.length : 0) >
@@ -78,9 +87,9 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     typeof divisor === 'number' ? divisor : Number(divisor)
   );
   const formatChecks = profile.formats?.slice();
-  const timeChecks = profile.timePrecisions?.map((p) => new RegExp(
-    `^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d${p ? `\\.\\d{${p}}` : p === null ? '(\\.\\d+)?' : ''})${p ? '+' : '?'}$`
-  ));
+  const timeSource = (p: number | null) =>
+    `([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d${p ? `\\.\\d{${p}}` : p === null ? '(\\.\\d+)?' : ''})${p ? '+' : '?'}`;
+  const timeChecks = profile.timePrecisions?.map((p) => new RegExp(`^${timeSource(p)}$`));
   const email =
     /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i;
   const uuid =
@@ -95,7 +104,11 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     base64: /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/,
     base64url: /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/
   };
+  const dateTimeChecks = profile.dateTimes?.map((rule) => new RegExp(
+    `^${simpleFormats.date.source.slice(1,-1)}T${timeSource(rule.precision)}(${rule.local ? 'Z?' : 'Z'}${rule.offset ? '|([+-]\\d{2}:?\\d{2})' : ''})$`
+  ));
   return (data: unknown) => {
+    if (typeof data === 'string' && dateTimeChecks && !dateTimeChecks.every((check) => check.test(data))) return false;
     if (typeof data === 'string' && timeChecks && !timeChecks.every((check) => check.test(data))) return false;
     if (typeof data === 'string' && formatChecks)
       for (const format of formatChecks) {

@@ -1337,3 +1337,9 @@ and positive integer precision (1..1000) requires exact fractional digits. Posit
 precision deliberately preserves Zod's repeated seconds-group syntax. Negative,
 fractional or larger precision configurations fail admission. No timezone conversion
 or time normalization occurs.
+
+Raw `.datetime()` options use ordered `dateTimes` rules in the explicit profile:
+null or 0..1000 precision plus boolean `local`/`offset`. Gregorian date and time
+checks preserve Zod syntax, including lexical two-digit timezone fields (even
+`+99:99`), optional colon, and local timestamps when enabled. This does not parse
+an instant or normalize offsets. Ordinary date-time export remains unchanged.

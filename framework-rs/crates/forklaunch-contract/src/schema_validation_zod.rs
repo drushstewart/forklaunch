@@ -12,6 +12,52 @@ struct Checks {
     divisors: Vec<ZodMultipleOf>,
     formats: Vec<Format>,
     time_precisions: Vec<Option<u16>>,
+    date_times: Vec<DateTimeRule>,
+}
+struct DateTimeRule {
+    precision: Option<u16>,
+    local: bool,
+    offset: bool,
+}
+fn date_times(value: Option<&Value>) -> Result<Vec<DateTimeRule>, ValidationError<'static>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let values = value
+        .as_array()
+        .filter(|v| v.len() <= 10_000)
+        .ok_or_else(invalid)?;
+    values
+        .iter()
+        .map(|value| {
+            let rule = value
+                .as_object()
+                .filter(|v| v.len() == 3)
+                .ok_or_else(invalid)?;
+            let precision = rule.get("precision").ok_or_else(invalid)?;
+            let precision = if precision.is_null() {
+                None
+            } else {
+                Some(
+                    bound(Some(precision))?
+                        .filter(|v| *v <= 1000)
+                        .and_then(|v| u16::try_from(v).ok())
+                        .ok_or_else(invalid)?,
+                )
+            };
+            Ok(DateTimeRule {
+                precision,
+                local: rule
+                    .get("local")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(invalid)?,
+                offset: rule
+                    .get("offset")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(invalid)?,
+            })
+        })
+        .collect()
 }
 enum Format {
     Email,
@@ -103,11 +149,13 @@ pub(super) fn compile<'a>(
                     | "multipleOf"
                     | "formats"
                     | "timePrecisions"
+                    | "dateTimes"
             )
         })
     {
         return Err(invalid());
     }
+    let date_times = date_times(fields.get("dateTimes"))?;
     let time_precisions = time_precisions(fields.get("timePrecisions"))?;
     let minimum = bound(fields.get("utf16MinLength"))?;
     let maximum = bound(fields.get("utf16MaxLength"))?;
@@ -129,7 +177,10 @@ pub(super) fn compile<'a>(
                 .ok_or_else(invalid)
         })
         .transpose()?;
-    if raw_formats.map_or(0, Vec::len) + raw_divisors.map_or(0, Vec::len) + time_precisions.len()
+    if raw_formats.map_or(0, Vec::len)
+        + raw_divisors.map_or(0, Vec::len)
+        + time_precisions.len()
+        + date_times.len()
         > 10_000
     {
         return Err(invalid());
@@ -184,11 +235,22 @@ pub(super) fn compile<'a>(
         divisors,
         formats,
         time_precisions,
+        date_times,
     }))
 }
 impl<'i> Keyword<'i> for Checks {
     fn is_valid(&self, instance: &'i Value) -> bool {
         if let Some(value) = instance.as_str() {
+            if !self.date_times.iter().all(|rule| {
+                forklaunch_common::zod_string_format::datetime(
+                    value,
+                    rule.precision,
+                    rule.local,
+                    rule.offset,
+                )
+            }) {
+                return false;
+            }
             if !self
                 .time_precisions
                 .iter()

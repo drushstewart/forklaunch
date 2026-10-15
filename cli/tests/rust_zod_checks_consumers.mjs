@@ -40,6 +40,7 @@ const source = z
     duration: z.string().duration(),
     time: z.string().time(),
     preciseTime: z.string().time({precision:2}),
+    datetime: z.string().datetime({offset:true,local:true,precision:2}),
   })
   .strict();
 const schema = validator.openapi2020(source, {
@@ -67,6 +68,7 @@ const validFormats = {
   duration: "-P1Y2DT3H4M5,5S",
   time: "23:59",
   preciseTime: "00:00:00.12:59.34",
+  datetime: "0000-02-29T00:00:00.12+99:99",
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
@@ -84,6 +86,7 @@ for (const patch of [
   { duration: "P1.5Y1M" },
   { time: "24:00" },
   { preciseTime: "00:00:00.1" },
+  { datetime: "1900-02-29T00:00:00.12Z" },
 ])
   cases.push({ text: "😀", number: 0.3, ...validFormats, ...patch });
 assert.equal(

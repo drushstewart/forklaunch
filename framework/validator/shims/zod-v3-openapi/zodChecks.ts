@@ -10,6 +10,7 @@ interface Checks {
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration')[];
+  dateTimes?: { precision: number | null; local: boolean; offset: boolean }[];
   timePrecisions?: (number | null)[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
 }
@@ -47,11 +48,21 @@ export function projectStringChecks(
         throw new Error('Zod time precision must be null or an integer from 0 to 1000');
       return precision;
     });
-  const formatResult: Checks | undefined = formats.length || timePrecisions.length
-    ? { version: 1, ...(formats.length ? { formats } : {}), ...(timePrecisions.length ? { timePrecisions } : {}) }
+  const dateTimes = metadata.some((value) => own(value, 'format')) ? [] : checks
+    .filter((check) => check.kind === 'datetime')
+    .map((check) => {
+      const precision = check.precision ?? null;
+      if (precision !== null && (!Number.isInteger(precision) || precision < 0 || precision > 1000))
+        throw new Error('Zod datetime precision must be null or an integer from 0 to 1000');
+      if (typeof check.local !== 'boolean' || typeof check.offset !== 'boolean')
+        throw new Error('Zod datetime local and offset options must be booleans');
+      return {precision, local: check.local, offset: check.offset};
+    });
+  const formatResult: Checks | undefined = formats.length || timePrecisions.length || dateTimes.length
+    ? { version: 1, ...(formats.length ? { formats } : {}), ...(timePrecisions.length ? { timePrecisions } : {}), ...(dateTimes.length ? { dateTimes } : {}) }
     : undefined;
   if (
-    (formats.length || timePrecisions.length) &&
+    (formats.length || timePrecisions.length || dateTimes.length) &&
     checks.some((check) =>
       ['trim', 'toLowerCase', 'toUpperCase'].includes(check.kind)
     )

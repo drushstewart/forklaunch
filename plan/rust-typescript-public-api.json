@@ -24664,7 +24664,7 @@
               "name": "registerZodChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/zodChecks.ts",
-              "line": 143
+              "line": 156
             }
           ]
         },
@@ -25460,7 +25460,7 @@
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 998
+              "line": 999
             }
           ]
         },
@@ -25477,13 +25477,13 @@
               "name": "projectStringChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 22
+              "line": 23
             },
             {
               "name": "projectNumberChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 104
+              "line": 115
             }
           ]
         },

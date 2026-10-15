@@ -267,3 +267,39 @@ pub fn time(value: &str, precision: Option<u16>) -> bool {
         }
     }
 }
+
+/// Raw Zod datetime grammar; timezone digits are lexical, not range-checked.
+#[must_use]
+pub fn datetime(value: &str, precision: Option<u16>, local: bool, offset: bool) -> bool {
+    let Some(date_part) = value.get(..10) else {
+        return false;
+    };
+    if !date(date_part) || value.as_bytes().get(10) != Some(&b'T') {
+        return false;
+    }
+    let clock = &value[11..];
+    if let Some(clock) = clock.strip_suffix('Z') {
+        return time(clock, precision);
+    }
+    if offset {
+        for size in [5, 6] {
+            if let Some(start) = clock.len().checked_sub(size)
+                && let Some(zone) = clock.get(start..)
+            {
+                let b = zone.as_bytes();
+                if matches!(b[0], b'+' | b'-')
+                    && b[1..].iter().enumerate().all(|(i, b)| {
+                        if size == 6 && i == 2 {
+                            *b == b':'
+                        } else {
+                            b.is_ascii_digit()
+                        }
+                    })
+                {
+                    return time(&clock[..start], precision);
+                }
+            }
+        }
+    }
+    local && time(clock, precision)
+}

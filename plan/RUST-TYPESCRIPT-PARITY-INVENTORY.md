@@ -10939,3 +10939,25 @@ five affected crates, configured TypeScript all 12 roots/623 exports, and refres
 public API inventory 623/1703 pass. Evidence logs:
 `/private/tmp/fl-zod-time-{js,native,consumers,types,clippy}.log`.
 Datetime options, regex and other constraints remain open; checklist 660/682 unchanged.
+
+
+### 2026-10-15 — Raw Zod datetime options
+
+Explicit `zodChecks` now carries ordered `dateTimes` rules with null/0..1000
+fractional precision and boolean local/offset options. Native validation composes
+exact Gregorian date/time predicates with Zod's lexical timezone grammar, preserving
+optional offset colon and unrestricted two-digit offset fields such as +99:99.
+Local timestamps and repeated seconds groups follow configured actual Zod behavior.
+The explicit projection removes its superseded ordinary date-time assertion; default
+export and explicit metadata overrides are unchanged. New rules count toward the
+aggregate 10,000 limit; malformed options/profiles fail rather than being ignored.
+
+Permanent `rust_zod_datetime_checks.mjs` passes 86,592 actual Zod/AJV comparisons
+and 86,592 native observations across precision/local/offset combinations, Gregorian
+boundaries, malformed/control/Unicode values, nested/conjunctive schemas, override
+and admission checks. Live owned HTTP checks pass 20; generated TypeScript/Rust
+socket checks pass 80 with strict source compilation and feature-off rejection.
+Strict all-target/all-feature Clippy for five affected crates, configured TypeScript
+12 roots/623 exports, and public API inventory 623/1703 pass. Logs:
+`/private/tmp/fl-zod-datetime-{js,native,consumers,types,clippy}.log`.
+Regex, remaining formats and broader constraints remain open; 660/682 unchanged.
