@@ -47,7 +47,9 @@ try{
 import {forklaunchExpress} from '@forklaunch/express';
 import {SchemaValidator,string} from '@forklaunch/validator/zod';
 import {OpenTelemetryCollector} from '@forklaunch/core/http';
-const app=forklaunchExpress(SchemaValidator(),new OpenTelemetryCollector('cors','silent'),{mcp:false,cors:JSON.parse(process.argv[2])});
+const options=JSON.parse(process.argv[2]);
+if(Object.prototype.hasOwnProperty.call(options,'maxAgeNumber')){options.maxAge=Number(options.maxAgeNumber);delete options.maxAgeNumber;}
+const app=forklaunchExpress(SchemaValidator(),new OpenTelemetryCollector('cors','silent'),{mcp:false,cors:options});
 app.get('/param/:id',{name:'Param',summary:'Param',params:{id:string},responses:{200:string}},(_req,res)=>res.send('ok'));
 app.get('/ok',{name:'Ok',summary:'Ok',responses:{200:string}},(_req,res)=>res.setHeader('x-handler','get').send('ok'));
 app.get('/error',{name:'Error',summary:'Error',responses:{200:string}},()=>{throw new Error('PRIVATE');});
@@ -61,7 +63,8 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--example','cors_parity']);
  let comparisons=0;let noContentLengthDifferences=0;
- const configs=[{}, {origin:'https://fixed.example'}, {origin:true}, {origin:['https://allowed.example']}, {origin:false}, {credentials:true}, {origin:['https://allowed.example'],credentials:true}, {methods:['GET','PATCH'],allowedHeaders:['X-One','X-Two'],exposedHeaders:['X-Result'],maxAge:0}, {preflightContinue:true}, ...[200,205,299,300,304,400,418,500,599].map(optionsSuccessStatus=>({optionsSuccessStatus}))];
+ const numericAges=[-Number.MAX_VALUE,-1,-0.5,-0,0,0.5,Number.MAX_SAFE_INTEGER+1,1e21,Number.MAX_VALUE,'Infinity','-Infinity','NaN'];
+ const configs=[...numericAges.map(maxAgeNumber=>({maxAgeNumber})),{}, {origin:'https://fixed.example'}, {origin:true}, {origin:['https://allowed.example']}, {origin:false}, {credentials:true}, {origin:['https://allowed.example'],credentials:true}, {methods:['GET','PATCH'],allowedHeaders:['X-One','X-Two'],exposedHeaders:['X-Result'],maxAge:0}, {preflightContinue:true}, ...[200,205,299,300,304,400,418,500,599].map(optionsSuccessStatus=>({optionsSuccessStatus}))];
  for(const config of configs){
   const ts=await start(process.execPath,['service.mjs',JSON.stringify(config)]);
   const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/cors_parity'),[JSON.stringify(config)]);

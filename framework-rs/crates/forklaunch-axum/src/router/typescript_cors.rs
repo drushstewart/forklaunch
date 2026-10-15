@@ -44,6 +44,9 @@ pub struct TypeScriptCors {
     pub credentials: bool,
     /// Nonnegative JavaScript-safe integer seconds (at most 2^53 - 1).
     pub max_age: Option<u64>,
+    /// Full JavaScript Number `maxAge`, including fractions, negatives and infinities.
+    /// When supplied, takes precedence over the legacy safe-integer `max_age` field.
+    pub max_age_number: Option<f64>,
     /// Continue OPTIONS through routing, including explicit OPTIONS handlers.
     pub preflight_continue: bool,
     /// Must be a final HTTP status (200–599); default204 matches TypeScript.
@@ -61,6 +64,7 @@ impl Default for TypeScriptCors {
             exposed_headers: None,
             credentials: false,
             max_age: None,
+            max_age_number: None,
             preflight_continue: false,
             options_success_status: StatusCode::NO_CONTENT,
         }
@@ -140,7 +144,13 @@ impl TypeScriptCors {
             {
                 headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, value);
             }
-            if let Some(age) = self.max_age {
+            if let Some(age) = self.max_age_number {
+                headers.insert(
+                    header::ACCESS_CONTROL_MAX_AGE,
+                    HeaderValue::from_str(&forklaunch_common::javascript_number::to_string(age))
+                        .expect("JavaScript numeric text is a valid header"),
+                );
+            } else if let Some(age) = self.max_age {
                 headers.insert(
                     header::ACCESS_CONTROL_MAX_AGE,
                     HeaderValue::from_str(&age.to_string()).expect("decimal age is a valid header"),
@@ -208,9 +218,10 @@ pub(super) fn wrap(
 
 fn wrap_typescript(router: Router, config: TypeScriptCors) -> Router {
     assert!(
-        config
-            .max_age
-            .is_none_or(|age| age <= 9_007_199_254_740_991),
+        config.max_age_number.is_some()
+            || config
+                .max_age
+                .is_none_or(|age| age <= 9_007_199_254_740_991),
         "TypeScript CORS max age must be a JavaScript-safe integer"
     );
     assert!(

@@ -77,6 +77,11 @@ async fn main() {
         exposed_headers: input.get("exposedHeaders").map(header),
         credentials: input["credentials"].as_bool().unwrap_or(false),
         max_age: input["maxAge"].as_u64(),
+        max_age_number: input.get("maxAgeNumber").map(|value| {
+            value
+                .as_f64()
+                .unwrap_or_else(|| value.as_str().unwrap().parse().unwrap())
+        }),
         preflight_continue: input["preflightContinue"].as_bool().unwrap_or(false),
         options_success_status: StatusCode::from_u16(
             input["optionsSuccessStatus"]

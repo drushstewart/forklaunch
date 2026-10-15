@@ -283,3 +283,46 @@ async fn canceled_origin_delegate_drops_pending_work_without_dispatch() {
     assert_eq!(drops.load(Ordering::SeqCst), 1);
     assert_eq!(dispatched.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn numeric_max_age_preserves_javascript_text_and_preflight_scope() {
+    for (value, expected) in [
+        (-0.0, "0"),
+        (-0.5, "-0.5"),
+        (0.5, "0.5"),
+        (f64::NAN, "NaN"),
+        (f64::INFINITY, "Infinity"),
+        (f64::NEG_INFINITY, "-Infinity"),
+        (1e21, "1e+21"),
+    ] {
+        let app = wrap(
+            Router::new(),
+            None,
+            Some(TypeScriptCors {
+                // The explicit Number field overrides the legacy integer field.
+                max_age: Some(u64::MAX),
+                max_age_number: Some(value),
+                ..TypeScriptCors::default()
+            }),
+        );
+        for method in ["GET", "OPTIONS"] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri("/")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let age = response.headers().get(header::ACCESS_CONTROL_MAX_AGE);
+            if method == "OPTIONS" {
+                assert_eq!(age.unwrap(), expected);
+            } else {
+                assert!(age.is_none());
+            }
+        }
+    }
+}

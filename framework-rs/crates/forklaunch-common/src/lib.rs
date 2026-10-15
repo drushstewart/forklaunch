@@ -334,3 +334,7 @@ mod tests {
 
 #[cfg(feature = "zod-checks")]
 pub mod zod_string_format;
+
+/// JavaScript numeric text for protocol fields.
+#[cfg(feature = "javascript-number")]
+pub mod javascript_number;
