@@ -115,6 +115,12 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/forklaunch-ws/examples/websocket_runtime.rs').is_file(), 'Packaged WebSocket interoperability fixture missing'
         for source in ['forklaunch-http/src/simple_query.rs', 'forklaunch-http/src/versioning_prepared.rs', 'forklaunch-http/src/versioned_response.rs', 'forklaunch-validation/src/zod_string.rs', 'forklaunch-validation/src/zod_number.rs', 'forklaunch-validation/src/zod_array.rs']:
             assert root.joinpath('crates', source).is_file(), f'Packaged query/version/validation runtime source missing: {source}'
+        for source in ['src/zod_string_format.rs', 'src/zod_string_format/jwt.rs', 'src/zod_string_format/emoji_table.rs', 'data/unicode-16.0.0/README.md']:
+            assert root.joinpath('crates/forklaunch-common', source).is_file(), f'Packaged raw format source missing: {source}'
+        import hashlib
+        for name, digest in [('emoji-data.txt', 'f1365a5173eee18e1f98b240cdc492e84a25f1ce7e0c9d1094eb29c41a22696a'), ('LICENSE.txt', 'e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96')]:
+            data = root.joinpath('crates/forklaunch-common/data/unicode-16.0.0', name)
+            assert hashlib.sha256(data.read_bytes()).hexdigest() == digest, f'Packaged Unicode provenance changed: {name}'
         for source in ['src/zod_binary.rs', 'src/zod_string_format.rs', 'examples/zod_binary_parity.rs', 'examples/zod_string_formats_parity.rs']:
             assert root.joinpath('crates/forklaunch-validation', source).is_file(), f'Packaged scalar validation source missing: {source}'
     else:
@@ -133,6 +139,8 @@ for workspace in ['framework-rs','blueprint-rs']:
         assert root.joinpath('crates/vendor/bullmq-official/LICENSE').is_file(), 'Packaged BullMQ license missing'
         assert root.joinpath('crates/vendor/bullmq-official/Cargo.lock').is_file(), 'Packaged BullMQ protocol test lock missing'
         assert root.joinpath('crates/vendor/bullmq-official/FORKLAUNCH_PATCH.md').is_file(), 'Packaged BullMQ provenance missing'
+        for source in ['src/time_source.rs', 'src/accounts/credential_policy.rs', 'src/http/credential_policy_tests.rs', 'src/http/clock_tests.rs', 'src/http/clock_tests/store.rs', 'src/http/clock_tests/organization.rs']:
+            assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged credential/clock source missing: {source}'
         for source in ['src/keyring/adapter.rs', 'src/keyring/adapter/tests.rs', 'src/keyring/repository.rs', 'src/keyring/repository/session.rs', 'src/http/jwt_expiration.rs']:
             assert root.joinpath('crates/implementations/iam/forklaunch-iam-better-auth', source).is_file(), f'Packaged JWKS/expiry source missing: {source}'
         for source in ['migrations/9_payment_provider_bindings.sql', 'migrations/10_scoped_cancellation_receipts.sql', 'src/postgres/provider_bindings.rs', 'src/postgres/provider_bindings/scoped_cancellation.rs']:

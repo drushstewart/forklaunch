@@ -11137,3 +11137,14 @@ Frozen14-source manifest `/private/tmp/fl-portal-local-expiration-final.json`, S
 `cb8d27b3559ad8c4f6a8ac8fd0b924851af48500afdab81654c2cfc26b4060d2`.
 Logs `/private/tmp/fl-portal-local-expiration-{pg2,read-regression,live-final,unit-final,artifacts-final,clippy4,minimal}.log`.
 Broader billing mutations/reconciliation remain open; checklist stays660/682(96.8%).
+
+
+### 2026-10-15 — Packaged Unicode provenance correction
+
+An expanded immutable CLI check found that common-crate Unicode data/license files
+were present in the standalone crate but absent from the CLI template directory.
+The template now includes that data directory. The permanent installed-package
+check verifies exact Unicode data/license SHA256s and the new JWT/emoji and
+credential/clock sources. The check correctly failed against the older69cee
+archive; corrected package installation/generation validation is pending. This
+does not change runtime format semantics or close a broad parity gate.
