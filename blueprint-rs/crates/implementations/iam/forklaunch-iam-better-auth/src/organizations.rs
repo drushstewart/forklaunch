@@ -40,9 +40,11 @@ mod membership_policy;
 pub use membership_policy::{MembershipLimitContext, MembershipLimitFuture, MembershipLimitPolicy};
 mod mutation;
 mod permission;
+pub use permission::cache::OrganizationPermissionCache;
 mod policy;
 pub use policy::OrganizationPolicy;
 mod roles;
+pub use roles::limit::{RoleLimitFuture, RoleLimitPolicy};
 mod selection;
 mod teams;
 pub use members::{AddMemberInput, MemberRoles};
@@ -54,6 +56,7 @@ pub struct OrganizationService<S> {
     allow_creation: Option<Arc<dyn OrganizationCreationPolicy>>,
     creation_limit: Option<Arc<dyn OrganizationCreationPolicy>>,
     membership_limit: Option<Arc<dyn MembershipLimitPolicy>>,
+    role_limit: Option<Arc<dyn RoleLimitPolicy>>,
     invitation_policy: InvitationPolicy,
     team_policy: TeamPolicy,
     controls: OrganizationControls,
@@ -106,19 +109,31 @@ impl<S: AuthStore> OrganizationService<S> {
     /// Replaces the trusted resource catalog/static roles and clears custom authorizers.
     #[must_use]
     pub fn with_access_control(mut self, policy: OrganizationAccessControl) -> Self {
-        self.access_control = policy.into();
+        self.access_control =
+            Authorization::from(policy).with_cache(self.access_control.cache().clone());
         self
     }
     /// Installs bound static roles and synchronous overrides as one policy snapshot.
     /// A later `with_access_control` replaces the snapshot and clears the overrides.
     #[must_use]
     pub fn with_role_authorizers(mut self, registry: OrganizationRoleAuthorizers) -> Self {
-        self.access_control = registry.into();
+        self.access_control =
+            Authorization::from(registry).with_cache(self.access_control.cache().clone());
         self
     }
     #[cfg(feature = "http")]
     pub(crate) fn with_authorization(mut self, policy: Authorization) -> Self {
         self.access_control = policy;
+        self
+    }
+    /// Shares permission-cache effects with other services in the same trusted tenant.
+    /// Custom stores without a scope must explicitly share this handle for reentrant calls.
+    #[must_use]
+    pub fn with_organization_permission_cache(
+        mut self,
+        cache: OrganizationPermissionCache,
+    ) -> Self {
+        self.access_control = self.access_control.with_cache(cache);
         self
     }
     /// Installs the trusted creator identity across creation and member safeguards.
@@ -131,6 +146,14 @@ impl<S: AuthStore> OrganizationService<S> {
     #[must_use]
     pub fn with_organization_controls(mut self, controls: OrganizationControls) -> Self {
         self.controls = controls;
+        self.role_limit = None;
+        self
+    }
+    /// Replaces the dynamic-role scalar quota with a trusted awaited numeric policy.
+    /// A later `with_organization_controls` clears this callback.
+    #[must_use]
+    pub fn with_role_limit_policy(mut self, hook: Arc<dyn RoleLimitPolicy>) -> Self {
+        self.role_limit = Some(hook);
         self
     }
     /// Installs trusted scalar team options without changing other policies.
@@ -195,11 +218,13 @@ impl<S: AuthStore> OrganizationService<S> {
             allow_creation: None,
             creation_limit: None,
             membership_limit: None,
+            role_limit: None,
             invitation_policy: InvitationPolicy::default(),
             team_policy: TeamPolicy::default(),
             controls: OrganizationControls::default(),
             creator_role: CreatorRole::default(),
-            access_control: OrganizationAccessControl::default().into(),
+            access_control: Authorization::from(OrganizationAccessControl::default())
+                .with_cache(store.organization_permission_cache().unwrap_or_default()),
             invitation_delivery: None,
             background_dispatcher: None,
             cancel_pending_invitations_on_reinvite: false,

@@ -3296,3 +3296,34 @@ All3 hashes match `/private/tmp/fl-number-bound-export-source.json`, SHA256
 `9c8133dda255857a90617deb47e80b5b079bc9a7cb62865318c56066e95f1854`.
 Detailed receipt/log prefix: `/private/tmp/fl-number-bound-export-`. Broader
 schema/emitter/validation gates remain open; checklist660/682 unchanged.
+
+
+### 2026-10-15 — Awaited role quotas and shared permission snapshots
+
+Trusted maximumRolesPerOrganization callbacks now preserve full IEEE number
+comparisons and upstream ordering: initial authorization, awaited callback, then
+role count. Permission checks after the callback use the latest shared cached
+grants and authorizer configuration, including updates from nested or concurrent
+checks. Memory clones and PostgreSQL stores sharing the same pool and tenant
+share a cache automatically; other stores can supply an explicit trusted scope.
+Scopes remain tenant/application isolated. Active cache slots are bounded and
+released after requests; callbacks run outside cache locks. Atomic native writes
+remain an explicit boundary against arbitrary upstream adapter interleavings.
+
+The pinned upstream oracle passes 29 cases; native organization/cache tests pass
+18 with one PostgreSQL test separately exercised. Restricted PostgreSQL passes
+in 21.48s; strict full/minimal all-target Clippy passes in 19.48s/15.04s.
+All five owned database cleanup counts are zero. Earlier failing oracle assertions
+and the corrected test-only Clippy lint remain in the retained evidence. Final
+proof includes the frozen billing alias draft; it is not a committed-only graph
+claim. CI now runs the permanent upstream callback oracle.
+
+All 18 source hashes match `/private/tmp/fl-role-limit-freeze.json`, SHA256
+`f1b0658a1b89f269fbdf6d109ca2b709b57fd8d28f814321f0b5f7cb04a5dbd4`.
+Logs: `/private/tmp/fl-role-limit-{actual,native,pg,clippy,minimal-clippy,cleanup}.log`.
+Broader auth/ORM hooks gates remain open; checklist remains 660/682 (96.8%).
+
+The completed numeric-bound worktree was removed only after exact commit,
+three source hashes, clean status and zero owned processes were verified.
+`/private/tmp/fl-number-bound-export-cleanup.json` retains the receipt for
+54,804 KiB logical data; branch, source commit and proofs remain available.

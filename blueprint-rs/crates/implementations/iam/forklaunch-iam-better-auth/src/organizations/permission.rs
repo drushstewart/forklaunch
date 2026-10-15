@@ -3,6 +3,7 @@ use super::{AuthTransaction, BlueprintError, BlueprintResult, Model, Value, text
 use serde_json::value::RawValue;
 use std::collections::BTreeMap;
 
+pub(super) mod cache;
 mod grants;
 use grants::{Actions, Grants};
 type Statements = BTreeMap<String, Vec<String>>;
@@ -34,6 +35,27 @@ pub(super) async fn allowed_with_creator<T: AuthTransaction>(
         let permission = parse_permissions(&row["permission"], role)?;
         grants.merge(role, permission)?;
     }
+    let grants = std::sync::Arc::new(grants);
+    config
+        .cache()
+        .publish(organization, config, grants.clone())?;
+    evaluate(config, &grants, roles, requested, creator_role)
+}
+pub(super) fn cached(
+    slot: &cache::Slot,
+    roles: &str,
+    requested: Option<&Value>,
+) -> BlueprintResult<bool> {
+    let snapshot = slot.snapshot()?;
+    evaluate(&snapshot.config, &snapshot.grants, roles, requested, None)
+}
+fn evaluate(
+    config: &super::Authorization,
+    grants: &Grants,
+    roles: &str,
+    requested: Option<&Value>,
+    creator_role: Option<&str>,
+) -> BlueprintResult<bool> {
     let Some(requested) = requested.and_then(Value::as_object) else {
         return Ok(false);
     };

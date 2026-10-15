@@ -1,5 +1,6 @@
 //! Stored dynamic roles and explicit access-control grants.
 mod create;
+pub(super) mod limit;
 mod mutation;
 use super::permission::allowed;
 use super::{

@@ -73,6 +73,12 @@ impl Model {
 
 /// A trusted-tenant store. Requests cannot select a tenant through record data.
 pub trait AuthStore: Send + Sync {
+    /// Optional stable trusted-tenant/application cache scope. Wrappers should forward it.
+    fn organization_permission_cache(
+        &self,
+    ) -> Option<crate::organizations::OrganizationPermissionCache> {
+        None
+    }
     type Transaction<'a>: AuthTransaction
     where
         Self: 'a;

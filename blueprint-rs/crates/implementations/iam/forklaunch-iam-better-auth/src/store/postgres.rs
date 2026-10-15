@@ -16,6 +16,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct PostgresAuthStore {
     pool: PgPool,
+    permission_cache: crate::organizations::OrganizationPermissionCache,
     tenant: TenantContext,
     encryptor: Arc<FieldEncryptor>,
     audit: AuditContext,
@@ -71,6 +72,10 @@ impl PostgresAuthStore {
             ));
         }
         let store = Self {
+            permission_cache: crate::organizations::OrganizationPermissionCache::postgres(
+                &pool,
+                tenant.id(),
+            ),
             pool,
             tenant,
             encryptor,
@@ -183,6 +188,11 @@ pub struct PostgresAuthTransaction<'a> {
     write: bool,
 }
 impl AuthStore for PostgresAuthStore {
+    fn organization_permission_cache(
+        &self,
+    ) -> Option<crate::organizations::OrganizationPermissionCache> {
+        Some(self.permission_cache.clone())
+    }
     type Transaction<'a> = PostgresAuthTransaction<'a>;
     async fn begin(&self, write: bool) -> BlueprintResult<Self::Transaction<'_>> {
         let mut tx = begin_tenant_transaction(&self.pool, &self.tenant)

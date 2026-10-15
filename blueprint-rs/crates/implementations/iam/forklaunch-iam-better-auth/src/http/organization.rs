@@ -32,6 +32,9 @@ fn service<S: AuthStore>(app: &AuthHttp<S>) -> OrganizationService<S> {
     if let Some(hook) = &app.creation_limit {
         service = service.with_organization_limit_policy(hook.clone());
     }
+    if let Some(hook) = &app.role_limit {
+        service = service.with_role_limit_policy(hook.clone());
+    }
     if let Some(hook) = &app.membership_limit {
         service = service.with_membership_limit_policy(hook.clone());
     }

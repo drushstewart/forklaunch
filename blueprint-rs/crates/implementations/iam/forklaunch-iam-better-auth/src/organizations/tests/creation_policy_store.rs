@@ -124,7 +124,10 @@ impl<T: AuthTransaction> AuthTransaction for FaultTransaction<T> {
         if self.insert == Some(model) {
             return Err(read_failure());
         }
-        self.organization |= matches!(model, Model::Organization | Model::Member);
+        self.organization |= matches!(
+            model,
+            Model::Organization | Model::Member | Model::OrganizationRole
+        );
         self.inner.insert(model, value).await
     }
     async fn replace(&mut self, model: Model, value: Value) -> BlueprintResult<()> {

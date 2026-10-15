@@ -82,33 +82,49 @@ impl OrganizationRoleAuthorizers {
 }
 
 #[derive(Clone)]
-pub(crate) struct Authorization(OrganizationRoleAuthorizers);
+pub(crate) struct Authorization {
+    registry: OrganizationRoleAuthorizers,
+    cache: super::OrganizationPermissionCache,
+}
 impl Deref for Authorization {
     type Target = OrganizationAccessControl;
     fn deref(&self) -> &Self::Target {
-        &self.0.control
+        &self.registry.control
     }
 }
 impl From<OrganizationAccessControl> for Authorization {
     fn from(control: OrganizationAccessControl) -> Self {
-        Self(OrganizationRoleAuthorizers {
-            control,
-            callbacks: Arc::new(BTreeMap::new()),
-        })
+        Self {
+            registry: OrganizationRoleAuthorizers {
+                control,
+                callbacks: Arc::new(BTreeMap::new()),
+            },
+            cache: super::OrganizationPermissionCache::default(),
+        }
     }
 }
 impl From<OrganizationRoleAuthorizers> for Authorization {
     fn from(registry: OrganizationRoleAuthorizers) -> Self {
-        Self(registry)
+        Self {
+            registry,
+            cache: super::OrganizationPermissionCache::default(),
+        }
     }
 }
 impl Authorization {
+    pub(crate) fn with_cache(mut self, cache: super::OrganizationPermissionCache) -> Self {
+        self.cache = cache;
+        self
+    }
+    pub(crate) fn cache(&self) -> &super::OrganizationPermissionCache {
+        &self.cache
+    }
     pub(super) fn custom(
         &self,
         role: &str,
         permissions: &serde_json::Map<String, Value>,
     ) -> Option<BlueprintResult<bool>> {
-        self.0.callbacks.get(role).map(|callback| {
+        self.registry.callbacks.get(role).map(|callback| {
             // The pinned record parser drops this key before invoking the role.
             // Project only when an override is actually invoked; default paths
             // retain their existing borrowed, no-clone authorization behavior.
@@ -123,7 +139,11 @@ impl Authorization {
             } else {
                 permissions
             };
-            let statements = self.0.control.role_statements(role).ok_or_else(failure)?;
+            let statements = self
+                .registry
+                .control
+                .role_statements(role)
+                .ok_or_else(failure)?;
             callback
                 .authorize(OrganizationAuthorizationRequest {
                     role,

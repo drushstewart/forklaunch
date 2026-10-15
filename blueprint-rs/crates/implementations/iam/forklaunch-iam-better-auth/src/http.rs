@@ -76,6 +76,7 @@ pub struct AuthHttp<S> {
     allow_creation: Option<Arc<dyn crate::organizations::OrganizationCreationPolicy>>,
     creation_limit: Option<Arc<dyn crate::organizations::OrganizationCreationPolicy>>,
     membership_limit: Option<Arc<dyn crate::organizations::MembershipLimitPolicy>>,
+    role_limit: Option<Arc<dyn crate::organizations::RoleLimitPolicy>>,
     invitation_policy: crate::organizations::InvitationPolicy,
     team_policy: crate::organizations::TeamPolicy,
     organization_controls: crate::organizations::OrganizationControls,
@@ -142,7 +143,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         mut self,
         policy: crate::organizations::OrganizationAccessControl,
     ) -> Self {
-        self.access_control = policy.into();
+        self.access_control = crate::organizations::Authorization::from(policy)
+            .with_cache(self.access_control.cache().clone());
         self
     }
     /// Installs the bound organization policy and trusted synchronous role callbacks.
@@ -152,7 +154,17 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         mut self,
         registry: crate::organizations::OrganizationRoleAuthorizers,
     ) -> Self {
-        self.access_control = registry.into();
+        self.access_control = crate::organizations::Authorization::from(registry)
+            .with_cache(self.access_control.cache().clone());
+        self
+    }
+    /// Shares organization permission snapshots within one trusted tenant/application.
+    #[must_use]
+    pub fn with_organization_permission_cache(
+        mut self,
+        cache: crate::organizations::OrganizationPermissionCache,
+    ) -> Self {
+        self.access_control = self.access_control.with_cache(cache);
         self
     }
     /// Installs trusted creator identity without declaring permission roles.
@@ -168,6 +180,17 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         controls: crate::organizations::OrganizationControls,
     ) -> Self {
         self.organization_controls = controls;
+        self.role_limit = None;
+        self
+    }
+    /// Installs the trusted dynamic-role numeric quota callback.
+    /// A later `with_organization_controls` restores its scalar quota.
+    #[must_use]
+    pub fn with_role_limit_policy(
+        mut self,
+        hook: Arc<dyn crate::organizations::RoleLimitPolicy>,
+    ) -> Self {
+        self.role_limit = Some(hook);
         self
     }
     /// Installs server-owned scalar team admission policy.
@@ -289,11 +312,15 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             allow_creation: None,
             creation_limit: None,
             membership_limit: None,
+            role_limit: None,
             invitation_policy: crate::organizations::InvitationPolicy::default(),
             team_policy: crate::organizations::TeamPolicy::default(),
             organization_controls: crate::organizations::OrganizationControls::default(),
             creator_role: crate::organizations::CreatorRole::default(),
-            access_control: crate::organizations::OrganizationAccessControl::default().into(),
+            access_control: crate::organizations::Authorization::from(
+                crate::organizations::OrganizationAccessControl::default(),
+            )
+            .with_cache(store.organization_permission_cache().unwrap_or_default()),
             invitation_delivery: None,
             cancel_pending_invitations_on_reinvite: false,
             store,

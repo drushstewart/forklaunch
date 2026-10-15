@@ -11,6 +11,7 @@ mod members;
 mod membership_policy;
 mod permissions;
 pub(crate) mod policy;
+mod role_limit;
 mod roles;
 mod team_members;
 mod team_mutations;

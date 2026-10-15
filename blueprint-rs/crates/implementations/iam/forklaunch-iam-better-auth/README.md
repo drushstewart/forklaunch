@@ -2126,7 +2126,7 @@ Remaining organization option families after these scalar/declarative profiles:
 
 | Family | Implemented scope | Remaining scope |
 | --- | --- | --- |
-| Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle, awaited creation allow/quota and membership callbacks | Dynamic-role quota callbacks |
+| Creation/membership/dynamic-role limits | Trusted scalar values, creator identity, deletion toggle, awaited creation allow/quota, membership and dynamic-role quota callbacks | Arbitrary JavaScript callback context/return coercion |
 | Teams | Default creation toggle, team/seat limits, last-team policy | Plugin route disabling, custom default-team creation, async limits |
 | Invitations | TTL, quota, verification, cancellation, trusted delivery/scheduler | Async quota callback and lifecycle hooks |
 | Access control | Declarative catalog/static roles, persisted dynamic grants and trusted synchronous authorizers | Plugin-disable topology and arbitrary JS receiver/return behavior |
@@ -2265,3 +2265,58 @@ persisted. Callback effects are application-owned and cannot be rolled back.
 Dropping a pending callback stops native publication, with no detached tasks.
 HTTP member timestamps sample the trusted clock after callback work; direct
 services retain explicit supplied time.
+
+
+### Awaited dynamic-role quota
+
+`OrganizationService::with_role_limit_policy` and `AuthHttp::with_role_limit_policy`
+install trusted `RoleLimitPolicy`, corresponding to
+`dynamicAccessControl.maximumRolesPerOrganization`. Its fallible preparation takes
+only the owned organization ID (at most 4096 UTF-8 bytes), and returns an owned
+future with `BlueprintResult<f64>`. Fractions, signed zero, NaN and infinities use
+JavaScript's `count >= limit` comparison; no JSON conversion or scalar-u32 cap
+is applied. Installing `with_organization_controls` later clears the callback;
+installing the callback later overrides only the dynamic-role quota.
+
+Session, predefined-name, membership and `ac:create` admission precede the
+callback. No database transaction spans the callback future. After it completes,
+the writer reads the current role count, validates resources and requested grants
+using the captured member role and the shared permission snapshot, checks the stored name,
+and inserts the new role. Unlike membership quotas, this quota observes roles
+added or removed during the callback. It does not repeat session/user/membership
+admission: deletion or demotion during the callback does not itself reject an
+already admitted operation. The native writer atomically combines the final
+count/name/grant checks and insertion; arbitrary upstream partial storage failures
+and concurrent adapter behavior are not claimed to be identical.
+
+Preparation and future errors produce sanitized empty HTTP 500 responses. Dropping
+a pending future prevents native role insertion without undoing callback effects.
+HTTP creation timestamps sample the trusted clock after the callback; direct
+services retain the caller's explicit timestamp. The scalar/default path remains
+unchanged. No raw request, JavaScript receiver mutation, non-number return coercion,
+background scheduling or panic equivalence is added.
+
+
+The pinned plugin caches merged roles by organization ID when permission admission
+runs, then uses that cached configuration for each requested action after the
+quota callback. A row mutation alone does not refresh this snapshot. A nested or
+concurrent permission call for the same organization replaces it, including its
+static authorizer callbacks; another organization's call does not. The native
+`OrganizationPermissionCache` preserves these effects while a callback-backed
+role creation is active. No cache mutex is held during application callbacks.
+Slots are released on completion, failure or cancellation and weak entries are
+pruned on admission. At most 1024 distinct organizations can have active cached
+creation windows per scope; exceeding this explicit resource bound fails closed.
+
+Memory stores and their clones share a scope automatically. PostgreSQL stores
+constructed with the same cloned pool and trusted tenant share automatically:
+the immutable pool-options allocation identifies the application pool, and the
+scope retains a pool clone to prevent address reuse. Different tenants never
+share the default scope. Different pools and custom stores can explicitly share
+one trusted handle through `with_organization_permission_cache`; custom store
+wrappers can forward the additive `AuthStore::organization_permission_cache`
+method. Its default `None` preserves existing implementations and gives each
+service its own scope. Applications must not share a handle across tenants.
+This intentionally does not reproduce the JavaScript module-global cache's
+cross-tenant/cross-application leakage. Scalar role creation keeps its existing
+behavior, and ordinary permission reads do not consume cached grants.

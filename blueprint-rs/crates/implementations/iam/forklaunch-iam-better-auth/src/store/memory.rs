@@ -19,6 +19,7 @@ struct State {
 #[derive(Clone, Default)]
 pub struct MemoryAuthStore {
     state: Arc<Mutex<State>>,
+    permission_cache: crate::organizations::OrganizationPermissionCache,
 }
 pub struct MemoryAuthTransaction {
     guard: OwnedMutexGuard<State>,
@@ -27,6 +28,11 @@ pub struct MemoryAuthTransaction {
 }
 
 impl AuthStore for MemoryAuthStore {
+    fn organization_permission_cache(
+        &self,
+    ) -> Option<crate::organizations::OrganizationPermissionCache> {
+        Some(self.permission_cache.clone())
+    }
     type Transaction<'a> = MemoryAuthTransaction;
     async fn begin(&self, write: bool) -> BlueprintResult<Self::Transaction<'_>> {
         let guard = self.state.clone().lock_owned().await;

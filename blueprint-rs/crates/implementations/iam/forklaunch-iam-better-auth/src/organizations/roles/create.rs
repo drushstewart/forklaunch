@@ -14,6 +14,11 @@ impl<S: AuthStore> OrganizationService<S> {
         body: &Value,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        if let Some(hook) = &self.role_limit {
+            return self
+                .create_role_with_limit(token, transient, body, now, hook.as_ref())
+                .await;
+        }
         self.session(token, transient, now).await?;
         let mut tx = self.store.begin(true).await?;
         let view = self
