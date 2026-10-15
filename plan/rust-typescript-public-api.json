@@ -24683,7 +24683,7 @@
               "name": "registerZodChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/zodChecks.ts",
-              "line": 274
+              "line": 279
             }
           ]
         },
@@ -25508,7 +25508,7 @@
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 1006
+              "line": 1112
             }
           ]
         },
@@ -25525,13 +25525,19 @@
               "name": "projectStringChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 24
+              "line": 26
             },
             {
               "name": "projectNumberChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 129
+              "line": 131
+            },
+            {
+              "name": "projectArrayChecks",
+              "kind": "FunctionDeclaration",
+              "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
+              "line": 152
             }
           ]
         },
@@ -26273,135 +26279,135 @@
                 },
                 {
                   "name": "any",
-                  "signature": "any: TAny = Type.Any({\n    type: 'object',\n    example: 'any',\n    title: 'Any'\n  });",
+                  "signature": "any: TAny = Type.Any({\n    example: 'any',\n    title: 'Any'\n  });",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
                   "line": 312
                 },
                 {
                   "name": "unknown",
-                  "signature": "unknown: TUnknown = Type.Unknown({\n    type: 'object',\n    example: 'unknown',\n    title: 'Unknown'\n  });",
+                  "signature": "unknown: TUnknown = Type.Unknown({\n    example: 'unknown',\n    title: 'Unknown'\n  });",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 317
+                  "line": 316
                 },
                 {
                   "name": "never",
                   "signature": "never: TNever = Type.Never({\n    type: 'null',\n    example: 'never',\n    title: 'Never'\n  });",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 322
+                  "line": 320
                 },
                 {
                   "name": "binary",
                   "signature": "binary: TTransform<TString, Uint8Array<ArrayBuffer>> = Type.Transform(\n    Type.String({\n      errorType: 'binary',\n      format: 'binary',\n      example: 'a base-64 encodable string',\n      title: 'Binary'\n    })\n  )\n    .Decode((value) => new Uint8Array(Buffer.from(value, 'base64')))\n    .Encode((value) => {\n      if (value instanceof Buffer) {\n        return String.fromCharCode(...new Uint8Array(value));\n      }\n      return '';\n    });",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 327
+                  "line": 325
                 },
                 {
                   "name": "file",
                   "signature": "file: TTransform<\n    TUnion<[TUnsafe<Buffer>, TUnsafe<ArrayBuffer>, TUnsafe<Blob>, TString]>,\n    Blob\n  > = Type.Transform(\n    Type.Union([\n      Type.Unsafe<Buffer>({\n        [Kind]: 'Buffer',\n        errorType: 'binary',\n        format: 'binary',\n        example: 'a raw buffer or file stream',\n        title: 'File'\n      }),\n      Type.Unsafe<ArrayBuffer>({\n        [Kind]: 'ArrayBuffer',\n        errorType: 'binary',\n        format: 'binary',\n        example: 'an array buffer',\n        title: 'File'\n      }),\n      Type.Unsafe<Blob>({\n        [Kind]: 'Blob',\n        errorType: 'binary',\n        format: 'binary',\n        example: 'a blob object',\n        title: 'File'\n      }),\n      Type.String({\n        errorType: 'binary',\n        format: 'binary',\n        example: 'a string content',\n        title: 'File'\n      })\n    ])\n  )\n    .Decode((value) => {\n      if (value instanceof Buffer) {\n        return new InMemoryBlob(value as Buffer<ArrayBuffer>) as Blob;\n      }\n      if (value instanceof ArrayBuffer) {\n        return new InMemoryBlob(Buffer.from(value)) as Blob;\n      }\n      if (value instanceof Blob) {\n        return value as Blob;\n      }\n      if (typeof value === 'string') {\n        return new InMemoryBlob(Buffer.from(value)) as Blob;\n      }\n      return new InMemoryBlob(Buffer.from(value)) as Blob;\n    })\n    .Encode((value) => (value as InMemoryBlob).content);",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 342
+                  "line": 340
                 },
                 {
                   "name": "type",
                   "signature": "type = <T>() => this.any as TTransform<TAny, T>;",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 392
+                  "line": 390
                 },
                 {
                   "name": "compile",
                   "signature": "compile<T extends SafeTObject<TProperties>>(schema: T): TypeCheck<T>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 415
+                  "line": 413
                 },
                 {
                   "name": "schemify",
                   "signature": "schemify<T extends TIdiomaticSchema>(schema: T): TResolve<T>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 424
+                  "line": 422
                 },
                 {
                   "name": "optional",
                   "signature": "optional<T extends TIdiomaticSchema>(schema: T): TOptional<TResolve<T>>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 458
+                  "line": 456
                 },
                 {
                   "name": "array",
                   "signature": "array<T extends TIdiomaticSchema>(schema: T): TArray<TResolve<T>>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 468
+                  "line": 466
                 },
                 {
                   "name": "union",
                   "signature": "union<T extends TUnionTupleContainer>(\n    schemas: [...T]\n  ): TUnion<UnionTupleTResolve<T>>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 483
+                  "line": 481
                 },
                 {
                   "name": "literal",
                   "signature": "literal<T extends LiteralSchema>(value: T): TLiteral<T>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 503
+                  "line": 501
                 },
                 {
                   "name": "enum_",
                   "signature": "enum_<T extends Record<string, LiteralSchema>>(\n    schemaEnum: T\n  ): TUnion<\n    [\n      {\n        [K in keyof T]: TLiteral<T[K]>;\n      }[keyof T]\n    ]\n  >",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 514
+                  "line": 512
                 },
                 {
                   "name": "function_",
                   "signature": "function_<\n    Args extends TUnionTupleContainer,\n    ReturnType extends TIdiomaticSchema\n  >(\n    args: [...Args],\n    returnType: ReturnType\n  ): TFunction<UnionTupleTResolve<Args>, TResolve<ReturnType>>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 545
+                  "line": 543
                 },
                 {
                   "name": "record",
                   "signature": "record<Key extends TIdiomaticSchema, Value extends TIdiomaticSchema>(\n    key: Key,\n    value: Value\n  ): TRecord<TResolve<Key>, TResolve<Value>>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 568
+                  "line": 566
                 },
                 {
                   "name": "promise",
                   "signature": "promise<T extends TIdiomaticSchema>(schema: T): TPromise<TResolve<T>>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 585
+                  "line": 583
                 },
                 {
                   "name": "isSchema",
                   "signature": "isSchema(value: unknown): value is TSchema",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 594
+                  "line": 592
                 },
                 {
                   "name": "isInstanceOf",
                   "signature": "isInstanceOf<T extends TCatchall>(value: unknown, type: T): value is T",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 604
+                  "line": 602
                 },
                 {
                   "name": "validate",
                   "signature": "validate<T extends TIdiomaticSchema | TCatchall>(\n    schema: T | TypeCheck<TResolve<T>>,\n    value: unknown\n  ): boolean",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 620
+                  "line": 618
                 },
                 {
                   "name": "parse",
                   "signature": "parse<T extends TIdiomaticSchema | TCatchall>(\n    schema: T | TypeCheck<TResolve<T>>,\n    value: unknown\n  ): ParseResult<TSchemaTranslate<TResolve<T>>>",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 639
+                  "line": 637
                 },
                 {
                   "name": "openapiRequestBody",
                   "signature": "openapiRequestBody(schema: unknown): { required: boolean; schema: SchemaObject }",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 726
+                  "line": 724
                 },
                 {
                   "name": "openapi",
                   "signature": "openapi<T extends TIdiomaticSchema | TCatchall>(schema: T): SchemaObject",
                   "source": "framework/validator/src/typebox/typeboxSchemaValidator.ts",
-                  "line": 736
+                  "line": 734
                 }
               ]
             }
@@ -27131,141 +27137,141 @@
                 },
                 {
                   "name": "any",
-                  "signature": "any = z.any().openapi({\n    title: 'Any',\n    type: 'object',\n    example: 'any'\n  });",
+                  "signature": "any = z.any().openapi({\n    title: 'Any',\n    example: 'any'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
                   "line": 220
                 },
                 {
                   "name": "unknown",
-                  "signature": "unknown = z.unknown().openapi({\n    title: 'Unknown',\n    type: 'object',\n    example: 'unknown'\n  });",
+                  "signature": "unknown = z.unknown().openapi({\n    title: 'Unknown',\n    example: 'unknown'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 225
+                  "line": 224
                 },
                 {
                   "name": "never",
                   "signature": "never = z.never().openapi({\n    title: 'Never',\n    type: 'null',\n    example: 'never'\n  });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 230
+                  "line": 228
                 },
                 {
                   "name": "binary",
                   "signature": "binary = z\n    .string()\n    .transform((val) => new Uint8Array(Buffer.from(val, 'base64')))\n    .openapi({\n      title: 'Binary',\n      type: 'string',\n      format: 'binary',\n      example: 'a base-64 encodable string'\n    });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 235
+                  "line": 233
                 },
                 {
                   "name": "file",
                   "signature": "file = z\n    .union([\n      z.instanceof(Buffer),\n      z.instanceof(ArrayBuffer),\n      z.instanceof(Blob),\n      z.string()\n    ])\n    .transform((val) => {\n      if (val instanceof Buffer) {\n        return new Blob([val as Buffer<ArrayBuffer>]);\n      }\n      if (val instanceof ArrayBuffer) {\n        return new Blob([val]);\n      }\n      if (val instanceof Blob) {\n        return val;\n      }\n      if (typeof val === 'string') {\n        return new Blob([val]);\n      }\n      return new Blob([val as Buffer<ArrayBuffer>]);\n    })\n    .refine((val) => val instanceof Blob, {\n      message:\n        'Invalid file type: expected Buffer, ArrayBuffer, Blob, or string'\n    })\n    .openapi({\n      title: 'File',\n      type: 'string',\n      format: 'binary',\n      example: 'a base-64 encodable blob or file'\n    });",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 244
+                  "line": 242
                 },
                 {
                   "name": "type",
                   "signature": "type = <T>() => this.any as ZodType<T>;",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 276
+                  "line": 274
                 },
                 {
                   "name": "compile",
                   "signature": "compile<T extends ZodObject<ZodRawShape>>(schema: T): ZodResolve<T>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 284
+                  "line": 282
                 },
                 {
                   "name": "schemify",
                   "signature": "schemify<T extends ZodIdiomaticSchema>(schema: T): ZodResolve<T>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 293
+                  "line": 291
                 },
                 {
                   "name": "optional",
                   "signature": "optional<T extends ZodIdiomaticSchema>(\n    schema: T\n  ): ZodOptional<ZodResolve<T>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 323
+                  "line": 321
                 },
                 {
                   "name": "array",
                   "signature": "array<T extends ZodIdiomaticSchema>(schema: T): ZodArray<ZodResolve<T>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 335
+                  "line": 333
                 },
                 {
                   "name": "union",
                   "signature": "union<T extends ZodUnionContainer>(schemas: T): ZodUnion<UnionZodResolve<T>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 345
+                  "line": 343
                 },
                 {
                   "name": "literal",
                   "signature": "literal<T extends LiteralSchema>(value: T): ZodLiteral<T>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 358
+                  "line": 356
                 },
                 {
                   "name": "enum_",
                   "signature": "enum_<T extends Record<string, LiteralSchema>>(\n    schemaEnum: T\n  ): ZodUnion<\n    [\n      {\n        [K in keyof T]: ZodLiteral<T[K]>;\n      }[keyof T]\n    ]\n  >",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 367
+                  "line": 365
                 },
                 {
                   "name": "function_",
                   "signature": "function_<\n    Args extends ZodTupleContainer,\n    ReturnType extends ZodIdiomaticSchema\n  >(\n    args: Args,\n    returnType: ReturnType\n  ): ZodFunction<\n    ZodTuple<TupleZodResolve<Args>, null>,\n    ZodResolve<ReturnType>\n  >",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 398
+                  "line": 396
                 },
                 {
                   "name": "record",
                   "signature": "record<Key extends ZodIdiomaticSchema, Value extends ZodIdiomaticSchema>(\n    key: Key,\n    value: Value\n  ): ZodRecord<ZodRecordKey<Key>, ZodResolve<Value>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 425
+                  "line": 423
                 },
                 {
                   "name": "promise",
                   "signature": "promise<T extends ZodIdiomaticSchema>(schema: T): ZodPromise<ZodResolve<T>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 442
+                  "line": 440
                 },
                 {
                   "name": "isSchema",
                   "signature": "isSchema(value: unknown): value is ZodType",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 451
+                  "line": 449
                 },
                 {
                   "name": "isInstanceOf",
                   "signature": "isInstanceOf<T extends ZodType>(value: unknown, type: T): value is T",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 461
+                  "line": 459
                 },
                 {
                   "name": "validate",
                   "signature": "validate<T extends ZodIdiomaticSchema | ZodCatchall>(\n    schema: T,\n    value: unknown\n  ): boolean",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 475
+                  "line": 473
                 },
                 {
                   "name": "parse",
                   "signature": "parse<T extends ZodIdiomaticSchema | ZodCatchall>(\n    schema: T,\n    value: unknown\n  ): ParseResult<ZodSchemaTranslate<ZodResolve<T>>>",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 490
+                  "line": 488
                 },
                 {
                   "name": "openapiRequestBody",
                   "signature": "openapiRequestBody(schema: unknown): { required: boolean; schema: SchemaObject }",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 528
+                  "line": 526
                 },
                 {
                   "name": "openapi2020",
                   "signature": "openapi2020(\n    schema: unknown,\n    options?: { pureInput?: boolean; zodChecks?: boolean; zodRegex?: boolean }\n  ): SchemaObject & {\n    $schema: 'https://json-schema.org/draft/2020-12/schema';\n  }",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 547
+                  "line": 545
                 },
                 {
                   "name": "openapi",
                   "signature": "openapi<T extends ZodIdiomaticSchema | ZodCatchall>(schema: T): SchemaObject",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 615
+                  "line": 613
                 }
               ]
             }

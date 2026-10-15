@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 625 resolved declaration entry points and 1,708 declaration/re-export
+It records 625 resolved declaration entry points and 1,709 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -12566,3 +12566,8 @@ whose dependency files referenced previously removed, owned package roots.
 Retained archive hashes, inactive target, no open files and unchanged inode,
 mtime and size were verified. Current sources and proof archives are preserved;
 `/private/tmp/fl-oct15-retired-package-cache-cleanup.json` records the guards.
+
+The full source-inventory check caught stale metadata from previously committed
+array and unconstrained-validator changes. Regeneration with TypeScript5.9.3
+now records1,709 declaration/re-export records (625 entry points unchanged);
+source inventory and all16 symbol references pass after refresh.
