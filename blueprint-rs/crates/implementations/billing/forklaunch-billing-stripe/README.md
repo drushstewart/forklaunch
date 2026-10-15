@@ -151,3 +151,14 @@ This profile admits open/unpaid sessions with exact finite totals. A zero-total
 reads are observations, not locks on later changes. Proposed-session totals prove
 neither later payment nor subscription entitlement. Generic routes and managed
 transport remain separate; the durable APIs require explicit server wiring.
+
+For Checkout sessions published by the direct bound creation profile, use
+`get_bound_created_checkout_session`. It preserves the local Customer UUID while
+verifying the provider customer through the completed creation receipt and current
+Customer registration/body generation. It requires the original actor and explicit
+SELECT access to `checkout_creation_intents` plus existing binding/record/audit
+permissions. It rejects changed records, registrations and provider customers and
+rechecks context freshness after database work. It is direct-only and grants no
+mutation authority. The existing `get_bound_checkout_session` retains its legacy
+provider-customer representation and grant requirements; generated default routes
+still require separate explicit profile wiring.

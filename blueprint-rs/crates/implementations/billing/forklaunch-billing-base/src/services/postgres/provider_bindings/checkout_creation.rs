@@ -8,7 +8,9 @@ use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 mod publication;
+mod read;
 pub use publication::{CheckoutCreationStatus, TrustedCheckoutPublisher};
+pub use read::CheckoutCreationReadSnapshot;
 
 /// Opaque local evidence, not authenticated provider evidence. The external Party
 /// association remains an administrative assertion, not a cross-service FK.

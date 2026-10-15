@@ -112,6 +112,65 @@ impl StripeBillingService<PostgresBillingStore> {
         value.provider_fields = Some(provider);
         Ok(value)
     }
+    /// Reads a Checkout created by the explicit durable creation profile, keeping
+    /// its public Customer UUID while verifying the separate provider relation.
+    /// Requires completed actor-owned journal provenance and current exact Customer
+    /// body/registration. This direct-only method adds journal SELECT/audit needs;
+    /// the legacy bound getter and its grant contract remain unchanged.
+    /// # Errors
+    /// Rejects missing provenance, changed dependencies, mismatched provider scope
+    /// or customer, and expired context after final DB work. No mutation authority.
+    pub async fn get_bound_created_checkout_session(
+        &self,
+        scope: &StripeBindingScope,
+        public_id: Uuid,
+    ) -> BlueprintResult<CheckoutSessionDto> {
+        let version = self.client().direct_creation_version()?;
+        let context = self
+            .client()
+            .verify_context(scope.account_id(), scope.livemode())
+            .await?;
+        let binding = self
+            .base()
+            .store()
+            .stripe_binding_by_public_id(scope, BillingKind::CheckoutSession, public_id)
+            .await?
+            .ok_or_else(mismatch)?;
+        let provenance = self
+            .base()
+            .store()
+            .checkout_creation_read_snapshot(&binding, version)
+            .await?
+            .ok_or_else(mismatch)?;
+        context.ensure_current(self.client())?;
+        let provider = self
+            .client()
+            .retrieve_checkout_in_context(&context, binding.provider_id())
+            .await?;
+        context.ensure_current(self.client())?;
+        if provider["id"] != binding.provider_id()
+            || provider["object"] != "checkout.session"
+            || provider["livemode"].as_bool() != Some(scope.livemode())
+            || provider["mode"] != "subscription"
+        {
+            return Err(mismatch());
+        }
+        let provider_customer = customer(&provider["customer"])?;
+        let data = self
+            .base()
+            .store()
+            .read_checkout_creation_snapshot(&provenance)
+            .await?;
+        context.ensure_current(self.client())?;
+        let mut value: CheckoutSessionDto = serde_json::from_value(data).map_err(|_| mismatch())?;
+        let expected_customer = provenance.provider_customer_id();
+        if expected_customer != provider_customer {
+            return Err(mismatch());
+        }
+        value.id = public_id.to_string();
+        value.provider_fields = Some(provider);
+        Ok(value)
+    }
 }
 fn customer(value: &Value) -> BlueprintResult<&str> {
     let id = value

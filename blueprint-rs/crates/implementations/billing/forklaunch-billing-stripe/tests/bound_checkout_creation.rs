@@ -171,6 +171,26 @@ async fn matrix(f: &Fixture) {
         )
         .route("/v1/checkout/sessions", post(create))
         .route(
+            "/v1/checkout/sessions/{id}",
+            get(
+                |State(p): State<Provider>, Path(id): Path<String>, h: HeaderMap| async move {
+                    auth(&h);
+                    if p.pause.load(Ordering::SeqCst) == 2 {
+                        p.entered.notify_one();
+                        p.resume.notified().await;
+                    }
+                    let mut value = p
+                        .response
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .unwrap_or_else(|| session(1));
+                    value["id"] = json!(id);
+                    Json(value)
+                },
+            ),
+        )
+        .route(
             "/v1/checkout/sessions/{id}/line_items",
             get(
                 |State(p): State<Provider>,
@@ -264,6 +284,7 @@ async fn matrix(f: &Fixture) {
     assert_eq!(p.posts.load(Ordering::SeqCst), 1);
     assert_eq!(f.count("checkout_dependency_claims").await, 0);
     authority(f, op).await;
+    read_created(f, &p, &service, &record.id).await;
     // Pending claims prevent current/OLD-tenant relation changes during provider I/O.
     p.pause.store(1, Ordering::SeqCst);
     let op = Uuid::new_v4();
@@ -603,4 +624,167 @@ async fn authority(f: &Fixture, operation: Uuid) {
     let changed=sqlx::query("UPDATE fl_billing.checkout_creation_intents SET state='completed',receipt_ciphertext='forged' WHERE operation_id=$1::uuid").bind(operation.to_string()).execute(&mut *tx).await.unwrap();
     assert_eq!(changed.rows_affected(), 0);
     tx.rollback().await.unwrap();
+}
+
+#[allow(clippy::too_many_lines)] // Keep the stateful read/tamper/race matrix on one owned fixture.
+async fn read_created(
+    f: &Fixture,
+    p: &Provider,
+    service: &StripeBillingService<PostgresBillingStore>,
+    id: &str,
+) {
+    let public = Uuid::parse_str(id).unwrap();
+    let posts = p.posts.load(Ordering::SeqCst);
+    let value = service
+        .get_bound_created_checkout_session(&f.scope, public)
+        .await
+        .unwrap();
+    assert_eq!(value.id, id);
+    assert_eq!(value.customer_id, f.customer.to_string());
+    assert_eq!(
+        value.provider_fields.as_ref().unwrap()["customer"],
+        "cus_owned"
+    );
+    for customer in [
+        Value::Null,
+        json!("cus_other"),
+        json!({"id":"cus_owned","object":"customer","deleted":true}),
+    ] {
+        let mut value = session(1);
+        value["customer"] = customer;
+        *p.response.lock().unwrap() = Some(value);
+        assert!(
+            service
+                .get_bound_created_checkout_session(&f.scope, public)
+                .await
+                .is_err()
+        );
+    }
+    *p.response.lock().unwrap() = None;
+    let binding = f
+        .store
+        .stripe_binding_by_public_id(
+            &f.scope,
+            forklaunch_billing_base::services::BillingKind::CheckoutSession,
+            public,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        f.store
+            .checkout_creation_read_snapshot(&binding, "wrong-version")
+            .await
+            .is_err()
+    );
+    for (tenant, actor) in [
+        ("checkout-a", "service:other"),
+        ("foreign-tenant", "service:checkout"),
+    ] {
+        let store = PostgresBillingStore::new(
+            f.pool.clone(),
+            TenantContext::new(tenant).unwrap(),
+            Arc::new(FieldEncryptor::new("owned-checkout-foundation-key").unwrap()),
+            AuditContext::actor(actor, "checkout-read"),
+        )
+        .await
+        .unwrap();
+        assert!(
+            store
+                .checkout_creation_read_snapshot(&binding, STRIPE_API_VERSION)
+                .await
+                .is_err()
+        );
+    }
+    // Tampering with the public Customer field cannot downgrade the new getter
+    // into the old administrative-alias profile, even with the correct cus_* ID.
+    let mut tx = f.pool.begin().await.unwrap();
+    sqlx::query("SELECT set_config('forklaunch.tenant_id','checkout-a',true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let original: sqlx::types::Json<Value> = sqlx::query_scalar(
+        "SELECT data FROM fl_billing.records WHERE kind='checkout_session' AND id=$1",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE fl_billing.records SET data=jsonb_set(data,'{customerId}',to_jsonb('cus_owned'::text)) WHERE kind='checkout_session' AND id=$1").bind(id).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+    assert!(
+        service
+            .get_bound_created_checkout_session(&f.scope, public)
+            .await
+            .is_err()
+    );
+    let mut tx = f.pool.begin().await.unwrap();
+    sqlx::query("SELECT set_config('forklaunch.tenant_id','checkout-a',true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE fl_billing.records SET data=$1 WHERE kind='checkout_session' AND id=$2")
+        .bind(original)
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert!(
+        service
+            .get_bound_created_checkout_session(&f.scope, public)
+            .await
+            .is_ok()
+    );
+    // Final audit insertion waits after provider I/O; fresh context must be
+    // checked after that DB wait, not only before beginning the transaction.
+    p.pause.store(2, Ordering::SeqCst);
+    let deadline_call = service.get_bound_created_checkout_session(&f.scope, public);
+    tokio::pin!(deadline_call);
+    tokio::select! {()=p.entered.notified()=>{},result=&mut deadline_call=>panic!("must pause {}",result.is_ok())}
+    let mut blocker = f.owner.begin().await.unwrap();
+    sqlx::query("LOCK TABLE fl_billing.sensitive_read_audit IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    p.pause.store(0, Ordering::SeqCst);
+    p.resume.notify_one();
+    let release = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(5100)).await;
+        blocker.rollback().await.unwrap();
+    });
+    assert!(deadline_call.await.is_err());
+    release.await.unwrap();
+    assert!(
+        service
+            .get_bound_created_checkout_session(&f.scope, public)
+            .await
+            .is_ok()
+    );
+    // A committed no-op body write changes xmin during the network read; old
+    // creation evidence cannot authorize even an otherwise identical Customer.
+    p.pause.store(2, Ordering::SeqCst);
+    let call = service.get_bound_created_checkout_session(&f.scope, public);
+    tokio::pin!(call);
+    tokio::select! {()=p.entered.notified()=>{},result=&mut call=>panic!("must pause {}",result.is_ok())}
+    let mut tx = f.pool.begin().await.unwrap();
+    sqlx::query("SELECT set_config('forklaunch.tenant_id','checkout-a',true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE fl_billing.records SET data=data WHERE kind='customer'")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    p.pause.store(0, Ordering::SeqCst);
+    p.resume.notify_one();
+    assert!(call.await.is_err());
+    assert!(
+        service
+            .get_bound_created_checkout_session(&f.scope, public)
+            .await
+            .is_err()
+    );
+    assert_eq!(p.posts.load(Ordering::SeqCst), posts);
 }

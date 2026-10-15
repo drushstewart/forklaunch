@@ -9511,3 +9511,23 @@ CLI1121 tests pass; allfeature IAM library167 pass/3environment-gatedPGignored
 in88.02s. Generated billing date base/Stripe template compilation/artifact checks
 also pass against the patched graph. Separate restrictedPG receipts remain
 applicable, not relabeled as this run. No hosted CI/publication claim.
+
+
+### Provenance-aware direct Checkout read (2026-10-14)
+
+New get_bound_created_checkout_session preserves local Customer UUIDs and verifies
+the provider relation through completed actor-owned creation provenance. Mandatory
+journal evidence, exact current Customer ciphertext+xmin/binding generation and
+scope/API, Checkout record/binding and immutable receipt are observed together,
+then rechecked after provider GET with final context deadline after awaited DB work.
+Provenance selection does not depend on mutable customerId and never falls back.
+Direct-only new API requires journal SELECT/audit permissions; existing bound
+getter is unchanged including legacy direct/managed restricted-grant behavior.
+No financial/mutation authority or generated default route wiring added.
+Frozen6 /private/tmp/fl-checkout-provenance-read-final.json SHA256
+53475c1c8d8f8530e57eea5b7aa6bfc0f618bd3931ae836f6031592a469c717b.
+RestrictedPG11.67s passes create→read, wrong provider customer, actor/tenant/API,
+mutable-ID downgrade, concurrent Customer xmin and5.1s final audit-lock freshness.
+Legacy direct/managedPG5.42s and strict base/Stripe allfeature/alltargetClippy pass.
+Logs /private/tmp/fl-checkout-provenance-{read-pg-final,legacy-pg,read-clippy}.log;
+cleanup0ownedroles/DBs. Checklist remains660/682,22open.
