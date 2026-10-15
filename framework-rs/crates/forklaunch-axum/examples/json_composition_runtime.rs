@@ -72,6 +72,18 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
             ]))),
         },
         Field {
+            name: "labels",
+            schema: Schema::Optional(Box::new(Schema::Record {
+                key: Box::new(Schema::String(vec![typescript_coerce::ZodStringCheck {
+                    rule: typescript_coerce::ZodStringRule::Step(
+                        typescript_coerce::ZodStringStep::Trim,
+                    ),
+                    message: None,
+                }])),
+                value: Box::new(Schema::Number(vec![])),
+            })),
+        },
+        Field {
             name: "settings",
             schema: Schema::Optional(Box::new(Schema::StrictObject(vec![Field {
                 name: "enabled",

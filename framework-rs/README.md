@@ -332,6 +332,13 @@ signed zeros compare equal and preserve the input sign. This API accepts an
 explicit ordered schema; it does not reflect arbitrary JavaScript enum objects.
 Repeated input metric scans also debit the shared evaluation node budget.
 
+`ZodJsonSchema::Record { key, value }` evaluates each own string key and its
+value, retaining source key-before-value diagnostics and transformed-key collision
+behavior. Use `OrderedJsonDocument` when input insertion order affects diagnostics
+or collisions. Plain `serde_json::Value` returns an unsupported result when that
+order is required. Successful output comparisons cover semantic values; serialized
+property order is not guaranteed.
+
 Choose `ZodJsonSchema::StrictObject` to reject unknown keys with source-ordered
 diagnostics. Parse `OrderedJsonDocument` from bounded JSON and evaluate it with
 `zod_json_ordered_at_path(&document, &schema, &["body"])`. The immutable document

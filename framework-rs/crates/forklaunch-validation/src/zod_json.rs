@@ -16,6 +16,8 @@ mod literal;
 pub use literal::ZodJsonLiteral;
 #[path = "zod_json_ordered.rs"]
 mod ordered;
+#[path = "zod_json_record.rs"]
+mod record;
 use ordered::Order;
 pub use ordered::{OrderedJsonDocument, OrderedJsonError};
 use resources::{
@@ -32,7 +34,9 @@ const MAX_NODES: usize = 100_000;
 /// branch. Empty and single-branch unions follow the source runtime behavior.
 /// Strict unknown-key diagnostics use trusted own-key order; ordinary values
 /// need an ordered document only when the selected diagnostic is ambiguous.
-/// Record, arbitrary callbacks and non-JSON outputs are not supported.
+/// Record keys use the same finite schema grammar: wrappers/Unknown preserve
+/// string inputs; container schemas abort. Arbitrary callbacks, symbols, and
+/// non-JSON key outputs are not supported. Output serialization order is separate.
 #[derive(Debug, Clone)]
 pub enum ZodJsonSchema<'a> {
     String(Vec<ZodStringCheck<'a>>),
@@ -54,6 +58,14 @@ pub enum ZodJsonSchema<'a> {
     /// Reject unknown keys in original ECMAScript own-key order.
     StrictObject(Vec<ZodJsonField<'a>>),
     Union(Vec<Self>),
+    /// Evaluate each own string key then its value. Successful scalar keys use
+    /// JavaScript property-key conversion; transformed `__proto__` is omitted.
+    /// Ordered documents retain last-wins collisions. Ordinary values defer
+    /// unavailable diagnostic order, but ambiguous successful collisions fail.
+    Record {
+        key: Box<Self>,
+        value: Box<Self>,
+    },
 }
 
 /// A declared object property; duplicates and prototype-sensitive names are
@@ -80,6 +92,7 @@ pub enum ZodJsonUnsupported {
     NonFiniteNumber,
     DiagnosticPath,
     ObjectOrderUnavailable,
+    RecordKeyOutput,
 }
 
 /// Successful absent input remains distinct from JSON null. Invalid results
@@ -323,6 +336,7 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
             ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
             ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => fields.len(),
             ZodJsonSchema::Union(branches) => branches.len(),
+            ZodJsonSchema::Record { .. } => 2,
             ZodJsonSchema::Optional(_)
             | ZodJsonSchema::Nullable(_)
             | ZodJsonSchema::Default { .. } => 1,
@@ -332,6 +346,10 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
             return Err(ZodJsonUnsupported::SchemaNodes);
         }
         match schema {
+            ZodJsonSchema::Record { key, value } => {
+                stack.push((key, depth + 1));
+                stack.push((value, depth + 1));
+            }
             ZodJsonSchema::Union(branches) => {
                 stack.extend(branches.iter().map(|branch| (branch, depth + 1)));
             }
@@ -475,6 +493,9 @@ fn evaluate_ordered(
         ZodJsonSchema::Object(fields) => object(input, fields, remaining, order, false)?,
         ZodJsonSchema::StrictObject(fields) => object(input, fields, remaining, order, true)?,
         ZodJsonSchema::Union(branches) => union(input, branches, remaining, order)?,
+        ZodJsonSchema::Record { key, value } => {
+            record::evaluate(input, key, value, remaining, order)?
+        }
     })
 }
 
@@ -669,3 +690,7 @@ mod tests;
 #[cfg(test)]
 #[path = "zod_json_ordered_tests.rs"]
 mod ordered_tests;
+
+#[cfg(test)]
+#[path = "zod_json_record_tests.rs"]
+mod record_tests;

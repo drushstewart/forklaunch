@@ -8,6 +8,18 @@ use forklaunch_validation::{
 };
 use serde_json::{Value, json};
 use std::io::{self, BufRead};
+fn literal(spec: &Value) -> ZodJsonLiteral<'_> {
+    match spec["kind"].as_str().unwrap() {
+        "string" => ZodJsonLiteral::String(spec["value"].as_str().unwrap()),
+        "boolean" => ZodJsonLiteral::Boolean(spec["value"].as_bool().unwrap()),
+        "number" => ZodJsonLiteral::Number(
+            spec["value"]
+                .as_f64()
+                .unwrap_or_else(|| spec["value"].as_str().unwrap().parse().unwrap()),
+        ),
+        _ => panic!("unsupported literal kind"),
+    }
+}
 fn schema(spec: &Value) -> ZodJsonSchema<'_> {
     let inner = || Box::new(schema(&spec["inner"]));
     match spec["kind"].as_str().unwrap() {
@@ -47,6 +59,10 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
                 })
                 .collect(),
         ),
+        "record" => ZodJsonSchema::Record {
+            key: Box::new(schema(&spec["key"])),
+            value: Box::new(schema(&spec["valueSchema"])),
+        },
         "union" => ZodJsonSchema::Union(
             spec["branches"]
                 .as_array()
@@ -55,16 +71,7 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
                 .map(schema)
                 .collect(),
         ),
-        "literal" => ZodJsonSchema::Literal(match spec["literal"]["kind"].as_str().unwrap() {
-            "string" => ZodJsonLiteral::String(spec["literal"]["value"].as_str().unwrap()),
-            "boolean" => ZodJsonLiteral::Boolean(spec["literal"]["value"].as_bool().unwrap()),
-            "number" => ZodJsonLiteral::Number(
-                spec["literal"]["value"]
-                    .as_f64()
-                    .unwrap_or_else(|| spec["literal"]["value"].as_str().unwrap().parse().unwrap()),
-            ),
-            _ => panic!("unsupported literal kind"),
-        }),
+        "literal" => ZodJsonSchema::Literal(literal(&spec["literal"])),
         "boolean" => ZodJsonSchema::Boolean,
         "unknown" => ZodJsonSchema::Unknown,
         "optional" => ZodJsonSchema::Optional(inner()),

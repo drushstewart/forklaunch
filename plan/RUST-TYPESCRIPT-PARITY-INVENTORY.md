@@ -9133,3 +9133,19 @@ follow-ons, not implemented by these two modes. Actual custom callbacks are
 awaited Promise<string>; OTP callback failure after destructive consume differs
 from backup codec failure/CAS preservation and requires separate transaction
 design. Working-source proof, not immutable/generated-service receipt.
+
+### 2026-10-14: ordered record validation (working source)
+
+Record key/value composition now preserves own-key enumeration, key-before-value
+issues, value validation after key failure, transformed collision last-wins and
+source __proto__ omission. Ordered documents retain necessary insertion evidence;
+ordinary Values defer unavailable diagnostic order until selected union errors,
+and reject ambiguous successful collisions. No serialized property-order claim.
+
+Frozen8 hashes: /private/tmp/fl-zod-record-source.json. Native58 tests pass in
+each default/arbitrary_precision mode; actual Zod7844 exact comparisons plus4
+explicit nonfinite unsupported boundaries pass per mode. Ordered regression2018
+per mode and legacy118132+2 pass. Live159 HTTP/72 MCP/3 safe500 and6 calls through
+each SDK pass; strict validation/Axum all-feature/all-target Clippy passes. Logs:
+/private/tmp/fl-zod-record-{tests,default-tests,parity,ordered-regression,legacy,live,clippy}.log.
+CI includes the record oracle. Broader schema gate remains open;660/682 unchanged.
