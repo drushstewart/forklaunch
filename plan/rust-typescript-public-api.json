@@ -24664,7 +24664,7 @@
               "name": "registerZodChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/zodChecks.ts",
-              "line": 156
+              "line": 162
             }
           ]
         },
@@ -25483,7 +25483,7 @@
               "name": "projectNumberChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
-              "line": 115
+              "line": 120
             }
           ]
         },

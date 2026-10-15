@@ -2715,3 +2715,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Raw time precision assertions pass 108,336 actual/AJV and 108,336 native observations, 19 HTTP/76 socket checks, strict Clippy and configured types/inventory. Datetime/regex and broader constraints remain open; 660/682 unchanged.
 
 - 2026-10-15: Raw datetime precision/local/offset options pass 86,592 actual/AJV and 86,592 native observations, 20 HTTP/80 socket checks, strict Clippy and configured types/inventory. Remaining format/regex constraints stay open; 660/682 unchanged.
+
+- 2026-10-15: IP/CIDR versioned assertions pass 244,444 actual/AJV and 244,444 native observations, 22 HTTP/88 socket checks, strict Clippy and configured types/inventory. Regex/JWT/emoji and broader constraints remain open; 660/682 unchanged.

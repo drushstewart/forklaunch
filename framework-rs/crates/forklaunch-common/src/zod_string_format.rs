@@ -303,3 +303,87 @@ pub fn datetime(value: &str, precision: Option<u16>, local: bool, offset: bool) 
     }
     local && time(clock, precision)
 }
+
+/// Match Zod's IP grammar, including its legacy mixed-address and zone syntax.
+#[must_use]
+pub fn ip(value: &str, version: Option<u8>) -> bool {
+    if !matches!(version, None | Some(4 | 6)) {
+        return false;
+    }
+    (version != Some(6) && value.parse::<std::net::Ipv4Addr>().is_ok())
+        || (version != Some(4) && ipv6(value))
+}
+fn ipv6(value: &str) -> bool {
+    if let Some((address, zone)) = value.split_once('%') {
+        if zone.is_empty() || !zone.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return false;
+        }
+        let Some(groups) = address.strip_prefix("fe80:") else {
+            return false;
+        };
+        if groups.is_empty() {
+            return true;
+        }
+        let Some(groups) = groups.strip_prefix(':') else {
+            return false;
+        };
+        let mut parts = groups.split(':');
+        return parts.clone().take(5).count() <= 4
+            && parts.all(|part| part.len() <= 4 && part.bytes().all(|b| b.is_ascii_hexdigit()));
+    }
+    if !value.contains('.') {
+        return value.parse::<std::net::Ipv6Addr>().is_ok();
+    }
+    let Some((head, tail)) = value.rsplit_once(':') else {
+        return false;
+    };
+    let mut parts = tail.split('.');
+    if parts.clone().take(5).count() != 4
+        || !parts.all(|part| {
+            !part.is_empty()
+                && part.len() <= 3
+                && part.bytes().all(|b| b.is_ascii_digit())
+                && (part.len() != 3 || !part.starts_with('0'))
+                && part.parse::<u8>().is_ok()
+        })
+    {
+        return false;
+    }
+    // Exact lowercase mapped prefix and optional zero group in Zod's first branch.
+    if head == ":" || head == "::ffff" {
+        return true;
+    }
+    if let Some(zero) = head.strip_prefix("::ffff:") {
+        return !zero.is_empty() && zero.len() <= 4 && zero.bytes().all(|b| b == b'0');
+    }
+    let Some(groups) = head.strip_suffix(':') else {
+        return false;
+    };
+    let mut parts = groups.split(':');
+    (1..=4).contains(&parts.clone().take(5).count())
+        && parts.all(|part| {
+            !part.is_empty() && part.len() <= 4 && part.bytes().all(|b| b.is_ascii_hexdigit())
+        })
+}
+/// Zod CIDR validates lexical prefix widths without normalizing host bits.
+#[must_use]
+pub fn cidr(value: &str, version: Option<u8>) -> bool {
+    if !matches!(version, None | Some(4 | 6)) {
+        return false;
+    }
+    let Some((address, width)) = value.split_once('/') else {
+        return false;
+    };
+    if width.is_empty()
+        || width.len() > 3
+        || !width.bytes().all(|b| b.is_ascii_digit())
+        || (width.len() > 1 && width.starts_with('0'))
+    {
+        return false;
+    }
+    let Ok(width) = width.parse::<u8>() else {
+        return false;
+    };
+    (version != Some(6) && width <= 32 && ip(address, Some(4)))
+        || (version != Some(4) && width <= 128 && ip(address, Some(6)))
+}

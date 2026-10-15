@@ -9,7 +9,7 @@ interface Checks {
   version: 1;
   utf16MinLength?: number;
   utf16MaxLength?: number;
-  formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration')[];
+  formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6')[];
   dateTimes?: { precision: number | null; local: boolean; offset: boolean }[];
   timePrecisions?: (number | null)[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
@@ -29,7 +29,7 @@ export function projectStringChecks(
   const formats = checks
     .filter(
       (check) =>
-        ['email', 'uuid', 'url', 'cuid', 'cuid2', 'ulid', 'nanoid', 'base64', 'base64url', 'date', 'duration'].includes(check.kind) &&
+        ['email', 'uuid', 'url', 'cuid', 'cuid2', 'ulid', 'nanoid', 'base64', 'base64url', 'date', 'duration', 'ip', 'cidr'].includes(check.kind) &&
         !metadata.some((value) =>
           own(
             value,
@@ -37,9 +37,14 @@ export function projectStringChecks(
           )
         )
     )
-    .map((check) =>
-      check.kind === 'url' ? ('uri' as const) : (check.kind as NonNullable<Checks['formats']>[number])
-    );
+    .map((check): NonNullable<Checks['formats']>[number] => {
+      if (check.kind === 'ip' || check.kind === 'cidr') {
+        if (check.version !== undefined && check.version !== 'v4' && check.version !== 'v6')
+          throw new Error('Zod IP/CIDR version must be v4, v6 or undefined');
+        return (check.kind + (check.version ?? '')) as NonNullable<Checks['formats']>[number];
+      }
+      return check.kind === 'url' ? 'uri' : (check.kind as NonNullable<Checks['formats']>[number]);
+    });
   const timePrecisions = metadata.some((value) => own(value, 'format')) ? [] : checks
     .filter((check) => check.kind === 'time')
     .map((check) => {

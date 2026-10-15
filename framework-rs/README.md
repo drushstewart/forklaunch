@@ -1343,3 +1343,9 @@ null or 0..1000 precision plus boolean `local`/`offset`. Gregorian date and time
 checks preserve Zod syntax, including lexical two-digit timezone fields (even
 `+99:99`), optional colon, and local timestamps when enabled. This does not parse
 an instant or normalize offsets. Ordinary date-time export remains unchanged.
+
+Raw `.ip()`/`.cidr()` assertions preserve explicit v4/v6/default selection through
+the same profile. Native predicates reproduce Zod's legacy mixed IPv4/IPv6 and
+zone syntax, including its lowercase mapped-prefix and two-digit embedded-octet
+quirks. CIDR prefix widths are lexical/range checks; host bits are not normalized.
+This validation does not establish routability, address ownership or network policy.

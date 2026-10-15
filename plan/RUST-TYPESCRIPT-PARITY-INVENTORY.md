@@ -10961,3 +10961,27 @@ Strict all-target/all-feature Clippy for five affected crates, configured TypeSc
 12 roots/623 exports, and public API inventory 623/1703 pass. Logs:
 `/private/tmp/fl-zod-datetime-{js,native,consumers,types,clippy}.log`.
 Regex, remaining formats and broader constraints remain open; 660/682 unchanged.
+
+
+### 2026-10-15 — Raw Zod IP and CIDR assertions
+
+Explicit `zodChecks` now preserves `.ip()` and `.cidr()` with default, v4 and v6
+selection through the emitter, owned/generated AJV and native contract validation.
+Native predicates reproduce the pinned Zod grammar, including legacy mixed address
+syntax, lowercase mapped-prefix rules, two-digit embedded octets with leading zero,
+and permissive fe80 zone groups. CIDR checks reject leading-zero prefix widths and
+preserve host bits. Version admission, metadata overrides, conjunctions and transform
+rejection are explicit. Default export remains unchanged. Native parsing uses no
+new dependency or unbounded collections and performs no output normalization.
+
+Permanent `rust_zod_ip_checks.mjs` passes 244,444 actual Zod/AJV comparisons and
+244,444 native observations, including IPv4 octet boundaries at every position,
+compressed/mixed IPv6 forms, zones, every relevant CIDR width, Unicode/control and
+million-character inputs, nesting and overrides. Live HTTP checks pass 22; generated
+TypeScript/Rust socket checks pass 88 with strict generated-source compilation and
+feature-off rejection. Strict all-target/all-feature Clippy for five affected crates,
+configured TypeScript 12 roots/623 exports, and inventory 623/1703 pass. An initial
+iterator compile error was corrected; Clippy then required extracting the unchanged
+format-list parser, followed by a passing final native differential rerun. Logs:
+`/private/tmp/fl-zod-ip-{js,native-final,consumers,types,clippy-final}.log`.
+Regex, JWT/emoji formats and broader constraints remain open; 660/682 unchanged.

@@ -70,12 +70,16 @@ enum Format {
     Base64Url,
     Date,
     Duration,
+    Ip(Option<u8>),
+    Cidr(Option<u8>),
     #[cfg(feature = "zod-uri")]
     Uri,
 }
 impl Format {
     fn accepts(&self, value: &str) -> bool {
         match self {
+            Self::Ip(version) => forklaunch_common::zod_string_format::ip(value, *version),
+            Self::Cidr(version) => forklaunch_common::zod_string_format::cidr(value, *version),
             Self::Email => forklaunch_common::zod_string_format::email(value),
             Self::Uuid => forklaunch_common::zod_string_format::uuid(value),
             Self::Cuid => forklaunch_common::zod_string_format::cuid(value),
@@ -133,6 +137,39 @@ fn time_precisions(value: Option<&Value>) -> Result<Vec<Option<u16>>, Validation
         })
         .collect()
 }
+fn formats(raw_formats: Option<&Vec<Value>>) -> Result<Vec<Format>, ValidationError<'static>> {
+    let mut formats = Vec::new();
+    for value in raw_formats.into_iter().flatten() {
+        formats.push(match value.as_str() {
+            Some("ip") => Format::Ip(None),
+            Some("ipv4") => Format::Ip(Some(4)),
+            Some("ipv6") => Format::Ip(Some(6)),
+            Some("cidr") => Format::Cidr(None),
+            Some("cidrv4") => Format::Cidr(Some(4)),
+            Some("cidrv6") => Format::Cidr(Some(6)),
+            Some("email") => Format::Email,
+            Some("uuid") => Format::Uuid,
+            Some("cuid") => Format::Cuid,
+            Some("cuid2") => Format::Cuid2,
+            Some("ulid") => Format::Ulid,
+            Some("nanoid") => Format::Nanoid,
+            Some("base64") => Format::Base64,
+            Some("base64url") => Format::Base64Url,
+            Some("duration") => Format::Duration,
+            Some("date") => Format::Date,
+            #[cfg(feature = "zod-uri")]
+            Some("uri") => Format::Uri,
+            #[cfg(not(feature = "zod-uri"))]
+            Some("uri") => {
+                return Err(ValidationError::custom(
+                    "URI checks require the forklaunch-contract zod-uri feature",
+                ));
+            }
+            _ => return Err(invalid()),
+        });
+    }
+    Ok(formats)
+}
 pub(super) fn compile<'a>(
     _: &'a Map<String, Value>,
     value: &'a Value,
@@ -185,30 +222,7 @@ pub(super) fn compile<'a>(
     {
         return Err(invalid());
     }
-    let mut formats = Vec::new();
-    for value in raw_formats.into_iter().flatten() {
-        formats.push(match value.as_str() {
-            Some("email") => Format::Email,
-            Some("uuid") => Format::Uuid,
-            Some("cuid") => Format::Cuid,
-            Some("cuid2") => Format::Cuid2,
-            Some("ulid") => Format::Ulid,
-            Some("nanoid") => Format::Nanoid,
-            Some("base64") => Format::Base64,
-            Some("base64url") => Format::Base64Url,
-            Some("duration") => Format::Duration,
-            Some("date") => Format::Date,
-            #[cfg(feature = "zod-uri")]
-            Some("uri") => Format::Uri,
-            #[cfg(not(feature = "zod-uri"))]
-            Some("uri") => {
-                return Err(ValidationError::custom(
-                    "URI checks require the forklaunch-contract zod-uri feature",
-                ));
-            }
-            _ => return Err(invalid()),
-        });
-    }
+    let formats = formats(raw_formats)?;
     let mut divisors = Vec::new();
     if let Some(values) = fields.get("multipleOf") {
         let values = values
