@@ -9074,3 +9074,35 @@ Final10 hashes /private/tmp/fl-zod-ordered-source.json; logs
 /private/tmp/fl-zod-ordered-{tests,arbitrary-tests,parity,live,legacy,clippy}.log.
 CI tracks/runs new two-mode oracle plus expanded live fixture. Working-source
 proof, not immutable dda838 archive scope.
+
+
+## Scoped PayPal ORDER-read foundation (2026-10-14)
+
+Explicit Sandbox/Live constructor pins documented HTTPS origins; separately
+named trusted proxy constructor accepts a server environment attestation. Legacy
+constructors remain unprofiled. Immutable client generation/environment and5s
+resource context bind authenticated OAuth→exact order GET to a trusted merchant
+and requested order. One CAPTURE unit must carry exact13char primary-schema
+merchant ID, local reference, positive exact cents and canonical currency.
+Missing/email-only payee is denied. OAuth app_id is not merchant ownership and
+Orders does not attest livemode. No partner headers or financial API actions.
+Redacted observation contains no token/payer data; COMPLETED is not capture,
+settlement, refund/dispute or monetary authority.
+
+Opt-in postgres inspect_bound_order rechecks the complete tenant administrative
+binding/current relation after I/O and deadline after final DB wait. SELECT-only
+execution passes; no local writes/migration/receipt/default route introduced.
+Captured/cancelled PayPal repair remains a separate gate.
+
+Final context units2, restrictedPG1/5.46s,143 primary-schema/native merchant+wire
+cases, strict all-feature/all-target and minimal-library Clippy, and existing
+actual TS22client+19wrapper regression pass. PG covers tenant/ref/generationABA,
+SELECT-only and5.1s final DB wait. Primary schema fragment retains full-source
+SHA256 in fixture; official account_id/payee definitions were used, not a guessed
+OAuth ownership protocol. Owned roles/records0. Final11 hashes
+/private/tmp/fl-paypal-scoped-read-source.json; logs
+/private/tmp/fl-paypal-scoped-{unit-final,pg,schema-wire,clippy-final,
+minimal-clippy,legacy,cleanup}.log. Cargo.lock adds only3 PayPal dev-dependency
+edges, no version updates. README is embedded with matching relative template
+link. CI runs schema/wire and isolated PG. Working-source proof, not dda838
+archive scope.

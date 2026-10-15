@@ -211,7 +211,7 @@ fn matching_amount(value: &Value, payment: &PaymentDto) -> bool {
         && value["value"].as_str().and_then(cents) == Some(payment.amount_cents)
 }
 // Exact decimal arithmetic for the existing amountCents/100 provider contract.
-fn cents(value: &str) -> Option<i64> {
+pub(crate) fn cents(value: &str) -> Option<i64> {
     let (whole, fraction) = value.split_once('.').unwrap_or((value, ""));
     if whole.is_empty()
         || !whole.bytes().all(|b| b.is_ascii_digit())

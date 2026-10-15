@@ -1,6 +1,9 @@
 //! `PayPal` Orders v2 provider with atomic confirmation claims in the shared
 //! ecommerce store. Webhook signatures are verified by `PayPal`'s HTTPS API.
 #![forbid(unsafe_code)]
+#[cfg(feature = "postgres")]
+pub mod bound_reads;
+pub mod context;
 pub mod reconciliation;
 use forklaunch_blueprint_core::{
     BlueprintError, BlueprintResult,
@@ -36,6 +39,8 @@ pub struct PaypalClient {
     http: ProviderHttpClient,
     client_id: Arc<Zeroizing<String>>,
     client_secret: Arc<Zeroizing<String>>,
+    generation: Arc<()>,
+    scoped_environment: Option<context::PaypalEnvironment>,
 }
 impl std::fmt::Debug for PaypalClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -82,6 +87,8 @@ impl PaypalClient {
             http,
             client_id: Arc::new(Zeroizing::new(client_id)),
             client_secret: Arc::new(Zeroizing::new(client_secret)),
+            generation: Arc::new(()),
+            scoped_environment: None,
         })
     }
     async fn access_token(&self) -> BlueprintResult<Zeroizing<String>> {
