@@ -10799,3 +10799,32 @@ archive hash before/after. Current source caches, executables, unrelated worktre
 and the shared PostgreSQL fixture are preserved. Logs:
 `/private/tmp/fl-oct15-policy-format-cleanup.log` and
 `/private/tmp/fl-oct15-policy-format-cache-cleanup.json`.
+
+
+### 2026-10-15 — Plan creation HTTP, MCP and SDK surfaces
+
+A separate trusted `plan` selector exposes POST `/bound-plans` and historical
+GET `/bound-plan-operations/:operationId`, without granting creation through
+`planRead`. Typed inputs admit an allowlisted product and finite per-unit licensed
+Plan configuration. Integral minor-unit amounts are bounded by the JavaScript safe
+integer maximum, including normalized integral JSON floats. Authenticated product
+read and exact Plan readback precede durable publication. No supplied public ID,
+raw Stripe options, nested product creation or entitlement claim is accepted.
+
+Actor/tenant/profile/request-bound journal semantics preserve completed duplicates,
+202 uncertainty and pending repeats without another provider POST. Creation and
+inspection return IDs only; inspection asserts neither current provider ownership
+nor retry authority. Startup checks individual ordinary-role journal/record/binding
+and audit privileges without provider I/O. Base/backup/managed transports reject the
+profile. No separate publisher is invented; existing 66 default routes remain.
+
+Restricted PostgreSQL, real HTTP/MCP and two calls from each generated SDK pass
+in 2.87 seconds. Eleven unit tests, 120 rendered artifact/startup cases including
+base/Stripe binary compilation, strict all-feature billing Clippy and feature-off
+Axum Clippy pass. Owned fixture roles return to zero. The initial compile found a
+metadata integer-literal type error, corrected before execution. Runtime wrappers
+now retain Cargo's rendered JSON diagnostics on failure; all seven wrapper syntax
+checks pass. The final ten-source manifest is
+`/private/tmp/fl-plan-creation-route-final.json`; logs use
+`/private/tmp/fl-plan-creation-route-{live-final,unit,artifacts,clippy,minimal}.log`.
+Subscription creation, managed creation and broader mutations remain open.

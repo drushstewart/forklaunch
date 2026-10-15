@@ -153,6 +153,14 @@ fn completed(operation_id: Uuid, record: Value) -> BlueprintResult<BoundPlanCrea
     })
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Validates explicit direct creation's local grants, without provider I/O.
+    /// # Errors
+    /// Rejects managed transport or missing ordinary-role journal/write privileges.
+    pub async fn validate_bound_plan_creation_configuration(&self) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        self.base().store().validate_plan_creation_access().await
+    }
+
     /// Durable intent precedes network effects. Only a newly committed ticket can
     /// dispatch; repeated pending operations never POST. No default route selects it.
     /// # Errors

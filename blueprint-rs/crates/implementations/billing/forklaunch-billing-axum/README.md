@@ -307,3 +307,34 @@ pending/completed status and IDs only, or404. Inspection never revives a URL or
 provider DTO, proves current ownership/validity, or dispatches another POST.
 Changed payload/actor conflicts; pending repeats do not redispatch. Existing66
 legacy routes remain available; this explicit selector is not full default mapper parity.
+
+### Explicit direct Plan creation
+
+`bound-billing-v1` separately selects `"plan":{"trustedProducts":["your_product"]}`
+under the common trusted deployment/account/mode scope. `planRead` does not enable
+creation; creation does not enable reads. The ordinary runtime role needs schema
+USAGE, record/binding INSERT, plan_creation_intents SELECT/INSERT/UPDATE and
+plan_creation_audit/provider_binding_audit INSERT, checked individually before
+listening without provider I/O. No separate publisher is used; a publisher URL is
+rejected unless another selected creation domain requires it. Base, backup and
+managed transports fail closed.
+
+POST `/bound-plans` (`createBoundPlan`) accepts a visible operationId UUID, name,
+active, unitAmount, currency, cadence and productId; description/features are
+optional and nullable. unitAmount is an integral minor-unit amount from zero to
+9007199254740991; currency is three uppercase letters; cadence is day/week/month/year.
+The product reference must belong to the server allowlist and is independently
+read under the pinned authenticated provider account/mode before the one Plan POST.
+The finite per-unit, licensed, single-interval profile verifies its exact readback.
+There is no caller public ID, externalId, raw Stripe options, nested product creation,
+delegated ownership, payment success or entitlement claim.
+
+Confirmed publication or a completed duplicate returns HTTP200 IDs only
+(state, operationId, publicId). HTTP202 unresolved/recordedEvidenceNoLongerCurrent
+can have provider/local effects; inspect rather than retrying or assuming rollback.
+GET `/bound-plan-operations/:operationId` (`inspectBoundPlanOperation`) returns only
+actor-owned historical pending/completed status and IDs, or404. It performs no
+provider calls and provides neither current ownership proof nor redispatch authority.
+Changed actor/request conflicts; pending repeats do not issue another POST.
+Existing66 legacy routes remain unchanged and available, so this is an explicit
+capability rather than a whole-service restricted profile or full default TS parity.

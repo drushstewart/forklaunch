@@ -38,6 +38,7 @@ pub struct BoundBillingConfig {
     subscription_read: Option<BoundSubscriptionCreationProfile>,
     payment_link_read: Option<PaymentLinkReadConfig>,
     payment_link: Option<BoundPaymentLinkCreationProfile>,
+    plan: Option<BoundPlanCreationProfile>,
 }
 fn exact(value: &Value, required: &[&str], optional: &[&str]) -> BlueprintResult<()> {
     let object = value.as_object().ok_or_else(configuration)?;
@@ -108,6 +109,15 @@ fn payment_link_creation_profile(
         serde_json::from_value(part["trustedPrices"].clone()).map_err(|_| configuration())?;
     BoundPaymentLinkCreationProfile::trusted(scope.clone(), prices).map_err(|_| configuration())
 }
+fn plan_profile(
+    scope: &StripeBindingScope,
+    part: &Value,
+) -> BlueprintResult<BoundPlanCreationProfile> {
+    exact(part, &["trustedProducts"], &[])?;
+    let products: Vec<String> =
+        serde_json::from_value(part["trustedProducts"].clone()).map_err(|_| configuration())?;
+    BoundPlanCreationProfile::trusted(scope.clone(), products).map_err(|_| configuration())
+}
 impl BoundBillingConfig {
     /// Parses at most 64 KiB of exact configuration. At least one domain is required.
     /// # Errors
@@ -127,6 +137,7 @@ impl BoundBillingConfig {
                 "subscriptionRead",
                 "paymentLinkRead",
                 "paymentLink",
+                "plan",
             ],
         )?;
         let scope = StripeBindingScope::administrative(
@@ -170,20 +181,17 @@ impl BoundBillingConfig {
         } else {
             None
         };
-        let plan_read = if let Some(part) = value.get("planRead") {
-            exact(part, &["trustedProducts"], &[])?;
-            let products: Vec<String> = serde_json::from_value(part["trustedProducts"].clone())
-                .map_err(|_| configuration())?;
-            Some(
-                BoundPlanCreationProfile::trusted(scope.clone(), products)
-                    .map_err(|_| configuration())?,
-            )
-        } else {
-            None
-        };
+        let plan_read = value
+            .get("planRead")
+            .map(|part| plan_profile(&scope, part))
+            .transpose()?;
         let subscription_read = value
             .get("subscriptionRead")
             .map(|part| subscription_profile(&scope, part))
+            .transpose()?;
+        let plan = value
+            .get("plan")
+            .map(|part| plan_profile(&scope, part))
             .transpose()?;
         let payment_link = value
             .get("paymentLink")
@@ -199,6 +207,7 @@ impl BoundBillingConfig {
             && subscription_read.is_none()
             && payment_link_read.is_none()
             && payment_link.is_none()
+            && plan.is_none()
         {
             return Err(configuration());
         }
@@ -209,6 +218,7 @@ impl BoundBillingConfig {
             subscription_read,
             payment_link_read,
             payment_link,
+            plan,
         })
     }
     #[must_use]
@@ -232,6 +242,10 @@ impl BoundBillingConfig {
         self.payment_link_read.is_some()
     }
     #[must_use]
+    pub const fn has_plan(&self) -> bool {
+        self.plan.is_some()
+    }
+    #[must_use]
     pub const fn has_payment_link(&self) -> bool {
         self.payment_link.is_some()
     }
@@ -245,6 +259,9 @@ impl BoundBillingConfig {
     #[must_use]
     pub fn contracts(&self) -> Vec<RouteContract> {
         let mut routes = Vec::new();
+        if self.has_plan() {
+            routes.extend(super::bound_plan::bound_plan_contracts());
+        }
         if self.has_payment_link() {
             routes.extend(super::bound_payment_link::bound_payment_link_contracts());
         }
@@ -268,7 +285,7 @@ impl BoundBillingConfig {
         routes
     }
 }
-/// Explicit independent capabilities. Creation needs publishers; Plan read does not.
+/// Explicit independent capabilities. Checkout/Portal creation require publishers.
 pub struct BoundBillingV1 {
     checkout: Option<BoundCheckoutV1>,
     portal: Option<BoundPortalV1>,
@@ -276,10 +293,11 @@ pub struct BoundBillingV1 {
     subscription_read: Option<BoundSubscriptionCreationProfile>,
     payment_link_read: Option<PaymentLinkReadConfig>,
     payment_link: Option<BoundPaymentLinkCreationProfile>,
+    plan: Option<BoundPlanCreationProfile>,
 }
 impl BoundBillingV1 {
     /// # Errors
-    /// Requires exactly one matching publisher per selected creation domain; no fallback.
+    /// Requires matching publishers only for selected Checkout/Portal creation; no fallback.
     pub fn trusted(
         configuration: BoundBillingConfig,
         checkout: Option<TrustedCheckoutPublisher>,
@@ -295,6 +313,7 @@ impl BoundBillingV1 {
             subscription_read: configuration.subscription_read,
             payment_link_read: configuration.payment_link_read,
             payment_link: configuration.payment_link,
+            plan: configuration.plan,
             checkout: configuration
                 .checkout
                 .zip(checkout)
@@ -317,8 +336,12 @@ impl BillingBackend {
             || self.bound_subscription_read.is_some()
             || self.bound_payment_link_read.is_some()
             || self.bound_payment_link.is_some()
+            || self.bound_plan.is_some()
         {
             return Err(configuration());
+        }
+        if let Some(plan) = profile.plan {
+            self = self.with_bound_plan(plan).await?;
         }
         if let Some(payment_link) = profile.payment_link {
             self = self.with_bound_payment_link(payment_link).await?;
@@ -348,6 +371,22 @@ mod tests {
     use serde_json::json;
     fn valid() -> Value {
         json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}})
+    }
+    #[test]
+    fn plan_creation_is_separate_from_plan_read_and_publisher() {
+        let config=BoundBillingConfig::from_json(r#"{"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"plan":{"trustedProducts":["custom-product"]}}"#).unwrap();
+        assert!(config.has_plan());
+        assert!(!config.requires_publisher());
+        assert_eq!(config.contracts(), super::super::bound_plan_contracts());
+        assert!(BoundBillingV1::trusted(config, None, None).is_ok());
+        let config=BoundBillingConfig::from_json(r#"{"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"planRead":{"trustedProducts":["custom-product"]}}"#).unwrap();
+        assert!(!config.has_plan());
+        assert!(
+            !config
+                .contracts()
+                .iter()
+                .any(|r| r.operation_name == "createBoundPlan")
+        );
     }
     #[test]
     fn payment_link_creation_is_explicit_and_uses_no_separate_publisher() {

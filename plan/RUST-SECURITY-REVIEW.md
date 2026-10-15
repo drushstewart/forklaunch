@@ -1632,3 +1632,15 @@ remain 202 and pending duplicates cannot redispatch. Restricted-role tests verif
 missing-grant rejection, actor/payload conflicts and zero provider calls on invalid
 admission. This profile is direct-only and does not turn declared amount into proof
 of a Stripe charge or grant entitlement authority.
+
+
+### 2026-10-15 — Plan creation surface admission
+
+Explicit Plan creation requires its own trusted product allowlist and individually
+checked journal/write/audit grants. Read configuration cannot create Plans. Inputs
+cannot inject provider options or identifiers; authenticated product/readback checks
+remain in the underlying service. Actor-bound completed/pending receipts preserve
+uncertainty and do not permit duplicate redispatch. Inspection exposes IDs only,
+with no current ownership or monetary claim. Restricted-role HTTP/MCP and both
+SDKs exercise invalid inputs, grant denial, actor/request conflicts and repeat
+operations; fixture roles are cleaned after passing validation.

@@ -325,6 +325,8 @@ on:
       - 'cli/tests/rust_billing_bound_subscription_read_runtime.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_read_runtime.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_creation_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_plan_creation_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_plan_creation_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_creation_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_read_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_subscription_read_route_sdks.mjs'
@@ -736,6 +738,8 @@ on:
       - 'cli/tests/rust_billing_bound_subscription_read_runtime.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_read_runtime.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_creation_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_plan_creation_runtime.mjs'
+      - 'cli/tests/rust_billing_bound_plan_creation_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_creation_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_payment_link_read_route_sdks.mjs'
       - 'cli/tests/rust_billing_bound_subscription_read_route_sdks.mjs'
@@ -1505,6 +1509,8 @@ jobs:
         run: node cli/tests/rust_billing_bound_payment_link_read_runtime.mjs
       - name: Bound PaymentLink creation HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_payment_link_creation_runtime.mjs
+      - name: Bound Plan creation HTTP, MCP and both SDKs
+        run: node cli/tests/rust_billing_bound_plan_creation_runtime.mjs
       - name: Stored Portal provenance and original-lifetime PostgreSQL checks
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_reads -- --ignored --nocapture
       - name: Bound Plan read provenance, provider and race PostgreSQL checks
