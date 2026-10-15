@@ -1304,16 +1304,16 @@ UniversalSdk and generated TypeScript socket clients register its AJV handler.
 Separately bundled helper instances need separate AJV engines.
 
 Ordinary explicit schema annotations keep their override semantics. This option
-does not imply general Zod schema equivalence: regex/format conjunction work remains
-open, native strings exclude lone UTF-16 surrogates, and transformations combined
+does not imply general Zod schema equivalence: regex uses the separate opt-in
+profile below, native strings exclude lone UTF-16 surrogates, and transformations combined
 with synthesized length checks are rejected. Default schema export is unchanged.
 
 
 The explicit Zod-check profile also preserves ordered email/UUID/URI conjunctions.
 URI assertions additionally require `zod-uri`; native compilation rejects URI
 demand without that feature. Email/UUID use shared Zod predicates. Compatibility
-fixtures pin Node 24.2.0 and Ada 3.2.4. Other formats and arbitrary regex equivalence
-remain separate work; explicit ordinary annotations retain precedence.
+fixtures pin Node 24.2.0 and Ada 3.2.4. Additional formats and the separate regex
+profile are described below; explicit ordinary annotations retain precedence.
 
 
 The same opt-in profile supports CUID, CUID2, ULID, Nano ID, Base64 and Base64url
@@ -1361,3 +1361,51 @@ Raw `.jwt()` assertions preserve optional algorithm matching through ordered
 escaped UTF16 units, duplicate keys and numeric truthiness; deep containers use an
 iterative parser. This checks Zod structure/header policy only, including optional
 empty signature and unparsed payload. It performs no signature or claim verification.
+
+
+### Explicit Zod regex profile
+
+Export raw Zod regex assertions with
+`validator.openapi2020(schema, { zodRegex: true })`. This option is independent of
+`zodChecks` and leaves default export unchanged. The reserved version1
+`x-forklaunch-zod-regex` keyword contains ordered rules with exact UTF-16 source
+units and flags. Stateful `g` and `y` checks start at offset zero for each
+validation, matching Zod; malformed flags and unsupported profiles are rejected.
+
+Enable `zod-regex` on the native contract, HTTP, Axum, MCP, WebSocket, validation
+or SDK crate consuming the schema. Socket CLI generation accepts
+`FORKLAUNCH_SDK_ZOD_REGEX=1` and forwards the capability to generated Rust clients.
+Demand without the feature fails before generated output. Native callers use
+`schema_validation::compile_checked` or `compile_multipart_checked`; the older
+string-error compiler rejects regex demand even when the feature is enabled.
+`compile_with_regex_profile` accepts explicit native quotas. Literal data containing
+the reserved keyword does not itself demand this capability.
+
+Checked native validation distinguishes ordinary invalid input from operational
+resource exhaustion. Exhaustion in an evaluated regex stays operational across
+negation, conditions and alternative branches. Checked HTTP version-schema and transform validation treats it as a safe500 in
+all validation modes, MCP returns an internal error, and WebSocket codecs stop with
+an operational payload error. Unvisited branches do not consume regex work.
+Native limits bound source size, compilation storage/work and matching work;
+aggregate allowances are debited before each rule. These are logical requested
+storage/work limits, not a wall-clock deadline or a process-memory guarantee.
+
+TypeScript execution requires its own explicit host policy:
+
+```ts
+const sdk = await UniversalSdk.create(host, registryOptions, undefined, 'host-native');
+// Generated socket client options:
+const options = { zodRegexExecution: 'host-native' as const };
+```
+
+Direct UniversalSdk construction accepts the policy after responseAjvFactory.
+Owned response engines and generated socket codecs propagate it; an injected AJV
+instance cannot implicitly enable the reserved keyword. Conflicting custom
+handlers are rejected. Reusing an engine with the same helper and policy works;
+separately emitted helper implementations require separate engines.
+Host-native JavaScript RegExp executes synchronously and
+cannot be interrupted by the native budgets, so select this policy only when that
+execution model is acceptable. The compatibility oracle pins Node24.2/Unicode16;
+other JavaScript engines may support different syntax or Unicode versions.
+Native Rust strings cannot represent lone UTF-16 surrogates even though the
+underlying kernel's explicit UTF-16 API can test them.

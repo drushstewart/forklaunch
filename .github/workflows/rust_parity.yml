@@ -85,6 +85,11 @@ on:
       - 'cli/tests/rust_zod_ip_checks.mjs'
       - 'cli/tests/rust_zod_jwt_checks.mjs'
       - 'cli/tests/rust_zod_regex_kernel_parity.mjs'
+      - 'cli/tests/rust_zod_regex_profile.mjs'
+      - 'cli/tests/rust_zod_regex_consumers.mjs'
+      - 'framework/universal-sdk/src/core/zodRegex.ts'
+      - 'framework/validator/shims/zod-v3-openapi/zodRegex.ts'
+      - 'framework/validator/src/shared/types/schema.types.ts'
       - 'cli/tests/rust_zod_emoji_checks.mjs'
       - 'scripts/rust_zod_emoji_table.py'
       - 'scripts/rust_format.py'
@@ -520,6 +525,11 @@ on:
       - 'cli/tests/rust_zod_ip_checks.mjs'
       - 'cli/tests/rust_zod_jwt_checks.mjs'
       - 'cli/tests/rust_zod_regex_kernel_parity.mjs'
+      - 'cli/tests/rust_zod_regex_profile.mjs'
+      - 'cli/tests/rust_zod_regex_consumers.mjs'
+      - 'framework/universal-sdk/src/core/zodRegex.ts'
+      - 'framework/validator/shims/zod-v3-openapi/zodRegex.ts'
+      - 'framework/validator/src/shared/types/schema.types.ts'
       - 'cli/tests/rust_zod_emoji_checks.mjs'
       - 'scripts/rust_zod_emoji_table.py'
       - 'scripts/rust_format.py'
@@ -1136,6 +1146,18 @@ jobs:
       - run: cargo test --locked --manifest-path framework-rs/Cargo.toml -p forklaunch-common --all-features
       - run: cargo test --locked --manifest-path framework-rs/crates/vendor/regress/Cargo.toml --features utf16
       - run: cargo test --locked --manifest-path framework-rs/crates/vendor/regress/Cargo.toml --no-default-features --features std,utf16 --lib --test forklaunch_budget
+      - name: Regex demand fails closed without its native feature
+        run: cargo test --locked --manifest-path framework-rs/Cargo.toml -p forklaunch-contract --no-default-features --features schema-validation --lib regex
+      - run: node cli/tests/rust_zod_regex_profile.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_zod_regex_consumers.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_zod_regex_kernel_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc

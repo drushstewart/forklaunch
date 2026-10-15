@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 623 resolved declaration entry points and 1,703 declaration/re-export
+It records 625 resolved declaration entry points and 1,708 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -11389,3 +11389,55 @@ SHA256b7ca19e08e5f67ce60bbbdca1fed7ed936a1b9deb8009092b7d3b5f60857e1e4.
 Root-owned runtime wrapper was exercised by the final proof and added to CI.
 Logs /private/tmp/fl-payment-link-expiration-route-{wrapper-final,artifacts,units,clippy,minimal}.log.
 Event-linked recovery and broader billing remain open;660/682(96.8%) unchanged.
+
+
+### 2026-10-15 — Checked regex consumer integration
+
+Isolated committed source477b2e3458329759e8b0655d4421064bf37d369f adds explicit
+zodRegex export and version1 sourceUnits/flags rules, with default export unchanged.
+Explicit pattern annotations retain precedence; transforms without an override
+are rejected in this profile. Native zod-regex stays default-off. Checked contract
+compilation preserves Invalid versus Operational; legacy compiler rejects active
+regex demand even with the feature enabled. Literal-data occurrences are inert.
+
+A private synchronous RAII evaluation frame accumulates work and preserves any
+evaluated resource failure across not/if/anyOf/oneOf/allOf/contains. Nested calls,
+unwind and threads are isolated. HTTP checked version bodies/fields fail with safe
+correlated500 in every validation mode; MCP admission returns an internal error
+without changing input; WebSocket encode/decode exposes Operational. Composition
+CheckedString preserves scalar ordering and atomic output with typed RegexResource.
+
+The separate explicit JavaScript host-native policy propagates through owned
+UniversalSdk response engines and generated socket codecs. Injected engines cannot
+implicitly enable the reserved keyword, including strict:false. Host RegExp is
+synchronous/uninterruptible and does not share native work/storage guarantees.
+Native JSON strings exclude lone surrogates; explicit UTF16 kernel inputs do not.
+Native quotas charge configured engine allowances and adapter vectors before work;
+allocator overhead/RSS, OOM and wall-clock guarantees are outside those quotas.
+CLI FORKLAUNCH_SDK_ZOD_REGEX accepts only unset/0/1 and forwards generated features.
+
+Validation: native376 total (Axum145,contract37,HTTP74,MCP27,validation74,WS19),
+final focused7 feature-on/2 feature-off, strict nine-crate all-feature/all-target
+Clippy, actual Zod/host-AJV2720 plus policy controls/threeHTTP calls, six live SDK
+responses and24 generated TS/Rust socket checks all pass. Existing2304 baseline/
+2220 opted-in checks and30564 format observations pass. CLI socket subset9 passes
+with its three existing warnings. Canonical366 live outcomes and both OpenAPI
+endpoints pass with zero normalized document differences. Configured TypeScript
+checks12 roots/625 exports; inventory625 entries/1708 declarations/44 packages has
+zero unresolved entries and passes its tests. Framework/blueprint locks unchanged.
+Root's complete19-member framework formatting check also passes.
+
+Source39 manifest /private/tmp/fl-regex-integration-source.json SHA256
+77505ea2a228a397bb6a38021a427830f2da586edc05ee4c33da9cb1b883d0c2.
+Full receipt /private/tmp/fl-regex-integration-receipt.md and logs
+/private/tmp/fl-regex-isolated-{full,final-focused,clippy,profile,consumers,canonical}.log.
+CI includes profile/generated-consumer and explicit feature-off tests under pinned
+Node24.2. The framework guide explains APIs and host/native limits. Vendor/kernel
+bytes remain unchanged. Broader schema parity stays open;660/682(96.8%) unchanged.
+
+Integrated as f7b0f2351:38 paths match the frozen source byte-for-byte; the contract
+compiler retains one preexisting formatting-only line wrap, checked exactly against
+the isolated version. Integrated39 manifest /private/tmp/fl-regex-integrated-source.json
+SHA2560ebd2dbc1281bffa03b7c50b82d69cde95b5db5a55d0ea9e3c5661b09fdf0572.
+The integrated19-member framework formatting check passes. No behavior change was
+introduced by this merge; billing recovery validates against this combined source.
