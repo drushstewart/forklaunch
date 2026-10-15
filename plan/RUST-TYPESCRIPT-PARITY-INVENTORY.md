@@ -11473,3 +11473,16 @@ b8a33d9426563b38596444be4e25872e5204e7a967b68646b5c83ec1ce3adcc3.
 Logs /private/tmp/fl-invitation-cancel-{actual,native,organizations,pg,clippy,minimal-clippy,final-organizations}.log.
 CI includes the actual fixture with explicit compiler configuration. Invitation
 delivery and broader Better Auth options remain open;660/682(96.8%) unchanged.
+
+
+### 2026-10-15 — Regex integration workspace cleanup
+
+After integration/source-hash verification, clean HEAD and zero open-file checks,
+removed the owned fl-regex-integration worktree and fl-regex-native-target cache.
+This removed 6,042,631,686 logical bytes; no physical APFS savings claim is made.
+The original source commit remains on codex/rust-regex-integration-proof, with
+all manifests/logs/receipts outside the removed roots. The exact owned draft stash
+was dropped only after its content had been integrated and verified. Cleanup
+receipt /private/tmp/fl-regex-integration-cleanup.json. Subsequent format work uses
+a fresh isolated source tree and the existing CLI target to avoid another duplicate
+cache. Broader checklist remains660/682(96.8%).
