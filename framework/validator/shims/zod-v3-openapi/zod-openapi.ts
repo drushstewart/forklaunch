@@ -3,7 +3,7 @@ import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
 import { merge } from './schemaMerge';
 import { assertPureInputSchema, pureInputOptional } from './pureInput';
 import { stringLiteralPattern } from './stringLiteral';
-import { projectStringChecks, projectNumberChecks, zodChecksKeyword } from './zodChecks';
+import { projectStringChecks, projectNumberChecks, projectArrayChecks, zodChecksKeyword } from './zodChecks';
 import { AnyZodObject, z, ZodTypeAny } from 'zod/v3';
 import {
   factoryEmailPattern,
@@ -34,7 +34,7 @@ export interface SchemaGenerationOptions {
   readonly jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema';
   /** Reject callback-dependent schemas and omit computed defaults recursively. */
   readonly pureInput?: boolean;
-  /** Emit reserved exact UTF-16 length and Zod remainder checks. Consumers must support this profile. */
+  /** Emit reserved exact UTF-16 length, array cardinality and Zod remainder checks. Consumers must support this profile. */
   readonly zodChecks?: boolean;
   /** Emit ordered ECMAScript regex rules; consumers require an explicit execution policy. */
   readonly zodRegex?: boolean;
@@ -620,6 +620,7 @@ function parseDefault({
 }
 
 function parseArray({
+  zodChecks,
   generateSchema,
   schemas,
   zodRef,
@@ -659,8 +660,12 @@ function parseArray({
     }
   }
 
+  const exact = zodChecks ? projectArrayChecks(zodRef._def, schemas as Record<string, unknown>[]) : undefined;
+  if (exact?.arrayMinItems) delete constraints.minItems;
+  if (exact?.arrayMaxItems) delete constraints.maxItems;
   return merge(
     {
+      ...(exact ? {[zodChecksKeyword]:exact} : {}),
       type: typeFormat('array', openApiVersion),
       items: generateSchema(zodRef.element, useOutput, openApiVersion),
       ...constraints

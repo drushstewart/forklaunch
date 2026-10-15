@@ -1,12 +1,14 @@
 //! Reserved exact Zod check assertions; never reinterpret ordinary schema keywords.
 //! Input strings are Rust UTF-8 strings, so lone JavaScript UTF-16 surrogates are
 //! outside this representation domain. Numbers use their finite IEEE-754 value.
-use forklaunch_common::zod_multiple_of::ZodMultipleOf;
+use forklaunch_common::{zod_cardinality::ZodCardinality, zod_multiple_of::ZodMultipleOf};
 use jsonschema::{Keyword, ValidationError, paths::Location};
 use serde_json::{Map, Value};
 
 pub(super) const KEYWORD: &str = "x-forklaunch-zod-checks";
 struct Checks {
+    array_minimum: Vec<ZodCardinality>,
+    array_maximum: Vec<ZodCardinality>,
     minimum: Option<u64>,
     maximum: Option<u64>,
     divisors: Vec<ZodMultipleOf>,
@@ -195,6 +197,37 @@ fn formats(raw_formats: Option<&Vec<Value>>) -> Result<Vec<Format>, ValidationEr
     }
     Ok(formats)
 }
+fn numeric_value(value: &Value) -> Result<f64, ValidationError<'static>> {
+    match value {
+        Value::Number(value) => value
+            .as_f64()
+            .filter(|value| value.is_finite())
+            .ok_or_else(invalid),
+        Value::String(value) if value == "NaN" => Ok(f64::NAN),
+        Value::String(value) if value == "Infinity" => Ok(f64::INFINITY),
+        Value::String(value) if value == "-Infinity" => Ok(f64::NEG_INFINITY),
+        _ => Err(invalid()),
+    }
+}
+fn raw_rules(value: Option<&Value>) -> Result<Option<&Vec<Value>>, ValidationError<'static>> {
+    value
+        .map(|value| {
+            value
+                .as_array()
+                .filter(|values| values.len() <= 10_000)
+                .ok_or_else(invalid)
+        })
+        .transpose()
+}
+fn cardinalities(
+    values: Option<&Vec<Value>>,
+) -> Result<Vec<ZodCardinality>, ValidationError<'static>> {
+    values
+        .into_iter()
+        .flatten()
+        .map(|value| numeric_value(value).map(ZodCardinality::new))
+        .collect()
+}
 pub(super) fn compile<'a>(
     _: &'a Map<String, Value>,
     value: &'a Value,
@@ -209,6 +242,8 @@ pub(super) fn compile<'a>(
                     | "utf16MinLength"
                     | "utf16MaxLength"
                     | "multipleOf"
+                    | "arrayMinItems"
+                    | "arrayMaxItems"
                     | "formats"
                     | "timePrecisions"
                     | "dateTimes"
@@ -223,26 +258,14 @@ pub(super) fn compile<'a>(
     let time_precisions = time_precisions(fields.get("timePrecisions"))?;
     let minimum = bound(fields.get("utf16MinLength"))?;
     let maximum = bound(fields.get("utf16MaxLength"))?;
-    let raw_formats = fields
-        .get("formats")
-        .map(|value| {
-            value
-                .as_array()
-                .filter(|values| values.len() <= 10_000)
-                .ok_or_else(invalid)
-        })
-        .transpose()?;
-    let raw_divisors = fields
-        .get("multipleOf")
-        .map(|value| {
-            value
-                .as_array()
-                .filter(|values| values.len() <= 10_000)
-                .ok_or_else(invalid)
-        })
-        .transpose()?;
+    let raw_formats = raw_rules(fields.get("formats"))?;
+    let raw_divisors = raw_rules(fields.get("multipleOf"))?;
+    let raw_minimum = raw_rules(fields.get("arrayMinItems"))?;
+    let raw_maximum = raw_rules(fields.get("arrayMaxItems"))?;
     if raw_formats.map_or(0, Vec::len)
         + raw_divisors.map_or(0, Vec::len)
+        + raw_minimum.map_or(0, Vec::len)
+        + raw_maximum.map_or(0, Vec::len)
         + time_precisions.len()
         + date_times.len()
         + jwt_algorithms.len()
@@ -251,27 +274,16 @@ pub(super) fn compile<'a>(
         return Err(invalid());
     }
     let formats = formats(raw_formats)?;
-    let mut divisors = Vec::new();
-    if let Some(values) = fields.get("multipleOf") {
-        let values = values
-            .as_array()
-            .filter(|values| values.len() <= 10_000)
-            .ok_or_else(invalid)?;
-        for value in values {
-            let divisor = match value {
-                Value::Number(value) => value
-                    .as_f64()
-                    .filter(|value| value.is_finite())
-                    .ok_or_else(invalid)?,
-                Value::String(value) if value == "NaN" => f64::NAN,
-                Value::String(value) if value == "Infinity" => f64::INFINITY,
-                Value::String(value) if value == "-Infinity" => f64::NEG_INFINITY,
-                _ => return Err(invalid()),
-            };
-            divisors.push(ZodMultipleOf::new(divisor));
-        }
-    }
+    let divisors = raw_divisors
+        .into_iter()
+        .flatten()
+        .map(|value| numeric_value(value).map(ZodMultipleOf::new))
+        .collect::<Result<_, _>>()?;
+    let array_minimum = cardinalities(raw_minimum)?;
+    let array_maximum = cardinalities(raw_maximum)?;
     Ok(Box::new(Checks {
+        array_minimum,
+        array_maximum,
         minimum,
         maximum,
         divisors,
@@ -283,6 +295,20 @@ pub(super) fn compile<'a>(
 }
 impl<'i> Keyword<'i> for Checks {
     fn is_valid(&self, instance: &'i Value) -> bool {
+        if let Some(values) = instance.as_array() {
+            let length = values.len() as u64;
+            if !self
+                .array_minimum
+                .iter()
+                .all(|bound| bound.accepts_minimum(length))
+                || !self
+                    .array_maximum
+                    .iter()
+                    .all(|bound| bound.accepts_maximum(length))
+            {
+                return false;
+            }
+        }
         if let Some(value) = instance.as_str() {
             if !self.jwt_algorithms.iter().all(|algorithm| {
                 forklaunch_common::zod_string_format::jwt(value, algorithm.as_deref())

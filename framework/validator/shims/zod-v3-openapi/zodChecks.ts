@@ -7,6 +7,8 @@ const own = (value: object, key: string) =>
 type Metadata = Record<string, unknown>;
 interface Checks {
   version: 1;
+  arrayMinItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
+  arrayMaxItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6' | 'emoji')[];
@@ -144,4 +146,19 @@ export function projectNumberChecks(
             : check.value
     );
   return divisors.length ? { version: 1, multipleOf: divisors } : undefined;
+}
+
+/** Retained array checks are independent conjunctions, not ordered transforms. */
+export function projectArrayChecks(
+  definition: { exactLength: {value:number} | null; minLength: {value:number} | null; maxLength: {value:number} | null },
+  metadata: readonly Metadata[]
+): Checks | undefined {
+  admit([], metadata);
+  const encode = (value: number): number | 'NaN' | 'Infinity' | '-Infinity' => {
+    if (typeof value !== 'number') throw new Error('Zod array cardinality must be numeric');
+    return Number.isNaN(value) ? 'NaN' : value === Infinity ? 'Infinity' : value === -Infinity ? '-Infinity' : value;
+  };
+  const minimum = metadata.some(value=>own(value,'minItems')) ? [] : [definition.exactLength,definition.minLength].filter(value=>value!==null).map(value=>encode(value.value));
+  const maximum = metadata.some(value=>own(value,'maxItems')) ? [] : [definition.exactLength,definition.maxLength].filter(value=>value!==null).map(value=>encode(value.value));
+  return minimum.length || maximum.length ? {version:1,...(minimum.length?{arrayMinItems:minimum}:{}),...(maximum.length?{arrayMaxItems:maximum}:{})} : undefined;
 }

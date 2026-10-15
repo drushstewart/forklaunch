@@ -30,7 +30,6 @@ impl ZodFloatBound {
         self.length_rejection(length, comparison, "Array", "element")
     }
 
-    #[allow(clippy::cast_precision_loss)]
     fn length_rejection(
         self,
         length: u64,
@@ -38,17 +37,14 @@ impl ZodFloatBound {
         kind: &str,
         unit: &str,
     ) -> Option<String> {
-        let length = length as f64;
         let bound = f64::from_bits(self.0);
+        let cardinality = forklaunch_common::zod_cardinality::ZodCardinality::new(bound);
         let (rejected, label) = match comparison {
-            std::cmp::Ordering::Less => (length < bound, "at least"),
-            std::cmp::Ordering::Greater => (length > bound, "at most"),
+            std::cmp::Ordering::Less => (!cardinality.accepts_minimum(length), "at least"),
+            std::cmp::Ordering::Greater => (!cardinality.accepts_maximum(length), "at most"),
             // Zod uses ordered comparisons, so NaN exact-length is inert too.
             std::cmp::Ordering::Equal => (
-                matches!(
-                    length.partial_cmp(&bound),
-                    Some(std::cmp::Ordering::Less | std::cmp::Ordering::Greater)
-                ),
+                !cardinality.accepts_minimum(length) || !cardinality.accepts_maximum(length),
                 "exactly",
             ),
         };

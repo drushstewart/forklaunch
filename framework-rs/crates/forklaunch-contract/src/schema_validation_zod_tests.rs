@@ -91,3 +91,48 @@ fn format_checks_are_ordered_bounded_and_uri_requires_its_capability() {
         cfg!(feature = "zod-uri")
     );
 }
+
+#[test]
+fn array_cardinality_capability_tracks_refs_but_not_literal_data() {
+    let assertion = json!({"type":"array","x-forklaunch-zod-checks":{"version":1,"arrayMinItems":[1.5],"arrayMaxItems":[2.5,"NaN"]}});
+    for schema in [
+        assertion.clone(),
+        json!({"$defs":{"A":assertion},"$ref":"#/$defs/A"}),
+        json!({"default":assertion,"$ref":"#/default"}),
+    ] {
+        assert_eq!(compile(&schema).is_ok(), cfg!(feature = "zod-checks"));
+    }
+    assert!(compile(&json!({"const":assertion})).is_ok());
+}
+#[cfg(feature = "zod-checks")]
+#[test]
+fn array_cardinalities_preserve_ieee_and_reject_bad_or_excess_rules() {
+    for (minimum, maximum, value, expected) in [
+        (json!([1.5]), json!([2.5]), json!([0, 0]), true),
+        (json!([1.5]), json!([2.5]), json!([0]), false),
+        (json!(["NaN"]), json!(["NaN"]), json!([]), true),
+        (json!(["Infinity"]), json!([]), json!([]), false),
+        (json!([]), json!(["-Infinity"]), json!([]), false),
+        (json!([1e100]), json!([]), json!([]), false),
+        (json!([]), json!([1e100]), json!([0]), true),
+        (json!([1e100]), json!([]), json!("other type"), true),
+    ] {
+        let validate=compile(&json!({"x-forklaunch-zod-checks":{"version":1,"arrayMinItems":minimum,"arrayMaxItems":maximum}})).unwrap();
+        let before = value.clone();
+        assert_eq!(validate(&value).is_ok(), expected);
+        assert_eq!(value, before);
+    }
+    for key in ["arrayMinItems", "arrayMaxItems"] {
+        for bad in [
+            json!(null),
+            json!({}),
+            json!([null]),
+            json!([true]),
+            json!(["nan"]),
+            json!(vec![0; 10001]),
+        ] {
+            assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,key:bad}})).is_err());
+        }
+    }
+    assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"arrayMinItems":vec![0;5001],"arrayMaxItems":vec![2;5000]}})).is_err());
+}

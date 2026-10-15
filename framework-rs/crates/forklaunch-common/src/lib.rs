@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "zod-checks")]
+pub mod zod_cardinality;
+
 /// Exact Zod v3 numeric remainder semantics for explicitly enabled consumers.
 #[cfg(feature = "zod-checks")]
 pub mod zod_multiple_of;

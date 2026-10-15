@@ -106,6 +106,8 @@ function emoji(value: string): boolean {
 const zodChecksKeyword = 'x-forklaunch-zod-checks';
 interface ZodChecks {
   version: 1;
+  arrayMinItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
+  arrayMaxItems?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6' | 'emoji')[];
@@ -127,6 +129,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
           'utf16MinLength',
           'utf16MaxLength',
           'multipleOf',
+          'arrayMinItems',
+          'arrayMaxItems',
           'formats',
           'timePrecisions',
           'dateTimes',
@@ -144,17 +148,13 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     )
       throw new Error('Invalid Zod UTF-16 bound');
   }
-  if (Object.prototype.hasOwnProperty.call(value, 'multipleOf')) {
-    if (
-      !Array.isArray(value.multipleOf) ||
-      value.multipleOf.length > 10000 ||
-      value.multipleOf.some(
-        (divisor) =>
-          !(typeof divisor === 'number' && Number.isFinite(divisor)) &&
-          !['NaN', 'Infinity', '-Infinity'].includes(divisor)
-      )
-    )
-      throw new Error('Invalid Zod multiple-of rules');
+  for (const key of ['multipleOf', 'arrayMinItems', 'arrayMaxItems']) {
+    if (Object.prototype.hasOwnProperty.call(value,key)) {
+      const rules=value[key];
+      if (!Array.isArray(rules) || rules.length>10000 || rules.some(rule=>
+        !(typeof rule==='number' && Number.isFinite(rule)) && !['NaN','Infinity','-Infinity'].includes(rule)))
+        throw new Error('Invalid Zod numeric rules');
+    }
   }
   if (
     Object.prototype.hasOwnProperty.call(value, 'formats') &&
@@ -180,6 +180,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
        value.jwtAlgorithms.some((algorithm) => algorithm !== null && typeof algorithm !== 'string')))
     throw new Error('Invalid Zod JWT algorithms');
   if (
+    (Array.isArray(value.arrayMinItems) ? value.arrayMinItems.length : 0) +
+    (Array.isArray(value.arrayMaxItems) ? value.arrayMaxItems.length : 0) +
     (Array.isArray(value.jwtAlgorithms) ? value.jwtAlgorithms.length : 0) +
     (Array.isArray(value.dateTimes) ? value.dateTimes.length : 0) +
     (Array.isArray(value.timePrecisions) ? value.timePrecisions.length : 0) +
@@ -195,6 +197,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
   const divisors = profile.multipleOf?.map((divisor) =>
     typeof divisor === 'number' ? divisor : Number(divisor)
   );
+  const arrayMinimum = profile.arrayMinItems?.map(bound=>typeof bound==='number'?bound:Number(bound));
+  const arrayMaximum = profile.arrayMaxItems?.map(bound=>typeof bound==='number'?bound:Number(bound));
   const formatChecks = profile.formats?.slice();
   const jwtAlgorithms = profile.jwtAlgorithms?.slice();
   const timeSource = (p: number | null) =>
@@ -248,6 +252,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
         (maximum !== undefined && data.length > maximum))
     )
       return false;
+    if (Array.isArray(data) && (arrayMinimum?.some(bound=>data.length<bound) || arrayMaximum?.some(bound=>data.length>bound))) return false;
     if (typeof data === 'number' && divisors) {
       for (const divisor of divisors) {
         const decimals = Math.max(

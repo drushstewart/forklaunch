@@ -31,3 +31,7 @@ workspace = true
 [[example]]
 name = "uri_schema_parity"
 required-features = ["schema-validation"]
+
+[[example]]
+name = "array_cardinality_parity"
+required-features = ["schema-validation"]

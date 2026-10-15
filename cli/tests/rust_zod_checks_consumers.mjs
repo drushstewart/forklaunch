@@ -28,6 +28,7 @@ const source = z
     unknownPayload: validator.unknown,
     typedPayload: validator.type(),
     text: z.string().length(2),
+    cardinality: z.array(z.string()).min(1.5).max(2.5).length(NaN),
     number: z.number().multipleOf(0.1),
     email: z.string().email().email(),
     uuid: z.string().uuid(),
@@ -62,6 +63,7 @@ const cases = [
   { text: "😀", number: 0.1 + 0.2 },
 ];
 const validFormats = {
+  cardinality:["a","b"],
   email: "a'b@b-.co",
   uuid: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
   uri: "http://example.test/a b",
@@ -83,6 +85,9 @@ const validFormats = {
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
+  {cardinality:[]},
+  {cardinality:["a","b","c"]},
+  {cardinality:[{},"b"]},
   { email: "a%b@b.co" },
   { uuid: "urn:uuid:" + validFormats.uuid },
   { uri: "http://256.1.1.1" },
@@ -174,7 +179,7 @@ try {
         impossible: undefined,
         ...payload,
       });
-    else await assert.rejects(() => sdk.value());
+    else await assert.rejects(() => sdk.value(), JSON.stringify({index:i,payload}));
   }
   assert.equal(requests, cases.length);
   assert.equal(JSON.stringify(doc), before);
@@ -268,7 +273,7 @@ try {
   writeFileSync(path.join(work, "src/lib.rs"), generated.rust.socket_checks);
   writeFileSync(
     path.join(work, "src/main.rs"),
-    `use fl_zod_check_consumers::SocketClient;fn main(){let codecs=SocketClient::schemas().unwrap();for (wire,valid) in [${cases.map((value, i) => `(${JSON.stringify(JSON.stringify(value))},${expected[i]})`).join(",")}]{let decoded=codecs.incoming.decode(wire.as_bytes());assert_eq!(decoded.is_ok(),valid);let value=serde_json::from_str(wire).unwrap();assert_eq!(codecs.outgoing.encode(&value).is_ok(),valid);}println!("PASS generated Rust exact-check codecs");}`,
+    `use fl_zod_check_consumers::SocketClient;fn main(){let codecs=SocketClient::schemas().unwrap();for (wire,valid) in [${cases.map((value, i) => `(${JSON.stringify(JSON.stringify(value))},${expected[i]})`).join(",")}]{let decoded=codecs.incoming.decode(wire.as_bytes());assert_eq!(decoded.is_ok(),valid);match serde_json::from_str(wire){Ok(value)=>assert_eq!(codecs.outgoing.encode(&value).is_ok(),valid),Err(_)=>assert!(!valid,"valid payload must construct generated type")};}println!("PASS generated Rust exact-check codecs");}`,
   );
   run("cargo", [
     "rustc",
@@ -288,7 +293,7 @@ try {
     path.join(work, "Cargo.toml"),
   ]);
   console.log(
-    `PASS ${requests} live owned UniversalSdk responses, ${cases.length * 4} generated TS/Rust socket codec checks; strict generated sources and feature-off compiler fails before output`,
+    `PASS ${requests} live owned UniversalSdk responses, ${cases.length * 4} generated TS/Rust socket codec/type-admission checks; strict generated sources and feature-off compiler fails before output`,
   );
 } finally {
   if (server) await new Promise((resolve) => server.close(resolve));
