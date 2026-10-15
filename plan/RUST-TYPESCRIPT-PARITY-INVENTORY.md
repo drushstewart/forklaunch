@@ -8824,3 +8824,16 @@ Axum all-feature/all-target Clippy with arbitrary_precision also passes. Logs
 Success projection and ordered public diagnostics are tested; direct MCP schema
 interpretation/raw JSON key order remain separate. Record/strict own-key-order,
 literals/enums and broader arbitrary schemas/callbacks remain open.
+
+
+## Embedded MCP example packaging correction (2026-10-14)
+
+The current working-tree recursive package-source check found the tracked MCP
+body_admission example absent from CLI templates. Added the missing examples
+directory link using the same relative source-link layout as other crates.
+The generic package-source check now passes all1210 embedded Rust source/template
+paths (/private/tmp/fl-oct14-current-package-sources-fixed.log); initial failure
+retained at /private/tmp/fl-oct14-current-package-sources.log. This is a current
+working-tree source-list proof including coherent active drafts, not another
+immutable archive installation/startup receipt. Earlier d835 receipts retain
+their exact source/package hashes and scope.
