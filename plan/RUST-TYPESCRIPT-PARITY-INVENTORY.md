@@ -10637,3 +10637,13 @@ registration preserves supplied engine options; a shared engine is reusable with
 one helper module instance, while separately bundled helpers require separate
 engines. CI runs both permanent fixtures, `rust_zod_checks.mjs` and
 `rust_zod_checks_consumers.mjs`. The checklist remains 660/682 (96.8%).
+
+
+Canonical revalidation after the profile integration passes all 366 live outcomes
+and zero normalized OpenAPI differences. Three stale nullable-union snapshots
+were refreshed to the already-committed emitter's `anyOf` output. Normalization
+flattens only unique unconstrained string/number/boolean/null alternatives;
+overlapping number/integer, constrained branches and sibling assertions remain
+intact. Negative controls verify those exclusions. Independent integration checks
+also passed the 623-entry/1,703-record inventory, all 12 configured TypeScript roots
+and 623 public exports, workflow YAML parsing and whitespace validation.

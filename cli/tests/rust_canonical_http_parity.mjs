@@ -6,6 +6,17 @@ import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
+// Flatten only disjoint, unconstrained primitive alternatives. Overlapping or
+// constrained unions carry validation semantics and must survive normalization.
+function normalizedSchema(schema){
+ return normalizeOpenApi({paths:{'/control':{get:{responses:{200:{content:{'application/json':{schema}}}}}}}})['GET /control'].responses['200']['application/json'];
+}
+for(const keyword of ['oneOf','anyOf']){
+ assert.deepEqual(normalizedSchema({[keyword]:[{type:'string'},{type:'null'}]}),{type:['null','string']});
+ for(const branches of [[{type:'string'},{type:'string'}],[{type:'number'},{type:'integer'}],[{type:'string',minLength:1},{type:'null'}]])
+  assert.deepEqual(normalizedSchema({[keyword]:branches}),{[keyword]:branches.map(branch=>({...branch,type:[branch.type]}))});
+ assert.deepEqual(normalizedSchema({[keyword]:[{type:'string'},{type:'null'}],not:{type:'null'}}),{[keyword]:[{type:['string']},{type:['null']}],not:{type:'null'}});
+}
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 const dependencies=process.env.FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES;
 assert.ok(dependencies,'Set FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES (npm install the canonical-iam fixture package)');

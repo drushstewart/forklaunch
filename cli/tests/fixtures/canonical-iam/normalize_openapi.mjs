@@ -26,9 +26,10 @@ export function normalizeOpenApi(document) {
   // null's singleton enum adds no constraint beyond its type.
   if(JSON.stringify(result.type)==='["null"]'&&JSON.stringify(result.enum)==='[null]')delete result.enum;
   // Only flatten disjoint, unconstrained primitive type alternatives.
-  if(Object.keys(result).length===1&&result.oneOf?.every(branch=>Object.keys(branch).length===1&&branch.type?.length===1)){
-   const types=result.oneOf.map(branch=>branch.type[0]);
-   if(new Set(types).size===types.length)return {type:types.sort()};
+  const alternatives=result.oneOf??result.anyOf;
+  if(Object.keys(result).length===1&&alternatives?.every(branch=>Object.keys(branch).length===1&&branch.type?.length===1)){
+   const types=alternatives.map(branch=>branch.type[0]);
+   if(new Set(types).size===types.length&&!types.includes('integer')&&types.every(type=>['string','number','boolean','null'].includes(type)))return {type:types.sort()};
   }
   return result;
  }

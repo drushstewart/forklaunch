@@ -55,7 +55,7 @@
                             ]
                           },
                           "display_name": {
-                            "oneOf": [
+                            "anyOf": [
                               {
                                 "example": "a string",
                                 "title": "String",
@@ -115,7 +115,7 @@
                       ]
                     },
                     "next_cursor": {
-                      "oneOf": [
+                      "anyOf": [
                         {
                           "example": "a string",
                           "title": "String",
@@ -257,7 +257,7 @@
                       ]
                     },
                     "display_name": {
-                      "oneOf": [
+                      "anyOf": [
                         {
                           "example": "a string",
                           "title": "String",
