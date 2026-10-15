@@ -9603,3 +9603,14 @@ pass (actualTS7.0.2). Logs /private/tmp/fl-zod-bounds-{openapi,types}.log.
 CI adds permanent fixture with explicit draft04 dependency fallback. No Rust,
 Cargo/lock/dependency changes or new canonical-native receipt. Remaining tuple,
 UTF16length and record-key export gaps keep broad schema gate open;660/682.
+
+
+### Additional completed-checkpoint cache cleanup (2026-10-14)
+
+Removed two unused cached test executables tied to previously removed committed
+checkpoint source roots, reclaiming183215264 logical bytes. Source roots and their
+old dependency files remain absent; exact file stats and no open-file handles were
+checked before deletion. Current compilation caches, source worktrees and retained
+proof archives preserved. Receipt
+/private/tmp/fl-oct14-old-checkpoint-executable-cleanup.json. No physical APFS-space
+claim.
