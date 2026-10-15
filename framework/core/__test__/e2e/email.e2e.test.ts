@@ -198,7 +198,7 @@ describe('email (e2e)', () => {
     delete process.env.INSTANCE_ID;
     delete process.env.INSTANCE_HMAC_KEY;
     try {
-      expect(() => createEmailClient()).toThrow(/managed instances/);
+      expect(() => createEmailClient()).toThrow(/INSTANCE_HMAC_KEY must be set/);
     } finally {
       process.env = saved;
     }
