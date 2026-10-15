@@ -68,6 +68,7 @@ on:
       - 'cli/tests/rust_zod_uri_openapi.mjs'
       - 'cli/tests/rust_zod_uri_sdk.mjs'
       - 'cli/tests/rust_zod_bounds_openapi.mjs'
+      - 'cli/tests/rust_zod_union_openapi.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -429,6 +430,7 @@ on:
       - 'cli/tests/rust_zod_uri_openapi.mjs'
       - 'cli/tests/rust_zod_uri_sdk.mjs'
       - 'cli/tests/rust_zod_bounds_openapi.mjs'
+      - 'cli/tests/rust_zod_union_openapi.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -988,6 +990,11 @@ jobs:
         with:
           node-version: '22'
       - run: node cli/tests/rust_zod_bounds_openapi.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_zod_union_openapi.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http

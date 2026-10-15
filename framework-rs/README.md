@@ -1205,3 +1205,11 @@ Explicit `.openapi` overrides remain authoritative. The
 [bounds fixture](../cli/tests/rust_zod_bounds_openapi.mjs) compares 153,972 runtime
 and schema admissions for OpenAPI 3.0 and 3.1. Nonfinite registrations, multipleOf,
 UTF-16 string length and tuple schema semantics remain separate boundaries.
+
+Ordinary Zod union exports use `anyOf`, preserving overlapping alternatives.
+Finite homogeneous literal enums deduplicate values; mixed enums retain alternative
+types and empty unions export an always-false schema. Explicit composition annotations
+and discriminated unions retain existing behavior. The
+[union fixture](../cli/tests/rust_zod_union_openapi.mjs) checks 10,674 cases.
+Nonfinite enum, OAS3.0 nullable-union and Never-leaf emission remain separate gaps;
+empty-union validation does not imply a generated precise `never` type.

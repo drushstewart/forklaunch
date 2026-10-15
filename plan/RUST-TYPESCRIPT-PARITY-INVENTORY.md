@@ -9647,3 +9647,19 @@ Logs /private/tmp/fl-backup-async-{native,full,pg,clippy,minimal-clippy,actual}.
 No IAM manifests/locks/migrations changed. Tested against main2813f0e28 plus frozen
 IAM and coherent optional Checkout graph; no new immutable/generated claim.
 Server-only viewBackupCodes remains separate;660/682 (96.8%),22open unchanged.
+
+
+### Overlapping union and finite enum emission (2026-10-14)
+
+Ordinary ZodUnion now exports anyOf, avoiding oneOf rejection when alternatives
+overlap. Homogeneous finite scalar literal enums deduplicate; mixed finite literals
+no longer infer the final member type after a mismatch. Empty union emits not:{}
+rather than invalidoneOf:[]. Explicit composition annotation merge behavior and
+discriminated unions retain existing behavior. Runtime diagnostics/callbacks unchanged.
+Frozen2 /private/tmp/fl-zod-union-export-source.json;10674 actual Zod/AJV pairs over
+592 OAS3.0/3.1 exports,12root/614export strict types(TS7.0.2) and153972/9108 bounds
+regressions pass. Logs /private/tmp/fl-zod-union-{openapi,openapi-types,bounds-regression}.log.
+SDK model/schema traversal supports both composition keywords; no new native/SDK
+runtime receipt or precise generated never-model claim. Nonfinite enum/OAS3.0
+nullable-union/Never-leaf emitter gaps explicitly remain. No Rust/Cargo changes;
+broad schema gate stays open;660/682 (96.8%),22open.

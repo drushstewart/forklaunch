@@ -589,24 +589,48 @@ function parseUnion({
   ) {
     // special case to transform unions of literals into enums
     const literals = contents as unknown as z.ZodLiteral<OpenApiZodAny>[];
-    const type = literals.reduce(
-      (prev, content) =>
-        !prev || prev === typeof content._def.value
-          ? typeof content._def.value
-          : null,
-      null as null | string
+    const values = literals.map((literal) => literal._def.value);
+    const finiteScalars = values.every(
+      (value) =>
+        typeof value === 'string' ||
+        typeof value === 'boolean' ||
+        (typeof value === 'number' && Number.isFinite(value))
     );
+    // Retain legacy handling for registrations outside the finite JSON subset.
+    const type = finiteScalars
+      ? values.length > 0 &&
+        values.every((value) => typeof value === typeof values[0])
+        ? typeof values[0]
+        : null
+      : literals.reduce(
+          (prev, content) =>
+            !prev || prev === typeof content._def.value
+              ? typeof content._def.value
+              : null,
+          null as null | string
+        );
 
     if (type) {
       return merge(
         {
           type: typeFormat(type as SchemaObjectType, openApiVersion),
-          enum: literals.map((literal) => literal._def.value)
+          enum: finiteScalars ? [...new Set(values)] : values
         },
         zodRef.description ? { description: zodRef.description } : {},
         ...schemas
       );
     }
+  }
+
+  const explicitUnion = schemas.some(
+    (schema) => schema.oneOf !== undefined || schema.anyOf !== undefined
+  );
+  if (contents.length === 0 && !explicitUnion) {
+    return merge(
+      { not: {} },
+      zodRef.description ? { description: zodRef.description } : {},
+      ...schemas
+    );
   }
 
   const oneOfContents =
@@ -617,7 +641,7 @@ function parseUnion({
 
   return merge(
     {
-      oneOf: oneOfContents.map((schema) =>
+      [explicitUnion ? 'oneOf' : 'anyOf']: oneOfContents.map((schema) =>
         generateSchema(schema, useOutput, openApiVersion)
       )
     },
