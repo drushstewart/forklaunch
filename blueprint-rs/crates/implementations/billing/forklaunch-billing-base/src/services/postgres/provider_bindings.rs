@@ -23,7 +23,7 @@ pub use paused_effect::{PausedEffectAcknowledgement, PausedSubscriptionEffectSna
 pub use payment_link_creation::{
     ManagedPaymentLinkPublication, PaymentLinkCreationClaim, PaymentLinkCreationReadSnapshot,
     PaymentLinkCreationReservation, PaymentLinkCreationStatus, PaymentLinkExpirationClaim,
-    PaymentLinkExpirationReservation, PaymentLinkExpirationStatus,
+    PaymentLinkExpirationRecovery, PaymentLinkExpirationReservation, PaymentLinkExpirationStatus,
     TrustedPaymentLinkExpirationPublisher,
 };
 pub use plan_creation::{

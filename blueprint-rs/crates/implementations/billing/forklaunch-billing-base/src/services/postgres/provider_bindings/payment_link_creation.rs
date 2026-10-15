@@ -2,8 +2,8 @@
 mod admission;
 mod expiration;
 pub use expiration::{
-    PaymentLinkExpirationClaim, PaymentLinkExpirationReservation, PaymentLinkExpirationStatus,
-    TrustedPaymentLinkExpirationPublisher,
+    PaymentLinkExpirationClaim, PaymentLinkExpirationRecovery, PaymentLinkExpirationReservation,
+    PaymentLinkExpirationStatus, TrustedPaymentLinkExpirationPublisher,
 };
 mod managed;
 mod read;

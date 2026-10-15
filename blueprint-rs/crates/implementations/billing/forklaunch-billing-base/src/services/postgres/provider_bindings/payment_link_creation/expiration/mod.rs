@@ -1,10 +1,12 @@
 //! Single-dispatch metadata-only expiration. Pending never implies retry authority.
 mod publication;
+mod recovery;
 use super::super::{PostgresBillingStore, StripeBindingScope, conflict};
 use super::{PaymentLinkCreationReadSnapshot, canonical};
 use super::{db_error, invalid, storage_error};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 pub use publication::TrustedPaymentLinkExpirationPublisher;
+pub use recovery::PaymentLinkExpirationRecovery;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};
@@ -182,6 +184,13 @@ impl PostgresBillingStore {
                 if receipt["hash"] != row.2
                     || receipt["publicId"] != row.0
                     || receipt["status"] != "EXPIRED"
+                {
+                    return Err(storage_error());
+                }
+                if let Some(recovery) = receipt.get("recovery")
+                    && (recovery["kind"] != "event_linked_metadata_expiration_v1"
+                        || recovery["evidenceHash"]
+                            != hash(&super::canonical(&recovery["evidence"]).to_string()))
                 {
                     return Err(storage_error());
                 }

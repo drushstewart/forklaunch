@@ -11486,3 +11486,42 @@ was dropped only after its content had been integrated and verified. Cleanup
 receipt /private/tmp/fl-regex-integration-cleanup.json. Subsequent format work uses
 a fresh isolated source tree and the existing CLI target to avoid another duplicate
 cache. Broader checklist remains660/682(96.8%).
+
+
+### 2026-10-15 — Event-linked PaymentLink expiration recovery library
+
+A pending expiration can now restore opaque publication-only proof after fresh
+account/mode checks, authenticated fixed Event and PaymentLink GETs, and exact
+request-key, rendering-version, resource-ID/type/mode and EXPIRED-metadata checks.
+The event must be payment_link.updated, have a non-null matching request key,
+no unsupported context, and fall within reservation−5s..+5min without future time.
+This is an explicit admission policy, not a causality, event-availability or
+request-origin guarantee. It does not deactivate a URL or prove payment state.
+
+Recovery retains actor/tenant/public-ID/profile and canonical creation provenance,
+locks unchanged dependencies and requires exactly the two pending claims. Its
+opaque proof exposes neither a dispatch key nor a reservation constructor. The
+separate trusted publisher atomically records bounded encrypted event/current
+body evidence and hash, completion and claim release through existing migration17.
+No provider POST, automatic retry, migration or shared framework change is added.
+Concurrent winners and uncertain final COMMIT acknowledgements inspect historical
+receipts; unavailable inspection leaves an IDs-only unresolved outcome.
+
+Malformed event IDs and missing claims SELECT fail before provider reads. Recovery
+works after reservation INSERT grants are revoked, and does not change the
+mutation-only startup grant requirements. Expired provider context, mismatched
+metadata/resources, oversized/deep evidence and audit failure retain claims.
+Automatic events without request keys and unavailable retained events stay pending.
+
+Official Stripe22.6.2 SDK wire passes exact authenticated Event/PaymentLink GETs.
+Final restricted PostgreSQL matrix passes6.77s, including a5.1s delayed read,
+concurrency, encrypted evidence, audit rollback and actual lost COMMIT ACK.
+Existing expiration2 regression passes6.42s. Strict all-feature/all-target
+base/Stripe Clippy9.28s, minimal4.27s and scoped formatting/diff checks pass.
+Owned fixture databases/roles0/0. These native checks used integrated regex source.
+
+Frozen11 manifest /private/tmp/fl-payment-link-expiration-recovery-final.json,
+SHA25619cc444136379950d4ca9774f0a1c186c5f21cf907335e2c99be184977d6c65a.
+Logs /private/tmp/fl-payment-link-expiration-recovery-{sdk,pg-final,regression,clippy-final,minimal}.log.
+CI includes the SDK oracle and recovery PostgreSQL matrix. HTTP/MCP/SDK recovery
+selection remains separate; broad checklist660/682(96.8%) unchanged.

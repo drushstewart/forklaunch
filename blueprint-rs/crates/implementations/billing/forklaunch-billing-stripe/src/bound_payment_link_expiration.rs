@@ -1,4 +1,5 @@
 //! Explicit actor-owned metadata-only expiration. Never deactivates a Stripe URL.
+mod recovery;
 use crate::{bound_creation::BoundPaymentLinkCreationProfile, services::StripeBillingService};
 use forklaunch_billing_base::services::postgres::{
     PaymentLinkExpirationClaim, PaymentLinkExpirationStatus, PostgresBillingStore,

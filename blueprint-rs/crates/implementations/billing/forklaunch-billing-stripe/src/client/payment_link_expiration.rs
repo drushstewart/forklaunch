@@ -4,6 +4,27 @@ use forklaunch_blueprint_core::{BlueprintResult, provider_http::provider_status_
 use reqwest::Method;
 use serde_json::{Value, json};
 impl StripeBillingClient {
+    pub(crate) async fn retrieve_payment_link_expiration_event(
+        &self,
+        context: &VerifiedStripeContext,
+        id: &str,
+    ) -> BlueprintResult<Value> {
+        self.direct_creation_version()?;
+        if !id.starts_with("evt_")
+            || id.len() <= 4
+            || id.len() > 128
+            || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            return Err(crate::bound_payment_link_expiration::invalid());
+        }
+        context.ensure_current(self)?;
+        let event = self
+            .retrieve(super::StripeResource::Event, id, &json!({}))
+            .await?;
+        context.ensure_current(self)?;
+        Ok(event)
+    }
+
     pub(crate) async fn expire_payment_link_metadata(
         &self,
         context: &VerifiedStripeContext,

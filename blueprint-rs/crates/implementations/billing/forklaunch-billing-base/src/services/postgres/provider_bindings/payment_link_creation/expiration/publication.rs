@@ -6,6 +6,7 @@ use super::{
 use forklaunch_blueprint_core::BlueprintResult;
 use serde_json::{Value, json};
 use sqlx::PgPool;
+use uuid::Uuid;
 const FUNCTION: &str =
     "fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text)";
 /// Explicitly trusted separate publisher credential. No default-pool fallback.
@@ -177,6 +178,46 @@ impl TrustedPaymentLinkExpirationPublisher {
     where
         F: Fn() -> BlueprintResult<()> + Send + Sync,
     {
+        self.complete_proof(
+            Completion {
+                operation: ticket.operation,
+                public_id: ticket.public_id,
+                reservation: ticket.reservation,
+                hash: ticket.hash,
+                canonical: ticket.canonical,
+                snapshot: ticket.snapshot,
+            },
+            None,
+            fresh,
+        )
+        .await
+    }
+    /// Publishes a verified read-only recovery; cannot dispatch or expose a key.
+    /// The caller is the trusted provider adapter and must verify the supplied evidence.
+    /// # Errors
+    /// Rejects oversized evidence, stale dependencies, missing claims and uncertain COMMIT.
+    pub async fn complete_recovery<F>(
+        &self,
+        recovery: super::PaymentLinkExpirationRecovery,
+        evidence: &Value,
+        fresh: F,
+    ) -> BlueprintResult<()>
+    where
+        F: Fn() -> BlueprintResult<()> + Send + Sync,
+    {
+        super::super::super::subscription_creation::budget(evidence, 0, &mut 0, &mut 0)?;
+        self.complete_proof(recovery.completion, Some(evidence), fresh)
+            .await
+    }
+    async fn complete_proof<F>(
+        &self,
+        ticket: Completion,
+        evidence: Option<&Value>,
+        fresh: F,
+    ) -> BlueprintResult<()>
+    where
+        F: Fn() -> BlueprintResult<()> + Send + Sync,
+    {
         let store = &self.store;
         if ticket.snapshot.actor != store.binding_actor()?
             || ticket.snapshot.binding.tenant != store.tenant.id()
@@ -190,11 +231,12 @@ impl TrustedPaymentLinkExpirationPublisher {
         }
         let expected: Value =
             serde_json::from_str(&ticket.canonical).map_err(|_| storage_error())?;
-        let receipt = store.seal_expiration(
-            ticket.operation,
-            "receipt",
-            &json!({"hash":ticket.hash,"publicId":ticket.public_id.to_string(),"status":"EXPIRED"}),
-        )?;
+        let mut receipt_value =
+            json!({"hash":ticket.hash,"publicId":ticket.public_id.to_string(),"status":"EXPIRED"});
+        if let Some(evidence) = evidence {
+            receipt_value["recovery"] = json!({"kind":"event_linked_metadata_expiration_v1","evidence":evidence,"evidenceHash":super::hash(&super::canonical(evidence).to_string())});
+        }
+        let receipt = store.seal_expiration(ticket.operation, "receipt", &receipt_value)?;
         let mut tx = store.transaction().await?;
         store.expiration_role(&mut tx).await?;
         store
@@ -223,4 +265,14 @@ impl TrustedPaymentLinkExpirationPublisher {
         }
         tx.commit().await.map_err(|_| unknown())
     }
+}
+
+/// Private local publication fields; unlike reservation this contains no dispatch key.
+pub(super) struct Completion {
+    pub(super) operation: Uuid,
+    pub(super) public_id: Uuid,
+    pub(super) reservation: Uuid,
+    pub(super) hash: String,
+    pub(super) canonical: String,
+    pub(super) snapshot: Box<super::PaymentLinkCreationReadSnapshot>,
 }
