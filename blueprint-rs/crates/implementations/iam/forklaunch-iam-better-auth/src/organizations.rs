@@ -14,9 +14,11 @@ use std::sync::Arc;
 mod create;
 mod delivery;
 pub use delivery::{InvitationDeliveryContext, InvitationEmailDelivery};
+mod controls;
 mod full;
 mod invitation_policy;
 mod team_policy;
+pub use controls::OrganizationControls;
 pub use team_policy::TeamPolicy;
 mod invitations;
 pub use invitation_policy::InvitationPolicy;
@@ -36,6 +38,7 @@ pub struct OrganizationService<S> {
     policy: OrganizationPolicy,
     invitation_policy: InvitationPolicy,
     team_policy: TeamPolicy,
+    controls: OrganizationControls,
     invitation_delivery: Option<Arc<dyn InvitationEmailDelivery>>,
     background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     cancel_pending_invitations_on_reinvite: bool,
@@ -80,6 +83,12 @@ impl<S: AuthStore> OrganizationService<S> {
         self
     }
 
+    /// Installs trusted deletion and dynamic-role quota controls.
+    #[must_use]
+    pub fn with_organization_controls(mut self, controls: OrganizationControls) -> Self {
+        self.controls = controls;
+        self
+    }
     /// Installs trusted scalar team options without changing other policies.
     #[must_use]
     pub fn with_team_policy(mut self, policy: TeamPolicy) -> Self {
@@ -113,6 +122,7 @@ impl<S: AuthStore> OrganizationService<S> {
             policy: OrganizationPolicy::default(),
             invitation_policy: InvitationPolicy::default(),
             team_policy: TeamPolicy::default(),
+            controls: OrganizationControls::default(),
             invitation_delivery: None,
             background_dispatcher: None,
             cancel_pending_invitations_on_reinvite: false,

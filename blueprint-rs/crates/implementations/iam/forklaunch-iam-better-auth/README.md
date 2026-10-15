@@ -2045,3 +2045,21 @@ persist an undercount correction before returning the same limit error.
 Failures roll back their operation, unlike upstream compensating cleanup whose
 intermediate effects can be visible. No arbitrary asynchronous policy/default-team
 creator callbacks, additional schemas, or cleanup-failure equivalence is implied.
+
+### Organization deletion and role quotas
+
+`OrganizationControls::new(disable_deletion, maximum_roles)` is installed through
+`OrganizationService::with_organization_controls` or the equivalent `AuthHttp`
+builder. Defaults are deletion enabled and no role quota. The optional `u32` quota
+includes every matching dynamic-role record; zero denies new roles. It uses the
+indexed total under the tenant's writer transaction, rather than the first-100
+permission-hydration window. As elsewhere with indexed counts, off-page ciphertext
+is not decrypted and the total assumes store-managed index integrity.
+
+Disabled deletion returns `404 ORGANIZATION_DELETION_DISABLED` after normal HTTP
+input/origin admission but before any session lookup, refresh, or storage access.
+Role quotas follow predefined-name, membership, and `ac:create` checks, and precede
+permission-resource validation and duplicate stored-name checks. The quota grants
+no permissions itself. Writer serialization prevents concurrent admissions from
+exceeding the last slot; default deletion behavior remains unchanged. These are
+trusted scalar options, not HTTP body fields or arbitrary policy callbacks.

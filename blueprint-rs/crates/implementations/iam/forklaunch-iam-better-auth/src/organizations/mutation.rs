@@ -128,6 +128,7 @@ impl<S: AuthStore> OrganizationService<S> {
         id: &str,
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
+        self.controls.check_deletion()?;
         self.session(token, transient, now).await?;
         if id.is_empty() {
             return Err(missing());

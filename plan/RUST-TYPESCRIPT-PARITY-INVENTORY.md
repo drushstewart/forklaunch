@@ -11777,3 +11777,28 @@ The committed intersection worktree was removed after exact-HEAD/clean-state,
 eleven integrated source hashes and no active/open-path checks. The proof branch
 and external artifacts remain. Receipt `/private/tmp/fl-intersection-cleanup.json`
 records4,185 regular files and44,828,865 logical bytes removed.
+
+
+### 2026-10-15: Organization deletion and dynamic-role controls
+
+Trusted `OrganizationControls` now propagates through native service and HTTP
+builders. Deletion disabling preserves body validation and rejects before session
+lookup or refresh. Optional dynamic-role quotas count all organization-role rows
+under the writer lock, including configured-name records; zero denies creation.
+Existing authorization and predefined-name checks precede quota checks, which
+precede permission-resource and duplicate-name checks. Defaults preserve behavior.
+
+Actual Better Auth16 cases, final native organization8 tests, restricted PostgreSQL
+(224.12s) and strict all-feature/all-target Clippy pass. Minimal-library strict
+Clippy also passes. PostgreSQL completed before the final test-only malformed-input
+assertions; production source did not change afterward. Owned PostgreSQL roles,
+records and audit cleanup counts are zero. Frozen11 manifest
+`/private/tmp/fl-org-controls-freeze.json` has SHA256
+`aa1e1e84557da24c07bfb13f2241dff6ce0a135964dcd678494bb2bc5fa1fa26`;
+logs use `/private/tmp/fl-org-controls-`. CI runs the actual-source fixture.
+
+An additional minimal-all-target experiment exposed ten existing HTTP-feature
+references in keyring configuration/rotation tests; it failed and is retained in
+`fl-org-controls-minimal-clippy-final.log`. This does not replace the passing
+minimal-library check and remains a separate feature-gating follow-up. Creator-role
+lifecycle and broader auth coverage remain open; checklist660/682 is unchanged.

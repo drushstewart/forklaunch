@@ -42,6 +42,18 @@ impl<S: AuthStore> OrganizationService<S> {
         if !allowed(&mut tx, &org, role, Some(&json!({"ac":["create"]}))).await? {
             return Err(denied("create"));
         }
+        if let Some(limit) = self.controls.maximum_roles {
+            let count = tx
+                .find_window(Model::OrganizationRole, "organizationId", &org, 0, 1)
+                .await?
+                .total;
+            if u64::try_from(count).unwrap_or(u64::MAX) >= u64::from(limit) {
+                return Err(BlueprintError::new(
+                    "TOO_MANY_ROLES",
+                    "This organization has too many roles",
+                ));
+            }
+        }
         let permission = &body["permission"];
         check_permissions(&mut tx, &org, role, permission, "create").await?;
         if crate::store::find_all(&mut tx, Model::OrganizationRole, "organizationId", &org)

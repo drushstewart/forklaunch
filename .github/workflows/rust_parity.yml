@@ -310,6 +310,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_credential_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_clock.mjs'
       - 'cli/tests/fixtures/rust_better_auth_organization_policy.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_organization_controls.mjs'
       - 'cli/tests/fixtures/rust_better_auth_team_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_invitation_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_invitation_cancel.mjs'
@@ -759,6 +760,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_credential_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_clock.mjs'
       - 'cli/tests/fixtures/rust_better_auth_organization_policy.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_organization_controls.mjs'
       - 'cli/tests/fixtures/rust_better_auth_team_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_invitation_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_invitation_cancel.mjs'
@@ -1990,6 +1992,10 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/fixtures/rust_better_auth_team_policy.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/fixtures/rust_better_auth_organization_controls.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

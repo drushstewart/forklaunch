@@ -1,5 +1,6 @@
 use super::*;
 mod additions;
+pub(crate) mod controls;
 pub(crate) mod invitation_cancel;
 pub(crate) mod invitation_delivery;
 pub(crate) mod invitation_policy;

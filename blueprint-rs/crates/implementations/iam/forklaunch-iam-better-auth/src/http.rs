@@ -75,6 +75,7 @@ pub struct AuthHttp<S> {
     organization_policy: crate::organizations::OrganizationPolicy,
     invitation_policy: crate::organizations::InvitationPolicy,
     team_policy: crate::organizations::TeamPolicy,
+    organization_controls: crate::organizations::OrganizationControls,
     invitation_delivery: Option<Arc<dyn crate::organizations::InvitationEmailDelivery>>,
     cancel_pending_invitations_on_reinvite: bool,
     store: Arc<S>,
@@ -130,6 +131,15 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         self
     }
 
+    /// Installs trusted organization deletion and dynamic-role admission controls.
+    #[must_use]
+    pub fn with_organization_controls(
+        mut self,
+        controls: crate::organizations::OrganizationControls,
+    ) -> Self {
+        self.organization_controls = controls;
+        self
+    }
     /// Installs server-owned scalar team admission policy.
     #[must_use]
     pub fn with_team_policy(mut self, policy: crate::organizations::TeamPolicy) -> Self {
@@ -217,6 +227,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             organization_policy: crate::organizations::OrganizationPolicy::default(),
             invitation_policy: crate::organizations::InvitationPolicy::default(),
             team_policy: crate::organizations::TeamPolicy::default(),
+            organization_controls: crate::organizations::OrganizationControls::default(),
             invitation_delivery: None,
             cancel_pending_invitations_on_reinvite: false,
             store,
@@ -659,6 +670,9 @@ async fn handle<S: AuthStore + 'static>(
     if path == app.jwks_path {
         return app.jwks(now).await;
     }
+    if path == "/organization/delete" {
+        app.organization_controls.check_deletion()?;
+    }
     let sessions = SessionService::new(app.store.clone())
         .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
         .with_session_policy(app.session_policy);
@@ -1032,6 +1046,7 @@ fn failure_response(error: &BlueprintError) -> Response {
         code if code.starts_with("better_auth_") || code == "INTERNAL_SERVER_ERROR" => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
+        "ORGANIZATION_DELETION_DISABLED" => StatusCode::NOT_FOUND,
         _ => StatusCode::BAD_REQUEST,
     };
     let mut body = if matches!(
