@@ -2775,3 +2775,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Bounded enums/discriminated unions pass5,838 comparisons per numeric mode,12,096 intersection regressions per mode,90 full/85 minimal tests,327 HTTP/156 MCP and both SDKs. Strict checks pass; committed worktree cleaned with proof retained. Broader schema gates remain open,660/682 unchanged.
 
 - 2026-10-15: Configured cache-first Checkout/PaymentLink GET passes actual369 plus48 HTTP cases, native Stripe2/restricted-PG HTTP1, legacy170, artifacts186 and strict full/minimal checks. Provider429/status/text/correlation and read-only public identity behavior covered; cache date coercion/lists and broader billing remain open,660/682 unchanged.
+
+- 2026-10-15: Unicode16 case transforms pass2,224,128 scalar plus13,855 context/order comparisons,95 full/89 minimal tests,351 HTTP/168 MCP and both SDKs. Licensed source/package inclusion and strict checks pass; committed worktree cleaned. Numeric length bounds and broader schema gates remain open,660/682 unchanged.

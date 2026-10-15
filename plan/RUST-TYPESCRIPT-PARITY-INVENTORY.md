@@ -11930,3 +11930,41 @@ was verified. CI includes the new actual HTTP oracle and native read fixtures.
 Configured cache date coercion beyond typed native persisted dates, cache-selected
 PaymentLink lists, broader wire failure/retry behavior and remaining billing gates
 stay open. No framework, dependency or lock changes. Checklist660/682 unchanged.
+
+
+### 2026-10-15: Ordered Unicode16 lowercase and uppercase transforms
+
+Commit `54e44c773` makes checked strings available in default builds and adds
+allocating Lowercase/Uppercase operations; Regex remains feature-gated. Existing
+borrowed string APIs retain their signatures. Pinned Unicode16 full mappings and
+Final_Sigma context rules compose with trim, ordered assertions and regex checks.
+Public failures remain atomic; private dirty values retain intersection semantics.
+Exact output capacity and scan work are charged before allocation; sigma context
+scans are linear. This is requested-work/storage accounting, not an RSS bound.
+
+Exact native comparison passes2,224,128 scalar mappings and13,855 context/order/
+long-run cases. Full95/minimal89 tests, strict validation/Axum full and validation
+minimal Clippy pass. Live checks pass351 HTTP comparisons,168 MCP comparisons
+with scoped envelopes,3 safe Operational500 cases and6 calls through each SDK.
+The discriminator regression passes5,838 cases per numeric mode. Production
+source was unchanged across those proofs; only an example hexadecimal literal
+was restyled before final scalar/discriminator reruns. Commands and source order:
+`/private/tmp/fl-case-receipt.md`; logs use `/private/tmp/fl-case-`.
+
+All17 integrated paths match `/private/tmp/fl-case-source.json` SHA256
+`901dc6b4fe3adc9ca05440b3e3f616213887d84b02177934722846c0ac4f5ae4`,
+including the template data symlink text. Licensed SpecialCasing data retains its
+original SHA and final blank line through a file-specific Git whitespace rule.
+The reproducible generator checks source hashes and reuses retained UnicodeData/
+DerivedCoreProperties. Offline package listing confirms source/data/license/
+provenance inclusion; permanent CLI archive guards were added. This is package
+inclusion evidence, not a new immutable package-install/runtime checkpoint.
+
+Remaining numeric length registrations, lone UTF16/non-JSON domains, arbitrary
+callbacks/lazy graphs and pure-input schema emission stay open. Every pinned
+ZodString check family now has an admitted native operation, but this does not
+close the broader schema gate. Checklist660/682 is unchanged.
+
+The clean committed case worktree was removed after exact HEAD,17 integrated
+hashes and zero open paths. `/private/tmp/fl-case-cleanup.json` records4,214 files
+and45,191,355 logical bytes removed; proof branch/receipts and active caches remain.
