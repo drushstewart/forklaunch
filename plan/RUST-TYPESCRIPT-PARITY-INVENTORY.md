@@ -11146,5 +11146,16 @@ were present in the standalone crate but absent from the CLI template directory.
 The template now includes that data directory. The permanent installed-package
 check verifies exact Unicode data/license SHA256s and the new JWT/emoji and
 credential/clock sources. The check correctly failed against the older69cee
-archive; corrected package installation/generation validation is pending. This
-does not change runtime format semantics or close a broad parity gate.
+archive. Corrected immutable snapshot `f2b3062695841eee5ce066ddea4bd05be07422f5`
+passes offline locked CLI packaging/installation/repackage listing and fresh portable
+project generation with the new provenance assertions. All2,897 extracted regular
+files match their archive bytes after generation. Retained archive SHA256:
+`60cc68eb4f1c7e53f296d203b4b699e886f07e37bb885ae02fa2396c8658072e`.
+This is package/generation evidence, not a full runtime pass for this snapshot.
+The separate69cee runtime suite was still running when recorded.
+
+Receipt: `/private/tmp/fl-oct15-licensed-checkpoint.json`; generation log:
+`/private/tmp/fl-oct15-licensed-generation.log`. Exact owned extraction/install
+workspaces were removed after process/open-file and retained-archive hash checks,
+reclaiming185,515,249 logical file bytes (no physical APFS claim). The archive and
+logs remain. This does not change runtime format semantics or close a broad gate.
