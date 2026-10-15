@@ -85,3 +85,5 @@ export const universalSdk = async <TypedController>(options: {
 };
 
 export { RegistryOptions };
+
+export type { ResponseAjvFactory, ResponseSchemaContext } from './src/core/responseDialect';

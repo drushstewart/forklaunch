@@ -2,6 +2,7 @@ import type Ajv from 'ajv';
 import type { AnySchema, ValidateFunction } from 'ajv';
 import { OpenAPIObject } from 'openapi3-ts/oas31';
 import { ajvSchema } from './ajvSchema';
+import { responseContext, assertResponseEngine, assertResponseSchema, engineDialect, ResponseAjvFactory, ResponseSchemaContext } from './responseDialect';
 import { coerceSpecialTypes } from './coerceSpecialTypes';
 import { coerceReferenced, SchemaCursor } from './coerceReferenced';
 
@@ -15,11 +16,12 @@ let nextDocumentId = 0;
  * legacy two-argument coerceSpecialTypes helper retains its existing behavior.
  */
 export class ResponseSchemas {
-  private inline = new WeakMap<object, AnySchema>();
-  private documents = new WeakMap<OpenAPIObject, { ajv: Ajv; base: string }>();
+  private positional = new WeakMap<object, Map<string, boolean>>();
+  private inline = new WeakMap<object, Map<string, AnySchema>>();
+  private documents = new WeakMap<OpenAPIObject, Map<string, { ajv: Ajv; base: string; context: ResponseSchemaContext }>>();
   constructor(
     private readonly source: Ajv,
-    private readonly factory?: () => Ajv
+    private readonly factory?: ResponseAjvFactory
   ) {}
 
   coerce(
@@ -28,9 +30,31 @@ export class ResponseSchemas {
     schema: AnySchema,
     input: Record<string, unknown>
   ): unknown {
-    if (!hasReferences(schema))
+    const context = responseContext(document, schema, this.source);
+    const referenced = hasReferences(schema);
+    const engine = context.explicit && this.factory
+      ? this.register(document, context).ajv : this.source;
+    assertResponseEngine(engine, context);
+    let positional = false;
+    if (!referenced && typeof schema === 'object') {
+      let cached = this.positional.get(schema);
+      const previous = cached?.get(context.dialect);
+      if (previous !== undefined) positional = previous;
+      else {
+        ajvSchema(schema, engine.opts?.schemaId, false, context.dialect, (node) => {
+          assertResponseSchema(node, context);
+          if (context.dialect === 'https://json-schema.org/draft/2020-12/schema'
+            ? Array.isArray(node.prefixItems) : Array.isArray(node.items)) positional = true;
+        });
+        if (!cached) { cached = new Map(); this.positional.set(schema, cached); }
+        cached.set(context.dialect, positional);
+      }
+    }
+    if (!referenced && !positional)
       return coerceSpecialTypes(input, schema as Record<string, unknown>);
-    const entry = this.register(document);
+    const entry = referenced ? this.register(document, context) : {
+      base: 'https://forklaunch.invalid/inline-response', ajv: engine, context
+    };
     const locate = (uri: string): SchemaCursor => {
       const url = new URL(uri);
       const fragment = decodeURIComponent(url.hash.slice(1));
@@ -59,12 +83,13 @@ export class ResponseSchemas {
         )
           base = new URL(current.$id, base).href;
       }
-      return { schema: current, base };
+      return { schema: current, base, dialect: entry.context.dialect };
     };
-    return coerceReferenced(input, locate(`${entry.base}#${pointer}`), {
+    return coerceReferenced(input, referenced ? locate(`${entry.base}#${pointer}`) : {schema, base:entry.base, dialect:context.dialect}, {
       reference: (cursor, ref) => locate(new URL(ref, cursor.base).href),
       child: (cursor, child) => ({
         schema: child,
+        dialect: cursor.dialect,
         base:
           typeof child === 'object' &&
           child !== null &&
@@ -81,41 +106,53 @@ export class ResponseSchemas {
     pointer: string,
     schema: AnySchema
   ): ValidateFunction {
+    const context = responseContext(document, schema, this.source);
     if (!hasReferences(schema)) {
-      let compiled = typeof schema === 'object' ? this.inline.get(schema) : schema;
+      const engine = context.explicit && this.factory
+        ? this.register(document, context).ajv : this.source;
+      assertResponseEngine(engine, context);
+      let cached = typeof schema === 'object' ? this.inline.get(schema) : undefined;
+      let compiled = cached?.get(context.dialect);
       if (compiled === undefined) {
-        const dialect = this.source.defaultMeta?.();
-        compiled = ajvSchema(schema, this.source.opts?.schemaId, false, typeof dialect === 'string' ? dialect : undefined);
-        if (typeof schema === 'object') this.inline.set(schema, compiled);
+        compiled = ajvSchema(schema, engine.opts?.schemaId, false, context.dialect,
+          (node) => assertResponseSchema(node, context));
+        if (typeof schema === 'object') {
+          if (!cached) { cached = new Map(); this.inline.set(schema, cached); }
+          cached.set(context.dialect, compiled);
+        }
       }
       const validationSchema = compiled;
       const validate = ((data: unknown) => {
-        const valid = this.source.validate(validationSchema, data);
-        validate.errors = this.source.errors;
+        const valid = engine.validate(validationSchema, data);
+        validate.errors = engine.errors;
         return valid;
       }) as ValidateFunction;
       return validate;
     }
-    const entry = this.register(document);
+    const entry = this.register(document, context);
     const validator = entry.ajv.getSchema(`${entry.base}#${pointer}`);
     if (!validator)
       throw new Error('Response schema not found in OpenAPI document');
     return validator;
   }
-  private register(document: OpenAPIObject): { ajv: Ajv; base: string } {
-    let entry = this.documents.get(document);
+  private register(document: OpenAPIObject, selected = responseContext(document, {}, this.source)): { ajv: Ajv; base: string; context: ResponseSchemaContext } {
+    let contexts = this.documents.get(document);
+    if (!contexts) { contexts = new Map(); this.documents.set(document, contexts); }
+    let entry = contexts.get(selected.dialect);
     if (!entry) {
       // Separate registries may reuse the same absolute schema identifiers.
       // An instance per immutable registry document prevents cache cross-talk.
       // Direct constructor callers retain their complete supplied validator,
       // including custom keywords. Without a factory, conflicting explicit IDs
       // deliberately fail rather than replacing another document's schemas.
-      const ajv = this.factory ? this.factory() : this.source;
+      const ajv = this.factory ? this.factory(Object.freeze({ ...selected })) : this.source;
+      assertResponseEngine(ajv, selected);
+      const context = selected.explicit ? selected : {...selected, dialect:engineDialect(ajv)};
       const base =
         (document as OpenAPIObject & { $id?: string }).$id ??
         `https://forklaunch.invalid/sdk-document/${++nextDocumentId}`;
       const dialect = ajv.defaultMeta?.();
-      const compilation = ajvSchema(document, ajv.opts?.schemaId, true, typeof dialect === 'string' ? dialect : undefined) as OpenAPIObject;
+      const compilation = ajvSchema(document, ajv.opts?.schemaId, true, typeof dialect === 'string' ? dialect : undefined, (node) => assertResponseSchema(node, context)) as OpenAPIObject;
       for (const schema of Object.values(compilation.components?.schemas ?? {})) {
         if (
           schema &&
@@ -126,8 +163,8 @@ export class ResponseSchemas {
           ajv.addSchema(schema as AnySchema, new URL(schema.$id, base).href);
       }
       ajv.addSchema(compilation, base);
-      entry = { ajv, base };
-      this.documents.set(document, entry);
+      entry = { ajv, base, context };
+      contexts.set(selected.dialect, entry);
     }
     return entry;
   }

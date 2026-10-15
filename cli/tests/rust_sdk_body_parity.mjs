@@ -44,10 +44,11 @@ try {
   const { getSdkPath } = await load('framework/universal-sdk/src/core/resolvePath.ts', { './regex': { generateStringFromRegex() { throw Error('unexpected regex'); } } });
   const specialTypes = await load('framework/universal-sdk/src/core/coerceSpecialTypes.ts');
   const referenced = await load('framework/universal-sdk/src/core/coerceReferenced.ts', { './coerceSpecialTypes': specialTypes });
+  const dialect = await load('framework/universal-sdk/src/core/responseDialect.ts');
   const schemaAdapter = await load('framework/universal-sdk/src/core/ajvSchema.ts');
-  const responseSchemas = await load('framework/universal-sdk/src/core/responseSchema.ts', { './coerceSpecialTypes': specialTypes, './coerceReferenced': referenced, './ajvSchema': schemaAdapter });
+  const responseSchemas = await load('framework/universal-sdk/src/core/responseSchema.ts', { './coerceSpecialTypes': specialTypes, './coerceReferenced': referenced, './ajvSchema': schemaAdapter, './responseDialect': dialect });
   const uriFormat = await load('framework/universal-sdk/src/core/uriFormat.ts');
-  const { UniversalSdk } = await load('framework/universal-sdk/src/universalSdk.ts', { './core/uriFormat': uriFormat, './core/responseSchema': responseSchemas, '@forklaunch/common': { safeStringify, openApiCompliantPath, safeParse: JSON.parse }, ajv: { default: class {} }, 'ajv-formats': { default() {} }, './core/coerceSpecialTypes': { coerceSpecialTypes: value => value }, './core/mapContentType': { mapContentType: value => value }, './core/openApi': { refreshOpenApi() { throw Error('unexpected refresh'); } }, './core/resolvePath': { getSdkPath } });
+  const { UniversalSdk } = await load('framework/universal-sdk/src/universalSdk.ts', { './core/responseDialect': dialect, 'ajv/dist/2020': { default: class {} }, './core/uriFormat': uriFormat, './core/responseSchema': responseSchemas, '@forklaunch/common': { safeStringify, openApiCompliantPath, safeParse: JSON.parse }, ajv: { default: class {} }, 'ajv-formats': { default() {} }, './core/coerceSpecialTypes': { coerceSpecialTypes: value => value }, './core/mapContentType': { mapContentType: value => value }, './core/openApi': { refreshOpenApi() { throw Error('unexpected refresh'); } }, './core/resolvePath': { getSdkPath } });
   const universal = new UniversalSdk('http://127.0.0.1:9000', { validate: () => true, addFormat() {} }, {}, undefined);
   universal.registryOpenApiJson = {
     latest: { paths: { '/upload': { post: {

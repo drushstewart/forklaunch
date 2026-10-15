@@ -3,6 +3,7 @@ import { coerceSpecialTypes } from './coerceSpecialTypes';
 export interface SchemaCursor {
   schema: unknown;
   base: string;
+  dialect?: string;
 }
 export interface SchemaResolver {
   reference(cursor: SchemaCursor, ref: string): SchemaCursor;
@@ -101,12 +102,21 @@ export function coerceReferenced(
         (Array.isArray(schema.type) && schema.type.includes('string')))
     )
       return convertString(value, schema.format);
-    if (Array.isArray(value) && record(schema.items)) {
+    if (Array.isArray(value)) {
+      const modern = cursor.dialect?.replace(/#$/, '') === 'https://json-schema.org/draft/2020-12/schema';
+      const prefix = modern
+        ? (Array.isArray(schema.prefixItems) ? schema.prefixItems : undefined)
+        : (Array.isArray(schema.items) ? schema.items : undefined);
+      const tail = prefix && !modern ? schema.additionalItems : schema.items;
+      if (!prefix && !record(tail)) return value;
       if (nodes + value.length > 10000)
         throw new Error('Response coercion traversal budget exceeded');
-      return value.map((item) =>
-        visit(item, resolver.child(cursor, schema.items), depth + 1)
-      );
+      return value.map((item, index) => {
+        const itemSchema = prefix && index < prefix.length ? prefix[index] : tail;
+        return record(itemSchema)
+          ? visit(item, resolver.child(cursor, itemSchema), depth + 1)
+          : item;
+      });
     }
     if (record(value) && record(schema.properties)) {
       for (const name in value) {

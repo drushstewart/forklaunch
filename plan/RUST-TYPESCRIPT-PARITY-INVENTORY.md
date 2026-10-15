@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 614 resolved declaration entry points and 1,678 declaration/re-export
+It records 619 resolved declaration entry points and 1,694 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -9889,3 +9889,28 @@ clippy,minimal-clippy}.log. HTTPhashedstorage immediate200 beforedrain and
 builderpreservation are tested. No storage/schema/manifests/locks changes, no PG
 rerun or immutablearchive claim. This is OTP-only backgroundhelper coverage;
 verification/reset/invitations/cleanup remain separate.660/682 (96.8%),22open.
+
+
+### Explicit response dialect and positional tuple coercion (2026-10-14)
+
+Additive ResponseSchemaContext/ResponseAjvFactory passes effective dialect to
+caller factories. Owned SDK selects draft7 by default and Ajv2020 only for explicit
+schema $schema/document jsonSchemaDialect2020. Unmarked OAS3.1 keeps legacy items[]
+behavior. Injected engines/options/keywords remain caller-owned; unsupportedengine
+or conflicting document/resource dialects fail before input conversion. No automatic
+translation, fetching or global schema dialect reinterpretation. Per-document/
+dialect caches isolate factory instances and registered resources. Bounded resolver
+adds legacy items[]/additionalItems and2020prefixItems/items positional conversion
+for date/binary/nullable/ref slots/rest; old twoargument converter and non-tuple
+inline path remain unchanged. Validation controls false/absent tail admission.
+Frozen8 /private/tmp/fl-tuple-consumer-source.json.17realHTTP conversions plus
+legacy TypeBox/homogeneous/unmarked3.1 controls, factory context/cache counters,
+mismatch/mixedresource rejection and budgets pass (/private/tmp/fl-sdk-tuple.log).
+Reference18/body13/own128/URI203261 regressions pass, logs
+/private/tmp/fl-tuple-consumer-{reference,body,own,uri,types}.log. Parent refresh
+public source inventory usingTS5.9.3 now619entries/1694declarations/0unresolved
+across44packages; inventorytests pass. Refreshed strict12roots/619exports fixture
+(actualTS7.0.2) passes, log /private/tmp/fl-tuple-consumer-refreshed-types.log;
+initial parent invocation lacked required fixtureenv and was corrected.
+No native/Cargo/lock/emitter changes; precise Rust tuple models and explicit
+positional emitter follow-through remain open.660/682 (96.8%),22open unchanged.

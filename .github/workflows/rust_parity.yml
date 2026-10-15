@@ -73,6 +73,7 @@ on:
       - 'cli/tests/rust_zod_never_openapi.mjs'
       - 'cli/tests/rust_zod_record_openapi.mjs'
       - 'cli/tests/rust_ajv_own_properties.mjs'
+      - 'cli/tests/rust_sdk_tuple_coercion.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -147,6 +148,9 @@ on:
       - 'framework/universal-sdk/src/core/uriFormat.ts'
       - 'framework/universal-sdk/src/core/ajvSchema.ts'
       - 'framework/universal-sdk/src/core/responseSchema.ts'
+      - 'framework/universal-sdk/index.ts'
+      - 'framework/universal-sdk/src/core/coerceReferenced.ts'
+      - 'framework/universal-sdk/src/core/responseDialect.ts'
       - 'framework/validator/src/zod/uriOpenApi.ts'
       - 'framework/validator/src/zod/zodSchemaValidator.ts'
       - 'framework/validator/shims/zod-v3-openapi/zod-openapi.ts'
@@ -449,6 +453,7 @@ on:
       - 'cli/tests/rust_zod_never_openapi.mjs'
       - 'cli/tests/rust_zod_record_openapi.mjs'
       - 'cli/tests/rust_ajv_own_properties.mjs'
+      - 'cli/tests/rust_sdk_tuple_coercion.mjs'
       - 'cli/tests/fixtures/rust_zod_uri_provenance.json'
       - 'cli/tests/fixtures/rust_zod_uri_wpt.json'
       - 'cli/tests/rust_json_composition_runtime.mjs'
@@ -523,6 +528,9 @@ on:
       - 'framework/universal-sdk/src/core/uriFormat.ts'
       - 'framework/universal-sdk/src/core/ajvSchema.ts'
       - 'framework/universal-sdk/src/core/responseSchema.ts'
+      - 'framework/universal-sdk/index.ts'
+      - 'framework/universal-sdk/src/core/coerceReferenced.ts'
+      - 'framework/universal-sdk/src/core/responseDialect.ts'
       - 'framework/validator/src/zod/uriOpenApi.ts'
       - 'framework/validator/src/zod/zodSchemaValidator.ts'
       - 'framework/validator/shims/zod-v3-openapi/zod-openapi.ts'
@@ -1042,6 +1050,11 @@ jobs:
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
           FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_ajv_own_properties.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_sdk_tuple_coercion.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http

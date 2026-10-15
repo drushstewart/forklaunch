@@ -4,6 +4,8 @@ import {
   safeStringify
 } from '@forklaunch/common';
 import Ajv from 'ajv';
+import Ajv2020 from 'ajv/dist/2020';
+import { draft7, draft2020, ResponseAjvFactory } from './core/responseDialect';
 import addFormats from 'ajv-formats';
 import { OpenAPIObject } from 'openapi3-ts/oas31';
 import { mapContentType } from './core/mapContentType';
@@ -39,13 +41,13 @@ export class UniversalSdk {
     private registryOptions: RegistryOptions,
     private contentTypeParserMap:
       Record<string, ResponseContentParserType> | undefined,
-    responseAjvFactory?: () => Ajv
+    responseAjvFactory?: ResponseAjvFactory
   ) {
     registerFactoryUriFormat(ajv);
     this.responseSchemas = new ResponseSchemas(
       ajv,
       responseAjvFactory
-        ? () => registerFactoryUriFormat(responseAjvFactory())
+        ? (context) => registerFactoryUriFormat(responseAjvFactory(context))
         : undefined
     );
   }
@@ -60,8 +62,11 @@ export class UniversalSdk {
     registryOptions: RegistryOptions,
     contentTypeParserMap?: Record<string, ResponseContentParserType>
   ) {
-    const createAjv = () => {
-      const ajv = new Ajv({
+    const createAjv: ResponseAjvFactory = (context) => {
+      if (context.dialect !== draft7 && context.dialect !== draft2020)
+        throw new Error(`Unsupported owned response schema dialect ${context.dialect}`);
+      const Constructor = context.dialect === draft2020 ? Ajv2020 : Ajv;
+      const ajv = new Constructor({
         coerceTypes: true,
         ownProperties: true,
         allErrors: true,
@@ -72,7 +77,7 @@ export class UniversalSdk {
     };
     return new UniversalSdk(
       host,
-      createAjv(),
+      createAjv({ dialect: draft7, explicit: false }),
       registryOptions,
       contentTypeParserMap,
       createAjv

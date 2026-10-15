@@ -1244,3 +1244,13 @@ resource-local references. Caller-injected engines retain their options and cust
 keywords. A local reference into literal `default`, `const` or `enum` storage that
 requires own-property repair fails explicitly: changing that storage could change
 default data or equality. Public schema documents remain unchanged.
+
+
+Universal SDK response validation accepts explicit JSON Schema2020 via a response
+schema `$schema` or document `jsonSchemaDialect`. Owned engines select the matching
+validator; caller factories receive `ResponseSchemaContext`. Injected engine options
+and keywords remain intact, and mismatched/mixed resource dialects reject explicitly.
+Unmarked OpenAPI3.1 documents retain legacy draft7 behavior. Positional tuple slots
+coerce dates/binary through legacy `items[]` or explicit2020 `prefixItems`, including
+references and rest items. This consumer support does not add tuple schema emission
+or precise generated Rust tuple models.

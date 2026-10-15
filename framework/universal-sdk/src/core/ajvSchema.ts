@@ -11,7 +11,7 @@ const pointer = (path: string[]) => path.map(key => encodeURIComponent(key.repla
  * Repairs inside dual-use default/const/enum data are rejected: rewriting those
  * targets would alter validation equality or injected default values.
  */
-export function ajvSchema(input: AnySchema, idKey: 'id' | '$id' = '$id', document = false, defaultDialect?: string): AnySchema {
+export function ajvSchema(input: AnySchema, idKey: 'id' | '$id' = '$id', document = false, defaultDialect?: string, inspectSchema?: (schema: Record<string, unknown>) => void): AnySchema {
   if (!input || typeof input !== 'object') return input;
   const dialect = typeof input.$schema === 'string' ? input.$schema : defaultDialect;
   const draft4 = idKey === 'id' || dialect?.includes('/draft-04/');
@@ -86,6 +86,7 @@ export function ajvSchema(input: AnySchema, idKey: 'id' | '$id' = '$id', documen
     const original = originalAt(path);
     if (!original || typeof original !== 'object' || Array.isArray(original)) continue;
     const node = copy(path) as Record<string, unknown>;
+    inspectSchema?.(node);
     const base = typeof node[idKey] === 'string' ? path : resource;
     for (const key of ['default', 'const', 'enum']) {
       if (own(original, key)) literalRanges.push([...path, key]);
