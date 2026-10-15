@@ -102,6 +102,7 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
         },
     ];
     fields.extend(absence_fields());
+    fields.extend(object_policy_fields());
     Schema::Object(fields)
 }
 fn absence_fields<'a>() -> Vec<typescript_coerce::ZodJsonField<'a>> {
@@ -126,6 +127,36 @@ fn absence_fields<'a>() -> Vec<typescript_coerce::ZodJsonField<'a>> {
         Field {
             name: "nothing",
             schema: Schema::Union(vec![Schema::Void, Schema::Null, Schema::Undefined]),
+        },
+    ]
+}
+
+fn object_policy_fields<'a>() -> Vec<typescript_coerce::ZodJsonField<'a>> {
+    use typescript_coerce::{
+        ZodJsonField as Field, ZodJsonSchema as Schema, ZodJsonUnknownKeys as Policy,
+    };
+    vec![
+        Field {
+            name: "bag",
+            schema: Schema::Optional(Box::new(Schema::ObjectWithPolicy {
+                fields: vec![Field {
+                    name: "label",
+                    schema: Schema::String(vec![]),
+                }],
+                unknown: Policy::Passthrough,
+                catchall: None,
+            })),
+        },
+        Field {
+            name: "scores",
+            schema: Schema::Optional(Box::new(Schema::ObjectWithPolicy {
+                fields: vec![Field {
+                    name: "label",
+                    schema: Schema::String(vec![]),
+                }],
+                unknown: Policy::Strict,
+                catchall: Some(Box::new(Schema::Number(vec![]))),
+            })),
         },
     ]
 }

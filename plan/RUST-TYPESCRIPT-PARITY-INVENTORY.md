@@ -9281,3 +9281,24 @@ were checked with cargo-audit against local1310-entry RustSec data
 (/private/tmp/fl-oct14-encrypted-dependency-audit.json). Audit exits1 for the
 existing exactly reviewed rsa0.9.10 RUSTSEC-2023-0071; no new package finding or
 warning was reported. No fresh-database/zero-advisory claim.
+
+### 2026-10-14: object passthrough/catchall policies (working source)
+
+ObjectWithPolicy adds Strip/Strict/Passthrough and optional catchall, preserving
+existing Object/StrictObject behavior via shared evaluator. Active catchall
+overrides unknown policy; unwrapped Never alone is the source sentinel. Declared
+diagnostics precede own-key-ordered extras, all values run after earlier aborts,
+and __proto__ validates then omits output. Unavailable extra diagnostic order is
+deferred to selected errors so a later valid union branch can win. Bounded
+traversal/cloning shares existing schema/input/work budgets. No prototype
+inheritance/callback/nonJSON or serialized-order claim.
+
+Frozen9 hashes: /private/tmp/fl-zod-object-policy-source.json. Native67 per
+default/arbitrary_precision mode; actual8910 exact+3 explicit nonfinite boundaries
+per mode; live219HTTP/102MCP/3safe500/6TS SDK+6Rust SDK; strict validation+Axum
+all-feature/all-target Clippy all pass. Absence4212 and Record7844+4 regressions
+pass each feature mode. Production behavior needed no correction; oracle fixed
+nested -0 serialization and separated Infinity coercion from finite-domain
+controls. Logs /private/tmp/fl-zod-object-policy-{tests,default-tests,parity,live,
+clippy,absence,record}.log. CI adds object-policy oracle. Broader schema gates
+remain open;660/682 unchanged.

@@ -35,7 +35,8 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: checked AsyncAPI correlation expressions and metadata import/export, including referenced trait precedence; native38, minimal22, official parser and strict Clippy pass.
 - Completed: JSON-domain Null/Undefined/Void/Never and ordered nullish lowering, with4212 exact pairs per feature mode and195 HTTP/90 MCP/both-SDK checks.
 - Completed: direct bound BillingPortal creation with immutable intent, Customer claims and separate-role atomic UUID publication; restricted PG, official SDK and legacy170/configured186 checks pass.
-- Active: object passthrough/catchall policies, async custom OTP codecs and next configured billing creation audit. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: object passthrough/catchall policies with8910 exact comparisons per feature mode and219 HTTP/102 MCP/both-SDK checks.
+- Active: async custom OTP codecs, direct bound Checkout creation and URI factory validity audit. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
 - Integration: origin/main through e36cfd29c is already merged; refetched2026-10-14 with no missing main commits. Owned completed checkpoints and redundant generated dependencies are cleaned as verification permits.

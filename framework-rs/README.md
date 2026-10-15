@@ -345,6 +345,14 @@ or collisions. Plain `serde_json::Value` returns an unsupported result when that
 order is required. Successful output comparisons cover semantic values; serialized
 property order is not guaranteed.
 
+`ZodJsonSchema::ObjectWithPolicy` adds `ZodJsonUnknownKeys::{Strip, Strict,
+Passthrough}` and an optional catchall. An active catchall overrides the unknown-key
+policy; only unwrapped `Never` restores that policy. Extra values are validated
+in own-key order after declared fields, including `__proto__`, whose output is
+omitted. Use an ordered document when multiple extra diagnostics need insertion
+order. Passthrough/catchall preserve semantic values without a serialized-key-order
+promise. Existing `Object` and `StrictObject` use the same evaluator.
+
 Choose `ZodJsonSchema::StrictObject` to reject unknown keys with source-ordered
 diagnostics. Parse `OrderedJsonDocument` from bounded JSON and evaluate it with
 `zod_json_ordered_at_path(&document, &schema, &["body"])`. The immutable document

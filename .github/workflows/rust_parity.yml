@@ -63,6 +63,7 @@ on:
       - 'cli/tests/rust_zod_ordered_json_parity.mjs'
       - 'cli/tests/rust_zod_record_json_parity.mjs'
       - 'cli/tests/rust_zod_absence_json_parity.mjs'
+      - 'cli/tests/rust_zod_object_policy_parity.mjs'
       - 'cli/tests/rust_json_composition_runtime.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
@@ -406,6 +407,7 @@ on:
       - 'cli/tests/rust_zod_ordered_json_parity.mjs'
       - 'cli/tests/rust_zod_record_json_parity.mjs'
       - 'cli/tests/rust_zod_absence_json_parity.mjs'
+      - 'cli/tests/rust_zod_object_policy_parity.mjs'
       - 'cli/tests/rust_json_composition_runtime.mjs'
       - 'cli/tests/rust_zod_email_openapi.mjs'
       - 'cli/tests/rust_zod_check_messages_parity.mjs'
@@ -912,6 +914,10 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_zod_absence_json_parity.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+      - run: node cli/tests/rust_zod_object_policy_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http

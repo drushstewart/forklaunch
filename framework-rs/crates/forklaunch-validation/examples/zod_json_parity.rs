@@ -40,10 +40,33 @@ fn string_schema(spec: &Value) -> ZodJsonSchema<'_> {
             .collect(),
     )
 }
+fn object_policy(spec: &Value) -> ZodJsonSchema<'_> {
+    ZodJsonSchema::ObjectWithPolicy {
+        fields: spec["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|field| ZodJsonField {
+                name: field[0].as_str().unwrap(),
+                schema: schema(&field[1]),
+            })
+            .collect(),
+        unknown: match spec["unknown"].as_str().unwrap() {
+            "strip" => forklaunch_validation::typescript_coerce::ZodJsonUnknownKeys::Strip,
+            "strict" => forklaunch_validation::typescript_coerce::ZodJsonUnknownKeys::Strict,
+            "passthrough" => {
+                forklaunch_validation::typescript_coerce::ZodJsonUnknownKeys::Passthrough
+            }
+            _ => panic!("unknown object policy"),
+        },
+        catchall: spec.get("catchall").map(|value| Box::new(schema(value))),
+    }
+}
 fn schema(spec: &Value) -> ZodJsonSchema<'_> {
     let inner = || Box::new(schema(&spec["inner"]));
     match spec["kind"].as_str().unwrap() {
         "string" => string_schema(spec),
+        "policy" => object_policy(spec),
         "number" => ZodJsonSchema::Number(
             spec["checks"]
                 .as_array()

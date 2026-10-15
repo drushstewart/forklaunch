@@ -14,6 +14,8 @@ use issues::Issue;
 #[path = "zod_json_literal.rs"]
 mod literal;
 pub use literal::ZodJsonLiteral;
+#[path = "zod_json_object.rs"]
+mod object_policy;
 #[path = "zod_json_ordered.rs"]
 mod ordered;
 #[path = "zod_json_record.rs"]
@@ -65,6 +67,13 @@ pub enum ZodJsonSchema<'a> {
     Object(Vec<ZodJsonField<'a>>),
     /// Reject unknown keys in original ECMAScript own-key order.
     StrictObject(Vec<ZodJsonField<'a>>),
+    /// Object unknown-key policy with an optional catchall. Only an unwrapped
+    /// `Never` catchall is the source sentinel that restores `unknown` policy.
+    ObjectWithPolicy {
+        fields: Vec<ZodJsonField<'a>>,
+        unknown: ZodJsonUnknownKeys,
+        catchall: Option<Box<Self>>,
+    },
     Union(Vec<Self>),
     /// Evaluate each own string key then its value. Successful scalar keys use
     /// JavaScript property-key conversion; transformed `__proto__` is omitted.
@@ -74,6 +83,14 @@ pub enum ZodJsonSchema<'a> {
         key: Box<Self>,
         value: Box<Self>,
     },
+}
+
+/// The unknown-property policy when no active catchall schema is present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZodJsonUnknownKeys {
+    Strip,
+    Strict,
+    Passthrough,
 }
 
 /// A declared object property; duplicates and prototype-sensitive names are
@@ -343,6 +360,9 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
             ZodJsonSchema::Number(checks) => checks.len(),
             ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
             ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => fields.len(),
+            ZodJsonSchema::ObjectWithPolicy {
+                fields, catchall, ..
+            } => fields.len() + usize::from(catchall.is_some()),
             ZodJsonSchema::Union(branches) => branches.len(),
             ZodJsonSchema::Record { .. } => 2,
             ZodJsonSchema::Optional(_)
@@ -382,7 +402,16 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
                 nodes += checks.len();
                 stack.push((element, depth + 1));
             }
-            ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => {
+            ZodJsonSchema::Object(fields)
+            | ZodJsonSchema::StrictObject(fields)
+            | ZodJsonSchema::ObjectWithPolicy { fields, .. } => {
+                if let ZodJsonSchema::ObjectWithPolicy {
+                    catchall: Some(catchall),
+                    ..
+                } = schema
+                {
+                    stack.push((catchall, depth + 1));
+                }
                 let mut names = std::collections::BTreeSet::new();
                 for field in fields {
                     if !names.insert(field.name) {
@@ -504,6 +533,18 @@ fn evaluate_ordered(
         }
         ZodJsonSchema::Object(fields) => object(input, fields, remaining, order, false)?,
         ZodJsonSchema::StrictObject(fields) => object(input, fields, remaining, order, true)?,
+        ZodJsonSchema::ObjectWithPolicy {
+            fields,
+            unknown,
+            catchall,
+        } => object_policy::evaluate(
+            input,
+            fields,
+            remaining,
+            order,
+            *unknown,
+            catchall.as_deref(),
+        )?,
         ZodJsonSchema::Union(branches) => union(input, branches, remaining, order)?,
         ZodJsonSchema::Record { key, value } => {
             record::evaluate(input, key, value, remaining, order)?
@@ -613,54 +654,18 @@ fn object(
     order: Option<&Order>,
     strict: bool,
 ) -> Result<Parsed, ZodJsonUnsupported> {
-    let Some(Value::Object(values)) = input else {
-        return Ok(Parsed::invalid(
-            vec![ParseError {
-                path: Vec::new(),
-                message: input.map_or_else(
-                    || "Required".to_owned(),
-                    |value| {
-                        format!(
-                            "Expected object, received {}",
-                            match value {
-                                Value::Null => "null",
-                                Value::Bool(_) => "boolean",
-                                Value::Number(_) => "number",
-                                Value::String(_) => "string",
-                                Value::Array(_) => "array",
-                                Value::Object(_) => "object",
-                            }
-                        )
-                    },
-                ),
-            }],
-            Status::Aborted,
-        ));
-    };
-    let mut ordered: Vec<_> = fields.iter().collect();
-    ordered.sort_by_key(|field| index_key(field.name));
-    let mut parsed = Parsed::valid(None);
-    let mut output = Map::new();
-    for field in ordered {
-        let mut child = evaluate_ordered(
-            values.get(field.name),
-            &field.schema,
-            remaining,
-            order.and_then(|o| o.field(field.name)),
-        )?;
-        parsed.absorb(&mut child, field.name, remaining)?;
-        if let Some(value) = child.value {
-            remaining.charge(0, field.name.len())?;
-            output.insert(field.name.to_owned(), value);
-        }
-    }
-    if strict {
-        reject_unknown(values, fields, order, &mut parsed, remaining)?;
-    }
-    if parsed.status == Status::Valid {
-        parsed.value = Some(Value::Object(output));
-    }
-    Ok(parsed)
+    object_policy::evaluate(
+        input,
+        fields,
+        remaining,
+        order,
+        if strict {
+            ZodJsonUnknownKeys::Strict
+        } else {
+            ZodJsonUnknownKeys::Strip
+        },
+        None,
+    )
 }
 
 fn reject_unknown(
@@ -740,3 +745,7 @@ mod record_tests;
 #[cfg(test)]
 #[path = "zod_json_absence_tests.rs"]
 mod absence_tests;
+
+#[cfg(test)]
+#[path = "zod_json_object_tests.rs"]
+mod object_tests;

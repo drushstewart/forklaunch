@@ -40,8 +40,8 @@ pub use constrained_number::{
 mod json;
 pub use json::{
     OrderedJsonDocument, OrderedJsonError, ZodJsonField, ZodJsonLiteral, ZodJsonOutcome,
-    ZodJsonSchema, ZodJsonUnsupported, zod_json, zod_json_at_path, zod_json_ordered,
-    zod_json_ordered_at_path,
+    ZodJsonSchema, ZodJsonUnknownKeys, ZodJsonUnsupported, zod_json, zod_json_at_path,
+    zod_json_ordered, zod_json_ordered_at_path,
 };
 
 /// Coerce a JSON value with the actual `ForkLaunch` Zod number preprocessing.
