@@ -9531,3 +9531,14 @@ mutable-ID downgrade, concurrent Customer xmin and5.1s final audit-lock freshnes
 Legacy direct/managedPG5.42s and strict base/Stripe allfeature/alltargetClippy pass.
 Logs /private/tmp/fl-checkout-provenance-{read-pg-final,legacy-pg,read-clippy}.log;
 cleanup0ownedroles/DBs. Checklist remains660/682,22open.
+
+
+### New example directory package coverage (2026-10-14)
+
+Source-package guard identified missing embedded examples directories for billing
+Axum requestdate and contract URI schema examples. Added relative directory
+symlinks using the existing template convention; all1270 current embedded paths
+pass cli/tests/rust_package_sources.sh. Proof
+/private/tmp/fl-oct14-current-package-sources.log. This is working-source coverage,
+not a new immutable archive/runtime receipt. Refetched origin/main remains
+fully merged (zero missing commits through e36cfd29c).
