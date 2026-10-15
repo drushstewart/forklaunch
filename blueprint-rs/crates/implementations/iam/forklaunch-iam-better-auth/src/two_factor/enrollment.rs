@@ -39,8 +39,8 @@ impl<S: AuthStore> TwoFactorService<S> {
         {
             return Err(error("TOTP_ALREADY_ENABLED", "TOTP is already enabled"));
         }
+        let codes = self.generate_backup_codes()?;
         let secret = crypto::random(32)?;
-        let codes = crypto::backup_codes()?;
         let id = existing
             .as_ref()
             .map(|row| text(row, "id").map(str::to_owned))
@@ -111,7 +111,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             return Err(error("TWO_FACTOR_NOT_ENABLED", "Two factor is not enabled"));
         }
         let mut row = factor(&mut tx, &user).await?;
-        let codes = crypto::backup_codes()?;
+        let codes = self.generate_backup_codes()?;
         row["backupCodes"] = json!(codes);
         tx.replace(Model::TwoFactor, row).await?;
         tx.commit().await?;

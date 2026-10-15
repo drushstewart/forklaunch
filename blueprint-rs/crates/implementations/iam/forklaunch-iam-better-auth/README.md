@@ -1254,8 +1254,8 @@ operation. This stronger atomic race guarantee is tested separately from upstrea
 stable-state ordering. Missing, null and empty credential-password strings count as
 absent; malformed non-string values fail closed. Existing required-password paths
 retain the hash snapshot and mutation-time comparison. No email linking or new
-social-sign-in protection is implied. Custom trust/challenge TTLs and backup-code
-format/storage options remain separate parity work.
+social-sign-in protection is implied. Lifetime and generation options are described
+below; custom backup storage codecs remain separate parity work.
 
 `TwoFactorLifetimeOptions::new(challenge, trusted_device)` accepts independent
 whole-second `std::time::Duration` values from zero through 365 days. Defaults stay
@@ -1307,3 +1307,33 @@ it therefore does not require factor-update capability merely to reset a disable
 counter. Backup consumption and enrollment still update the factor. A dedicated
 factor-update-denying store wrapper tests this distinction over memory and the
 restricted PostgreSQL store, including rollback when backup consumption is denied.
+
+### Backup code generation options
+
+`BackupCodeOptions::new(amount, length)` configures future generation: amount is
+0..=100, random-character length is 1..=127, with defaults 10/10. A dash is inserted
+after the first five characters (or after all characters for shorter codes).
+`TwoFactorService::with_backup_code_options` and
+`AuthHttp::with_two_factor_backup_code_options` install this trusted policy;
+request fields cannot change it. Existing codes remain valid independently of
+later generation options until consumed or regenerated.
+
+`with_backup_code_generator(Arc<dyn BackupCodeGenerator>)` on the service, or
+`with_two_factor_backup_code_generator` on `AuthHttp`, installs a synchronous
+server callback overriding numeric options. Closures returning
+`BlueprintResult<Vec<String>>` implement the trait. Output is bounded to 100 codes,
+each at most 128 UTF-8 bytes. The upstream typed callback is synchronous; no
+asynchronous generator behavior is promised. The callback receives no user,
+session, token or secret context, runs after authorization/password checks inside
+the mutation transaction, and must not reenter that store. Explicit errors and
+out-of-bounds output produce a sanitized empty HTTP 500 without cookies; Rust
+panics are outside this fallible contract. Enrollment and regeneration mutations
+roll back on failure.
+
+The callback owns proof strength. Empty lists, empty strings, duplicate strings
+and Unicode are preserved, matching the upstream custom-generator behavior. A
+successful verification consumes every exact duplicate of that proof atomically.
+Do not log generated proofs or callback error contents. Codes continue to use the
+existing encrypted tenant store; custom backup storage codecs are a separate,
+unimplemented extension. JavaScript negative/fractional generation sizes and
+positive amounts with zero length are outside this bounded typed profile.

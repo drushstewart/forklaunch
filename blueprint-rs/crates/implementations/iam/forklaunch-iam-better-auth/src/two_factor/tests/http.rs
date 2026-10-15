@@ -925,3 +925,108 @@ async fn http_account_lockout_options_status_precedence_and_builder_preservation
         now + Duration::milliseconds(1500)
     );
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn http_backup_generation_server_policy_and_sanitized_failure() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let now = DateTime::<Utc>::from_timestamp(1_800_000_000, 0).unwrap();
+    let store = Arc::new(MemoryAuthStore::default());
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mode = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let selected = mode.clone();
+    let generator: Arc<dyn BackupCodeGenerator> = Arc::new(move || {
+        count.fetch_add(1, Ordering::SeqCst);
+        match selected.load(Ordering::SeqCst) {
+            1 => Err(error(
+                "private-generator",
+                "private credential must never escape",
+            )),
+            2 => Ok(vec!["x".into(); 101]),
+            _ => Ok(vec![
+                "duplicate".into(),
+                "duplicate".into(),
+                String::new(),
+                "é🔑".into(),
+            ]),
+        }
+    });
+    let origin = "http://auth.fixture.test";
+    let router = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+        .unwrap()
+        .with_clock(move || now)
+        .with_rate_limiting(false)
+        .with_two_factor_backup_code_options(BackupCodeOptions::new(1, 1).unwrap())
+        .unwrap()
+        .with_two_factor_backup_code_generator(generator)
+        .unwrap()
+        .with_two_factor_totp_options(TotpOptions::default())
+        .unwrap()
+        .with_two_factor_lifetime_options(TwoFactorLifetimeOptions::default())
+        .unwrap()
+        .with_two_factor_account_lockout_options(AccountLockoutOptions::default())
+        .unwrap()
+        .with_two_factor_lifecycle_options(
+            TwoFactorLifecycleOptions::default().with_skip_verification_on_enable(true),
+        )
+        .unwrap()
+        .router();
+    let mut browser = Browser {
+        router,
+        jar: BTreeMap::new(),
+        origin: origin.into(),
+    };
+    assert_eq!(
+        browser
+            .call("/two-factor/enable", Some(json!({"password":PASSWORD})))
+            .await
+            .0,
+        401
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(browser.call("/sign-up/email", Some(json!({"name":"Backup", "firstName":"Backup", "lastName":"User", "email":"backup-http@example.test", "password":PASSWORD}))).await.0, 200);
+    assert_eq!(
+        browser
+            .call("/two-factor/enable", Some(json!({"password":"wrong"})))
+            .await
+            .0,
+        400
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let (status, body, _) = browser.call("/two-factor/enable", Some(json!({"password":PASSWORD, "backupCodeOptions":{"amount":100,"length":127}, "customBackupCodesGenerate":["attacker"]}))).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body["backupCodes"],
+        json!(["duplicate", "duplicate", "", "é🔑"])
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let factors = rows(store.as_ref(), Model::TwoFactor).await;
+    let sessions = rows(store.as_ref(), Model::Session).await;
+    for invalid in [1, 2] {
+        mode.store(invalid, Ordering::SeqCst);
+        let (status, body, headers) = browser
+            .call(
+                "/two-factor/generate-backup-codes",
+                Some(json!({"password":PASSWORD})),
+            )
+            .await;
+        assert_eq!(status, 500);
+        assert!(body.is_null());
+        assert!(headers.get("set-cookie").is_none());
+        assert_eq!(rows(store.as_ref(), Model::TwoFactor).await, factors);
+        assert_eq!(rows(store.as_ref(), Model::Session).await, sessions);
+    }
+    mode.store(0, Ordering::SeqCst);
+    let (status, body, _) = browser
+        .call(
+            "/two-factor/generate-backup-codes",
+            Some(json!({"password":PASSWORD})),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body["backupCodes"],
+        json!(["duplicate", "duplicate", "", "é🔑"])
+    );
+}

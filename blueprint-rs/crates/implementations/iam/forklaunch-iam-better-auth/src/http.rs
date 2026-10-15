@@ -801,7 +801,9 @@ fn failure_response(error: &BlueprintError) -> Response {
     }
     if matches!(
         error.code.as_str(),
-        "HTTP_INTERNAL_EMPTY" | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
+        "HTTP_INTERNAL_EMPTY"
+            | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
+            | "TWO_FACTOR_GENERATION_FAILED"
     ) {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }

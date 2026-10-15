@@ -29,11 +29,6 @@ pub(super) fn opaque(length: usize) -> BlueprintResult<String> {
     }
     Ok(result)
 }
-pub(super) fn backup_codes() -> BlueprintResult<Vec<String>> {
-    (0..10)
-        .map(|_| opaque(10).map(|code| format!("{}-{}", &code[..5], &code[5..])))
-        .collect()
-}
 pub(super) fn base32(bytes: &[u8]) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
     let mut output = String::new();

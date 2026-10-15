@@ -10,11 +10,13 @@
 //! Optional delivered OTP uses a trusted server hook; `TotpOptions` supports bounded
 //! six/eight-digit periods while preserving SHA-1 and the one-step window. Recovery values are authorized disclosures and
 //! must not be logged; this module intentionally provides no secret-bearing Debug.
+mod backup_options;
 mod crypto;
 mod enrollment;
 mod lifecycle;
 mod lifetime_options;
 mod lockout_options;
+pub use backup_options::{BackupCodeGenerator, BackupCodeOptions};
 use lifecycle::PasswordAction;
 pub use lifecycle::TwoFactorLifecycleOptions;
 pub use lifetime_options::TwoFactorLifetimeOptions;
@@ -50,6 +52,8 @@ pub struct TwoFactorService<S> {
     lifecycle_options: TwoFactorLifecycleOptions,
     lifetime_options: TwoFactorLifetimeOptions,
     account_lockout_options: AccountLockoutOptions,
+    backup_code_options: BackupCodeOptions,
+    backup_code_generator: Option<Arc<dyn BackupCodeGenerator>>,
 }
 /// A successful state transition. Explicit wire projection can contain recovery
 /// credentials and must only be returned to the authorized browser.
@@ -145,6 +149,8 @@ impl<S: AuthStore> TwoFactorService<S> {
             lifecycle_options: TwoFactorLifecycleOptions::default(),
             lifetime_options: TwoFactorLifetimeOptions::default(),
             account_lockout_options: AccountLockoutOptions::default(),
+            backup_code_options: BackupCodeOptions::default(),
+            backup_code_generator: None,
         })
     }
 }

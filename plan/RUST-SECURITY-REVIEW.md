@@ -1097,3 +1097,14 @@ UPDATE, while backup-code consumption still requires an atomic write. Enabled
 policy checks bounds/counter overflow and representable JS-Date deadline before
 mutation. Final restricted PG verifies concurrent increments, rollback, lazy
 expiry reset and denied-factor-write behavior. Defaults remain10 failures/900s.
+
+
+MFA backup generation (2026-10-14): trusted sync hook runs after authoritative
+auth/password/factor checks inside mutation transaction; bounded output and
+explicit errors produce empty500 and atomic rollback, with no callback details
+or cookies exposed. Existing stored-code authority is independent of current
+generation settings. Duplicate matches consume all equal codes atomically.
+Custom empty/Unicode/weak proofs remain caller policy, as upstream; callbacks
+must not reenter their store. Generic encrypted record storage remains unchanged;
+field-codec compatibility is a separate open capability. Restricted PG covers
+concurrent consumption and session-insert failure after enrollment writes.

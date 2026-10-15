@@ -149,10 +149,12 @@ impl<S: AuthStore> TwoFactorService<S> {
         }
         let valid = if recovery {
             let codes = row["backupCodes"].as_array().ok_or_else(corrupt)?;
-            if codes.len() > 10
-                || codes
-                    .iter()
-                    .any(|value| value.as_str().is_none_or(|value| value.len() != 11))
+            if codes.len() > super::backup_options::MAX_CODES
+                || codes.iter().any(|value| {
+                    value
+                        .as_str()
+                        .is_none_or(|value| value.len() > super::backup_options::MAX_CODE_BYTES)
+                })
             {
                 return Err(corrupt());
             }

@@ -9005,3 +9005,34 @@ receipt, final retained-archive checksum, process and open-file guards, removed
 crate/logs/metadata and shared build caches remain. Cleanup is recorded in
 /private/tmp/fl-oct14-options-checkpoint.json; unrelated worktrees/watchers and
 the owned reusable PostgreSQL fixture were retained.
+
+
+## Trusted backup-code generation options and hook (2026-10-14)
+
+BackupCodeOptions supports amount0..100 and random-character length1..127,
+preserving10/10 defaults and dash insertion after min(5,length). Optional trusted
+synchronous BackupCodeGenerator matches the installed typed () => string[] hook,
+overrides amount/length and returns bounded≤100 strings/≤128UTF8bytes each. Empty
+list, duplicate/empty/Unicode codes remain supported. Verification uses stored
+proofs under fixed supported bounds, independently of current generation policy;
+a successful duplicate match consumes every equal code. No HTTP body configures
+server policy.
+
+Generation follows authoritative session/password/factor checks inside the
+mutation transaction. Callback errors/invalid output become empty500 with no
+callback/error details or cookies; factor/session changes roll back. Sync hooks
+must not reenter their store; Rust panic/JavaScript throw equivalence is not
+claimed. Stored factors retain native record encryption; arbitrary field-storage
+codecs remain separate. Bounded custom generators can deliberately return weak
+proofs, matching source semantics rather than silently rewriting them.
+
+Actual full two-factor oracle including six numeric profiles, ordering/failure,
+custom override and exact128byte output cases passes. Focused native4/18.43s,
+affected two-factor26/1ignored56.18s, restrictedPG1/47.16s, strict all-feature/
+all-target Clippy9.67s and minimal Clippy2.36s pass. Memory/PG prove concurrent
+consumption, policy-change old-code validity, generator failure and failed session
+INSERT after enrollment factor/user mutation rollback. Owned roles/records/audits0.
+Final16 hashes /private/tmp/fl-backup-options-freeze.json; logs
+/private/tmp/fl-backup-options-{native,regression,postgres,clippy,minimal,actual,
+full-actual,cleanup}.log. CI tracks helper and expanded PG. Working-source proof
+includes frozen ordered-validator dependency draft, not immutable archive dda838.

@@ -68,6 +68,41 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         Ok(self)
     }
 
+    /// Configures newly generated backup codes; existing codes remain valid.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted authentication configuration.
+    pub fn with_two_factor_backup_code_options(
+        mut self,
+        options: crate::two_factor::BackupCodeOptions,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_backup_code_options(options),
+        ));
+        Ok(self)
+    }
+    /// Installs a trusted synchronous generator overriding numeric generation options.
+    /// # Errors
+    /// Rejects conflicting JWKS namespace or invalid trusted authentication configuration.
+    pub fn with_two_factor_backup_code_generator(
+        mut self,
+        generator: Arc<dyn crate::two_factor::BackupCodeGenerator>,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_backup_code_generator(generator),
+        ));
+        Ok(self)
+    }
+
     /// Configures the pending-sign-in account budget independently of per-proof limits.
     /// # Errors
     /// Rejects conflicting JWKS namespace or invalid trusted authentication configuration.

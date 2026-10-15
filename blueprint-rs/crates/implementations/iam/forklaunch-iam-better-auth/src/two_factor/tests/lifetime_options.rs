@@ -247,6 +247,8 @@ impl<S> TwoFactorService<S> {
             lifecycle_options: self.lifecycle_options.clone(),
             lifetime_options: options,
             account_lockout_options: self.account_lockout_options,
+            backup_code_options: self.backup_code_options,
+            backup_code_generator: self.backup_code_generator.clone(),
         }
     }
 }
