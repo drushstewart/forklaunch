@@ -47,7 +47,16 @@ struct Provider {
     response: Arc<Mutex<Value>>,
     status: Arc<Mutex<Option<u16>>>,
 }
-async fn provider(State(state): State<Provider>, method: Method, uri: Uri) -> Response {
+async fn provider(
+    State(state): State<Provider>,
+    method: Method,
+    uri: Uri,
+    body: axum::body::Bytes,
+) -> Response {
+    assert!(
+        !String::from_utf8_lossy(&body).contains("amount"),
+        "requested amount must not be forwarded"
+    );
     state
         .calls
         .lock()
@@ -114,6 +123,36 @@ async fn matrix(f: &Fixture) {
     )
     .unwrap();
     let router = billing_router(backend, auth, ServiceInfo::new("billing", "1"));
+    let sdk = forklaunch_sdk_typescript::generate_typescript_http_sdk_source(
+        &forklaunch_sdk_codegen::SdkGenerationPlan::from_registry(
+            forklaunch_sdk_codegen::SdkTarget::TypeScript,
+            router.registry(),
+        ),
+        &forklaunch_sdk_typescript::TypeScriptHttpSdkOptions::new("billing"),
+    )
+    .unwrap();
+    let selected = router
+        .registry()
+        .routes()
+        .iter()
+        .find(|route| route.operation_name == "updatePaymentLink")
+        .unwrap();
+    let metadata: Value = serde_json::from_str(
+        selected
+            .request
+            .body
+            .as_ref()
+            .unwrap()
+            .schema
+            .json_schema
+            .as_ref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        metadata["properties"]["amount"]["x-forklaunch-coercion"],
+        "typescript-number"
+    );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move {
@@ -153,14 +192,14 @@ async fn matrix(f: &Fixture) {
         )
         .await
         .unwrap();
-    // Request admission precedes this service hook. Explicit null remains the
-    // existing native admission restriction; TS coercion is separately audited.
+    // Invalid conversions remain admission failures before any service I/O.
     for patch in [
         json!({"status":"INVALID"}),
         json!({"currency":"INVALID"}),
         json!({"paymentMethods":["invalid"]}),
         json!({"amount":"bad"}),
-        json!({"amount":null}),
+        json!({"amount":{}}),
+        json!({"amount":[1,2]}),
     ] {
         assert_eq!(update(&http, &url, &id, &patch, None).await.status(), 400);
         assert!(state.calls.lock().await.is_empty());
@@ -229,6 +268,128 @@ async fn matrix(f: &Fixture) {
         vec![format!("POST /v1/payment_links/{id}")]
     );
     assert_eq!(body["stripeFields"]["id"], id);
+    // Actual shared TS router runs parse before auth. Invalid conversions win
+    // over invalid signatures; successful coercion must still authenticate raw bytes.
+    // Native HMAC rejects with401; actual TS uses403 (existing auth-envelope gap).
+    for (amount, expected) in [
+        (json!("bad"), 400),
+        (json!({}), 400),
+        (json!(null), 401),
+        (json!("12"), 401),
+    ] {
+        state.calls.lock().await.clear();
+        let body = json!({"amount":amount});
+        let path = format!("/payment-link/{id}");
+        let invalid_signature = sign("PUT", &path, Some(&json!({"different":"body"})), "default");
+        let response = http
+            .put(format!("{url}{path}"))
+            .header("authorization", invalid_signature)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), expected, "amount={amount}");
+        assert!(state.calls.lock().await.is_empty());
+    }
+    for amount in [
+        json!(null),
+        json!("12"),
+        json!(false),
+        json!([]),
+        json!(true),
+        json!(""),
+        json!("  "),
+        json!("0x10"),
+        json!([12]),
+        json!([[12]]),
+        json!("Infinity"),
+        json!("-Infinity"),
+        json!("1e999"),
+    ] {
+        state.calls.lock().await.clear();
+        let response = update(
+            &http,
+            &url,
+            &id,
+            &json!({"amount":amount}),
+            Some("coercion"),
+        )
+        .await;
+        assert_eq!(response.status(), 200, "amount={amount}");
+        assert_eq!(response.json::<Value>().await.unwrap()["amount"], 34.0);
+        assert_eq!(state.calls.lock().await.len(), 1);
+    }
+    for amount in [
+        json!("bad"),
+        json!({}),
+        json!([1, 2]),
+        json!({"toString":"bad"}),
+    ] {
+        state.calls.lock().await.clear();
+        let response = update(
+            &http,
+            &url,
+            &id,
+            &json!({"amount":amount}),
+            Some("parse-control"),
+        )
+        .await;
+        assert_eq!(response.status(), 400);
+        let text = response.text().await.unwrap();
+        assert!(text.contains("Path: body > amount"), "{text}");
+        assert!(text.ends_with("Correlation id: parse-control"));
+        assert!(state.calls.lock().await.is_empty());
+    }
+    for amount in [
+        json!(null),
+        json!("12"),
+        json!(false),
+        json!([]),
+        json!("Infinity"),
+        json!("bad"),
+    ] {
+        state.calls.lock().await.clear();
+        let path = format!("/payment-link/{id}");
+        let body = json!({"amount":amount});
+        let response=http.post(format!("{url}/mcp")).header("accept","application/json, text/event-stream")
+            .json(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"updatePaymentLink","arguments":{"params":{"id":id},"body":body,"headers":{"authorization":sign("PUT",&path,Some(&body),"default")}}}})).send().await.unwrap();
+        let result: Value = response.json().await.unwrap();
+        let expected = if amount == "bad" { 400 } else { 200 };
+        assert_eq!(result["result"]["isError"], expected != 200, "{result}");
+        if expected == 200 {
+            assert_eq!(
+                result["result"]["structuredContent"]["amount"], 34.0,
+                "{result}"
+            );
+        }
+        assert_eq!(state.calls.lock().await.len(), usize::from(expected == 200));
+    }
+    let file = std::env::temp_dir().join(format!("fl-link-coercion-sdk-{}.ts", Uuid::new_v4()));
+    std::fs::write(&file, sdk).unwrap();
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../../cli/tests/rust_billing_payment_link_coercion_sdk.mjs");
+    let sdk_url = url.clone();
+    let sdk_id = id.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let result = std::process::Command::new("node")
+            .arg(script)
+            .arg(&file)
+            .arg(sdk_url)
+            .arg(sdk_id)
+            .output()
+            .unwrap();
+        std::fs::remove_file(file).unwrap();
+        result
+    })
+    .await
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    println!("{}", String::from_utf8_lossy(&result.stdout));
     server.abort();
     provider_task.abort();
 }

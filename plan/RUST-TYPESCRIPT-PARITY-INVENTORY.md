@@ -12264,3 +12264,34 @@ worktree was also removed after exact fd02a44e4 HEAD, clean status, all13 source
 hashes and zero owned processes were verified. Cleanup receipt:
 `/private/tmp/fl-cardinality-cleanup.json` (54,516 KiB logical; no physical disk
 reclamation claim). Branch, source manifest and logs are retained.
+
+
+### 2026-10-15 — Configured PaymentLink request Number coercion
+
+The selected configured update now applies JavaScript Number coercion before auth,
+validates remaining fields and preserves original raw HMAC bytes. Null, strings,
+booleans and arrays follow actual admission; NaN conversions fail before provider
+I/O. Typed service inputs admit infinities and reject NaN. Nonfinite results are
+internally omitted only for this mapper, whose requested amount is never forwarded
+and whose output/cache amount is replaced by the provider line-item total. This is
+not a generic JSON Infinity representation.
+
+Actual102 observations include42 live Express requests through actual parse/auth/
+controller/service/mapper with owned registry/cache seams. Native restricted PG
+HTTP passes (1.57s), including6 MCP and7 generated TypeScript SDK calls with strict
+input compilation. Typed/domain1, metadata projection1, configured373, legacy170,
+artifacts186 and full/minimal strict Clippy (20.96s/7.23s) pass. Owned database/role
+cleanup counts are0. The new SDK fixture runs inside the existing HTTP test; CI
+provides TSC_BIN explicitly. No dependencies changed.
+
+Important remaining differences: actual TS metadata exposes inner number while
+native selected request metadata describes wider admitted JSON inputs; invalid
+HMAC returns native401 versus actual403, queued separately. Raw numeric overflow
+and lone-surrogate parser limits remain. No new generated Rust SDK proof claimed.
+Initial metadata registration, auth-status and missing required SDK fixture id
+failures are preserved in separate logs; final tests follow their corrections.
+
+All9 source hashes match `/private/tmp/fl-payment-link-coercion-final.json`, SHA256
+`79fe81394684a8c715235e9f1bea03455e3136328b6da7aeb1f6368dab9d7d00`.
+Evidence uses `/private/tmp/fl-payment-link-coercion-*.log`. Broader configured
+billing/auth gates remain open. Checklist660/682 is unchanged.

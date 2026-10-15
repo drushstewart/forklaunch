@@ -180,7 +180,7 @@ impl<S: BillingStore> StripeBillingService<S> {
             &local.payment_methods,
             &local.status,
         )?;
-        if !local.amount.is_finite() || request.amount.is_some_and(|amount| !amount.is_finite()) {
+        if !local.amount.is_finite() || request.amount.is_some_and(f64::is_nan) {
             return Err(invalid());
         }
         local_fields(

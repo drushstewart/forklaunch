@@ -407,6 +407,7 @@ on:
       - 'cli/tests/rust_billing_checkout_expiration_source.mjs'
       - 'cli/tests/typescript_billing_subscription_owner_http.mjs'
       - 'cli/tests/typescript_billing_payment_link_update_http.mjs'
+      - 'cli/tests/rust_billing_payment_link_coercion_sdk.mjs'
       - 'cli/tests/typescript_billing_configured_get_http.mjs'
       - 'cli/tests/typescript_billing_cached_dates.mjs'
       - 'cli/tests/fixtures/rust_billing_cached_dates.json'
@@ -871,6 +872,7 @@ on:
       - 'cli/tests/rust_billing_checkout_expiration_source.mjs'
       - 'cli/tests/typescript_billing_subscription_owner_http.mjs'
       - 'cli/tests/typescript_billing_payment_link_update_http.mjs'
+      - 'cli/tests/rust_billing_payment_link_coercion_sdk.mjs'
       - 'cli/tests/typescript_billing_configured_get_http.mjs'
       - 'cli/tests/typescript_billing_cached_dates.mjs'
       - 'cli/tests/fixtures/rust_billing_cached_dates.json'
@@ -1714,7 +1716,9 @@ jobs:
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_cached_reads
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --features bound-checkout --test configured_cached_reads -- --ignored --nocapture
-      - name: Configured PaymentLink update preflight and HTTP dispatch
+      - name: Configured PaymentLink update preflight, coercion, HTTP and MCP
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_payment_link_update
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --features bound-checkout --test configured_payment_link_update -- --ignored --nocapture

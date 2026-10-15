@@ -93,10 +93,10 @@ try {
  const requestShape=actualModule('framework/core/src/http/guards/isRequestShape.ts');
  const parser=actualModule('framework/core/src/http/middleware/request/parse.middleware.ts',{
   '@forklaunch/common':{isRecord(){throw Error('unexpected versioned path');}},
-  '@forklaunch/validator':{prettyPrintParseErrors(){throw Error('unexpected invalid parse');}},
+  '@forklaunch/validator':actualModule('framework/validator/src/shared/utils/prettyPrintParseErrors.ts'),
   '../../guards/isRequestShape':requestShape,
   '../../guards/hasSend':actualModule('framework/core/src/http/guards/hasSend.ts'),
-  '../internal/validationDiagnostic':{sendValidationDiagnostic(){throw Error('unexpected invalid parse');}}
+  '../internal/validationDiagnostic':actualModule('framework/core/src/http/middleware/internal/validationDiagnostic.ts')
  });
  const controllerPath=path.join(root,'blueprint/billing-stripe/api/controllers/paymentLink.controller.ts');
  const controllerSource=ts.createSourceFile(controllerPath,readFileSync(controllerPath,'utf8'),ts.ScriptTarget.Latest,true);let updateDeclaration;
@@ -104,12 +104,76 @@ try {
  findController(controllerSource);assert.ok(updateDeclaration);assert.equal(updateDeclaration.initializer.arguments[2].properties.find(p=>p.name.getText(controllerSource)==='body').initializer.getText(controllerSource),'UpdatePaymentLinkMapper.schema');
  const callback=ts.createPrinter().printNode(ts.EmitHint.Expression,updateDeclaration.initializer.arguments[3],controllerSource);
  const controllerBox={exports:{},serviceFactory:()=>service,openTelemetryCollector:{debug(){}}};vm.runInNewContext(ts.transpileModule(`exports.handler=${callback};`,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,controllerBox);
- for(const amount of [null,'12',false,[]]) {
+ for(const amount of [null,'12',false,[],true,'', '  ', '0x10', [12], [[12]], 'Infinity', '-Infinity', '1e999']) {
   scenario='success';providerCalls=0;cacheWrites=0;written=undefined;
   const req={params:{id},body:{id,amount},query:{},headers:{},contractDetails:{},schemaValidator:actual.validator,requestSchema:actual.validator.schemify({body:actual.validator.schemify(mappers.UpdatePaymentLinkMapper.schema),params:actual.validator.schemify({id:actual.statics.string})})};
   let parsed=false;parser.parse(req,{},()=>{parsed=true;});assert.ok(parsed);assert.equal(req.body.amount,Number(amount));assert.equal(req._rawBody.amount,amount);
   let returned;const res={status(value){assert.equal(value,200);return this;},json(value){returned=value;}};await controllerBox.exports.handler(req,res);
   assert.equal(providerCalls,1);assert.equal(providerFields.amount,undefined);assert.equal(written.amount,34);assert.equal(returned.amount,34);assert.equal(cacheWrites,1);cases++;
  }
- console.log(`PASS ${cases} actual configured PaymentLink update service/mapper + actual createContext/final Express handler: cached/missing/invalid patch preflight0provider writes; null amount is admitted before owned provider failure; SDK error-class status404/429/500/connection retained; target remains public ID. Error transport route skips request admission; additional actual parse+controller successes prove null/numeric-string/bool/array amount becomes Number(input), provider ignores requested amount, and cached/returned amount becomes provider sum34. No full bootstrap claim.`);
+ // Invalid controls run the same actual parser, including its real diagnostic
+ // formatter and response marker. They must never reach the controller/service.
+ for(const amount of ['bad', {}, [1,2], {toString:'bad'}]) {
+  scenario='success';providerCalls=0;cacheWrites=0;reads=0;
+  const req={params:{id},body:{id,amount},query:{},headers:{},context:{correlationId:'parse-control'},contractDetails:{},schemaValidator:actual.validator,requestSchema:actual.validator.schemify({body:actual.validator.schemify(mappers.UpdatePaymentLinkMapper.schema),params:actual.validator.schemify({id:actual.statics.string})})};
+  let next=false,status,text,type;
+  const res={type(value){type=value;return this;},status(value){status=value;return this;},send(value){text=value;return this;}};
+  parser.parse(req,res,()=>{next=true;});
+  assert.equal(next,false);assert.equal(status,400);assert.equal(type,'text/plain');
+  assert.match(text,/Request validation failed/);assert.match(text,/Path: body > amount/);assert.match(text,/Correlation id: parse-control$/);
+  assert.equal(req._rawBody,req.body);assert.equal(req.body.amount,amount);
+  assert.equal(providerCalls,0);assert.equal(cacheWrites,0);assert.equal(reads,0);cases++;
+ }
+ // The actual shared router registers parse before parseRequestAuth.
+ const routerSource=readFileSync(path.join(root,'framework/core/src/http/router/routerSharedLogic.ts'),'utf8');
+ assert.match(routerSource,/\n    parse,\n    parseRequestAuth</);
+ function authSource(relative) {
+  const exports={};const code=ts.transpileModule(readFileSync(path.join(root,relative),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+  vm.runInNewContext(code,{exports,Date,Buffer,process,require(spec){
+   if(spec==='@forklaunch/common')return {...actualModule('framework/common/src/safeStringify.ts'),...actualModule('framework/common/src/guards/isNever.ts')};
+   if(spec==='@forklaunch/validator')return actualModule('framework/validator/src/shared/utils/prettyPrintParseErrors.ts');
+   if(spec.endsWith('/pinoLogger'))return {meta:value=>value};
+   if(spec==='jose')return {jwtVerify(){throw Error('unselected JWT');}};
+   if(spec==='crypto')return require('node:crypto');
+   if(spec.startsWith('.'))return authSource(path.relative(root,path.resolve(root,path.dirname(relative),spec+'.ts')));
+   throw Error('unexpected auth dependency '+spec);
+  }});return exports;
+ }
+ const auth=authSource('framework/core/src/http/middleware/request/auth.middleware.ts');
+ for(const amount of [null,'12','bad',{}]) {
+  scenario='success';providerCalls=0;cacheWrites=0;reads=0;
+  const req={method:'PUT',path:'/paymentLink/'+id,params:{id},body:{id,amount},query:{},headers:{authorization:'HMAC keyId=default ts=2026-10-15T00:00:00.000Z nonce=owned signature=invalid'},context:{correlationId:'auth-control'},contractDetails:{access:'internal',auth:{hmac:{secretKeys:{default:'owned-secret'}}}},schemaValidator:actual.validator,requestSchema:actual.validator.schemify({body:actual.validator.schemify(mappers.UpdatePaymentLinkMapper.schema),params:actual.validator.schemify({id:actual.statics.string})})};
+  let parsed=false,authorized=false,status;const res={type(){return this;},status(value){status=value;return this;},send(){return this;}};
+  parser.parse(req,res,()=>{parsed=true;});if(parsed)await auth.parseRequestAuth(req,res,()=>{authorized=true;});
+  assert.equal(status,amount==='bad'||typeof amount==='object'&&amount!==null?400:403);assert.equal(authorized,false);assert.equal(req._rawBody.amount,amount);assert.equal(providerCalls,0);assert.equal(reads,0);cases++;
+ }
+ // Live Express seam executes the actual ordered parser/auth/controller chain.
+ // Registry/bootstrap and ORM/cache remain owned by this fixture.
+ let retained;
+ app.put('/parsed/:id',(req,res,next)=>{
+  req.contractDetails={access:'internal',auth:{hmac:{secretKeys:{default:'owned-secret'}}}};
+  req.schemaValidator=actual.validator;
+  req.requestSchema=actual.validator.schemify({body:actual.validator.schemify(mappers.UpdatePaymentLinkMapper.schema),params:actual.validator.schemify({id:actual.statics.string})});
+  retained=req.body;
+  parser.parse(req,res,next);
+ },auth.parseRequestAuth,async(req,res,next)=>{try {assert.equal(req._rawBody,retained);await controllerBox.exports.handler(req,res);}catch(error){next(error);}});
+ app.use(box.exports.handler);
+ const hmac=authSource('framework/core/src/http/createHmacToken.ts');
+ for(const amount of [null,'12',false,[],'Infinity','bad',{}])for(const correlation of [undefined,'parse-wire',''])for(const badSignature of [false,true]) {
+  scenario='success';providerCalls=0;cacheWrites=0;reads=0;
+  const body={id,amount},route='/parsed/'+id,stamp=new Date(),nonce=randomUUID();
+  const signature=badSignature?'invalid':hmac.createHmacToken({method:'PUT',path:route,body,timestamp:stamp,nonce,secretKey:'owned-secret'});
+  const headers={'x-owned-context':'yes','content-type':'application/json',authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`};if(correlation!==undefined)headers['x-correlation-id']=correlation;
+  const response=await fetch(`http://127.0.0.1:${server.address().port}${route}`,{method:'PUT',headers,body:JSON.stringify(body)});
+  const invalid=amount==='bad'||typeof amount==='object'&&amount!==null&&!Array.isArray(amount);
+  assert.equal(response.status,invalid?400:badSignature?403:200);
+  assert.equal(providerCalls,invalid||badSignature?0:1);assert.equal(cacheWrites,providerCalls);assert.equal(reads,providerCalls*2);
+  assert.deepEqual(retained,body);
+  if(invalid){const text=await response.text();assert.match(text,/Path: body > amount/);assert.ok(text.endsWith('Correlation id: '+response.headers.get('x-correlation-id')));}
+  if(!invalid&&!badSignature){assert.equal((await response.json()).amount,34);assert.equal(providerFields.amount,undefined);assert.equal(written.amount,34);}
+  cases++;
+ }
+ const amountSchema=actual.validator.openapi(mappers.UpdatePaymentLinkMapper.schema).properties.amount;
+ assert.deepEqual(Array.from(amountSchema.type),['number'],'actual TS metadata exposes inner Number schema, not all preprocessable wire values');
+ console.log(`PASS ${cases} actual configured PaymentLink update service/mapper + actual createContext/final Express handler: cached/missing/invalid patch preflight0provider writes; null amount is admitted before owned provider failure; SDK error-class status404/429/500/connection retained; target remains public ID. Error transport route skips request admission; additional actual parse+controller successes prove null/numeric-string/bool/array/Infinity amount becomes Number(input), and invalid controls return admission400 before service, provider ignores requested amount, and cached/returned amount becomes provider sum34. No full bootstrap claim.`);
 }finally{await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}

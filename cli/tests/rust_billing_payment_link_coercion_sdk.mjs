@@ -1,0 +1,31 @@
+// Generated SDK from the live selected registry; no schema emulation.
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {readFileSync,realpathSync,writeFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {spawnSync} from 'node:child_process';
+import path from 'node:path';
+import vm from 'node:vm';
+import {createHmac,randomUUID} from 'node:crypto';
+const [file,base,id]=process.argv.slice(2),require=createRequire(import.meta.url);
+const ts=require(require.resolve('typescript',{paths:[path.dirname(realpathSync(process.env.TSC_BIN))]}));
+const source=readFileSync(file,'utf8');
+const exports={};vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,fetch,URL,URLSearchParams,Headers,Request,Response,AbortController,console});
+const sdk=exports.createForkLaunchSdk({baseUrl:base});
+function find(value,parts=[]){for(const [key,item]of Object.entries(value)){if(key==='updatePaymentLink'&&typeof item==='function')return {call:item.bind(value),parts:[...parts,key]};if(item&&typeof item==='object'){const result=find(item,[...parts,key]);if(result)return result;}}}
+const found=find(sdk);assert(found);const {call,parts}=found;
+const tmp=mkdtempSync(path.join(tmpdir(),'fl-link-coercion-types-'));
+try {
+ const access=parts.map(key=>'['+JSON.stringify(key)+']').join('');
+ const checks=[null,'12',false,[],'Infinity',{},'bad'].map(amount=>`createForkLaunchSdk({baseUrl:'http://unused'})${access}({params:{id:'owned'},body:{id:'owned',amount:${JSON.stringify(amount)}}});`).join('\n');
+ const target=path.join(tmp,'sdk.ts');writeFileSync(target,source+'\n'+checks);
+ const checked=spawnSync(process.env.TSC_BIN,['--noEmit','--strict','--target','ES2022','--module','ESNext','--moduleResolution','bundler','--lib','ES2022,DOM',target],{encoding:'utf8'});assert.equal(checked.status,0,checked.stdout+checked.stderr);
+}finally{rmSync(tmp,{recursive:true,force:true});}
+for(const amount of [null,'12',false,[],'Infinity',{},'bad']) {
+ const body={id,amount},raw=JSON.stringify(body),stamp=new Date().toISOString(),nonce=randomUUID(),route=`/payment-link/${id}`;
+ const signature=createHmac('sha256','billing-owner-fixture').update(`PUT\n${route}\n${raw}\n${stamp}\n${nonce}`).digest('base64');
+ const result=await call({params:{id},body,headers:{authorization:`HMAC keyId=default ts=${stamp} nonce=${nonce} signature=${signature}`}});
+ assert.equal(result.status,amount==='bad'||typeof amount==='object'&&amount!==null&&!Array.isArray(amount)?400:200,JSON.stringify(result));
+ if(result.status===200)assert.equal(result.response.amount,34);
+}
+console.log('PASS seven generated TypeScript SDK PaymentLink coercion calls, including invalid admission');

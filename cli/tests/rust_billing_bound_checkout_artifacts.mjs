@@ -132,6 +132,9 @@ try {
    run(path.join(target,'debug/fl-billing-bound-checkout-artifacts'),[],env);
    if(test.fail)continue;
    const contract=JSON.parse(readFileSync(path.join(directory,'contract.json'))),openapi=JSON.parse(readFileSync(path.join(directory,'openapi.json')));
+   const updateRoute=contract.routes.find(r=>r.operationName==='updatePaymentLink');
+   const updateSchema=typeof updateRoute.request.body.schema.jsonSchema==='string'?JSON.parse(updateRoute.request.body.schema.jsonSchema):updateRoute.request.body.schema.jsonSchema;
+   if(stripe){assert.equal(updateSchema.properties.amount['x-forklaunch-coercion'],'typescript-number');assert.equal(updateSchema.properties.amount.type,undefined);}else assert.equal(updateSchema.properties.amount.type,'number');
    const listRoute=contract.routes.find(r=>r.operationName==='listBoundCreatedPaymentLinks');
    if(listRoute){const field=listRoute.request.query.find(v=>v.name==='ids');assert.equal(field.required,true);const schema=typeof field.schema.jsonSchema==='string'?JSON.parse(field.schema.jsonSchema):field.schema.jsonSchema;assert.equal(schema.type,'array');assert.equal(schema.minItems,1);assert.equal(schema.maxItems,test.name==='payment-link-read-limit'?150:100);assert.equal(schema.items.format,'uuid');}
    const text=JSON.stringify({contract,openapi});assert(text.includes('x-forklaunch-date-profile'));

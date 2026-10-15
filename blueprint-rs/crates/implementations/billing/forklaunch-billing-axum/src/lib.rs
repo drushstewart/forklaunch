@@ -1,5 +1,7 @@
 //! Persistent billing HTTP handlers shared with authenticated MCP dispatch.
 #![forbid(unsafe_code)]
+mod configured_payment_link_input;
+pub use configured_payment_link_input::project_configured_payment_link_update;
 #[cfg(feature = "bound-checkout")]
 mod bound_billing;
 #[cfg(feature = "bound-checkout")]
@@ -478,7 +480,7 @@ pub fn billing_router(
     let registry = module_contracts::module_registry(backend.client.is_some());
     let backend = Arc::new(backend);
     let auth = Arc::new(auth);
-    let config = RouterConfig {
+    let mut config = RouterConfig {
         response_status_error_format: if backend.configured_cached_reads
             || backend.configured_payment_link_updates
         {
@@ -511,6 +513,10 @@ pub fn billing_router(
             .request_dates
             .project(&mut contract)
             .expect("package-owned billing request schema");
+        if backend.configured_payment_link_updates && contract.operation_name == "updatePaymentLink"
+        {
+            configured_payment_link_input::register(&mut config, &mut contract);
+        }
         if contract.operation_name == "handlewebhookevent" {
             let backend = Arc::clone(&backend);
             router = router.post(
@@ -571,10 +577,16 @@ pub fn billing_router(
                 move |Extension(session): Extension<AuthenticatedSession>,
                       Path(id): Path<String>,
                       Extension(context): Extension<forklaunch_axum::RequestContext>,
+                      parsed: Option<Extension<forklaunch_http::ParsedJsonBody>>,
                       Json(mut input): Json<Value>| {
                     let backend = Arc::clone(&backend);
                     let contract = handler_contract.clone();
                     async move {
+                        if let Some(Extension(parsed)) = parsed
+                            && let Some(value) = parsed.value
+                        {
+                            input = (*value).clone();
+                        }
                         let Some(object) = input.as_object_mut() else {
                             return failure(&invalid());
                         };

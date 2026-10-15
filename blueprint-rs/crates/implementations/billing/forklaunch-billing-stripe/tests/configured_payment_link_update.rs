@@ -157,7 +157,7 @@ async fn configured_payment_link_update_preflight_and_generic_sequence() {
         assert_eq!(before.id, "public-id");
     }
     let mut input = patch(json!({}));
-    input.amount = Some(f64::INFINITY);
+    input.amount = Some(f64::NAN);
     assert!(service.update_payment_link(input).await.is_err());
     assert!(state.calls.lock().await.is_empty());
     // No provider reference is required for this hook: the cache is not authority.
@@ -185,6 +185,14 @@ async fn configured_payment_link_update_preflight_and_generic_sequence() {
         *state.calls.lock().await,
         vec!["POST /v1/payment_links/public-id"]
     );
+    for amount in [f64::INFINITY, f64::NEG_INFINITY] {
+        state.calls.lock().await.clear();
+        let mut input = patch(json!({}));
+        input.amount = Some(amount);
+        let result = service.update_payment_link(input).await.unwrap();
+        assert_eq!(result.amount.to_bits(), 34.0_f64.to_bits());
+        assert_eq!(state.calls.lock().await.len(), 1);
+    }
     // Generic/custom retains provider-first failure ordering for a missing row.
     state.calls.lock().await.clear();
     let generic = StripeBillingService::new(
