@@ -10538,3 +10538,22 @@ Logs /private/tmp/fl-reset-hook-actual.log and /private/tmp/fl-reset-observer-
 {native,pg,regression,clippy,minimal-clippy}.log. Final source-only rustfmt reexport
 ordering followed green checks; no deps/locks. Broader auth hooks/provider/plugin
 gates remain open;660/682(96.8%),22open unchanged.
+
+### 2026-10-14 — Current integration checkpoint
+
+Committed reserved Self model names (2f93d3915), aggregate PaymentLink read
+HTTP/MCP/two SDKs (6f77f4eb6), awaited email-verification hooks (624cadc97),
+and pre-clone PaymentLink reservation admission (23ec69119). Detailed behavior,
+limitations and validation receipts are in the implementation checklist and
+security/auth reviews. Current public source inventory remains621entries/1699
+records across44packages with0unresolved; strict TypeScript7.0.2 validates all
+12roots/621exports (/private/tmp/fl-current-configured-types.log).
+
+Immutable source6f77f4eb616d125b4706fda8690b5e302a9d7b6b packages2832regular files,
+4959058bytes, SHA256e4a2d118a72c9c028971b37c0d05403e9082ea038255fb11d04520ecfeafb9a5.
+Offline locked installation, git-free repackage listing, PEM fixture allowlist and
+extracted bytes passed. Retained cli/target/parity-artifacts/
+forklaunch-6f77f4eb6-e4a2d118.crate. Portable runtime validation is IN PROGRESS;
+this receipt does not claim its completion. This source excludes later verification
+hooks/admission and uncommitted builtin-name/auto-signin/list work.
+Checklist660/682(96.8%),22broad gates remain open.
