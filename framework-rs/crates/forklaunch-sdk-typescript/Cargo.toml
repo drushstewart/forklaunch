@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
+zod-regex = ["forklaunch-sdk-codegen/zod-regex"]
 zod-checks = ["forklaunch-sdk-codegen/zod-checks"]
 default = []
 zod-uri = ["forklaunch-sdk-codegen/zod-uri"]

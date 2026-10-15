@@ -1,3 +1,4 @@
+import { registerZodRegex, type ZodRegexExecution } from './core/zodRegex';
 import {
   openApiCompliantPath,
   safeParse,
@@ -42,13 +43,14 @@ export class UniversalSdk {
     private registryOptions: RegistryOptions,
     private contentTypeParserMap:
       Record<string, ResponseContentParserType> | undefined,
-    responseAjvFactory?: ResponseAjvFactory
+    responseAjvFactory?: ResponseAjvFactory,
+    zodRegexExecution?: ZodRegexExecution
   ) {
-    registerZodChecks(registerFactoryUriFormat(ajv));
+    registerZodRegex(registerZodChecks(registerFactoryUriFormat(ajv)), zodRegexExecution);
     this.responseSchemas = new ResponseSchemas(
       ajv,
       responseAjvFactory
-        ? (context) => registerZodChecks(registerFactoryUriFormat(responseAjvFactory(context)))
+        ? (context) => registerZodRegex(registerZodChecks(registerFactoryUriFormat(responseAjvFactory(context))), zodRegexExecution)
         : undefined
     );
   }
@@ -61,7 +63,8 @@ export class UniversalSdk {
   static async create(
     host: string,
     registryOptions: RegistryOptions,
-    contentTypeParserMap?: Record<string, ResponseContentParserType>
+    contentTypeParserMap?: Record<string, ResponseContentParserType>,
+    zodRegexExecution?: ZodRegexExecution
   ) {
     const createAjv: ResponseAjvFactory = (context) => {
       if (context.dialect !== draft7 && context.dialect !== draft2020)
@@ -81,7 +84,8 @@ export class UniversalSdk {
       createAjv({ dialect: draft7, explicit: false }),
       registryOptions,
       contentTypeParserMap,
-      createAjv
+      createAjv,
+      zodRegexExecution
     );
   }
 

@@ -1,3 +1,4 @@
+import { projectRegexChecks, zodRegexKeyword } from './zodRegex';
 import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
 import { merge } from './schemaMerge';
 import { assertPureInputSchema, pureInputOptional } from './pureInput';
@@ -35,9 +36,12 @@ export interface SchemaGenerationOptions {
   readonly pureInput?: boolean;
   /** Emit reserved exact UTF-16 length and Zod remainder checks. Consumers must support this profile. */
   readonly zodChecks?: boolean;
+  /** Emit ordered ECMAScript regex rules; consumers require an explicit execution policy. */
+  readonly zodRegex?: boolean;
 }
 interface ParsingArgs<T> {
   zodChecks?: boolean;
+  zodRegex?: boolean;
   pureInput?: { isOptional: (schema: ZodTypeAny) => boolean };
   generateSchema: (
     schema: OpenApiZodAny,
@@ -148,6 +152,7 @@ function parseTransformation({
 
 function parseString({
   zodChecks,
+  zodRegex,
   zodRef,
   schemas,
   openApiVersion
@@ -156,6 +161,7 @@ function parseString({
     type: typeFormat('string', openApiVersion)
   };
   const { checks = [] } = zodRef._def;
+  const regexProfile = zodRegex ? projectRegexChecks(checks, schemas as Record<string, unknown>[]) : undefined;
   const exact = zodChecks ? projectStringChecks(checks, schemas as Record<string, unknown>[], hasFactoryEmailGrammar(zodRef)) : undefined;
   checks.forEach((item) => {
     switch (item.kind) {
@@ -191,7 +197,7 @@ function parseString({
         baseSchema.minLength = item.value;
         break;
       case 'regex':
-        baseSchema.pattern = item.regex.source;
+        if (!regexProfile) baseSchema.pattern = item.regex.source;
         break;
     }
   });
@@ -229,6 +235,7 @@ function parseString({
     if (exact?.utf16MaxLength !== undefined) delete baseSchema.maxLength;
     if (exact) Object.assign(baseSchema, { [zodChecksKeyword]: exact });
   }
+  if (regexProfile) Object.assign(baseSchema, { [zodRegexKeyword]: regexProfile });
   return merge(
     baseSchema,
     zodRef.description ? { description: zodRef.description } : {},
@@ -1062,6 +1069,8 @@ export function generateSchema(
         'Schema annotation dialect conflicts with explicit JSON Schema export'
       );
     }
+    if (context?.zodRegex && schemas.some(metadata => Object.prototype.hasOwnProperty.call(metadata, zodRegexKeyword)))
+      throw new Error('The reserved Zod regex keyword cannot be overridden');
     if (context?.zodChecks && schemas.some(metadata => Object.prototype.hasOwnProperty.call(metadata, zodChecksKeyword)))
       throw new Error('The reserved Zod check keyword cannot be overridden');
     const args = {
@@ -1071,6 +1080,7 @@ export function generateSchema(
       openApiVersion: version,
       jsonSchemaDialect: context?.jsonSchemaDialect,
       zodChecks: context?.zodChecks,
+      zodRegex: context?.zodRegex,
       pureInput: context?.pureInput
         ? {
             isOptional: (child: ZodTypeAny) =>

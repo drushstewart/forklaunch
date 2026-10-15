@@ -1,5 +1,7 @@
 //! Parsed non-body fields for the selected version; wire values remain intact.
-use super::{FieldValidator, Variant, VersionBodyHooks};
+use super::{
+    FieldValidator, SchemaValidationFailure, Variant, VersionBodyHooks, schema_execution_error,
+};
 use crate::{ContractValidationLocation, FrameworkRequest};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -44,7 +46,7 @@ impl Variant {
         &self,
         request: &FrameworkRequest,
         parsed_query: Option<&BTreeMap<String, Value>>,
-    ) -> Option<VersionFieldValues> {
+    ) -> Result<Option<VersionFieldValues>, crate::ContractValidationError> {
         let mut output = VersionFieldValues {
             headers: request
                 .headers
@@ -73,9 +75,13 @@ impl Variant {
             } else {
                 raw.as_ref()
             };
-            let Ok(value) = field.parse(value) else {
-                valid = false;
-                continue;
+            let value = match field.parse(value) {
+                Ok(value) => value,
+                Err(SchemaValidationFailure::Invalid(_)) => {
+                    valid = false;
+                    continue;
+                }
+                Err(SchemaValidationFailure::Operational) => return Err(schema_execution_error()),
             };
             if let Some(value) = value {
                 match field.location {
@@ -96,25 +102,26 @@ impl Variant {
                 }
             }
         }
-        valid.then_some(output)
+        Ok(valid.then_some(output))
     }
 }
 
 impl FieldValidator {
     // Errors reject this version; None is a successful absent output.
-    fn parse(&self, raw: Option<&Value>) -> Result<Option<Value>, ()> {
-        let candidate = self.hooks.preprocess(raw).map_err(|_| ())?;
+    fn parse(&self, raw: Option<&Value>) -> Result<Option<Value>, SchemaValidationFailure> {
+        let candidate = self
+            .hooks
+            .preprocess(raw)
+            .map_err(|_| SchemaValidationFailure::Invalid(String::new()))?;
         if candidate.is_none() && self.required {
-            return Err(());
+            return Err(SchemaValidationFailure::Invalid(String::new()));
         }
-        if let (Some(validate), Some(value)) = (&self.validate, candidate.as_deref())
-            && validate(value).is_err()
-        {
-            return Err(());
+        if let (Some(validate), Some(value)) = (&self.validate, candidate.as_deref()) {
+            validate(value)?;
         }
         self.hooks
             .transform(candidate)
-            .map_err(|_| ())
+            .map_err(|_| SchemaValidationFailure::Invalid(String::new()))
             .map(|value| value.map(std::borrow::Cow::into_owned))
     }
 }

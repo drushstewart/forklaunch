@@ -5,7 +5,7 @@ use crate::{
 };
 use forklaunch_contract::{
     BodyKind, RouteContract, SchemaRef,
-    schema_validation::{self, JsonValidator},
+    schema_validation::{self, CheckedJsonValidator, SchemaValidationFailure},
 };
 use serde_json::Value;
 use std::{borrow::Cow, sync::Arc};
@@ -75,7 +75,7 @@ pub struct SelectedVersion {
 struct FieldValidator {
     location: ContractValidationLocation,
     name: String,
-    validate: Option<Arc<JsonValidator>>,
+    validate: Option<Arc<CheckedJsonValidator>>,
     required: bool,
     hooks: VersionFieldHooks,
 }
@@ -90,8 +90,8 @@ struct Variant {
 
 #[derive(Clone)]
 enum BodyValidator {
-    Value(Arc<JsonValidator>),
-    Bytes(Arc<JsonValidator>),
+    Value(Arc<CheckedJsonValidator>),
+    Bytes(Arc<CheckedJsonValidator>),
     Opaque,
 }
 
@@ -354,14 +354,20 @@ impl VersionedRoutePlan {
             let Ok(candidate) = variant.hooks.preprocess(body_value.as_ref()) else {
                 continue;
             };
-            let Some(fields) = variant.parse_fields(request, query.as_ref()) else {
+            let Some(fields) = variant
+                .parse_fields(request, query.as_ref())
+                .map_err(|error| vec![error])?
+            else {
                 continue;
             };
-            if variant.matches_body(
-                request,
-                candidate.as_deref(),
-                self.typescript_wire_parser.is_some(),
-            ) {
+            if variant
+                .matches_body(
+                    request,
+                    candidate.as_deref(),
+                    self.typescript_wire_parser.is_some(),
+                )
+                .map_err(|error| vec![error])?
+            {
                 let Ok(candidate) = variant.hooks.transform(candidate) else {
                     continue;
                 };
@@ -577,10 +583,10 @@ fn decode_schema(schema: &SchemaRef, remaining_bytes: &mut usize) -> Result<Opti
 fn compile_schema(
     schema: &SchemaRef,
     remaining_bytes: &mut usize,
-) -> Result<Option<Arc<JsonValidator>>, String> {
+) -> Result<Option<Arc<CheckedJsonValidator>>, String> {
     decode_schema(schema, remaining_bytes)?
         .as_ref()
-        .map(schema_validation::compile)
+        .map(schema_validation::compile_checked)
         .transpose()
 }
 fn compile_body(
@@ -591,9 +597,9 @@ fn compile_body(
         return Ok(None);
     };
     let validator = if body.kind == BodyKind::Multipart {
-        schema_validation::compile_multipart(&schema)?
+        schema_validation::compile_multipart_checked(&schema)?
     } else {
-        schema_validation::compile(&schema)?
+        schema_validation::compile_checked(&schema)?
     };
     if !matches!(body.kind, BodyKind::File | BodyKind::Binary) {
         return Ok(Some(BodyValidator::Value(validator)));
@@ -616,19 +622,25 @@ impl Variant {
         request: &FrameworkRequest,
         body_value: Option<&Value>,
         parsed_wire: bool,
-    ) -> bool {
+    ) -> Result<bool, ContractValidationError> {
         if !parsed_wire
             && !validate_request_body(&self.route.request, request, body_value.is_some()).is_empty()
         {
-            return false;
+            return Ok(false);
         }
         if body_value.is_none() && self.route.request.body_optional {
-            return true;
+            return Ok(true);
         }
         match &self.body {
-            None | Some(BodyValidator::Opaque) => true,
+            None | Some(BodyValidator::Opaque) => Ok(true),
             Some(BodyValidator::Value(validate) | BodyValidator::Bytes(validate)) => {
-                body_value.is_some_and(|value| validate(value).is_ok())
+                match body_value.map(|value| validate(value)) {
+                    None | Some(Err(SchemaValidationFailure::Invalid(_))) => Ok(false),
+                    Some(Ok(())) => Ok(true),
+                    Some(Err(SchemaValidationFailure::Operational)) => {
+                        Err(schema_execution_error())
+                    }
+                }
             }
         }
     }
@@ -979,3 +991,85 @@ mod json_wire_tests;
 #[cfg(test)]
 #[path = "versioning_text_wire_tests.rs"]
 mod text_wire_tests;
+
+fn schema_execution_error() -> ContractValidationError {
+    ContractValidationError::new(
+        ContractValidationLocation::SchemaExecution,
+        "Schema validation could not be completed",
+    )
+}
+
+#[cfg(all(test, feature = "zod-regex"))]
+mod regex_tests {
+    use super::*;
+    use crate::{FrameworkResponse, HttpMethod, LocalRouter, RequestContext};
+    use forklaunch_contract::{
+        BodyContract, FieldContract, RequestContract, ResponseContract, ValidationMode,
+        VersionedContract,
+    };
+    use serde_json::json;
+    #[test]
+    fn schema_execution_failure_is_fatal_in_all_modes_and_versions() {
+        let schema=json!({"type":"string","x-forklaunch-zod-regex":{"version":1,"rules":[{"sourceUnits":"^(a+)+$".encode_utf16().collect::<Vec<_>>(),"flags":""}]}}).to_string();
+        for mode in [
+            ValidationMode::None,
+            ValidationMode::Warning,
+            ValidationMode::Error,
+        ] {
+            for field in [false, true] {
+                let mut request = RequestContract::default();
+                if field {
+                    let mut query = FieldContract::required("value", "Value");
+                    query.schema = query.schema.with_json_schema(&schema);
+                    request.query.push(query);
+                } else {
+                    let mut body = BodyContract::json("Input");
+                    body.schema=body.schema.with_json_schema(json!({"type":"object","properties":{"value":serde_json::from_str::<Value>(&schema).unwrap()},"required":["value"]}).to_string());
+                    request = request.with_body(body);
+                }
+                let fallback = if field {
+                    RequestContract::default()
+                } else {
+                    RequestContract::default().with_body(BodyContract::json("Fallback"))
+                };
+                let mut route = RouteContract::post("Regex", "Regex", "/regex")
+                    .with_version(VersionedContract {
+                        version: "first".into(),
+                        request,
+                        responses: vec![ResponseContract::new(200, None)],
+                    })
+                    .with_version(VersionedContract {
+                        version: "fallback".into(),
+                        request: fallback,
+                        responses: vec![ResponseContract::new(200, None)],
+                    });
+                route.options.request_validation = mode;
+                let mut router = LocalRouter::new();
+                router.register(
+                    route,
+                    |_: FrameworkRequest| -> forklaunch_common::FrameworkResult<FrameworkResponse> {
+                        panic!("operational failure entered handler")
+                    },
+                );
+                let value = format!("{}!", "a".repeat(40));
+                let mut incoming = FrameworkRequest::new(
+                    HttpMethod::Post,
+                    "/regex",
+                    RequestContext::new("regex-correlation"),
+                );
+                if field {
+                    incoming.query.insert("value".into(), value);
+                } else {
+                    incoming = incoming
+                        .with_header("content-type", "application/json")
+                        .with_body(Body::Text(json!({"value":value}).to_string()));
+                }
+                let response = router.execute(incoming).unwrap();
+                assert_eq!(response.status_code, 500);
+                let body = response.body.as_text().unwrap();
+                assert!(body.contains("regex-correlation"));
+                assert!(!body.contains(&"a".repeat(40)));
+            }
+        }
+    }
+}

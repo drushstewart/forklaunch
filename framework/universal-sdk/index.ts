@@ -8,16 +8,20 @@
 import { ResponseContentParserType } from './src/types/contentTypes.types';
 import { RegistryOptions } from './src/types/sdk.types';
 import { UniversalSdk } from './src/universalSdk';
+import type { ZodRegexExecution } from './src/core/zodRegex';
 
 export const universalSdk = async <TypedController>(options: {
   host: string;
   registryOptions: RegistryOptions;
   contentTypeParserMap?: Record<string, ResponseContentParserType>;
+  /** Host RegExp execution is synchronous and has no interruptible work budget. */
+  zodRegexExecution?: ZodRegexExecution;
 }) => {
   const sdkInternal = await UniversalSdk.create(
     options.host,
     options.registryOptions,
-    'contentTypeParserMap' in options ? options.contentTypeParserMap : undefined
+    'contentTypeParserMap' in options ? options.contentTypeParserMap : undefined,
+    options.zodRegexExecution
   );
 
   const proxyInternal = new Proxy(sdkInternal, {
@@ -87,3 +91,5 @@ export const universalSdk = async <TypedController>(options: {
 export { RegistryOptions };
 
 export type { ResponseAjvFactory, ResponseSchemaContext } from './src/core/responseDialect';
+
+export type { ZodRegexExecution } from './src/core/zodRegex';

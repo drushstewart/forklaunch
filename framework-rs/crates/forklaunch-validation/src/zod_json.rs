@@ -20,10 +20,15 @@ mod object_policy;
 mod ordered;
 #[path = "zod_json_record.rs"]
 mod record;
+#[cfg(feature = "zod-regex")]
+#[path = "zod_json_regex.rs"]
+mod regex;
 #[path = "zod_json_tuple.rs"]
 mod tuple;
 use ordered::Order;
 pub use ordered::{OrderedJsonDocument, OrderedJsonError};
+#[cfg(feature = "zod-regex")]
+pub use regex::ZodJsonStringCheck;
 use resources::{
     Budget, MAX_ADMISSION_BYTES, clone_json, evaluation_bytes, number_bytes, own_schema_bytes,
 };
@@ -44,6 +49,10 @@ const MAX_NODES: usize = 100_000;
 #[derive(Debug, Clone)]
 pub enum ZodJsonSchema<'a> {
     String(Vec<ZodStringCheck<'a>>),
+    /// Bounded regex assertions mixed with scalar checks. Operational failures
+    /// abort all branches; evaluation shares a conservative 400M regex work cap.
+    #[cfg(feature = "zod-regex")]
+    CheckedString(Vec<ZodJsonStringCheck<'a>>),
     Boolean,
     Number(Vec<ZodNumberCheck<'a>>),
     Unknown,
@@ -127,6 +136,8 @@ pub enum ZodJsonUnsupported {
     DiagnosticPath,
     ObjectOrderUnavailable,
     RecordKeyOutput,
+    #[cfg(feature = "zod-regex")]
+    RegexResource,
 }
 
 /// Successful absent input remains distinct from JSON null. Invalid results
@@ -366,6 +377,8 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
         }
         let extra = match schema {
             ZodJsonSchema::String(checks) => checks.len(),
+            #[cfg(feature = "zod-regex")]
+            ZodJsonSchema::CheckedString(checks) => checks.len(),
             ZodJsonSchema::Number(checks) => checks.len(),
             ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
             ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => fields.len(),
@@ -398,6 +411,8 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
                 stack.extend(branches.iter().map(|branch| (branch, depth + 1)));
             }
             ZodJsonSchema::String(checks) => nodes += checks.len(),
+            #[cfg(feature = "zod-regex")]
+            ZodJsonSchema::CheckedString(checks) => nodes += checks.len(),
             ZodJsonSchema::Number(checks) => nodes += checks.len(),
             ZodJsonSchema::Optional(inner) | ZodJsonSchema::Nullable(inner) => {
                 stack.push((inner, depth + 1));
@@ -480,6 +495,8 @@ fn evaluate_ordered(
 ) -> Result<Parsed, ZodJsonUnsupported> {
     let checks = match schema {
         ZodJsonSchema::String(checks) => checks.len(),
+        #[cfg(feature = "zod-regex")]
+        ZodJsonSchema::CheckedString(checks) => checks.len(),
         ZodJsonSchema::Number(checks) => checks.len(),
         ZodJsonSchema::Array { checks, .. } => checks.len(),
         _ => 0,
@@ -516,6 +533,8 @@ fn evaluate_ordered(
         ZodJsonSchema::Default { schema, value } => {
             evaluate_ordered(input.or(Some(value)), schema, remaining, input.and(order))?
         }
+        #[cfg(feature = "zod-regex")]
+        ZodJsonSchema::CheckedString(checks) => regex::evaluate(input, checks, remaining)?,
         ZodJsonSchema::String(checks) => match zod_string_checks(input, checks) {
             Ok(value) => Parsed::valid(Some(Value::String(value.to_owned()))),
             Err(errors) => Parsed::invalid(

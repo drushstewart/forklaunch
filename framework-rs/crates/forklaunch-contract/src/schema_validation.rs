@@ -2,6 +2,83 @@
 use serde_json::Value;
 use std::sync::Arc;
 
+#[cfg(feature = "zod-regex")]
+#[path = "schema_validation_regex.rs"]
+mod bounded_regex;
+#[cfg(feature = "zod-regex")]
+pub use bounded_regex::RegexProfile;
+
+/// Schema rejection is distinct from an operational resource failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SchemaValidationFailure {
+    Invalid(String),
+    Operational,
+}
+impl std::fmt::Display for SchemaValidationFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Invalid(message) => f.write_str(message),
+            Self::Operational => f.write_str("schema validation resource limit"),
+        }
+    }
+}
+impl std::error::Error for SchemaValidationFailure {}
+pub type CheckedJsonValidator = dyn Fn(&Value) -> Result<(), SchemaValidationFailure> + Send + Sync;
+
+/// Compile an operational-error-aware validator with ordinary offline defaults.
+/// # Errors
+/// Rejects malformed or unsupported schemas and compile budget exhaustion.
+pub fn compile_checked(schema: &Value) -> Result<Arc<CheckedJsonValidator>, String> {
+    compile_checked_profile(schema, false)
+}
+
+/// Checked multipart validation preserves the existing file assertion profile.
+/// # Errors
+/// Rejects malformed or unsupported schemas and compile budget exhaustion.
+pub fn compile_multipart_checked(schema: &Value) -> Result<Arc<CheckedJsonValidator>, String> {
+    compile_checked_profile(schema, true)
+}
+
+fn compile_checked_profile(
+    schema: &Value,
+    multipart: bool,
+) -> Result<Arc<CheckedJsonValidator>, String> {
+    #[cfg(feature = "zod-regex")]
+    {
+        compile_with_regex_profile(schema, multipart, RegexProfile::default())
+    }
+    #[cfg(not(feature = "zod-regex"))]
+    {
+        let validator = build_profile(schema, multipart)?;
+        Ok(Arc::new(move |value| {
+            validator
+                .validate(value)
+                .map_err(|e| SchemaValidationFailure::Invalid(e.to_string()))
+        }))
+    }
+}
+
+/// Configure bounded regex admission without exposing a boolean-only validator.
+/// # Errors
+/// Rejects malformed or unsupported schemas and compile budget exhaustion.
+#[cfg(feature = "zod-regex")]
+pub fn compile_with_regex_profile(
+    schema: &Value,
+    multipart: bool,
+    profile: RegexProfile,
+) -> Result<Arc<CheckedJsonValidator>, String> {
+    let validator = build_profile(schema, multipart, Some(profile))?;
+    Ok(Arc::new(move |value| {
+        let _scope = bounded_regex::Scope::enter(profile.evaluation_work);
+        let result = validator.validate(value);
+        if bounded_regex::Scope::failed() {
+            Err(SchemaValidationFailure::Operational)
+        } else {
+            result.map_err(|e| SchemaValidationFailure::Invalid(e.to_string()))
+        }
+    }))
+}
+
 #[cfg(feature = "zod-checks")]
 #[path = "schema_validation_zod.rs"]
 mod zod;
@@ -29,6 +106,22 @@ pub fn compile_multipart(schema: &Value) -> Result<Arc<JsonValidator>, String> {
 }
 
 fn compile_profile(schema: &Value, multipart: bool) -> Result<Arc<JsonValidator>, String> {
+    let validator = build_profile(
+        schema,
+        multipart,
+        #[cfg(feature = "zod-regex")]
+        None,
+    )?;
+    Ok(Arc::new(move |value| {
+        validator.validate(value).map_err(|error| error.to_string())
+    }))
+}
+
+fn build_profile(
+    schema: &Value,
+    multipart: bool,
+    #[cfg(feature = "zod-regex")] regex: Option<RegexProfile>,
+) -> Result<jsonschema::Validator, String> {
     schema_budget(schema)?;
     // Match the TypeScript AJV full-format profile: email domains
     // require a dot, rather than accepting local-only mailboxes.
@@ -58,7 +151,22 @@ fn compile_profile(schema: &Value, multipart: bool) -> Result<Arc<JsonValidator>
     {
         options = options.with_keyword(zod::KEYWORD, zod::compile);
     }
+    #[cfg(feature = "zod-regex")]
+    if let Some(profile) = regex {
+        let compiler = bounded_regex::Compiler::new(profile);
+        options = options.with_keyword(bounded_regex::KEYWORD, move |parent, value, location| {
+            compiler.compile(parent, value, location)
+        });
+    }
     options = options.with_schema_rewriter(move |schema| {
+        if schema.get("x-forklaunch-zod-regex").is_some() {
+            #[cfg(not(feature = "zod-regex"))]
+            return Err("x-forklaunch-zod-regex requires the forklaunch-contract zod-regex feature and checked compiler".to_owned());
+            #[cfg(feature = "zod-regex")]
+            if regex.is_none() {
+                return Err("x-forklaunch-zod-regex requires the checked schema compiler".to_owned());
+            }
+        }
         #[cfg(not(feature = "zod-checks"))]
         if schema.get("x-forklaunch-zod-checks").is_some() {
             return Err(
@@ -86,9 +194,7 @@ fn compile_profile(schema: &Value, multipart: bool) -> Result<Arc<JsonValidator>
     let validator = options
         .build(schema)
         .map_err(|error| format!("invalid JSON schema: {error}"))?;
-    Ok(Arc::new(move |value| {
-        validator.validate(value).map_err(|error| error.to_string())
-    }))
+    Ok(validator)
 }
 struct NoResources;
 impl jsonschema::Retrieve for NoResources {
@@ -147,3 +253,7 @@ mod uri_tests;
 #[cfg(test)]
 #[path = "schema_validation_zod_tests.rs"]
 mod zod_tests;
+
+#[cfg(test)]
+#[path = "schema_validation_regex_tests.rs"]
+mod regex_tests;

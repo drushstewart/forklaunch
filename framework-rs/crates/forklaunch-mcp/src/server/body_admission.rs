@@ -1,7 +1,7 @@
 //! Explicit finite body admission for HTTP-backed tools; no schema transforms.
 use forklaunch_contract::{
     BodyKind, RouteContract,
-    schema_validation::{self, JsonValidator},
+    schema_validation::{self, CheckedJsonValidator, SchemaValidationFailure},
 };
 use serde_json::{Map, Value, json};
 use std::{collections::BTreeMap, sync::Arc};
@@ -45,7 +45,7 @@ impl McpBodyAdmission {
 pub(super) struct Admission {
     route: RouteContract,
     policy: McpBodyAdmission,
-    validate: Arc<JsonValidator>,
+    validate: Arc<CheckedJsonValidator>,
     schema: Value,
 }
 /// Opt-in policies for exact projected HTTP tool contracts. Unregistered tools
@@ -89,9 +89,17 @@ impl McpBodyAdmissions {
             .as_ref()
             .ok_or("MCP body admission requires an explicit schema")?;
         let schema: Value = serde_json::from_str(source).map_err(|_| "Invalid MCP body schema")?;
-        let validate = schema_validation::compile(&schema)?;
-        if policy.allow_null && validate(&Value::Null).is_err() {
-            return Err("Nullable admission requires a nullable declared schema".into());
+        let validate = schema_validation::compile_checked(&schema)?;
+        if policy.allow_null {
+            match validate(&Value::Null) {
+                Ok(()) => {}
+                Err(SchemaValidationFailure::Invalid(_)) => {
+                    return Err("Nullable admission requires a nullable declared schema".into());
+                }
+                Err(SchemaValidationFailure::Operational) => {
+                    return Err("Unable to evaluate nullable body schema".into());
+                }
+            }
         }
         let mut schema = if schema.is_object() {
             schema
@@ -122,7 +130,7 @@ impl McpBodyAdmissions {
             schema,
         };
         if let MissingToolBody::Default(value) = &admission.policy.missing {
-            admission.check(value).map_err(str::to_owned)?;
+            admission.check(value).map_err(|error| error.to_string())?;
         }
         if self.entries.contains_key(&route.operation_name) {
             return Err("Duplicate MCP body admission".into());
@@ -159,7 +167,13 @@ impl McpBodyAdmissions {
                 .ok_or("Optional MCP body requires an explicit schema")?;
             let schema: Value =
                 serde_json::from_str(schema).map_err(|_| "Invalid optional MCP body schema")?;
-            let nullable = schema_validation::compile(&schema)?(&Value::Null).is_ok();
+            let nullable = match schema_validation::compile_checked(&schema)?(&Value::Null) {
+                Ok(()) => true,
+                Err(SchemaValidationFailure::Invalid(_)) => false,
+                Err(SchemaValidationFailure::Operational) => {
+                    return Err("Unable to evaluate nullable body schema".into());
+                }
+            };
             let mut implicit = Self::default();
             implicit.insert(
                 route,
@@ -179,12 +193,14 @@ impl McpBodyAdmissions {
     }
 }
 impl Admission {
-    fn check(&self, value: &Value) -> Result<(), &'static str> {
+    fn check(&self, value: &Value) -> Result<(), AdmissionFailure> {
         let mut pending = vec![(value, 1usize)];
         let mut bytes = 0usize;
         while let Some((value, depth)) = pending.pop() {
             if depth > self.policy.max_depth {
-                return Err("Tool body exceeds admission bounds");
+                return Err(AdmissionFailure::Invalid(
+                    "Tool body exceeds admission bounds",
+                ));
             }
             bytes = bytes.saturating_add(match value {
                 Value::String(s) => s.len(),
@@ -192,7 +208,9 @@ impl Admission {
                 _ => 1,
             });
             if bytes > self.policy.max_bytes {
-                return Err("Tool body exceeds admission bounds");
+                return Err(AdmissionFailure::Invalid(
+                    "Tool body exceeds admission bounds",
+                ));
             }
             let children = match value {
                 Value::Array(values) => values.len(),
@@ -200,7 +218,9 @@ impl Admission {
                 _ => 0,
             };
             if pending.len().saturating_add(children) > self.policy.max_bytes {
-                return Err("Tool body exceeds admission bounds");
+                return Err(AdmissionFailure::Invalid(
+                    "Tool body exceeds admission bounds",
+                ));
             }
             match value {
                 Value::Array(values) => {
@@ -213,14 +233,16 @@ impl Admission {
             }
         }
         if serde_json::to_vec(value)
-            .map_err(|_| "Invalid tool body")?
+            .map_err(|_| AdmissionFailure::Invalid("Invalid tool body"))?
             .len()
             > self.policy.max_bytes
         {
-            return Err("Tool body exceeds admission bounds");
+            return Err(AdmissionFailure::Invalid(
+                "Tool body exceeds admission bounds",
+            ));
         }
         if value.is_null() && !self.policy.allow_null {
-            return Err("Invalid tool body");
+            return Err(AdmissionFailure::Invalid("Invalid tool body"));
         }
         if self
             .route
@@ -231,15 +253,20 @@ impl Admission {
             && !value.is_string()
             && !value.is_null()
         {
-            return Err("Invalid text tool body");
+            return Err(AdmissionFailure::Invalid("Invalid text tool body"));
         }
-        (self.validate)(value).map_err(|_| "Invalid tool body")
+        (self.validate)(value).map_err(|error| match error {
+            SchemaValidationFailure::Invalid(_) => AdmissionFailure::Invalid("Invalid tool body"),
+            SchemaValidationFailure::Operational => AdmissionFailure::Operational,
+        })
     }
-    pub(super) fn apply(&self, args: &mut Map<String, Value>) -> Result<bool, &'static str> {
+    pub(super) fn apply(&self, args: &mut Map<String, Value>) -> Result<bool, AdmissionFailure> {
         let value = match args.get("body") {
             Some(value) => value,
             None => match &self.policy.missing {
-                MissingToolBody::Reject => return Err("Missing tool body"),
+                MissingToolBody::Reject => {
+                    return Err(AdmissionFailure::Invalid("Missing tool body"));
+                }
                 MissingToolBody::Omit => return Ok(true),
                 MissingToolBody::Default(value) => value,
             },
@@ -504,5 +531,65 @@ mod projection_tests {
                 );
             }
         }
+    }
+}
+
+#[derive(Debug)]
+pub(super) enum AdmissionFailure {
+    Invalid(&'static str),
+    Operational,
+}
+impl std::fmt::Display for AdmissionFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Invalid(message) => message,
+            Self::Operational => "Tool schema evaluation could not be completed",
+        })
+    }
+}
+impl AdmissionFailure {
+    pub(super) fn into_rpc(self) -> rmcp::ErrorData {
+        match self {
+            Self::Invalid(message) => rmcp::ErrorData::invalid_params(message, None),
+            Self::Operational => rmcp::ErrorData::internal_error(
+                "Tool schema evaluation could not be completed",
+                None,
+            ),
+        }
+    }
+}
+
+#[cfg(all(test, feature = "zod-regex"))]
+mod regex_tests {
+    use super::*;
+    #[test]
+    fn operational_admission_is_internal_and_preserves_arguments() {
+        let schema = json!({"type":"string","x-forklaunch-zod-regex":{"version":1,"rules":[{"sourceUnits":"^(a+)+$".encode_utf16().collect::<Vec<_>>(),"flags":""}]}});
+        let mut body = forklaunch_contract::BodyContract::json("Input");
+        body.schema = body.schema.with_json_schema(schema.to_string());
+        let mut route = RouteContract::post("Regex", "Regex", "/regex");
+        route.request.body = Some(body);
+        let mut admissions = McpBodyAdmissions::default();
+        admissions
+            .insert(
+                &route,
+                McpBodyAdmission::new(MissingToolBody::Reject, false, 10000, 32),
+            )
+            .unwrap();
+        let admission = admissions.get(&route).unwrap();
+        let mut args = json!({"body":format!("{}!","a".repeat(40))})
+            .as_object()
+            .unwrap()
+            .clone();
+        let before = args.clone();
+        let error = admission.apply(&mut args).unwrap_err();
+        assert!(matches!(error, AdmissionFailure::Operational));
+        assert_eq!(args, before);
+        assert_eq!(
+            error.into_rpc().code,
+            rmcp::model::ErrorCode::INTERNAL_ERROR
+        );
+        let mut valid = json!({"body":"a"}).as_object().unwrap().clone();
+        assert!(!admission.apply(&mut valid).unwrap());
     }
 }

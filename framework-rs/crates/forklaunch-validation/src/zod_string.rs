@@ -128,37 +128,8 @@ fn evaluate<'a, 'r>(
     let mut length = value.encode_utf16().count() as u64;
     let mut errors = Vec::new();
     for check in checks {
-        let step = match check.rule {
-            ZodStringRule::Step(step) => step,
-            literal => {
-                if let Some(message) = literal_error(value, literal) {
-                    errors.push(ParseError {
-                        path: Vec::new(),
-                        message: check.message.map_or(message, str::to_owned),
-                    });
-                }
-                continue;
-            }
-        };
-        let failed = match step {
-            ZodStringStep::Min(limit) if length < u64::from(limit) => Some(("at least", limit)),
-            ZodStringStep::Max(limit) if length > u64::from(limit) => Some(("at most", limit)),
-            ZodStringStep::Length(limit) if length != u64::from(limit) => Some(("exactly", limit)),
-            ZodStringStep::Trim => {
-                value = value.trim_matches(super::ecmascript_whitespace);
-                length = value.encode_utf16().count() as u64;
-                None
-            }
-            _ => None,
-        };
-        if let Some((comparison, limit)) = failed {
-            errors.push(ParseError {
-                path: Vec::new(),
-                message: check.message.map_or_else(
-                    || format!("String must contain {comparison} {limit} character(s)"),
-                    str::to_owned,
-                ),
-            });
+        if let Some(error) = apply_check(&mut value, &mut length, check) {
+            errors.push(error);
         }
     }
     if errors.is_empty() {
@@ -166,6 +137,46 @@ fn evaluate<'a, 'r>(
     } else {
         Err(errors)
     }
+}
+
+pub(super) fn apply_check(
+    value: &mut &str,
+    length: &mut u64,
+    check: ZodStringCheck<'_>,
+) -> Option<ParseError> {
+    let step = match check.rule {
+        ZodStringRule::Step(step) => step,
+        literal => {
+            if let Some(message) = literal_error(value, literal) {
+                return Some(ParseError {
+                    path: Vec::new(),
+                    message: check.message.map_or(message, str::to_owned),
+                });
+            }
+            return None;
+        }
+    };
+    let failed = match step {
+        ZodStringStep::Min(limit) if *length < u64::from(limit) => Some(("at least", limit)),
+        ZodStringStep::Max(limit) if *length > u64::from(limit) => Some(("at most", limit)),
+        ZodStringStep::Length(limit) if *length != u64::from(limit) => Some(("exactly", limit)),
+        ZodStringStep::Trim => {
+            *value = value.trim_matches(super::ecmascript_whitespace);
+            *length = value.encode_utf16().count() as u64;
+            None
+        }
+        _ => None,
+    };
+    if let Some((comparison, limit)) = failed {
+        return Some(ParseError {
+            path: Vec::new(),
+            message: check.message.map_or_else(
+                || format!("String must contain {comparison} {limit} character(s)"),
+                str::to_owned,
+            ),
+        });
+    }
+    None
 }
 
 fn literal_error(value: &str, rule: ZodStringRule<'_>) -> Option<String> {

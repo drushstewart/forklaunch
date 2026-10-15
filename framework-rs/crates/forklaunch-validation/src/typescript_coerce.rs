@@ -276,6 +276,9 @@ fn radix_number(digits: &str, radix: u32, width: u32) -> f64 {
     f64::from_bits((u64::from(exponent) << 52) | (top & ((1_u64 << 52) - 1)))
 }
 
+#[cfg(feature = "zod-regex")]
+pub use json::ZodJsonStringCheck;
+
 #[cfg(test)]
 mod tests {
     use super::*;

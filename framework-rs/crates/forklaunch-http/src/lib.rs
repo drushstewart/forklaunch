@@ -399,6 +399,8 @@ pub enum ContractValidationLocation {
     BodyEncoding,
     BodyVerification,
     BodyParserConfiguration,
+    /// Operational schema evaluator failure; fatal in every validation mode.
+    SchemaExecution,
     ResponseStatus,
 }
 
@@ -410,7 +412,7 @@ pub struct ContractValidationError {
 }
 
 impl ContractValidationError {
-    /// Parser failures remain fatal even when schema validation is disabled.
+    /// Parser and operational evaluator failures remain fatal in every mode.
     #[must_use]
     pub const fn is_parser_error(&self) -> bool {
         matches!(
@@ -420,6 +422,7 @@ impl ContractValidationError {
                 | ContractValidationLocation::BodyEncoding
                 | ContractValidationLocation::BodyVerification
                 | ContractValidationLocation::BodyParserConfiguration
+                | ContractValidationLocation::SchemaExecution
         )
     }
 
@@ -1103,6 +1106,7 @@ pub fn validation_error_response_with_parser_format(
             error.location,
             ContractValidationLocation::ResponseStatus
                 | ContractValidationLocation::BodyParserConfiguration
+                | ContractValidationLocation::SchemaExecution
         )
     }) {
         ErrorKind::Internal

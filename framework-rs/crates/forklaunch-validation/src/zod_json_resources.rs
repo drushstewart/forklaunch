@@ -7,12 +7,16 @@ const MAX_WORK_BYTES: usize = 32 * 1024 * 1024;
 
 pub(super) struct Budget {
     pub nodes: usize,
+    #[cfg(feature = "zod-regex")]
+    pub regex_work: usize,
     bytes: usize,
 }
 impl Budget {
     pub fn new() -> Self {
         Self {
             nodes: MAX_NODES,
+            #[cfg(feature = "zod-regex")]
+            regex_work: 400_000_000,
             bytes: MAX_WORK_BYTES,
         }
     }
@@ -34,6 +38,10 @@ impl Budget {
 pub(super) fn own_schema_bytes(schema: &ZodJsonSchema<'_>) -> usize {
     match schema {
         ZodJsonSchema::Literal(literal) => literal.bytes(),
+        #[cfg(feature = "zod-regex")]
+        ZodJsonSchema::CheckedString(checks) => checks
+            .iter()
+            .fold(0usize, |bytes, check| bytes.saturating_add(check.bytes())),
         ZodJsonSchema::String(checks) => checks.iter().fold(0usize, |bytes, check| {
             bytes
                 .saturating_add(check.message.map_or(0, str::len))
@@ -76,6 +84,11 @@ pub(super) fn evaluation_bytes(
             .saturating_mul(3)
             .saturating_add(literal.bytes().saturating_mul(12))
             .saturating_add(128),
+        #[cfg(feature = "zod-regex")]
+        ZodJsonSchema::CheckedString(checks) => input_bytes()?
+            .saturating_mul(checks.len().saturating_add(2))
+            .saturating_add(own_schema_bytes(schema))
+            .saturating_add(checks.len().saturating_add(1).saturating_mul(128)),
         ZodJsonSchema::String(checks) => input_bytes()?
             .saturating_mul(checks.len().saturating_add(2))
             .saturating_add(own_schema_bytes(schema))

@@ -9,12 +9,19 @@ pub const DEFAULT_MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayloadError {
     Invalid(String),
-    Limit { max_bytes: usize },
+    /// Bounded schema evaluation could not finish; this is not invalid data.
+    Operational,
+    Limit {
+        max_bytes: usize,
+    },
 }
 impl fmt::Display for PayloadError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Invalid(message) => write!(formatter, "invalid WebSocket payload: {message}"),
+            Self::Operational => {
+                formatter.write_str("WebSocket schema evaluation could not be completed")
+            }
             Self::Limit { max_bytes } => {
                 write!(formatter, "WebSocket payload exceeds {max_bytes} bytes")
             }
@@ -25,7 +32,7 @@ impl std::error::Error for PayloadError {}
 
 type Encoder<T> = fn(&T, usize, Option<&JsonValidator>) -> Result<Vec<u8>, PayloadError>;
 type Decoder<T> = fn(&[u8], Option<&JsonValidator>) -> Result<T, PayloadError>;
-pub(crate) type JsonValidator = dyn Fn(&Value) -> Result<(), String> + Send + Sync;
+pub(crate) type JsonValidator = dyn Fn(&Value) -> Result<(), PayloadError> + Send + Sync;
 type Validator<T> = dyn Fn(&T) -> Result<(), String> + Send + Sync;
 
 /// Encodes messages as raw UTF-8 strings or JSON bytes, matching the TS helpers.
@@ -193,7 +200,7 @@ fn decode_serde<T: DeserializeOwned, const JSON: bool>(
     if let Some(validate) = validate {
         let mut normalized = value.clone();
         normalize_integer_numbers(&mut normalized);
-        validate(&normalized).map_err(PayloadError::Invalid)?;
+        validate(&normalized)?;
         // Preserve floating-point representation (including negative zero) when
         // the target supports it; typed integers also accept safe integral forms.
         return serde_json::from_value(value)
@@ -226,7 +233,7 @@ fn encode_serde<T: Serialize, const JSON: bool>(
         .map_err(|error| PayloadError::Invalid(error.to_string()))?;
     if let Some(validate) = validate {
         normalize_integer_numbers(&mut serialized);
-        validate(&serialized).map_err(PayloadError::Invalid)?;
+        validate(&serialized)?;
     }
     if JSON {
         return Ok(output.bytes);

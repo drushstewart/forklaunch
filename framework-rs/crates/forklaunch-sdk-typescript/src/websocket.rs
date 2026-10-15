@@ -114,6 +114,7 @@ fn runtime_source() -> String {
     let mut source = String::from(include_str!("websocket-runtime.ts"));
     source.push_str(&include_str!("zod-checks.ts").replace("import type Ajv from 'ajv';", ""));
     // Official Draft 6 meta-schema, embedded to keep both module formats self-contained.
+    source.push_str(&include_str!("zod-regex.ts").replace("import type Ajv from 'ajv';", ""));
     let schema = forklaunch_common::json_string(include_str!("draft6-schema.json"));
     let _ = writeln!(
         source,

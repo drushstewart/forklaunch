@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
+zod-regex = ["forklaunch-common/zod-regex"]
 default = []
 zod-uri = ["dep:ada-url"]
 

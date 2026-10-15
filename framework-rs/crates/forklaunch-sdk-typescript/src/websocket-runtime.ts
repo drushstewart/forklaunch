@@ -8,6 +8,8 @@ import addFormatsModule, { type FormatsPlugin } from 'ajv-formats';
 import type { IncomingHttpHeaders } from 'node:http';
 
 export interface SocketClientOptions {
+  /** Synchronous host RegExp execution has no interruptible native work budget. */
+  zodRegexExecution?: ZodRegexExecution;
   headers?: ClientOptions['headers'];
   protocols?: string | string[];
   webSocketOptions?: Omit<
@@ -90,7 +92,7 @@ function socketMultipleOf(value: number, divisor: number): boolean {
   else denominator *= 10n ** BigInt(-scale);
   return numerator % denominator === 0n;
 }
-function socketValidator(schema: AnySchema): ValidateFunction {
+function socketValidator(schema: AnySchema, regexExecution?: ZodRegexExecution): ValidateFunction {
   const dialect = typeof schema === 'object' ? schema.$schema : undefined;
   // CommonJS constructor declarations are exposed as a namespace in NodeNext.
   const AjvDraft4 = AjvDraft4Module as unknown as typeof Ajv;
@@ -139,6 +141,7 @@ function socketValidator(schema: AnySchema): ValidateFunction {
   const addFormats = addFormatsModule as unknown as FormatsPlugin;
   addFormats(engine);
   registerZodChecks(engine);
+  registerZodRegex(engine, regexExecution);
   engine.addFormat('forklaunch-whatwg-url', {
     type: 'string',
     validate: (value: string) => {
@@ -445,8 +448,9 @@ class SocketCodec<T> {
     private readonly limit: number,
     private readonly binary = false,
     private readonly jsonEncoding = false,
+    regexExecution?: ZodRegexExecution,
   ) {
-    if (!binary) this.validate = socketValidator(schema);
+    if (!binary) this.validate = socketValidator(schema, regexExecution);
   }
   private check(value: unknown): T {
     socketJsonBounds(value, this.limit);
@@ -571,30 +575,35 @@ class SocketRuntime<I, O, P, Q, C> implements AsyncIterable<
       this.options.maxMessageBytes,
       binary.incoming,
       jsonEncoding.incoming,
+      options.zodRegexExecution,
     );
     this.outgoing = new SocketCodec(
       schemas.outgoing,
       this.options.maxMessageBytes,
       binary.outgoing,
       jsonEncoding.outgoing,
+      options.zodRegexExecution,
     );
     this.pingCodec = new SocketCodec(
       schemas.ping,
       Math.min(125, this.options.maxMessageBytes),
       binary.ping,
       jsonEncoding.ping,
+      options.zodRegexExecution,
     );
     this.pongCodec = new SocketCodec(
       schemas.pong,
       Math.min(125, this.options.maxMessageBytes),
       binary.pong,
       jsonEncoding.pong,
+      options.zodRegexExecution,
     );
     this.closeCodec = new SocketCodec(
       schemas.close,
       Math.min(123, this.options.maxMessageBytes),
       binary.close,
       jsonEncoding.close,
+      options.zodRegexExecution,
     );
     if (options.signal?.aborted) throw socketAbort();
     this.ws = new WebSocket(url, options.protocols ?? [], {

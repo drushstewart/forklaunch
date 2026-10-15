@@ -546,7 +546,7 @@ export class ZodSchemaValidator implements SV<
    */
   openapi2020(
     schema: unknown,
-    options?: { pureInput?: boolean; zodChecks?: boolean }
+    options?: { pureInput?: boolean; zodChecks?: boolean; zodRegex?: boolean }
   ): SchemaObject & {
     $schema: 'https://json-schema.org/draft/2020-12/schema';
   } {
@@ -557,7 +557,8 @@ export class ZodSchemaValidator implements SV<
       return generateSchema(schemified, false, '3.1', {
         jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
         pureInput: true,
-        zodChecks: options.zodChecks
+        zodChecks: options.zodChecks,
+        zodRegex: options.zodRegex
       }) as SchemaObject & {
         $schema: 'https://json-schema.org/draft/2020-12/schema';
       };
@@ -596,9 +597,10 @@ export class ZodSchemaValidator implements SV<
       else break;
     }
     return requestBodyOpenApi(schemified, (value) =>
-      generateSchema(options?.zodChecks ? value : deepCloneWithoutUndefined(value), false, '3.1', {
+      generateSchema((options?.zodChecks || options?.zodRegex) ? value : deepCloneWithoutUndefined(value), false, '3.1', {
         jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
-        zodChecks: options?.zodChecks
+        zodChecks: options?.zodChecks,
+        zodRegex: options?.zodRegex
       })
     ).schema as SchemaObject & {
       $schema: 'https://json-schema.org/draft/2020-12/schema';

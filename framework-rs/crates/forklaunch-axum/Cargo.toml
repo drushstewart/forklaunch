@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [features]
+zod-regex = ["dep:forklaunch-validation", "forklaunch-validation/zod-regex", "forklaunch-contract/zod-regex", "forklaunch-http/zod-regex", "forklaunch-mcp?/zod-regex", "forklaunch-ws?/zod-regex"]
 zod-checks = ["forklaunch-contract/zod-checks", "forklaunch-http/zod-checks", "forklaunch-mcp?/zod-checks", "forklaunch-ws?/zod-checks"]
 default = ["adapter"]
 zod-uri = ["dep:forklaunch-validation", "forklaunch-validation/zod-uri", "forklaunch-contract/zod-uri", "forklaunch-http/zod-uri", "forklaunch-mcp?/zod-uri", "forklaunch-ws?/zod-uri"]

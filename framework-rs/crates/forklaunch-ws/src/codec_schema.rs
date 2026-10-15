@@ -4,8 +4,15 @@ use serde_json::Value;
 use std::sync::Arc;
 
 pub(crate) fn compile(schema: &Value) -> Result<Arc<JsonValidator>, PayloadError> {
-    forklaunch_contract::schema_validation::compile(schema)
-        .map_err(|error| PayloadError::Invalid(error.replace("JSON schema", "socket schema")))
+    use forklaunch_contract::schema_validation::{SchemaValidationFailure, compile_checked};
+    let validate = compile_checked(schema)
+        .map_err(|error| PayloadError::Invalid(error.replace("JSON schema", "socket schema")))?;
+    Ok(Arc::new(move |value| {
+        validate(value).map_err(|error| match error {
+            SchemaValidationFailure::Invalid(message) => PayloadError::Invalid(message),
+            SchemaValidationFailure::Operational => PayloadError::Operational,
+        })
+    }))
 }
 #[cfg(test)]
 mod tests {
@@ -202,5 +209,22 @@ mod tests {
             serde_json::to_vec(&results).unwrap(),
         )
         .unwrap();
+    }
+}
+
+#[cfg(all(test, feature = "zod-regex"))]
+mod regex_tests {
+    use super::*;
+    #[test]
+    fn codec_preserves_operational_failure_in_both_directions() {
+        let schema = serde_json::json!({"type":"string","x-forklaunch-zod-regex":{"version":1,"rules":[{"sourceUnits":"^(a+)+$".encode_utf16().collect::<Vec<_>>(),"flags":""}]}});
+        let codec = crate::codec::PayloadCodec::<String>::json_schema(&schema).unwrap();
+        let input = format!("{}!", "a".repeat(40));
+        assert_eq!(
+            codec.decode(input.as_bytes()),
+            Err(PayloadError::Operational)
+        );
+        assert_eq!(codec.encode(&input), Err(PayloadError::Operational));
+        assert!(codec.encode(&"a".into()).is_ok());
     }
 }

@@ -257,7 +257,7 @@ impl ServerHandler for ContractServer {
                     .as_ref()
                     .map(|admission| admission.apply(&mut args))
                     .transpose()
-                    .map_err(|message| ErrorData::invalid_params(message, None))?
+                    .map_err(body_admission::AdmissionFailure::into_rpc)?
                     .unwrap_or(false);
                 (route, omit)
             }

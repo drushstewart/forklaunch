@@ -24343,6 +24343,11 @@
           "source": "framework/universal-sdk/src/core/zodChecks.ts"
         },
         {
+          "subpath": "./src/core/zodRegex",
+          "target": "lib/src/core/zodRegex.d.ts",
+          "source": "framework/universal-sdk/src/core/zodRegex.ts"
+        },
+        {
           "subpath": "./src/guards/isOpenApiObject",
           "target": "lib/src/guards/isOpenApiObject.d.ts",
           "source": "framework/universal-sdk/src/guards/isOpenApiObject.ts"
@@ -24371,12 +24376,12 @@
               "name": "universalSdk",
               "kind": "VariableDeclaration",
               "source": "framework/universal-sdk/index.ts",
-              "line": 12
+              "line": 13
             },
             {
               "kind": "reexport",
               "source": "framework/universal-sdk/index.ts",
-              "line": 87,
+              "line": 91,
               "exports": [
                 {
                   "name": "RegistryOptions",
@@ -24388,7 +24393,7 @@
             {
               "kind": "reexport",
               "source": "framework/universal-sdk/index.ts",
-              "line": 89,
+              "line": 93,
               "specifier": "./src/core/responseDialect",
               "target": "framework/universal-sdk/src/core/responseDialect.ts",
               "exports": [
@@ -24400,6 +24405,20 @@
                 {
                   "name": "ResponseSchemaContext",
                   "original": "ResponseSchemaContext",
+                  "typeOnly": true
+                }
+              ]
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/universal-sdk/index.ts",
+              "line": 95,
+              "specifier": "./src/core/zodRegex",
+              "target": "framework/universal-sdk/src/core/zodRegex.ts",
+              "exports": [
+                {
+                  "name": "ZodRegexExecution",
+                  "original": "ZodRegexExecution",
                   "typeOnly": true
                 }
               ]
@@ -24669,6 +24688,24 @@
           ]
         },
         {
+          "source": "framework/universal-sdk/src/core/zodRegex.ts",
+          "exports": [
+            {
+              "name": "ZodRegexExecution",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/core/zodRegex.ts",
+              "line": 4,
+              "type": "'host-native'"
+            },
+            {
+              "name": "registerZodRegex",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/core/zodRegex.ts",
+              "line": 49
+            }
+          ]
+        },
+        {
           "source": "framework/universal-sdk/src/guards/isOpenApiObject.ts",
           "exports": [
             {
@@ -24789,31 +24826,31 @@
               "name": "UniversalSdk",
               "kind": "ClassDeclaration",
               "source": "framework/universal-sdk/src/universalSdk.ts",
-              "line": 28,
+              "line": 29,
               "members": [
                 {
                   "name": "constructor",
-                  "signature": "constructor(\n    private host: string,\n    private ajv: Ajv,\n    private registryOptions: RegistryOptions,\n    private contentTypeParserMap:\n      Record<string, ResponseContentParserType> | undefined,\n    responseAjvFactory?: ResponseAjvFactory\n  )",
+                  "signature": "constructor(\n    private host: string,\n    private ajv: Ajv,\n    private registryOptions: RegistryOptions,\n    private contentTypeParserMap:\n      Record<string, ResponseContentParserType> | undefined,\n    responseAjvFactory?: ResponseAjvFactory,\n    zodRegexExecution?: ZodRegexExecution\n  )",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 39
+                  "line": 40
                 },
                 {
                   "name": "create",
-                  "signature": "static async create(\n    host: string,\n    registryOptions: RegistryOptions,\n    contentTypeParserMap?: Record<string, ResponseContentParserType>\n  )",
+                  "signature": "static async create(\n    host: string,\n    registryOptions: RegistryOptions,\n    contentTypeParserMap?: Record<string, ResponseContentParserType>,\n    zodRegexExecution?: ZodRegexExecution\n  )",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 61
+                  "line": 63
                 },
                 {
                   "name": "executeFetchCall",
                   "signature": "async executeFetchCall(\n    path: string,\n    request?: RequestType & {\n      method:\n        | 'get'\n        | 'post'\n        | 'put'\n        | 'patch'\n        | 'delete'\n        | 'options'\n        | 'head'\n        | 'trace';\n    } & {\n      version?: string;\n    }\n  ): Promise<ResponseType>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 88
+                  "line": 92
                 },
                 {
                   "name": "executeSdkCall",
                   "signature": "async executeSdkCall(\n    sdkPath: string,\n    request?: RequestType\n  ): Promise<ResponseType>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 128
+                  "line": 132
                 }
               ]
             }
@@ -24876,6 +24913,11 @@
           "subpath": "./shims/zod-v3-openapi/zodChecks",
           "target": "lib/shims/zod-v3-openapi/zodChecks.d.ts",
           "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts"
+        },
+        {
+          "subpath": "./shims/zod-v3-openapi/zodRegex",
+          "target": "lib/shims/zod-v3-openapi/zodRegex.d.ts",
+          "source": "framework/validator/shims/zod-v3-openapi/zodRegex.ts"
         },
         {
           "subpath": "./src/shared/types/schema.types",
@@ -25407,20 +25449,20 @@
               "name": "AnatineSchemaObject",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 17,
+              "line": 18,
               "type": "SchemaObject & {\n  hideDefinitions?: string[];\n  $schema?: string;\n}"
             },
             {
               "name": "OpenApiZodAny",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 22,
+              "line": 23,
               "members": [
                 {
                   "name": "metaOpenApi",
                   "signature": "metaOpenApi?: AnatineSchemaObject | AnatineSchemaObject[];",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 23
+                  "line": 24
                 }
               ]
             },
@@ -25428,25 +25470,31 @@
               "name": "SchemaGenerationOptions",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 32,
+              "line": 33,
               "members": [
                 {
                   "name": "jsonSchemaDialect",
                   "signature": "readonly jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema';",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 33
+                  "line": 34
                 },
                 {
                   "name": "pureInput",
                   "signature": "readonly pureInput?: boolean;",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 35
+                  "line": 36
                 },
                 {
                   "name": "zodChecks",
                   "signature": "readonly zodChecks?: boolean;",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 37
+                  "line": 38
+                },
+                {
+                  "name": "zodRegex",
+                  "signature": "readonly zodRegex?: boolean;",
+                  "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
+                  "line": 40
                 }
               ]
             },
@@ -25454,13 +25502,13 @@
               "name": "extendApi",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 55
+              "line": 59
             },
             {
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 999
+              "line": 1006
             }
           ]
         },
@@ -25484,6 +25532,23 @@
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zodChecks.ts",
               "line": 129
+            }
+          ]
+        },
+        {
+          "source": "framework/validator/shims/zod-v3-openapi/zodRegex.ts",
+          "exports": [
+            {
+              "name": "zodRegexKeyword",
+              "kind": "VariableDeclaration",
+              "source": "framework/validator/shims/zod-v3-openapi/zodRegex.ts",
+              "line": 1
+            },
+            {
+              "name": "projectRegexChecks",
+              "kind": "FunctionDeclaration",
+              "source": "framework/validator/shims/zod-v3-openapi/zodRegex.ts",
+              "line": 5
             }
           ]
         },
@@ -25728,7 +25793,7 @@
                 },
                 {
                   "name": "openapi2020",
-                  "signature": "openapi2020?: (\n    schema: unknown,\n    options?: { pureInput?: boolean; zodChecks?: boolean }\n  ) => SchemaObject & {\n    $schema: 'https://json-schema.org/draft/2020-12/schema';\n  };",
+                  "signature": "openapi2020?: (\n    schema: unknown,\n    options?: { pureInput?: boolean; zodChecks?: boolean; zodRegex?: boolean }\n  ) => SchemaObject & {\n    $schema: 'https://json-schema.org/draft/2020-12/schema';\n  };",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
                   "line": 291
                 },
@@ -27192,7 +27257,7 @@
                 },
                 {
                   "name": "openapi2020",
-                  "signature": "openapi2020(\n    schema: unknown,\n    options?: { pureInput?: boolean; zodChecks?: boolean }\n  ): SchemaObject & {\n    $schema: 'https://json-schema.org/draft/2020-12/schema';\n  }",
+                  "signature": "openapi2020(\n    schema: unknown,\n    options?: { pureInput?: boolean; zodChecks?: boolean; zodRegex?: boolean }\n  ): SchemaObject & {\n    $schema: 'https://json-schema.org/draft/2020-12/schema';\n  }",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
                   "line": 547
                 },
@@ -27200,7 +27265,7 @@
                   "name": "openapi",
                   "signature": "openapi<T extends ZodIdiomaticSchema | ZodCatchall>(schema: T): SchemaObject",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 613
+                  "line": 615
                 }
               ]
             }

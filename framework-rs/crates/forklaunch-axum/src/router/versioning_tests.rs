@@ -829,3 +829,75 @@ async fn uri_error_profile_matches_pre_context_failures_without_rewriting_native
         }
     }
 }
+
+#[cfg(feature = "zod-regex")]
+#[tokio::test]
+async fn checked_regex_exhaustion_is_fatal_on_both_http_adapters() {
+    for mode in [
+        ValidationMode::None,
+        ValidationMode::Warning,
+        ValidationMode::Error,
+    ] {
+        for local in [false, true] {
+            let schema = json!({"type":"object","required":["value"],"properties":{"value":{
+                "type":"string","x-forklaunch-zod-regex":{"version":1,"rules":[{
+                    "sourceUnits":"^(a+)+$".encode_utf16().collect::<Vec<_>>(),"flags":""
+                }]}
+            }}});
+            let mut body = BodyContract::json("Input");
+            body.schema = body.schema.with_json_schema(schema.to_string());
+            let mut contract =
+                RouteContract::post("Regex", "Regex", "/regex").with_version(VersionedContract {
+                    version: "checked".into(),
+                    request: RequestContract::default().with_body(body),
+                    responses: vec![ResponseContract::new(200, None)],
+                });
+            contract.options.request_validation = mode;
+            let count = Arc::new(AtomicU64::new(0));
+            let calls = Arc::clone(&count);
+            let router = if local {
+                let mut handlers = LocalRouter::new();
+                handlers.register(contract.clone(), move |_: FrameworkRequest| {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(FrameworkResponse::new(200))
+                });
+                ForkLaunchRouter::from_local_router(
+                    ServiceInfo::new("regex", "1"),
+                    [contract],
+                    handlers,
+                )
+            } else {
+                ForkLaunchRouter::new(ServiceInfo::new("regex", "1")).post(contract, move || {
+                    let calls = Arc::clone(&calls);
+                    async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        StatusCode::OK
+                    }
+                })
+            }
+            .into_router();
+            for (value, status) in [(format!("{}!", "a".repeat(40)), 500), ("a".into(), 200)] {
+                let response = router
+                    .clone()
+                    .oneshot(
+                        Request::post("/regex")
+                            .header("content-type", "application/json")
+                            .header("x-correlation-id", "regex-correlation")
+                            .body(Body::from(json!({"value":value}).to_string()))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status().as_u16(), status);
+                if status == 500 {
+                    let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+                    let text = std::str::from_utf8(&bytes).unwrap();
+                    assert!(text.contains("regex-correlation"));
+                    assert!(!text.contains(&"a".repeat(40)));
+                    assert_eq!(count.load(Ordering::SeqCst), 0);
+                }
+            }
+            assert_eq!(count.load(Ordering::SeqCst), 1);
+        }
+    }
+}
