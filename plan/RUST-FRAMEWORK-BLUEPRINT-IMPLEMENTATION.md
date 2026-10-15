@@ -17,7 +17,7 @@ The Rust stack should interoperate with the TypeScript stack through shared cont
 
 Current parallel work (these are slices of the existing gates, not extra checklist items):
 
-- Active: remaining Better Auth organization/plugin options, legacy/local HMAC date grammar, and automatic factory diagnostic provenance for generic schema validation.
+- Active: remaining Better Auth organization/plugin options, legacy/local HMAC date grammar, automatic factory diagnostic provenance for generic schema validation, and multipart text decoding.
 - Latest integrated slices: trusted whole-request version diagnostics and configured ORM team-seat predicates, selected Unicode case matching and ordered HEAD/OPTIONS routing, shape-preserving organization callback metadata, team quota callbacks with borrowed acceptance-transaction access (memory-reference numeric profile), role and invitation quota callbacks, shared permission caching, optional trailing-slash routing, nested LocalRouter root/alias correction, selected automatic OPTIONS, extended UTF-16 bounds and positioned literal predicates. Their dated receipts below identify exact scopes and remaining differences.
 - Latest combined IAM regression: 237 passed, five PostgreSQL tests deliberately ignored in that run and covered by separate focused receipts.
 - Latest immutable package checkpoint: `6fcbf887c`, 3,084 archive files verified before/after runtime, 233 bundled IAM tests, all five HTTP/MCP listener modes and five signed capability callbacks passed. Later quota, routing and predicate changes have separate proofs and are excluded from that archive.
