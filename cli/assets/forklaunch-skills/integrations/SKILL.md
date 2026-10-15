@@ -12,7 +12,8 @@ user-invokable: true
 - "Add Stripe" / "it needs to take payments"
 - Any provider whose setup ends in *"here is your API key"* — Sentry, Datadog,
   Twilio, an LLM provider, an SMTP service
-- "Send email" from a managed instance — `forklaunch infra add <service> email`
+- "Send email" from a managed instance or a regularly deployed app —
+  `forklaunch infra add <service> email`
   (below); no SMTP or SendGrid key
 - A deploy is blocked complaining about a missing environment variable
 - "Call patients to remind them" / outbound phone calls in a managed app
@@ -177,20 +178,38 @@ a placeholder key fails **locally too**, with `Invalid API Key provided`. There
 is no offline mode. Use a real test key in local `.env` files, or expect that
 code path to fail on a developer machine.
 
-## Email (managed instances)
+## Email (managed instances and regular deployments)
 
-A managed instance never holds a mail credential. The platform sends through
-Amazon SES from the instance's own sending identity
-(`no-reply@<instance>.<platform sending domain>`), under a per-instance SES
-configuration set, inside the product's daily quota and rate, and refuses
-addresses on the instance's suppression list (hard bounces and complaints).
+Neither a managed instance nor an app deployed to its own environment
+(`forklaunch deploy create`) holds a mail credential. The platform sends
+through Amazon SES from the caller's own sending identity, under its own SES
+configuration set, inside its daily quota and rate, and refuses addresses on
+its own suppression list (hard bounces and complaints).
+
+| | managed instance | regular deployment (per application × environment) |
+|---|---|---|
+| sends from | `no-reply@<instance>.<sending domain>` | `no-reply@<app>-<6 hex>.<sending domain>` in `production`/`prod`/`main`; `no-reply@<app>-<env>-<6 hex>.<sending domain>` elsewhere |
+| `INSTANCE_ID` / `INSTANCE_HMAC_KEY` | the instance's, from its provisioner | the environment's gateway principal, minted on its first deploy that declares email, the same on every redeploy |
+| limits | the product's (template), then the instance's override | the platform's application defaults (`EMAIL_GATEWAY_APP_*`), then the environment's override |
+| events | the service that declared email | the HTTP service that declared email, at `https://<service>.<app DNS subzone>`; a worker binding records them (suppression still applies) but has no route to relay to |
+
+For a regular deployment the deploy stores `PLATFORM_GATEWAY_URL`,
+`INSTANCE_ID` and `INSTANCE_HMAC_KEY` as platform-owned, application-scope
+variables of the environment × region, so every service and worker gets them;
+nobody is asked for them, and a value a person set on one component is left
+alone (that component then cannot send). An application that backs a managed
+instance is skipped: its instance's own values stay.
 
 ### 1. What the CLI writes
 
 ```bash
 forklaunch infra add <service> email
+forklaunch infra add <worker> email         # a worker that sends (CLI with worker support)
 forklaunch infra remove <service> email     # undoes it
 ```
+
+Needs `@forklaunch/core` with `createEmailClient` (3.x) and a CLI with
+`infra add … email` (1.31+).
 
 - `registrations.ts`: an `EmailClient` built with `createEmailClient()` from
   `@forklaunch/core/http`, fed by the managed env contract
@@ -223,8 +242,9 @@ subject, `text` or `html`, 512 KB, up to 10 tags) and throws
 422 a suppressed recipient, 429 quota/rate (with `retryAfterSeconds`), 503
 email not configured on the platform or the sending identity still verifying.
 For a product whose manifest declares email, the platform creates the
-instance's sending identity while the instance launches, so DKIM usually
-verifies before the first send; the 503 remains possible right after launch.
+instance's sending identity while the instance launches (for a regular
+deployment, while the environment deploys), so DKIM usually verifies before
+the first send; the 503 remains possible right after the first deploy.
 
 ### 3. Events
 

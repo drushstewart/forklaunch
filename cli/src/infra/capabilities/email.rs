@@ -16,6 +16,7 @@ pub(crate) static EMAIL: Capability = Capability {
     summary: "send email through the platform (Amazon SES), with delivery, bounce and complaint events",
     registration_key: "EmailClient",
     receives_events: true,
+    workers: true,
     add,
     remove,
 };
@@ -173,6 +174,51 @@ const serviceDependencies = runtimeDependencies.chain({});
         assert!(index.contains("email: emailEvents"));
         assert!(fs::read_to_string(service.join("server.ts")).unwrap().contains("platformEventsRouter"));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_worker_gets_the_gateway_settings_in_both_its_containers() {
+        let (root, service) = service("worker");
+        fs::write(
+            root.join("docker-compose.yaml"),
+            "volumes: {}\nnetworks:\n  demo-network:\n    name: demo-network\nservices:\n  billing-server:\n    image: node:22\n    networks: [demo-network]\n    environment:\n      PORT: '8001'\n  billing-worker:\n    image: node:22\n    networks: [demo-network]\n",
+        )
+        .unwrap();
+        let mut e = edit(&root, &service, &["email"]).for_worker();
+        super::super::apply(&mut e, &EMAIL, true).unwrap();
+        e.commit().unwrap();
+
+        let compose = fs::read_to_string(root.join("docker-compose.yaml")).unwrap();
+        let parsed: crate::core::docker::DockerCompose = serde_yml::from_str(&compose).unwrap();
+        for key in ["billing-server", "billing-worker"] {
+            let env = parsed.services[key].environment.as_ref().unwrap();
+            assert!(env.contains_key("PLATFORM_GATEWAY_URL"), "{key}: {compose}");
+            assert!(env.contains_key("INSTANCE_HMAC_KEY"), "{key}");
+        }
+        // Events go to the server, which mounts /platform-events.
+        let mock = parsed.services[super::super::GATEWAY_MOCK_SERVICE].environment.as_ref().unwrap();
+        assert_eq!(mock["MOCK_EVENTS_URL_EMAIL"], "http://billing-server:8001");
+        assert!(fs::read_to_string(service.join("registrations.ts")).unwrap().contains("EmailClient:"));
+
+        // And all of it comes off again.
+        let mut e = edit(&root, &service, &[]).for_worker();
+        super::super::apply(&mut e, &EMAIL, false).unwrap();
+        e.commit().unwrap();
+        let parsed: crate::core::docker::DockerCompose =
+            serde_yml::from_str(&fs::read_to_string(root.join("docker-compose.yaml")).unwrap()).unwrap();
+        assert!(!parsed.services.contains_key(super::super::GATEWAY_MOCK_SERVICE));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn only_email_may_be_added_to_a_worker() {
+        assert!(EMAIL.workers);
+        let on_workers: Vec<&str> = super::super::CAPABILITIES
+            .iter()
+            .filter(|c| c.workers)
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(on_workers, vec!["email"]);
     }
 
     #[test]

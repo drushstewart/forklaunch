@@ -43,6 +43,11 @@ pub(crate) struct Capability {
     pub(crate) registration_key: &'static str,
     /// Whether the platform delivers events for it (adds `/platform-events`).
     pub(crate) receives_events: bool,
+    /// Whether a worker may hold it (`infra add <worker> <capability>`). The
+    /// platform side must serve a caller that is not tied to one service:
+    /// email is sent from the app environment's identity, so a worker can
+    /// send; the others still assume a service.
+    pub(crate) workers: bool,
     /// Capability-specific edits on add; the shared ones are applied around it.
     pub(crate) add: fn(&mut CapabilityEdit) -> Result<()>,
     /// Capability-specific edits on remove.
@@ -97,6 +102,10 @@ pub(crate) struct CapabilityEdit {
     pub(crate) service_capabilities: Vec<String>,
     /// Capabilities of every project after the change.
     pub(crate) app_capabilities: Vec<String>,
+    /// The docker-compose services that run this project's code. A service
+    /// is one (`<name>`); a worker is two (`<name>-worker`, `<name>-server`).
+    /// The last one receives the mock's events.
+    compose_keys: Vec<String>,
     staged: BTreeMap<PathBuf, Option<String>>,
 }
 
@@ -116,8 +125,20 @@ impl CapabilityEdit {
             service_path: service_path.to_path_buf(),
             service_capabilities,
             app_capabilities,
+            compose_keys: vec![service_name.to_string()],
             staged: BTreeMap::new(),
         }
+    }
+
+    /// For a worker project: its worker and server containers both get the
+    /// gateway settings; the server (which mounts `/platform-events`)
+    /// receives the mock's events.
+    pub(crate) fn for_worker(mut self) -> Self {
+        self.compose_keys = vec![
+            format!("{}-worker", self.service_name),
+            format!("{}-server", self.service_name),
+        ];
+        self
     }
 
     /// A file's content as it will be after the staged edits.
@@ -265,8 +286,21 @@ impl CapabilityEdit {
         let pairs = local_gateway_env();
         let pairs: Vec<(&str, &str)> = pairs.iter().map(|(k, v)| (*k, v.as_str())).collect();
         self.ensure_env_local(&pairs)?;
+        let keys = self.compose_keys.clone();
         let service = self.service_name.clone();
-        self.update_compose(|compose| ensure_gateway_mock(compose, &service, feature))
+        self.update_compose(|compose| {
+            let present: Vec<&String> = keys
+                .iter()
+                .filter(|k| compose.services.contains_key(k.as_str()))
+                .collect();
+            if present.is_empty() {
+                bail!("no '{}' service in docker-compose", keys.last().unwrap_or(&service));
+            }
+            for key in present {
+                ensure_gateway_mock(compose, key, feature)?;
+            }
+            Ok(())
+        })
     }
 
     /// Undo `ensure_gateway_wiring` for `feature`, dropping the service's
@@ -317,17 +351,19 @@ impl CapabilityEdit {
                 }
             }
         }
-        let service = self.service_name.clone();
+        let keys = self.compose_keys.clone();
         let service_has_none_left = self.service_capabilities.is_empty();
         let app_has_none_left = self.app_capabilities.is_empty();
         self.update_compose(|compose| {
-            release_gateway_mock(
-                compose,
-                &service,
-                feature,
-                service_has_none_left,
-                app_has_none_left,
-            );
+            for key in &keys {
+                release_gateway_mock(
+                    compose,
+                    key,
+                    feature,
+                    service_has_none_left,
+                    app_has_none_left,
+                );
+            }
             Ok(())
         })
     }

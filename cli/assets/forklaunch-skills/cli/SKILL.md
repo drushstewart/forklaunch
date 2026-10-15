@@ -527,6 +527,7 @@ reformats a customized service; prefer `infra add|remove`.) It takes one change:
 forklaunch infra add <service> object-store   # or: s3
 forklaunch infra add <service> cache          # or: redis
 forklaunch infra add <service> email          # platform-held email (SES); see /integrations
+forklaunch infra add <worker> email           # email is the one capability a worker can hold
 forklaunch infra add <service> sms            # texts via the platform; see /integrations
 forklaunch infra add <service> whatsapp       # WhatsApp through the platform (see /integrations)
 forklaunch infra add <service> voice          # managed apps: outbound calls via the platform (Amazon Connect)
